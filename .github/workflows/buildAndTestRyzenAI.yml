@@ -89,6 +89,8 @@ jobs:
           
           # Make sure Peano environment variables are set
           source utils/env_setup.sh
+          # Debug: Check if environment variables are set
+          echo "PEANO_INSTALL_DIR: $PEANO_INSTALL_DIR"
           
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
@@ -125,8 +127,9 @@ jobs:
             $CMAKE_ARGS
 
           ninja install
-          ninja check-aie
 
+          echo "PEANO_INSTALL_DIR: $PEANO_INSTALL_DIR"
+          ninja check-aie
           popd
 
   build-quick-setup:
