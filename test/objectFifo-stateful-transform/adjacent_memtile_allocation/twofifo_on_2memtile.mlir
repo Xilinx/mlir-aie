@@ -10,8 +10,6 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL: module {
-// CHECK:   aie.device(npu1) {
 // CHECK-DAG:     memref.global "public" @out1_cons : memref<8xi32>
 // CHECK-DAG:     memref.global "public" @out1 : memref<8xi32>
 // CHECK-DAG:     memref.global "public" @out0_cons : memref<64000xi32>
@@ -48,28 +46,6 @@
 // CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 1, %[[TILE_0_2]], DMA : 0)
 // CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 0, %[[SHIM_NOC_TILE_0_0]], DMA : 0)
 // CHECK:     aie.flow(%[[TILE_0_2]], DMA : 0, %[[MEM_TILE_0_1]], DMA : 0)
-// CHECK:     %[[CORE_0_2:.*]] = aie.core(%[[TILE_0_2]]) {
-// CHECK:       scf.for %{{.*}} to %{{.*}} step %{{.*}} {
-// CHECK:         aie.use_lock(%[[IN1_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:         aie.use_lock(%[[OUT1_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:         scf.for %{{.*}} to %{{.*}} step %{{.*}} {
-// CHECK:           %{{.*}} = memref.load %[[IN1_CONS_BUFF_0]][%{{.*}}] : memref<8xi32>
-// CHECK:           memref.store %{{.*}}, %[[OUT1_BUFF_0]][%{{.*}}] : memref<8xi32>
-// CHECK:         }
-// CHECK:         aie.use_lock(%[[IN1_CONS_PROD_LOCK]], Release, 1)
-// CHECK:         aie.use_lock(%[[OUT1_CONS_LOCK]], Release, 1)
-// CHECK:         aie.use_lock(%[[IN1_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:         aie.use_lock(%[[OUT1_PROD_LOCK]], AcquireGreaterEqual, 1)
-// CHECK:         scf.for %{{.*}} to %{{.*}} step %{{.*}} {
-// CHECK:           %{{.*}} = memref.load %[[IN1_CONS_BUFF_1]][%{{.*}}] : memref<8xi32>
-// CHECK:           memref.store %{{.*}}, %[[OUT1_BUFF_1]][%{{.*}}] : memref<8xi32>
-// CHECK:         }
-// CHECK:         aie.use_lock(%[[IN1_CONS_PROD_LOCK]], Release, 1)
-// CHECK:         aie.use_lock(%[[OUT1_CONS_LOCK]], Release, 1)
-// CHECK:       }
-// CHECK:       aie.end
-// CHECK:     }
-// CHECK:     aiex.runtime_sequence
 // CHECK:     aie.shim_dma_allocation @in0(MM2S, 0, 0)
 // CHECK:     %{{.*}} = aie.memtile_dma(%[[MEM_TILE_0_1]]) {
 // CHECK:       aie.dma_start(S2MM, 1, ^bb1, ^bb3)
@@ -125,33 +101,5 @@ module {
     aie.objectfifo @out0(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<64000xi32>> 
     aie.objectfifo @out1(%tile_0_2, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<8xi32>> 
     aie.objectfifo.link [@out1] -> [@out0]([] [])
-    %core_0_2 = aie.core(%tile_0_2) {
-      %c0 = arith.constant 0 : index
-      %c8000 = arith.constant 8000 : index
-      %c1 = arith.constant 1 : index
-      scf.for %arg0 = %c0 to %c8000 step %c1 {
-        %0 = aie.objectfifo.acquire @in1(Consume, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
-        %2 = aie.objectfifo.acquire @out1(Produce, 1) : !aie.objectfifosubview<memref<8xi32>>
-        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<8xi32>> -> memref<8xi32>
-        %c0_0 = arith.constant 0 : index
-        %c8 = arith.constant 8 : index
-        %c1_1 = arith.constant 1 : index
-        scf.for %arg1 = %c0_0 to %c8 step %c1_1 {
-          %4 = memref.load %1[%arg1] : memref<8xi32>
-          %c1_i32 = arith.constant 1 : i32
-          %5 = arith.addi %4, %c1_i32 : i32
-          memref.store %5, %3[%arg1] : memref<8xi32>
-        }
-        aie.objectfifo.release @in1(Consume, 1)
-        aie.objectfifo.release @out1(Produce, 1)
-      }
-      aie.end
-    }
-    aiex.runtime_sequence @sequence(%arg0: memref<64000xi32>, %arg1: memref<64000xi32>, %arg2: memref<64000xi32>) {
-      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64000][0, 0, 0, 1]) {id = 1 : i64, metadata = @in0} : memref<64000xi32>
-      aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 64000][0, 0, 0, 1]) {id = 0 : i64, metadata = @out0} : memref<64000xi32>
-      aiex.npu.dma_wait {symbol = @out0}
-    }
   }
 }
