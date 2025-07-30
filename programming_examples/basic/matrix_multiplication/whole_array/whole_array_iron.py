@@ -369,10 +369,10 @@ def my_matmul(
     )
     if b_col_maj:
         B_tiles = TensorTiler2D.step_tiler(
-            (K, N),  # Size of B matrix
-            (k, n),  # Size of B tile
+            (N, K),  # Size of B matrix
+            (n, k),  # Size of B tile
             # Number of tiles per transfer in each dimension (whole col, partial row)
-            tile_group_repeats=(K // k // n_aie_cols, N // n),
+            tile_group_repeats=(N // n // n_aie_cols, K // k),
             # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
             tile_group_steps=(n_aie_cols, 1),
         )
