@@ -88,6 +88,7 @@ jobs:
           pip install jupyter pytest
           
           # Make sure Peano environment variables are set
+          echo "PEANO_INSTALL_DIR: $PEANO_INSTALL_DIR"
           source utils/env_setup.sh
           # Debug: Check if environment variables are set
           echo "PEANO_INSTALL_DIR: $PEANO_INSTALL_DIR"
