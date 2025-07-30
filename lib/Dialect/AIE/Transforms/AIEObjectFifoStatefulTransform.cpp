@@ -68,8 +68,6 @@ public:
       }
     return -1;
   }
-
-
 };
 
 //===----------------------------------------------------------------------===//
@@ -125,8 +123,8 @@ public:
     const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNumForAdjacentTile = targetModel.getMaxChannelNumForAdjacentTile(tileOp.getCol(), tileOp.getRow());
 
-    // if has cross tile buffers, only allocate on channel 0-3, and if cannot, return 0
-    if (hasCrossTileIssue) {
+    // if requires adjacent tile access channels, only allocate on channel 0-3, and if cannot, return 0
+    if (requiresAdjacentTileAccessChannels) {
       maxChannelNum = std::min(maxChannelNum, maxChannelNumForAdjacentTile);
     }
 
@@ -636,9 +634,6 @@ struct AIEObjectFifoStatefulTransformPass
         int64_t elementBitWidth = dataLayout.getTypeSizeInBits(elementType);
 
         auto totalSizeBytes = elemType.getNumElements() * elementBitWidth / 8; 
-
-        // auto totalSizeBytes = numElements * elementSizeBits / 8;
-
         auto &targetModel = dev.getTargetModel();
 
         int maxDataMemorySize = 0;
@@ -698,7 +693,6 @@ struct AIEObjectFifoStatefulTransformPass
                                   std::to_string(of_elem_index)),
             /*address*/ nullptr, initValues,
             /*mem_bank*/ nullptr);
-
         buffers.push_back(buff);
       }
       of_elem_index++;
@@ -721,7 +715,6 @@ struct AIEObjectFifoStatefulTransformPass
         builder, lockAnalysis, op, numElem, joinDistribFactor, creation_tile, repeatCount);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
-
   }
 
   /// Function that returns a pointer to the block of a Region
@@ -808,7 +801,6 @@ struct AIEObjectFifoStatefulTransformPass
   void createDMA(DeviceOp &device, OpBuilder &builder, ObjectFifoCreateOp op,
                  DMAChannelDir channelDir, int channelIndex, int lockMode,
                  BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr pad_dims) {
-
     if (op.getProducerTileOp().isShimTile()) {
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims);
@@ -822,7 +814,6 @@ struct AIEObjectFifoStatefulTransformPass
       createAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims);
     }
-
   }
 
   /// Function used to create a MemOp region with a DMA channel.
@@ -831,7 +822,6 @@ struct AIEObjectFifoStatefulTransformPass
                         ObjectFifoCreateOp op, DMAChannelDir channelDir,
                         int channelIndex, int lockMode,
                         BDDimLayoutArrayAttr dims) {
-
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -931,7 +921,6 @@ struct AIEObjectFifoStatefulTransformPass
                      ObjectFifoCreateOp op, DMAChannelDir channelDir,
                      int channelIndex, int lockMode,
                      BDDimLayoutArrayAttr dims) {
-
     size_t numBlocks = externalBuffersPerFifo[op].size();
     if (numBlocks == 0)
       return;
@@ -961,7 +950,6 @@ struct AIEObjectFifoStatefulTransformPass
         builder.create<EndOp>(builder.getUnknownLoc());
       }
       producerDMA = newDMAOp.getOperation();
-
     }
 
     Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
@@ -1008,7 +996,6 @@ struct AIEObjectFifoStatefulTransformPass
                         int channelIndex, int lockMode,
                         BDDimLayoutArrayAttr dims,
                         BDPadLayoutArrayAttr padDimensions) {
-
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -1038,6 +1025,7 @@ struct AIEObjectFifoStatefulTransformPass
         target = objFifoLinks[*linkOp];
         auto srcOffsets = linkOp->getSrcOffsets();
         auto dstOffsets = linkOp->getDstOffsets();
+
         if (linkOp->getRepeatCount().has_value())
           if (linkOp->getInputObjectFifos()[0] == op) {
             acqNum *= linkOp->getRepeatCount().value();
@@ -1100,9 +1088,10 @@ struct AIEObjectFifoStatefulTransformPass
         producerDMA = dmaOp.getOperation();
         break;
       }
-    }    // if none exists, create one
-    TileOp objFifoTileOp = target.getProducerTileOp();
+    }    
     
+    // if none exists, create one
+    TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerDMA == nullptr) {
       OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPoint(device.getBody()->getTerminator());
@@ -1114,7 +1103,6 @@ struct AIEObjectFifoStatefulTransformPass
         builder.create<EndOp>(builder.getUnknownLoc());
       }
       producerDMA = newDMAOp.getOperation();
-
     }
 
     Block *endBlock = findEndOpBlock(producerDMA->getRegion(0));
@@ -1127,7 +1115,6 @@ struct AIEObjectFifoStatefulTransformPass
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
                                channelIndex, /*repeatCout*/ 0, bdBlock,
                                endBlock);
-    
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1825,38 +1812,35 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto &[producer, consumers] : splitFifos) {
       // If the producer tile has cross-tile issues, assign a channel index
       if (crossTileInfos[producer]) {
-        bool hasCrossTileIssue = crossTileInfos[producer];
+        bool requiresAdjacentTileAccessChannels = crossTileInfos[producer];
         int channelIndex = dmaAnalysis.getDMAChannelIndex(
-            producer.getProducerTileOp(), DMAChannelDir::MM2S, hasCrossTileIssue);
+            producer.getProducerTileOp(), DMAChannelDir::MM2S, requiresAdjacentTileAccessChannels);
         fifo_dma_channel_index[producer] = channelIndex;
       }
       for (auto consumer : consumers) {
         if (crossTileInfos[consumer]) {
             // If the consumer tile has cross-tile issues, assign a channel index
             // for the consumer tile DMA
-          bool hasCrossTileIssue = crossTileInfos[consumer];
+          bool requiresAdjacentTileAccessChannels = crossTileInfos[consumer];
           int channelIndex = dmaAnalysis.getDMAChannelIndex(
-              consumer.getProducerTileOp(), DMAChannelDir::S2MM, hasCrossTileIssue);
+              consumer.getProducerTileOp(), DMAChannelDir::S2MM, requiresAdjacentTileAccessChannels);
           fifo_dma_channel_index[consumer] = channelIndex;
         }
       }
     }
     // assign the channel index for fifos that does not have cross-tile issues
     for (auto &[producer, consumers] : splitFifos) {
-      // If the producer tile has cross-tile issues, assign a channel index
       if (crossTileInfos[producer] == false) {
-        bool hasCrossTileIssue = crossTileInfos[producer];
+        bool requiresAdjacentTileAccessChannels = crossTileInfos[producer];
         int channelIndex = dmaAnalysis.getDMAChannelIndex(
-            producer.getProducerTileOp(), DMAChannelDir::MM2S, hasCrossTileIssue);
+            producer.getProducerTileOp(), DMAChannelDir::MM2S, requiresAdjacentTileAccessChannels);
         fifo_dma_channel_index[producer] = channelIndex;
       }
       for (auto consumer : consumers) {
         if (crossTileInfos[consumer] == false) {
-            // If the consumer tile has cross-tile issues, assign a channel index
-            // for the consumer tile DMA
-          bool hasCrossTileIssue = crossTileInfos[consumer];
+          bool requiresAdjacentTileAccessChannels = crossTileInfos[consumer];
           int channelIndex = dmaAnalysis.getDMAChannelIndex(
-              consumer.getProducerTileOp(), DMAChannelDir::S2MM, hasCrossTileIssue);
+              consumer.getProducerTileOp(), DMAChannelDir::S2MM, requiresAdjacentTileAccessChannels);
           fifo_dma_channel_index[consumer] = channelIndex;
         }
       }
@@ -2184,14 +2168,10 @@ struct AIEObjectFifoStatefulTransformPass
     computeTopologicalSorting(sorted);
     for (auto *op : llvm::reverse(sorted))
       op->erase();  
-  
     }
-
-  
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEObjectFifoStatefulTransformPass() {
   return std::make_unique<AIEObjectFifoStatefulTransformPass>();
 }
-

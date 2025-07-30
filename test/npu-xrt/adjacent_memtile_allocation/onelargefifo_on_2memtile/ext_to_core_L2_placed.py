@@ -36,7 +36,6 @@ def external_mem_to_core_L2():
 
         @device(dev)
         def device_body():
-            # tile24_ty = np.ndarray[(16000 * 4,), np.dtype[np.int32]]
             tile24_ty = np.ndarray[(mem_tile_size,), np.dtype[np.int32]]
             tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
 
