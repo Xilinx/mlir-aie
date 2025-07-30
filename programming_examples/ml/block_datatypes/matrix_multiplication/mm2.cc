@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../aie_kernels/aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T, int M, int N>
@@ -34,6 +35,8 @@ void matmul_vectorized_2x2_bfp16_bf16(const bfloat16 *__restrict pA,
   const unsigned sizeB = s * t;
   const unsigned sizeC = r * t;
 
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(4)
   for (unsigned z = 0; z < rowA; z += 2)
     chess_prepare_for_pipelining chess_loop_range(4, ) {
       bfloat16 *__restrict pC1 = pC + (z * colB + 0) * sizeC;
@@ -41,7 +44,7 @@ void matmul_vectorized_2x2_bfp16_bf16(const bfloat16 *__restrict pA,
 
       for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
-        chess_flatten_loop
+      AIE_LOOP_FLATTEN
 #endif
         {
           const bfloat16 *__restrict pA1 = pA + (z * colA + 0) * sizeA;
@@ -70,7 +73,7 @@ void matmul_vectorized_2x2_bfp16_bf16(const bfloat16 *__restrict pA,
 
           for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
-            chess_flatten_loop
+      AIE_LOOP_FLATTEN
 #endif
             {
               A0 = aie::load_v<sizeA>(pA1);

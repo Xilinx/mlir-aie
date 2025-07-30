@@ -8,6 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../aie_kernels/aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <int M, int N>
@@ -82,8 +83,9 @@ void matmul_vectorized_2x2_bfp16(const bfp16ebs8 *__restrict pA,
   const unsigned sizeB = s * t;
   const unsigned sizeC = r * t;
 
-  for (unsigned z = 0; z < rowA; z += 2)
-    chess_prepare_for_pipelining chess_loop_range(4, ) {
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(4)
+  for (unsigned z = 0; z < rowA; z += 2) {
       aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pC1In(pC);
       pC1In.seek(z * colB);
       aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pC2In(pC);
@@ -95,7 +97,7 @@ void matmul_vectorized_2x2_bfp16(const bfp16ebs8 *__restrict pA,
 
       for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
-        chess_flatten_loop
+      AIE_LOOP_FLATTEN
 #endif
         {
           aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pA1bfp16(pA);
@@ -126,7 +128,7 @@ void matmul_vectorized_2x2_bfp16(const bfp16ebs8 *__restrict pA,
 
           for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
-            chess_flatten_loop
+      AIE_LOOP_FLATTEN
 #endif
             {
               A0 = pA1bfp16.pop();
