@@ -32,9 +32,17 @@ TODO: Add image explaining this issue here too
 
 ## Examples
 
-Note that these examples are meant to be instructive and do not aim at being an ideal implementation or maximal performance. They may be used to evaluate the cost and capabilities of different operations and datatypes in the NPU, but should still be worked on to achieve maximal performance.
+Note that these examples are meant to be orientative and do not aim at being an ideal implementation. They may be used to evaluate the cost and capabilities of different operations and datatypes in the NPU, but should still be worked on to achieve maximal performance.
 
-This folder contains examples of the single core and whole array matrix multiplications in addition to one example of how to use the scalar unit to do the shuffling operation described above in the cores. The examples with no marks like [single_core](./single_core/) use bfp16 as input and output, assume that the B matrix is already transposed, and that all three matrices are shuffled appropriately in host memory ([bfp_test.cpp](./bfp_test.cpp)). The [mixed](./single_core_mixed/) examples use bf16 for the A and C matrices (one input and the output), and assume that the B matrix is in bfp16 format, already transposed and shuffled appropriately ([mixed_test.cpp](./mixed_test.cpp)). Finally, the [shuffle](./whole_array_shuffle/) uses the scalar unit to shuffle the A matrix, B is assumed to be pre-shuffled, and C is outputed without the shuffling operation (note that this implementation is tremendously inefficient!).
+- [`in_core_shuffle`](./in_core_shuffle/): Minimalist example performing the shuffling described above inside an AIE core using the scalar unit. It may be used to evaluate the efficiency of the scalar unit and the CPU for the shuffling operation.
+- `single_core`: Single core implementation of a matrix multiplication
+    - [`no_tiling`](./single_core_no_tiling/): This implementation uses hardcoded matrix dimensions and reduces data movement to its minimum by removing tiling completely. Only bfp16ebs8 values are used for both input, output and inside the kernel without any conversion. Use this example as a stepping stone to understand the more complex ones first. Feel free to try to modify the hardcoded values for the dimensions.
+    - [`bfp_input_and_output`](./single_core/): This implementation generalizes the matrix multiplication to any shape within the limits of the hardware and the chosen algorithm. Only bfp16ebs8 values are used for both input, output and inside the kernel without any conversion. The matrix B is assumed to be already transposed and all three matrices are assumed to be shuffled in host memory.
+    - [`mixed`](./single_core_mixed/): This implementation modifies the previous one by using bf16 for matrices A and C and does the appropriate conversions for them inside the core.
+- `whole_array`: Whole array implementation of a matrix multiplication. These examples may be used to evaluate the performance of the cores in conjunction with the data movement inside the NPU.
+    - [`bfp_input_and_output`](./whole_array/): See single core explanation above.
+    - [`mixed`](./whole_array_mixed/): See single core explanation above.
+    - [`shuffle`](./whole_array_shuffle/): This implementation does not assume that the A matrix has been shuffled in host memory and performs the operation inside the cores, using the scalar unit before calling the matrix multiplication on the vectors. B and C are not shuffled. Note that this example is tremendously inefficient (see below)!
 
 ## Performance
 
