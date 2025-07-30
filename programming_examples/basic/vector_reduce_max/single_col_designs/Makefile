@@ -18,20 +18,20 @@ devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_reduce_max
 in1_size =  524288# in bytes
 out_size = 4 # in bytes
-trace_size = 1024
+trace_size = 524288
 
 dtype?=bf16
 
 aie_py_src=${targetname}.py
-use_shared?=0
+use_chain?=0
 use_memtile?=0
 
-ifeq (${use_shared}, 1)
-aie_py_src=${targetname}_shared.py
+ifeq (${use_chain}, 1)
+aie_py_src=${targetname}_chained.py
 else ifeq (${use_memtile}, 1)
 aie_py_src=${targetname}_memtile.py
 else 
-aie_py_src=${targetname}_cascade.py
+aie_py_src=${targetname}_shared.py
 endif
 
 
