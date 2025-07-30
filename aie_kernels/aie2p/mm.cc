@@ -16,6 +16,8 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 #include "zero.cc"
@@ -74,14 +76,15 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
 
   event0();
 
-  for (unsigned z = 0; z < rowA; z += 2)
-    chess_prepare_for_pipelining chess_loop_range(4, ) {
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(4)
+  for (unsigned z = 0; z < rowA; z += 2) {
       T_out *__restrict pC1 = pC + (z * colB) * MMUL::size_C;
       T_out *__restrict pC2 = pC + ((z + 1) * colB) * MMUL::size_C;
 
       for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
-        chess_flatten_loop
+      AIE_LOOP_FLATTEN
 #endif
         {
           const T_in *__restrict pA1 = pA + (z * colA) * MMUL::size_A;
@@ -119,7 +122,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
 
           for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
-            chess_flatten_loop
+      AIE_LOOP_FLATTEN
 #endif
             {
               A0 = aie::load_v<MMUL::size_A>(pA1);
