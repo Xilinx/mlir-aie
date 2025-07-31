@@ -4,7 +4,7 @@ This project emphasizes fast, open-source toolchains for NPU devices including L
 
 This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for AI Engine-enabled devices, such as [AMD Ryzen™ AI](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html) and [Versal™](https://www.xilinx.com/products/technology/ai-engine.html).  This repository can be used to generate low-level configurations for the AI Engine portion of these devices. AI Engines are organized as a spatial array of tiles, where each tile contains AI Engine cores and/or memories. The spatial array is connected by stream switches that can be configured to route data between AI Engine tiles scheduled by their programmable Data Movement Accelerators (DMAs). This repository contains MLIR representations, with multiple levels of abstraction, to target AI Engine devices. This enables compilers and developers to program AI Engine cores, as well as describe data movements and array connectivity.
 
-The IRON Python API for Ryzen™ AI NPUs is described in the following paper: 
+The IRON Python API for Ryzen™ AI NPUs is described in the following paper:
 
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
@@ -19,7 +19,7 @@ These instructions will guide you through everything required for building and e
 If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+ by installing the Hardware Enablement (HWE) stack:
 
   ```bash
-  sudo apt update 
+  sudo apt update
   sudo apt install --install-recommends linux-generic-hwe-24.04
   sudo reboot
   ```
@@ -36,19 +36,19 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Execute the scripted build process:
 
     > This script will install package dependencies, build the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
-  
+
     ```bash
     bash ./utils/build_drivers.sh
     ```
 
-1. Reboot as directed after the script exits. 
+1. Reboot as directed after the script exits.
 
     ```bash
     sudo reboot
     ```
-    
+
 1. Check that the NPU is working if the device appears with xrt-smi:
-   
+
    ```bash
    source /opt/xilinx/xrt/setup.sh
    xrt-smi examine
@@ -57,7 +57,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    > At the bottom of the output you should see:
    >  ```
    >  Devices present
-   >  BDF             :  Name             
+   >  BDF             :  Name
    > ------------------------------------
    >  [0000:66:00.1]  :  NPU Strix
    >  ```
@@ -121,7 +121,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
 
-   # Install MLIR Python Extras 
+   # Install MLIR Python Extras
    HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
@@ -133,9 +133,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. (Optional) Install Jupyter Notebook Python packages:
    ```bash
+   # Install Jupyter Notebook
+   python3 -m pip install -r python/requirements_notebook.txt
+
    # This creates an ipykernel (for use in notebooks) using the ironenv venv
    python3 -m ipykernel install --user --name ironenv
-    
+
    # The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.
    # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g. if they are run with
    # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
@@ -177,14 +180,14 @@ For your design of interest, for instance from [programming_examples](../program
 
 ## Optional: Install AIETools
 
-> You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials. 
+> You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials.
 
 1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
    > This is an early access lounge, you must register and be granted access at this time.
 
     1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
- 
+
     1. Extract the required tools:
 
        ``` bash
@@ -201,7 +204,7 @@ For your design of interest, for instance from [programming_examples](../program
     1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
 
     1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
-       
+
 1. Setup your environment using the following script for Vitis™ for AIETools:
 
    ```bash
@@ -219,11 +222,11 @@ For your design of interest, for instance from [programming_examples](../program
 ### Update BIOS:
 
 Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
-   ```Advanced → CPU Configuration → IPU``` 
+   ```Advanced → CPU Configuration → IPU```
 
 > **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
 
-# Detailed Getting Started Guides and Documentation: 
+# Detailed Getting Started Guides and Documentation:
 
 [IRON AIE Application Programming Guide](../programming_guide)
 
