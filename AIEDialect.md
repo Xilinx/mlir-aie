@@ -777,8 +777,6 @@ An op to read from a cascading stream from a neighboring core.
 The result type of this operation must have a size that matches the cascade size,
 which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
 
-Traits: `HasParent<CoreOp>`
-
 #### Results:
 
 | Result | Description |
@@ -1639,8 +1637,6 @@ operation ::= `aie.put_cascade` `(` $cascade_value `:` type($cascade_value) `)` 
 An op to write to a cascading stream from a neighboring core.
 The argument type of this operation must have a size that matches the cascade size,
 which is architecture-dependent. e.g. AIE1: i384 or vector<8xi48>  AIE2: i512 or vector<16xi32>
-
-Traits: `HasParent<CoreOp>`
 
 #### Operands:
 

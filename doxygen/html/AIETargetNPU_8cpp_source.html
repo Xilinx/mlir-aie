@@ -268,7 +268,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>  uint8_t <a class="code hl_variable" href="namespacecxxopts.html#ae722cb9457c284596136a40555eef19e">major</a> = 0;</div>
 <div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>  uint8_t <a class="code hl_variable" href="namespacecxxopts.html#aecaf1c73662b522ae01a195dede9ed38">minor</a> = 1;</div>
 <div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>  uint8_t devGen = 3;                      <span class="comment">// NPU (PHX HWK)</span></div>
-<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>  <span class="keywordflow">if</span> (llvm::isa&lt;AIE::NPU2TargetModel&gt;(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">AIE::getTargetModel</a>(deviceOp)))</div>
+<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>  <span class="keywordflow">if</span> (llvm::isa&lt;AIE::BaseNPU2TargetModel&gt;(tm))</div>
 <div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>    devGen = 4;                            <span class="comment">// NPU2 (STX KRK)</span></div>
 <div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>  uint8_t numRows = tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8d6f3c31d960dbc32fcc569919b536aa">rows</a>();</div>
 <div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span>  uint8_t numCols = tm.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ad211b18c915a01ab1c3a1b731cafabea">columns</a>();</div>
@@ -382,7 +382,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jul 30 2025 16:28:45 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jul 31 2025 00:33:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
