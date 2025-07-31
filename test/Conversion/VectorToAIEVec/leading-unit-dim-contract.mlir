@@ -1,5 +1,4 @@
 // RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aie2 target-backend=llvmir" | FileCheck %s
-// XFAIL:*
 
 #map  = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d0, d2, d5, d4, d6, d8)>
 #map1 = affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8) -> (d2, d1, d3, d5, d8, d7)>
@@ -48,8 +47,8 @@ func.func @matmul(%A : memref<1x1x4x8x4x8xbf16, 2 : i32>,
 // CHECK-SAME:        %[[A:.*]]: memref<1x1x4x8x4x8xbf16, 2 : i32>,
 // CHECK-SAME:        %[[B:.*]]: memref<1x1x8x4x8x4xbf16, 2 : i32>,
 // CHECK-SAME:        %[[C:.*]]: memref<1x1x8x8x4x4xf32, 2 : i32>) {
-// CHECK:         %[[C0BF16:.*]] = arith.constant 0.0{{.*}} : bf16
-// CHECK:         %[[C0F32:.*]] = arith.constant 0.0{{.*}} : f32
+// CHECK:         %[[C0F32:.*]] = ub.poison : f32
+// CHECK:         %[[C0BF16:.*]] = ub.poison : bf16
 // CHECK:         %[[CSA:.*]] = memref.collapse_shape %[[A]] {{\[\[}}0, 1, 2, 3, 4, 5]]
 // CHECK:         %[[CSB:.*]] = memref.collapse_shape %[[B]] {{\[\[}}0, 1, 2, 3, 4, 5]]
 // CHECK:         %[[CSC:.*]] = memref.collapse_shape %[[C]] {{\[\[}}0, 1, 2, 3, 4, 5]]
