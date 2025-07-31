@@ -87,7 +87,6 @@ jobs:
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
           pip install -r python/requirements_test.txt
-          pip install jupyter pytest
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
