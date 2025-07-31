@@ -449,7 +449,8 @@ struct FlattenMultDimTransferReadPattern
     auto newSource = collapseInnerMostShapeDims(
         rewriter, readOp.getLoc(), vecShape.size(), adaptor.getBase());
     auto newVector = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, newSource, newIndices);
+        readOp.getLoc(), newVectorTy, newSource, newIndices,
+        /*padding*/ std::nullopt);
 
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
