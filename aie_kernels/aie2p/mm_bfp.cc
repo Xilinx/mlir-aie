@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "../../aie_kernels/aie_kernel_utils.h"
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <int M, int N>

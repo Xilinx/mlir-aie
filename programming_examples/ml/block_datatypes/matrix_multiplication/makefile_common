@@ -10,6 +10,7 @@
 include ${srcdir}/../../../../makefile-common
 
 matrix_multiplication_dir := ${srcdir}/../../../../basic/matrix_multiplication
+kernel_dir := ${srcdir}/../../../../../aie_kernels/aie2p
 
 kernels=mm_${m}x${k}x${n}
 aieargs+=-m $m -k $k -n $n
@@ -60,7 +61,7 @@ endif
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe
 
-build/mm_${m}x${k}x${n}.o: ${kernelsrc}
+build/mm_${m}x${k}x${n}.o: ${kernel_dir}/${kernelsrc}
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
 
