@@ -8,10 +8,12 @@
 # REQUIRES: ryzen_ai, valid_xchess_license
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
-# RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: AIE_TARGET=npu1 %python %S/aie2.py > ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %run_on_npu1% ./test.exe
+# RUN: AIE_TARGET=npu2 %python %S/aie2p.py > ./aie2p.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2p.mlir
 # RUN: %run_on_npu2% ./test.exe
 
 import numpy as np
@@ -24,7 +26,11 @@ from aie.helpers.dialects.ext.scf import if_, else_
 
 N = 100
 n_rows = 10
-dev = AIEDevice.npu1_1col
+target = os.getenv("AIE_TARGET", "npu1")  # default to npu1
+if target == "npu2":
+    dev = AIEDevice.npu2_1col
+else:
+    dev = AIEDevice.npu1_1col
 col = 0
 
 
