@@ -18,7 +18,7 @@
 ##===----------------------------------------------------------------------===##
 
 FORCE_INSTALL=0
-if [ "$1" == "--force-install" ]; then
+if [ "$1" = "--force-install" ]; then
   FORCE_INSTALL=1
   shift
 fi
