@@ -87,6 +87,7 @@ jobs:
             source aie-venv/bin/activate
             pip install -r python/requirements.txt
             HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+            pip install -r python/requirements_notebook.txt
 
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir==$VERSION \
