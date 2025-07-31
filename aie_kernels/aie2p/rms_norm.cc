@@ -22,7 +22,7 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t rows,
   ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
   for (int r = 0; r < rows; r++) {
     T final_sum_sq = 0.0f;
-    ::aie::vector<T, N> add_res = ::aie::broadcast<T, N>(0);
+    ::aie::vector<T, N> add_res = ::aie::zeros<T, N>();
     for (int i = 0; i < cols; i = i + N) {
       ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + r * cols + i);
       ::aie::vector<T, N> square_v = ::aie::mul(reg_a, reg_a);
