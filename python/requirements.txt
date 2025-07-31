@@ -9,6 +9,5 @@ rich
 setuptools
 wheel
 ml_dtypes
-matplotlib
 pre-commit
 nanobind>=2.5
