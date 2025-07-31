@@ -37,8 +37,7 @@ void matmul_vectorized_2x2_bfp16_bf16(const bfloat16 *__restrict pA,
 
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(4)
-  for (unsigned z = 0; z < rowA; z += 2)
-    chess_prepare_for_pipelining chess_loop_range(4, ) {
+  for (unsigned z = 0; z < rowA; z += 2) {
       bfloat16 *__restrict pC1 = pC + (z * colB + 0) * sizeC;
       bfloat16 *__restrict pC2 = pC + ((z + 1) * colB + 0) * sizeC;
 
