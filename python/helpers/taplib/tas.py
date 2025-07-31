@@ -243,9 +243,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
             combined_access_order_tensor -= 1
         return (combined_access_order_tensor, combined_access_count_tensor)
 
-    def animate(
-        self, title: str | None = None, animate_access_count: bool = False
-    ):
+    def animate(self, title: str | None = None, animate_access_count: bool = False):
         """
         Creates and returns a handle to a TensorAccessSequence animation. Each frame
         in the animation represents one TensorAccessPattern in the sequence.
