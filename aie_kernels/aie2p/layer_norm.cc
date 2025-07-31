@@ -17,17 +17,17 @@ template <typename T, int N>
 void layer_norm(const T *restrict input, T *restrict output, int32_t rows,
                 int32_t cols) {
   event0();
-  constexpr float epsilon = 1e-5f;
+  constexpr float epsilon = 1e-6f;
   const float gamma = 1.0f;
   const float beta = 0.0f;
 
-  for (int c = 0; c < cols; c++) {
+  for (int r = 0; r < rows; r++) {
     float mean = 0.0f;
     float m2 = 0.0f;
     int count = 0;
 
-    // Welford's pair-wise normalization algorithm for mean and variance
-    for (int r = 0; r < rows; r++) {
+    // Welford's algorithm for mean and variance along the row
+    for (int c = 0; c < cols; c++) {
       float x = float(input[r * cols + c]);
       count++;
       float delta = x - mean;
@@ -39,12 +39,12 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t rows,
     float inv_std = aie::invsqrt(variance + epsilon);
 
     // Normalize
-    for (int r = 0; r < rows; r += N) {
+    for (int c = 0; c < cols; c += N) {
       T *output_ptr = output + r * cols + c;
       const T *input_ptr = input + r * cols + c;
       ::aie::vector<T, N> input_v;
-      for (int i = 0; i < N; i++) {
-        input_v[i] = input_ptr[i * cols];
+      for (int i = 0; i < N && (c + i) < cols; i++) {
+        input_v[i] = input_ptr[i];
       }
       ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>(mean);
       ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>(inv_std);
@@ -54,8 +54,8 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t rows,
       ::aie::vector<T, N> norm_v = ::aie::mul(diff_v, inv_std_v);
       ::aie::vector<T, N> scaled_v = ::aie::mul(norm_v, gamma_v);
       ::aie::vector<T, N> out_v = ::aie::add(scaled_v, beta_v);
-      for (int i = 0; i < N; i++) {
-        output_ptr[i * cols] = out_v[i];
+      for (int i = 0; i < N && (c + i) < cols; i++) {
+        output_ptr[i] = out_v[i];
       }
     }
   }

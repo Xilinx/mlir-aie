@@ -27,7 +27,7 @@ else()
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif ()
 
-set(ROWS 16 CACHE STRING "row size of tensor")
+set(ROWS 64 CACHE STRING "row size of tensor")
 set(COLS 64 CACHE STRING "col size of tensor")
 set(TARGET_NAME test CACHE STRING "Target to be built")
 

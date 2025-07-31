@@ -40,29 +40,28 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int out_volume) {
 
 int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
                             int in_volume, int out_volume) {
-  std::cout << "ROWS * COLS = " << (ROWS * COLS) << std::endl;
   int errors = 0;
   int pass = 0;
-  constexpr float epsilon = 1e-5f;
+  constexpr float epsilon = 1e-6f;
   const float gamma = 1.0f; // built-in constant
   const float beta = 0.0f;  // built-in constant
   std::vector<float> expected(ROWS * COLS, 0.0f);
-  for (int c = 0; c < COLS; c++) {
+  for (int r = 0; r < ROWS; r++) {
     float sum = 0.0f;
     float sum_sq = 0.0f;
-    // Accumulate sum and sum of squares for each column
-    for (int r = 0; r < ROWS; r++) {
+    // Accumulate sum and sum of squares for each row
+    for (int c = 0; c < COLS; c++) {
       int idx = r * COLS + c;
       float val = static_cast<float>(bufIn1[idx]);
       sum += val;
       sum_sq += val * val;
     }
-    float mean = sum / float(ROWS);
-    float variance = sum_sq / float(ROWS) - mean * mean;
+    float mean = sum / float(COLS);
+    float variance = sum_sq / float(COLS) - mean * mean;
     float inv_std = 1.0f / std::sqrt(variance + epsilon);
 
-    // Compute expected output for the current column
-    for (int r = 0; r < ROWS; r++) {
+    // Compute expected output for the current row
+    for (int c = 0; c < COLS; c++) {
       int idx = r * COLS + c;
       float val = static_cast<float>(bufIn1[idx]);
       float norm = (val - mean) * inv_std;

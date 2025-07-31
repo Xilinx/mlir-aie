@@ -11,15 +11,15 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
-VPATH := ${srcdir}/../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2p
 
 all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = layernorm
-rows = 64
-cols = 64
-trace_size = 8192
+rows = 128
+cols = 128
+trace_size = 65536
 
 aie_py_src=${targetname}.py
 
