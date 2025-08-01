@@ -10,7 +10,6 @@ from .utils import (
     validate_offset,
     validate_tensor_dims,
 )
-from .visualization2d import visualize_from_accesses
 
 
 class TensorAccessPattern:
@@ -245,6 +244,8 @@ class TensorAccessPattern:
         Raises:
             NotImplementedError: This function is not implemented for all dimensions.
         """
+        from .visualization2d import visualize_from_accesses
+
         if len(self._tensor_dims) != 2:
             raise NotImplementedError(
                 "Visualization is only currently supported for 1- or 2-dimensional tensors"
