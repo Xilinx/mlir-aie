@@ -87,6 +87,12 @@ jobs:
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
           pip install -r python/requirements_test.txt
+
+          # Install llvm-aie (Peano)
+          pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+          export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+          echo "PEANO_INSTALL_DIR: $PEANO_INSTALL_DIR"
+          
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
@@ -111,6 +117,7 @@ jobs:
           fi
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DPython3_EXECUTABLE=$(which python) \
@@ -121,8 +128,9 @@ jobs:
             $CMAKE_ARGS
 
           ninja install
-          ninja check-aie
 
+          echo "PEANO_INSTALL_DIR: $PEANO_INSTALL_DIR"
+          ninja check-aie
           popd
 
   build-quick-setup:

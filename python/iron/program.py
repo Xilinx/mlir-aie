@@ -56,6 +56,12 @@ class Program:
         with mlir_mod_ctx() as ctx:
             CurrentModule.set(ctx.module)
 
+            # Create a fresh device instance of the same type to avoid stale MLIR operations
+            # This preserves the device configuration while ensuring clean state
+            device_type = type(self._device)
+            # For dynamically created device classes, the constructor takes no arguments
+            self._device = device_type()
+
             @device(self._device.resolve())
             def device_body():
                 # Collect all fifos
