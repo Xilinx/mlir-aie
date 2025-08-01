@@ -89,7 +89,7 @@ def rmsnorm(dev, rows, cols, trace_size):
 
     rt = Runtime()
     with rt.sequence(dtype, dtype) as (a_in, c_out):
-        rt.enable_trace(enable_trace)
+        rt.enable_trace(trace_size)
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_in[i].prod(), a_in, taps_in[i])
