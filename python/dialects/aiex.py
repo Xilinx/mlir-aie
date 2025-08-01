@@ -343,34 +343,19 @@ def dma_start_task(*args: DMAConfigureTaskForOp):
 def set_lock_value(lock: aie.LockOp, value: int):
     return set_lock(lock, value)
 
-def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, length: int, offset: int, sizes: list[int], strides: list[int], pad_before: list[int], pad_after: list[int]):
+def reconfigure_dma(
+    obj: ObjectFifoCreateOp,
+    tile: TileOp,
+    dir: DMAChannelDir,
+    length: int,
+    offset: int,
+    sizes: list[int],
+    strides: list[int],
+    pad_before: list[int],
+    pad_after: list[int]
+):
     column = tile.col
     row = tile.row
-    # obj_depth = getattr(obj, "depth", 2)
-    # if obj_depth == 1:
-    #     # For depth 1, configure a single DMA task
-    #     return dma_configure_task_for(obj, repeat_count=0)
-    # else:
-    #     # For depth >1, start a BD chain for the allocation on the given tile, direction, and channel, passing offsets, sizes, strides, etc. as args
-    #     return dma_start_bd_chain(
-    #         symbol=obj,
-    #         args=[offset, sizes, strides, pad_before, pad_after, length],  # Pass parameters as needed
-    #         tile=tile,
-    #         direction=dir,
-    #         channel=0,  # Set the channel as needed
-    #         repeat_count=getattr(obj, "repeat_count", 1)  # Use repeat_count set on obj
-        # )
-    # return ReconfigureDMABDOp(
-    #     obj,
-    #     tile,
-    #     dir=dir,
-    #     length=length,
-    #     offset=offset,
-    #     sizes=sizes,
-    #     strides=strides,
-    #     pad_before=pad_before,
-    #     pad_after=pad_after
-    # )
 
     lock_acq_id = 64
     lock_acq_val = 127
@@ -381,7 +366,7 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
     else:
         # For MM2S, start_bd_id is typically the depth (number of bds)
         start_bd_id = getattr(obj, "depth", 2)  # default to 2 if not present
-        lock_acq_id = lock_rel_id
+        lock_acq_id = lock_acq_id + 1
         lock_acq_val = 127
         lock_rel_id = lock_rel_id - 1
         lock_rel_val = 1
@@ -397,12 +382,22 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
             bd_queue_addr = 656948
     else:
         bd_queue_addr = None  # Non-memtile, handle as needed
+
+    # Ensure length is an integer for offset math, but keep original for buffer_length
+    if isinstance(length, IntegerAttr):
+        length_int = int(length.value)
+    else:
+        length_int = int(length)
+
+    # If buffer_length needs to be IntegerAttr, convert here
     if not isinstance(length, IntegerAttr):
-        length = IntegerAttr.get(T.i32(), int(length))
+        buffer_length = IntegerAttr.get(T.i32(), int(length))
+    else:
+        buffer_length = length
+    current_offset = offset
     results = []
     for i in range(num_bds):
         bd_id = start_bd_id + i
-        # next_bd wraps around to start_bd at the end
         if i == num_bds - 1:
             next_bd = start_bd_id
         else:
@@ -412,7 +407,7 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
                 column = column,
                 row = row,
                 bd_id = bd_id,
-                buffer_length = length,
+                buffer_length = buffer_length,
                 d0_size = sizes[2],
                 d1_size = sizes[1],
                 d2_size = sizes[0],
@@ -421,7 +416,7 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
                 d1_stride = strides[1],
                 d2_stride = strides[0],
                 iteration_stride = 0,
-                buffer_offset = offset,
+                buffer_offset = current_offset,
                 enable_packet = 0,
                 out_of_order_id = 0,
                 packet_id = 0,
@@ -443,6 +438,7 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
                 d2_zero_after = pad_after[0],
             )
         )
+        current_offset += length_int
         results.append(
             npu_write32(
                 address = bd_queue_addr,
@@ -451,6 +447,7 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
                 value = bd_id
             )
         )
+    return results
         # if dir == DMAChannelDir.MM2S:
         #     results.append(
         #         npu_sync(
@@ -460,4 +457,4 @@ def reconfigure_dma(obj: ObjectFifoCreateOp, tile: TileOp, dir: DMAChannelDir, l
         #             direction = 1,
         #         )
         #     )
-    return results
+    # return results
