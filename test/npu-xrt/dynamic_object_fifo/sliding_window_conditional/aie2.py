@@ -17,6 +17,7 @@
 # RUN: %run_on_npu2% ./test.exe
 
 import numpy as np
+import os
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
