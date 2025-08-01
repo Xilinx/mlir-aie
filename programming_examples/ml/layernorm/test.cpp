@@ -20,15 +20,15 @@
 // ------------------------------------------------------
 // Configure this to match your buffer data type
 // ------------------------------------------------------
-using DATATYPE_IN1 = std::bfloat16_t;
-using DATATYPE_OUT = std::bfloat16_t;
+using DATATYPE_IN1 = std::float_t;
+using DATATYPE_OUT = std::float_t;
 #endif
 
 // Initialize Input buffer 1
 void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int in_volume) {
   for (int i = 0; i < in_volume; i++) {
-    DATATYPE_IN1 val = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                                                     (std::bfloat16_t)-4.0);
+    DATATYPE_IN1 val = static_cast<DATATYPE_IN1>(
+        static_cast<float>(rand()) / RAND_MAX * 8.0f - 4.0f);
     bufIn1[i] = val;
   }
 }
@@ -42,10 +42,19 @@ int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
                             int in_volume, int out_volume) {
   int errors = 0;
   int pass = 0;
-  constexpr float epsilon = 1e-6f;
+  constexpr float epsilon = 1e-5f;
   const float gamma = 1.0f; // built-in constant
   const float beta = 0.0f;  // built-in constant
   std::vector<float> expected(ROWS * COLS, 0.0f);
+  // Print input values for debugging
+  // std::cout << "Input values:" << std::endl;
+  // for (int r = 0; r < ROWS; r++) {
+  //   for (int c = 0; c < COLS; c++) {
+  //     int idx = r * COLS + c;
+  //     std::cout << static_cast<float>(bufIn1[idx]) << " ";
+  //   }
+  //   std::cout << std::endl;
+  // }
   for (int r = 0; r < ROWS; r++) {
     float sum = 0.0f;
     float sum_sq = 0.0f;

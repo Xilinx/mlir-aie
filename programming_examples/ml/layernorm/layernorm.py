@@ -12,25 +12,22 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
-from ml_dtypes import bfloat16
+
+# from ml_dtypes import float
 
 
 def layernorm(dev, rows, cols, trace_size):
-    enable_trace = None if trace_size > 0 else None
+    # enable_trace = 1 if trace_size > 0 else None
 
-    n_cores = 8
+    n_cores = 1
 
     total_volume = rows * cols
 
-    dtype = np.ndarray[(total_volume,), np.dtype[bfloat16]]
+    dtype = np.ndarray[(total_volume,), np.dtype[np.float32]]
 
-    rows_per_core = rows // n_cores
-    chunk_volume = cols * rows_per_core
-    chunk_type = np.ndarray[(chunk_volume,), np.dtype[bfloat16]]
-
-    rows_per_core = rows // n_cores
-    chunk_volume = rows * rows_per_core
-    chunk_type = np.ndarray[(chunk_volume,), np.dtype[bfloat16]]
+    cols_per_core = cols // n_cores  # Keep it 16
+    chunk_volume = rows * cols_per_core
+    chunk_type = np.ndarray[(chunk_volume,), np.dtype[np.float32]]
 
     of_in = [ObjectFifo(chunk_type, name=f"in_{i}") for i in range(n_cores)]
     of_out = [ObjectFifo(chunk_type, name=f"out_{i}") for i in range(n_cores)]
@@ -43,24 +40,25 @@ def layernorm(dev, rows, cols, trace_size):
     for i in range(n_cores):
         taps = TensorAccessPattern(
             (rows, cols),
-            offset=cols * rows_per_core * i,
-            sizes=[1, 1, rows_per_core, cols],
-            strides=[0, 0, cols, 1],
+            offset=rows * cols_per_core * i,
+            sizes=[1, 1, rows, cols_per_core],
+            strides=[0, 0, 1, rows],
         )
-        # taps.visualize(
-        #     title=f"Core {i} input tap",
-        #     show_arrows=True,
-        #     plot_access_count=True,
-        #     file_path=f"core_{i}_input_tap.png",
-        # )
+        # if i == 0:
+        #     taps.visualize(
+        #         title=f"Core {i} input tap",
+        #         show_arrows=True,
+        #         plot_access_count=True,
+        #         file_path=f"core_{i}_input_tap.png",
+        #     )
         taps_in.append(taps)
 
     for i in range(n_cores):
         taps = TensorAccessPattern(
             (rows, cols),
-            offset=cols * rows_per_core * i,
-            sizes=[1, 1, rows_per_core, cols],
-            strides=[0, 0, cols, 1],
+            offset=rows * cols_per_core * i,
+            sizes=[1, 1, rows, cols_per_core],
+            strides=[0, 0, 1, rows],
         )
         # taps.visualize(
         #     title=f"Core {i} output tap",
@@ -73,7 +71,7 @@ def layernorm(dev, rows, cols, trace_size):
     def core_body(of_in, of_out, layer_norm_kernel):
         elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
-        layer_norm_kernel(elem_in, elem_out, rows_per_core, cols)
+        layer_norm_kernel(elem_in, elem_out, rows, cols_per_core)
         of_in.release(1)
         of_out.release(1)
 
@@ -81,14 +79,15 @@ def layernorm(dev, rows, cols, trace_size):
         Worker(
             core_body,
             fn_args=[of_in[i].cons(), of_out[i].prod(), layer_norm_kernel],
-            trace=enable_trace,
+            trace=None,
+            # trace=enable_trace,
         )
         for i in range(n_cores)
     ]
 
     rt = Runtime()
     with rt.sequence(dtype, dtype) as (a_in, c_out):
-        rt.enable_trace(enable_trace)
+        rt.enable_trace(trace_size)
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_in[i].prod(), a_in, taps_in[i])
