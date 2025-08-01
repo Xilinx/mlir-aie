@@ -32,15 +32,18 @@ set(TARGET_NAME test CACHE STRING "Target to be built")
 SET (ProjectName ${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
 
+set(CMAKE_CXX_STANDARD 23)
+
 if ( WSL )
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
+    add_compile_options(/Zc:__cplusplus)
 endif ()
 
 project(${ProjectName})
 
 add_executable(${currentTarget}
+    ${HOST_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib/test_lib/test_utils.cpp
-    test.cpp
 )
 
 target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
@@ -48,6 +51,8 @@ target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 target_include_directories (${currentTarget} PUBLIC
     ${XRT_INC_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib/test_lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib
+    ${MATMUL_DIR}
 )
 
 target_link_directories(${currentTarget} PUBLIC

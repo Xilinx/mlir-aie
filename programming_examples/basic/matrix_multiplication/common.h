@@ -18,6 +18,7 @@
 #include <bits/stdc++.h>
 #include <cmath>
 #include <fstream>
+#include <iostream>
 #include <optional>
 #include <ostream>
 #include <stdfloat>
@@ -283,7 +284,7 @@ void print_matrix(const std::vector<int8_t> matrix, int n_cols,
                   std::ostream &ostream, const char col_sep[],
                   const char elide_sym[], int w) {
   std::vector<int16_t> cast_matrix(matrix.size());
-  for (int i = 0; i < matrix.size(); i++) {
+  for (uint i = 0; i < matrix.size(); i++) {
     cast_matrix[i] = (int16_t)matrix[i];
   }
   print_matrix(cast_matrix, n_cols, n_printable_rows, n_printable_cols, ostream,
@@ -331,7 +332,8 @@ void print_error_summary(std::ostream &os, int n_errors,
   }
   if (n_errors > 0) {
     os << "Maximum relative error: " << std::setw(3) << std::setprecision(0)
-       << max_rel_error * 100 << "%" << std::endl;
+       << max_rel_error * 100 << "%"
+       << " (last above)" << std::endl;
   }
 }
 
@@ -349,6 +351,7 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
   Tout max_rel_error = (Tout)0.0f;
+  struct error<Tout> max_error;
 
   std::vector<Tout> CRef(M * N);
   matmul<Tin, Tout, Tacc>(M, N, K, A, B, CRef, b_col_maj);
@@ -367,11 +370,14 @@ int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
             std::max(std::abs(error->actual), std::abs(error->expected));
         if (rel_error > max_rel_error) {
           max_rel_error = rel_error;
+          max_error = *error;
         }
         n_errors++;
       }
     }
   }
+  if (n_errors)
+    errors.push_back(max_error);
   print_error_summary(std::cout, n_errors, errors, max_rel_error);
 
   if (n_errors > 0) {
