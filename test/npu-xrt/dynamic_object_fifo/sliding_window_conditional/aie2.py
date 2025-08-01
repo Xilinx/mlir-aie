@@ -12,7 +12,7 @@
 # RUN: AIE_TARGET=npu1 %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %run_on_npu1% ./test.exe
-# RUN: AIE_TARGET=npu2 %python %S/aie2p.py > ./aie2p.mlir
+# RUN: AIE_TARGET=npu2 %python %S/aie2.py > ./aie2p.mlir
 # RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2p.mlir
 # RUN: %run_on_npu2% ./test.exe
 
