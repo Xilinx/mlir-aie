@@ -19,6 +19,7 @@
 #include "aie/InitialAllDialect.h"
 #include "aie/Target/LLVMIR/Dialect/All.h"
 
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"

@@ -36,6 +36,9 @@ set(LIBS
   MLIRAIEVecTransformOps
   MLIRAIEVecTransforms
   MLIRAIEVecToLLVM
+  MLIRRegisterAllDialects
+  MLIRRegisterAllExtensions
+  MLIRRegisterAllPasses
   MLIRTransformDialect
   MLIRXLLVMDialect
   )
