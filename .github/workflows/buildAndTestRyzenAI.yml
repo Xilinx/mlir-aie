@@ -156,6 +156,7 @@ jobs:
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
+          pip install -r python/requirements_test.txt
 
           ./utils/build-mlir-aie-from-wheels.sh
 
