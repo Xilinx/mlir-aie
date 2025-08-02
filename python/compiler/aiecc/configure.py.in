@@ -6,6 +6,7 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 import os
+import sysconfig
 
 from aie.util import pythonize_bool
 
@@ -25,12 +26,15 @@ peano_install_dir = os.getenv("PEANO_INSTALL_DIR", "@PEANO_INSTALL_DIR@")
 aie_dir = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
 )
-# The expected location in an install area
 if not os.path.exists(peano_install_dir):
+    # The expected location in an install area
     peano_install_dir = os.path.join(aie_dir, "peano")
 if not os.path.exists(peano_install_dir):
     # The expected location in a build area
     peano_install_dir = os.path.realpath(os.path.join(aie_dir, "..", "peano"))
+if not os.path.exists(peano_install_dir):
+    # The expected location in platform-specific installed modules
+    peano_install_dir = os.path.join(sysconfig.get_path("platlib"), "llvm-aie")
 if not os.path.exists(peano_install_dir):
     peano_install_dir = "peano_not_found"
 
