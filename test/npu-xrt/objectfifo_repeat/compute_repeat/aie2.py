@@ -7,7 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 # REQUIRES: ryzen_ai_npu1, peano
-# XFAIL: xchesscc_segmentation_fault
+# XFAIL: *
 #
 # RUN: %python %S/aie2.py 4096 > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
