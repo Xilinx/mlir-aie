@@ -73,8 +73,6 @@ python3 -m pip install -r python/requirements_ml.txt
 
 python3 -m pip install -r python/requirements_notebook.txt
 
-python3 -m pip install -r python/requirements_test.txt
-
 # This creates an ipykernel (for use in notebooks) using the ironenv venv
 python3 -m ipykernel install --user --name ironenv
 
