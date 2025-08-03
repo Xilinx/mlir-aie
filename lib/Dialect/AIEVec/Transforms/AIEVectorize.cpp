@@ -427,7 +427,7 @@ static AffineExpr constructLinearizedAffineExpr(TransferReadOp readOp,
 
   SmallVector<Value, 4> indices(readOp.getIndices().begin(),
                                 readOp.getIndices().end());
-  auto memRefType = cast<MemRefType>(readOp.getSource().getType());
+  auto memRefType = cast<MemRefType>(readOp.getBase().getType());
   MLIRContext *context = memRefType.getContext();
 
   SmallVector<AffineExpr, 8> exprVec;
@@ -1065,7 +1065,7 @@ generateUPDOp(TransferReadOp readOp,
       // Generate the upd instruction, and link it with a previous upd op
       // corresponding to the same read.
       updOp = state->builder.create<aievec::UPDOp>(
-          readOp.getLoc(), updVecType, readOp.getSource(), indices,
+          readOp.getLoc(), updVecType, readOp.getBase(), indices,
           start - offset, idx - 1,
           updOp ? updOp.getResult() : TypedValue<VectorType>(nullptr));
 
@@ -2500,7 +2500,7 @@ static void insertSRSOp(Operation *Op, VectState *state) {
     MemRefType memRefType = nullptr;
     if (auto writeOp = dyn_cast<TransferWriteOp>(user)) {
       // Get the element type from the memref output
-      memRefType = cast<MemRefType>(writeOp.getSource().getType());
+      memRefType = cast<MemRefType>(writeOp.getBase().getType());
       scalarType = memRefType.getElementType();
     } else
       scalarType = getElementTypeOrSelf(*user->getResultTypes().begin());
@@ -2835,7 +2835,7 @@ static LogicalResult isUnalignedLoad(TransferReadOp readOp, VectState *state) {
     return success();
   }
 
-  auto memRefType = cast<MemRefType>(readOp.getSource().getType());
+  auto memRefType = cast<MemRefType>(readOp.getBase().getType());
   MLIRContext *context = memRefType.getContext();
   ArrayRef<int64_t> sizes = memRefType.getShape();
   int numDims = sizes.size();
