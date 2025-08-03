@@ -157,8 +157,6 @@ jobs:
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
 
-          pip install -r python/requirements_test.txt
-
           ./utils/build-mlir-aie-from-wheels.sh
 
           # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
