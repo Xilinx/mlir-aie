@@ -3827,10 +3827,10 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     ConversionTarget target(*context);
     auto aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
-      std::string target = aieTarget;
-      if (target == "aieml" || target == "aie2")
+      std::string targetStr = aieTarget;
+      if (targetStr == "aieml" || targetStr == "aie2")
         aieVersion = AIEArch::AIE2;
-      else if (target != "aie") {
+      else if (targetStr != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         return signalPassFailure();
       }

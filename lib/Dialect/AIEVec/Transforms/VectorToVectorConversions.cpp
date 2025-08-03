@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/IR/PatternMatch.h"
@@ -449,7 +450,8 @@ struct FlattenMultDimTransferReadPattern
     auto newSource = collapseInnerMostShapeDims(
         rewriter, readOp.getLoc(), vecShape.size(), adaptor.getBase());
     auto newVector = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, newSource, newIndices);
+        readOp.getLoc(), newVectorTy, newSource, newIndices,
+        /*padding*/ std::nullopt);
 
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
@@ -680,7 +682,8 @@ static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target,
                                             TargetBackend backend) {
   target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
-                         memref::MemRefDialect, vector::VectorDialect>();
+                         memref::MemRefDialect, vector::VectorDialect,
+                         ub::UBDialect>();
 }
 
 static void
@@ -800,8 +803,9 @@ struct CanonicalizeVectorForAIEVecPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect, affine::AffineDialect>();
+    registry
+        .insert<arith::ArithDialect, memref::MemRefDialect,
+                vector::VectorDialect, affine::AffineDialect, ub::UBDialect>();
   }
 
   Option<std::string> aieTarget{
