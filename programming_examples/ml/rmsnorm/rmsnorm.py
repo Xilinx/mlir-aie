@@ -16,7 +16,7 @@ from ml_dtypes import bfloat16
 
 
 def rmsnorm(dev, rows, cols, trace_size):
-    enable_trace = None if trace_size > 0 else None
+    enable_trace = 1 if trace_size > 0 else None
 
     n_cores = 8
 
@@ -81,14 +81,14 @@ def rmsnorm(dev, rows, cols, trace_size):
         Worker(
             core_body,
             fn_args=[of_in[i].cons(), of_out[i].prod(), rms_norm_kernel],
-            trace=enable_trace,
+            trace=None,  # enable_trace
         )
         for i in range(n_cores)
     ]
 
     rt = Runtime()
     with rt.sequence(dtype, dtype) as (a_in, c_out):
-        rt.enable_trace(enable_trace)
+        # rt.enable_trace(trace_size)
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_in[i].prod(), a_in, taps_in[i])
