@@ -4,7 +4,7 @@
 // CHECK-SAME: %[[IMEM:[a-zA-Z0-9]+]]: memref<64x64x4x8xbf16>,
 // CHECK-SAME: %[[OMEM:[a-zA-Z0-9]+]]: memref<64x64x4x8xbf16>) {
 // CHECK:   %[[C0:.*]] = arith.constant 0 : index
-// CHECK:   %[[C0bf16:.*]] = arith.constant 0.000000e+00 : bf16
+// CHECK:   %[[C0bf16:.*]] = ub.poison : bf16
 // CHECK:   affine.for %[[I:.*]] = 0 to 64 {
 // CHECK:       affine.for %[[J:.*]] = 0 to 64 {
 // CHECK:           %[[FIMEM:.*]] = memref.collapse_shape %[[IMEM]]
@@ -47,7 +47,7 @@ func.func @multidim_vector_transfer(%in : memref<64x64x4x8xbf16>,
 // CHECK-LABEL: func.func @multidim_vector_transfer(
 // CHECK-SAME: %[[IMEM:[a-zA-Z0-9]+]]: memref<64x64x32x8xbf16>,
 // CHECK-SAME: %[[OMEM:[a-zA-Z0-9]+]]: memref<64x64x32x8xbf16>) {
-// CHECK:   %[[C0bf16:.*]] = arith.constant 0.000000e+00 : bf16
+// CHECK:   %[[C0bf16:.*]] = ub.poison : bf16
 // CHECK:   affine.for %[[I:.*]] = 0 to 64 {
 // CHECK:     affine.for %[[J:.*]] = 0 to 64 {
 // CHECK:       affine.for %[[K:.*]] = 0 to 32 step 4 {

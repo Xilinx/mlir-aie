@@ -71,8 +71,11 @@ set(HOST_COMPILER
     "NONE"
     CACHE STRING "Host program compiler selection")
 set(PEANO_INSTALL_DIR
-    "<unset>"
+    "$ENV{PEANO_INSTALL_DIR}"
     CACHE STRING "Location of Peano compiler")
+if(NOT PEANO_INSTALL_DIR OR PEANO_INSTALL_DIR STREQUAL "")
+    set(PEANO_INSTALL_DIR "<unset>" CACHE STRING "Location of Peano compiler" FORCE)
+endif()
 
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS
