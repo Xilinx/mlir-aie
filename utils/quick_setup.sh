@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ##===- quick_setup.sh - Setup IRON for Ryzen AI dev ----------*- Script -*-===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
 ##===----------------------------------------------------------------------===##
 #
 # This script is the quickest path to running the Ryzen AI reference designs.
@@ -70,6 +70,8 @@ pre-commit install
 
 HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
 python3 -m pip install -r python/requirements_ml.txt
+
+python3 -m pip install -r python/requirements_notebook.txt
 
 # This creates an ipykernel (for use in notebooks) using the ironenv venv
 python3 -m ipykernel install --user --name ironenv
