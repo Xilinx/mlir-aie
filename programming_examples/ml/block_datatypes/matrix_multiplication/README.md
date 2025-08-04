@@ -58,7 +58,8 @@ The main difference is due to the difficulty of loading the block_vector into th
 
 ## Examples
 
-Note that these examples are meant to be orientative and do not aim at being an ideal implementation. They may be used to evaluate the cost and capabilities of different operations and datatypes in the NPU, but should still be worked on to achieve maximal performance.
+> NOTE: These examples are meant to be orientative and do not aim at being an ideal implementation. They may be used to evaluate the cost and capabilities of different implementations and datatypes in the NPU, but could be developed further to achieve maximal performance.
+
 
 - [`in_core_shuffle`](./in_core_shuffle/): Minimalist example performing the shuffling described above inside an AIE core using the scalar unit. It may be used to evaluate the efficiency of the scalar unit and the CPU for the shuffling operation.
 - `single_core`: Single core implementation of a matrix multiplication
