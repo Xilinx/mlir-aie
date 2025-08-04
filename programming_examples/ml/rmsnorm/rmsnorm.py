@@ -28,10 +28,6 @@ def rmsnorm(dev, rows, cols, trace_size):
     chunk_volume = cols * rows_per_core
     chunk_type = np.ndarray[(chunk_volume,), np.dtype[bfloat16]]
 
-    rows_per_core = rows // n_cores
-    chunk_volume = rows * rows_per_core
-    chunk_type = np.ndarray[(chunk_volume,), np.dtype[bfloat16]]
-
     of_in = [ObjectFifo(chunk_type, name=f"in_{i}") for i in range(n_cores)]
     of_out = [ObjectFifo(chunk_type, name=f"out_{i}") for i in range(n_cores)]
 
