@@ -340,18 +340,32 @@ def do_run(command, verbose=False):
 def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
     if verbose:
         print("Running:", pass_pipeline)
-    with Context(), Location.unknown():
+    diags = []
+    def diagnostic_handler(d):
+        severity = str(d.severity).replace("DiagnosticSeverity.", "").lower()
+        diags.append(f"{d.location}: {severity}: {d.message}")
+        for note in d.notes:
+            diags.append(f"{note.location}: note: {note.message}")
+        if severity == "error":
+            print(f"Error running pass pipeline: {pass_pipeline}")
+            for d in diags:
+                print(d)
+            raise RuntimeError(d)
+        return True
+
+    with Context() as ctx, Location.unknown():
+        ctx.emit_error_diagnostics = True
+        ctx.attach_diagnostic_handler(diagnostic_handler)
         module = Module.parse(mlir_module_str)
         pm = PassManager.parse(pass_pipeline)
-        try:
-            pm.run(module.operation)
-        except Exception as e:
-            print("Error running pass pipeline: ", pass_pipeline, e)
-            raise e
+        pm.run(module.operation)
+        if verbose:
+            for d in diags:
+                print(d)
         mlir_module_str = str(module)
-        if outputfile:
-            with open(outputfile, "w") as g:
-                g.write(mlir_module_str)
+    if outputfile:
+        with open(outputfile, "w") as g:
+            g.write(mlir_module_str)
     return mlir_module_str
 
 
