@@ -68,3 +68,57 @@ def test_zeros_like(dtype):
     z = iron.zeros_like(t)
     expected = np.zeros_like(t)
     assert np.array_equal(z, expected)
+
+
+def test_tensor_repr():
+    """Test that __repr__ properly syncs from device and shows correct data."""
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="npu")
+    # Modify data on device
+    t.to("npu")
+    # Get string representation (should sync from device)
+    repr_str = repr(t)
+    print(repr_str)
+    assert "tensor(" in repr_str
+    assert "device='npu'" in repr_str
+    # Check that the data values are present
+    assert "1" in repr_str and "2" in repr_str and "3" in repr_str and "4" in repr_str
+
+
+def test_tensor_getitem():
+    """Test that __getitem__ properly syncs from device."""
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="npu")
+    # Modify data on device
+    t.to("npu")
+    # Get item (should sync from device)
+    value = t[0, 1]
+    assert value == 2
+
+
+def test_tensor_setitem():
+    """Test that __setitem__ properly syncs to and from device."""
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="npu")
+    t[0, 1] = 42
+    # Verify the change is reflected
+    assert t[0, 1] == 42
+    # Verify other elements are unchanged
+    assert t[0, 0] == 1
+    assert t[1, 0] == 3
+    assert t[1, 1] == 4
+
+
+def test_tensor_getitem_setitem_consistency():
+    """Test that getitem and setitem work consistently with device sync."""
+    t = iron.zeros((2, 2), dtype=np.int32, device="npu")
+    # Set values
+    t[0, 0] = 10
+    t[0, 1] = 20
+    t[1, 0] = 30
+    t[1, 1] = 40
+    # Get values back
+    assert t[0, 0] == 10
+    assert t[0, 1] == 20
+    assert t[1, 0] == 30
+    assert t[1, 1] == 40
+    # Verify the entire tensor
+    expected = np.array([[10, 20], [30, 40]], dtype=np.int32)
+    assert np.array_equal(t.numpy(), expected)
