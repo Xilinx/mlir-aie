@@ -1958,11 +1958,6 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let assemblyFormat = [{
     $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
   }];
-
-  // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$subview, "size_t":$index)>
-  ];
 }
 
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
