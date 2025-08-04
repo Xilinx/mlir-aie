@@ -33,8 +33,8 @@ jobs:
 
       - name: Install Python packages
         run: |
-          sudo pip install -r python/requirements.txt
-          sudo pip install -r python/requirements_dev.txt
+          pip install -r python/requirements.txt
+          pip install -r python/requirements_dev.txt
 
       - name: Install Ninja
         # https://github.com/llvm/actions/tree/main/install-ninja
