@@ -24,10 +24,11 @@ class Tensor:
         """
         Return a string representation of the tensor.
 
-        Note: This method causes implicit data synchronization from device to host
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the string representation reflects the current device state.
         """
-        self.__sync_from_device()
+        if self.device == "npu":
+            self.__sync_from_device()
         array_str = np.array2string(self.data, separator=",")
         return f"tensor({array_str}, device='{self.device}')"
 
@@ -92,10 +93,11 @@ class Tensor:
         Returns:
             np.ndarray: A NumPy array containing the tensor's data.
 
-        Note: This method causes implicit data synchronization from device to host
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        self.__sync_from_device()
+        if self.device == "npu":
+            self.__sync_from_device()
         if dtype:
             return self.data.astype(dtype)
         return self.data
@@ -110,10 +112,11 @@ class Tensor:
         Returns:
             The value at the specified index.
 
-        Note: This method causes implicit data synchronization from device to host
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the retrieved value reflects the current device state.
         """
-        self.__sync_from_device()
+        if self.device == "npu":
+            self.__sync_from_device()
         return self.data[index]
 
     def __setitem__(self, index, value):
@@ -124,13 +127,15 @@ class Tensor:
             index (int): The index of the value to set.
             value: The new value to assign.
 
-        Note: This method causes implicit data synchronization from device to host
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
         before modification and back to device after modification to ensure
         data consistency across device and host memory.
         """
-        self.__sync_from_device()
+        if self.device == "npu":
+            self.__sync_from_device()
         self.data[index] = value
-        self.__sync_to_device()
+        if self.device == "npu":
+            self.__sync_to_device()
 
     def to(self, target_device: str):
         """
@@ -142,12 +147,13 @@ class Tensor:
         Returns:
            The tensor object on the target device.
         """
-
         if target_device == "npu":
             self.__sync_to_device()
+            self.device = "npu"
             return self
         elif target_device == "cpu":
             self.__sync_from_device()
+            self.device = "cpu"
             return self
         else:
             raise ValueError(f"Unknown device '{target_device}'")
@@ -183,10 +189,11 @@ class Tensor:
         Returns:
             np.ndarray: The tensor's data as a NumPy array.
 
-        Note: This method causes implicit data synchronization from device to host
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        self.__sync_from_device()
+        if self.device == "npu":
+            self.__sync_from_device()
         return self.data
 
     @staticmethod

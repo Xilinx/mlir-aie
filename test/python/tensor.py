@@ -122,3 +122,72 @@ def test_tensor_getitem_setitem_consistency():
     # Verify the entire tensor
     expected = np.array([[10, 20], [30, 40]], dtype=np.int32)
     assert np.array_equal(t.numpy(), expected)
+
+
+def test_cpu_tensor_no_sync():
+    """Test that CPU tensors operations."""
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="cpu")
+    assert t[0, 1] == 2
+    t[0, 1] = 42
+    assert t[0, 1] == 42
+    assert "device='cpu'" in repr(t)
+    arr = t.numpy()
+    assert np.array_equal(arr, np.array([[1, 42], [3, 4]], dtype=np.int32))
+
+
+def test_device_attribute_update():
+    """Test that to() method properly updates the device attribute."""
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="cpu")
+    assert t.device == "cpu"
+
+    # Move to NPU
+    t.to("npu")
+    assert t.device == "npu"
+    assert "device='npu'" in repr(t)
+
+    # Move back to CPU
+    t.to("cpu")
+    assert t.device == "cpu"
+    assert "device='cpu'" in repr(t)
+
+
+def test_npu_tensor_sync_behavior():
+    """Test that NPU tensors when implicit sync is required."""
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="npu")
+    assert t.device == "npu"
+
+    # Test that accessing data works correctly
+    assert t[0, 1] == 2
+    t[0, 1] = 42
+    assert t[0, 1] == 42
+
+    # Test that numpy() returns correct data
+    arr = t.numpy()
+    expected = np.array([[1, 42], [3, 4]], dtype=np.int32)
+    assert np.array_equal(arr, expected)
+
+    # Test that __array__ protocol works
+    np_arr = np.array(t)
+    assert np.array_equal(np_arr, expected)
+
+
+def test_mixed_device_operations():
+    """Test operations between CPU and NPU tensors."""
+    # Create tensors on different devices
+    cpu_tensor = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="cpu")
+    npu_tensor = iron.tensor([[5, 6], [7, 8]], dtype=np.int32, device="npu")
+
+    # Test device attributes
+    assert cpu_tensor.device == "cpu"
+    assert npu_tensor.device == "npu"
+
+    # Test that both can be accessed without issues
+    assert cpu_tensor[0, 0] == 1
+    assert npu_tensor[0, 0] == 5
+
+    # Test moving between devices
+    cpu_tensor = cpu_tensor.to("npu")
+    assert cpu_tensor.device == "npu"
+
+    npu_tensor = npu_tensor.to("cpu")
+    assert npu_tensor.device == "cpu"
