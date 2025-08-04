@@ -341,6 +341,7 @@ def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
     if verbose:
         print("Running:", pass_pipeline)
     diags = []
+
     def diagnostic_handler(d):
         severity = str(d.severity).replace("DiagnosticSeverity.", "").lower()
         diags.append(f"{d.location}: {severity}: {d.message}")
