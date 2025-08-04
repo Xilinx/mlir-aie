@@ -22,7 +22,7 @@ These examples are currently only supported when using the chess compiler. Assum
 
 At the IRON level, v8bfp16ebs8 and v8bfp16ebs16 have corresponding byte sizes of 9 and 17 bytes, which make it impossible to tile the subtiles in the correct order to feed them to the cores (the second level of tiling has been removed in these examples) because of the 4 byte granularity that Data Layout Transformations use. For this reason, these subtiles must be pretiled in main memory or apply the corresponding transformations inside the core. Other alternatives may be considered, such as adding padding to the blocks so that they align with the 4 byte granularity of DMAs.
 
-As described in the [original gemm example](../../matrix_multiplication/whole_array/README.md), there are multiple DLT taking place for these implementations. Usage of blocked datatypes requires carefully managing these.
+As described in the [original gemm example](../../matrix_multiplication/whole_array/README.md), there are multiple Data Layout Transformations (DLT) taking place in these implementations. Usage of blocked datatypes requires carefully managing these.
 
 #### First DLT
 
@@ -134,3 +134,4 @@ These are some plots that may help you give some intuition about how to best pro
   Note that when using object fifos for data movement, buffers must be allocated twice to achieve higher performance. In order to remember what is allocated in each compute core's memory, please refer to the [programming_guide](../../../../programming_guide/section-0/README.md). The available memory per core in Strix is 64kB and the used memory in these kernels can be computed as follows:
   \[matrix_size\]x\[number_of_matrices\]x\[dtype_size\]x2 + \[stack_size\]
 </details>
+
