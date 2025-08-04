@@ -93,5 +93,5 @@ def test_multiple_jit_compilations(num_elements, dtype):
 
     # JIT-compile the kernel then launch the kernel with the given arguments
     vector_vector_add(input0, input1, output)
-
+    assert False
     assert np.array_equal(input0.numpy() + input1.numpy(), output.numpy())
