@@ -19,7 +19,7 @@ The IRON Python API for Ryzen™ AI NPUs is described in the following paper:
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
 <p align="left">
-  <img src="docs/assets/images/iron_linux_stack_outlined.svg" alt="Iron Linux Software Stack" width="50%">
+  <img src="docs/assets/images/iron_linux_stack.svg" alt="Iron Linux Software Stack" width="50%">
 </p>
 
 # Getting Started for AMD Ryzen™ AI on Linux
