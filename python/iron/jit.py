@@ -15,6 +15,9 @@ import pyxrt as xrt
 from aie.extras.context import mlir_mod_ctx
 from ..utils.compile import compile_mlir_module_to_binary
 from ..utils.xrt import read_insts_binary
+from .device import NPU1, NPU2
+from .config import get_current_device
+import subprocess
 
 
 # The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_DIR` directory.
@@ -93,6 +96,9 @@ class NPUKernel:
         kernel_args = []
 
         for tensor in args:
+            # Skip callable arguments since these are inlined in the kernel
+            if callable(tensor):
+                continue
             if not hasattr(tensor, "buffer_object"):
                 raise TypeError(
                     f"Expected Tensor with .buffer_object(), got {type(tensor)}"
@@ -133,6 +139,22 @@ def jit(function=None, is_placed=True, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
+        # Import ExternalKernel at the top
+        from .kernel import ExternalKernel
+
+        # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
+        ExternalKernel._instances.clear()
+
+        # Find ExternalKernel instances in arguments and kwargs
+        external_kernels = []
+        for arg in args:
+            if isinstance(arg, ExternalKernel):
+                external_kernels.append(arg)
+        for value in kwargs.values():
+            if isinstance(value, ExternalKernel):
+                external_kernels.append(value)
+
+        # Execute the function to generate MLIR
         if is_placed:
             with mlir_mod_ctx() as ctx:
                 function(*args, **kwargs)
@@ -143,8 +165,15 @@ def jit(function=None, is_placed=True, use_cache=True):
         else:
             mlir_module = function(*args, **kwargs)
 
-        # Hash of the IR string
-        module_hash = hash_module(mlir_module)
+        # Compile all ExternalKernel instances that were created during this JIT compilation
+        for func in ExternalKernel._instances:
+            if (
+                not hasattr(func, "_compiled") or not func._compiled
+            ):  # Don't compile if already compiled
+                external_kernels.append(func)
+
+        # Hash of the IR string and ExternalKernel compiler options
+        module_hash = hash_module(mlir_module, external_kernels)
         kernel_dir = os.path.join(IRON_CACHE_DIR, f"{module_hash}")
         mlir_path = os.path.join(kernel_dir, "aie.mlir")
 
@@ -161,13 +190,28 @@ def jit(function=None, is_placed=True, use_cache=True):
         inst_exists = os.path.exists(inst_path)
 
         if not use_cache or not xclbin_exists or not inst_exists:
-            with open(mlir_path, "w", encoding="utf-8") as f:
-                print(mlir_module, file=f)
-            compile_mlir_module_to_binary(
-                mlir_module=mlir_module,
-                inst_path=inst_path,
-                xclbin_path=xclbin_path,
-            )
+            try:
+                with open(mlir_path, "w", encoding="utf-8") as f:
+                    print(mlir_module, file=f)
+
+                # Set cache directory for ExternalKernels and compile them
+                for func in external_kernels:
+                    # Compile the ExternalKernel directly in the kernel directory
+                    compile_external_kernel(func, kernel_dir)
+                # Compile the MLIR module
+                compile_mlir_module_to_binary(
+                    mlir_module=mlir_module,
+                    inst_path=inst_path,
+                    xclbin_path=xclbin_path,
+                    work_dir=kernel_dir,
+                )
+            except Exception as e:
+                # Clean up cache directory on any compilation failure
+                if os.path.exists(kernel_dir):
+                    import shutil
+
+                    shutil.rmtree(kernel_dir)
+                raise e
 
         kernel_name = "MLIR_AIE"
         return NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)(
@@ -177,9 +221,120 @@ def jit(function=None, is_placed=True, use_cache=True):
     return decorator
 
 
-def hash_module(module):
+def compile_external_kernel(func, kernel_dir):
     """
-    Hash the MLIR module to create a unique identifier.
+    Compile an ExternalKernel to an object file in the kernel directory.
+
+    Args:
+        func: ExternalKernel instance to compile
+        kernel_dir: Directory to place the compiled object file
+    """
+    # Skip if already compiled
+    if hasattr(func, "_compiled") and func._compiled:
+        return
+
+    # Check if object file already exists in kernel directory
+    output_file = os.path.join(kernel_dir, func._object_file_name)
+    if os.path.exists(output_file):
+        return
+
+    # Create source file in kernel directory
+    source_file = os.path.join(kernel_dir, f"{func._name}.cc")
+
+    # Handle both source_string and source_file cases
+    if func._source_string is not None:
+        # Use source_string (write to file)
+        with open(source_file, "w") as f:
+            f.write(func._source_string)
+    elif func._source_file is not None:
+        # Use source_file (copy existing file)
+        import shutil
+
+        # Check if source file exists before copying
+        if os.path.exists(func._source_file):
+            shutil.copy2(func._source_file, source_file)
+        else:
+            return
+    else:
+        raise ValueError("Neither source_string nor source_file is provided")
+
+    # Build compilation command
+    cmd = [
+        f"{os.environ.get('PEANO_INSTALL_DIR', '')}/bin/clang++",
+        "-O2",
+        "-std=c++20",
+        "--target=aie2-none-unknown-elf",
+        "-Wno-parentheses",
+        "-Wno-attributes",
+        "-Wno-macro-redefined",
+        "-Wno-empty-body",
+        "-DNDEBUG",
+    ]
+
+    # Add AIEOPT include directory
+    try:
+        aieopt_path = subprocess.check_output(["which", "aie-opt"], text=True).strip()
+        aieopt_dir = os.path.dirname(os.path.dirname(os.path.realpath(aieopt_path)))
+        cmd.extend(["-I", f"{aieopt_dir}/include"])
+    except subprocess.CalledProcessError:
+        pass
+
+    # Add device-specific flags based on actual device detection
+    current_device = get_current_device()
+
+    # Check device type and use appropriate flags
+    if isinstance(current_device, NPU2):
+        cmd.extend(os.environ.get("PEANOWRAP2P_FLAGS", "").split())
+    elif isinstance(current_device, NPU1):
+        cmd.extend(os.environ.get("PEANOWRAP2_FLAGS", "").split())
+    else:
+        raise RuntimeError(f"Unsupported device type: {type(current_device)}")
+
+    # Add include directories
+    for include_dir in func._include_dirs:
+        cmd.extend(["-I", include_dir])
+
+    # Add compilation flags
+    cmd.extend(func._compile_flags)
+
+    # Add source and output files
+    cmd.extend(["-c", source_file, "-o", output_file])
+
+    try:
+        result = subprocess.run(
+            cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        # Mark the function as compiled
+        func._compiled = True
+    except subprocess.CalledProcessError as e:
+        error_msg = (
+            f"Compilation failed:\n{e}\n"
+            f"stdout:\n{e.stdout.decode() if e.stdout else 'No stdout'}\n"
+            f"stderr:\n{e.stderr.decode() if e.stderr else 'No stderr'}"
+        )
+        raise RuntimeError(error_msg)
+
+
+def hash_module(module, external_kernels=None):
+    """
+    Hash the MLIR module and ExternalKernel compiler options to create a unique identifier.
     """
     mlir_str = str(module)
-    return hashlib.sha256(mlir_str.encode("utf-8")).hexdigest()[:16]
+
+    # Include ExternalKernel compiler options in the hash
+    if external_kernels:
+        compiler_options = []
+        for func in external_kernels:
+            # Include include_dirs and compile_flags in the hash
+            compiler_options.extend(func._include_dirs)
+            compiler_options.extend(func._compile_flags)
+
+        # Create a combined string for hashing
+        combined_str = mlir_str + "|" + "|".join(compiler_options)
+        return hashlib.sha256(combined_str.encode("utf-8")).hexdigest()[:16]
+    else:
+        return hashlib.sha256(mlir_str.encode("utf-8")).hexdigest()[:16]
