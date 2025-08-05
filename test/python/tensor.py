@@ -63,7 +63,7 @@ def test_arange_floats():
 
 
 @pytest.mark.parametrize("dtype", [np.int32, np.float32])
-def test_fill_(dtype):
+def test_fill(dtype):
     """Test the fill_ method for in-place tensor filling."""
     t = iron.zeros((2, 3), dtype=dtype, device="npu")
 
