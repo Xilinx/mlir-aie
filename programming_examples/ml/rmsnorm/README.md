@@ -10,7 +10,7 @@
 
 # RMSNorm
 
-This design implements a `bfloat16` based Root Mean Square Normalization (RMSNorm) technique commonly used in machine learning, especially in transformer models. It normalizes each column of the input matrix by its root mean square (RMS) value. The computation is parallelized across multiple AIE cores, with each core processing a block of columns.
+This design implements a `bfloat16` based Root Mean Square Normalization (RMSNorm) technique commonly used in machine learning, especially in transformer models. It normalizes each row of the input matrix by its root mean square (RMS) value. The computation is parallelized across multiple AIE cores, with each core processing a block of rows.
 
 ## Source Files Overview
 
