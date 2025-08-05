@@ -17,8 +17,8 @@ all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = rmsnorm
-rows = 128
-cols = 128
+sequence_length = 64
+embedding_dim = 4096
 trace_size = 65536
 
 aie_py_src=${targetname}.py
@@ -36,11 +36,11 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -r ${rows} -c ${cols} -t ${trace_size}>$@
+	python3 $< -d ${devicename} -s ${sequence_length} -e ${embedding_dim} -t ${trace_size}>$@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -r ${rows} -c ${cols} -t ${trace_size}> $@
+	python3 $< -d ${devicename} -s ${sequence_length} -e ${embedding_dim} -t ${trace_size}> $@
 
 build/final.xclbin: build/aie.mlir build/rms_norm.o
 	mkdir -p ${@D}
@@ -57,7 +57,7 @@ build/final_trace.xclbin: build/aie_trace.mlir build/rms_norm.o
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DROWS=$(rows) -DCOLS=$(cols)
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DROWS=$(sequence_length) -DCOLS=$(embedding_dim)
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
