@@ -282,14 +282,6 @@ def compile_external_kernel(func, kernel_dir):
     else:
         raise RuntimeError(f"Unsupported device type: {type(current_device)}")
 
-    # Add AIEOPT include directory
-    try:
-        aieopt_path = subprocess.check_output(["which", "aie-opt"], text=True).strip()
-        aieopt_dir = os.path.dirname(os.path.dirname(os.path.realpath(aieopt_path)))
-        cmd.extend(["-I", f"{aieopt_dir}/include"])
-    except subprocess.CalledProcessError:
-        pass
-
     # Add include directories
     for include_dir in func._include_dirs:
         cmd.extend(["-I", include_dir])
