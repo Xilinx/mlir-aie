@@ -227,7 +227,7 @@ def my_matmul(
     )
     # There is only one access pattern for B - it tiles the entire matrix in (k x n) tiles.
     if b_col_maj:
-        b_tap = TensorTiler2D.group_tiler((K, N), (k, n), (K_div_k, N_div_n))[0]
+        b_tap = TensorTiler2D.group_tiler((N, K), (n, k), (N_div_n, K_div_k))[0]
     else:
         b_tap = TensorTiler2D.group_tiler(
             (K, N), (k, n), (K_div_k, N_div_n), tile_group_col_major=True

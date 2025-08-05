@@ -22,8 +22,15 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "mlir/IR/Operation.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
+
 #include <numeric>
 #include <set>
+
+
+#include <iostream>
+
 
 using namespace mlir;
 using namespace xilinx;
@@ -69,6 +76,9 @@ public:
 class DMAChannelAnalysis {
   DenseMap<std::tuple<Value, DMAChannelDir, int>, int> channelsPerTile;
 
+
+
+  
 public:
   DMAChannelAnalysis(DeviceOp &device) {
     // go over the channels used for each tile and update channel map
@@ -103,18 +113,28 @@ public:
 
   /// Given a tile and DMAChannelDir, returns next usable channel index for
   /// that tile.
-  int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir) {
+  int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
     int maxChannelNum = 0;
     if (dir == DMAChannelDir::MM2S)
       maxChannelNum = tileOp.getNumSourceConnections(WireBundle::DMA);
     else
       maxChannelNum = tileOp.getNumDestConnections(WireBundle::DMA);
-    for (int i = 0; i < maxChannelNum; i++)
+
+    const auto &targetModel = getTargetModel(tileOp);
+    int maxChannelNumForAdjacentTile = targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(), tileOp.getRow());
+
+    // if requires adjacent tile access channels, only allocate on channel 0-3, and if cannot, return 0
+    if (requiresAdjacentTileAccessChannels) {
+      maxChannelNum = std::min(maxChannelNum, maxChannelNumForAdjacentTile);
+    }
+
+    for (int i = 0; i < maxChannelNum; i++){
       if (int usageCnt = channelsPerTile[{tileOp.getResult(), dir, i}];
           usageCnt == 0) {
         channelsPerTile[{tileOp.getResult(), dir, i}] = 1;
         return i;
       }
+    }
     return -1;
   }
 };
@@ -397,6 +417,131 @@ struct AIEObjectFifoStatefulTransformPass
     return locks;
   }
 
+
+  /// Function to calculate total memory usage on a specific tile
+  /// based on all buffers allocated to that tile from buffersPerFifo map
+  int calculateCurrentUsedMemory(TileOp targetTile, 
+                                DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>>& buffersPerFifo,
+                                std::vector<BufferOp>& buffers
+                              ) {
+    int totalUsedMemory = 0;
+
+    // Iterate through all ObjectFifos and their buffers
+    for (auto& [fifoOp, bufferList] : buffersPerFifo) {
+      for (auto& buffer : bufferList) {
+        // Check if this buffer is allocated on the target tile
+        if (buffer.getTile() == targetTile.getResult()) {
+          auto bufferSizeBytes = buffer.getAllocationSize();
+          totalUsedMemory += bufferSizeBytes;
+        }
+      }
+    }
+
+    // Also count buffers that are not in buffersPerFifo
+    for (auto& buffer : buffers) {
+      // Check if this buffer is allocated on the target tile
+      if (buffer.getTile() == targetTile.getResult()) {       
+        auto bufferSizeBytes = buffer.getAllocationSize();
+        totalUsedMemory += bufferSizeBytes;
+      }
+    }
+    
+    return totalUsedMemory;
+  }
+
+  /// Function to analyze cross-tile buffer allocations in splitFifos
+  /// Returns a simple map of (ObjectFifoCreateOp, bool) indicating cross-tile issues
+  std::map<ObjectFifoCreateOp, bool> analyzeCrossTileFIFOBuffers() {
+    std::map<ObjectFifoCreateOp, bool> crossTileMap;
+    
+    for (size_t i = 0; i < splitFifos.size(); i++) {
+      auto& [producerFifo, consumerFifos] = splitFifos[i];
+      
+      // Analyze producer buffers
+      bool producerHasCrossTile = false;
+
+        ObjectFifoCreateOp target = producerFifo;
+        auto linkOp = getOptionalLinkOp(producerFifo);
+
+        if (linkOp && objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
+            target = objFifoLinks[*linkOp];  // Use the linked target FIFO
+        }
+
+      if (buffersPerFifo.find(target) != buffersPerFifo.end()) {
+        // For each FIFO (producer and consumer):
+        auto& producerBuffers = buffersPerFifo[target];
+        TileOp expectedTile = target.getProducerTileOp();
+        for (auto& buffer : producerBuffers) {
+          TileOp bufferTile = buffer.getTile().getDefiningOp<TileOp>();
+          if (bufferTile != expectedTile) {
+            producerHasCrossTile = true;
+            break;
+          }
+        }
+      }
+      crossTileMap[producerFifo] = producerHasCrossTile;
+      
+      // Analyze consumer buffers
+      for (auto& consumerFifo : consumerFifos) {
+        bool consumerHasCrossTile = false;
+          ObjectFifoCreateOp target = consumerFifo;
+          auto linkOp = getOptionalLinkOp(consumerFifo);
+          if (linkOp && objFifoLinks.find(*linkOp) != objFifoLinks.end()) {
+              target = objFifoLinks[*linkOp];  // Use the linked target FIFO
+          }
+
+
+        if (buffersPerFifo.find(target) != buffersPerFifo.end()) {
+          // For each FIFO (producer and consumer):
+          auto& consumerBuffers = buffersPerFifo[target];
+          TileOp expectedTile = target.getProducerTileOp();
+          for (auto& buffer : consumerBuffers) {
+            TileOp bufferTile = buffer.getTile().getDefiningOp<TileOp>();
+            if (bufferTile != expectedTile) {
+              consumerHasCrossTile = true;
+              break;
+            }
+          }
+        }
+        crossTileMap[consumerFifo] = consumerHasCrossTile;
+      }
+    }
+    return crossTileMap;
+  }
+
+  /// Helper function to find a tile at specific coordinates.
+  /// If a tile is not found, it creates a new one and returns it.
+  /// hostTile is the original tile from which we are searching for neighbors.
+  /// we create the new tile below the hostTile 
+  TileOp findOrCreateTile(OpBuilder &builder, DeviceOp &dev, TileOp hostTile, int col, int row) {
+    // First, try to find an existing tile
+    for (auto tile : dev.getOps<TileOp>()) {
+      if (tile.getCol() == col && tile.getRow() == row) {
+        return tile;
+      }
+    }
+
+    // If not found, create a new one.
+    OpBuilder::InsertionGuard g(builder);
+
+    auto savedInsertionPoint = builder.saveInsertionPoint();
+
+    // Find the last buffer operation after the host tile
+    Operation *insertAfter = hostTile.getOperation();
+    Operation *nextOp = insertAfter->getNextNode();
+    while (nextOp && isa<BufferOp>(nextOp)) {
+        insertAfter = nextOp;
+        nextOp = nextOp->getNextNode();
+    }
+    
+    builder.setInsertionPointAfter(insertAfter);
+    auto newTile = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
+
+    builder.restoreInsertionPoint(savedInsertionPoint);
+
+    return newTile;
+  }
+
   /// Function used to create objectFifo elements and their locks.
   /// It maps the input objectFifo to associated buffers and locks.
   void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
@@ -472,16 +617,78 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto tile_op : dev.getBody()->getOps<TileOp>()) {
       t = tile_op.getOperation();
     }
+
     builder.setInsertionPointAfter(t);
     for (int i = 0; i < numElem; i++) {
+
       mlir::ElementsAttr initValues = nullptr;
       if (!creation_tile.isShimTile()) {
         if (op.getInitValues().has_value()) {
           initValues =
               llvm::cast<mlir::ElementsAttr>(op.getInitValues().value()[i]);
         }
+
+        auto elementType = elemType.getElementType();
+
+        DataLayout dataLayout = DataLayout::closest(op.getOperation());
+        int64_t elementBitWidth = dataLayout.getTypeSizeInBits(elementType);
+
+        auto totalSizeBytes = elemType.getNumElements() * elementBitWidth / 8; 
+        auto &targetModel = dev.getTargetModel();
+
+        int maxDataMemorySize = 0;
+        if (creation_tile.isMemTile())
+          maxDataMemorySize = targetModel.getMemTileSize(); // getMemTileSize returns in Bytes
+        else
+          maxDataMemorySize = targetModel.getLocalMemorySize(); // getLocalMemorySize returns in Bytes
+
+        // also need to count the buffers that are not in buffersPerFifo 
+        int currentUsedMemory = calculateCurrentUsedMemory(creation_tile, buffersPerFifo, buffers);
+
+        // Check if current tile can hold the new buffer or not
+        TileOp current_buf_allocation_tile = creation_tile; // used to keep track of the tile where the buffer is allocated
+        if (static_cast<int>(currentUsedMemory + totalSizeBytes) > maxDataMemorySize) {
+          // if not, check if the neighbour can hold the new buffer or not
+          // Find neighbor tiles with shared memory
+          std::vector<TileOp> neighborTiles;
+          int currentCol = creation_tile.getCol();
+          int currentRow = creation_tile.getRow();
+
+          // Check tile to the left
+          if (currentCol > 0) {
+            TileOp leftTile = findOrCreateTile(builder, dev, creation_tile, currentCol - 1, currentRow);
+
+            int share_direction = 0;
+            if (isSharedMemory(creation_tile, leftTile, &share_direction)) {
+              neighborTiles.push_back(leftTile);
+            }
+          }
+
+          // Check tile to the right
+          if (currentCol < (targetModel.columns() - 1)) {
+            TileOp rightTile = findOrCreateTile(builder, dev, creation_tile, currentCol + 1, currentRow);
+            int share_direction = 0;
+            if (isSharedMemory(creation_tile, rightTile, &share_direction)) {
+              neighborTiles.push_back(rightTile);
+            }
+          }
+
+          // try to allocate on neighbor tiles
+          if (!neighborTiles.empty()) {
+            for (auto& tile : neighborTiles) {
+              // Try to allocate on this neighbor tile
+              int neighborUsedMemory = calculateCurrentUsedMemory(tile, buffersPerFifo, buffers);
+              if (static_cast<int>(neighborUsedMemory + totalSizeBytes) <= maxDataMemorySize) {
+                // Allocate buffer on neighbor tile, change creation_tile to be this neighbour tile
+                current_buf_allocation_tile = tile;
+                break;
+              }
+            }
+          }
+
+        }
         auto buff = builder.create<BufferOp>(
-            builder.getUnknownLoc(), elemType, creation_tile,
+            builder.getUnknownLoc(), elemType, current_buf_allocation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
             /*address*/ nullptr, initValues,
@@ -877,8 +1084,9 @@ struct AIEObjectFifoStatefulTransformPass
         }
 
         // check if current op is of smaller size in link
-        if (target != op)
+        if (target != op) {
           numBlocks = target.size();
+        }
       }
     }
 
@@ -889,8 +1097,8 @@ struct AIEObjectFifoStatefulTransformPass
         producerDMA = dmaOp.getOperation();
         break;
       }
-    }
-
+    }    
+    
     // if none exists, create one
     TileOp objFifoTileOp = target.getProducerTileOp();
     if (producerDMA == nullptr) {
@@ -930,10 +1138,11 @@ struct AIEObjectFifoStatefulTransformPass
       if (elemIndex >= buffersPerFifo[target].size())
         break;
       for (int r = 0; r < repeatCount * joinDistribFactor; r++) {
-        if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1)
+        if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1) {
           succ = bdBlock;
-        else
+        } else {
           succ = builder.createBlock(endBlock);
+        }
 
         builder.setInsertionPointToStart(curr);
         int offset = 0;
@@ -955,6 +1164,7 @@ struct AIEObjectFifoStatefulTransformPass
         } else {
           lockIndex = elemIndex;
         }
+
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                                 buffersPerFifo[target][elemIndex], offset,
                                 lenOut, channelDir, lockIndex, succ, dims,
@@ -1291,7 +1501,7 @@ struct AIEObjectFifoStatefulTransformPass
             (lockID + 1) % op.size(); // update to next objFifo elem
       }
     } else {
-      if (numLocks == 0)
+      if ( numLocks == 0)
         return;
 
       if (locksPerFifo[target].size() == 0) {
@@ -1447,7 +1657,38 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
+  /// Helper function to assign DMA channel indices for FIFOs based on cross-tile conditions
+  void assignDMAChannelIndices(DMAChannelAnalysis &dmaAnalysis,
+                               const std::map<ObjectFifoCreateOp, bool> &crossTileInfos,
+                               std::map<ObjectFifoCreateOp, int> &fifo_dma_channel_index,
+                               bool assignCrossTileOnly) {
+    for (auto &[producer, consumers] : splitFifos) {
+      // Check if we should process this producer based on cross-tile condition
+      bool shouldProcessProducer = assignCrossTileOnly ? crossTileInfos.at(producer) : !crossTileInfos.at(producer);
+      
+      if (shouldProcessProducer) {
+        bool requiresAdjacentTileAccessChannels = crossTileInfos.at(producer);
+        int channelIndex = dmaAnalysis.getDMAChannelIndex(
+            producer.getProducerTileOp(), DMAChannelDir::MM2S, requiresAdjacentTileAccessChannels);
+        fifo_dma_channel_index[producer] = channelIndex;
+      }
+      
+      for (auto consumer : consumers) {
+        // Check if we should process this consumer based on cross-tile condition
+        bool shouldProcessConsumer = assignCrossTileOnly ? crossTileInfos.at(consumer) : !crossTileInfos.at(consumer);
+        
+        if (shouldProcessConsumer) {
+          bool requiresAdjacentTileAccessChannels = crossTileInfos.at(consumer);
+          int channelIndex = dmaAnalysis.getDMAChannelIndex(
+              consumer.getProducerTileOp(), DMAChannelDir::S2MM, requiresAdjacentTileAccessChannels);
+          fifo_dma_channel_index[consumer] = channelIndex;
+        }
+      }
+    }
+  }
+
   void runOnOperation() override {
+
     DeviceOp device = getOperation();
     LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
@@ -1551,8 +1792,8 @@ struct AIEObjectFifoStatefulTransformPass
     //   the acquires/releases (uses of the FIFO).
     // - Global release counter tracker to keep track of the objectFifo state
     //===------------------------------------------------------------------===//
-
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+
       int share_direction = 0;
       bool shared = !requiresDMAs(createOp, share_direction);
 
@@ -1572,10 +1813,12 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
+
         checkAndApplyViaSharedMemAttribute(createOp, share_direction);
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
+
         if (createOp.getViaSharedMem().has_value())
           createOp->emitOpError(
               "no access to shared memory module specified by "
@@ -1585,7 +1828,9 @@ struct AIEObjectFifoStatefulTransformPass
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
         else {
+
           if (!createOp.getInitValues().has_value()) {
+
             int prodMaxAcquire = findObjectFifoSize(
                 device, createOp.getProducerTileOp(), createOp);
             createOp.setElemNumberAttr(
@@ -1594,19 +1839,32 @@ struct AIEObjectFifoStatefulTransformPass
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
+
       }
     }
 
-    //===------------------------------------------------------------------===//
+
+    // Analyze cross-tile buffer allocations and print results
+    auto crossTileInfos = analyzeCrossTileFIFOBuffers();
+
+    // assign DMA channels for FIFOs
+    // assign the channel index for fifos that has cross-tile issues first
+    // use dmaAnalysis.getDMAChannelIndex() to assign index (which internally loop 
+    // over all of available channels and assign from 0 to maximum)
+    std::map<ObjectFifoCreateOp, int> fifo_dma_channel_index;
+
+    // Assign channel indices for FIFOs with cross-tile issues first
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, true);
+    
+    // Then assign channel indices for FIFOs without cross-tile issues
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, false);    //===------------------------------------------------------------------===//
     // Create flows and tile DMAs
     //===------------------------------------------------------------------===//
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
     int packetID = 0;
     for (auto &[producer, consumers] : splitFifos) {
-      // create producer tile DMA
-      int producerChanIndex = dmaAnalysis.getDMAChannelIndex(
-          producer.getProducerTileOp(), DMAChannelDir::MM2S);
+      int producerChanIndex = fifo_dma_channel_index[producer];
       if (producerChanIndex == -1)
         producer.getProducerTileOp().emitOpError(
             "number of output DMA channel exceeded!");
@@ -1646,9 +1904,7 @@ struct AIEObjectFifoStatefulTransformPass
       }
 
       for (auto consumer : consumers) {
-        // create consumer tile DMA
-        int consumerChanIndex = dmaAnalysis.getDMAChannelIndex(
-            consumer.getProducerTileOp(), DMAChannelDir::S2MM);
+        int consumerChanIndex = fifo_dma_channel_index[consumer];
         if (consumerChanIndex == -1)
           consumer.getProducerTileOp().emitOpError(
               "number of input DMA channel exceeded!");
@@ -1962,8 +2218,8 @@ struct AIEObjectFifoStatefulTransformPass
     SmallVector<Operation *> sorted{opsToErase.begin(), opsToErase.end()};
     computeTopologicalSorting(sorted);
     for (auto *op : llvm::reverse(sorted))
-      op->erase();
-  }
+      op->erase();  
+    }
 };
 
 std::unique_ptr<OperationPass<DeviceOp>>
