@@ -2,7 +2,7 @@
 
 # IRON API and MLIR-based AI Engine Toolchain
 
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls) [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug) ![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue) ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls) [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug) ![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue) ![GitHub Downloads 2 (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-2/total?color=blue) ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie)
 
 <p align="left">
   <img src="https://github.com/llvm/mlir-www/blob/main/website/static/LogoAssets/logo/PNG/full_color/mlir-identity-03.png" alt="MLIR logo" height="80" />
@@ -17,6 +17,10 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for A
 The IRON Python API for Ryzen™ AI NPUs is described in the following paper: 
 
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
+
+<p align="left">
+  <img src="docs/assets/images/iron_linux_stack.svg" alt="Iron Linux Software Stack" width="50%">
+</p>
 
 # Getting Started for AMD Ryzen™ AI on Linux
 
