@@ -2231,7 +2231,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l02165" name="l02165"></a><span class="lineno"> 2165</span><span class="comment">// Generate the transfer write op</span></div>
 <div class="line"><a id="l02166" name="l02166"></a><span class="lineno"> 2166</span><span class="keyword">static</span> LogicalResult printOperation(CppEmitter &amp;emitter,</div>
 <div class="line"><a id="l02167" name="l02167"></a><span class="lineno"> 2167</span>                                    vector::TransferWriteOp writeOp) {</div>
-<div class="line"><a id="l02168" name="l02168"></a><span class="lineno"> 2168</span>  Value source = writeOp.getSource();</div>
+<div class="line"><a id="l02168" name="l02168"></a><span class="lineno"> 2168</span>  Value source = writeOp.getBase();</div>
 <div class="line"><a id="l02169" name="l02169"></a><span class="lineno"> 2169</span>  Value vector = writeOp.getVector();</div>
 <div class="line"><a id="l02170" name="l02170"></a><span class="lineno"> 2170</span> </div>
 <div class="line"><a id="l02171" name="l02171"></a><span class="lineno"> 2171</span>  <span class="comment">// If the aray, or the vector being outputted is not already emitted,</span></div>
@@ -3556,7 +3556,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Jul 31 2025 02:05:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 5 2025 15:45:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -163,6 +163,8 @@ Functions</h2></td></tr>
 <tr class="separator:ad1e4c0f9217c79b626f079dfd70f499e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3a6be77ebfa2f14f396e842adac4ec25" id="r_a3a6be77ebfa2f14f396e842adac4ec25"><td class="memItemLeft" align="right" valign="top">MLIR_CAPI_EXPORTED uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="TargetModel_8h.html#a3a6be77ebfa2f14f396e842adac4ec25">aieTargetModelGetNumBanks</a> (AieTargetModel targetModel, int col, int row)</td></tr>
 <tr class="separator:a3a6be77ebfa2f14f396e842adac4ec25"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aafe3a4fff6785a505b0194e5d4a5e14e" id="r_aafe3a4fff6785a505b0194e5d4a5e14e"><td class="memItemLeft" align="right" valign="top">MLIR_CAPI_EXPORTED uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="TargetModel_8h.html#aafe3a4fff6785a505b0194e5d4a5e14e">aieTargetModelGetMaxChannelNumForAdjacentTile</a> (AieTargetModel targetModel, int col, int row)</td></tr>
+<tr class="separator:aafe3a4fff6785a505b0194e5d4a5e14e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae416951b5946cc9cff9c13eb9bb94836" id="r_ae416951b5946cc9cff9c13eb9bb94836"><td class="memItemLeft" align="right" valign="top">MLIR_CAPI_EXPORTED uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="TargetModel_8h.html#ae416951b5946cc9cff9c13eb9bb94836">aieTargetModelGetNumDestSwitchboxConnections</a> (AieTargetModel targetModel, int col, int row, uint32_t bundle)</td></tr>
 <tr class="separator:ae416951b5946cc9cff9c13eb9bb94836"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afd15c150913ce5a313b688818f898cd5" id="r_afd15c150913ce5a313b688818f898cd5"><td class="memItemLeft" align="right" valign="top">MLIR_CAPI_EXPORTED uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="TargetModel_8h.html#afd15c150913ce5a313b688818f898cd5">aieTargetModelGetNumSourceSwitchboxConnections</a> (AieTargetModel targetModel, int col, int row, uint32_t bundle)</td></tr>
@@ -298,7 +300,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00193">193</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00199">199</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#acae8887d9d64be1a250a2f14eea3ec43">xilinx::AIE::AIETargetModel::getColumnShift()</a>.</p>
 
@@ -323,6 +325,40 @@ Functions</h2></td></tr>
 <p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00131">131</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a354b79b620400901a8d1bb747823aed7">xilinx::AIE::AIETargetModel::getLocalMemorySize()</a>.</p>
+
+</div>
+</div>
+<a id="aafe3a4fff6785a505b0194e5d4a5e14e" name="aafe3a4fff6785a505b0194e5d4a5e14e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aafe3a4fff6785a505b0194e5d4a5e14e">&#9670;&#160;</a></span>aieTargetModelGetMaxChannelNumForAdjacentTile()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetMaxChannelNumForAdjacentTile </td>
+          <td>(</td>
+          <td class="paramtype">AieTargetModel&#160;</td>
+          <td class="paramname"><em>targetModel</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>col</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>row</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
 
 </div>
 </div>
@@ -550,7 +586,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00173">173</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00179">179</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae78ec297d20fc5f9aca1e93ba2a92777">xilinx::AIE::AIETargetModel::getNumDestShimMuxConnections()</a>.</p>
 
@@ -594,7 +630,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00157">157</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00163">163</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">xilinx::AIE::AIETargetModel::getNumDestSwitchboxConnections()</a>.</p>
 
@@ -698,7 +734,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00181">181</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00187">187</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a250ac542b01465f2fa67b07476b5b362">xilinx::AIE::AIETargetModel::getNumSourceShimMuxConnections()</a>.</p>
 
@@ -742,7 +778,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00165">165</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00171">171</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">xilinx::AIE::AIETargetModel::getNumSourceSwitchboxConnections()</a>.</p>
 
@@ -764,7 +800,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00197">197</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00203">203</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#af656587d8e0fb2cdf6a313aa7d52d986">xilinx::AIE::AIETargetModel::getRowShift()</a>.</p>
 
@@ -1264,9 +1300,9 @@ Functions</h2></td></tr>
 
 <p>Returns true if this is an NPU target model. </p>
 
-<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00189">189</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="TargetModel_8cpp_source.html#l00195">195</a> of file <a class="el" href="TargetModel_8cpp_source.html">TargetModel.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00302">xilinx::AIE::AIETargetModel::hasProperty()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00086">xilinx::AIE::AIETargetModel::IsNPU</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00305">xilinx::AIE::AIETargetModel::hasProperty()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00086">xilinx::AIE::AIETargetModel::IsNPU</a>.</p>
 
 </div>
 </div>
@@ -1539,7 +1575,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Jul 31 2025 02:05:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 5 2025 15:45:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

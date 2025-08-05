@@ -57,13 +57,13 @@ $(function() {
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a016b488a4bf96f470499704e9811bfe4" id="r_a016b488a4bf96f470499704e9811bfe4"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classDMAChannelAnalysis.html#a016b488a4bf96f470499704e9811bfe4">DMAChannelAnalysis</a> (DeviceOp &amp;device)</td></tr>
 <tr class="separator:a016b488a4bf96f470499704e9811bfe4"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a78dbc6716f75365b0eda0021ca51afd0" id="r_a78dbc6716f75365b0eda0021ca51afd0"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classDMAChannelAnalysis.html#a78dbc6716f75365b0eda0021ca51afd0">getDMAChannelIndex</a> (TileOp tileOp, DMAChannelDir dir)</td></tr>
-<tr class="memdesc:a78dbc6716f75365b0eda0021ca51afd0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Given a tile and DMAChannelDir, returns next usable channel index for that tile.  <br /></td></tr>
-<tr class="separator:a78dbc6716f75365b0eda0021ca51afd0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa1be39cfa1c705934cb4f0cdfe35e914" id="r_aa1be39cfa1c705934cb4f0cdfe35e914"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classDMAChannelAnalysis.html#aa1be39cfa1c705934cb4f0cdfe35e914">getDMAChannelIndex</a> (TileOp tileOp, DMAChannelDir dir, <a class="el" href="classbool.html">bool</a> requiresAdjacentTileAccessChannels)</td></tr>
+<tr class="memdesc:aa1be39cfa1c705934cb4f0cdfe35e914"><td class="mdescLeft">&#160;</td><td class="mdescRight">Given a tile and DMAChannelDir, returns next usable channel index for that tile.  <br /></td></tr>
+<tr class="separator:aa1be39cfa1c705934cb4f0cdfe35e914"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00069">69</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00076">76</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a016b488a4bf96f470499704e9811bfe4" name="a016b488a4bf96f470499704e9811bfe4"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a016b488a4bf96f470499704e9811bfe4">&#9670;&#160;</a></span>DMAChannelAnalysis()</h2>
@@ -89,13 +89,13 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00073">73</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00083">83</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
-<a id="a78dbc6716f75365b0eda0021ca51afd0" name="a78dbc6716f75365b0eda0021ca51afd0"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a78dbc6716f75365b0eda0021ca51afd0">&#9670;&#160;</a></span>getDMAChannelIndex()</h2>
+<a id="aa1be39cfa1c705934cb4f0cdfe35e914" name="aa1be39cfa1c705934cb4f0cdfe35e914"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa1be39cfa1c705934cb4f0cdfe35e914">&#9670;&#160;</a></span>getDMAChannelIndex()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -113,7 +113,13 @@ Public Member Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">DMAChannelDir&#160;</td>
-          <td class="paramname"><em>dir</em>&#160;</td>
+          <td class="paramname"><em>dir</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
+          <td class="paramname"><em>requiresAdjacentTileAccessChannels</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -130,9 +136,11 @@ Public Member Functions</h2></td></tr>
 
 <p>Given a tile and DMAChannelDir, returns next usable channel index for that tile. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00106">106</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00116">116</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01437">AIEObjectFifoStatefulTransformPass::runOnOperation()</a>.</p>
+<p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel()</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01648">AIEObjectFifoStatefulTransformPass::assignDMAChannelIndices()</a>.</p>
 
 </div>
 </div>
@@ -142,7 +150,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Jul 31 2025 02:05:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 5 2025 15:45:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

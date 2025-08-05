@@ -1,25 +1,27 @@
 <map id="lib/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.cpp" name="lib/Dialect/AIEVec/Transforms/FoldMulAddChainToConvOp.cpp">
-<area shape="rect" id="Node000001" title=" " alt="" coords="2276,5,2491,60"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="2360,5,2575,60"/>
 <area shape="rect" id="Node000002" href="$FoldMulAddChainToConvOp_8h.html" title=" " alt="" coords="529,115,741,141"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="2276,42,755,123,755,118,2276,37"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="2360,42,756,123,755,118,2360,37"/>
 <area shape="rect" id="Node000004" title=" " alt="" coords="506,203,765,229"/>
-<area shape="poly" id="edge43_Node000001_Node000004" title=" " alt="" coords="2276,46,1954,73,1557,111,1167,152,777,199,733,204,732,199,776,193,1166,147,1556,105,1953,68,2275,40"/>
+<area shape="poly" id="edge44_Node000001_Node000004" title=" " alt="" coords="2360,44,2003,72,1557,111,1167,151,777,199,733,204,732,199,776,193,1166,146,1556,105,2003,66,2360,39"/>
 <area shape="rect" id="Node000005" href="$AIEVecUtils_8h.html" title=" " alt="" coords="1712,108,1852,148"/>
-<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="2276,53,1866,116,1865,111,2275,48"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="2360,51,1866,118,1865,113,2360,46"/>
 <area shape="rect" id="Node000020" href="$AIEVecOps_8h.html" title=" " alt="" coords="1319,196,1459,236"/>
-<area shape="poly" id="edge37_Node000001_Node000020" title=" " alt="" coords="2276,41,2157,48,2012,62,1855,82,1700,111,1631,129,1562,150,1446,193,1445,188,1561,145,1629,123,1699,105,1854,77,2011,56,2156,43,2275,36"/>
+<area shape="poly" id="edge37_Node000001_Node000020" title=" " alt="" coords="2360,39,2226,45,2061,58,1880,79,1700,111,1630,128,1562,150,1446,193,1444,188,1560,145,1629,123,1699,105,1879,74,2060,53,2226,40,2360,34"/>
 <area shape="rect" id="Node000028" href="$Dialect_2AIEVec_2Analysis_2Passes_8h.html" title=" " alt="" coords="2397,108,2538,148"/>
-<area shape="poly" id="edge32_Node000001_Node000028" title=" " alt="" coords="2409,59,2443,96,2439,100,2405,62"/>
+<area shape="poly" id="edge32_Node000001_Node000028" title=" " alt="" coords="2470,60,2470,94,2465,94,2465,60"/>
 <area shape="rect" id="Node000032" title=" " alt="" coords="2671,196,2835,236"/>
-<area shape="poly" id="edge45_Node000001_Node000032" title=" " alt="" coords="2453,58,2502,80,2551,106,2578,126,2603,146,2691,188,2689,193,2601,150,2574,130,2549,110,2500,84,2451,62"/>
+<area shape="poly" id="edge46_Node000001_Node000032" title=" " alt="" coords="2498,58,2555,108,2603,146,2646,169,2689,188,2687,193,2644,174,2601,150,2552,112,2495,62"/>
 <area shape="rect" id="Node000033" href="$Dialect_2AIEVec_2Pipelines_2Passes_8h.html" title=" " alt="" coords="2227,108,2372,148"/>
-<area shape="poly" id="edge38_Node000001_Node000033" title=" " alt="" coords="2361,62,2327,100,2323,96,2358,59"/>
+<area shape="poly" id="edge38_Node000001_Node000033" title=" " alt="" coords="2421,62,2347,103,2344,99,2419,58"/>
 <area shape="rect" id="Node000034" title=" " alt="" coords="2613,115,2823,141"/>
-<area shape="poly" id="edge41_Node000001_Node000034" title=" " alt="" coords="2478,57,2664,109,2663,114,2477,63"/>
-<area shape="rect" id="Node000035" title=" " alt="" coords="2847,115,3013,141"/>
-<area shape="poly" id="edge42_Node000001_Node000035" title=" " alt="" coords="2491,48,2836,105,2861,110,2860,115,2835,111,2490,53"/>
-<area shape="rect" id="Node000036" title=" " alt="" coords="3038,115,3201,141"/>
-<area shape="poly" id="edge44_Node000001_Node000036" title=" " alt="" coords="2491,41,2737,67,3026,105,3054,110,3053,115,3026,111,2736,72,2491,46"/>
+<area shape="poly" id="edge41_Node000001_Node000034" title=" " alt="" coords="2539,58,2676,108,2674,113,2537,63"/>
+<area shape="rect" id="Node000035" title=" " alt="" coords="2847,108,2986,148"/>
+<area shape="poly" id="edge42_Node000001_Node000035" title=" " alt="" coords="2576,52,2834,105,2833,110,2574,57"/>
+<area shape="rect" id="Node000036" title=" " alt="" coords="3011,115,3177,141"/>
+<area shape="poly" id="edge43_Node000001_Node000036" title=" " alt="" coords="2575,45,2772,71,2998,105,3026,110,3025,115,2998,111,2772,76,2574,50"/>
+<area shape="rect" id="Node000037" title=" " alt="" coords="3202,115,3365,141"/>
+<area shape="poly" id="edge45_Node000001_Node000037" title=" " alt="" coords="2575,39,2854,64,3022,83,3190,105,3218,110,3217,115,3190,111,3022,88,2854,69,2575,44"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="274,203,482,229"/>
 <area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="601,143,426,201,425,196,600,138"/>
 <area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="638,141,638,189,633,189,633,141"/>

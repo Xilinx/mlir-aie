@@ -69,6 +69,7 @@ $(function() {
 <code>#include &quot;mlir/Support/FileUtilities.h&quot;</code><br />
 <code>#include &quot;mlir/Target/LLVMIR/Export.h&quot;</code><br />
 <code>#include &quot;llvm/IR/LLVMContext.h&quot;</code><br />
+<code>#include &quot;llvm/IR/Module.h&quot;</code><br />
 <code>#include &quot;llvm/Support/Casting.h&quot;</code><br />
 <code>#include &quot;llvm/Support/raw_ostream.h&quot;</code><br />
 <code>#include &lt;cstdlib&gt;</code><br />
@@ -82,54 +83,56 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="Translation_8cpp__incl.png" border="0" usemap="#alib_2CAPI_2Translation_8cpp" alt=""/></div>
 <map name="alib_2CAPI_2Translation_8cpp" id="alib_2CAPI_2Translation_8cpp">
-<area shape="rect" title=" " alt="" coords="2915,5,3089,31"/>
-<area shape="rect" href="Translation_8h.html" title=" " alt="" coords="830,86,971,111"/>
-<area shape="poly" title=" " alt="" coords="2914,25,985,97,985,92,2914,20"/>
+<area shape="rect" title=" " alt="" coords="2940,5,3115,31"/>
+<area shape="rect" href="Translation_8h.html" title=" " alt="" coords="889,86,1030,111"/>
+<area shape="poly" title=" " alt="" coords="2940,25,1044,97,1044,91,2940,20"/>
 <area shape="rect" title=" " alt="" coords="5,262,95,287"/>
-<area shape="poly" title=" " alt="" coords="2914,23,2496,27,1890,37,1272,55,1013,67,818,81,676,96,566,111,457,133,319,169,190,214,87,259,85,254,188,209,317,164,456,128,565,105,675,91,818,76,1013,62,1271,49,1889,32,2496,22,2914,17"/>
-<area shape="rect" title=" " alt="" coords="1065,174,1192,199"/>
-<area shape="poly" title=" " alt="" coords="2914,26,2633,41,2218,68,1732,110,1481,138,1236,169,1203,174,1202,169,1235,164,1481,132,1731,105,2218,63,2633,35,2914,20"/>
+<area shape="poly" title=" " alt="" coords="2940,23,1931,39,1323,56,1069,68,877,81,723,96,603,110,485,132,335,169,266,190,198,214,89,259,87,254,196,209,264,185,333,164,484,127,602,105,722,91,876,76,1069,63,1323,51,1930,34,2940,18"/>
+<area shape="rect" title=" " alt="" coords="1081,174,1208,199"/>
+<area shape="poly" title=" " alt="" coords="2940,25,2655,37,2233,62,1991,81,1739,105,1485,134,1236,169,1210,174,1209,169,1235,164,1484,129,1739,100,1991,76,2233,57,2654,31,2940,19"/>
 <area shape="rect" href="AIEToConfiguration_8h.html" title=" " alt="" coords="3065,79,3310,119"/>
-<area shape="poly" title=" " alt="" coords="3030,28,3131,71,3129,76,3028,33"/>
+<area shape="poly" title=" " alt="" coords="3052,28,3137,70,3135,75,3049,33"/>
 <area shape="rect" title=" " alt="" coords="3259,174,3407,199"/>
-<area shape="poly" title=" " alt="" coords="3007,30,3022,73,3036,97,3054,116,3270,168,3269,174,3051,121,3031,100,3017,75,3002,32"/>
+<area shape="poly" title=" " alt="" coords="3029,31,3033,73,3041,97,3054,116,3132,137,3269,168,3268,174,3131,142,3051,121,3036,99,3028,74,3024,31"/>
 <area shape="rect" href="AIETargetModel_8h.html" title=" " alt="" coords="2175,255,2314,295"/>
-<area shape="poly" title=" " alt="" coords="2915,24,2731,31,2510,42,2315,59,2246,69,2207,81,2170,106,2144,135,2137,151,2134,167,2136,186,2144,205,2162,228,2186,246,2183,250,2159,232,2140,208,2131,187,2129,167,2132,149,2140,132,2167,102,2205,76,2245,64,2315,54,2510,37,2730,26,2914,19"/>
+<area shape="poly" title=" " alt="" coords="2940,24,2750,31,2522,42,2320,58,2248,69,2207,81,2170,106,2144,135,2137,151,2134,167,2136,186,2144,205,2162,228,2186,246,2183,250,2159,232,2140,208,2131,187,2129,167,2132,149,2140,132,2167,102,2205,76,2247,64,2319,53,2522,36,2750,25,2940,19"/>
 <area shape="rect" title=" " alt="" coords="2573,350,2653,375"/>
-<area shape="poly" title=" " alt="" coords="2915,24,2873,30,2830,40,2789,57,2752,81,2727,109,2715,137,2708,169,2694,208,2627,339,2623,336,2689,206,2703,168,2710,136,2722,106,2748,77,2786,52,2829,35,2872,24,2914,19"/>
+<area shape="poly" title=" " alt="" coords="2940,32,2830,52,2783,65,2752,81,2726,109,2715,137,2708,169,2694,208,2627,339,2623,336,2689,206,2703,168,2710,135,2722,106,2748,77,2781,60,2829,46,2939,27"/>
 <area shape="rect" href="AIERT_8h.html" title=" " alt="" coords="2219,86,2364,111"/>
-<area shape="poly" title=" " alt="" coords="2915,32,2378,91,2377,85,2914,26"/>
+<area shape="poly" title=" " alt="" coords="2940,31,2378,91,2377,86,2939,26"/>
 <area shape="rect" title=" " alt="" coords="2472,174,2679,199"/>
-<area shape="poly" title=" " alt="" coords="2915,27,2809,44,2753,60,2699,81,2668,99,2640,122,2596,166,2592,162,2636,118,2665,95,2697,76,2751,54,2808,39,2914,22"/>
+<area shape="poly" title=" " alt="" coords="2940,25,2884,31,2822,41,2759,58,2699,81,2668,99,2640,122,2595,165,2592,162,2636,118,2665,95,2697,76,2758,53,2821,36,2884,26,2940,20"/>
 <area shape="rect" title=" " alt="" coords="2389,174,2447,199"/>
-<area shape="poly" title=" " alt="" coords="2915,29,2781,47,2707,62,2635,81,2582,101,2531,124,2449,169,2447,164,2529,120,2580,96,2633,76,2706,56,2780,41,2914,23"/>
+<area shape="poly" title=" " alt="" coords="2940,27,2795,45,2714,60,2635,81,2582,101,2531,124,2449,169,2447,164,2529,119,2580,96,2633,76,2713,55,2794,40,2939,22"/>
 <area shape="rect" href="AIETargets_8h.html" title=" " alt="" coords="2761,86,2939,111"/>
-<area shape="poly" title=" " alt="" coords="2981,33,2886,82,2883,77,2978,28"/>
+<area shape="poly" title=" " alt="" coords="3003,33,2889,83,2887,78,3000,28"/>
 <area shape="rect" title=" " alt="" coords="3172,174,3235,199"/>
-<area shape="poly" title=" " alt="" coords="3002,32,2997,73,3001,96,3011,117,3027,134,3043,144,3077,152,3115,154,3161,164,3167,166,3165,171,3160,169,3115,159,3076,157,3041,149,3023,138,3006,120,2995,98,2992,73,2996,31"/>
+<area shape="poly" title=" " alt="" coords="3022,32,3013,50,3005,73,3003,96,3011,117,3026,134,3042,144,3076,152,3115,154,3161,164,3167,166,3165,171,3160,169,3114,159,3075,157,3040,149,3023,138,3006,120,2998,97,3000,72,3008,48,3018,30"/>
 <area shape="rect" title=" " alt="" coords="3335,86,3445,111"/>
-<area shape="poly" title=" " alt="" coords="3073,28,3190,49,3323,76,3338,80,3337,85,3321,81,3189,54,3072,33"/>
+<area shape="poly" title=" " alt="" coords="3091,28,3323,76,3338,80,3336,85,3321,81,3090,33"/>
 <area shape="rect" title=" " alt="" coords="3469,86,3617,111"/>
-<area shape="poly" title=" " alt="" coords="3090,26,3261,46,3458,76,3482,81,3481,86,3458,81,3260,52,3089,31"/>
+<area shape="poly" title=" " alt="" coords="3115,27,3275,47,3458,76,3481,80,3480,86,3458,81,3274,53,3114,32"/>
 <area shape="rect" title=" " alt="" coords="3642,79,3791,119"/>
-<area shape="poly" title=" " alt="" coords="3090,22,3329,40,3477,56,3628,76,3628,81,3476,61,3328,46,3090,27"/>
+<area shape="poly" title=" " alt="" coords="3115,22,3344,41,3484,56,3628,76,3628,81,3483,62,3343,46,3115,27"/>
 <area shape="rect" title=" " alt="" coords="3815,86,4007,111"/>
-<area shape="poly" title=" " alt="" coords="3090,20,3405,39,3604,55,3804,76,3838,81,3838,86,3803,81,3603,60,3405,44,3089,26"/>
+<area shape="poly" title=" " alt="" coords="3115,21,3420,39,3611,55,3804,76,3838,81,3838,86,3803,81,3611,61,3420,45,3115,26"/>
 <area shape="rect" title=" " alt="" coords="4032,79,4175,119"/>
-<area shape="poly" title=" " alt="" coords="3090,17,3259,20,3488,29,3750,47,4019,76,4018,81,3749,52,3488,35,3259,26,3090,22"/>
+<area shape="poly" title=" " alt="" coords="3115,17,3280,21,3503,30,3757,47,4019,76,4018,81,3757,53,3503,35,3280,26,3115,23"/>
 <area shape="rect" title=" " alt="" coords="4199,86,4368,111"/>
-<area shape="poly" title=" " alt="" coords="3089,17,3287,20,3559,28,3871,46,4031,59,4188,76,4219,81,4218,86,4187,81,4031,65,3871,51,3559,34,3286,25,3089,22"/>
-<area shape="rect" title=" " alt="" coords="4393,86,4563,111"/>
-<area shape="poly" title=" " alt="" coords="3089,16,3315,17,3635,24,4005,43,4195,57,4381,76,4413,81,4412,86,4380,81,4195,62,4005,48,3635,30,3315,22,3089,21"/>
-<area shape="rect" title=" " alt="" coords="4588,86,4653,111"/>
-<area shape="poly" title=" " alt="" coords="3090,16,3403,16,3833,22,4055,29,4263,40,4441,55,4576,76,4585,79,4584,84,4575,81,4441,61,4262,45,4055,34,3833,27,3403,21,3090,21"/>
-<area shape="rect" href="TargetModel_8h.html" title=" " alt="" coords="825,174,976,199"/>
-<area shape="poly" title=" " alt="" coords="903,112,903,160,898,160,898,112"/>
-<area shape="poly" title=" " alt="" coords="830,113,515,167,311,209,107,257,95,260,94,255,105,252,310,203,514,162,829,108"/>
-<area shape="poly" title=" " alt="" coords="932,109,1086,167,1085,172,930,114"/>
-<area shape="rect" title=" " alt="" coords="669,174,801,199"/>
-<area shape="poly" title=" " alt="" coords="880,114,771,170,769,165,877,109"/>
-<area shape="poly" title=" " alt="" coords="853,202,813,209,706,221,614,227,458,227,383,227,303,230,213,240,107,257,93,260,92,255,105,252,212,234,303,225,383,221,458,221,614,221,705,216,812,204,852,197"/>
+<area shape="poly" title=" " alt="" coords="3115,17,3308,20,3575,29,3879,46,4188,76,4219,81,4218,86,4187,81,3879,52,3574,34,3308,25,3115,22"/>
+<area shape="rect" title=" " alt="" coords="4392,86,4524,111"/>
+<area shape="poly" title=" " alt="" coords="3115,18,3753,36,4116,53,4267,64,4381,76,4405,80,4404,86,4380,81,4266,69,4115,58,3753,41,3115,24"/>
+<area shape="rect" title=" " alt="" coords="4549,86,4719,111"/>
+<area shape="poly" title=" " alt="" coords="3115,18,3826,37,4236,54,4407,65,4537,76,4569,81,4568,86,4536,81,4407,70,4236,60,3826,43,3115,24"/>
+<area shape="rect" title=" " alt="" coords="4744,86,4809,111"/>
+<area shape="poly" title=" " alt="" coords="3115,18,3986,36,4458,53,4630,64,4732,76,4741,79,4740,84,4731,81,4630,69,4458,59,3986,41,3115,23"/>
+<area shape="rect" href="TargetModel_8h.html" title=" " alt="" coords="653,174,804,199"/>
+<area shape="poly" title=" " alt="" coords="929,114,773,172,771,167,927,109"/>
+<area shape="poly" title=" " alt="" coords="889,112,550,165,329,207,107,257,95,260,94,255,105,252,328,201,549,159,888,107"/>
+<area shape="poly" title=" " alt="" coords="985,109,1108,166,1106,171,983,114"/>
+<area shape="rect" title=" " alt="" coords="893,174,1025,199"/>
+<area shape="poly" title=" " alt="" coords="962,112,962,160,957,160,957,112"/>
+<area shape="poly" title=" " alt="" coords="654,197,365,223,215,240,107,257,94,260,93,255,105,252,214,235,365,218,653,191"/>
 <area shape="poly" title=" " alt="" coords="3221,116,3303,165,3300,169,3218,121"/>
 <area shape="rect" title=" " alt="" coords="3431,174,3557,199"/>
 <area shape="poly" title=" " alt="" coords="3255,116,3441,168,3439,173,3254,121"/>
@@ -159,7 +162,7 @@ $(function() {
 <area shape="poly" title=" " alt="" coords="1383,188,1716,206,1935,225,2157,252,2162,253,2161,258,2156,257,1935,231,1716,212,1383,193"/>
 <area shape="poly" title=" " alt="" coords="1383,188,1565,196,1792,209,1998,228,2071,239,2114,252,2135,268,2154,288,2180,329,2175,332,2149,291,2132,272,2111,257,2070,245,1997,233,1792,215,1564,201,1383,193"/>
 <area shape="rect" title=" " alt="" coords="754,255,903,295"/>
-<area shape="poly" title=" " alt="" coords="1248,202,918,257,917,252,1247,197"/>
+<area shape="poly" title=" " alt="" coords="1248,204,1220,209,1070,232,918,257,917,252,1069,227,1219,204,1247,199"/>
 <area shape="rect" title=" " alt="" coords="927,255,1085,295"/>
 <area shape="poly" title=" " alt="" coords="1249,209,1088,254,1086,248,1247,204"/>
 <area shape="rect" title=" " alt="" coords="1109,255,1305,295"/>
@@ -173,13 +176,13 @@ $(function() {
 <area shape="rect" title=" " alt="" coords="1954,255,2101,295"/>
 <area shape="poly" title=" " alt="" coords="1383,190,1625,212,1781,229,1941,252,1940,257,1780,235,1625,217,1383,195"/>
 <area shape="rect" title=" " alt="" coords="119,255,253,295"/>
-<area shape="poly" title=" " alt="" coords="1248,203,1204,209,1062,222,942,227,736,228,530,232,410,240,268,257,267,252,409,235,530,226,736,223,942,222,1062,216,1203,204,1248,198"/>
+<area shape="poly" title=" " alt="" coords="1248,205,1220,209,1076,224,954,230,745,230,535,232,412,240,268,257,267,252,412,235,535,227,745,225,954,225,1076,218,1219,204,1247,200"/>
 <area shape="rect" title=" " alt="" coords="277,255,412,295"/>
-<area shape="poly" title=" " alt="" coords="1248,203,1204,209,1086,220,987,226,816,229,644,234,544,242,426,257,425,252,544,237,644,229,816,224,986,221,1086,215,1203,204,1248,198"/>
+<area shape="poly" title=" " alt="" coords="1248,205,1220,209,1100,222,998,228,824,231,649,235,547,242,426,257,426,252,546,237,649,229,824,226,998,223,1100,217,1219,204,1247,200"/>
 <area shape="rect" title=" " alt="" coords="436,255,571,295"/>
-<area shape="poly" title=" " alt="" coords="1248,203,1204,209,1031,225,895,230,759,237,584,257,584,252,758,231,895,225,1031,220,1203,204,1248,198"/>
+<area shape="poly" title=" " alt="" coords="1248,205,1220,209,1043,227,903,231,763,237,681,244,585,257,584,252,681,239,763,232,903,226,1043,221,1219,204,1247,200"/>
 <area shape="rect" title=" " alt="" coords="595,255,729,295"/>
-<area shape="poly" title=" " alt="" coords="1248,203,1204,209,1076,224,975,231,874,239,744,257,743,252,873,234,975,226,1076,218,1203,204,1248,197"/>
+<area shape="poly" title=" " alt="" coords="1248,205,1220,209,1088,225,983,232,878,240,743,257,743,252,877,234,983,227,1087,220,1219,204,1247,199"/>
 <area shape="poly" title=" " alt="" coords="2925,109,3248,164,3270,169,3269,174,3247,169,2924,114"/>
 <area shape="poly" title=" " alt="" coords="2814,114,2626,172,2624,167,2812,109"/>
 <area shape="rect" title=" " alt="" coords="2984,174,3148,199"/>
@@ -252,7 +255,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00151">151</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00152">152</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIELLVMLink_8cpp_source.html#l00123">xilinx::AIE::AIELLVMLink()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00027">xilinx::AIE::os</a>.</p>
 
@@ -302,7 +305,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00180">180</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00181">181</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIERT_8cpp_source.html#l00874">xilinx::AIE::AIERTControl::dmaUpdateBdAddr()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>.</p>
 
@@ -324,7 +327,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00191">191</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00192">192</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00886">xilinx::AIE::AIERTControl::exportSerializedTransaction()</a>.</p>
 
@@ -346,7 +349,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00186">186</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00187">187</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00881">xilinx::AIE::AIERTControl::startTransaction()</a>.</p>
 
@@ -378,7 +381,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00040">40</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00041">41</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00027">xilinx::AIE::os</a>, and <a class="el" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">xilinx::aievec::translateAIEVecToCpp()</a>.</p>
 
@@ -410,7 +413,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00086">86</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00087">87</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEToConfiguration_8cpp_source.html#l00418">xilinx::AIE::convertTransactionBinaryToMLIR()</a>.</p>
 
@@ -432,7 +435,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00107">107</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00108">108</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#aefcc988ab637b3d10f95b1c7fa46d720">xilinx::AIE::AIETranslateControlPacketsToUI32Vec()</a>.</p>
 
@@ -454,7 +457,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00051">51</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00052">52</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00027">xilinx::AIE::os</a>.</p>
 
@@ -486,7 +489,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00094">94</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00095">95</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a981c7661cfb4a47a266070b3fc6d55f7">xilinx::AIE::AIETranslateNpuToBinary()</a>.</p>
 
@@ -524,7 +527,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00140">140</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00141">141</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a50a692addc63269593d8c36cacff6634">xilinx::AIE::AIETranslateToBCF()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8h_source.html#l00027">xilinx::AIE::os</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>.</p>
 
@@ -592,7 +595,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00065">65</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00066">66</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a1d739390cd34a6191b3ee0baacccb1ab">xilinx::AIE::AIETranslateToCDODirect()</a>.</p>
 
@@ -614,7 +617,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00129">129</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00130">130</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a50302800b3a0c807899831515c014853">xilinx::AIE::AIETranslateToHSA()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00027">xilinx::AIE::os</a>.</p>
 
@@ -636,7 +639,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00118">118</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00119">119</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a05f2272ae28e7eb0ee2a405bb83def50">xilinx::AIE::AIETranslateToXAIEV2()</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00027">xilinx::AIE::os</a>.</p>
 
@@ -658,7 +661,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00175">175</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00176">176</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 </div>
 </div>
@@ -678,14 +681,14 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00167">167</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="Translation_8cpp_source.html#l00168">168</a> of file <a class="el" href="Translation_8cpp_source.html">Translation.cpp</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Jul 31 2025 02:05:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 5 2025 15:45:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

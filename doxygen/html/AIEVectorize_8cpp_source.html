@@ -487,7 +487,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00427" name="l00427"></a><span class="lineno">  427</span> </div>
 <div class="line"><a id="l00428" name="l00428"></a><span class="lineno">  428</span>  SmallVector&lt;Value, 4&gt; indices(readOp.getIndices().begin(),</div>
 <div class="line"><a id="l00429" name="l00429"></a><span class="lineno">  429</span>                                readOp.getIndices().end());</div>
-<div class="line"><a id="l00430" name="l00430"></a><span class="lineno">  430</span>  <span class="keyword">auto</span> memRefType = cast&lt;MemRefType&gt;(readOp.getSource().getType());</div>
+<div class="line"><a id="l00430" name="l00430"></a><span class="lineno">  430</span>  <span class="keyword">auto</span> memRefType = cast&lt;MemRefType&gt;(readOp.getBase().getType());</div>
 <div class="line"><a id="l00431" name="l00431"></a><span class="lineno">  431</span>  MLIRContext *context = memRefType.getContext();</div>
 <div class="line"><a id="l00432" name="l00432"></a><span class="lineno">  432</span> </div>
 <div class="line"><a id="l00433" name="l00433"></a><span class="lineno">  433</span>  SmallVector&lt;AffineExpr, 8&gt; exprVec;</div>
@@ -1125,7 +1125,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01065" name="l01065"></a><span class="lineno"> 1065</span>      <span class="comment">// Generate the upd instruction, and link it with a previous upd op</span></div>
 <div class="line"><a id="l01066" name="l01066"></a><span class="lineno"> 1066</span>      <span class="comment">// corresponding to the same read.</span></div>
 <div class="line"><a id="l01067" name="l01067"></a><span class="lineno"> 1067</span>      updOp = state-&gt;builder.create&lt;aievec::UPDOp&gt;(</div>
-<div class="line"><a id="l01068" name="l01068"></a><span class="lineno"> 1068</span>          readOp.getLoc(), updVecType, readOp.getSource(), indices,</div>
+<div class="line"><a id="l01068" name="l01068"></a><span class="lineno"> 1068</span>          readOp.getLoc(), updVecType, readOp.getBase(), indices,</div>
 <div class="line"><a id="l01069" name="l01069"></a><span class="lineno"> 1069</span>          start - offset, idx - 1,</div>
 <div class="line"><a id="l01070" name="l01070"></a><span class="lineno"> 1070</span>          updOp ? updOp.getResult() : TypedValue&lt;VectorType&gt;(<span class="keyword">nullptr</span>));</div>
 <div class="line"><a id="l01071" name="l01071"></a><span class="lineno"> 1071</span> </div>
@@ -2562,7 +2562,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l02500" name="l02500"></a><span class="lineno"> 2500</span>    MemRefType memRefType = <span class="keyword">nullptr</span>;</div>
 <div class="line"><a id="l02501" name="l02501"></a><span class="lineno"> 2501</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> writeOp = dyn_cast&lt;TransferWriteOp&gt;(user)) {</div>
 <div class="line"><a id="l02502" name="l02502"></a><span class="lineno"> 2502</span>      <span class="comment">// Get the element type from the memref output</span></div>
-<div class="line"><a id="l02503" name="l02503"></a><span class="lineno"> 2503</span>      memRefType = cast&lt;MemRefType&gt;(writeOp.getSource().getType());</div>
+<div class="line"><a id="l02503" name="l02503"></a><span class="lineno"> 2503</span>      memRefType = cast&lt;MemRefType&gt;(writeOp.getBase().getType());</div>
 <div class="line"><a id="l02504" name="l02504"></a><span class="lineno"> 2504</span>      scalarType = memRefType.getElementType();</div>
 <div class="line"><a id="l02505" name="l02505"></a><span class="lineno"> 2505</span>    } <span class="keywordflow">else</span></div>
 <div class="line"><a id="l02506" name="l02506"></a><span class="lineno"> 2506</span>      scalarType = getElementTypeOrSelf(*user-&gt;getResultTypes().begin());</div>
@@ -2897,7 +2897,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l02835" name="l02835"></a><span class="lineno"> 2835</span>    <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l02836" name="l02836"></a><span class="lineno"> 2836</span>  }</div>
 <div class="line"><a id="l02837" name="l02837"></a><span class="lineno"> 2837</span> </div>
-<div class="line"><a id="l02838" name="l02838"></a><span class="lineno"> 2838</span>  <span class="keyword">auto</span> memRefType = cast&lt;MemRefType&gt;(readOp.getSource().getType());</div>
+<div class="line"><a id="l02838" name="l02838"></a><span class="lineno"> 2838</span>  <span class="keyword">auto</span> memRefType = cast&lt;MemRefType&gt;(readOp.getBase().getType());</div>
 <div class="line"><a id="l02839" name="l02839"></a><span class="lineno"> 2839</span>  MLIRContext *context = memRefType.getContext();</div>
 <div class="line"><a id="l02840" name="l02840"></a><span class="lineno"> 2840</span>  ArrayRef&lt;int64_t&gt; sizes = memRefType.getShape();</div>
 <div class="line"><a id="l02841" name="l02841"></a><span class="lineno"> 2841</span>  <span class="keywordtype">int</span> numDims = sizes.size();</div>
@@ -3139,7 +3139,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aIntervalReuse_8h_html"><div class="ttname"><a href="IntervalReuse_8h.html">IntervalReuse.h</a></div></div>
 <div class="ttc" id="aclassAIEVectorizeBase_html"><div class="ttname"><a href="classAIEVectorizeBase.html">AIEVectorizeBase</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html">xilinx::aievec::IntervalReuse</a></div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8h_source.html#l00073">IntervalReuse.h:73</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a12d67cd823b73617944361b02b491334"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a12d67cd823b73617944361b02b491334">xilinx::aievec::IntervalReuse::insertInterval</a></div><div class="ttdeci">void insertInterval(mlir::vector::TransferReadOp readOp, llvm::DenseMap&lt; mlir::Operation *, IntervalReuse * &gt; &amp;dataAccessToIntervalMap, int32_t offset, int32_t forLoopStepSize, bool isSplat=false, unsigned minVecSize=128)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00166">IntervalReuse.cpp:166</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a12d67cd823b73617944361b02b491334"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a12d67cd823b73617944361b02b491334">xilinx::aievec::IntervalReuse::insertInterval</a></div><div class="ttdeci">void insertInterval(mlir::vector::TransferReadOp readOp, llvm::DenseMap&lt; mlir::Operation *, IntervalReuse * &gt; &amp;dataAccessToIntervalMap, int32_t offset, int32_t forLoopStepSize, bool isSplat=false, unsigned minVecSize=128)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00165">IntervalReuse.cpp:165</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a18e7c62064f3b9117953f8157fb2afa9"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a18e7c62064f3b9117953f8157fb2afa9">xilinx::aievec::IntervalReuse::setAccessExtent</a></div><div class="ttdeci">void setAccessExtent(mlir::Operation *op, std::pair&lt; int32_t, int32_t &gt; &amp;extent)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00084">IntervalReuse.cpp:84</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a862f59257d84eaa70d6b51cf0066a4fb"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a862f59257d84eaa70d6b51cf0066a4fb">xilinx::aievec::IntervalReuse::getIntervalWidth</a></div><div class="ttdeci">int32_t getIntervalWidth(mlir::Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00115">IntervalReuse.cpp:115</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a919e52c217a938017557439e6e688b7f"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a919e52c217a938017557439e6e688b7f">xilinx::aievec::IntervalReuse::getAccessExtent</a></div><div class="ttdeci">std::pair&lt; int32_t, int32_t &gt; getAccessExtent(mlir::Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00076">IntervalReuse.cpp:76</a></div></div>
@@ -3165,7 +3165,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Jul 31 2025 02:05:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 5 2025 15:45:04 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

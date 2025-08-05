@@ -196,188 +196,187 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>    vector::TransferReadOp readOp, AffineExpr invariantBase,</div>
 <div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>    mlir::DenseMap&lt;Block *, SmallVector&lt;Operation *, 8&gt;&gt;</div>
 <div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>        &amp;blockToEnclosingLoops) {</div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>  <span class="keywordflow">return</span> sameMemRef(readOp.getSource()) &amp;&amp;</div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>         sameInvariantIndices(invariantBase) &amp;&amp;</div>
-<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>         sameEnclosingLoops(readOp, blockToEnclosingLoops);</div>
-<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>}</div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>  <span class="keywordflow">return</span> sameMemRef(readOp.getBase()) &amp;&amp; sameInvariantIndices(invariantBase) &amp;&amp;</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>         sameEnclosingLoops(readOp, blockToEnclosingLoops);</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>}</div>
 </div>
-<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span> </div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span><span class="comment">// For the given vector read operation, compute the access bounds. For example,</span></div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span><span class="comment">// if the vector size is 1x8, and the read is A[N:N+7], then the bound is [N,</span></div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span><span class="comment">// N+7]. The returned bounds are vector size aligned. This means that if the</span></div>
-<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span><span class="comment">// access is A[N+1:N+8], and the vector size is 256 bits, then the returned</span></div>
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span><span class="comment">// bound is [N:N+15]. We assume that each row of the array is properly aligned.</span></div>
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span><span class="keyword">static</span> std::pair&lt;int32_t, int32_t&gt;</div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>computeAccessExtent(vector::TransferReadOp readOp, int32_t offset,</div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>                    int32_t loopStepSize, <span class="keywordtype">bool</span> isSplat, <span class="keywordtype">unsigned</span> minVecSize) {</div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>  VectorType vType = cast&lt;VectorType&gt;(readOp.getResult().getType());</div>
-<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>  <span class="keywordtype">unsigned</span> vecSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(vType);</div>
-<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>  int32_t elementSizeInBits = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a54f5be063fa08846cc3e338485cfe1bd">getElementSizeInBits</a>(vType);</div>
-<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>  <span class="comment">// Create chunks greater in size than minVecSize</span></div>
-<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>  int32_t vecSizeInBits = std::max(minVecSize, vecSize * elementSizeInBits);</div>
-<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span> </div>
-<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>  assert(<a class="code hl_function" href="namespacexilinx_1_1aievec.html#a06d6e2124bd619115cfbbf4dabc625e3">isPowerOfTwo</a>(vecSizeInBits) &amp;&amp;</div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>         <span class="stringliteral">&quot;Current support is only for power-of-two vector sizes&quot;</span>);</div>
-<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span> </div>
-<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>  <span class="comment">// Below computation is base on the assumption that vectorization factor is</span></div>
-<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>  <span class="comment">// always a power of 2.</span></div>
-<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>  int32_t lb = (offset * elementSizeInBits) &amp; ~(vecSizeInBits - 1);</div>
-<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>  int32_t ub = (isSplat ? (offset &amp; ~(vecSize - 1)) + vecSize</div>
-<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>                        : offset + loopStepSize * vecSize) *</div>
-<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>               elementSizeInBits;</div>
-<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>  <span class="comment">// Adjust to the nearest multiple of vecSizeInBits</span></div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>  ub = (ub + vecSizeInBits - 1) &amp; ~(vecSizeInBits - 1);</div>
-<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span> </div>
-<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>  <span class="keywordflow">return</span> std::make_pair(lb, ub);</div>
-<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>}</div>
-<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span> </div>
-<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span><span class="comment">// Insert a new interval for the read operation into already existing</span></div>
-<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span><span class="comment">// intervals. This gives us an interval reuse graph, which can then be used to</span></div>
-<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span><span class="comment">// determine the AIE vector sizes. The minimum vector size for AIE is 128 bits,</span></div>
-<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span><span class="comment">// so align the access extents to at least 128-bit boundary.</span></div>
-<div class="foldopen" id="foldopen00166" data-start="{" data-end="}">
-<div class="line"><a id="l00166" name="l00166"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1IntervalReuse.html#a12d67cd823b73617944361b02b491334">  166</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="classxilinx_1_1aievec_1_1IntervalReuse.html#a12d67cd823b73617944361b02b491334">IntervalReuse::insertInterval</a>(</div>
-<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>    vector::TransferReadOp readOp,</div>
-<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>    mlir::DenseMap&lt;Operation *, IntervalReuse *&gt; &amp;opToIntervalMap,</div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>    int32_t offset, int32_t loopStepSize, <span class="keywordtype">bool</span> isSplat, <span class="keywordtype">unsigned</span> minVecSize) {</div>
-<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>  <span class="comment">// Get the vector-size-aligned lower and upper bounds for the vector read</span></div>
-<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>  std::pair&lt;int32_t, int32_t&gt; bound =</div>
-<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>      computeAccessExtent(readOp, offset, loopStepSize, isSplat, minVecSize);</div>
-<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span> </div>
-<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>  <span class="comment">// Make an entry into extentMap</span></div>
-<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>  extentMap[readOp] = bound;</div>
-<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>  <span class="comment">// Make an entry into readOp-&gt;interval map</span></div>
-<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>  opToIntervalMap[readOp] = <span class="keyword">this</span>;</div>
-<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span> </div>
-<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>  LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;\n\nInserting access extent [&quot;</span> &lt;&lt; bound.first</div>
-<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>                          &lt;&lt; <span class="stringliteral">&quot;,&quot;</span> &lt;&lt; bound.second &lt;&lt; <span class="stringliteral">&quot;] for read op &quot;</span> &lt;&lt; readOp);</div>
-<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span> </div>
-<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>  <span class="comment">// If the interval already exists, we&#39;re done</span></div>
-<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>  <span class="keywordflow">if</span> (std::find(intervals.begin(), intervals.end(), bound) != intervals.end()) {</div>
-<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>    LLVM_DEBUG(</div>
-<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>        llvm::dbgs()</div>
-<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>        &lt;&lt; <span class="stringliteral">&quot;\n\tPre-existing interval already subsumes the access extent&quot;</span>);</div>
-<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>    <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>  }</div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>  <span class="comment">// Insert bound into the current interval set. We do so by using O(N) space,</span></div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>  <span class="comment">// creating a new mergedIntervals, and replacing intervals with it.</span></div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>  int32_t lb = bound.first, ub = bound.second;</div>
-<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>  SmallVector&lt;std::pair&lt;int32_t, int32_t&gt;, 8&gt; mergedIntervals;</div>
-<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>  <span class="keywordtype">bool</span> inserted = <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span> </div>
-<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>  <span class="comment">// Iterate over all the existing intervals, and merge them with the bound.</span></div>
-<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>  <span class="comment">// There are three cases: (1) the interval falls before the bound; (2) the</span></div>
-<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>  <span class="comment">// interval intersects with bound, and (3) the interval falls after the</span></div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>  <span class="comment">// bound.  The idea is to take care of (2), while just blindly inserting</span></div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>  <span class="comment">// intervals that don&#39;t intersect with bounds.</span></div>
-<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> iv : intervals) {</div>
-<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>    <span class="comment">// No interference, interval i is definitely before new interval</span></div>
-<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>    <span class="keywordflow">if</span> (iv.second &lt;= lb)</div>
-<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span>      mergedIntervals.push_back(iv);</div>
-<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>    <span class="keywordflow">else</span> <span class="keywordflow">if</span> (iv.first &gt;= ub) {</div>
-<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>      <span class="comment">// Interference finished at this point. Resolve if necessary</span></div>
-<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>      <span class="keywordflow">if</span> (!inserted) {</div>
-<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>        mergedIntervals.push_back(std::make_pair(lb, ub));</div>
-<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>        inserted = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>      }</div>
-<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>      mergedIntervals.push_back(iv);</div>
-<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>      <span class="comment">// Interference continues. Compute the overlap</span></div>
-<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>      lb = std::min(lb, iv.first);</div>
-<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span>      ub = std::max(ub, iv.second);</div>
-<div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span>    }</div>
-<div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>  }</div>
-<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>  <span class="keywordflow">if</span> (!inserted)</div>
-<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span>    mergedIntervals.push_back(std::make_pair(lb, ub));</div>
-<div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span> </div>
-<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>  intervals.clear();</div>
-<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span>  intervals = std::move(mergedIntervals);</div>
-<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span> </div>
-<div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span>  <span class="comment">// Verify that each interval is within the AIE vector size limit</span></div>
-<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>  assert([&amp;] {</div>
-<div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> iv : intervals) {</div>
-<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span>      int32_t width = iv.second - iv.first;</div>
-<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span>      <span class="keywordflow">if</span> (width &gt; 1024) {</div>
-<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>        printf(<span class="stringliteral">&quot;Vector width &gt; 1024 currently not supported&quot;</span>);</div>
-<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span>      }</div>
-<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>    }</div>
-<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>    <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>  }());</div>
-<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span> </div>
-<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>  <span class="comment">// Print out the merged intervals</span></div>
-<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>  LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;\n\tAfter inserting access extent, intervals: &quot;</span>);</div>
-<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span><span class="preprocessor">#ifndef NDEBUG</span></div>
-<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> iv : intervals)</div>
-<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>    LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;[&quot;</span> &lt;&lt; iv.first &lt;&lt; <span class="stringliteral">&quot;,&quot;</span> &lt;&lt; iv.second &lt;&lt; <span class="stringliteral">&quot;] &quot;</span>);</div>
-<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>}</div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span> </div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span><span class="comment">// For the given vector read operation, compute the access bounds. For example,</span></div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span><span class="comment">// if the vector size is 1x8, and the read is A[N:N+7], then the bound is [N,</span></div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span><span class="comment">// N+7]. The returned bounds are vector size aligned. This means that if the</span></div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span><span class="comment">// access is A[N+1:N+8], and the vector size is 256 bits, then the returned</span></div>
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span><span class="comment">// bound is [N:N+15]. We assume that each row of the array is properly aligned.</span></div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span><span class="keyword">static</span> std::pair&lt;int32_t, int32_t&gt;</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>computeAccessExtent(vector::TransferReadOp readOp, int32_t offset,</div>
+<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>                    int32_t loopStepSize, <span class="keywordtype">bool</span> isSplat, <span class="keywordtype">unsigned</span> minVecSize) {</div>
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>  VectorType vType = cast&lt;VectorType&gt;(readOp.getResult().getType());</div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>  <span class="keywordtype">unsigned</span> vecSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(vType);</div>
+<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>  int32_t elementSizeInBits = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a54f5be063fa08846cc3e338485cfe1bd">getElementSizeInBits</a>(vType);</div>
+<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>  <span class="comment">// Create chunks greater in size than minVecSize</span></div>
+<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>  int32_t vecSizeInBits = std::max(minVecSize, vecSize * elementSizeInBits);</div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span> </div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>  assert(<a class="code hl_function" href="namespacexilinx_1_1aievec.html#a06d6e2124bd619115cfbbf4dabc625e3">isPowerOfTwo</a>(vecSizeInBits) &amp;&amp;</div>
+<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>         <span class="stringliteral">&quot;Current support is only for power-of-two vector sizes&quot;</span>);</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span> </div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>  <span class="comment">// Below computation is base on the assumption that vectorization factor is</span></div>
+<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>  <span class="comment">// always a power of 2.</span></div>
+<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>  int32_t lb = (offset * elementSizeInBits) &amp; ~(vecSizeInBits - 1);</div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>  int32_t ub = (isSplat ? (offset &amp; ~(vecSize - 1)) + vecSize</div>
+<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>                        : offset + loopStepSize * vecSize) *</div>
+<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>               elementSizeInBits;</div>
+<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>  <span class="comment">// Adjust to the nearest multiple of vecSizeInBits</span></div>
+<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>  ub = (ub + vecSizeInBits - 1) &amp; ~(vecSizeInBits - 1);</div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span> </div>
+<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>  <span class="keywordflow">return</span> std::make_pair(lb, ub);</div>
+<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>}</div>
+<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span> </div>
+<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span><span class="comment">// Insert a new interval for the read operation into already existing</span></div>
+<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span><span class="comment">// intervals. This gives us an interval reuse graph, which can then be used to</span></div>
+<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span><span class="comment">// determine the AIE vector sizes. The minimum vector size for AIE is 128 bits,</span></div>
+<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span><span class="comment">// so align the access extents to at least 128-bit boundary.</span></div>
+<div class="foldopen" id="foldopen00165" data-start="{" data-end="}">
+<div class="line"><a id="l00165" name="l00165"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1IntervalReuse.html#a12d67cd823b73617944361b02b491334">  165</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="classxilinx_1_1aievec_1_1IntervalReuse.html#a12d67cd823b73617944361b02b491334">IntervalReuse::insertInterval</a>(</div>
+<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>    vector::TransferReadOp readOp,</div>
+<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>    mlir::DenseMap&lt;Operation *, IntervalReuse *&gt; &amp;opToIntervalMap,</div>
+<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>    int32_t offset, int32_t loopStepSize, <span class="keywordtype">bool</span> isSplat, <span class="keywordtype">unsigned</span> minVecSize) {</div>
+<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>  <span class="comment">// Get the vector-size-aligned lower and upper bounds for the vector read</span></div>
+<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>  std::pair&lt;int32_t, int32_t&gt; bound =</div>
+<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>      computeAccessExtent(readOp, offset, loopStepSize, isSplat, minVecSize);</div>
+<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span> </div>
+<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>  <span class="comment">// Make an entry into extentMap</span></div>
+<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>  extentMap[readOp] = bound;</div>
+<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>  <span class="comment">// Make an entry into readOp-&gt;interval map</span></div>
+<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>  opToIntervalMap[readOp] = <span class="keyword">this</span>;</div>
+<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span> </div>
+<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>  LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;\n\nInserting access extent [&quot;</span> &lt;&lt; bound.first</div>
+<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>                          &lt;&lt; <span class="stringliteral">&quot;,&quot;</span> &lt;&lt; bound.second &lt;&lt; <span class="stringliteral">&quot;] for read op &quot;</span> &lt;&lt; readOp);</div>
+<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span> </div>
+<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>  <span class="comment">// If the interval already exists, we&#39;re done</span></div>
+<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>  <span class="keywordflow">if</span> (std::find(intervals.begin(), intervals.end(), bound) != intervals.end()) {</div>
+<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>    LLVM_DEBUG(</div>
+<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>        llvm::dbgs()</div>
+<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>        &lt;&lt; <span class="stringliteral">&quot;\n\tPre-existing interval already subsumes the access extent&quot;</span>);</div>
+<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>    <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>  }</div>
+<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>  <span class="comment">// Insert bound into the current interval set. We do so by using O(N) space,</span></div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>  <span class="comment">// creating a new mergedIntervals, and replacing intervals with it.</span></div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>  int32_t lb = bound.first, ub = bound.second;</div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>  SmallVector&lt;std::pair&lt;int32_t, int32_t&gt;, 8&gt; mergedIntervals;</div>
+<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>  <span class="keywordtype">bool</span> inserted = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span> </div>
+<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>  <span class="comment">// Iterate over all the existing intervals, and merge them with the bound.</span></div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>  <span class="comment">// There are three cases: (1) the interval falls before the bound; (2) the</span></div>
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>  <span class="comment">// interval intersects with bound, and (3) the interval falls after the</span></div>
+<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>  <span class="comment">// bound.  The idea is to take care of (2), while just blindly inserting</span></div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>  <span class="comment">// intervals that don&#39;t intersect with bounds.</span></div>
+<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> iv : intervals) {</div>
+<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>    <span class="comment">// No interference, interval i is definitely before new interval</span></div>
+<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>    <span class="keywordflow">if</span> (iv.second &lt;= lb)</div>
+<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>      mergedIntervals.push_back(iv);</div>
+<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span>    <span class="keywordflow">else</span> <span class="keywordflow">if</span> (iv.first &gt;= ub) {</div>
+<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>      <span class="comment">// Interference finished at this point. Resolve if necessary</span></div>
+<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>      <span class="keywordflow">if</span> (!inserted) {</div>
+<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>        mergedIntervals.push_back(std::make_pair(lb, ub));</div>
+<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>        inserted = <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>      }</div>
+<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>      mergedIntervals.push_back(iv);</div>
+<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>      <span class="comment">// Interference continues. Compute the overlap</span></div>
+<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>      lb = std::min(lb, iv.first);</div>
+<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>      ub = std::max(ub, iv.second);</div>
+<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span>    }</div>
+<div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span>  }</div>
+<div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>  <span class="keywordflow">if</span> (!inserted)</div>
+<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>    mergedIntervals.push_back(std::make_pair(lb, ub));</div>
+<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span> </div>
+<div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span>  intervals.clear();</div>
+<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>  intervals = std::move(mergedIntervals);</div>
+<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span> </div>
+<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span>  <span class="comment">// Verify that each interval is within the AIE vector size limit</span></div>
+<div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span>  assert([&amp;] {</div>
+<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> iv : intervals) {</div>
+<div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>      int32_t width = iv.second - iv.first;</div>
+<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span>      <span class="keywordflow">if</span> (width &gt; 1024) {</div>
+<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span>        printf(<span class="stringliteral">&quot;Vector width &gt; 1024 currently not supported&quot;</span>);</div>
+<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>      }</div>
+<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span>    }</div>
+<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>    <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>  }());</div>
+<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span> </div>
+<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>  <span class="comment">// Print out the merged intervals</span></div>
+<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>  LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;\n\tAfter inserting access extent, intervals: &quot;</span>);</div>
+<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span><span class="preprocessor">#ifndef NDEBUG</span></div>
+<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> iv : intervals)</div>
+<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>    LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;[&quot;</span> &lt;&lt; iv.first &lt;&lt; <span class="stringliteral">&quot;,&quot;</span> &lt;&lt; iv.second &lt;&lt; <span class="stringliteral">&quot;] &quot;</span>);</div>
+<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>}</div>
 </div>
-<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span> </div>
-<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span><span class="comment">// If a vector corresponding to any interval was tagged as exclusively being</span></div>
-<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span><span class="comment">// the LHS operand of a mul/fma op, run a vector coalescing loop. The loop is</span></div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span><span class="comment">// pretty simple. It tries to identify two vectors that (1) are consecutive,</span></div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span><span class="comment">// (2) tagged, and (3) the combined size is 512 bits, and coalesces them into a</span></div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span><span class="comment">// single vector.</span></div>
-<div class="foldopen" id="foldopen00248" data-start="{" data-end="}">
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1IntervalReuse.html#a5c654ba3e704dbd36623016107db2ea0">  248</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="classxilinx_1_1aievec_1_1IntervalReuse.html#a5c654ba3e704dbd36623016107db2ea0">IntervalReuse::coalesceIntervals</a>() {</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>  <span class="comment">// Only proceed if any vector was tagged as exclusive LHS operand of mul/mac</span></div>
-<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>  <span class="comment">// op.</span></div>
-<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>  <span class="keywordflow">if</span> (vecIsLHSOperand.empty())</div>
-<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>    <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span> </div>
-<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>  <span class="comment">// First check to see if we can coalesce any vector. The vector should be</span></div>
-<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>  <span class="comment">// tagged, and its size should be &lt;= 256 bits.</span></div>
-<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>  <span class="keywordtype">bool</span> canCoalesce = <span class="keyword">false</span>;</div>
-<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>  <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0, e = intervals.size(); i &lt; e; ++i) {</div>
-<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>    canCoalesce |=</div>
-<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>        vecIsLHSOperand[i] &amp;&amp; intervals[i].second - intervals[i].first &lt;= 256;</div>
-<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>  }</div>
-<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>  <span class="keywordflow">if</span> (!canCoalesce)</div>
-<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>    <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span> </div>
-<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>  <span class="comment">// Now we try to coalesce</span></div>
-<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>  SmallVector&lt;std::pair&lt;int32_t, int32_t&gt;, 8&gt; coalescedIntervals;</div>
-<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>  <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0, e = intervals.size(); i &lt; e;) {</div>
-<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>    <span class="comment">// Check 1. Two consecutive vectors that can be fused</span></div>
-<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>    <span class="keywordflow">if</span> (vecIsLHSOperand[i] &amp;&amp; i &lt; intervals.size() - 1 &amp;&amp;</div>
-<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>        vecIsLHSOperand[i + 1]) {</div>
-<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>      <span class="comment">// Get vector sizes</span></div>
-<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>      int32_t v1size = intervals[i].second - intervals[i].first;</div>
-<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>      int32_t v2size = intervals[i + 1].second - intervals[i + 1].first;</div>
-<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>      <span class="comment">// Check 2. Both vectors must be &lt;= 256 bits, so that their sum is</span></div>
-<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>      <span class="comment">// &lt;= 512 bits.</span></div>
-<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>      <span class="keywordflow">if</span> (v1size &lt;= 256 &amp;&amp; v2size &lt;= 256) {</div>
-<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>        coalescedIntervals.push_back(</div>
-<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>            std::make_pair(intervals[i].first, intervals[i + 1].second));</div>
-<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>        i += 2;</div>
-<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>        <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>      }</div>
-<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>    }</div>
-<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>    coalescedIntervals.push_back(intervals[i]);</div>
-<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>    ++i;</div>
-<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>  }</div>
-<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>  <span class="comment">// We are done with the use of the tagging vector. Erase it.</span></div>
-<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>  vecIsLHSOperand.clear();</div>
-<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>  <span class="comment">// Replace intervals with the coalesced intervals</span></div>
-<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>  intervals.clear();</div>
-<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>  intervals = std::move(coalescedIntervals);</div>
-<div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span> </div>
-<div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>  <span class="comment">// Print out coalesced intervals</span></div>
-<div class="line"><a id="l00292" name="l00292"></a><span class="lineno">  292</span>  LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;\n\nAfter coalescing for &quot;</span></div>
-<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span>                          &lt;&lt; <span class="stringliteral">&quot;i8xi8 scheme, intervals: &quot;</span>);</div>
-<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span><span class="preprocessor">#ifndef NDEBUG</span></div>
-<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> iv : intervals)</div>
-<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>    LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;[&quot;</span> &lt;&lt; iv.first &lt;&lt; <span class="stringliteral">&quot;,&quot;</span> &lt;&lt; iv.second &lt;&lt; <span class="stringliteral">&quot;] &quot;</span>);</div>
-<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span>}</div>
+<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span> </div>
+<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span><span class="comment">// If a vector corresponding to any interval was tagged as exclusively being</span></div>
+<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span><span class="comment">// the LHS operand of a mul/fma op, run a vector coalescing loop. The loop is</span></div>
+<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span><span class="comment">// pretty simple. It tries to identify two vectors that (1) are consecutive,</span></div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span><span class="comment">// (2) tagged, and (3) the combined size is 512 bits, and coalesces them into a</span></div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span><span class="comment">// single vector.</span></div>
+<div class="foldopen" id="foldopen00247" data-start="{" data-end="}">
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1IntervalReuse.html#a5c654ba3e704dbd36623016107db2ea0">  247</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="classxilinx_1_1aievec_1_1IntervalReuse.html#a5c654ba3e704dbd36623016107db2ea0">IntervalReuse::coalesceIntervals</a>() {</div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>  <span class="comment">// Only proceed if any vector was tagged as exclusive LHS operand of mul/mac</span></div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>  <span class="comment">// op.</span></div>
+<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>  <span class="keywordflow">if</span> (vecIsLHSOperand.empty())</div>
+<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>    <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span> </div>
+<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>  <span class="comment">// First check to see if we can coalesce any vector. The vector should be</span></div>
+<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>  <span class="comment">// tagged, and its size should be &lt;= 256 bits.</span></div>
+<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>  <span class="keywordtype">bool</span> canCoalesce = <span class="keyword">false</span>;</div>
+<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>  <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0, e = intervals.size(); i &lt; e; ++i) {</div>
+<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>    canCoalesce |=</div>
+<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>        vecIsLHSOperand[i] &amp;&amp; intervals[i].second - intervals[i].first &lt;= 256;</div>
+<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>  }</div>
+<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>  <span class="keywordflow">if</span> (!canCoalesce)</div>
+<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>    <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span> </div>
+<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>  <span class="comment">// Now we try to coalesce</span></div>
+<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>  SmallVector&lt;std::pair&lt;int32_t, int32_t&gt;, 8&gt; coalescedIntervals;</div>
+<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>  <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0, e = intervals.size(); i &lt; e;) {</div>
+<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>    <span class="comment">// Check 1. Two consecutive vectors that can be fused</span></div>
+<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>    <span class="keywordflow">if</span> (vecIsLHSOperand[i] &amp;&amp; i &lt; intervals.size() - 1 &amp;&amp;</div>
+<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>        vecIsLHSOperand[i + 1]) {</div>
+<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>      <span class="comment">// Get vector sizes</span></div>
+<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>      int32_t v1size = intervals[i].second - intervals[i].first;</div>
+<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>      int32_t v2size = intervals[i + 1].second - intervals[i + 1].first;</div>
+<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>      <span class="comment">// Check 2. Both vectors must be &lt;= 256 bits, so that their sum is</span></div>
+<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>      <span class="comment">// &lt;= 512 bits.</span></div>
+<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>      <span class="keywordflow">if</span> (v1size &lt;= 256 &amp;&amp; v2size &lt;= 256) {</div>
+<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>        coalescedIntervals.push_back(</div>
+<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>            std::make_pair(intervals[i].first, intervals[i + 1].second));</div>
+<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>        i += 2;</div>
+<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>      }</div>
+<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>    }</div>
+<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>    coalescedIntervals.push_back(intervals[i]);</div>
+<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>    ++i;</div>
+<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>  }</div>
+<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>  <span class="comment">// We are done with the use of the tagging vector. Erase it.</span></div>
+<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>  vecIsLHSOperand.clear();</div>
+<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>  <span class="comment">// Replace intervals with the coalesced intervals</span></div>
+<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>  intervals.clear();</div>
+<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>  intervals = std::move(coalescedIntervals);</div>
+<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span> </div>
+<div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span>  <span class="comment">// Print out coalesced intervals</span></div>
+<div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>  LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;\n\nAfter coalescing for &quot;</span></div>
+<div class="line"><a id="l00292" name="l00292"></a><span class="lineno">  292</span>                          &lt;&lt; <span class="stringliteral">&quot;i8xi8 scheme, intervals: &quot;</span>);</div>
+<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span><span class="preprocessor">#ifndef NDEBUG</span></div>
+<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> iv : intervals)</div>
+<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>    LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;[&quot;</span> &lt;&lt; iv.first &lt;&lt; <span class="stringliteral">&quot;,&quot;</span> &lt;&lt; iv.second &lt;&lt; <span class="stringliteral">&quot;] &quot;</span>);</div>
+<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>}</div>
 </div>
 <div class="ttc" id="aAIEVecUtils_8h_html"><div class="ttname"><a href="AIEVecUtils_8h.html">AIEVecUtils.h</a></div></div>
 <div class="ttc" id="aIntervalReuse_8h_html"><div class="ttname"><a href="IntervalReuse_8h.html">IntervalReuse.h</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a12d67cd823b73617944361b02b491334"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a12d67cd823b73617944361b02b491334">xilinx::aievec::IntervalReuse::insertInterval</a></div><div class="ttdeci">void insertInterval(mlir::vector::TransferReadOp readOp, llvm::DenseMap&lt; mlir::Operation *, IntervalReuse * &gt; &amp;dataAccessToIntervalMap, int32_t offset, int32_t forLoopStepSize, bool isSplat=false, unsigned minVecSize=128)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00166">IntervalReuse.cpp:166</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a12d67cd823b73617944361b02b491334"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a12d67cd823b73617944361b02b491334">xilinx::aievec::IntervalReuse::insertInterval</a></div><div class="ttdeci">void insertInterval(mlir::vector::TransferReadOp readOp, llvm::DenseMap&lt; mlir::Operation *, IntervalReuse * &gt; &amp;dataAccessToIntervalMap, int32_t offset, int32_t forLoopStepSize, bool isSplat=false, unsigned minVecSize=128)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00165">IntervalReuse.cpp:165</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a18e7c62064f3b9117953f8157fb2afa9"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a18e7c62064f3b9117953f8157fb2afa9">xilinx::aievec::IntervalReuse::setAccessExtent</a></div><div class="ttdeci">void setAccessExtent(mlir::Operation *op, std::pair&lt; int32_t, int32_t &gt; &amp;extent)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00084">IntervalReuse.cpp:84</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a38a08b8c18dabaf9ddfe00daf895d4b5"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a38a08b8c18dabaf9ddfe00daf895d4b5">xilinx::aievec::IntervalReuse::potentialReuse</a></div><div class="ttdeci">bool potentialReuse(mlir::vector::TransferReadOp readOp, mlir::AffineExpr invariantBase, llvm::DenseMap&lt; mlir::Block *, llvm::SmallVector&lt; mlir::Operation *, 8 &gt; &gt; &amp;blockToEnclosingLoops)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00124">IntervalReuse.cpp:124</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a5c654ba3e704dbd36623016107db2ea0"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a5c654ba3e704dbd36623016107db2ea0">xilinx::aievec::IntervalReuse::coalesceIntervals</a></div><div class="ttdeci">void coalesceIntervals()</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00248">IntervalReuse.cpp:248</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a5c654ba3e704dbd36623016107db2ea0"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a5c654ba3e704dbd36623016107db2ea0">xilinx::aievec::IntervalReuse::coalesceIntervals</a></div><div class="ttdeci">void coalesceIntervals()</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00247">IntervalReuse.cpp:247</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a862f59257d84eaa70d6b51cf0066a4fb"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a862f59257d84eaa70d6b51cf0066a4fb">xilinx::aievec::IntervalReuse::getIntervalWidth</a></div><div class="ttdeci">int32_t getIntervalWidth(mlir::Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00115">IntervalReuse.cpp:115</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_a919e52c217a938017557439e6e688b7f"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#a919e52c217a938017557439e6e688b7f">xilinx::aievec::IntervalReuse::getAccessExtent</a></div><div class="ttdeci">std::pair&lt; int32_t, int32_t &gt; getAccessExtent(mlir::Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00076">IntervalReuse.cpp:76</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1IntervalReuse_html_aec36ace20c7592d27476ed91e4ac7098"><div class="ttname"><a href="classxilinx_1_1aievec_1_1IntervalReuse.html#aec36ace20c7592d27476ed91e4ac7098">xilinx::aievec::IntervalReuse::getInterval</a></div><div class="ttdeci">std::pair&lt; int32_t, int32_t &gt; getInterval(mlir::Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="IntervalReuse_8cpp_source.html#l00093">IntervalReuse.cpp:93</a></div></div>
@@ -391,7 +390,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Jul 31 2025 02:05:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 5 2025 15:45:04 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

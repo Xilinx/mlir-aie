@@ -257,6 +257,9 @@ Parameters:
 
 Returns:
     np.ndarray: A NumPy array containing the tensor's data.
+
+Note: For NPU tensors, this method causes implicit data synchronization from device to host
+to ensure the returned array reflects the current device state.
 </pre> 
 </div>
 </div>
@@ -292,6 +295,9 @@ Parameters:
 
 Returns:
     The value at the specified index.
+
+Note: For NPU tensors, this method causes implicit data synchronization from device to host
+to ensure the retrieved value reflects the current device state.
 </pre> 
 </div>
 </div>
@@ -311,6 +317,9 @@ Returns:
       </table>
 </div><div class="memdoc">
 <pre class="fragment">Return a string representation of the tensor.
+
+Note: For NPU tensors, this method causes implicit data synchronization from device to host
+to ensure the string representation reflects the current device state.
 </pre> 
 </div>
 </div>
@@ -350,6 +359,10 @@ Returns:
 Parameters:
     index (int): The index of the value to set.
     value: The new value to assign.
+
+Note: For NPU tensors, this method causes implicit data synchronization from device to host
+before modification and back to device after modification to ensure
+data consistency across device and host memory.
 </pre> 
 </div>
 </div>
@@ -583,6 +596,9 @@ This method ensures that data is first synchronized from the device
 
 Returns:
     np.ndarray: The tensor's data as a NumPy array.
+
+Note: For NPU tensors, this method causes implicit data synchronization from device to host
+to ensure the returned array reflects the current device state.
 </pre> 
 </div>
 </div>
