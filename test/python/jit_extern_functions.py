@@ -240,8 +240,8 @@ def test_multiple_defines():
         source_string="""extern "C" {
             void complex_op(int* input, int* output, int tile_size) {
                 for (int i = 0; i < tile_size; i++) {
-                    #ifdef DEBUG
-                    output[i] = input[i] + ADD_VALUE + DEBUG_OFFSET;
+                    #ifdef FLAG2
+                    output[i] = input[i] + ADD_VALUE + FLAG2_OFFSET;
                     #else
                     output[i] = input[i] + ADD_VALUE;
                     #endif
@@ -253,13 +253,13 @@ def test_multiple_defines():
             np.ndarray[(16,), np.dtype[np.int32]],
             np.int32,
         ],
-        compile_flags=["-DADD_VALUE=5", "-DDEBUG", "-DDEBUG_OFFSET=10"],
+        compile_flags=["-DADD_VALUE=5", "-DFLAG2", "-DFLAG2_OFFSET=10"],
     )
 
     # Apply the transform
     transform(input_tensor, output_tensor, complex_op)
 
-    # Verify results (should add 15: 5 + 10 due to DEBUG define)
+    # Verify results (should add 15: 5 + 10 due to FLAG2 define)
     expected = initial_tensor + 15
     actual = output_tensor.numpy()
     np.testing.assert_array_equal(actual, expected)
@@ -793,7 +793,7 @@ def test_invalid_include_directory(invalid_include):
         (["-DADD_VALUE=5"], 5),
         (["-DADD_VALUE=10", "-DMULTIPLIER=2"], 20),  # 10 * 2
         (["-DADD_VALUE=3", "-DOFFSET=7"], 10),  # 3 + 7
-        (["-DADD_VALUE=1", "-DDEBUG", "-DDEBUG_OFFSET=9"], 10),  # 1 + 9 (DEBUG enabled)
+        (["-DADD_VALUE=1", "-DFLAG2", "-DFLAG2_OFFSET=9"], 10),  # 1 + 9 (FLAG2 enabled)
     ],
 )
 def test_compiler_flag_combinations(compile_flags, expected_value):
@@ -809,8 +809,8 @@ def test_compiler_flag_combinations(compile_flags, expected_value):
             for (int i = 0; i < tile_size; i++) {
                 #ifdef MULTIPLIER
                 output[i] = input[i] + ADD_VALUE * MULTIPLIER;
-                #elif defined(DEBUG)
-                output[i] = input[i] + ADD_VALUE + DEBUG_OFFSET;
+                #elif defined(FLAG2)
+                output[i] = input[i] + ADD_VALUE + FLAG2_OFFSET;
                 #elif defined(OFFSET)
                 output[i] = input[i] + ADD_VALUE + OFFSET;
                 #else
