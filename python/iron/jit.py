@@ -282,11 +282,21 @@ def compile_external_kernel(func, kernel_dir):
     # Add device-specific flags based on actual device detection
     current_device = get_current_device()
 
+    warning_flags = [
+        "-Wno-parentheses",
+        "-Wno-attributes",
+        "-Wno-macro-redefined",
+        "-Wno-empty-body",
+        "-Wno-missing-template-arg-list-after-template-kw",
+    ]
+
+    common_flags = ["-O2", "-std=c++20", "-DNDEBUG"] + warning_flags
+
     # Check device type and use appropriate flags
     if isinstance(current_device, NPU2):
-        cmd.extend(os.environ.get("PEANOWRAP2P_FLAGS", "").split())
+        cmd.extend(common_flags + ["--target=aie2p-none-unknown-elf"])
     elif isinstance(current_device, NPU1):
-        cmd.extend(os.environ.get("PEANOWRAP2_FLAGS", "").split())
+        cmd.extend(common_flags + ["--target=aie2-none-unknown-elf"])
     else:
         raise RuntimeError(f"Unsupported device type: {type(current_device)}")
 
