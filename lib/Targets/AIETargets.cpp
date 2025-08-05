@@ -22,6 +22,7 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -79,6 +80,7 @@ static void registerDialects(DialectRegistry &registry) {
   registry.insert<cf::ControlFlowDialect>();
   registry.insert<DLTIDialect>();
   registry.insert<arith::ArithDialect>();
+  registry.insert<ub::UBDialect>();
   registry.insert<math::MathDialect>();
   registry.insert<memref::MemRefDialect>();
   registry.insert<VectorDialect>();

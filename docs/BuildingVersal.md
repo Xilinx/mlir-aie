@@ -9,7 +9,7 @@ ninja 1.8.2
 Xilinx Vitis 2023.2
 python 3.8.x and pip
 virtualenv
-pip3 install psutil rich pybind11 numpy
+pip3 install rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 ```
 
