@@ -17,7 +17,6 @@ from ..utils.compile import compile_mlir_module_to_binary
 from ..utils.xrt import read_insts_binary
 from .device import NPU1, NPU2
 from .config import get_current_device
-import subprocess
 
 
 # The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_DIR` directory.
@@ -261,54 +260,28 @@ def compile_external_kernel(func, kernel_dir):
     # Add device-specific flags based on actual device detection
     current_device = get_current_device()
 
-    warning_flags = [
-        "-Wno-parentheses",
-        "-Wno-attributes",
-        "-Wno-macro-redefined",
-        "-Wno-empty-body",
-        "-Wno-missing-template-arg-list-after-template-kw",
-    ]
-
-    common_flags = ["-O2", "-std=c++20", "-DNDEBUG"] + warning_flags
-
-    # Build compilation command
-    cmd = [f"{os.environ.get('PEANO_INSTALL_DIR', '')}/bin/clang++"]
-
-    # Check device type and use appropriate flags
+    # Determine target architecture based on device type
     if isinstance(current_device, NPU2):
-        cmd.extend(common_flags + ["--target=aie2p-none-unknown-elf"])
+        target_arch = "aie2p"
     elif isinstance(current_device, NPU1):
-        cmd.extend(common_flags + ["--target=aie2-none-unknown-elf"])
+        target_arch = "aie2"
     else:
         raise RuntimeError(f"Unsupported device type: {type(current_device)}")
 
-    # Add include directories
-    for include_dir in func._include_dirs:
-        cmd.extend(["-I", include_dir])
+    from .compile.compile import compile_cxx_core_function
 
-    # Add compilation flags
-    cmd.extend(func._compile_flags)
+    compile_cxx_core_function(
+        source_path=source_file,
+        target_arch=target_arch,
+        output_path=output_file,
+        include_dirs=func._include_dirs,
+        compile_args=func._compile_flags,
+        cwd=kernel_dir,
+        verbose=False
+    )
 
-    # Add source and output files
-    cmd.extend(["-c", source_file, "-o", output_file])
-
-    try:
-        result = subprocess.run(
-            cmd,
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-        # Mark the function as compiled
-        func._compiled = True
-    except subprocess.CalledProcessError as e:
-        error_msg = (
-            f"Compilation failed:\n{e}\n"
-            f"stdout:\n{e.stdout.decode() if e.stdout else 'No stdout'}\n"
-            f"stderr:\n{e.stderr.decode() if e.stderr else 'No stderr'}"
-        )
-        raise RuntimeError(error_msg)
+    # Mark the function as compiled
+    func._compiled = True
 
 
 def hash_module(module, external_kernels=None):
