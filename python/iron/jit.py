@@ -11,6 +11,7 @@ import functools
 import hashlib
 import numpy as np
 import pyxrt as xrt
+import shutil
 
 from aie.extras.context import mlir_mod_ctx
 from ..utils.compile import compile_mlir_module_to_binary
@@ -207,8 +208,6 @@ def jit(function=None, is_placed=True, use_cache=True):
             except Exception as e:
                 # Clean up cache directory on any compilation failure
                 if os.path.exists(kernel_dir):
-                    import shutil
-
                     shutil.rmtree(kernel_dir)
                 raise e
 
@@ -247,7 +246,6 @@ def compile_external_kernel(func, kernel_dir):
             f.write(func._source_string)
     elif func._source_file is not None:
         # Use source_file (copy existing file)
-        import shutil
 
         # Check if source file exists before copying
         if os.path.exists(func._source_file):
