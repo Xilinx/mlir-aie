@@ -258,27 +258,6 @@ def compile_external_kernel(func, kernel_dir):
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    # Build compilation command
-    cmd = [
-        f"{os.environ.get('PEANO_INSTALL_DIR', '')}/bin/clang++",
-        "-O2",
-        "-std=c++20",
-        "--target=aie2-none-unknown-elf",
-        "-Wno-parentheses",
-        "-Wno-attributes",
-        "-Wno-macro-redefined",
-        "-Wno-empty-body",
-        "-DNDEBUG",
-    ]
-
-    # Add AIEOPT include directory
-    try:
-        aieopt_path = subprocess.check_output(["which", "aie-opt"], text=True).strip()
-        aieopt_dir = os.path.dirname(os.path.dirname(os.path.realpath(aieopt_path)))
-        cmd.extend(["-I", f"{aieopt_dir}/include"])
-    except subprocess.CalledProcessError:
-        pass
-
     # Add device-specific flags based on actual device detection
     current_device = get_current_device()
 
@@ -292,6 +271,9 @@ def compile_external_kernel(func, kernel_dir):
 
     common_flags = ["-O2", "-std=c++20", "-DNDEBUG"] + warning_flags
 
+    # Build compilation command
+    cmd = [f"{os.environ.get('PEANO_INSTALL_DIR', '')}/bin/clang++"]
+
     # Check device type and use appropriate flags
     if isinstance(current_device, NPU2):
         cmd.extend(common_flags + ["--target=aie2p-none-unknown-elf"])
@@ -299,6 +281,14 @@ def compile_external_kernel(func, kernel_dir):
         cmd.extend(common_flags + ["--target=aie2-none-unknown-elf"])
     else:
         raise RuntimeError(f"Unsupported device type: {type(current_device)}")
+
+    # Add AIEOPT include directory
+    try:
+        aieopt_path = subprocess.check_output(["which", "aie-opt"], text=True).strip()
+        aieopt_dir = os.path.dirname(os.path.dirname(os.path.realpath(aieopt_path)))
+        cmd.extend(["-I", f"{aieopt_dir}/include"])
+    except subprocess.CalledProcessError:
+        pass
 
     # Add include directories
     for include_dir in func._include_dirs:
