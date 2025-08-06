@@ -206,6 +206,11 @@ jobs:
             else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
+
+          ls -alth
+          cd ..
+          ls -alth
+          git log -1 | cat
           
           # Debug: Check what's available in aie.iron
           python -c "import aie.iron; print(dir(aie.iron))"
@@ -216,7 +221,6 @@ jobs:
           echo "PYTHONPATH: $PYTHONPATH"
           python -c "import sys; print('Python path:'); [print(p) for p in sys.path]"
           python -c "import aie.iron; print('aie.iron location:', aie.iron.__file__)"
-
           cat python/iron/kernel.py 
           
           python programming_examples/basic/vector_vector_add/vector_vector_add.py -d npu2
