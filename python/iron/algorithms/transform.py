@@ -23,7 +23,7 @@ def transform(input, output, func):
             f"Input shapes are not the equal ({input.shape} != {output.shape})."
         )
     num_elements = np.size(input)
-    n = 16
+    n = 16  # TODO should be larger or configurable
     if num_elements % n != 0:
         raise ValueError(
             f"Number of elements ({num_elements}) must be a multiple of {n}."
@@ -86,7 +86,7 @@ def transform_binary(first, second, output, binary_op):
             f"Input and output shapes are not the equal ({first.shape} != {output.shape})."
         )
     num_elements = np.size(first)
-    n = 16
+    n = 16  # TODO should be larger or configurable
     if num_elements % n != 0:
         raise ValueError(
             f"Number of elements ({num_elements}) must be a multiple of {n}."
@@ -151,10 +151,10 @@ def transform_parallel(input, output, func):
         )
     num_channels = 2
     num_columns = 4
-    if iron.get_current_device() == NPU2:
+    if isinstance(iron.get_current_device(), NPU2):
         num_columns = 8
     num_elements = np.size(input)
-    per_tile_elements = 16
+    per_tile_elements = 16 # TODO should be larger or configurable
     n = per_tile_elements * num_channels * num_columns
     if num_elements % n != 0:
         raise ValueError(
@@ -271,13 +271,12 @@ def transform_parallel_binary(first, second, output, binary_op):
         raise ValueError(
             f"Input and output shapes are not the equal ({first.shape} != {output.shape})."
         )
-    num_channels = 2
     num_columns = 4
-    if iron.get_current_device() == NPU2:
+    if isinstance(iron.get_current_device(), NPU2):
         num_columns = 8
     num_elements = np.size(first)
-    per_tile_elements = 16
-    n = per_tile_elements * num_channels * num_columns
+    per_tile_elements = 16 # TODO should be larger or configurable
+    n = per_tile_elements * num_columns
     if num_elements % n != 0:
         raise ValueError(
             f"Number of elements ({num_elements}) must be a multiple of {n}."
@@ -300,19 +299,16 @@ def transform_parallel_binary(first, second, output, binary_op):
 
     # AIE-array data movement with object fifos
     of_in1s = [
-        ObjectFifo(tile_ty, name=f"in1_{i}_{j}")
+        ObjectFifo(tile_ty, name=f"in1_{i}")
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
     of_in2s = [
-        ObjectFifo(tile_ty, name=f"in2_{i}_{j}")
+        ObjectFifo(tile_ty, name=f"in2_{i}")
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
     of_outs = [
-        ObjectFifo(tile_ty, name=f"out_{i}_{j}")
+        ObjectFifo(tile_ty, name=f"out_{i}")
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
 
     # Define a task that will run on a compute tile
@@ -333,13 +329,12 @@ def transform_parallel_binary(first, second, output, binary_op):
         Worker(
             core_body,
             [
-                of_in1s[i * num_channels + j].cons(),
-                of_in2s[i * num_channels + j].cons(),
-                of_outs[i * num_channels + j].prod(),
+                of_in1s[i].cons(),
+                of_in2s[i].cons(),
+                of_outs[i].prod(),
             ],
         )
         for i in range(num_columns)
-        for j in range(num_channels)
     ]   
 
     # Create a TensorAccessPattern for each channel
@@ -350,12 +345,11 @@ def transform_parallel_binary(first, second, output, binary_op):
     taps = [
         TensorAccessPattern(
             (1, num_elements),
-            n * i * num_channels + n * j,
+            n * i,
             [1, 1, 1, n],
             [0, 0, 0, 1],
         )
         for i in range(num_columns)
-        for j in range(num_channels)
     ]   
 
     # Runtime operations to move data to/from the AIE-array
@@ -364,28 +358,26 @@ def transform_parallel_binary(first, second, output, binary_op):
         rt.start(*my_workers)
         # Fill the input objectFIFOs with data
         for i in range(num_columns):
-            for j in range(num_channels):
-                rt.fill(
-                    of_in1s[i * num_channels + j].prod(),
-                    A,
-                    taps[i * num_channels + j],
-                )
-                rt.fill(
-                    of_in2s[i * num_channels + j].prod(),
-                    B,
-                    taps[i * num_channels + j],
-                )
+            rt.fill(
+                of_in1s[i].prod(),
+                A,
+                taps[ij],
+            )
+            rt.fill(
+                of_in2s[i].prod(),
+                B,
+                taps[i],
+            )
         # Drain the output objectFIFOs with data
         tg_out = rt.task_group()
         for i in range(num_columns):
-            for j in range(num_channels):
-                rt.drain(
-                    of_outs[i * num_channels + j].cons(),
-                    C,
-                    taps[i * num_channels + j],
-                    wait=True,  # wait for the transfer to complete and data to be available
-                    task_group=tg_out,
-                )
+            rt.drain(
+                of_outs[i].cons(),
+                C,
+                taps[i],
+                wait=True,  # wait for the transfer to complete and data to be available
+                task_group=tg_out,
+            )
         rt.finish_task_group(tg_out)    
 
     # Place program components (assign them resources on the device) and generate an MLIR module
