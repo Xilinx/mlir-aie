@@ -18,18 +18,19 @@ void rms_norm(const T *restrict input, T *restrict output, int32_t cols) {
   event0();
   constexpr float epsilon = 1e-5f;
   const float gamma = 1.0f;
-  float sum_sq = 0.0f;
   ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
+  ::aie::vector<float, N> add_res = ::aie::zeros<float, N>();
+  ::aie::accum<acc32, N> acc = ::aie::zeros<acc32, N>();
 
   // Process data in vector chunks
   int vector_chunks = cols / N;
   for (int i = 0; i < vector_chunks; i++) {
     ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
-    ::aie::vector<T, N> square_v = ::aie::mul(reg_a, reg_a);
-    for (int j = 0; j < N; j++) {
-      sum_sq += static_cast<float>(square_v[j]);
-    }
+    ::aie::vector<float, N> square_v = ::aie::mul_square(reg_a);
+    acc = ::aie::add(add_res, square_v);
+    add_res = acc.template to_vector<float>();
   }
+  float sum_sq = ::aie::reduce_add(add_res);
 
   // Handle remaining elements
   int remaining = cols % N;
