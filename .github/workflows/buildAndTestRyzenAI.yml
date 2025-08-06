@@ -139,7 +139,7 @@ jobs:
           ls -alth ~/.iron
           source /opt/xilinx/xrt/setup.sh
           source utils/env_setup.sh
-          export PYTHONPATH="$(pwd)/install/python:${PYTHONPATH}"
+          export PYTHONPATH="$(pwd)/mlir_aie/python:${PYTHONPATH}"
           xrt-smi examine
           python -c "from aie.iron import get_current_device; from aie.iron.device import NPU1, NPU2; current_device = get_current_device(); target_arch = 'aie2p' if isinstance(current_device, NPU2) else 'aie2' if isinstance(current_device, NPU1) else None; print(f'Device: {current_device}, Target arch: {target_arch}')"
           
@@ -150,7 +150,8 @@ jobs:
           cat mlir_aie/python/aie/iron/__init__.py
           cat mlir_aie/python/aie/iron/kernel.py
           export PYTHONPATH="$(pwd)/mlir_aie/python:${PYTHONPATH}"
-          python programming_examples/basic/vector_vector_add/vector_vector_add.py -d npu2
+
+          pyton 
           pytest -vvv -s test/python/jit_compilation.py
           pytest -vvv -s test/python/jit_extern_functions.py
           pytest -vvv -s test/python/jit_extern_inside_jit.py

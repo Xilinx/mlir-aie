@@ -275,7 +275,7 @@ def compile_external_kernel(func, kernel_dir):
         include_dirs=func._include_dirs,
         compile_args=func._compile_flags,
         cwd=kernel_dir,
-        verbose=False,
+        verbose=True,
     )
 
     # Mark the function as compiled
