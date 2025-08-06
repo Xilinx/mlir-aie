@@ -18,7 +18,7 @@ import traceback
 from aie.extras.context import mlir_mod_ctx
 from ..utils.compile import compile_mlir_module_to_binary
 from ..utils.xrt import read_insts_binary
-from .device import NPU1, NPU2
+from .device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from .config import get_current_device
 
 
@@ -53,7 +53,7 @@ class NPUKernel:
 
         try:
             xkernel = [k for k in kernels if kernel_name == k.get_name()][0]
-        except (KeyError, IndexError) as e:
+        except KeyError:
             raise NPUKernel_Error("No such kernel: " + kernel_name)
 
         self.__device.register_xclbin(self.__xclbin)
@@ -116,11 +116,8 @@ class NPUKernel:
         """
         Destructor to clean up resources and delete the kernel and device objects.
         """
-        try:
-            del self.__kernel
-            del self.__device
-        except Exception:
-            pass
+        del self.__kernel
+        del self.__device
 
 
 class NPUKernel_Error(Exception):
@@ -186,9 +183,9 @@ def jit(function=None, is_placed=True, use_cache=True):
             current_device = get_current_device()
 
             # Determine target architecture based on device type
-            if isinstance(current_device, NPU2):
+            if isinstance(current_device, (NPU2, NPU2Col1)):
                 target_arch = "aie2p"
-            elif isinstance(current_device, NPU1):
+            elif isinstance(current_device, (NPU1, NPU1Col1)):
                 target_arch = "aie2"
             else:
                 raise RuntimeError(f"Unsupported device type: {type(current_device)}")
