@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner_type: [ amdhx370 ]
+        runner_type: [ amdhx370 , amd7940hs ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -134,7 +134,12 @@ jobs:
           source utils/env_setup.sh
           export PYTHONPATH="$(pwd)/install/python:${PYTHONPATH}"
           xrt-smi examine
-
+          python -c "from aie.iron import get_current_device; from aie.iron.device import NPU1, NPU2; current_device = get_current_device(); target_arch = 'aie2p' if isinstance(current_device, NPU2) else 'aie2' if isinstance(current_device, NPU1) else None; print(f'Device: {current_device}, Target arch: {target_arch}')"
+          
+          # Debug: Check what's available in aie.iron
+          python -c "import aie.iron; print(dir(aie.iron))"
+          cat /home/github/actions-runner/_work/mlir-aie/mlir-aie/aie-venv/lib/python3.12/site-packages/mlir_aie/python/aie/iron/kernel.py
+          
           python programming_examples/basic/vector_vector_add/vector_vector_add.py -d npu2
           pytest -vvv -s test/python/jit_compilation.py
           pytest -vvv -s test/python/jit_extern_functions.py
