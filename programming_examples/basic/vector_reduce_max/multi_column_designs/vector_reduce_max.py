@@ -10,7 +10,15 @@ import numpy as np
 import argparse
 import sys
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, LocalBuffer, str_to_dtype
+from aie.iron import (
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    LocalBuffer,
+    str_to_dtype,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from ml_dtypes import bfloat16
