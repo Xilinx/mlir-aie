@@ -18,12 +18,12 @@ from ml_dtypes import bfloat16
 
 import aie.utils.trace as trace_utils
 
-dtype_map = {"i32": np.int32, "bf16": bfloat16}
+from aie.iron import str_to_dtype
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_cores = 4
-    dtype = dtype_map[dtype_str]
+    dtype = str_to_dtype(dtype_str)
 
     N = in1_size // dtype(0).nbytes
     O = out_size // dtype(0).nbytes
@@ -96,7 +96,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         object_fifo_link(inA, in_fifos, [], of_a_offsets)
 
         """
-        Note: Since DMA BD length needs to be 4 bytes, the stride is used to 
+        Note: Since DMA BD length needs to be 4 bytes, the stride is used to
         correctly access data when the datatype size is less than 4 bytes.
         """
         outC = object_fifo(
