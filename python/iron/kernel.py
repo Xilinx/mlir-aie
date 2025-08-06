@@ -17,32 +17,6 @@ from ..helpers.dialects.ext.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable
 
-def find_manged_symbol(file, demangled_name):
-    """
-    Find the mangled symbol that corresponds to the demangled_name.
-
-    Args:
-        file (str): Path to the file to analyze
-        demangled_name (str): The demangled name of the symbol to find
-
-    Returns:
-        str: The mangled name of the symbol if found, otherwise None
-    """
-    with open(file, 'rb') as file:
-        elf_file = ELFFile(file)
-
-        for section in elf_file.iter_sections():
-            if isinstance(section, SymbolTableSection):
-                for symbol in section.iter_symbols():
-                    # Filter out function symbols
-                    if symbol and symbol['st_info']['type'] == 'STT_FUNC':
-                        if symbol.name == demangled_name:
-                            # Name matches the demangled name, thus it has C linkage
-                            return symbol.name
-                        if cxxfilt.demangle(symbol.name) == demangled_name:
-                            # Demangled symbol name matches the demangled name, thus it has C++ linkage
-                            return symbol.name
-    return None
 
 def find_mangled_symbol(file, demangled_name):
     """
