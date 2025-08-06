@@ -1660,6 +1660,20 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
+  /// Account for already used packet IDs and return next available ID.
+  int getStartPacketID(DeviceOp &device) {
+    int packetID = 0;
+    for (PacketFlowOp packetflow : device.getOps<PacketFlowOp>()) {
+      if (packetflow.getID() > packetID) {
+        packetID = packetflow.getID();
+      }
+    }
+    if (packetID + 1 > 31)
+      device.emitOpError("max number of packet IDs reached");
+    // return next available ID
+    return packetID + 1;
+  }
+
   /// Helper function to assign DMA channel indices for FIFOs based on cross-tile conditions
   void assignDMAChannelIndices(DMAChannelAnalysis &dmaAnalysis,
                                const std::map<ObjectFifoCreateOp, bool> &crossTileInfos,
@@ -1862,7 +1876,7 @@ struct AIEObjectFifoStatefulTransformPass
     // then assign channel indices for FIFOs without cross-tile issues
     assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, false);
 
-    int packetID = 0;
+    int packetID = getStartPacketID(device);
     for (auto &[producer, consumers] : splitFifos) {
       int producerChanIndex = fifo_dma_channel_index[producer];
       if (producerChanIndex == -1)
@@ -1874,6 +1888,8 @@ struct AIEObjectFifoStatefulTransformPass
         bdPacket = {
             AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
         packetID++;
+        if (packetID > 31)
+          device.emitOpError("max number of packet IDs reached");
       }
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
