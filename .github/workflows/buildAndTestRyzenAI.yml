@@ -148,7 +148,7 @@ jobs:
         uses: mxschmitt/action-tmate@v3
         # To run this, launch it manually on the default branch and
         # click on "launch_tmate_terminal_for_debug"
-        if: github.event_name == 'workflow_dispatch'
+        if: inputs.launch_tmate_terminal_for_debug
 
       - name: Run commands
         run: |
