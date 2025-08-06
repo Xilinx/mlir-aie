@@ -293,8 +293,32 @@ def jit(function=None, is_placed=True, use_cache=True):
                     f"[DEBUG] jit.decorator: Added ExternalKernel to compilation list: {func._name}"
                 )
 
-        # Hash of the IR string and ExternalKernel compiler options
-        module_hash = hash_module(mlir_module, external_kernels)
+        # Determine target architecture based on device type (hoisted from compile_external_kernel)
+        try:
+            current_device = get_current_device()
+            print(f"[DEBUG] jit.decorator: Current device: {current_device}")
+            print(f"[DEBUG] jit.decorator: Device type: {type(current_device)}")
+
+            # Determine target architecture based on device type
+            if isinstance(current_device, NPU2):
+                target_arch = "aie2p"
+            elif isinstance(current_device, NPU1):
+                target_arch = "aie2"
+            else:
+                print(
+                    f"[DEBUG] jit.decorator: Unsupported device type: {type(current_device)}"
+                )
+                raise RuntimeError(f"Unsupported device type: {type(current_device)}")
+
+            print(f"[DEBUG] jit.decorator: Target architecture: {target_arch}")
+        except Exception as e:
+            print(
+                f"[DEBUG] jit.decorator: Failed to determine target architecture: {e}"
+            )
+            raise
+
+        # Hash of the IR string, ExternalKernel compiler options, and target architecture
+        module_hash = hash_module(mlir_module, external_kernels, target_arch)
         kernel_dir = os.path.join(IRON_CACHE_DIR, f"{module_hash}")
         mlir_path = os.path.join(kernel_dir, "aie.mlir")
         print(f"[DEBUG] jit.decorator: Module hash: {module_hash}")
@@ -330,7 +354,7 @@ def jit(function=None, is_placed=True, use_cache=True):
                         f"[DEBUG] jit.decorator: Compiling ExternalKernel: {func._name}"
                     )
                     # Compile the ExternalKernel directly in the kernel directory
-                    compile_external_kernel(func, kernel_dir)
+                    compile_external_kernel(func, kernel_dir, target_arch)
 
                 print(f"[DEBUG] jit.decorator: Starting MLIR module compilation")
                 # Compile the MLIR module
@@ -374,16 +398,18 @@ def jit(function=None, is_placed=True, use_cache=True):
     return decorator
 
 
-def compile_external_kernel(func, kernel_dir):
+def compile_external_kernel(func, kernel_dir, target_arch):
     """
     Compile an ExternalKernel to an object file in the kernel directory.
 
     Args:
         func: ExternalKernel instance to compile
         kernel_dir: Directory to place the compiled object file
+        target_arch: Target architecture (e.g., "aie2" or "aie2p")
     """
     print(f"[DEBUG] compile_external_kernel: Starting compilation of {func._name}")
     print(f"[DEBUG] compile_external_kernel: kernel_dir={kernel_dir}")
+    print(f"[DEBUG] compile_external_kernel: target_arch={target_arch}")
 
     # Skip if already compiled
     if hasattr(func, "_compiled") and func._compiled:
@@ -446,30 +472,6 @@ def compile_external_kernel(func, kernel_dir):
         )
         raise ValueError("Neither source_string nor source_file is provided")
 
-    # Add device-specific flags based on actual device detection
-    try:
-        current_device = get_current_device()
-        print(f"[DEBUG] compile_external_kernel: Current device: {current_device}")
-        print(f"[DEBUG] compile_external_kernel: Device type: {type(current_device)}")
-
-        # Determine target architecture based on device type
-        if isinstance(current_device, NPU2):
-            target_arch = "aie2p"
-        elif isinstance(current_device, NPU1):
-            target_arch = "aie2"
-        else:
-            print(
-                f"[DEBUG] compile_external_kernel: Unsupported device type: {type(current_device)}"
-            )
-            raise RuntimeError(f"Unsupported device type: {type(current_device)}")
-
-        print(f"[DEBUG] compile_external_kernel: Target architecture: {target_arch}")
-    except Exception as e:
-        print(
-            f"[DEBUG] compile_external_kernel: Failed to determine target architecture: {e}"
-        )
-        raise
-
     from .compile.compile import compile_cxx_core_function
 
     print(f"[DEBUG] compile_external_kernel: Calling compile_cxx_core_function")
@@ -501,13 +503,14 @@ def compile_external_kernel(func, kernel_dir):
     print(f"[DEBUG] compile_external_kernel: Marked function as compiled")
 
 
-def hash_module(module, external_kernels=None):
+def hash_module(module, external_kernels=None, target_arch=None):
     """
     Hash the MLIR module and ExternalKernel compiler options to create a unique identifier.
     """
     print(f"[DEBUG] hash_module: Starting hash computation")
     mlir_str = str(module)
     print(f"[DEBUG] hash_module: MLIR string length: {len(mlir_str)}")
+    print(f"[DEBUG] hash_module: Target architecture: {target_arch}")
 
     # Include ExternalKernel compiler options in the hash
     if external_kernels:
@@ -525,14 +528,14 @@ def hash_module(module, external_kernels=None):
 
         # Create a combined string for hashing
         combined_str = mlir_str + "|" + "|".join(compiler_options)
-        hash_result = hashlib.sha256(combined_str.encode("utf-8")).hexdigest()[:16]
-        print(
-            f"[DEBUG] hash_module: Computed hash with external kernels: {hash_result}"
-        )
-        return hash_result
     else:
-        hash_result = hashlib.sha256(mlir_str.encode("utf-8")).hexdigest()[:16]
-        print(
-            f"[DEBUG] hash_module: Computed hash without external kernels: {hash_result}"
-        )
-        return hash_result
+        combined_str = mlir_str
+
+    # Include target architecture in the hash
+    if target_arch:
+        combined_str += f"|target_arch={target_arch}"
+        print(f"[DEBUG] hash_module: Added target architecture to hash: {target_arch}")
+
+    hash_result = hashlib.sha256(combined_str.encode("utf-8")).hexdigest()[:16]
+    print(f"[DEBUG] hash_module: Computed hash: {hash_result}")
+    return hash_result
