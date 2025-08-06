@@ -25,7 +25,7 @@ from .resolvable import Resolvable
 logger = logging.getLogger(__name__)
 
 
-def find_manged_symbol(file, demangled_name):
+def find_mangled_symbol(file, demangled_name):
     """
     Find the mangled symbol that corresponds to the demangled_name.
 
@@ -292,7 +292,7 @@ class Kernel(BaseKernel):
         """
         super().__init__(name, arg_types)
 
-        symbol_name = find_manged_symbol(f"build/{object_file_name}", name)
+        symbol_name = find_mangled_symbol(f"build/{object_file_name}", name)
         if not symbol_name:
             raise ValueError(f"Could not find symbol for {name} in {object_file_name}")
 
