@@ -9,7 +9,15 @@ import numpy as np
 import argparse
 import sys
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, LocalBuffer, str_to_dtype
+from aie.iron import (
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    LocalBuffer,
+    str_to_dtype,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col2, NPU2Col2
 from aie.helpers.util import np_ndarray_type_get_shape
