@@ -17,7 +17,8 @@ from ..helpers.dialects.ext.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable
 
-def find_manged_symbol(file, demangled_name):
+
+def find_mangled_symbol(file, demangled_name):
     """
     Find the mangled symbol that corresponds to the demangled_name.
 
@@ -28,14 +29,14 @@ def find_manged_symbol(file, demangled_name):
     Returns:
         str: The mangled name of the symbol if found, otherwise None
     """
-    with open(file, 'rb') as file:
+    with open(file, "rb") as file:
         elf_file = ELFFile(file)
 
         for section in elf_file.iter_sections():
             if isinstance(section, SymbolTableSection):
                 for symbol in section.iter_symbols():
                     # Filter out function symbols
-                    if symbol and symbol['st_info']['type'] == 'STT_FUNC':
+                    if symbol and symbol["st_info"]["type"] == "STT_FUNC":
                         if symbol.name == demangled_name:
                             # Name matches the demangled name, thus it has C linkage
                             return symbol.name
@@ -43,6 +44,7 @@ def find_manged_symbol(file, demangled_name):
                             # Demangled symbol name matches the demangled name, thus it has C++ linkage
                             return symbol.name
     return None
+
 
 class Kernel(Resolvable):
     def __init__(
@@ -60,7 +62,7 @@ class Kernel(Resolvable):
             arg_types (list[type[np.ndarray]  |  np.dtype], optional): The type signature of the function. Defaults to [].
         """
 
-        symbol_name = find_manged_symbol(f"build/{bin_name}", name)
+        symbol_name = find_mangled_symbol(f"build/{bin_name}", name)
         if not symbol_name:
             raise ValueError(f"Could not find symbol for {name} in {bin_name}")
 
