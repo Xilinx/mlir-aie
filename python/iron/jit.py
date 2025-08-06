@@ -143,7 +143,6 @@ def jit(function=None, is_placed=True, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
-        # Import ExternalFunction at the top
         from .kernel import ExternalFunction
 
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
@@ -179,7 +178,7 @@ def jit(function=None, is_placed=True, use_cache=True):
             ):  # Don't compile if already compiled
                 external_kernels.append(func)
 
-        # Determine target architecture based on device type (hoisted from compile_external_kernel)
+        # Determine target architecture based on device type
         try:
             current_device = get_current_device()
 
@@ -219,9 +218,8 @@ def jit(function=None, is_placed=True, use_cache=True):
                 with open(mlir_path, "w", encoding="utf-8") as f:
                     print(mlir_module, file=f)
 
-                # Set cache directory for ExternalFunctions and compile them
+                # Compile ExternalFunctions from inside the JIT compilation directory
                 for func in external_kernels:
-                    # Compile the ExternalFunction directly in the kernel directory
                     compile_external_kernel(func, kernel_dir, target_arch)
 
                 # Compile the MLIR module
@@ -232,7 +230,7 @@ def jit(function=None, is_placed=True, use_cache=True):
                     work_dir=kernel_dir,
                 )
             except Exception as e:
-                # Clean up cache directory on any compilation failure
+                # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
                 if os.path.exists(kernel_dir):
                     shutil.rmtree(kernel_dir)
                 raise e
@@ -279,7 +277,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             raise
     elif func._source_file is not None:
         # Use source_file (copy existing file)
-
         # Check if source file exists before copying
         if os.path.exists(func._source_file):
             try:
@@ -320,7 +317,6 @@ def hash_module(module, external_kernels=None, target_arch=None):
     if external_kernels:
         compiler_options = []
         for func in external_kernels:
-            # Include include_dirs and compile_flags in the hash
             compiler_options.extend(func._include_dirs)
             compiler_options.extend(func._compile_flags)
 

@@ -89,13 +89,13 @@ class ExternalFunction(BaseKernel):
         include_dirs: list[str] = [],
         compile_flags: list[str] = [],
     ) -> None:
-        """An ExternalFunction is a C++ source file that gets compiled to an object file and eventually resolves to a FuncOp.
+        """An ExternalFunction is a C/C++ source file that gets compiled to an object file and eventually resolves to a FuncOp.
         If it is called, a CallOp will be generated.
 
         Args:
             name (str): The name of the function
-            source_file (str): Path to the C++ source file
-            source_string (str): C++ source code as a string
+            source_file (str): Path to the C/C++ source file
+            source_string (str): C/C++ source code as a string
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
             include_dirs (list[str], optional): Additional include directories. Defaults to [].
             compile_flags (list[str], optional): Additional compilation flags. Defaults to [].
