@@ -123,7 +123,8 @@ public:
 
     const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNumForAdjacentTile =
-        targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(), tileOp.getRow());
+        targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(),
+                                                       tileOp.getRow());
 
     // if requires adjacent tile access channels, only allocate on
     // channels 0-3, and if cannot, return 0
