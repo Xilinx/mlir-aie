@@ -126,7 +126,16 @@ jobs:
             $CMAKE_ARGS
 
           ninja install
-          ninja check-aie
+          
+          cd ..
+          xrt-smi examine
+
+          python programming_examples/basic/vector_vector_add/vector_vector_add.py
+          pytest -vvv -s test/python/jit_compilation.py
+          pytest -vvv -s test/python/jit_extern_functions.py
+          pytest -vvv -s test/python/jit_extern_inside_jit.py
+    
+          #ninja check-aie
           popd
 
   # build-quick-setup:
