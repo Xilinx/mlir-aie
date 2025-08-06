@@ -151,7 +151,7 @@ jobs:
           cat mlir_aie/python/aie/iron/kernel.py
           export PYTHONPATH="$(pwd)/mlir_aie/python:${PYTHONPATH}"
 
-          pyton 
+          python test/python/jit_extern_functions.py 
           pytest -vvv -s test/python/jit_compilation.py
           pytest -vvv -s test/python/jit_extern_functions.py
           pytest -vvv -s test/python/jit_extern_inside_jit.py
