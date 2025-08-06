@@ -1874,7 +1874,8 @@ struct AIEObjectFifoStatefulTransformPass
     // assign channel indices for FIFOs with cross-tile issues first
     assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, true);
     // then assign channel indices for FIFOs without cross-tile issues
-    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, false);
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
+                            false);
 
     int packetID = getStartPacketID(device);
     for (auto &[producer, consumers] : splitFifos) {
