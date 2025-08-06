@@ -14,19 +14,15 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.util import np_ndarray_type_get_shape
-from ml_dtypes import bfloat16
 
 import aie.utils.trace as trace_utils
 
-dtype_map = {
-    "bf16": bfloat16,
-    "i32": np.int32,
-}
+from aie.iron import str_to_dtype
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_cores = 4
-    dtype = dtype_map[dtype_str]
+    dtype = str_to_dtype(dtype_str)
 
     N = in1_size // dtype(0).nbytes
     O = out_size // dtype(0).nbytes
