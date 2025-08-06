@@ -29,7 +29,13 @@ def str_to_dtype(dtype_str):
         dtype: The corresponding dtype object.
     """
 
-    return dtype_map.get(dtype_str, None)  # Return None if dtype_str is not recognized
+    value = None
+    try:
+        value = dtype_map[dtype_str]
+    except KeyError:
+        raise ValueError(f"Unrecognized dtype: {dtype_str}")
+    return value
+
 
 def dtype_to_str(dtype):
     """
@@ -45,4 +51,4 @@ def dtype_to_str(dtype):
     for key, value in dtype_map.items():
         if value == dtype:
             return key
-    return None  # Return None if dtype is not recognized
+    raise ValueError(f"Unrecognized dtype: {dtype}")
