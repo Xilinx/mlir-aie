@@ -14,7 +14,7 @@ import shutil
 import pytest
 
 import aie.iron as iron
-from aie.iron import ExternalKernel, jit
+from aie.iron import ExternalFunction, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
@@ -29,7 +29,7 @@ def transform(input, output, func):
         )
     num_elements = np.size(input)
 
-    # Extract tile size from ExternalKernel (using first argument)
+    # Extract tile size from ExternalFunction (using first argument)
     tile_size = func.tile_size(0)
 
     # Assert that input and output arrays have the same tile size
@@ -60,7 +60,7 @@ def transform(input, output, func):
 
     # Define a task that will run on a compute tile
     def core_body(of_in, of_out, func_to_apply):
-        # Extract tile size from ExternalKernel (using first argument)
+        # Extract tile size from ExternalFunction (using first argument)
         tile_size = func_to_apply.tile_size(0)
 
         # Number of sub-vector "tile" iterations
@@ -86,14 +86,14 @@ def transform(input, output, func):
 
 
 def test_simple_add_one():
-    """Test basic ExternalKernel with simple add_one operation."""
+    """Test basic ExternalFunction with simple add_one operation."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalKernel for adding one
-    add_one = ExternalKernel(
+    # Create ExternalFunction for adding one
+    add_one = ExternalFunction(
         "add_one",
         source_string="""extern "C" {
             void add_one(int* input, int* output, int tile_size) {
@@ -126,15 +126,15 @@ def test_simple_add_one():
 
 @pytest.mark.parametrize("tile_size", [8, 16, 32, 64])
 def test_different_tile_sizes(tile_size):
-    """Test ExternalKernel with different tile sizes."""
+    """Test ExternalFunction with different tile sizes."""
     # Create input and output tensors
     num_elements = 1024
     input_tensor = iron.randint(0, 100, (num_elements,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((num_elements,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalKernel with specific tile size
-    add_one = ExternalKernel(
+    # Create ExternalFunction with specific tile size
+    add_one = ExternalFunction(
         "add_one",
         source_string="""extern "C" {
             void add_one(int* input, int* output, int tile_size) {
@@ -167,14 +167,14 @@ def test_different_tile_sizes(tile_size):
     ],
 )
 def test_different_data_types(dtype, c_type):
-    """Test ExternalKernel with different data types."""
+    """Test ExternalFunction with different data types."""
     # Create input and output tensors
     input_tensor = iron.rand((1024,), dtype=dtype, device="npu")
     output_tensor = iron.zeros((1024,), dtype=dtype, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalKernel with specific data type
-    add_one = ExternalKernel(
+    # Create ExternalFunction with specific data type
+    add_one = ExternalFunction(
         "add_one",
         source_string=f"""extern "C" {{
             void add_one({c_type}* input, {c_type}* output, int tile_size) {{
@@ -201,13 +201,13 @@ def test_different_data_types(dtype, c_type):
 
 @pytest.mark.parametrize("value", [5, 42])
 def test_define_values(value):
-    """Test ExternalKernel with different define values."""
+    """Test ExternalFunction with different define values."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    add_value = ExternalKernel(
+    add_value = ExternalFunction(
         "add_value",
         source_string="""extern "C" {
             void add_value(int* input, int* output, int tile_size) {
@@ -234,14 +234,14 @@ def test_define_values(value):
 
 
 def test_multiple_defines():
-    """Test ExternalKernel with multiple defines."""
+    """Test ExternalFunction with multiple defines."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalKernel with multiple defines
-    complex_op = ExternalKernel(
+    # Create ExternalFunction with multiple defines
+    complex_op = ExternalFunction(
         "complex_op",
         source_string="""extern "C" {
             void complex_op(int* input, int* output, int tile_size) {
@@ -272,7 +272,7 @@ def test_multiple_defines():
 
 
 def test_include_directories():
-    """Test ExternalKernel with include directories."""
+    """Test ExternalFunction with include directories."""
     # Create a temporary directory with a header file
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create a header file
@@ -294,8 +294,8 @@ def test_include_directories():
         output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
         initial_tensor = input_tensor.numpy().copy()
 
-        # Create ExternalKernel that includes the header
-        add_value = ExternalKernel(
+        # Create ExternalFunction that includes the header
+        add_value = ExternalFunction(
             "add_value",
             source_string="""extern "C" {
                 #include "math_ops.h"
@@ -323,7 +323,7 @@ def test_include_directories():
 
 
 def test_multiple_include_directories():
-    """Test ExternalKernel with multiple include directories."""
+    """Test ExternalFunction with multiple include directories."""
     # Create temporary directories with header files
     with tempfile.TemporaryDirectory() as temp_dir1, tempfile.TemporaryDirectory() as temp_dir2:
         # Create header files
@@ -340,8 +340,8 @@ def test_multiple_include_directories():
         output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
         initial_tensor = input_tensor.numpy().copy()
 
-        # Create ExternalKernel that includes both headers
-        add_values = ExternalKernel(
+        # Create ExternalFunction that includes both headers
+        add_values = ExternalFunction(
             "add_values",
             source_string="""extern "C" {
                 #include "ops1.h"
@@ -376,8 +376,8 @@ def test_caching_same_source():
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create two ExternalKernels with identical source
-    add_one_1 = ExternalKernel(
+    # Create two ExternalFunctions with identical source
+    add_one_1 = ExternalFunction(
         "add_one_1",
         source_string="""extern "C" {
             void add_one_1(int* input, int* output, int tile_size) {
@@ -393,7 +393,7 @@ def test_caching_same_source():
         ],
     )
 
-    add_one_2 = ExternalKernel(
+    add_one_2 = ExternalFunction(
         "add_one_2",
         source_string="""extern "C" {
             void add_one_2(int* input, int* output, int tile_size) {
@@ -422,14 +422,14 @@ def test_caching_same_source():
 
 
 def test_context_manager():
-    """Test ExternalKernel with context manager syntax."""
+    """Test ExternalFunction with context manager syntax."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalKernel and use it with context manager
-    with ExternalKernel(
+    # Create ExternalFunction and use it with context manager
+    with ExternalFunction(
         "add_one_context",
         source_string="""extern "C" {
             void add_one_context(int* input, int* output, int tile_size) {
@@ -454,14 +454,14 @@ def test_context_manager():
 
 
 def test_context_manager_with_compiler_options():
-    """Test ExternalKernel with context manager and compiler options."""
+    """Test ExternalFunction with context manager and compiler options."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalKernel with compiler options using context manager
-    with ExternalKernel(
+    # Create ExternalFunction with compiler options using context manager
+    with ExternalFunction(
         "add_value_context",
         source_string="""extern "C" {
             void add_value_context(int* input, int* output, int tile_size) {
@@ -487,7 +487,7 @@ def test_context_manager_with_compiler_options():
 
 
 def test_source_file():
-    """Test ExternalKernel with source_file instead of source_string."""
+    """Test ExternalFunction with source_file instead of source_string."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
@@ -506,8 +506,8 @@ def test_source_file():
         source_file_path = f.name
 
     try:
-        # Create ExternalKernel using source_file
-        add_one_from_file = ExternalKernel(
+        # Create ExternalFunction using source_file
+        add_one_from_file = ExternalFunction(
             "add_one_from_file",
             source_file=source_file_path,
             arg_types=[
@@ -531,7 +531,7 @@ def test_source_file():
 
 
 def test_source_file_with_compiler_options():
-    """Test ExternalKernel with source_file and compiler options."""
+    """Test ExternalFunction with source_file and compiler options."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
@@ -550,8 +550,8 @@ def test_source_file_with_compiler_options():
         source_file_path = f.name
 
     try:
-        # Create ExternalKernel using source_file with compiler options
-        add_value_from_file = ExternalKernel(
+        # Create ExternalFunction using source_file with compiler options
+        add_value_from_file = ExternalFunction(
             "add_value_from_file",
             source_file=source_file_path,
             arg_types=[
@@ -576,14 +576,14 @@ def test_source_file_with_compiler_options():
 
 
 def test_transform_with_internal_func():
-    """Test transform function that creates ExternalKernel internally."""
+    """Test transform function that creates ExternalFunction internally."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalKernel dynamically but pass it as argument
-    internal_func = ExternalKernel(
+    # Create ExternalFunction dynamically but pass it as argument
+    internal_func = ExternalFunction(
         "internal_add_one",
         source_string="""extern "C" {
             void internal_add_one(int* input, int* output, int tile_size) {
@@ -599,7 +599,7 @@ def test_transform_with_internal_func():
         ],
     )
 
-    # Apply the transform (ExternalKernel is passed as argument)
+    # Apply the transform (ExternalFunction is passed as argument)
     transform(input_tensor, output_tensor, internal_func)
 
     # Verify results
@@ -615,8 +615,8 @@ def test_caching_different_flags():
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Create ExternalKernels with same source but different flags
-    add_value_5 = ExternalKernel(
+    # Create ExternalFunctions with same source but different flags
+    add_value_5 = ExternalFunction(
         "add_value",
         source_string="""extern "C" {
             void add_value(int* input, int* output, int tile_size) {
@@ -633,7 +633,7 @@ def test_caching_different_flags():
         compile_flags=["-DADD_VALUE=5"],
     )
 
-    add_value_10 = ExternalKernel(
+    add_value_10 = ExternalFunction(
         "add_value",
         source_string="""extern "C" {
             void add_value(int* input, int* output, int tile_size) {
@@ -703,8 +703,8 @@ def test_invalid_source(invalid_source):
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
 
-    # Create ExternalKernel with invalid C++ source
-    invalid_func = ExternalKernel(
+    # Create ExternalFunction with invalid C++ source
+    invalid_func = ExternalFunction(
         "invalid_func",
         source_string=invalid_source,
         arg_types=[
@@ -733,8 +733,8 @@ def test_mismatched_tile_sizes(input_tile_size, output_tile_size):
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
 
-    # Create ExternalKernel with mismatched tile sizes
-    mismatched_func = ExternalKernel(
+    # Create ExternalFunction with mismatched tile sizes
+    mismatched_func = ExternalFunction(
         "mismatched_func",
         source_string="""extern "C" {
             void mismatched_func(int* input, int* output, int tile_size) {
@@ -769,8 +769,8 @@ def test_invalid_include_directory(invalid_include):
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
 
-    # Create ExternalKernel with invalid include directory
-    invalid_include_func = ExternalKernel(
+    # Create ExternalFunction with invalid include directory
+    invalid_include_func = ExternalFunction(
         "invalid_include_func",
         source_string="""extern "C" {
             #include "nonexistent.h"
@@ -803,7 +803,7 @@ def test_invalid_include_directory(invalid_include):
     ],
 )
 def test_compiler_flag_combinations(compile_flags, expected_value):
-    """Test ExternalKernel with different combinations of compiler flags."""
+    """Test ExternalFunction with different combinations of compiler flags."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
@@ -826,7 +826,7 @@ def test_compiler_flag_combinations(compile_flags, expected_value):
         }
     }"""
 
-    complex_op = ExternalKernel(
+    complex_op = ExternalFunction(
         "complex_op",
         source_string=source_template,
         arg_types=[

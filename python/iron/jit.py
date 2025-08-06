@@ -143,19 +143,19 @@ def jit(function=None, is_placed=True, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
-        # Import ExternalKernel at the top
-        from .kernel import ExternalKernel
+        # Import ExternalFunction at the top
+        from .kernel import ExternalFunction
 
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
-        ExternalKernel._instances.clear()
+        ExternalFunction._instances.clear()
 
-        # Find ExternalKernel instances in arguments and kwargs
+        # Find ExternalFunction instances in arguments and kwargs
         external_kernels = []
         for arg in args:
-            if isinstance(arg, ExternalKernel):
+            if isinstance(arg, ExternalFunction):
                 external_kernels.append(arg)
         for value in kwargs.values():
-            if isinstance(value, ExternalKernel):
+            if isinstance(value, ExternalFunction):
                 external_kernels.append(value)
 
         # Execute the function to generate MLIR
@@ -172,8 +172,8 @@ def jit(function=None, is_placed=True, use_cache=True):
         except Exception as e:
             raise
 
-        # Compile all ExternalKernel instances that were created during this JIT compilation
-        for func in ExternalKernel._instances:
+        # Compile all ExternalFunction instances that were created during this JIT compilation
+        for func in ExternalFunction._instances:
             if (
                 not hasattr(func, "_compiled") or not func._compiled
             ):  # Don't compile if already compiled
@@ -197,7 +197,7 @@ def jit(function=None, is_placed=True, use_cache=True):
         except Exception as e:
             raise
 
-        # Hash of the IR string, ExternalKernel compiler options, and target architecture
+        # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)
         kernel_dir = os.path.join(IRON_CACHE_DIR, f"{module_hash}")
         mlir_path = os.path.join(kernel_dir, "aie.mlir")
@@ -219,9 +219,9 @@ def jit(function=None, is_placed=True, use_cache=True):
                 with open(mlir_path, "w", encoding="utf-8") as f:
                     print(mlir_module, file=f)
 
-                # Set cache directory for ExternalKernels and compile them
+                # Set cache directory for ExternalFunctions and compile them
                 for func in external_kernels:
-                    # Compile the ExternalKernel directly in the kernel directory
+                    # Compile the ExternalFunction directly in the kernel directory
                     compile_external_kernel(func, kernel_dir, target_arch)
 
                 # Compile the MLIR module
@@ -250,10 +250,10 @@ def jit(function=None, is_placed=True, use_cache=True):
 
 def compile_external_kernel(func, kernel_dir, target_arch):
     """
-    Compile an ExternalKernel to an object file in the kernel directory.
+    Compile an ExternalFunction to an object file in the kernel directory.
 
     Args:
-        func: ExternalKernel instance to compile
+        func: ExternalFunction instance to compile
         kernel_dir: Directory to place the compiled object file
         target_arch: Target architecture (e.g., "aie2" or "aie2p")
     """
@@ -312,11 +312,11 @@ def compile_external_kernel(func, kernel_dir, target_arch):
 
 def hash_module(module, external_kernels=None, target_arch=None):
     """
-    Hash the MLIR module and ExternalKernel compiler options to create a unique identifier.
+    Hash the MLIR module and ExternalFunction compiler options to create a unique identifier.
     """
     mlir_str = str(module)
 
-    # Include ExternalKernel compiler options in the hash
+    # Include ExternalFunction compiler options in the hash
     if external_kernels:
         compiler_options = []
         for func in external_kernels:

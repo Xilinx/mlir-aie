@@ -76,7 +76,7 @@ class Kernel(BaseKernel):
             self._op = external_func(self._name, inputs=self._arg_types)
 
 
-class ExternalKernel(BaseKernel):
+class ExternalFunction(BaseKernel):
     _object_files = set()
     _instances = set()
 
@@ -89,7 +89,7 @@ class ExternalKernel(BaseKernel):
         include_dirs: list[str] = [],
         compile_flags: list[str] = [],
     ) -> None:
-        """An ExternalKernel is a C++ source file that gets compiled to an object file and eventually resolves to a FuncOp.
+        """An ExternalFunction is a C++ source file that gets compiled to an object file and eventually resolves to a FuncOp.
         If it is called, a CallOp will be generated.
 
         Args:
@@ -108,7 +108,7 @@ class ExternalKernel(BaseKernel):
         self._compiled = False
 
         # Track this instance for JIT compilation
-        ExternalKernel._instances.add(self)
+        ExternalFunction._instances.add(self)
 
     def _setup_source(self, source_file: str | None, source_string: str | None) -> None:
         """Set up the source file for compilation."""
@@ -171,7 +171,7 @@ class ExternalKernel(BaseKernel):
         )
 
     def arg_types(self) -> list:
-        """Get the argument types of the ExternalKernel."""
+        """Get the argument types of the ExternalFunction."""
         return self._arg_types.copy()
 
     def resolve(
@@ -185,5 +185,5 @@ class ExternalKernel(BaseKernel):
 
     def __call__(self, *args, **kwargs):
         if not self._op:
-            raise ValueError("Need to resolve ExternalKernel before it can be called")
+            raise ValueError("Need to resolve ExternalFunction before it can be called")
         call(self._op, args, **kwargs)

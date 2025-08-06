@@ -14,7 +14,7 @@ import shutil
 import pytest
 
 import aie.iron as iron
-from aie.iron import ExternalKernel, jit
+from aie.iron import ExternalFunction, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
@@ -22,15 +22,15 @@ from aie.iron.controlflow import range_
 
 @jit(is_placed=False)
 def transform_with_internal_func_with_options(input, output):
-    """Transform kernel that creates ExternalKernel internally with compiler options."""
+    """Transform kernel that creates ExternalFunction internally with compiler options."""
     if input.shape != output.shape:
         raise ValueError(
             f"Input shapes are not the equal ({input.shape} != {output.shape})."
         )
     num_elements = np.size(input)
 
-    # Create ExternalKernel inside the transform with compiler options
-    internal_func = ExternalKernel(
+    # Create ExternalFunction inside the transform with compiler options
+    internal_func = ExternalFunction(
         "internal_add_value",
         source_string="""extern "C" {
             void internal_add_value(int* input, int* output, int tile_size) {
@@ -47,7 +47,7 @@ def transform_with_internal_func_with_options(input, output):
         compile_flags=["-DADD_VALUE=1"],
     )
 
-    # Extract tile size from ExternalKernel
+    # Extract tile size from ExternalFunction
     tile_size = internal_func.tile_size(0)
 
     if num_elements % tile_size != 0:
@@ -73,7 +73,7 @@ def transform_with_internal_func_with_options(input, output):
 
     # Define a task that will run on a compute tile
     def core_body(of_in, of_out, func_to_apply):
-        # Extract tile size from ExternalKernel
+        # Extract tile size from ExternalFunction
         tile_size = func_to_apply.tile_size(0)
 
         # Number of sub-vector "tile" iterations
@@ -100,7 +100,7 @@ def transform_with_internal_func_with_options(input, output):
 
 @jit(is_placed=False)
 def transform_with_internal_func_from_file(input, output):
-    """Transform kernel that creates ExternalKernel internally from a file."""
+    """Transform kernel that creates ExternalFunction internally from a file."""
     if input.shape != output.shape:
         raise ValueError(
             f"Input shapes are not the equal ({input.shape} != {output.shape})."
@@ -120,8 +120,8 @@ def transform_with_internal_func_from_file(input, output):
         )
         temp_file_path = f.name
 
-    # Create ExternalKernel inside the transform from a file
-    internal_func = ExternalKernel(
+    # Create ExternalFunction inside the transform from a file
+    internal_func = ExternalFunction(
         "internal_add_from_file",
         source_file=temp_file_path,
         arg_types=[
@@ -131,7 +131,7 @@ def transform_with_internal_func_from_file(input, output):
         ],
     )
 
-    # Extract tile size from ExternalKernel
+    # Extract tile size from ExternalFunction
     tile_size = internal_func.tile_size(0)
 
     if num_elements % tile_size != 0:
@@ -157,7 +157,7 @@ def transform_with_internal_func_from_file(input, output):
 
     # Define a task that will run on a compute tile
     def core_body(of_in, of_out, func_to_apply):
-        # Extract tile size from ExternalKernel
+        # Extract tile size from ExternalFunction
         tile_size = func_to_apply.tile_size(0)
 
         # Number of sub-vector "tile" iterations
@@ -184,15 +184,15 @@ def transform_with_internal_func_from_file(input, output):
 
 @jit(is_placed=False)
 def transform_with_internal_func(input, output):
-    """Transform kernel that creates ExternalKernel internally."""
+    """Transform kernel that creates ExternalFunction internally."""
     if input.shape != output.shape:
         raise ValueError(
             f"Input shapes are not the equal ({input.shape} != {output.shape})."
         )
     num_elements = np.size(input)
 
-    # Create ExternalKernel inside the transform
-    internal_func = ExternalKernel(
+    # Create ExternalFunction inside the transform
+    internal_func = ExternalFunction(
         "internal_add_one",
         source_string="""extern "C" {
             void internal_add_one(int* input, int* output, int tile_size) {
@@ -208,7 +208,7 @@ def transform_with_internal_func(input, output):
         ],
     )
 
-    # Extract tile size from ExternalKernel
+    # Extract tile size from ExternalFunction
     tile_size = internal_func.tile_size(0)
 
     if num_elements % tile_size != 0:
@@ -234,7 +234,7 @@ def transform_with_internal_func(input, output):
 
     # Define a task that will run on a compute tile
     def core_body(of_in, of_out, func_to_apply):
-        # Extract tile size from ExternalKernel
+        # Extract tile size from ExternalFunction
         tile_size = func_to_apply.tile_size(0)
 
         # Number of sub-vector "tile" iterations
@@ -260,13 +260,13 @@ def transform_with_internal_func(input, output):
 
 
 def test_transform_with_internal_func_with_options_inside():
-    """Test transform function that creates ExternalKernel internally with compiler options."""
+    """Test transform function that creates ExternalFunction internally with compiler options."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Apply the transform (ExternalKernel is created inside with hardcoded compiler options)
+    # Apply the transform (ExternalFunction is created inside with hardcoded compiler options)
     transform_with_internal_func_with_options(input_tensor, output_tensor)
 
     # Verify results
@@ -276,13 +276,13 @@ def test_transform_with_internal_func_with_options_inside():
 
 
 def test_transform_with_internal_func_inside():
-    """Test transform function that creates ExternalKernel internally."""
+    """Test transform function that creates ExternalFunction internally."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Apply the transform (ExternalKernel is created inside)
+    # Apply the transform (ExternalFunction is created inside)
     transform_with_internal_func(input_tensor, output_tensor)
 
     # Verify results
@@ -292,13 +292,13 @@ def test_transform_with_internal_func_inside():
 
 
 def test_transform_with_internal_func_from_file():
-    """Test transform function that creates ExternalKernel from a file."""
+    """Test transform function that creates ExternalFunction from a file."""
     # Create input and output tensors
     input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
     initial_tensor = input_tensor.numpy().copy()
 
-    # Apply the transform (ExternalKernel is created inside from file)
+    # Apply the transform (ExternalFunction is created inside from file)
     transform_with_internal_func_from_file(input_tensor, output_tensor)
 
     # Verify results
