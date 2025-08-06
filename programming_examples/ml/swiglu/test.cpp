@@ -36,8 +36,7 @@ std::bfloat16_t silu_bf16(std::bfloat16_t &input) {
 }
 
 // SwiGLU reference implementation
-std::bfloat16_t swiglu_bf16(std::bfloat16_t &input, 
-                            std::bfloat16_t &w1,
+std::bfloat16_t swiglu_bf16(std::bfloat16_t &input, std::bfloat16_t &w1,
                             std::bfloat16_t &w2) {
   // Compute the first part: x * w1
   std::bfloat16_t x_w1 = input * w1;
@@ -48,7 +47,6 @@ std::bfloat16_t swiglu_bf16(std::bfloat16_t &input,
   // Compute the final output: x * w1 * silu_output
   return x_w1 * silu_output;
 }
-  
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
@@ -167,11 +165,11 @@ int main(int argc, const char *argv[]) {
     // Example weights, can be replaced with actual model weights
     srcVecW1.push_back(std::bfloat16_t(0.1f * (i % 10) + 0.1f));
     srcVecW2.push_back(std::bfloat16_t(0.2f * (i % 20) + 0.2f));
-  } 
+  }
   std::vector<std::bfloat16_t> srcVecWeights;
   // Interleave the weights into one vector in 1024 elements chunks
   // of each W1 and W2
-  for (int i = 0; i < N; i+= 1024) {
+  for (int i = 0; i < N; i += 1024) {
     for (int j = 0; j < 1024 && (i + j) < N; j++) {
       srcVecWeights.push_back(srcVecW1[i + j]);
     }
@@ -183,7 +181,7 @@ int main(int argc, const char *argv[]) {
   // Write the weights to the buffer object
   auto bufWeights = bo_weights.map<std::bfloat16_t *>();
   memcpy(bufWeights, srcVecWeights.data(),
-         srcVecWeights.size() * sizeof(std::bfloat16_t)); 
+         srcVecWeights.size() * sizeof(std::bfloat16_t));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
@@ -196,11 +194,13 @@ int main(int argc, const char *argv[]) {
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
   // Setup run to configure
-  auto cfg_run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_weights, bo_out);
+  auto cfg_run =
+      kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_weights, bo_out);
   cfg_run.wait();
   auto start = std::chrono::high_resolution_clock::now();
   // Test run
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_weights, bo_out);
+  auto run =
+      kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_weights, bo_out);
   run.wait();
   auto stop = std::chrono::high_resolution_clock::now();
   const float npu_time =
@@ -227,11 +227,10 @@ int main(int argc, const char *argv[]) {
       errors++;
       // Print the first 100 mismatches
       if (errors <= 100) {
-        std::cout << "Mismatch at index " << i << ": "
-                  << "Expected: " << ref << ", "
-                  << "Got: " << *(bufOut + i) << std::endl;
+        std::cout << "Mismatch at index " << i << ": " << "Expected: " << ref
+                  << ", " << "Got: " << *(bufOut + i) << std::endl;
       }
-    } 
+    }
   }
 
   if (!errors) {

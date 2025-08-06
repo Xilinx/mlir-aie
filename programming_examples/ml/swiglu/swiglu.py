@@ -31,18 +31,9 @@ def my_swiglu(dev, size, num_columns):
     chunk = size // num_columns
 
     # Dataflow with ObjectFifos
-    of_ins = [
-        ObjectFifo(line_type, name=f"in{i}")
-        for i in range(num_columns)
-    ]
-    of_wts = [
-        ObjectFifo(line_type, depth=4, name=f"w{i}")
-        for i in range(num_columns)
-    ]
-    of_outs = [
-        ObjectFifo(line_type, name=f"out{i}")
-        for i in range(num_columns)
-    ]
+    of_ins = [ObjectFifo(line_type, name=f"in{i}") for i in range(num_columns)]
+    of_wts = [ObjectFifo(line_type, depth=4, name=f"w{i}") for i in range(num_columns)]
+    of_outs = [ObjectFifo(line_type, name=f"out{i}") for i in range(num_columns)]
 
     # External, binary kernel definitions
     swiglu_fcn = Kernel(
@@ -55,7 +46,7 @@ def my_swiglu(dev, size, num_columns):
     def core_fn(of_in, of_wts, of_out, swigluLine):
         elemOut = of_out.acquire(1)
         elemIn = of_in.acquire(1)
-        elemWts = of_wts.acquire(2) # Acquire two weight vectors
+        elemWts = of_wts.acquire(2)  # Acquire two weight vectors
         swigluLine(elemIn, elemWts[0], elemWts[1], elemOut)
         of_wts.release(2)  # Release both weight vectors
         of_in.release(1)
@@ -101,7 +92,11 @@ def my_swiglu(dev, size, num_columns):
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type_wts, transfer_type) as (a_in, w_in, b_out):
+    with rt.sequence(transfer_type, transfer_type_wts, transfer_type) as (
+        a_in,
+        w_in,
+        b_out,
+    ):
         rt.start(*my_workers)
         # Fill the input objectFIFOs with data
         for i in range(num_columns):

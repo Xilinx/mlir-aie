@@ -35,18 +35,9 @@ def my_eltwise_add(dev, num_elements, trace_size):
     tile_ty = np.ndarray[(per_tile_elements,), np.dtype[dtype]]
 
     # AIE-array data movement with object fifos
-    of_in1s = [
-        ObjectFifo(tile_ty, name=f"in1_{i}")
-        for i in range(num_columns)
-    ]
-    of_in2s = [
-        ObjectFifo(tile_ty, name=f"in2_{i}")
-        for i in range(num_columns)
-    ]
-    of_outs = [
-        ObjectFifo(tile_ty, name=f"out_{i}")
-        for i in range(num_columns)
-    ]
+    of_in1s = [ObjectFifo(tile_ty, name=f"in1_{i}") for i in range(num_columns)]
+    of_in2s = [ObjectFifo(tile_ty, name=f"in2_{i}") for i in range(num_columns)]
+    of_outs = [ObjectFifo(tile_ty, name=f"out_{i}") for i in range(num_columns)]
 
     # AIE Core Function declaration
     eltwise_add_bf16_vector = Kernel(
@@ -59,12 +50,12 @@ def my_eltwise_add(dev, num_elements, trace_size):
         for _ in range_(N_div_n):
             elem_in1 = of_in1.acquire(1)
             elem_in2 = of_in2.acquire(1)
-            elem_out = of_out.acquire(1) 
+            elem_out = of_out.acquire(1)
             eltwise_add(elem_in1, elem_in2, elem_out)
             of_in1.release(1)
             of_in2.release(1)
             of_out.release(1)
-    
+
     # Create a worker to run the task on a compute tile
     my_workers = [
         Worker(
@@ -73,11 +64,11 @@ def my_eltwise_add(dev, num_elements, trace_size):
                 of_in1s[i].cons(),
                 of_in2s[i].cons(),
                 of_outs[i].prod(),
-                eltwise_add_bf16_vector
+                eltwise_add_bf16_vector,
             ],
         )
         for i in range(num_columns)
-    ]   
+    ]
 
     # Create a TensorAccessPattern for each channel
     # to describe the data movement
@@ -92,7 +83,7 @@ def my_eltwise_add(dev, num_elements, trace_size):
             [0, 0, 0, 1],
         )
         for i in range(num_columns)
-    ]   
+    ]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
@@ -100,30 +91,31 @@ def my_eltwise_add(dev, num_elements, trace_size):
         rt.start(*my_workers)
         # Fill the input objectFIFOs with data
         for i in range(num_columns):
-                rt.fill(
-                    of_in1s[i].prod(),
-                    A,
-                    taps[i],
-                )
-                rt.fill(
-                    of_in2s[i].prod(),
-                    B,
-                    taps[i],
-                )
+            rt.fill(
+                of_in1s[i].prod(),
+                A,
+                taps[i],
+            )
+            rt.fill(
+                of_in2s[i].prod(),
+                B,
+                taps[i],
+            )
         # Drain the output objectFIFOs with data
         tg_out = rt.task_group()
         for i in range(num_columns):
-                rt.drain(
-                    of_outs[i].cons(),
-                    C,
-                    taps[i],
-                    wait=True,  # wait for the transfer to complete and data to be available
-                    task_group=tg_out,
-                )
-        rt.finish_task_group(tg_out)    
+            rt.drain(
+                of_outs[i].cons(),
+                C,
+                taps[i],
+                wait=True,  # wait for the transfer to complete and data to be available
+                task_group=tg_out,
+            )
+        rt.finish_task_group(tg_out)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
+
 
 try:
     device_name = str(sys.argv[1])
