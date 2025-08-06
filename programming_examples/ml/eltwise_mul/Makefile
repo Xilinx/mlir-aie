@@ -19,11 +19,6 @@ targetname = eltwise_mul
 trace_size = 8192
 
 aie_py_src=${targetname}.py
-use_placed?=0
-
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
