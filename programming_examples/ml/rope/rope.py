@@ -32,7 +32,7 @@ def rope(dev, sequence_length, embedding_dim, trace_size):
     of_in = [ObjectFifo(chunk_type, name=f"in_{i}") for i in range(n_cores)]
     of_out = [ObjectFifo(chunk_type, name=f"out_{i}") for i in range(n_cores)]
 
-    rope_kernel = Kernel("rope", "rope.o", [chunk_type, chunk_type, np.int32])
+    rope_kernel = Kernel("rope", "rope.o", [chunk_type, chunk_type, np.int32, np.int32])
     taps_in = []
     taps_out = []
     for i in range(n_cores):
@@ -66,10 +66,10 @@ def rope(dev, sequence_length, embedding_dim, trace_size):
         taps_out.append(taps)
 
     def core_body(of_in, of_out, rope_kernel):
-        for i in range_(rows_per_core):
+        for row in range_(rows_per_core):
             elem_in = of_in.acquire(1)
             elem_out = of_out.acquire(1)
-            rope_kernel(elem_in, elem_out, embedding_dim)
+            rope_kernel(elem_in, elem_out, row, embedding_dim)
             of_in.release(1)
             of_out.release(1)
 

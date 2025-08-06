@@ -144,34 +144,34 @@ inline float fast_sinf(float x) {
 }
 
 // Rotary Positional Embedding kernel (scalar version)
+template <typename T, int N>
 void rope_kernel_scalar(const bfloat16 *restrict input, bfloat16 *restrict output, int32_t pos, int32_t dims) {
     event0();
     constexpr float theta = 10000.0f;
+    ::aie::vector<T, N> y;
 
-    // dims must be even
-    for (int i = 0; i < dims; i += 2) {
-        float x1 = static_cast<float>(input[i]);
-        float x2 = static_cast<float>(input[i + 1]);
+    for (int v = 0; v < dims; v = v+N){
+        ::aie::vector<T, N> x = ::aie::load_v<N>(input + v);
+        // dims must be even
+        for (int i = 0; i < dims; i += 2) {
+            int j = i / 2;
+            float exponent = (2 * j) / static_cast<float>(dims);
+            float inv_freq = 1.0f / fast_powf(theta, exponent);
+            float angle = pos * inv_freq;
 
-        int j = i / 2;
-        float exponent = (2 * j) / static_cast<float>(dims);
-        float inv_freq = 1.0f / fast_powf(theta, exponent);
-        float angle = pos * inv_freq;
+            float cos_val = fast_cosf(angle);
+            float sin_val = fast_sinf(angle);
 
-        float cos_val = fast_cosf(angle);
-        float sin_val = fast_sinf(angle);
-
-        float y1 = x1 * cos_val - x2 * sin_val;
-        float y2 = x1 * sin_val + x2 * cos_val;
-
-        output[i] = static_cast<T>(y1);
-        output[i + 1] = static_cast<T>(y2);
+            y[i] = x[i] * cos_val - x[i+1] * sin_val;
+            y[i+1] = x[i] * sin_val + x[i+1] * cos_val;
+        }
+        ::aie::store_v(output + v, y);
     }
     event1();
 }
 
 extern "C" {
 void rope(bfloat16 *input, bfloat16 *output, int32_t pos, int32_t dims) {
-    rope_kernel_scalar(input, output, pos, dims);
+    rope_kernel_scalar<bfloat16, 16>(input, output, pos, dims);
 }
 }
