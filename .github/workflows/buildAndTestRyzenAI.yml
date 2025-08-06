@@ -128,6 +128,11 @@ jobs:
           ninja install
           
           cd ..
+          ls -alth
+          ls -alth ~/.iron
+          source /opt/xilinx/xrt/setup.sh
+          source utils/env_setup.sh
+          export PYTHONPATH="$(pwd)/install/python:${PYTHONPATH}"
           xrt-smi examine
 
           python programming_examples/basic/vector_vector_add/vector_vector_add.py
