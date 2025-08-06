@@ -178,8 +178,9 @@ int main(int argc, const char *argv[]) {
       errors++;
       // Print the first 100 mismatches
       if (errors <= 100) {
-        std::cout << "Mismatch at index " << i << ": " << "Expected: " << ref
-                  << ", " << "Got: " << *(bufOut + i) << std::endl;
+        std::cout << "Mismatch at index " << i << ": "
+                  << "Expected: " << ref << ", "
+                  << "Got: " << *(bufOut + i) << std::endl;
       }
     }
   }
