@@ -113,7 +113,8 @@ public:
 
   /// Given a tile and DMAChannelDir, returns next usable channel index for
   /// that tile.
-  int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir, bool requiresAdjacentTileAccessChannels) {
+  int getDMAChannelIndex(TileOp tileOp, DMAChannelDir dir,
+                         bool requiresAdjacentTileAccessChannels) {
     int maxChannelNum = 0;
     if (dir == DMAChannelDir::MM2S)
       maxChannelNum = tileOp.getNumSourceConnections(WireBundle::DMA);
@@ -121,9 +122,11 @@ public:
       maxChannelNum = tileOp.getNumDestConnections(WireBundle::DMA);
 
     const auto &targetModel = getTargetModel(tileOp);
-    int maxChannelNumForAdjacentTile = targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(), tileOp.getRow());
+    int maxChannelNumForAdjacentTile =
+        targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(), tileOp.getRow());
 
-    // if requires adjacent tile access channels, only allocate on channel 0-3, and if cannot, return 0
+    // if requires adjacent tile access channels, only allocate on
+    // channels 0-3, and if cannot, return 0
     if (requiresAdjacentTileAccessChannels) {
       maxChannelNum = std::min(maxChannelNum, maxChannelNumForAdjacentTile);
     }
@@ -1669,7 +1672,8 @@ struct AIEObjectFifoStatefulTransformPass
       if (shouldProcessProducer) {
         bool requiresAdjacentTileAccessChannels = crossTileInfos.at(producer);
         int channelIndex = dmaAnalysis.getDMAChannelIndex(
-            producer.getProducerTileOp(), DMAChannelDir::MM2S, requiresAdjacentTileAccessChannels);
+            producer.getProducerTileOp(), DMAChannelDir::MM2S,
+            requiresAdjacentTileAccessChannels);
         fifo_dma_channel_index[producer] = channelIndex;
       }
       
@@ -1680,7 +1684,8 @@ struct AIEObjectFifoStatefulTransformPass
         if (shouldProcessConsumer) {
           bool requiresAdjacentTileAccessChannels = crossTileInfos.at(consumer);
           int channelIndex = dmaAnalysis.getDMAChannelIndex(
-              consumer.getProducerTileOp(), DMAChannelDir::S2MM, requiresAdjacentTileAccessChannels);
+              consumer.getProducerTileOp(), DMAChannelDir::S2MM,
+              requiresAdjacentTileAccessChannels);
           fifo_dma_channel_index[consumer] = channelIndex;
         }
       }
@@ -1813,12 +1818,10 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
-
         checkAndApplyViaSharedMemAttribute(createOp, share_direction);
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
-
         if (createOp.getViaSharedMem().has_value())
           createOp->emitOpError(
               "no access to shared memory module specified by "
@@ -1828,7 +1831,6 @@ struct AIEObjectFifoStatefulTransformPass
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
         else {
-
           if (!createOp.getInitValues().has_value()) {
 
             int prodMaxAcquire = findObjectFifoSize(
@@ -1839,29 +1841,27 @@ struct AIEObjectFifoStatefulTransformPass
         }
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
-
       }
     }
 
-
-    // Analyze cross-tile buffer allocations and print results
-    auto crossTileInfos = analyzeCrossTileFIFOBuffers();
-
-    // assign DMA channels for FIFOs
-    // assign the channel index for fifos that has cross-tile issues first
-    // use dmaAnalysis.getDMAChannelIndex() to assign index (which internally loop 
-    // over all of available channels and assign from 0 to maximum)
-    std::map<ObjectFifoCreateOp, int> fifo_dma_channel_index;
-
-    // Assign channel indices for FIFOs with cross-tile issues first
-    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, true);
-    
-    // Then assign channel indices for FIFOs without cross-tile issues
-    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, false);    //===------------------------------------------------------------------===//
+    //===------------------------------------------------------------------===//
     // Create flows and tile DMAs
     //===------------------------------------------------------------------===//
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
+
+    // analyze cross-tile buffer allocations and print results
+    auto crossTileInfos = analyzeCrossTileFIFOBuffers();
+
+    // maps ends of split FIFO to DMA channels
+    std::map<ObjectFifoCreateOp, int> fifo_dma_channel_index;
+
+    // assign channel indices for FIFOs with cross-tile issues first
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, true);
+    
+    // then assign channel indices for FIFOs without cross-tile issues
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, false);
+
     int packetID = 0;
     for (auto &[producer, consumers] : splitFifos) {
       int producerChanIndex = fifo_dma_channel_index[producer];
