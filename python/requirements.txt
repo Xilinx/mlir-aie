@@ -8,3 +8,5 @@ cloudpickle # required by eudsl when it is vendored instead of installed
 -f https://llvm.github.io/eudsl
 eudsl-python-extras==0.1.0.20260801.905+68a0d7a \
   --config-settings=EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie
+cxxfilt
+elftools

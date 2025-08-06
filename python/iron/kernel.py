@@ -10,6 +10,9 @@ import logging
 from pathlib import Path
 
 import numpy as np
+import cxxfilt
+from elftools.elf.elffile import ELFFile
+from elftools.elf.sections import SymbolTableSection
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
@@ -20,6 +23,34 @@ from .buffer import Buffer
 from .resolvable import Resolvable
 
 logger = logging.getLogger(__name__)
+
+
+def find_manged_symbol(file, demangled_name):
+    """
+    Find the mangled symbol that corresponds to the demangled_name.
+
+    Args:
+        file (str): Path to the file to analyze
+        demangled_name (str): The demangled name of the symbol to find
+
+    Returns:
+        str: The mangled name of the symbol if found, otherwise None
+    """
+    with open(file, "rb") as file:
+        elf_file = ELFFile(file)
+
+        for section in elf_file.iter_sections():
+            if isinstance(section, SymbolTableSection):
+                for symbol in section.iter_symbols():
+                    # Filter out function symbols
+                    if symbol and symbol["st_info"]["type"] == "STT_FUNC":
+                        if symbol.name == demangled_name:
+                            # Name matches the demangled name, thus it has C linkage
+                            return symbol.name
+                        if cxxfilt.demangle(symbol.name) == demangled_name:
+                            # Demangled symbol name matches the demangled name, thus it has C++ linkage
+                            return symbol.name
+    return None
 
 
 def _is_contiguous_row_major(mr):
@@ -260,6 +291,12 @@ class Kernel(BaseKernel):
                 ``llvm-link`` merge path; None (the default) object-links it.
         """
         super().__init__(name, arg_types)
+
+        symbol_name = find_manged_symbol(f"build/{object_file_name}", name)
+        if not symbol_name:
+            raise ValueError(f"Could not find symbol for {name} in {object_file_name}")
+
+        self._name = symbol_name
         self._object_file_name = object_file_name
         self._link_with_mode = link_with_mode
 
