@@ -209,7 +209,15 @@ jobs:
           
           # Debug: Check what's available in aie.iron
           python -c "import aie.iron; print(dir(aie.iron))"
-          cat /home/github/actions-runner/_work/mlir-aie/mlir-aie/aie-venv/lib/python3.12/site-packages/mlir_aie/python/aie/iron/kernel.py
+          
+          # Debug: Check Python path and environment
+          echo "Python executable: $(which python)"
+          echo "Python version: $(python --version)"
+          echo "PYTHONPATH: $PYTHONPATH"
+          python -c "import sys; print('Python path:'); [print(p) for p in sys.path]"
+          python -c "import aie.iron; print('aie.iron location:', aie.iron.__file__)"
+
+          cat python/iron/kernel.py 
           
           python programming_examples/basic/vector_vector_add/vector_vector_add.py -d npu2
           pytest -vvv -s test/python/jit_compilation.py
