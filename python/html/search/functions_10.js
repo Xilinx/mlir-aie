@@ -9,5 +9,6 @@ var searchData=
   ['split_6',['split',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a90205496ee0aa0af4cd6faf382df77cc',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
   ['start_7',['start',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a374badc82bbd7649468f72f637818399',1,'iron::runtime::runtime::Runtime']]],
   ['step_5ftiler_8',['step_tiler',['../classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html#a2d78c25921c651593955c00f155b3f46',1,'taplib::tensortiler2d::TensorTiler2D']]],
-  ['strides_9',['strides',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a65e95e762442c88b58ae46e52c39c58b',1,'taplib::tap::TensorAccessPattern']]]
+  ['str_5fto_5fdtype_9',['str_to_dtype',['../namespaceiron_1_1dtype.html#aa67bf27f9800951c43102d184b73fae0',1,'iron::dtype']]],
+  ['strides_10',['strides',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a65e95e762442c88b58ae46e52c39c58b',1,'taplib::tap::TensorAccessPattern']]]
 ];
