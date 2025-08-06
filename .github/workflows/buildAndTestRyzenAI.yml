@@ -22,7 +22,7 @@ on:
         type: boolean
         description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
         required: false
-        default: true
+        default: false
 
 defaults:
   run:
@@ -46,7 +46,7 @@ env:
             -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DXRT_ROOT=/opt/xilinx/xrt \
-            -DAIE_VITIS_COMPONENTS="AIE2;AIE2P" \
+            -DAIE_VITIS_COMPONENTS=AIE2;AIE2P \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
@@ -59,7 +59,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner_type: [ amdhx370 , amd7940hs ]
+        runner_type: [ amd7940hs, amdhx370 ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,7 +72,8 @@ jobs:
         uses: mxschmitt/action-tmate@v3
         # To run this, launch it manually on the default branch and
         # click on "launch_tmate_terminal_for_debug"
-        if: inputs.launch_tmate_terminal_for_debug
+        if: github.event_name == 'workflow_dispatch'
+                && inputs.launch_tmate_terminal_for_debug
 
       - name: Run commands
         run: |
@@ -123,118 +124,67 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DAIE_ENABLE_BINDINGS_PYTHON=ON \
-            -DLLVM_ENABLE_RTTI=ON \
-            -DLLVM_ENABLE_ASSERTIONS=ON \
-            -DAIE_VITIS_COMPONENTS="AIE2;AIE2P" \
-            -DAIE_RUNTIME_TARGETS=x86_64 \
-            -DAIE_RUNTIME_TEST_TARGET=x86_64 \
-            -DVITIS_VPP=$(which v++) \
             $CMAKE_ARGS
 
           ninja install
-          
-          cd ..
-          ls -alth
-          ls -alth ~/.iron
-          source /opt/xilinx/xrt/setup.sh
-          source utils/env_setup.sh
-          export PYTHONPATH="$(pwd)/mlir_aie/python:${PYTHONPATH}"
-          xrt-smi examine
-          python -c "from aie.iron import get_current_device; from aie.iron.device import NPU1, NPU2; current_device = get_current_device(); target_arch = 'aie2p' if isinstance(current_device, NPU2) else 'aie2' if isinstance(current_device, NPU1) else None; print(f'Device: {current_device}, Target arch: {target_arch}')"
-          
-          # Debug: Check what's available in aie.iron
-          python -c "import aie.iron; print(dir(aie.iron))"
-          cat /home/github/actions-runner/_work/mlir-aie/mlir-aie/aie-venv/lib/python3.12/site-packages/mlir_aie/python/aie/iron/kernel.py
-          ls -alt mlir_aie
-          cat mlir_aie/python/aie/iron/__init__.py
-          cat mlir_aie/python/aie/iron/kernel.py
-          export PYTHONPATH="$(pwd)/mlir_aie/python:${PYTHONPATH}"
-
-          python test/python/jit_extern_functions.py 
-          pytest -vvv -s test/python/jit_compilation.py
-          pytest -vvv -s test/python/jit_extern_functions.py
-          pytest -vvv -s test/python/jit_extern_inside_jit.py
-    
-          #ninja check-aie
+          ninja check-aie
           popd
 
-#  build-quick-setup:
-#    name: Run Examples on Ryzen AI
-#    runs-on: ${{ matrix.runner_type }}
-#    strategy:
-#      fail-fast: false
-#      matrix:
-#        runner_type: [ amd7940hs, amdhx370 ]
-#    steps:
-#      - uses: actions/checkout@v4
-#        with:
-#          submodules: "true"
-#
-#      # Launch an ssh session via a proxy server if there is a need
-#      # for debug. This seems to live for 35 min max
-#      # https://github.com/mxschmitt/action-tmate
-#      - name: Setup tmate session
-#        uses: mxschmitt/action-tmate@v3
-#        # To run this, launch it manually on the default branch and
-#        # click on "launch_tmate_terminal_for_debug"
-#        if: inputs.launch_tmate_terminal_for_debug
-#
-#      - name: Run commands
-#        run: |
-#          sudo prlimit -lunlimited --pid $$
-#          pip cache purge
-#          source /opt/xilinx/xrt/setup.sh
-#          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-#          source utils/quick_setup.sh
-#          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
-#          cd ..
-#          pip install -r python/requirements_test.txt
-#
-#          ./utils/build-mlir-aie-from-wheels.sh
-#
-#          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
-#          # That means wheels have file with time stamps in the future which makes ninja loop
-#          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-#          pushd my_install
-#          find mlir -exec touch -a -m -t 201108231405.14 {} \;
-#          popd
-#
-#          # build is created by the build-mlir-aie-from-wheels.sh script
-#          pushd build
-#
-#          # -j here to reduce the number of parallel chess jobs.
-#          # -j4 for 32GB RAM, -j12 for 64GB RAM
-#          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
-#            LIT_OPTS="-j4 $LIT_OPTS"
-#            else
-#            LIT_OPTS="-j12 $LIT_OPTS"
-#          fi
-#
-#          ls -alth
-#          cd ..
-#          ls -alth
-#          git log -1 | cat
-#          
-#          # Debug: Check what's available in aie.iron
-#          python -c "import aie.iron; print(dir(aie.iron))"
-#          iron/__init__.py
-#          # Debug: Check Python path and environment
-#          echo "Python executable: $(which python)"
-#          echo "Python version: $(python --version)"
-#          echo "PYTHONPATH: $PYTHONPATH"
-#          python -c "import sys; print('Python path:'); [print(p) for p in sys.path]"
-#          python -c "import aie.iron; print('aie.iron location:', aie.iron.__file__)"
-#          cat python/iron/kernel.py 
-#          
-#          python programming_examples/basic/vector_vector_add/vector_vector_add.py -d npu2
-#          pytest -vvv -s test/python/jit_compilation.py
-#          pytest -vvv -s test/python/jit_extern_functions.py
-#          pytest -vvv -s test/python/jit_extern_inside_jit.py
-#
-#          #ninja install
-#          #ninja check-reference-designs
-#          #ninja check-programming-guide
-#
-#          popd
-#
+  build-quick-setup:
+    name: Run Examples on Ryzen AI
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ amd7940hs, amdhx370 ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "true"
+
+      # Launch an ssh session via a proxy server if there is a need
+      # for debug. This seems to live for 35 min max
+      # https://github.com/mxschmitt/action-tmate
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        # To run this, launch it manually on the default branch and
+        # click on "launch_tmate_terminal_for_debug"
+        if: github.event_name == 'workflow_dispatch'
+                && inputs.launch_tmate_terminal_for_debug
+
+      - name: Run commands
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          pip cache purge
+          source /opt/xilinx/xrt/setup.sh
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          source utils/quick_setup.sh
+          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
+          cd ..
+          pip install -r python/requirements_test.txt
+
+          ./utils/build-mlir-aie-from-wheels.sh
+
+          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+          # That means wheels have file with time stamps in the future which makes ninja loop
+          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+          pushd my_install
+          find mlir -exec touch -a -m -t 201108231405.14 {} \;
+          popd
+
+          # build is created by the build-mlir-aie-from-wheels.sh script
+          pushd build
+
+          # -j here to reduce the number of parallel chess jobs.
+          # -j4 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j4 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
+
+          ninja install
+          ninja check-reference-designs
+          ninja check-programming-guide
+
+          popd

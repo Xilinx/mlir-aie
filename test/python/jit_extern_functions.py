@@ -844,7 +844,3 @@ def test_compiler_flag_combinations(compile_flags, expected_value):
     expected = initial_tensor + expected_value
     actual = output_tensor.numpy()
     np.testing.assert_array_equal(actual, expected)
-
-
-if __name__ == "__main__":
-    test_simple_add_one()
