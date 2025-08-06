@@ -71,3 +71,7 @@ void reduce_min_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) {
 }
 
 } // extern "C"
+
+void reduce_min_vector_cpp(int32_t *a_in, int32_t *c_out, int32_t input_size) {
+  _reduce_min_vector(a_in, c_out, input_size);
+}

@@ -36,7 +36,7 @@ def my_reduce_min():
 
     # AIE Core Function declarations
     reduce_add_vector = Kernel(
-        "reduce_min_vector", "reduce_min.cc.o", [in_ty, out_ty, np.int32]
+        "reduce_min_vector_cpp(int*, int*, int)", "reduce_min.cc.o", [in_ty, out_ty, np.int32]
     )
 
     # Define a task
