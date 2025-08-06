@@ -20,6 +20,7 @@ from ..utils.compile import compile_mlir_module_to_binary
 from ..utils.xrt import read_insts_binary
 from .device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from .config import get_current_device
+from aie.dialects.aie import AIEDevice
 
 
 # The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_DIR` directory.
@@ -186,6 +187,10 @@ def jit(function=None, is_placed=True, use_cache=True):
             if isinstance(current_device, (NPU2, NPU2Col1)):
                 target_arch = "aie2p"
             elif isinstance(current_device, (NPU1, NPU1Col1)):
+                target_arch = "aie2"
+            elif current_device in (AIEDevice.npu2, AIEDevice.npu2_1col):
+                target_arch = "aie2p"
+            elif current_device in (AIEDevice.npu1, AIEDevice.npu1_1col):
                 target_arch = "aie2"
             else:
                 raise RuntimeError(f"Unsupported device type: {type(current_device)}")
