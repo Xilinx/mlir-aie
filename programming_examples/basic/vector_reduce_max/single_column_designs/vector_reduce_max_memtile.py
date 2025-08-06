@@ -21,6 +21,7 @@ from aie.iron import (
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col2, NPU2Col2
 from aie.helpers.util import np_ndarray_type_get_shape
+from ml_dtypes import bfloat16
 from aie.iron.controlflow import range_
 
 

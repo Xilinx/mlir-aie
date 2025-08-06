@@ -14,6 +14,7 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.util import np_ndarray_type_get_shape
+from ml_dtypes import bfloat16
 
 import aie.utils.trace as trace_utils
 
