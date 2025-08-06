@@ -57,6 +57,8 @@ jobs:
         run: |
           pip install -r python/requirements.txt
           HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          pip install -r python/requirements_notebook.txt
+          pip install -r python/requirements_test.txt
 
       - name: Install packages
         run: |
@@ -65,7 +67,6 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
@@ -83,10 +84,10 @@ jobs:
       - name: Build and test (Assert)
         if: matrix.build_type == 'Assert'
         run: |
-          
+
           mkdir build_assert
           cd build_assert
-          
+
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -108,7 +109,7 @@ jobs:
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          
+
           ninja
           # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
           export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
@@ -121,10 +122,10 @@ jobs:
       - name: Build and test (Release)
         if: matrix.build_type == 'Release'
         run: |
-          
+
           mkdir build_release
           cd build_release
-          
+
           cmake .. \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -145,7 +146,7 @@ jobs:
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit)
-          
+
           ninja
           ninja check-aie
           ninja check-tutorials
