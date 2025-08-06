@@ -135,7 +135,7 @@ jobs:
           export PYTHONPATH="$(pwd)/install/python:${PYTHONPATH}"
           xrt-smi examine
 
-          python programming_examples/basic/vector_vector_add/vector_vector_add.py
+          python programming_examples/basic/vector_vector_add/vector_vector_add.py -d npu2
           pytest -vvv -s test/python/jit_compilation.py
           pytest -vvv -s test/python/jit_extern_functions.py
           pytest -vvv -s test/python/jit_extern_inside_jit.py
