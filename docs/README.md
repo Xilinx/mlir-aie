@@ -120,11 +120,17 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
    python3 -m pip install -r python/requirements.txt
 
-   # This installs the pre-commit hooks defined in .pre-commit-config.yaml
-   pre-commit install
-
    # Install MLIR Python Extras
    HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   ```
+
+1. (Optional) Install Python packages required for development and testing:
+   ```bash
+   # Install Python requirements for development and testing
+   python3 -m pip install -r python/requirements_dev.txt
+
+   # This installs the pre-commit hooks defined in .pre-commit-config.yaml
+   pre-commit install
    ```
 
 1. (Optional) Install ML Python packages for ml programming examples:
