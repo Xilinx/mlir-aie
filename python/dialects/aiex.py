@@ -292,23 +292,23 @@ def shim_dma_single_bd_task(
     repeat_count = 0
     if sizes and sizes[0] > 1:
         repeat_count = sizes[0] - 1
-    if (alloc is None):
-        if (dma_channel_dir is None or dma_channel_index is None or col is not None):
-            raise ValueError(
-                "shim_dma_single_bd_task can have alloc OR (dma_channel_dir and dma_channel_index and col) equal to None, but not both."
-            )
-    if (alloc is None):
-        task = dma_configure_task_for(
-            alloc, repeat_count=repeat_count, issue_token=issue_token
-        )
-    else:
-        task = dma_configure_task(
-            tile=TileOp(col, 0),
-            direction=dma_channel_dir,
-            channel=dma_channel_index,
-            repeat_count=repeat_count,
-            issue_token=issue_token,
-        )
+    # if (alloc is None):
+    #     if (dma_channel_dir is None or dma_channel_index is None or col is not None):
+    #         raise ValueError(
+    #             "shim_dma_single_bd_task can have alloc OR (dma_channel_dir and dma_channel_index and col) equal to None, but not both."
+    #         )
+    # if (alloc is None):
+    #     task = dma_configure_task(
+    #         tile=TileOp(col, 0),
+    #         direction=dma_channel_dir,
+    #         channel=dma_channel_index,
+    #         repeat_count=repeat_count,
+    #         issue_token=issue_token,
+    #     )
+    # else:
+    task = dma_configure_task_for(
+        alloc, repeat_count=repeat_count, issue_token=issue_token
+    )
     with bds(task) as bd:
         with bd[0]:
             shim_dma_bd(
