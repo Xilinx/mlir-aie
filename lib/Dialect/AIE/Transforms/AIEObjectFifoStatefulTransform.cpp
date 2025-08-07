@@ -1665,13 +1665,13 @@ struct AIEObjectFifoStatefulTransformPass
     int packetID = 0;
     for (PacketFlowOp packetflow : device.getOps<PacketFlowOp>()) {
       if (packetflow.getID() > packetID) {
-        packetID = packetflow.getID();
+        // compute next available ID
+        packetID = packetflow.getID() + 1;
       }
     }
-    if (packetID + 1 > 31)
+    if (packetID > 31)
       device.emitOpError("max number of packet IDs reached");
-    // return next available ID
-    return packetID + 1;
+    return packetID;
   }
 
   /// Helper function to assign DMA channel indices for FIFOs based on cross-tile conditions
