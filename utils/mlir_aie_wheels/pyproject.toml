@@ -49,3 +49,6 @@ before-build = [
 
 [build-system]
 requires = ["setuptools", "nanobind"]
+
+[project.scripts]
+aiecc = "aie.compiler.aiecc.main:main"
