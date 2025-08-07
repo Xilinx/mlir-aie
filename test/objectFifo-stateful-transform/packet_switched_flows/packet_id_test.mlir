@@ -32,7 +32,7 @@
 // CHECK:        aie.packet_source<%[[VAL_1]], Trace : 0>
 // CHECK:        aie.packet_dest<%[[VAL_0]], DMA : 1>
 // CHECK:     } {keep_pkt_header = true}
-// CHECK:     %[[VAL_11:.*]] = aie.mem(%[[VAL_2]]) {
+// CHECK:     %[[VAL_13:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:       aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, 1)
@@ -49,7 +49,7 @@
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     %[[VAL_12:.*]] = aie.mem(%[[VAL_4]]) {
+// CHECK:     %[[VAL_14:.*]] = aie.mem(%[[VAL_4]]) {
 // CHECK:       aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, 1)
