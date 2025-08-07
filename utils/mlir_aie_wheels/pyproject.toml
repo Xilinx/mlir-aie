@@ -2,7 +2,6 @@
 name = "mlir-aie"
 version = "1.0.3"
 description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
-license = "Apache License v2.0 with LLVM Exceptions"
 requires-python = ">=3.8"
 
 [tool.cibuildwheel]
