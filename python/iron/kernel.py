@@ -7,6 +7,7 @@
 
 import hashlib
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -25,7 +26,7 @@ from .resolvable import Resolvable
 logger = logging.getLogger(__name__)
 
 
-def find_mangled_symbol(file, demangled_name):
+def find_mangled_symbol(file: os.PathLike, demangled_name):
     """
     Find the mangled symbol that corresponds to the demangled_name.
 
@@ -291,12 +292,6 @@ class Kernel(BaseKernel):
                 ``llvm-link`` merge path; None (the default) object-links it.
         """
         super().__init__(name, arg_types)
-
-        symbol_name = find_mangled_symbol(f"build/{object_file_name}", name)
-        if not symbol_name:
-            raise ValueError(f"Could not find symbol for {name} in {object_file_name}")
-
-        self._name = symbol_name
         self._object_file_name = object_file_name
         self._link_with_mode = link_with_mode
 
@@ -316,8 +311,14 @@ class Kernel(BaseKernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if not self._op:
+            object_file = os.path.abspath(self._object_file_name)
+            symbol_name = find_mangled_symbol(object_file, self._name)
+            if not symbol_name:
+                raise ValueError(
+                    f"Could not find symbol for {self._name} in {object_file}"
+                )
             self._op = external_func(
-                self._name,
+                symbol_name,
                 inputs=self._arg_types,
                 link_with=self._object_file_name,
                 link_with_mode=self._link_with_mode,
