@@ -1,4 +1,0 @@
-lit
-# lit requires psutil to set timeouts
-psutil
-pytest

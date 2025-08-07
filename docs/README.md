@@ -8,6 +8,8 @@ The IRON Python API for Ryzen™ AI NPUs is described in the following paper:
 
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
+<img src="assets/images/iron_linux_stack.svg" alt="Iron Linux Stack" style="width:50%; display:block; margin:auto;" />
+
 # Getting Started for AMD Ryzen™ AI on Linux
 
 These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04** or **Ubuntu 24.10** install.
@@ -118,11 +120,17 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
    python3 -m pip install -r python/requirements.txt
 
-   # This installs the pre-commit hooks defined in .pre-commit-config.yaml
-   pre-commit install
-
    # Install MLIR Python Extras
    HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   ```
+
+1. (Optional) Install Python packages required for development and testing:
+   ```bash
+   # Install Python requirements for development and testing
+   python3 -m pip install -r python/requirements_dev.txt
+
+   # This installs the pre-commit hooks defined in .pre-commit-config.yaml
+   pre-commit install
    ```
 
 1. (Optional) Install ML Python packages for ml programming examples:
