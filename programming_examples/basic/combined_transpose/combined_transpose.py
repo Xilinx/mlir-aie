@@ -5,10 +5,9 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
-import sys
 import argparse
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
@@ -39,7 +38,7 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
     # test the data flow transformations further below.
     # kernel_func = Kernel("copy", "transpose.o", [tile_ty, tile_ty])
 
-    # Data flow with ObjectFIFOs; partially transposes the input data so that 
+    # Data flow with ObjectFIFOs; partially transposes the input data so that
     # the kernel only needs to transpose s*s-sized sub-tiles.
     tap_in_L3L2 = TensorAccessPattern(
         tensor_dims=(M, N),
@@ -115,12 +114,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    dtype_map = {
-        "i8": np.dtype[np.int8],
-        "i16": np.dtype[np.int16],
-        "i32": np.dtype[np.int32],
-    }
-    dtype = dtype_map[args.dtype]
+    dtype = np.dtype[str_to_dtype(args.dtype)]
 
     dev_map = {
         "npu": NPU1Col1(),
