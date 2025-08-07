@@ -123,7 +123,8 @@ public:
 
     const auto &targetModel = getTargetModel(tileOp);
     int maxChannelNumForAdjacentTile =
-        targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(), tileOp.getRow());
+        targetModel.getMaxChannelNumForAdjacentMemTile(tileOp.getCol(),
+                                                       tileOp.getRow());
 
     // if requires adjacent tile access channels, only allocate on
     // channels 0-3, and if cannot, return 0
@@ -1872,9 +1873,9 @@ struct AIEObjectFifoStatefulTransformPass
 
     // assign channel indices for FIFOs with cross-tile issues first
     assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, true);
-    
     // then assign channel indices for FIFOs without cross-tile issues
-    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, false);
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
+                            false);
 
     int packetID = getStartPacketID(device);
     for (auto &[producer, consumers] : splitFifos) {
