@@ -4,8 +4,9 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc.
 
+import os
 import numpy as np
 import cxxfilt
 from elftools.elf.elffile import ELFFile
@@ -18,7 +19,7 @@ from ..dialects.aie import external_func
 from .resolvable import Resolvable
 
 
-def find_mangled_symbol(file, demangled_name):
+def find_mangled_symbol(file: os.PathLike, demangled_name):
     """
     Find the mangled symbol that corresponds to the demangled_name.
 
@@ -62,11 +63,7 @@ class Kernel(Resolvable):
             arg_types (list[type[np.ndarray]  |  np.dtype], optional): The type signature of the function. Defaults to [].
         """
 
-        symbol_name = find_mangled_symbol(f"build/{bin_name}", name)
-        if not symbol_name:
-            raise ValueError(f"Could not find symbol for {name} in {bin_name}")
-
-        self._name = symbol_name
+        self._name = name
         self._bin_name = bin_name
         self._arg_types = arg_types
         self._op: FuncOp | None = None
@@ -81,7 +78,13 @@ class Kernel(Resolvable):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if not self._op:
-            self._op = external_func(self._name, inputs=self._arg_types)
+            bin_file = os.path.abspath(self._bin_name)
+            symbol_name = find_mangled_symbol(bin_file, self._name)
+            if not symbol_name:
+                raise ValueError(
+                    f"Could not find symbol for {self._name} in {bin_file}"
+                )
+            self._op = external_func(symbol_name, inputs=self._arg_types)
 
     def __call__(self, *args, **kwargs):
         if not self._op:

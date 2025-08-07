@@ -37,7 +37,7 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src} build/reduce_min.cc.o
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} > $@
+	cd ${@D} && python3 $< ${devicename} ${col} > ${@F}
 
 build/final.xclbin: build/aie.mlir build/reduce_min.cc.o
 	mkdir -p ${@D}
