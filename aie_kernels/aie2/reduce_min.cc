@@ -16,8 +16,8 @@
 #include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
-void _reduce_min_vector(int32_t *restrict in, int32_t *restrict out,
-                        const int32_t input_size) {
+void reduce_min_vector(int32_t *restrict in, int32_t *restrict out,
+                       const int32_t input_size) {
 
   event0();
   v16int32 massive = broadcast_to_v16int32((int32_t)INT32_MAX);
@@ -46,8 +46,8 @@ void _reduce_min_vector(int32_t *restrict in, int32_t *restrict out,
   return;
 }
 
-void _reduce_min_scalar(int32_t *restrict in, int32_t *restrict out,
-                        const int32_t input_size) {
+void reduce_min_scalar(int32_t *restrict in, int32_t *restrict out,
+                       const int32_t input_size) {
   event0();
   int32_t running_min = (int32_t)INT32_MAX;
   for (int32_t i = 0; i < input_size; i++) {
@@ -59,15 +59,3 @@ void _reduce_min_scalar(int32_t *restrict in, int32_t *restrict out,
 
   return;
 }
-
-extern "C" {
-
-void reduce_min_vector(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_min_vector(a_in, c_out, input_size);
-}
-
-void reduce_min_scalar(int32_t *a_in, int32_t *c_out, int32_t input_size) {
-  _reduce_min_scalar(a_in, c_out, input_size);
-}
-
-} // extern "C"
