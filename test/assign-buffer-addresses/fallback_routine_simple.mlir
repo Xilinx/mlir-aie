@@ -9,19 +9,17 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
-// CHECK:   error: Failed to allocate buffer: "a" with size: 16384 bytes.
+// CHECK:   warning: Failed to allocate buffer: "a" with size: 16384 bytes.
 // CHECK:   %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<4096xi32>  //16384 bytes
-// CHECK:          ^
-// CHECK:   error: 'aie.tile' op Not all requested buffers fit in the available memory.
-
+// CHECK:   warning: Not all requested buffers fit in the available memory.
 // CHECK:   %tile12 = aie.tile(1, 2)
-// CHECK:             ^
 // CHECK: note: Current configuration of buffers in bank(s) : MemoryMap:
 // CHECK: (no stack allocated)
 // CHECK:         bank : 0        0x0-0x1FFF
 // CHECK:         bank : 1        0x2000-0x3FFF
 // CHECK:         bank : 2        0x4000-0x5FFF
 // CHECK:         bank : 3        0x6000-0x7FFF
+// CHECK:   warning: Bank-aware allocation failed, trying basic sequential allocation.
 
 // CHECK:   module @test {
 // CHECK:     aie.device(xcvc1902) {

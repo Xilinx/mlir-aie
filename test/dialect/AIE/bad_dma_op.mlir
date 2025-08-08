@@ -50,3 +50,21 @@ module {
     }
   }
 }
+
+// -----
+
+// CHECK: For >32b width datatypes, inner-most dim stride must be 1 
+module {
+  aie.device(npu1) {
+    %tile14 = aie.tile(1, 4)
+    %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128x!aiex.bfp<"v8bfp16ebs8">>
+    %mem14 = aie.mem(%tile14) {
+      %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
+      ^bd0:
+        aie.dma_bd(%buf14 : memref<128x!aiex.bfp<"v8bfp16ebs8">>, 0, 128, [<size = 8, stride = 16>]) {}
+        aie.next_bd ^end
+      ^end: 
+        aie.end
+    }
+  }
+}

@@ -257,6 +257,8 @@ try:
     if re.search("Xilinx AI Engine", result.stdout.decode("utf-8")) is not None:
         config.available_features.add("peano")
         config.substitutions.append(("%PEANO_INSTALL_DIR", config.peano_install_dir))
+        # Also set the environment variable for tests that need it
+        llvm_config.with_environment("PEANO_INSTALL_DIR", config.peano_install_dir)
         print("Peano found: " + os.path.join(peano_tools_dir, "llc"))
         tool_dirs.append(os.path.join(peano_tools_dir, "bin"))
     else:
