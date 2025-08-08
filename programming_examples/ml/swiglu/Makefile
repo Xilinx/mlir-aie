@@ -15,24 +15,25 @@ include ${srcdir}/../../makefile-common
 aie2_runtime_dir = ${AIEOPT_DIR}/aie_runtime_lib/AIE2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-targetname = relu
+targetname = swiglu
 length ?= 16384
 cols ?= 4
-chans ?= 2
-
-# Input and output sizes in bytes is length * 2
-in1_size = ${length} * 2 
-out_size = ${length} * 2 
 
 ifeq ($(devicename),npu2)
-VPATH :=${srcdir}/../../../aie_kernels/aie2
+VPATH :=${srcdir}/../../../aie_kernels/aie2p
 else 
 VPATH :=${srcdir}/../../../aie_kernels/aie2
 endif
 
-aie_py_src=relu.py
+aie_py_src=swiglu.py
 
 .PHONY all: build/${targetname}.mlir build/final.xclbin
+
+ifeq ($(devicename),npu)
+build/lut_based_ops.o: ${aie2_runtime_dir}/lut_based_ops.cpp
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $< -o ${@F}
+endif
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
@@ -44,11 +45,21 @@ else
 	echo "Device type not supported"
 endif
 
+ifeq ($(devicename),npu)
+build/kernels.a: build/${targetname}.cc.o build/lut_based_ops.o
+	ar rvs $@ $+
+else ifeq ($(devicename),npu2)
+build/kernels.a: build/${targetname}.cc.o
+	ar rvs $@ $+
+else
+	echo "Device type not supported"
+endif
+
 build/${targetname}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -l ${length} -co ${cols} -ch ${chans} > $@
+	python3 $< -d ${devicename} -l ${length} -co ${cols} > $@
 
-build/final.xclbin: build/${targetname}.mlir build/${targetname}.cc.o
+build/final.xclbin: build/${targetname}.mlir build/kernels.a
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 	            --xclbin-name=${@F} \
