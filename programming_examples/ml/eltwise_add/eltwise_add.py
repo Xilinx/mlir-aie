@@ -25,8 +25,9 @@ def my_eltwise_add(dev, num_elements, trace_size):
     n = per_tile_elements * num_columns
     if num_elements % n != 0:
         raise ValueError(
-            f"Number of elements ({num_elements}) must be a addtiple of {n}."
+            f"Number of elements ({num_elements}) must be a multiple of {n}."
         )
+    chunk = num_elements // num_columns
     N_div_n = num_elements // n
     dtype = bfloat16
 
@@ -78,8 +79,8 @@ def my_eltwise_add(dev, num_elements, trace_size):
     taps = [
         TensorAccessPattern(
             (1, num_elements),
-            n * i,
-            [1, 1, 1, n],
+            chunk * i,
+            [1, 1, 1, chunk],
             [0, 0, 0, 1],
         )
         for i in range(num_columns)

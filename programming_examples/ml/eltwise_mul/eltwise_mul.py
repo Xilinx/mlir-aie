@@ -28,6 +28,7 @@ def my_eltwise_mul(dev, num_elements, trace_size):
             f"Number of elements ({num_elements}) must be a multiple of {n}."
         )
     N_div_n = num_elements // n
+    chunk = num_elements // num_columns
     dtype = bfloat16
 
     # Define tensor types
@@ -78,8 +79,8 @@ def my_eltwise_mul(dev, num_elements, trace_size):
     taps = [
         TensorAccessPattern(
             (1, num_elements),
-            n * i,
-            [1, 1, 1, n],
+            chunk * i,
+            [1, 1, 1, chunk],
             [0, 0, 0, 1],
         )
         for i in range(num_columns)
