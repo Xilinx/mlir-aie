@@ -47,8 +47,8 @@ func.func @matmul(%A : memref<1x1x4x8x4x8xbf16, 2 : i32>,
 // CHECK-SAME:        %[[A:.*]]: memref<1x1x4x8x4x8xbf16, 2 : i32>,
 // CHECK-SAME:        %[[B:.*]]: memref<1x1x8x4x8x4xbf16, 2 : i32>,
 // CHECK-SAME:        %[[C:.*]]: memref<1x1x8x8x4x4xf32, 2 : i32>) {
-// CHECK:         %[[C0BF16:.*]] = arith.constant 0.0{{.*}} : bf16
-// CHECK:         %[[C0F32:.*]] = arith.constant 0.0{{.*}} : f32
+// CHECK:         %[[C0BF16:.*]] = arith.constant 0.000000e+00 : bf16
+// CHECK:         %[[C0F32:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:         %[[CSA:.*]] = memref.collapse_shape %[[A]] {{\[\[}}0, 1, 2, 3, 4, 5]]
 // CHECK:         %[[CSB:.*]] = memref.collapse_shape %[[B]] {{\[\[}}0, 1, 2, 3, 4, 5]]
 // CHECK:         %[[CSC:.*]] = memref.collapse_shape %[[C]] {{\[\[}}0, 1, 2, 3, 4, 5]]
