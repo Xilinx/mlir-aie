@@ -5,6 +5,7 @@ from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
+from .dtype import str_to_dtype, dtype_to_str
 
 try:
     # The .jit module requires pyxrt which may not exist.

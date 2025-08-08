@@ -4,6 +4,7 @@ from ....ir import InsertionPoint, Value
 from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
 from ....dialects.scf import ForOp, yield_
 from ....extras.dialects.ext.arith import constant, index_cast
+from ....extras import types as T
 
 
 def _for(
@@ -32,7 +33,7 @@ def _for(
         if isinstance(p, int):
             p = constant(p, index=True)
         if not _is_index_type(p.type):
-            p = index_cast(p)
+            p = index_cast(p, to=T.index())
         params[i] = p
 
     start, stop, step = params
