@@ -101,6 +101,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a1a285a018f4af6d451e197b1c5a0999e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:afecddc5cf6e1ee837155ff2539aaee19" id="r_afecddc5cf6e1ee837155ff2539aaee19"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1tensor_1_1Tensor.html#afecddc5cf6e1ee837155ff2539aaee19">numpy</a> (self)</td></tr>
 <tr class="separator:afecddc5cf6e1ee837155ff2539aaee19"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa391cd89ecc4eb6e4c29c4591c125151" id="r_aa391cd89ecc4eb6e4c29c4591c125151"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1tensor_1_1Tensor.html#aa391cd89ecc4eb6e4c29c4591c125151">fill_</a> (self, value)</td></tr>
+<tr class="separator:aa391cd89ecc4eb6e4c29c4591c125151"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abbc87eb63865aad10450470115b6d395" id="r_abbc87eb63865aad10450470115b6d395"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1tensor_1_1Tensor.html#abbc87eb63865aad10450470115b6d395">numel</a> (self)</td></tr>
 <tr class="separator:abbc87eb63865aad10450470115b6d395"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4a405c1042e3e49e188c387147bb0557" id="r_a4a405c1042e3e49e188c387147bb0557"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1tensor_1_1Tensor.html#a4a405c1042e3e49e188c387147bb0557">ones</a> (cls, *size, out=None, <a class="el" href="classiron_1_1tensor_1_1Tensor.html#ad0797f394fa6da772dcfeeb054ba5370">dtype</a>=None, <a class="el" href="classiron_1_1tensor_1_1Tensor.html#a0fcd1134d0c6a3b4b42b2606826cca47">device</a>=None, **kwargs)</td></tr>
@@ -549,6 +551,40 @@ Returns:
 
 Returns:
    xrt.bo: The XRT buffer object associated with this tensor.
+</pre> 
+</div>
+</div>
+<a id="aa391cd89ecc4eb6e4c29c4591c125151" name="aa391cd89ecc4eb6e4c29c4591c125151"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa391cd89ecc4eb6e4c29c4591c125151">&#9670;&#160;</a></span>fill_()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.tensor.Tensor.fill_ </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>value</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Fills the tensor with a scalar value (in-place operation).
+
+Parameters:
+    value: The scalar value to fill the tensor with.
+
+Note: For NPU tensors, this method syncs the filled data to device after modification.
 </pre> 
 </div>
 </div>

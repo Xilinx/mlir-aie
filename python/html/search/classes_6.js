@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['kernel_0',['Kernel',['../classiron_1_1kernel_1_1Kernel.html',1,'iron::kernel']]]
+  ['globalbuffer_0',['GlobalBuffer',['../classiron_1_1globalbuffer_1_1GlobalBuffer.html',1,'iron::globalbuffer']]]
 ];

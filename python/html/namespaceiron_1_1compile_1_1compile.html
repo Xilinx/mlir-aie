@@ -81,14 +81,14 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a6e88b49f5fadbeb8c0ae96dd262fd0e2" id="r_a6e88b49f5fadbeb8c0ae96dd262fd0e2"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#a6e88b49f5fadbeb8c0ae96dd262fd0e2">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, compile_args=None, cwd=None, verbose=False)</td></tr>
-<tr class="separator:a6e88b49f5fadbeb8c0ae96dd262fd0e2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad53945496ecde9f1460369beed2995a8" id="r_ad53945496ecde9f1460369beed2995a8"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#ad53945496ecde9f1460369beed2995a8">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, include_dirs=None, compile_args=None, cwd=None, verbose=False)</td></tr>
+<tr class="separator:ad53945496ecde9f1460369beed2995a8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a59abd3e5fd26520427a76666f8c679f1" id="r_a59abd3e5fd26520427a76666f8c679f1"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#a59abd3e5fd26520427a76666f8c679f1">compile_mlir_module_to_pdi</a> (str mlir_module, str insts_path, str pdi_path, options=None, verbose=False)</td></tr>
 <tr class="separator:a59abd3e5fd26520427a76666f8c679f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
-<a id="a6e88b49f5fadbeb8c0ae96dd262fd0e2" name="a6e88b49f5fadbeb8c0ae96dd262fd0e2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6e88b49f5fadbeb8c0ae96dd262fd0e2">&#9670;&#160;</a></span>compile_cxx_core_function()</h2>
+<a id="ad53945496ecde9f1460369beed2995a8" name="ad53945496ecde9f1460369beed2995a8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad53945496ecde9f1460369beed2995a8">&#9670;&#160;</a></span>compile_cxx_core_function()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -110,6 +110,12 @@ Functions</h2></td></tr>
           <td></td>
           <td class="paramtype">str&#160;</td>
           <td class="paramname"><em>output_path</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>include_dirs</em> = <code>None</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -144,8 +150,9 @@ Parameters:
     source_path (str): Path to C++ source.
     target_arch (str): Target architecture, e.g., aie2.
     output_path (str): Output object file path.
-    compile_args (list[str]): Compile arguments to peano.
-    cwd (str): Overrides the current working directory.
+    include_dirs (list[str], optional): List of include directories to add with -I.
+    compile_args (list[str], optional): Additional compile arguments to peano.
+    cwd (str, optional): Overrides the current working directory.
     verbose (bool): Enable verbose output.
 </pre> 
 </div>

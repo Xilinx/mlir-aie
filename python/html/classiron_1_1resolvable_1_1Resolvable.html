@@ -97,26 +97,30 @@ Inheritance diagram for iron.resolvable.Resolvable:</div>
 <area shape="poly" title=" " alt="" coords="310,284,359,277,360,283,311,289"/>
 <area shape="rect" href="classiron_1_1globalbuffer_1_1GlobalBuffer.html" title=" " alt="" coords="369,312,544,352"/>
 <area shape="poly" title=" " alt="" coords="311,311,370,319,369,324,310,316"/>
-<area shape="rect" href="classiron_1_1kernel_1_1Kernel.html" title=" " alt="" coords="389,377,525,402"/>
+<area shape="rect" href="classiron_1_1kernel_1_1BaseKernel.html" title=" " alt="" coords="373,377,541,402"/>
 <area shape="poly" title=" " alt="" coords="240,316,290,340,346,361,391,374,390,379,344,367,288,344,237,321"/>
 <area shape="rect" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html" title=" " alt="" coords="349,426,565,451"/>
 <area shape="poly" title=" " alt="" coords="225,321,278,368,311,392,346,412,377,423,375,428,344,417,308,396,274,372,221,325"/>
-<area shape="rect" href="classiron_1_1runtime_1_1task_1_1RuntimeTask.html" title=" " alt="" coords="345,475,568,501"/>
-<area shape="poly" title=" " alt="" coords="218,323,239,355,268,393,305,430,347,462,371,473,369,478,344,466,301,434,264,396,235,358,213,326"/>
-<area shape="rect" href="classiron_1_1worker_1_1__BarrierSetOp.html" title=" " alt="" coords="363,525,551,550"/>
-<area shape="poly" title=" " alt="" coords="213,324,232,366,261,417,299,469,322,491,347,511,368,522,366,527,344,516,318,495,295,472,257,420,228,369,209,327"/>
+<area shape="rect" href="classiron_1_1runtime_1_1task_1_1RuntimeTask.html" title=" " alt="" coords="345,479,568,505"/>
+<area shape="poly" title=" " alt="" coords="218,323,269,393,305,430,347,462,381,477,379,482,344,466,302,434,265,396,214,326"/>
+<area shape="rect" href="classiron_1_1worker_1_1__BarrierSetOp.html" title=" " alt="" coords="363,529,551,554"/>
+<area shape="poly" title=" " alt="" coords="213,324,232,367,260,419,299,471,322,495,347,515,368,526,366,531,344,520,318,499,295,475,256,422,227,369,208,326"/>
 <area shape="rect" title=" " alt="" coords="5,287,55,313"/>
 <area shape="poly" title=" " alt="" coords="68,297,102,297,102,303,68,303"/>
 <area shape="rect" href="classiron_1_1device_1_1device_1_1NPUBase.html" title=" " alt="" coords="627,198,832,223"/>
 <area shape="poly" title=" " alt="" coords="566,208,626,208,626,213,566,213"/>
-<area shape="rect" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html" title=" " alt="" coords="616,386,843,411"/>
-<area shape="poly" title=" " alt="" coords="550,469,567,462,581,452,590,442,600,432,615,422,648,409,650,414,617,426,603,436,594,446,584,456,569,466,552,474"/>
-<area shape="rect" href="classiron_1_1runtime_1_1task_1_1FinishTaskGroupTask.html" title=" " alt="" coords="641,436,817,476"/>
-<area shape="poly" title=" " alt="" coords="578,471,641,464,641,469,579,476"/>
-<area shape="rect" href="classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html" title=" " alt="" coords="642,500,817,540"/>
-<area shape="poly" title=" " alt="" coords="579,500,642,507,642,512,579,505"/>
-<area shape="rect" href="classiron_1_1runtime_1_1task_1_1RuntimeStartTask.html" title=" " alt="" coords="633,564,826,604"/>
-<area shape="poly" title=" " alt="" coords="548,502,569,511,584,521,594,531,603,540,617,550,644,561,642,566,615,554,600,544,590,534,581,525,567,516,546,507"/>
+<area shape="rect" href="classiron_1_1kernel_1_1ExternalFunction.html" title=" " alt="" coords="627,325,831,350"/>
+<area shape="poly" title=" " alt="" coords="537,371,662,347,663,353,538,377"/>
+<area shape="rect" href="classiron_1_1kernel_1_1Kernel.html" title=" " alt="" coords="661,374,797,399"/>
+<area shape="poly" title=" " alt="" coords="554,386,661,385,661,390,554,391"/>
+<area shape="rect" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html" title=" " alt="" coords="616,423,843,449"/>
+<area shape="poly" title=" " alt="" coords="532,474,666,446,667,451,533,479"/>
+<area shape="rect" href="classiron_1_1runtime_1_1task_1_1FinishTaskGroupTask.html" title=" " alt="" coords="641,473,817,513"/>
+<area shape="poly" title=" " alt="" coords="582,490,641,490,641,496,582,495"/>
+<area shape="rect" href="classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html" title=" " alt="" coords="642,537,817,577"/>
+<area shape="poly" title=" " alt="" coords="528,505,569,515,650,535,648,540,567,520,527,510"/>
+<area shape="rect" href="classiron_1_1runtime_1_1task_1_1RuntimeStartTask.html" title=" " alt="" coords="633,601,826,641"/>
+<area shape="poly" title=" " alt="" coords="557,508,570,515,587,533,595,552,602,570,618,587,638,599,635,603,614,591,598,573,590,554,582,536,566,519,555,512"/>
 </map>
 <center><span class="legend">[<a href="graph_legend.html">legend</a>]</span></center></div>
 <div class="dynheader">
@@ -174,7 +178,7 @@ Args:
     loc (ir.Location | None, optional): Location is used by MLIR object during construction in some cases. Defaults to None.
     ip (ir.InsertionPoint | None, optional): InsertionPoint is used by MLIR object during construction in some cases. Defaults to None.
 </pre> 
-<p>Reimplemented in <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a8bc442cf0fc403d0e1c8de9807800111">iron.dataflow.objectfifo.ObjectFifo</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a9ef9f4ddc48b6c4ace094117e67ae84c">iron.dataflow.objectfifo.ObjectFifoHandle</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#a54e7678c38bcbbc0672b45902d30fe5b">iron.dataflow.objectfifo.ObjectFifoLink</a>, <a class="el" href="classiron_1_1globalbuffer_1_1GlobalBuffer.html#aa1284ad861320b159c525ed767295bf0">iron.globalbuffer.GlobalBuffer</a>, <a class="el" href="classiron_1_1kernel_1_1Kernel.html#a289a69ae8a24b0d48b7e4055d16df922">iron.kernel.Kernel</a>, <a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#a6a45fe1cee87a9bd8a12d32383121ea6">iron.runtime.dmatask.DMATask</a>, <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a0aa82aec64335ad4f150f713fa0dd3b0">iron.runtime.runtime.Runtime</a>, <a class="el" href="classiron_1_1runtime_1_1task_1_1RuntimeTask.html#a6433cfcf50f9d93de696bd2466a8b737">iron.runtime.task.RuntimeTask</a>, <a class="el" href="classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html#a1584345c80cdff7b380669ffab41a6cb">iron.runtime.task.InlineOpRuntimeTask</a>, <a class="el" href="classiron_1_1worker_1_1__BarrierSetOp.html#a8dc4a036fcb4567c46ce48cb05386032">iron.worker._BarrierSetOp</a>, and <a class="el" href="classiron_1_1device_1_1device_1_1Device_1_1____DeviceTile.html#a9ee3d495eb49746eebeeb5b5bf1a1486">iron.device.device.Device.__DeviceTile</a>.</p>
+<p>Reimplemented in <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a8bc442cf0fc403d0e1c8de9807800111">iron.dataflow.objectfifo.ObjectFifo</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a9ef9f4ddc48b6c4ace094117e67ae84c">iron.dataflow.objectfifo.ObjectFifoHandle</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#a54e7678c38bcbbc0672b45902d30fe5b">iron.dataflow.objectfifo.ObjectFifoLink</a>, <a class="el" href="classiron_1_1globalbuffer_1_1GlobalBuffer.html#aa1284ad861320b159c525ed767295bf0">iron.globalbuffer.GlobalBuffer</a>, <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#a3a554eab728c5dfaa12e9f12e986458c">iron.kernel.BaseKernel</a>, <a class="el" href="classiron_1_1kernel_1_1Kernel.html#a289a69ae8a24b0d48b7e4055d16df922">iron.kernel.Kernel</a>, <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a8003eaae9914c1a681353d99ce767a0c">iron.kernel.ExternalFunction</a>, <a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#a6a45fe1cee87a9bd8a12d32383121ea6">iron.runtime.dmatask.DMATask</a>, <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a0aa82aec64335ad4f150f713fa0dd3b0">iron.runtime.runtime.Runtime</a>, <a class="el" href="classiron_1_1runtime_1_1task_1_1RuntimeTask.html#a6433cfcf50f9d93de696bd2466a8b737">iron.runtime.task.RuntimeTask</a>, <a class="el" href="classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html#a1584345c80cdff7b380669ffab41a6cb">iron.runtime.task.InlineOpRuntimeTask</a>, <a class="el" href="classiron_1_1worker_1_1__BarrierSetOp.html#a8dc4a036fcb4567c46ce48cb05386032">iron.worker._BarrierSetOp</a>, and <a class="el" href="classiron_1_1device_1_1device_1_1Device_1_1____DeviceTile.html#a9ee3d495eb49746eebeeb5b5bf1a1486">iron.device.device.Device.__DeviceTile</a>.</p>
 
 </div>
 </div>

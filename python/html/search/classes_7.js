@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['localbuffer_0',['LocalBuffer',['../classiron_1_1localbuffer_1_1LocalBuffer.html',1,'iron::localbuffer']]]
+  ['inlineopruntimetask_0',['InlineOpRuntimeTask',['../classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html',1,'iron::runtime::task']]]
 ];

@@ -92,8 +92,10 @@ Classes</h2></td></tr>
 Functions</h2></td></tr>
 <tr class="memitem:a2d30fa0e813a182cd171cf28e6204a92" id="r_a2d30fa0e813a182cd171cf28e6204a92"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a2d30fa0e813a182cd171cf28e6204a92">jit</a> (function=None, is_placed=True, use_cache=True)</td></tr>
 <tr class="separator:a2d30fa0e813a182cd171cf28e6204a92"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af530836e1533e5b8efc1a31672abc0c8" id="r_af530836e1533e5b8efc1a31672abc0c8"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#af530836e1533e5b8efc1a31672abc0c8">hash_module</a> (module)</td></tr>
-<tr class="separator:af530836e1533e5b8efc1a31672abc0c8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6735e4cdaac7eed7879aa98e1cfa7142" id="r_a6735e4cdaac7eed7879aa98e1cfa7142"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a6735e4cdaac7eed7879aa98e1cfa7142">compile_external_kernel</a> (func, kernel_dir, target_arch)</td></tr>
+<tr class="separator:a6735e4cdaac7eed7879aa98e1cfa7142"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2966b6e90120f4528a95d5d366d34cbf" id="r_a2966b6e90120f4528a95d5d366d34cbf"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a2966b6e90120f4528a95d5d366d34cbf">hash_module</a> (module, external_kernels=None, target_arch=None)</td></tr>
+<tr class="separator:a2966b6e90120f4528a95d5d366d34cbf"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
 Variables</h2></td></tr>
@@ -101,8 +103,48 @@ Variables</h2></td></tr>
 <tr class="separator:ad4996a91797d3c476d40857dd3b3d113"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
-<a id="af530836e1533e5b8efc1a31672abc0c8" name="af530836e1533e5b8efc1a31672abc0c8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af530836e1533e5b8efc1a31672abc0c8">&#9670;&#160;</a></span>hash_module()</h2>
+<a id="a6735e4cdaac7eed7879aa98e1cfa7142" name="a6735e4cdaac7eed7879aa98e1cfa7142"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a6735e4cdaac7eed7879aa98e1cfa7142">&#9670;&#160;</a></span>compile_external_kernel()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.jit.compile_external_kernel </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>func</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>kernel_dir</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>target_arch</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Compile an ExternalFunction to an object file in the kernel directory.
+
+Args:
+    func: ExternalFunction instance to compile
+    kernel_dir: Directory to place the compiled object file
+    target_arch: Target architecture (e.g., "aie2" or "aie2p")
+</pre> 
+</div>
+</div>
+<a id="a2966b6e90120f4528a95d5d366d34cbf" name="a2966b6e90120f4528a95d5d366d34cbf"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2966b6e90120f4528a95d5d366d34cbf">&#9670;&#160;</a></span>hash_module()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -111,12 +153,28 @@ Variables</h2></td></tr>
           <td class="memname">iron.jit.hash_module </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>module</em></td><td>)</td>
+          <td class="paramname"><em>module</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>external_kernels</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>target_arch</em> = <code>None</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Hash the MLIR module to create a unique identifier.
+<pre class="fragment">Hash the MLIR module and ExternalFunction compiler options to create a unique identifier.
 </pre> 
 </div>
 </div>
