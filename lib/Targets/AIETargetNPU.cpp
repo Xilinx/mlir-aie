@@ -208,7 +208,7 @@ xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
   uint8_t major = 0;
   uint8_t minor = 1;
   uint8_t devGen = 3;                      // NPU (PHX HWK)
-  if (llvm::isa<AIE::NPU2TargetModel>(AIE::getTargetModel(deviceOp)))
+  if (llvm::isa<AIE::BaseNPU2TargetModel>(tm))
     devGen = 4;                            // NPU2 (STX KRK)
   uint8_t numRows = tm.rows();
   uint8_t numCols = tm.columns();
