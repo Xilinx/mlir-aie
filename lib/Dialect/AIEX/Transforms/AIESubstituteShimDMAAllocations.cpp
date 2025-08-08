@@ -44,19 +44,11 @@ struct DMAConfigureTaskForOpPattern
 
     const int col = alloc_op.getCol();
     AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);
-    DMAConfigureTaskOp new_op;
-    if (alloc_op.getPacket()) {
-      new_op = rewriter.create<DMAConfigureTaskOp>(
-          op.getLoc(), rewriter.getIndexType(), tile.getResult(),
-          alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
-          op.getIssueToken(), op.getRepeatCount(),
-          alloc_op.getPacket().value());
-    } else {
-      new_op = rewriter.create<DMAConfigureTaskOp>(
-          op.getLoc(), rewriter.getIndexType(), tile.getResult(),
-          alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
-          op.getIssueToken(), op.getRepeatCount());
-    }
+    DMAConfigureTaskOp new_op = rewriter.create<DMAConfigureTaskOp>(
+        op.getLoc(), rewriter.getIndexType(), tile.getResult(),
+        alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
+        op.getIssueToken(), op.getRepeatCount(),
+        alloc_op.getPacket().value_or(nullptr));
     rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
     rewriter.inlineRegionBefore(op.getBody(), new_op.getBody(),
                                 new_op.getBody().begin());
