@@ -15,7 +15,7 @@
 #include <math.h>
 
 template <typename T, int N>
-void rope_kernel_scalar(const T *restrict input, const T *restrict lut,
+void rope_kernel(const T *restrict input, const T *restrict lut,
                         T *restrict output, int32_t dims) {
   event0();
 
@@ -39,7 +39,8 @@ void rope_kernel_scalar(const T *restrict input, const T *restrict lut,
     ::aie::vector<T, N / 2> output_odd = ::aie::add(even_sin, odd_cos);
 
     // Store the computed even and odd outputs back to the output buffer
-    // alternatively TO DO: Need to use interleave and store_v intrinsics
+    // alternatively.
+    // TO DO: Need to use interleave and store_v intrinsics
     for (int i = 0; i < N / 2; ++i) {
       output[v + 2 * i] = output_even[i];
       output[v + 2 * i + 1] = output_odd[i];
@@ -50,6 +51,6 @@ void rope_kernel_scalar(const T *restrict input, const T *restrict lut,
 
 extern "C" {
 void rope(bfloat16 *input, bfloat16 *lut, bfloat16 *output, int32_t dims) {
-  rope_kernel_scalar<bfloat16, 16>(input, lut, output, dims);
+  rope_kernel<bfloat16, 16>(input, lut, output, dims);
 }
 }
