@@ -1,4 +1,4 @@
-# relu/relu.py -*- Python -*-
+# swiglu/swiglu.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -18,41 +18,37 @@ from aie.iron.device import Tile, NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 
 
-def my_relu(dev, size, num_columns, num_channels):
+def my_swiglu(dev, size, num_columns):
     xfr_dtype = bfloat16
 
     # Define tensor types
     line_size = 1024
     line_type = np.ndarray[(line_size,), np.dtype[xfr_dtype]]
     transfer_type = np.ndarray[(size,), np.dtype[xfr_dtype]]
+    transfer_type_wts = np.ndarray[(2 * size,), np.dtype[xfr_dtype]]
 
     # Chunk size sent per DMA channel
-    chunk = size // num_columns // num_channels
+    chunk = size // num_columns
 
     # Dataflow with ObjectFifos
-    of_ins = [
-        ObjectFifo(line_type, name=f"in{i}_{j}")
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
-    of_outs = [
-        ObjectFifo(line_type, name=f"out{i}_{j}")
-        for i in range(num_columns)
-        for j in range(num_channels)
-    ]
+    of_ins = [ObjectFifo(line_type, name=f"in{i}") for i in range(num_columns)]
+    of_wts = [ObjectFifo(line_type, depth=4, name=f"w{i}") for i in range(num_columns)]
+    of_outs = [ObjectFifo(line_type, name=f"out{i}") for i in range(num_columns)]
 
-    # External, binary kernel definition
-    relu_fcn = Kernel(
-        "bf16_relu",
-        "relu.cc.o",
-        [line_type, line_type],
+    # External, binary kernel definitions
+    swiglu_fcn = Kernel(
+        "swiglu_bf16",
+        "kernels.a",
+        [line_type, line_type, line_type, line_type],
     )
 
     # Task for the core to perform
-    def core_fn(of_in, of_out, reluLine):
+    def core_fn(of_in, of_wts, of_out, swigluLine):
         elemOut = of_out.acquire(1)
         elemIn = of_in.acquire(1)
-        reluLine(elemIn, elemOut)
+        elemWts = of_wts.acquire(2)  # Acquire two weight vectors
+        swigluLine(elemIn, elemWts[0], elemWts[1], elemOut)
+        of_wts.release(2)  # Release both weight vectors
         of_in.release(1)
         of_out.release(1)
 
@@ -61,13 +57,13 @@ def my_relu(dev, size, num_columns, num_channels):
         Worker(
             core_fn,
             [
-                of_ins[i * num_channels + j].cons(),
-                of_outs[i * num_channels + j].prod(),
-                relu_fcn,
+                of_ins[i].cons(),
+                of_wts[i].cons(),
+                of_outs[i].prod(),
+                swiglu_fcn,
             ],
         )
         for i in range(num_columns)
-        for j in range(num_channels)
     ]
 
     # Create a TensorAccessPattern for each channel
@@ -78,37 +74,52 @@ def my_relu(dev, size, num_columns, num_channels):
     taps = [
         TensorAccessPattern(
             (1, size),
-            chunk * i * num_channels + chunk * j,
+            chunk * i,
             [1, 1, 1, chunk],
             [0, 0, 0, 1],
         )
         for i in range(num_columns)
-        for j in range(num_channels)
+    ]
+    taps_wts = [
+        TensorAccessPattern(
+            (1, 2 * size),
+            2 * chunk * i,
+            [1, 1, 1, 2 * chunk],
+            [0, 0, 0, 1],
+        )
+        for i in range(num_columns)
     ]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
+    with rt.sequence(transfer_type, transfer_type_wts, transfer_type) as (
+        a_in,
+        w_in,
+        b_out,
+    ):
         rt.start(*my_workers)
         # Fill the input objectFIFOs with data
         for i in range(num_columns):
-            for j in range(num_channels):
-                rt.fill(
-                    of_ins[i * num_channels + j].prod(),
-                    a_in,
-                    taps[i * num_channels + j],
-                )
+            rt.fill(
+                of_ins[i].prod(),
+                a_in,
+                taps[i],
+            )
+            rt.fill(
+                of_wts[i].prod(),
+                w_in,
+                taps_wts[i],
+            )
         # Drain the output objectFIFOs with data
         tg_out = rt.task_group()  # Initialize a group for parallel drain tasks
         for i in range(num_columns):
-            for j in range(num_channels):
-                rt.drain(
-                    of_outs[i * num_channels + j].cons(),
-                    b_out,
-                    taps[i * num_channels + j],
-                    wait=True,  # wait for the transfer to complete and data to be available
-                    task_group=tg_out,
-                )
+            rt.drain(
+                of_outs[i].cons(),
+                b_out,
+                taps[i],
+                wait=True,  # wait for the transfer to complete and data to be available
+                task_group=tg_out,
+            )
         rt.finish_task_group(tg_out)
 
     # Place components (assign them resources on the device) and generate an MLIR module
@@ -126,11 +137,7 @@ p.add_argument("-l", "--length", required=True, dest="length", help="Transfer si
 ## Number of columns is required to define the number of columns to be used
 ## It must be less than or equal to 4 for npu and 8 for npu2
 p.add_argument("-co", "--columns", required=True, dest="cols", help="Number of columns")
-## Number of channels is required to define the number of channels to be used
-## It must be 1 or 2
-p.add_argument(
-    "-ch", "--channels", required=True, dest="chans", help="Number of channels"
-)
+## Parse the command line arguments
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
@@ -152,17 +159,14 @@ elif opts.device == "npu2":
         raise ValueError(
             "[ERROR] Device {} cannot allocate more than 8 columns".format(opts.device)
         )
-channels = int(opts.chans)
-if channels < 1 or channels > 2:
-    raise ValueError("Number of channels must be 1 or 2")
-if ((length % 1024) % columns % channels) != 0:
+if ((length % 1024) % columns) != 0:
     print(
         "transfer size ("
         + str(length)
-        + ") must be a multiple of 1024 and divisible by the number of columns and 2 channels per column"
+        + ") must be a multiple of 1024 and divisible by the number of columns"
     )
     raise ValueError
 
-## Call the my_relu function with the parsed arguments
+## Call the my_swiglu function with the parsed arguments
 ## and print the MLIR as a result
-print(my_relu(dev, length, columns, channels))
+print(my_swiglu(dev, length, columns))
