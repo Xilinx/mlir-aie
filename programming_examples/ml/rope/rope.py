@@ -19,7 +19,7 @@ from ml_dtypes import bfloat16
 def rope(dev, sequence_length, embedding_dim, trace_size):
     # enable_trace = 1 if trace_size > 0 else None
 
-    n_cores = 8
+    n_cores = 4
 
     total_volume = sequence_length * embedding_dim
 
@@ -30,9 +30,12 @@ def rope(dev, sequence_length, embedding_dim, trace_size):
     chunk_type = np.ndarray[(chunk_volume,), np.dtype[bfloat16]]
 
     of_in = [ObjectFifo(chunk_type, name=f"in_{i}") for i in range(n_cores)]
+    of_lut = [ObjectFifo(chunk_type, name=f"lut_{i}") for i in range(n_cores)]
     of_out = [ObjectFifo(chunk_type, name=f"out_{i}") for i in range(n_cores)]
 
-    rope_kernel = Kernel("rope", "rope.o", [chunk_type, chunk_type, np.int32, np.int32])
+    rope_kernel = Kernel(
+        "rope", "rope.o", [chunk_type, chunk_type, chunk_type, np.int32]
+    )
     taps_in = []
     taps_out = []
     for i in range(n_cores):
@@ -65,29 +68,32 @@ def rope(dev, sequence_length, embedding_dim, trace_size):
         # )
         taps_out.append(taps)
 
-    def core_body(of_in, of_out, rope_kernel):
+    def core_body(of_in, of_lut, of_out, rope_kernel):
         for row in range_(rows_per_core):
             elem_in = of_in.acquire(1)
+            elem_lut = of_lut.acquire(1)
             elem_out = of_out.acquire(1)
-            rope_kernel(elem_in, elem_out, row, embedding_dim)
+            rope_kernel(elem_in, elem_lut, elem_out, embedding_dim)
             of_in.release(1)
+            of_lut.release(1)
             of_out.release(1)
 
     workers = [
         Worker(
             core_body,
-            fn_args=[of_in[i].cons(), of_out[i].prod(), rope_kernel],
+            fn_args=[of_in[i].cons(), of_lut[i].cons(), of_out[i].prod(), rope_kernel],
             trace=None,  # enable_trace
         )
         for i in range(n_cores)
     ]
 
     rt = Runtime()
-    with rt.sequence(dtype, dtype) as (a_in, c_out):
+    with rt.sequence(dtype, dtype, dtype) as (a_in, b_in, c_out):
         # rt.enable_trace(trace_size)
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_in[i].prod(), a_in, taps_in[i])
+            rt.fill(of_lut[i].prod(), b_in, taps_in[i])
         for i in range(n_cores):
             rt.drain(of_out[i].cons(), c_out, taps_out[i], wait=True)
     return Program(dev, rt).resolve_program(SequentialPlacer())
