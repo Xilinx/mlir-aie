@@ -396,15 +396,12 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     }
 
     // enable_packet
-    if (packet) {
+    // auto info = bd_op.getPacket() ? bd_op.getPacket() : packet;
+    auto info = bd_op.getPacket().value_or(packet.value_or(nullptr));
+    if (info) {
       enable_packet = 1;
-      packet_type = packet->getPktType();
-      packet_id = packet->getPktId();
-    }
-    if (auto packetInfo = bd_op.getPacket()) {
-      enable_packet = 1;
-      packet_type = packetInfo->getPktType();
-      packet_id = packetInfo->getPktId();
+      packet_type = info.getPktType();
+      packet_id = info.getPktId();
     }
 
     builder.create<NpuWriteBdOp>(
