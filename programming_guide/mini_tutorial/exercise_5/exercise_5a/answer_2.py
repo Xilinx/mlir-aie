@@ -1,4 +1,4 @@
-# exercise_4b.py -*- Python -*-
+# answer_2.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -6,25 +6,19 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
-import os
-import glob
 import sys
 import numpy as np
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
+from aie.helpers.taplib import TensorTiler2D
 
 import aie.iron as iron
 
-# Define tensor shape
-data_height = 3
-data_width = 16
-
 
 @iron.jit(is_placed=False)
-def exercise_4b(input0, output):
+def exercise_5a(input0, output):
     # Define tile size
     tile_height = 3
     tile_width = 8
@@ -32,29 +26,17 @@ def exercise_4b(input0, output):
 
     data_size = input0.numel()
     element_type = input0.dtype
+
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
     tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
-
-    # Define runtime tensor access pattern (tap)
-    tensor_dims = (data_height, data_width)
-    tap1 = TensorAccessPattern(
-        tensor_dims, offset=0, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1]
-    )
-    tap2 = TensorAccessPattern(
-        tensor_dims, offset=8, sizes=[1, 1, 3, 8], strides=[0, 0, 16, 1]
-    )
-
-    # Create a TensorTileSequence from a list of taps
-    taps = TensorAccessSequence.from_taps([tap1, tap2])
-
-    i = 0
-    for t in taps:
-        t.visualize(show_arrows=True, file_path=f"plot{i}.png")
-        i += 1
 
     # Dataflow with ObjectFifos
     of_in = ObjectFifo(tile_ty, name="in")
     of_out = ObjectFifo(tile_ty, name="out")
+
+    tensor_dims = (3, 16)
+    tile_dims = (3, 8)
+    simple_tiler = TensorTiler2D.simple_tiler(tensor_dims, tile_dims)
 
     # Task for the core to perform
     def core_fn(of_in, of_out):
@@ -72,7 +54,7 @@ def exercise_4b(input0, output):
     rt = Runtime()
     with rt.sequence(data_ty, data_ty) as (a_in, c_out):
         rt.start(my_worker)
-        for t in taps:
+        for t in simple_tiler:
             rt.fill(of_in.prod(), a_in, t)
         rt.drain(of_out.cons(), c_out, wait=True)
 
@@ -85,30 +67,32 @@ def exercise_4b(input0, output):
 
 def main():
     # Define tensor shapes and data types
+    data_height = 3
+    data_width = 16
     data_size = data_height * data_width
     element_type = np.int32
-
-    # Delete existing plot*.png files
-    for file in glob.glob("plot*.png"):
-        try:
-            os.remove(file)
-        except OSError as e:
-            print(f"Error deleting {file}: {e}")
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros(data_size, dtype=element_type, device="npu")
 
+    # Generate reference pattern
+    ref_vec = [k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)]
+
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_4b(input0, output)
+    exercise_5a(input0, output)
 
     # Check the correctness of the result
+    USE_REF_VEC = False  # Set to False to switch to output for user testing
+
+    test_source = ref_vec if USE_REF_VEC else output
     errors = 0
+
     for index, (actual, ref) in enumerate(
         zip(
-            output,
+            test_source,
             [k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)],
         )
     ):
