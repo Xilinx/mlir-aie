@@ -38,13 +38,9 @@ void rope_kernel(const T *restrict input, const T *restrict lut,
     ::aie::vector<T, N / 2> output_even = ::aie::sub(even_cos, odd_sin);
     ::aie::vector<T, N / 2> output_odd = ::aie::add(even_sin, odd_cos);
 
-    // Store the computed even and odd outputs back to the output buffer
-    // alternatively.
-    // TO DO: Need to use interleave and store_v intrinsics
-    for (int i = 0; i < N / 2; ++i) {
-      output[v + 2 * i] = output_even[i];
-      output[v + 2 * i + 1] = output_odd[i];
-    }
+    auto [low, high] = ::aie::interleave_zip(output_even, output_odd, 1);
+    ::aie::vector<T, N> y = ::aie::concat(low, high);
+    ::aie::store_v(output + v, y);
   }
   event1();
 }
