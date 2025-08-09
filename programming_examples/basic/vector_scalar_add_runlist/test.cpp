@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-#include "experimental/xrt_kernel.h" // for xrt::runlist
+#include "xrt/experimental/xrt_kernel.h" // for xrt::runlist
 #include "xrt/xrt_aie.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
