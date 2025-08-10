@@ -60,8 +60,7 @@ add_executable(${currentTarget}
 target_compile_definitions(${currentTarget} PUBLIC
         EDGEDETECT_WIDTH=${EDGEDETECT_WIDTH}
         EDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT}
-        DISABLE_ABI_CHECK=1
-        )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
