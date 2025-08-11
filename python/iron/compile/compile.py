@@ -15,6 +15,7 @@ def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
     output_path: str,
+    include_dirs=None,
     compile_args=None,
     cwd=None,
     verbose=False,
@@ -28,8 +29,9 @@ def compile_cxx_core_function(
         source_path (str): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
         output_path (str): Output object file path.
-        compile_args (list[str]): Compile arguments to peano.
-        cwd (str): Overrides the current working directory.
+        include_dirs (list[str], optional): List of include directories to add with -I.
+        compile_args (list[str], optional): Additional compile arguments to peano.
+        cwd (str, optional): Overrides the current working directory.
         verbose (bool): Enable verbose output.
     """
     cmd = [
@@ -48,8 +50,16 @@ def compile_cxx_core_function(
         "-DNDEBUG",
         f"--target={target_arch}-none-unknown-elf",
     ]
+
+    # Add include directories
+    if include_dirs:
+        for include_dir in include_dirs:
+            cmd.extend(["-I", include_dir])
+
+    # Add additional compile arguments
     if compile_args:
         cmd = cmd + compile_args
+
     if verbose:
         print("Executing:", " ".join(cmd))
     ret = subprocess.run(

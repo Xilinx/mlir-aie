@@ -9,17 +9,20 @@ import numpy as np
 import argparse
 import sys
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, LocalBuffer
+from aie.iron import (
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    LocalBuffer,
+    str_to_dtype,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.helpers.util import np_ndarray_type_get_shape
 from ml_dtypes import bfloat16
 from aie.iron.controlflow import range_
-
-dtype_map = {
-    "bf16": bfloat16,
-    "i32": np.int32,
-}
 
 
 def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
@@ -27,7 +30,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     n_mem_elems = 2048
     elems_per_core = n_mem_elems // n_cores
 
-    dtype = dtype_map[dtype_str]
+    dtype = str_to_dtype(dtype_str)
 
     in_tensor_size = in1_size // dtype(0).nbytes
     out_tensor_size = out_size // dtype(0).nbytes
