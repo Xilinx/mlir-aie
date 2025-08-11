@@ -324,7 +324,7 @@ The simple tiler above takes a very straighforward approach to tiling and makes 
 
 More on `taplib` in [tiling_exploration](../../programming_examples/basic/tiling_exploration/README.md).
 
-`ObjectFifo`s can express DMA on-the-fly data transformations via their `dims_to_stream` and `default_dims_from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest:
+`ObjectFifo`s can express DMA on-the-fly data transformations via their `dims_to_stream` and `dims_from_stream_per_cons` inputs. These inputs are structured as a list of pairs where each pair is expressed as (size, stride) for a dimension of the DMA transformation. The dimensions should be given from highest to lowest:
 ```python
 dims = [(size_2, stride_2), (size_1, stride_1), (size_0, stride_0)]
 of_out = ObjectFifo(data_ty, name="out", dims_to_stream=dims)
