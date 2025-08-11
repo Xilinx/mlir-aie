@@ -23,16 +23,42 @@
 
 #include <vector>
 
+extern "C" {
+// #include "xaiengine/xaie_txn.h"
+// see aie-rt commit a6196eb, xaiengine/xaie_txn.h for source of this enum
+typedef enum {
+	XAIE_IO_WRITE,
+	XAIE_IO_BLOCKWRITE,
+	XAIE_IO_BLOCKSET,
+	XAIE_IO_MASKWRITE,
+	XAIE_IO_MASKPOLL,
+	XAIE_IO_NOOP,
+	XAIE_IO_PREEMPT,
+	XAIE_IO_MASKPOLL_BUSY,
+	XAIE_IO_LOADPDI,
+	XAIE_IO_LOAD_PM_START,
+	XAIE_IO_CREATE_SCRATCHPAD,
+	XAIE_IO_UPDATE_STATE_TABLE,
+	XAIE_IO_UPDATE_REG,
+	XAIE_IO_UPDATE_SCRATCH,
+	XAIE_CONFIG_SHIMDMA_BD,
+	XAIE_CONFIG_SHIMDMA_DMABUF_BD,
+	XAIE_IO_CUSTOM_OP_BEGIN = 1U<<7U,
+	XAIE_IO_CUSTOM_OP_TCT = XAIE_IO_CUSTOM_OP_BEGIN,
+	XAIE_IO_CUSTOM_OP_DDR_PATCH, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 1
+	XAIE_IO_CUSTOM_OP_READ_REGS, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 2
+	XAIE_IO_CUSTOM_OP_RECORD_TIMER, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 3
+	XAIE_IO_CUSTOM_OP_MERGE_SYNC, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 4
+	XAIE_IO_CUSTOM_OP_NEXT,
+	XAIE_IO_LOAD_PM_END_INTERNAL = 200,
+	XAIE_IO_CUSTOM_OP_MAX = UCHAR_MAX,
+} XAie_TxnOpcode;
+}
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
-
-#define TXN_OPC_WRITE 0x0
-#define TXN_OPC_BLOCKWRITE 0x1
-#define TXN_OPC_MASKWRITE 0x3
-#define TXN_OPC_TCT 0x80
-#define TXN_OPC_DDR_PATCH 0x81
 
 namespace {
 
@@ -55,7 +81,7 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
   auto words = reserveAndGetTail(instructions, 4);
 
   // XAIE_IO_CUSTOM_OP_TCT
-  words[0] = TXN_OPC_TCT;
+  words[0] = XAIE_IO_CUSTOM_OP_TCT;
 
   words[1] = words.size() * sizeof(uint32_t); // Operation Size
 
@@ -78,7 +104,7 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   }
 
   // XAIE_IO_WRITE
-  words[0] = TXN_OPC_WRITE;
+  words[0] = XAIE_IO_WRITE;
   words[2] = op.getAddress();
   auto col = op.getColumn();
   auto row = op.getRow();
@@ -103,7 +129,7 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions,
   }
 
   // XAIE_IO_MASKWRITE
-  words[0] = TXN_OPC_MASKWRITE;
+  words[0] = XAIE_IO_MASKWRITE;
   words[2] = op.getAddress();
   auto col = op.getColumn();
   auto row = op.getRow();
@@ -124,7 +150,7 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
   auto words = reserveAndGetTail(instructions, 12);
 
   // XAIE_IO_CUSTOM_OP_DDR_PATCH
-  words[0] = TXN_OPC_DDR_PATCH;
+  words[0] = XAIE_IO_CUSTOM_OP_DDR_PATCH;
   words[1] = words.size() * sizeof(uint32_t); // Operation Size
 
   words[5] = 0; // Action
@@ -175,8 +201,7 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
   auto words = reserveAndGetTail(instructions, data.size() + payload_start);
 
   // XAIE_IO_BLOCKWRITE
-  words[0] = TXN_OPC_BLOCKWRITE;
-  words[2] = op.getAddress();
+  words[0] = XAIE_IO_BLOCKWRITE;
   auto col = op.getColumn();
   auto row = op.getRow();
   if (col && row) {
@@ -190,6 +215,13 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
   unsigned i = payload_start;
   for (auto d : data)
     words[i++] = d.getZExtValue();
+}
+
+void appendPreempt(std::vector<uint32_t> &instructions,
+                   NpuPreemptOp op) {
+
+  auto words = reserveAndGetTail(instructions, 4);
+  words[0] = XAIE_IO_PREEMPT | (op.getLevel() << 8);
 }
 
 } // namespace
@@ -243,6 +275,10 @@ xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
             appendAddressPatch(instructions, op);
+          })
+          .Case<NpuPreemptOp>([&](auto op) {
+            count++;
+            appendPreempt(instructions, op);
           });
     }
   }
