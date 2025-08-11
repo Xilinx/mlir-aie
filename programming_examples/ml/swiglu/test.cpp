@@ -23,10 +23,29 @@
 
 #include "test_utils.h"
 
-// relu reference implementation
-std::bfloat16_t relu_bf16(std::bfloat16_t &input) {
-  // Return the relu output
-  return (input > std::bfloat16_t(0.0f)) ? input : std::bfloat16_t(0.0f);
+// Silu reference implementation
+std::bfloat16_t silu_bf16(std::bfloat16_t &input) {
+  // Compute tanh approximation
+  std::bfloat16_t half_x = input * std::bfloat16_t(0.5f);
+  std::bfloat16_t tanh_half_x = std::tanh(half_x);
+  std::bfloat16_t sigmoid_approx =
+      std::bfloat16_t(0.5f) * (tanh_half_x + std::bfloat16_t(1.0f));
+
+  // Compute output: x * tanh_approx
+  return input * sigmoid_approx;
+}
+
+// SwiGLU reference implementation
+std::bfloat16_t swiglu_bf16(std::bfloat16_t &input, std::bfloat16_t &w1,
+                            std::bfloat16_t &w2) {
+  // Compute the first part: x * w1
+  std::bfloat16_t x_w1 = input * w1;
+  // Compute the second part: x * w2
+  std::bfloat16_t x_w2 = input * w2;
+  // Apply the silu activation function to the second part
+  std::bfloat16_t silu_output = silu_bf16(x_w2);
+  // Compute the final output: x * w1 * silu_output
+  return x_w1 * silu_output;
 }
 
 int main(int argc, const char *argv[]) {
@@ -125,8 +144,10 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, N * sizeof(std::bfloat16_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_weights = xrt::bo(device, 2 * N * sizeof(std::bfloat16_t),
+                            XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out = xrt::bo(device, N * sizeof(std::bfloat16_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -134,24 +155,52 @@ int main(int argc, const char *argv[]) {
   std::bfloat16_t *bufInA = bo_inA.map<std::bfloat16_t *>();
   std::vector<std::bfloat16_t> srcVecA;
   for (int i = 0; i < N; i++)
-    srcVecA.push_back(std::bfloat16_t(i * 0.05f + -3.0f)); // Example data
+    srcVecA.push_back(std::bfloat16_t(i * 0.05f + -1.0f)); // Example data
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(std::bfloat16_t)));
+
+  // Generate the W1 and W2 weights
+  std::vector<std::bfloat16_t> srcVecW1;
+  std::vector<std::bfloat16_t> srcVecW2;
+  for (int i = 0; i < N; i++) {
+    // Example weights, can be replaced with actual model weights
+    srcVecW1.push_back(std::bfloat16_t(0.1f * (i % 10) + 0.1f));
+    srcVecW2.push_back(std::bfloat16_t(0.2f * (i % 20) + 0.2f));
+  }
+  std::vector<std::bfloat16_t> srcVecWeights;
+  // Interleave the weights into one vector in 1024 elements chunks
+  // of each W1 and W2
+  for (int i = 0; i < N; i += 1024) {
+    for (int j = 0; j < 1024 && (i + j) < N; j++) {
+      srcVecWeights.push_back(srcVecW1[i + j]);
+    }
+    for (int j = 0; j < 1024 && (i + j) < N; j++) {
+      srcVecWeights.push_back(srcVecW2[i + j]);
+    }
+  }
+
+  // Write the weights to the buffer object
+  auto bufWeights = bo_weights.map<std::bfloat16_t *>();
+  memcpy(bufWeights, srcVecWeights.data(),
+         srcVecWeights.size() * sizeof(std::bfloat16_t));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_weights.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
   // Setup run to configure
-  auto cfg_run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
+  auto cfg_run =
+      kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_weights, bo_out);
   cfg_run.wait();
   auto start = std::chrono::high_resolution_clock::now();
   // Test run
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
+  auto run =
+      kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_weights, bo_out);
   run.wait();
   auto stop = std::chrono::high_resolution_clock::now();
   const float npu_time =
@@ -173,8 +222,8 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (int i = 0; i < N; i++) {
-    std::bfloat16_t ref = relu_bf16(srcVecA[i]);
-    if (!test_utils::nearly_equal(*(bufOut + i), ref)) {
+    std::bfloat16_t ref = swiglu_bf16(srcVecA[i], srcVecW1[i], srcVecW2[i]);
+    if (!test_utils::nearly_equal(*(bufOut + i), ref, 0.05f)) {
       errors++;
       // Print the first 100 mismatches
       if (errors <= 100) {

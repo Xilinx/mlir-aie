@@ -2,7 +2,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 Advanced Micro Devices, Inc.
+# (c) Copyright 2025 Xilinx Inc.
 
 # parameters
 # -DXRT_INC_DIR: Full path to src/runtime_src/core/include in XRT cloned repo
@@ -25,8 +25,10 @@ if (NOT WSL)
 else()
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
-endif()
+endif ()
 
+set(ROWS 16 CACHE STRING "row size of tensor")
+set(COLS 64 CACHE STRING "col size of tensor")
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
@@ -39,22 +41,29 @@ endif ()
 
 project(${ProjectName})
 
+
 add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
-target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
+target_compile_definitions(${currentTarget} PUBLIC
+    ROWS=${ROWS}
+    COLS=${COLS}
+    DISABLE_ABI_CHECK=1
+        )
 
 target_include_directories (${currentTarget} PUBLIC
-    ${XRT_INC_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
+    ${XRT_INC_DIR}
 )
 
 target_link_directories(${currentTarget} PUBLIC
     ${XRT_LIB_DIR}
 )
+
 
 target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil

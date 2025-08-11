@@ -196,6 +196,19 @@ class Tensor:
             self.__sync_from_device()
         return self.data
 
+    def fill_(self, value):
+        """
+        Fills the tensor with a scalar value (in-place operation).
+
+        Parameters:
+            value: The scalar value to fill the tensor with.
+
+        Note: For NPU tensors, this method syncs the filled data to device after modification.
+        """
+        self.data.fill(value)
+        if self.device == "npu":
+            self.__sync_to_device()
+
     @staticmethod
     def _ctype_from_dtype(dtype):
         """
