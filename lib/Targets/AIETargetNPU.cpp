@@ -202,6 +202,7 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
 
   // XAIE_IO_BLOCKWRITE
   words[0] = XAIE_IO_BLOCKWRITE;
+  words[2] = op.getAddress();
   auto col = op.getColumn();
   auto row = op.getRow();
   if (col && row) {
