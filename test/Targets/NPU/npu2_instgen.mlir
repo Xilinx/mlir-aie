@@ -10,9 +10,9 @@
 
 // RUN: aie-translate --aie-npu-to-binary -aie-output-binary=false %s | FileCheck %s
 module {
-  aie.device(npu2) @xx {
+  aie.device(npu2) {
     memref.global "private" constant @write_data : memref<8xi32> = dense<[100, 101, 102, 103, 104 ,105, 106, 107]>
-    aiex.runtime_sequence @xx (%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+    aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // TXN header 0.1
       // CHECK: 06040100
