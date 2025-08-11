@@ -10,7 +10,7 @@
 
 # Layer Normalization (LayerNorm) Example
 
-This design implements a `bfloat16`-based Layer Normalization (LayerNorm) operation, a widely used technique in deep learning models, especially in transformer architectures. LayerNorm normalizes the activations of each input across the features (columns) for every row, stabilizing and accelerating the training process by reducing internal covariate shift. This implementation utilizes Welford's pairwise algorithm, a numerically stable, one-pass method for computing mean and variance, making it especially well-suited for lower-precision data types such as `bfloat16`.
+This design implements a `float32`-based Layer Normalization (LayerNorm) operation, a widely used technique in deep learning models, especially in transformer architectures. LayerNorm normalizes the activations of each input across the features (columns) for every row, stabilizing and accelerating the training process by reducing internal covariate shift. This implementation utilizes Welford's pairwise algorithm, a numerically stable, one-pass method for computing mean and variance, making it especially well-suited for lower-precision data types.
 
 ## Files
 
@@ -49,3 +49,4 @@ make run
 
 - Extend the LayerNorm implementation to support multi-core execution on the AIE array.
 - Partition the input tensor so that multiple AIE cores can process different blocks of rows or columns in parallel.
+- Extend the support for `bfloat16` datatype.
