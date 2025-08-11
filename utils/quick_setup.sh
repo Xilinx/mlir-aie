@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ##===- quick_setup.sh - Setup IRON for Ryzen AI dev ----------*- Script -*-===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
 ##===----------------------------------------------------------------------===##
 #
 # This script is the quickest path to running the Ryzen AI reference designs.
@@ -61,14 +61,19 @@ python3 -m pip install --upgrade pip
 python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2/ 
 export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 
-python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+# TODO: Use nightly latest llvm-aie once it is fixed
+python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025071101+b3cd09d3-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
 export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+
+pip install pre-commit
 
 # This installs the pre-commit hooks defined in .pre-commit-config.yaml
 pre-commit install
 
 HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
 python3 -m pip install -r python/requirements_ml.txt
+
+python3 -m pip install -r python/requirements_notebook.txt
 
 # This creates an ipykernel (for use in notebooks) using the ironenv venv
 python3 -m ipykernel install --user --name ironenv
