@@ -192,6 +192,8 @@ Up to five buffers are supported in the runtime sequence, where the fifth is typ
 
 Runtime sequence commands are submitted to and executed by a dedicated command processor in order. The command processor will wait on commands that are set to `wait` until a token associated with their completion is generated. When all the commands in the runtime sequence have been executed the command processor sends an interrupt to the host processor.
 
+IRON also supports grouping of runtime sequence commands using `task_group`s. Commands that are in the same group begin execution concurrently, and the completion of the group can be explicitly synchronized using the `finish_task_group()` command. These features can be combined to achieve an optimized grouping of waits for parallel tasks, as is shown in [this](../../programming_examples/basic/memcpy/README.md) programming example.
+
 More on the runtime sequence in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide.
 
 ## <u>Exercises</u>
