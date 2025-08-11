@@ -220,7 +220,7 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
 void appendPreempt(std::vector<uint32_t> &instructions,
                    NpuPreemptOp op) {
 
-  auto words = reserveAndGetTail(instructions, 4);
+  auto words = reserveAndGetTail(instructions, 1);
   words[0] = XAIE_IO_PREEMPT | (op.getLevel() << 8);
 }
 
