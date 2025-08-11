@@ -11,14 +11,15 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
-VPATH := ${srcdir}/../../../aie_kernels/aie2
+VPATH := ${srcdir}/../../../aie_kernels/aie2p
 
 all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = layernorm
-in_size = 2048 # in bytes
-trace_size = 8192
+rows = 16
+cols = 16
+trace_size = 65536
 
 aie_py_src=${targetname}.py
 
@@ -29,17 +30,18 @@ ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 else ifeq ($(devicename),npu2)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+# 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
 else
 	echo "Device type not supported"
 endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i ${in_size} -t ${trace_size}>$@
+	python3 $< -d ${devicename} -r ${rows} -c ${cols} -t ${trace_size}>$@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i ${in_size} -t ${trace_size}> $@
+	python3 $< -d ${devicename} -r ${rows} -c ${cols} -t ${trace_size}> $@
 
 build/final.xclbin: build/aie.mlir build/layer_norm.o
 	mkdir -p ${@D}
@@ -56,7 +58,7 @@ build/final_trace.xclbin: build/aie_trace.mlir build/layer_norm.o
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DIN_SIZE=$(in_size)
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DROWS=$(rows) -DCOLS=$(cols)
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
