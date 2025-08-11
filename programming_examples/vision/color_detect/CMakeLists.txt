@@ -59,8 +59,7 @@ add_executable(${currentTarget}
 target_compile_definitions(${currentTarget} PUBLIC
         COLORDETECT_WIDTH=${COLORDETECT_WIDTH}
         COLORDETECT_HEIGHT=${COLORDETECT_HEIGHT}
-        DISABLE_ABI_CHECK=1
-        )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
