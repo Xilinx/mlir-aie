@@ -46,15 +46,6 @@ int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
   const float gamma = 1.0f; // built-in constant
   const float beta = 0.0f;  // built-in constant
   std::vector<float> expected(ROWS * COLS, 0.0f);
-  // Print input values for debugging
-  // std::cout << "Input values:" << std::endl;
-  // for (int r = 0; r < ROWS; r++) {
-  //   for (int c = 0; c < COLS; c++) {
-  //     int idx = r * COLS + c;
-  //     std::cout << static_cast<float>(bufIn1[idx]) << " ";
-  //   }
-  //   std::cout << std::endl;
-  // }
   for (int r = 0; r < ROWS; r++) {
     float sum = 0.0f;
     float sum_sq = 0.0f;
@@ -106,6 +97,7 @@ int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
 //*****************************************************************************
 
 int main(int argc, const char *argv[]) {
+  srand(42);
 
   args myargs = parse_args(argc, argv);
 
