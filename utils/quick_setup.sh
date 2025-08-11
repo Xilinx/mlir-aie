@@ -78,6 +78,8 @@ python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/e
 
 export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 
+pip install pre-commit
+
 # This installs the pre-commit hooks defined in .pre-commit-config.yaml
 pre-commit install
 

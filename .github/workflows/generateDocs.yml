@@ -32,7 +32,9 @@ jobs:
         run: sudo apt-get install -y graphviz lld doxygen
 
       - name: Install Python packages
-        run: sudo pip install -r python/requirements.txt
+        run: |
+          pip install -r python/requirements.txt
+          pip install -r python/requirements_dev.txt
 
       - name: Install Ninja
         # https://github.com/llvm/actions/tree/main/install-ninja
