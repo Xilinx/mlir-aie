@@ -315,37 +315,30 @@ def packet_switch_kernel(dev, in_out_size):
         )
         def sequence(A, B):
             # Write data from host buffer A + packet header to stream
-            in_task = shim_dma_single_bd_task(
-                #"objFifo_in1",
-                alloc=None,
-                mem=A,
-                offset=0,
-                sizes=[1, 1, 1, in_out_size],
-                strides=[0, 0, 0, 1],
-                dma_channel_dir=DMAChannelDir.MM2S,
-                dma_channel_index=0,
-                col=0,
-                packet=(0, 1),
-            )
+            in_task = dma_configure_task(ShimTile_0_0, DMAChannelDir.MM2S, 0)
+            with bds(in_task) as bd:
+                with bd[0]:
+                    shim_dma_bd(
+                        A,
+                        offset=0,
+                        sizes=[1, 1, 1, in_out_size],
+                        strides=[0, 0, 0, 1],
+                        packet=(0, 1)
+                    )
+                    EndOp()
             # Write data from stream to host buffer B
-            out_task = shim_dma_single_bd_task(
-                #"objFifo_out1",
-                alloc=None,
-                mem=B,
-                offset=0,
-                sizes=[1, 1, 1, in_out_size],
-                strides=[0, 0, 0, 1],
-                issue_token=True,
-                dma_channel_dir=DMAChannelDir.S2MM,
-                dma_channel_index=0,
-                col=0,
-            )
+            out_task = dma_configure_task(ShimTile_0_0, DMAChannelDir.S2MM, 0, issue_token=True)
+            with bds(out_task) as bd:
+                with bd[0]:
+                    shim_dma_bd(
+                        B,
+                        offset=0,
+                        sizes=[1, 1, 1, in_out_size],
+                        strides=[0, 0, 0, 1],
+                    )
+                    EndOp()
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)
-
-        #shim_dma_allocation("objFifo_out0", DMAChannelDir.S2MM, 0, 0)
-        #shim_dma_allocation("objFifo_out1", DMAChannelDir.S2MM, 0, 0)
-        #shim_dma_allocation("objFifo_in1", DMAChannelDir.MM2S, 0, 0)
 
 
 if len(sys.argv) < 3:
