@@ -62,7 +62,6 @@ def if_(cond, hasElse=True, insert_yield=True, loc=None, ip=None):
         yield if_op
         if insert_yield:
             yield_([])
-    # TODO: Default, empty else region.
     if hasElse:
         with InsertionPoint(if_op.elseRegion.blocks[0]):
             if insert_yield:
