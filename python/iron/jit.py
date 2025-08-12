@@ -225,7 +225,7 @@ def jit(function=None, is_placed=True, use_cache=True):
                 # Compile the MLIR module
                 compile_mlir_module(
                     mlir_module=mlir_module,
-                    inst_path=inst_path,
+                    insts_path=inst_path,
                     xclbin_path=xclbin_path,
                     work_dir=kernel_dir,
                 )
