@@ -5,7 +5,6 @@
 #
 # (c) Copyright 2025 AMD Inc.
 import argparse
-from ml_dtypes import bfloat16
 import numpy as np
 
 from aie.extras.context import mlir_mod_ctx
@@ -15,13 +14,8 @@ from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
-dtype_map = {
-    "bf16": bfloat16,
-    "i8": np.int8,
-    "i16": np.int16,
-    "f32": np.float32,
-    "i32": np.int32,
-}
+from aie.iron import str_to_dtype
+
 
 microkernel_mac_dim_map = {
     "npu": {
@@ -33,7 +27,7 @@ microkernel_mac_dim_map = {
         "bf16": {
             # emulate_bf16_mmul_with_bfp16
             True: (8, 8, 8),
-            False: (4, 8, 4),
+            False: (4, 8, 8),
         },
         "i8": (8, 8, 8),
         "i16": (4, 4, 8),
@@ -120,8 +114,8 @@ def my_matmul(
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
 
-    dtype_in = dtype_map[dtype_in_str]
-    dtype_out = dtype_map[dtype_out_str]
+    dtype_in = str_to_dtype(dtype_in_str)
+    dtype_out = str_to_dtype(dtype_out_str)
 
     assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
         dtype_out, np.integer

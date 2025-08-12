@@ -24,6 +24,7 @@
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -3205,9 +3206,10 @@ static bool isInSigmoidOperationChain(math::ExpOp expOp) {
 
 static void configureAIEVecCommonLegalizations(ConversionTarget &target,
                                                TargetBackend backend) {
-  target.addLegalDialect<xilinx::aievec::aie1::AIEVecAIE1Dialect,
-                         xilinx::aievec::AIEVecDialect, arith::ArithDialect,
-                         emitc::EmitCDialect, func::FuncDialect>();
+  target
+      .addLegalDialect<xilinx::aievec::aie1::AIEVecAIE1Dialect,
+                       xilinx::aievec::AIEVecDialect, arith::ArithDialect,
+                       ub::UBDialect, emitc::EmitCDialect, func::FuncDialect>();
   if (backend == TargetBackend::CPP) {
     target.addIllegalOp<vector::TransferReadOp>();
   }
@@ -3827,10 +3829,10 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     ConversionTarget target(*context);
     auto aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
-      std::string target = aieTarget;
-      if (target == "aieml" || target == "aie2")
+      std::string targetStr = aieTarget;
+      if (targetStr == "aieml" || targetStr == "aie2")
         aieVersion = AIEArch::AIE2;
-      else if (target != "aie") {
+      else if (targetStr != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         return signalPassFailure();
       }

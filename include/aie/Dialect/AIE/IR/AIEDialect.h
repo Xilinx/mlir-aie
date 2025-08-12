@@ -17,6 +17,7 @@
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
@@ -130,29 +131,7 @@ using Port = struct Port {
 
   friend std::ostream &operator<<(std::ostream &os, const Port &port) {
     os << "(";
-    switch (port.bundle) {
-    case WireBundle::Core:
-      os << "Core";
-      break;
-    case WireBundle::DMA:
-      os << "DMA";
-      break;
-    case WireBundle::North:
-      os << "N";
-      break;
-    case WireBundle::East:
-      os << "E";
-      break;
-    case WireBundle::South:
-      os << "S";
-      break;
-    case WireBundle::West:
-      os << "W";
-      break;
-    default:
-      os << "X";
-      break;
-    }
+    os << stringifyWireBundle(port.bundle).str();
     os << ": " << std::to_string(port.channel) << ")";
     return os;
   }

@@ -4,8 +4,7 @@
 #
 # (c) Copyright 2023 Advanced Micro Devices, Inc.
 
-cmake_minimum_required(VERSION 3.20.1)
-
+cmake_minimum_required(VERSION 3.30)
 project("xaiengine lib for ${AIE_RUNTIME_TARGET}")
 include("aiert.cmake")
 

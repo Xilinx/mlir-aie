@@ -2,7 +2,7 @@
 
 # IRON API and MLIR-based AI Engine Toolchain
 
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls) [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug) ![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue) ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie)
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls) [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug) ![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue) ![GitHub Downloads 2 (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-2/total?color=blue) ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie)
 
 <p align="left">
   <img src="https://github.com/llvm/mlir-www/blob/main/website/static/LogoAssets/logo/PNG/full_color/mlir-identity-03.png" alt="MLIR logo" height="80" />
@@ -17,6 +17,10 @@ This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for A
 The IRON Python API for Ryzen™ AI NPUs is described in the following paper: 
 
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
+
+<p align="left">
+  <img src="docs/assets/images/iron_linux_stack.svg" alt="Iron Linux Software Stack" width="50%">
+</p>
 
 # Getting Started for AMD Ryzen™ AI on Linux
 
@@ -46,7 +50,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Execute the scripted build process:
 
     > This script will install package dependencies, build the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
-  
+
     ```bash
     bash ./utils/build_drivers.sh
     ```
@@ -56,9 +60,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     ```bash
     sudo reboot
     ```
-    
+
 1. Check that the NPU is working if the device appears with xrt-smi:
-   
+
    ```bash
    source /opt/xilinx/xrt/setup.sh
    xrt-smi examine
@@ -117,7 +121,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    For daily latest:
    ```bash
    # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
 
    # Install Peano from llvm-aie wheel
    python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
@@ -128,11 +132,17 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
    python3 -m pip install -r python/requirements.txt
 
+   # Install MLIR Python Extras
+   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   ```
+
+1. (Optional) Install Python packages required for development and testing:
+   ```bash
+   # Install Python requirements for development and testing
+   python3 -m pip install -r python/requirements_dev.txt
+
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
-
-   # Install MLIR Python Extras 
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
 1. (Optional) Install ML Python packages for ml programming examples:
@@ -143,9 +153,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. (Optional) Install Jupyter Notebook Python packages:
    ```bash
+   # Install Jupyter Notebook
+   python3 -m pip install -r python/requirements_notebook.txt
+
    # This creates an ipykernel (for use in notebooks) using the ironenv venv
    python3 -m ipykernel install --user --name ironenv
-    
+
    # The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.
    # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g. if they are run with
    # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
@@ -196,7 +209,7 @@ For your design of interest, for instance from [programming_examples](../program
    > This is an early access lounge, you must register and be granted access at this time.
 
     1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
- 
+
     1. Extract the required tools:
 
        ``` bash
@@ -213,7 +226,7 @@ For your design of interest, for instance from [programming_examples](../program
     1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense).
 
     1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/opt/Xilinx.lic`:
-       
+
 1. Setup your environment using the following script for Vitis™ for AIETools:
 
    ```bash

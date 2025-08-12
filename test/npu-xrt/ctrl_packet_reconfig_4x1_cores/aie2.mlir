@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1) {
+  aie.device(NPUDEVICE) {
     memref.global "public" @shim_in_0 : memref<64x64xi8>
     memref.global "public" @shim_in_1 : memref<64x64xi8>
     memref.global "public" @shim_in_2 : memref<64x64xi8>
@@ -135,7 +135,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c13_i8 = arith.constant 13 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%tile_1_2_lock_3, AcquireGreaterEqual, 1)
@@ -143,7 +143,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %tile_1_2_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c13_i8 : i8
           memref.store %1, %tile_1_2_buff_1[%arg1, %arg2] : memref<64x64xi8>
         }
       }
@@ -171,7 +171,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c14_i8 = arith.constant 14 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%tile_2_2_lock_3, AcquireGreaterEqual, 1)
@@ -179,7 +179,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %tile_2_2_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c14_i8 : i8
           memref.store %1, %tile_2_2_buff_1[%arg1, %arg2] : memref<64x64xi8>
         }
       }
@@ -207,7 +207,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c15_i8 = arith.constant 15 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%tile_3_2_lock_3, AcquireGreaterEqual, 1)
@@ -215,7 +215,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %tile_3_2_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c15_i8 : i8
           memref.store %1, %tile_3_2_buff_1[%arg1, %arg2] : memref<64x64xi8>
         }
       }

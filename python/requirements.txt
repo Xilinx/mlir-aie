@@ -1,18 +1,6 @@
 PyYAML>=6.0.2
 aiofiles
-cmake>=3.29, <4.0
 dataclasses>=0.6, <=0.8
-filelock==3.13.1
-lit
 numpy>=1.19.5, <2.0 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
-pandas
-psutil
-pybind11>=2.9.0, <=2.10.3
 rich
-setuptools
-wheel
 ml_dtypes
-matplotlib
-notebook
-pre-commit
-nanobind>=2.5

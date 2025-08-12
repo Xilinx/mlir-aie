@@ -1325,7 +1325,8 @@ TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 int64_t BufferOp::getAllocationSize() {
   auto type = llvm::cast<MemRefType>(getType());
-  return type.getNumElements() * type.getElementTypeBitWidth() / 8;
+  DataLayout dataLayout = DataLayout::closest(getOperation());
+  return type.getNumElements() * dataLayout.getTypeSize(type.getElementType());
 }
 
 TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
@@ -1770,6 +1771,10 @@ LogicalResult DMABDOp::verify() {
     if (getBufferElementTypeWidthInBytes() < 4 && dims->back().getStride() != 1)
       return emitOpError(
           "For <32b width datatypes, inner-most dim stride must be 1");
+
+    if (getBufferElementTypeWidthInBytes() > 4 && dims->back().getStride() != 1)
+      return emitOpError(
+          "For >32b width datatypes, inner-most dim stride must be 1");
   }
   if (auto paddims = getPadDimensions(); paddims.has_value()) {
     auto dims = getDimensions();

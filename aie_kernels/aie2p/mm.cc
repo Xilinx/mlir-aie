@@ -95,23 +95,10 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
             pB1 = pB + (j * colA) * MMUL::size_B;
             pB2 = pB + ((j + 1) * colA) * MMUL::size_B;
           }
-          aie::vector<T_in, MMUL::size_A> A0 = aie::load_v<MMUL::size_A>(pA1);
-          pA1 += MMUL::size_A;
-          aie::vector<T_in, MMUL::size_A> A1 = aie::load_v<MMUL::size_A>(pA2);
-          pA2 += MMUL::size_A;
+          aie::vector<T_in, MMUL::size_A> A0;
+          aie::vector<T_in, MMUL::size_A> A1;
           aie::vector<T_in, MMUL::size_B> B0;
           aie::vector<T_in, MMUL::size_B> B1;
-          if constexpr (b_row_maj) {
-            B0 = aie::load_v<MMUL::size_B>(pB1);
-            pB1 += MMUL::size_B * colB;
-            B1 = aie::load_v<MMUL::size_B>(pB2);
-            pB2 += MMUL::size_B * colB;
-          } else {
-            B0 = aie::transpose(aie::load_v<MMUL::size_B>(pB1), t, s);
-            pB1 += MMUL::size_B;
-            B1 = aie::transpose(aie::load_v<MMUL::size_B>(pB2), t, s);
-            pB2 += MMUL::size_B;
-          }
 
           // Load partial results from C buffer for accumulation in-place. The
           // zero.cc function handles the zeroing of data when a new
@@ -130,12 +117,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
           MMUL C10(acc_C10);
           MMUL C11(acc_C11);
 
-          C00.mac(A0, B0);
-          C01.mac(A0, B1);
-          C10.mac(A1, B0);
-          C11.mac(A1, B1);
-
-          for (unsigned i = 1; i < colA; ++i)
+          for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
             chess_flatten_loop
 #endif
@@ -232,15 +214,14 @@ static inline void matmul_vectorized_4x4x8_i16_i32(const int16 *__restrict pA,
                                     s, t, is_b_row_maj>(pA, pB, pC);
 }
 
-//TODO: Unlike the others, this shape has not yet been tested for optimality
 template <unsigned m, unsigned k, unsigned n>
 static inline void
-matmul_vectorized_4x8x4_bf16_bf16(const bfloat16 *__restrict pA,
+matmul_vectorized_4x8x8_bf16_bf16(const bfloat16 *__restrict pA,
                                   const bfloat16 *__restrict pB,
                                   bfloat16 *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
-  constexpr int t = 4;
+  constexpr int t = 8;
 
   static_assert(m % (2 * r) == 0);
   static_assert(k % s == 0);
@@ -271,12 +252,12 @@ matmul_vectorized_8x8x8_bf16_bf16(const bfloat16 *__restrict pA,
 
 template <unsigned m, unsigned k, unsigned n>
 static inline void
-matmul_vectorized_4x8x4_bf16_f32(const bfloat16 *__restrict pA,
+matmul_vectorized_4x8x8_bf16_f32(const bfloat16 *__restrict pA,
                                  const bfloat16 *__restrict pB,
                                  float *__restrict pC) {
   constexpr int r = 4;
   constexpr int s = 8;
-  constexpr int t = 4;
+  constexpr int t = 8;
 
   static_assert(m % (2 * r) == 0);
   static_assert(k % s == 0);
@@ -395,7 +376,7 @@ extern "C" {
 #ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
 #define combos(X) X(bfloat16, bf16, bfloat16, bf16, 8, 8, 8)
 #else
-#define combos(X) X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)
+#define combos(X) X(bfloat16, bf16, bfloat16, bf16, 4, 8, 8)
 #endif
 #endif
 
@@ -403,7 +384,7 @@ extern "C" {
 #ifdef AIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
 #define combos(X) X(bfloat16, bf16, float, f32, 8, 8, 8)
 #else
-#define combos(X) X(bfloat16, bf16, float, f32, 4, 8, 4)
+#define combos(X) X(bfloat16, bf16, float, f32, 4, 8, 8)
 #endif
 #endif
 
@@ -420,8 +401,8 @@ extern "C" {
   X(int8, i8, int8, i8, 8, 8, 8)                                               \
   X(int16, i16, int16, i16, 4, 4, 8)                                           \
   X(int16, i16, int32, i32, 4, 4, 8)                                           \
-  X(bfloat16, bf16, bfloat16, bf16, 4, 8, 4)                                   \
-  X(bfloat16, bf16, float, f32, 4, 8, 4)
+  X(bfloat16, bf16, bfloat16, bf16, 4, 8, 8)                                   \
+  X(bfloat16, bf16, float, f32, 4, 8, 8)
 #endif
 #endif
 
