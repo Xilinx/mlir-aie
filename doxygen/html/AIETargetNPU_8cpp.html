@@ -51,7 +51,7 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
-<a href="#define-members">Macros</a>  </div>
+<a href="#enum-members">Enumerations</a>  </div>
   <div class="headertitle"><div class="title">AIETargetNPU.cpp File Reference</div></div>
 </div><!--header-->
 <div class="contents">
@@ -151,104 +151,92 @@ $(function() {
 </div>
 <p><a href="AIETargetNPU_8cpp_source.html">Go to the source code of this file.</a></p>
 <table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="define-members" name="define-members"></a>
-Macros</h2></td></tr>
-<tr class="memitem:ae920fe4aab6b737d4d4a2a685c43b38c" id="r_ae920fe4aab6b737d4d4a2a685c43b38c"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIETargetNPU_8cpp.html#ae920fe4aab6b737d4d4a2a685c43b38c">TXN_OPC_WRITE</a>&#160;&#160;&#160;0x0</td></tr>
-<tr class="separator:ae920fe4aab6b737d4d4a2a685c43b38c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aabe5d3b51e3c7da491d5b5214905b909" id="r_aabe5d3b51e3c7da491d5b5214905b909"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIETargetNPU_8cpp.html#aabe5d3b51e3c7da491d5b5214905b909">TXN_OPC_BLOCKWRITE</a>&#160;&#160;&#160;0x1</td></tr>
-<tr class="separator:aabe5d3b51e3c7da491d5b5214905b909"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2f971bf2a84e61e41310fda769b30f5a" id="r_a2f971bf2a84e61e41310fda769b30f5a"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIETargetNPU_8cpp.html#a2f971bf2a84e61e41310fda769b30f5a">TXN_OPC_MASKWRITE</a>&#160;&#160;&#160;0x3</td></tr>
-<tr class="separator:a2f971bf2a84e61e41310fda769b30f5a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5a9df22824f2baea91b0bd0af1f280c7" id="r_a5a9df22824f2baea91b0bd0af1f280c7"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIETargetNPU_8cpp.html#a5a9df22824f2baea91b0bd0af1f280c7">TXN_OPC_TCT</a>&#160;&#160;&#160;0x80</td></tr>
-<tr class="separator:a5a9df22824f2baea91b0bd0af1f280c7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aba0db8dd6547061a6b11521977115cd8" id="r_aba0db8dd6547061a6b11521977115cd8"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIETargetNPU_8cpp.html#aba0db8dd6547061a6b11521977115cd8">TXN_OPC_DDR_PATCH</a>&#160;&#160;&#160;0x81</td></tr>
-<tr class="separator:aba0db8dd6547061a6b11521977115cd8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="enum-members" name="enum-members"></a>
+Enumerations</h2></td></tr>
+<tr class="memitem:a7c1a0e02fa154665df7ceafb69d99ac0" id="r_a7c1a0e02fa154665df7ceafb69d99ac0"><td class="memItemLeft" align="right" valign="top">enum &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0">XAie_TxnOpcode</a> { <br />
+&#160;&#160;<a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a">XAIE_IO_WRITE</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e">XAIE_IO_BLOCKWRITE</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0aa25a12770757363678253f016e0197c1">XAIE_IO_BLOCKSET</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7">XAIE_IO_MASKWRITE</a>
+, <br />
+&#160;&#160;<a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a0cfcfa0c6ab8c0f1aa73e577407769ab">XAIE_IO_MASKPOLL</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0af5f94a129a804fbbf8f6ac88118c9a86">XAIE_IO_NOOP</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a1c8e16c601f7f0d18aeffa155d13bac8">XAIE_IO_PREEMPT</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a3c764f19b459ad2a0cee78aea4568d30">XAIE_IO_MASKPOLL_BUSY</a>
+, <br />
+&#160;&#160;<a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ac7510ab786724c2efe5098c7c55a0fb9">XAIE_IO_LOADPDI</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a0224ffc31ffd9ef5ee11478d198d72be">XAIE_IO_LOAD_PM_START</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ac2572cfd74031680197428c4d8531708">XAIE_IO_CREATE_SCRATCHPAD</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a6300e51a9394c0f9eea46b36a40a7028">XAIE_IO_UPDATE_STATE_TABLE</a>
+, <br />
+&#160;&#160;<a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a257c466e0f4fa373e9d3309cb8e9d6ba">XAIE_IO_UPDATE_REG</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a68c36356766e9a61799e0e1b9d3b23fd">XAIE_IO_UPDATE_SCRATCH</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a3faae2cc67915a28569c858ae3f8236e">XAIE_CONFIG_SHIMDMA_BD</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0afce78c81abe06e5501500c2402706bec">XAIE_CONFIG_SHIMDMA_DMABUF_BD</a>
+, <br />
+&#160;&#160;<a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0aeacb1222fa98319240403ef44218daa3">XAIE_IO_CUSTOM_OP_BEGIN</a> = 1U&lt;&lt;7U
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a3c761b7779032bd5378a88f4ffea902b">XAIE_IO_CUSTOM_OP_TCT</a> = XAIE_IO_CUSTOM_OP_BEGIN
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a6c07777c1a31184f5a96dc3bf39236e0">XAIE_IO_CUSTOM_OP_DDR_PATCH</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a3e513c0cd575fe7ebebcbb21af6bd1ce">XAIE_IO_CUSTOM_OP_READ_REGS</a>
+, <br />
+&#160;&#160;<a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a3a1dacf068cad70490d0735df3c95701">XAIE_IO_CUSTOM_OP_RECORD_TIMER</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a75daebaff9e239fd3f6dbd397cf28f1f">XAIE_IO_CUSTOM_OP_MERGE_SYNC</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a20c88cf97f16487dd0c2bc473be1c42a">XAIE_IO_CUSTOM_OP_NEXT</a>
+, <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a7dca63e8c23cfc424a4252070e12d201">XAIE_IO_LOAD_PM_END_INTERNAL</a> = 200
+, <br />
+&#160;&#160;<a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0aedbe0a4581f180526f1d93598500e8c8">XAIE_IO_CUSTOM_OP_MAX</a> = UCHAR_MAX
+<br />
+ }</td></tr>
+<tr class="separator:a7c1a0e02fa154665df7ceafb69d99ac0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<h2 class="groupheader">Macro Definition Documentation</h2>
-<a id="aabe5d3b51e3c7da491d5b5214905b909" name="aabe5d3b51e3c7da491d5b5214905b909"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aabe5d3b51e3c7da491d5b5214905b909">&#9670;&#160;</a></span>TXN_OPC_BLOCKWRITE</h2>
+<h2 class="groupheader">Enumeration Type Documentation</h2>
+<a id="a7c1a0e02fa154665df7ceafb69d99ac0" name="a7c1a0e02fa154665df7ceafb69d99ac0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7c1a0e02fa154665df7ceafb69d99ac0">&#9670;&#160;</a></span>XAie_TxnOpcode</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">#define TXN_OPC_BLOCKWRITE&#160;&#160;&#160;0x1</td>
+          <td class="memname">enum <a class="el" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0">XAie_TxnOpcode</a></td>
         </tr>
       </table>
 </div><div class="memdoc">
+<table class="fieldtable">
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a" name="a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a"></a>XAIE_IO_WRITE&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e" name="a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e"></a>XAIE_IO_BLOCKWRITE&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0aa25a12770757363678253f016e0197c1" name="a7c1a0e02fa154665df7ceafb69d99ac0aa25a12770757363678253f016e0197c1"></a>XAIE_IO_BLOCKSET&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7" name="a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7"></a>XAIE_IO_MASKWRITE&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a0cfcfa0c6ab8c0f1aa73e577407769ab" name="a7c1a0e02fa154665df7ceafb69d99ac0a0cfcfa0c6ab8c0f1aa73e577407769ab"></a>XAIE_IO_MASKPOLL&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0af5f94a129a804fbbf8f6ac88118c9a86" name="a7c1a0e02fa154665df7ceafb69d99ac0af5f94a129a804fbbf8f6ac88118c9a86"></a>XAIE_IO_NOOP&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a1c8e16c601f7f0d18aeffa155d13bac8" name="a7c1a0e02fa154665df7ceafb69d99ac0a1c8e16c601f7f0d18aeffa155d13bac8"></a>XAIE_IO_PREEMPT&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a3c764f19b459ad2a0cee78aea4568d30" name="a7c1a0e02fa154665df7ceafb69d99ac0a3c764f19b459ad2a0cee78aea4568d30"></a>XAIE_IO_MASKPOLL_BUSY&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0ac7510ab786724c2efe5098c7c55a0fb9" name="a7c1a0e02fa154665df7ceafb69d99ac0ac7510ab786724c2efe5098c7c55a0fb9"></a>XAIE_IO_LOADPDI&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a0224ffc31ffd9ef5ee11478d198d72be" name="a7c1a0e02fa154665df7ceafb69d99ac0a0224ffc31ffd9ef5ee11478d198d72be"></a>XAIE_IO_LOAD_PM_START&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0ac2572cfd74031680197428c4d8531708" name="a7c1a0e02fa154665df7ceafb69d99ac0ac2572cfd74031680197428c4d8531708"></a>XAIE_IO_CREATE_SCRATCHPAD&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a6300e51a9394c0f9eea46b36a40a7028" name="a7c1a0e02fa154665df7ceafb69d99ac0a6300e51a9394c0f9eea46b36a40a7028"></a>XAIE_IO_UPDATE_STATE_TABLE&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a257c466e0f4fa373e9d3309cb8e9d6ba" name="a7c1a0e02fa154665df7ceafb69d99ac0a257c466e0f4fa373e9d3309cb8e9d6ba"></a>XAIE_IO_UPDATE_REG&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a68c36356766e9a61799e0e1b9d3b23fd" name="a7c1a0e02fa154665df7ceafb69d99ac0a68c36356766e9a61799e0e1b9d3b23fd"></a>XAIE_IO_UPDATE_SCRATCH&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a3faae2cc67915a28569c858ae3f8236e" name="a7c1a0e02fa154665df7ceafb69d99ac0a3faae2cc67915a28569c858ae3f8236e"></a>XAIE_CONFIG_SHIMDMA_BD&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0afce78c81abe06e5501500c2402706bec" name="a7c1a0e02fa154665df7ceafb69d99ac0afce78c81abe06e5501500c2402706bec"></a>XAIE_CONFIG_SHIMDMA_DMABUF_BD&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0aeacb1222fa98319240403ef44218daa3" name="a7c1a0e02fa154665df7ceafb69d99ac0aeacb1222fa98319240403ef44218daa3"></a>XAIE_IO_CUSTOM_OP_BEGIN&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a3c761b7779032bd5378a88f4ffea902b" name="a7c1a0e02fa154665df7ceafb69d99ac0a3c761b7779032bd5378a88f4ffea902b"></a>XAIE_IO_CUSTOM_OP_TCT&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a6c07777c1a31184f5a96dc3bf39236e0" name="a7c1a0e02fa154665df7ceafb69d99ac0a6c07777c1a31184f5a96dc3bf39236e0"></a>XAIE_IO_CUSTOM_OP_DDR_PATCH&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a3e513c0cd575fe7ebebcbb21af6bd1ce" name="a7c1a0e02fa154665df7ceafb69d99ac0a3e513c0cd575fe7ebebcbb21af6bd1ce"></a>XAIE_IO_CUSTOM_OP_READ_REGS&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a3a1dacf068cad70490d0735df3c95701" name="a7c1a0e02fa154665df7ceafb69d99ac0a3a1dacf068cad70490d0735df3c95701"></a>XAIE_IO_CUSTOM_OP_RECORD_TIMER&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a75daebaff9e239fd3f6dbd397cf28f1f" name="a7c1a0e02fa154665df7ceafb69d99ac0a75daebaff9e239fd3f6dbd397cf28f1f"></a>XAIE_IO_CUSTOM_OP_MERGE_SYNC&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a20c88cf97f16487dd0c2bc473be1c42a" name="a7c1a0e02fa154665df7ceafb69d99ac0a20c88cf97f16487dd0c2bc473be1c42a"></a>XAIE_IO_CUSTOM_OP_NEXT&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0a7dca63e8c23cfc424a4252070e12d201" name="a7c1a0e02fa154665df7ceafb69d99ac0a7dca63e8c23cfc424a4252070e12d201"></a>XAIE_IO_LOAD_PM_END_INTERNAL&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="a7c1a0e02fa154665df7ceafb69d99ac0aedbe0a4581f180526f1d93598500e8c8" name="a7c1a0e02fa154665df7ceafb69d99ac0aedbe0a4581f180526f1d93598500e8c8"></a>XAIE_IO_CUSTOM_OP_MAX&#160;</td><td class="fielddoc"></td></tr>
+</table>
 
-<p class="definition">Definition at line <a class="el" href="AIETargetNPU_8cpp_source.html#l00032">32</a> of file <a class="el" href="AIETargetNPU_8cpp_source.html">AIETargetNPU.cpp</a>.</p>
-
-</div>
-</div>
-<a id="aba0db8dd6547061a6b11521977115cd8" name="aba0db8dd6547061a6b11521977115cd8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aba0db8dd6547061a6b11521977115cd8">&#9670;&#160;</a></span>TXN_OPC_DDR_PATCH</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">#define TXN_OPC_DDR_PATCH&#160;&#160;&#160;0x81</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="AIETargetNPU_8cpp_source.html#l00035">35</a> of file <a class="el" href="AIETargetNPU_8cpp_source.html">AIETargetNPU.cpp</a>.</p>
-
-</div>
-</div>
-<a id="a2f971bf2a84e61e41310fda769b30f5a" name="a2f971bf2a84e61e41310fda769b30f5a"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2f971bf2a84e61e41310fda769b30f5a">&#9670;&#160;</a></span>TXN_OPC_MASKWRITE</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">#define TXN_OPC_MASKWRITE&#160;&#160;&#160;0x3</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="AIETargetNPU_8cpp_source.html#l00033">33</a> of file <a class="el" href="AIETargetNPU_8cpp_source.html">AIETargetNPU.cpp</a>.</p>
-
-</div>
-</div>
-<a id="a5a9df22824f2baea91b0bd0af1f280c7" name="a5a9df22824f2baea91b0bd0af1f280c7"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5a9df22824f2baea91b0bd0af1f280c7">&#9670;&#160;</a></span>TXN_OPC_TCT</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">#define TXN_OPC_TCT&#160;&#160;&#160;0x80</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="AIETargetNPU_8cpp_source.html#l00034">34</a> of file <a class="el" href="AIETargetNPU_8cpp_source.html">AIETargetNPU.cpp</a>.</p>
-
-</div>
-</div>
-<a id="ae920fe4aab6b737d4d4a2a685c43b38c" name="ae920fe4aab6b737d4d4a2a685c43b38c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae920fe4aab6b737d4d4a2a685c43b38c">&#9670;&#160;</a></span>TXN_OPC_WRITE</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">#define TXN_OPC_WRITE&#160;&#160;&#160;0x0</td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="AIETargetNPU_8cpp_source.html#l00031">31</a> of file <a class="el" href="AIETargetNPU_8cpp_source.html">AIETargetNPU.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIETargetNPU_8cpp_source.html#l00029">29</a> of file <a class="el" href="AIETargetNPU_8cpp_source.html">AIETargetNPU.cpp</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Aug 12 2025 02:10:38 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 12 2025 03:13:34 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

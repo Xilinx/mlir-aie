@@ -96,7 +96,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><span class="comment">// An TransactionBinaryOperation encapulates an aie-rt TnxCmd struct</span></div>
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="keyword">struct </span>TransactionBinaryOperation {</div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>  <span class="keyword">struct </span>XAie_TxnCmd cmd;</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>  TransactionBinaryOperation(XAie_TxnOpcode opc, uint32_t mask, uint64_t addr,</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>  TransactionBinaryOperation(<a class="code hl_enumeration" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0">XAie_TxnOpcode</a> opc, uint32_t mask, uint64_t addr,</div>
 <div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>                             uint32_t value, <span class="keyword">const</span> uint8_t *data,</div>
 <div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>                             uint32_t size) {</div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    cmd.Opcode = opc;</div>
@@ -138,14 +138,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>  <span class="keyword">auto</span> convertOpcode = [](uint8_t opc) {</div>
 <div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="keywordflow">switch</span> (opc) {</div>
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    <span class="keywordflow">case</span> 0:</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>      <span class="keywordflow">return</span> XAie_TxnOpcode::XAIE_IO_WRITE;</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>      <span class="keywordflow">return</span> <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a">XAie_TxnOpcode::XAIE_IO_WRITE</a>;</div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    <span class="keywordflow">case</span> 1:</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>      <span class="keywordflow">return</span> XAie_TxnOpcode::XAIE_IO_BLOCKWRITE;</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>      <span class="keywordflow">return</span> <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e">XAie_TxnOpcode::XAIE_IO_BLOCKWRITE</a>;</div>
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>    <span class="keywordflow">case</span> 3:</div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>      <span class="keywordflow">return</span> XAie_TxnOpcode::XAIE_IO_MASKWRITE;</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>      <span class="keywordflow">return</span> <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7">XAie_TxnOpcode::XAIE_IO_MASKWRITE</a>;</div>
 <div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    <span class="keywordflow">default</span>:</div>
 <div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>      llvm::errs() &lt;&lt; <span class="stringliteral">&quot;Unhandled opcode: &quot;</span> &lt;&lt; std::to_string(opc) &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>      <span class="keywordflow">return</span> XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX;</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>      <span class="keywordflow">return</span> <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0aedbe0a4581f180526f1d93598500e8c8">XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX</a>;</div>
 <div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    }</div>
 <div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>  };</div>
 <div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span> </div>
@@ -155,7 +155,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>  <span class="keywordflow">if</span> (major == 0 &amp;&amp; minor == 1) {</div>
 <div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>    <span class="keywordflow">while</span> (i &lt; data.size()) {</div>
 <div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span> </div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>      XAie_TxnOpcode opc = convertOpcode(data[i]);</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>      <a class="code hl_enumeration" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0">XAie_TxnOpcode</a> opc = convertOpcode(data[i]);</div>
 <div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>      LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;opcode: &quot;</span> + std::to_string(opc) + <span class="stringliteral">&quot;\n&quot;</span>);</div>
 <div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span> </div>
 <div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>      uint64_t addr = 0;</div>
@@ -164,7 +164,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>      uint32_t mask = 0;</div>
 <div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>      <span class="keyword">const</span> uint8_t *data_ptr = <span class="keyword">nullptr</span>;</div>
 <div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span> </div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>      <span class="keywordflow">if</span> (opc == XAie_TxnOpcode::XAIE_IO_WRITE) {</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>      <span class="keywordflow">if</span> (opc == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a">XAie_TxnOpcode::XAIE_IO_WRITE</a>) {</div>
 <div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;opcode: WRITE (0x00)\n&quot;</span>);</div>
 <div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>        uint32_t addr0, addr1;</div>
 <div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>        std::memcpy(&amp;addr0, &amp;data[i + 8], 4);</div>
@@ -173,14 +173,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>        std::memcpy(&amp;size, &amp;data[i + 20], 4);</div>
 <div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>        addr = <span class="keyword">static_cast&lt;</span>uint64_t<span class="keyword">&gt;</span>(addr1) &lt;&lt; 32 | addr0;</div>
 <div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>        i += size;</div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (opc == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {</div>
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (opc == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e">XAie_TxnOpcode::XAIE_IO_BLOCKWRITE</a>) {</div>
 <div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;opcode: BLOCKWRITE (0x01)\n&quot;</span>);</div>
 <div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>        std::memcpy(&amp;addr, &amp;data[i + 8], 4);</div>
 <div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>        std::memcpy(&amp;size, &amp;data[i + 12], 4);</div>
 <div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>        data_ptr = data.data() + i + 16;</div>
 <div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>        i += size;</div>
 <div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>        size = size - 16;</div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (opc == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {</div>
+<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (opc == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7">XAie_TxnOpcode::XAIE_IO_MASKWRITE</a>) {</div>
 <div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;opcode: MASKWRITE (0x03)\n&quot;</span>);</div>
 <div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>        uint32_t addr0, addr1;</div>
 <div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>        std::memcpy(&amp;addr0, &amp;data[i + 8], 4);</div>
@@ -205,7 +205,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>  } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (major == 1 &amp;&amp; minor == 0) {</div>
 <div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>    <span class="keywordflow">while</span> (i &lt; data.size()) {</div>
 <div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span> </div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>      XAie_TxnOpcode opc = convertOpcode(data[i]);</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>      <a class="code hl_enumeration" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0">XAie_TxnOpcode</a> opc = convertOpcode(data[i]);</div>
 <div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>      LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;opcode: &quot;</span> + std::to_string(opc) + <span class="stringliteral">&quot;\n&quot;</span>);</div>
 <div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span> </div>
 <div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>      uint64_t addr = 0;</div>
@@ -214,19 +214,19 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>      uint32_t mask = 0;</div>
 <div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>      <span class="keyword">const</span> uint8_t *data_ptr = <span class="keyword">nullptr</span>;</div>
 <div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span> </div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>      <span class="keywordflow">if</span> (opc == XAie_TxnOpcode::XAIE_IO_WRITE) {</div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>      <span class="keywordflow">if</span> (opc == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a">XAie_TxnOpcode::XAIE_IO_WRITE</a>) {</div>
 <div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;opcode: WRITE (0x00)\n&quot;</span>);</div>
 <div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>        std::memcpy(&amp;addr, &amp;data[i + 4], 4);</div>
 <div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>        std::memcpy(&amp;value, &amp;data[i + 8], 4);</div>
 <div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>        i += 12;</div>
-<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (opc == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {</div>
+<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (opc == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e">XAie_TxnOpcode::XAIE_IO_BLOCKWRITE</a>) {</div>
 <div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;opcode: BLOCKWRITE (0x01)\n&quot;</span>);</div>
 <div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>        std::memcpy(&amp;addr, &amp;data[i + 4], 4);</div>
 <div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>        std::memcpy(&amp;size, &amp;data[i + 8], 4);</div>
 <div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>        data_ptr = data.data() + i + 12;</div>
 <div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>        i += size;</div>
 <div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>        size = size - 12;</div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (opc == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {</div>
+<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (opc == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7">XAie_TxnOpcode::XAIE_IO_MASKWRITE</a>) {</div>
 <div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;opcode: MASKWRITE (0x03)\n&quot;</span>);</div>
 <div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>        std::memcpy(&amp;addr, &amp;data[i + 4], 4);</div>
 <div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>        std::memcpy(&amp;value, &amp;data[i + 8], 4);</div>
@@ -283,16 +283,16 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span>    <span class="keyword">auto</span> op = std::get&lt;0&gt;(p);</div>
 <div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>    memref::GlobalOp payload = std::get&lt;1&gt;(p);</div>
 <div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span> </div>
-<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span>    <span class="keywordflow">if</span> (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {</div>
+<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span>    <span class="keywordflow">if</span> (op.cmd.Opcode == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a">XAie_TxnOpcode::XAIE_IO_WRITE</a>) {</div>
 <div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span>      builder.create&lt;AIEX::NpuWrite32Op&gt;(loc, op.cmd.RegOff, op.cmd.Value,</div>
 <div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>                                         <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
-<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {</div>
+<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.cmd.Opcode == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e">XAie_TxnOpcode::XAIE_IO_BLOCKWRITE</a>) {</div>
 <div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span>      <span class="keyword">auto</span> memref = builder.create&lt;memref::GetGlobalOp&gt;(loc, payload.getType(),</div>
 <div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>                                                        payload.getName());</div>
 <div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>      builder.create&lt;AIEX::NpuBlockWriteOp&gt;(</div>
 <div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), memref.getResult(),</div>
 <div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>          <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
-<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {</div>
+<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.cmd.Opcode == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7">XAie_TxnOpcode::XAIE_IO_MASKWRITE</a>) {</div>
 <div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>      builder.create&lt;AIEX::NpuMaskWrite32Op&gt;(loc, op.cmd.RegOff, op.cmd.Value,</div>
 <div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>                                             op.cmd.Mask, <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>,</div>
 <div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>                                             <span class="keyword">nullptr</span>);</div>
@@ -319,13 +319,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>    <span class="keyword">auto</span> op = std::get&lt;0&gt;(p);</div>
 <div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>    memref::GlobalOp payload = std::get&lt;1&gt;(p);</div>
 <div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span> </div>
-<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>    <span class="keywordflow">if</span> (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {</div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>    <span class="keywordflow">if</span> (op.cmd.Opcode == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a">XAie_TxnOpcode::XAIE_IO_WRITE</a>) {</div>
 <div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>      builder.create&lt;AIEX::NpuControlPacketOp&gt;(</div>
 <div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), <span class="keyword">nullptr</span>,</div>
 <div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>          <span class="comment">/*opcode*/</span> builder.getI32IntegerAttr(0),</div>
 <div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>          <span class="comment">/*stream_id*/</span> builder.getI32IntegerAttr(0),</div>
 <div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>          DenseI32ArrayAttr::get(ctx, ArrayRef&lt;int32_t&gt;(op.cmd.Value)));</div>
-<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {</div>
+<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.cmd.Opcode == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e">XAie_TxnOpcode::XAIE_IO_BLOCKWRITE</a>) {</div>
 <div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>      <span class="keywordflow">if</span> (!std::get&lt;1&gt;(p).getInitialValue())</div>
 <div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>        <span class="keywordflow">continue</span>;</div>
 <div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>      <span class="keyword">auto</span> blockWriteData =</div>
@@ -351,7 +351,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>        currAddr += splitData.size() * <span class="keyword">sizeof</span>(int32_t);</div>
 <div class="line"><a id="l00292" name="l00292"></a><span class="lineno">  292</span>      }</div>
 <div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span> </div>
-<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {</div>
+<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (op.cmd.Opcode == <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7">XAie_TxnOpcode::XAIE_IO_MASKWRITE</a>) {</div>
 <div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>      builder.create&lt;AIEX::NpuControlPacketOp&gt;(</div>
 <div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), <span class="keyword">nullptr</span>,</div>
 <div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>          <span class="comment">/*opcode*/</span> builder.getI32IntegerAttr(0),</div>
@@ -426,7 +426,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>  <span class="comment">// for each blockwrite in the binary, create a GlobalOp with the data</span></div>
 <div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>  std::vector&lt;memref::GlobalOp&gt; global_data;</div>
 <div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;op : operations) {</div>
-<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>    <span class="keywordflow">if</span> (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {</div>
+<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>    <span class="keywordflow">if</span> (op.cmd.Opcode != <a class="code hl_enumvalue" href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e">XAIE_IO_BLOCKWRITE</a>) {</div>
 <div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>      global_data.push_back(<span class="keyword">nullptr</span>);</div>
 <div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>      <span class="keywordflow">continue</span>;</div>
 <div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>    }</div>
@@ -604,6 +604,11 @@ $(document).ready(function() { init_codefold(0); });
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIERT_8h_html"><div class="ttname"><a href="AIERT_8h.html">AIERT.h</a></div></div>
+<div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0">XAie_TxnOpcode</a></div><div class="ttdeci">XAie_TxnOpcode</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00029">AIETargetNPU.cpp:29</a></div></div>
+<div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a931d15b9cb338cf576788712683c894e">XAIE_IO_BLOCKWRITE</a></div><div class="ttdeci">@ XAIE_IO_BLOCKWRITE</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00031">AIETargetNPU.cpp:31</a></div></div>
+<div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0ad63909f2729ce8dbf20114416ea312f7">XAIE_IO_MASKWRITE</a></div><div class="ttdeci">@ XAIE_IO_MASKWRITE</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00033">AIETargetNPU.cpp:33</a></div></div>
+<div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0aedbe0a4581f180526f1d93598500e8c8"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0aedbe0a4581f180526f1d93598500e8c8">XAIE_IO_CUSTOM_OP_MAX</a></div><div class="ttdeci">@ XAIE_IO_CUSTOM_OP_MAX</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00054">AIETargetNPU.cpp:54</a></div></div>
+<div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0afde7c97385690eec814895b15287f79a">XAIE_IO_WRITE</a></div><div class="ttdeci">@ XAIE_IO_WRITE</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00030">AIETargetNPU.cpp:30</a></div></div>
 <div class="ttc" id="aAIEToConfiguration_8cpp_html_a1346604e7568ca9490dde15f0d6b5ad3"><div class="ttname"><a href="AIEToConfiguration_8cpp.html#a1346604e7568ca9490dde15f0d6b5ad3">orConsecutiveWritesOnSameAddr</a></div><div class="ttdeci">LogicalResult orConsecutiveWritesOnSameAddr(Block *body)</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8cpp_source.html#l00310">AIEToConfiguration.cpp:310</a></div></div>
 <div class="ttc" id="aAIEToConfiguration_8cpp_html_a4e0517338e6c4a31a2addafc06d4f3a3"><div class="ttname"><a href="AIEToConfiguration_8cpp.html#a4e0517338e6c4a31a2addafc06d4f3a3">OutputType</a></div><div class="ttdeci">OutputType</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8cpp_source.html#l00351">AIEToConfiguration.cpp:351</a></div></div>
 <div class="ttc" id="aAIEToConfiguration_8cpp_html_a4e0517338e6c4a31a2addafc06d4f3a3a803c4afa7fc54dddd2015b240c7f6d86"><div class="ttname"><a href="AIEToConfiguration_8cpp.html#a4e0517338e6c4a31a2addafc06d4f3a3a803c4afa7fc54dddd2015b240c7f6d86">ControlPacket</a></div><div class="ttdeci">@ ControlPacket</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8cpp_source.html#l00353">AIEToConfiguration.cpp:353</a></div></div>
@@ -633,7 +638,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Aug 12 2025 02:10:37 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 12 2025 03:13:33 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

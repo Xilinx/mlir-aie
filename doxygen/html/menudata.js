@@ -227,7 +227,8 @@ var menudata={children:[
 {text:"a",url:"globals_eval.html#index_a"},
 {text:"c",url:"globals_eval.html#index_c"},
 {text:"i",url:"globals_eval.html#index_i"},
-{text:"t",url:"globals_eval.html#index_t"}]},
+{text:"t",url:"globals_eval.html#index_t"},
+{text:"x",url:"globals_eval.html#index_x"}]},
 {text:"Macros",url:"globals_defs.html",children:[
 {text:"a",url:"globals_defs.html#index_a"},
 {text:"c",url:"globals_defs.html#index_c"},

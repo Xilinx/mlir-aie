@@ -890,6 +890,32 @@ If 'buffer' is not present and 'column' and 'row' are not present then
 
 
 
+### `aiex.npu.preempt` (::xilinx::AIEX::NpuPreemptOp)
+
+_Preempt transaction operation_
+
+Syntax:
+
+```
+operation ::= `aiex.npu.preempt` attr-dict
+```
+
+Yield to higher priority task(s). Indicates to the transaction processor that the instruction stream can be interrupted at this point.
+Levels: 
+0: Noop.
+1: Mem tile.
+2: AIE tile.
+3: AIE registers.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>level</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
+</table>
+
+
+
 ### `aiex.npu.push_queue` (::xilinx::AIEX::NpuPushQueueOp)
 
 _Bd queue push operator_
