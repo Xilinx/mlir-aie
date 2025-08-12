@@ -10,9 +10,9 @@
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.30)
+set(CMAKE_CXX_STANDARD 23) 
 
-set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 find_program(WSL NAMES powershell.exe)
