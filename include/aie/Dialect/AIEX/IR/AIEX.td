@@ -867,6 +867,25 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   }];
 }
 
+def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
+  let summary = "Preempt transaction operation";
+  let arguments = (
+    ins UI8Attr:$level
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    Yield to higher priority task(s). Indicates to the transaction processor that the instruction stream can be interrupted at this point.
+    Levels: 
+    0: Noop.
+    1: Mem tile.
+    2: AIE tile.
+    3: AIE registers.
+  }];
+}
+
 def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let summary = "AIE control packet";
   let arguments = (

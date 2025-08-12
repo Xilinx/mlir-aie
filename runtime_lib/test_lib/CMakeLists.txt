@@ -4,8 +4,7 @@
 #
 # (c) Copyright 2023 Advanced Micro Devices, Inc.
 
-cmake_minimum_required(VERSION 3.21)
-
+cmake_minimum_required(VERSION 3.30)
 project("test lib for ${AIE_RUNTIME_TARGET}")
 
 # test_lib library

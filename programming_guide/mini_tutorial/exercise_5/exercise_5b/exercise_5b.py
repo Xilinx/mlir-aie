@@ -1,4 +1,4 @@
-# exercise_4b.py -*- Python -*-
+# exercise_5b.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -24,7 +24,7 @@ data_width = 16
 
 
 @iron.jit(is_placed=False)
-def exercise_4b(input0, output):
+def exercise_5b(input0, output):
     # Define tile size
     tile_height = 3
     tile_width = 8
@@ -102,7 +102,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_4b(input0, output)
+    exercise_5b(input0, output)
 
     # Check the correctness of the result
     errors = 0
