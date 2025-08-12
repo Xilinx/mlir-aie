@@ -58,7 +58,7 @@ def compile_cxx_core_function(
 
     # Add additional compile arguments
     if compile_args:
-        cmd = cmd + compile_args
+        cmd.extend(compile_args)
 
     if verbose:
         print("Executing:", " ".join(cmd))
