@@ -36,5 +36,6 @@ var searchData=
   ['iron_3a_3aruntime_3a_3ataskgroup_33',['taskgroup',['../namespaceiron_1_1runtime_1_1taskgroup.html',1,'iron::runtime']]],
   ['iron_3a_3atensor_34',['tensor',['../namespaceiron_1_1tensor.html',1,'iron']]],
   ['iron_3a_3aworker_35',['worker',['../namespaceiron_1_1worker.html',1,'iron']]],
-  ['iron_5fcache_5fdir_36',['IRON_CACHE_DIR',['../namespaceiron_1_1jit.html#ad4996a91797d3c476d40857dd3b3d113',1,'iron::jit']]]
+  ['iron_5fcache_5fdir_36',['IRON_CACHE_DIR',['../namespaceiron_1_1jit.html#ad4996a91797d3c476d40857dd3b3d113',1,'iron::jit']]],
+  ['is_5fwsl_37',['is_wsl',['../namespaceiron_1_1config.html#a9978cfa92363e7bc5682bc2be37c4d24',1,'iron::config']]]
 ];
