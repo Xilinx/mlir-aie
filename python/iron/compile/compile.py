@@ -77,7 +77,7 @@ def compile_cxx_core_function(
             raise RuntimeError("[Peano] compilation failed")
 
 
-def compile_mlir_module_to_pdi(
+def compile_mlir_module(
     mlir_module: str,
     insts_path=None,
     pdi_path=None,

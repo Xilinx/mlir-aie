@@ -18,7 +18,7 @@ import traceback
 from aie.extras.context import mlir_mod_ctx
 from ..utils.xrt import read_insts_binary
 from .device import NPU1, NPU2, NPU1Col1, NPU2Col1
-from .compile import compile_mlir_module_to_pdi
+from .compile import compile_mlir_module
 from .config import get_current_device
 from aie.dialects.aie import AIEDevice
 
@@ -223,7 +223,7 @@ def jit(function=None, is_placed=True, use_cache=True):
                     compile_external_kernel(func, kernel_dir, target_arch)
 
                 # Compile the MLIR module
-                compile_mlir_module_to_pdi(
+                compile_mlir_module(
                     mlir_module=mlir_module,
                     inst_path=inst_path,
                     xclbin_path=xclbin_path,
