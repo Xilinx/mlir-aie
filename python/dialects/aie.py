@@ -123,7 +123,8 @@ def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     return Attribute.parse(
         f"#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>", context=context
     )
-          
+
+
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
