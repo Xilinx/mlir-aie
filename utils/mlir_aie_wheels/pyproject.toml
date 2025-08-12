@@ -51,11 +51,11 @@ before-build = [
 requires = ["setuptools", "nanobind"]
 
 [project.scripts]
-aie-lsp-server = "aie.tools::aie_lsp_server"
-aie-opt = "aie.tools::aie_opt"
-aie-reset = "aie.tools::aie_reset"
-aie-translate = "aie.tools::aie_translate"
-aie-visualize = "aie.tools::aie_visualize"
+aie-lsp-server = "aie.tools:aie_lsp_server"
+aie-opt = "aie.tools:aie_opt"
+aie-reset = "aie.tools:aie_reset"
+aie-translate = "aie.tools:aie_translate"
+aie-visualize = "aie.tools:aie_visualize"
 aiecc = "aie.compiler.aiecc.main:main"
-bootgen = "aie.tools::bootgen"
-xchesscc_wrapper = "aie.tools::xchesscc_wrapper"
+bootgen = "aie.tools:bootgen"
+xchesscc_wrapper = "aie.tools:xchesscc_wrapper"
