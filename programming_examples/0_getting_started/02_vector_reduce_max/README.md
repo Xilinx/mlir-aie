@@ -23,11 +23,6 @@ To compile the design (default is the shared memory based design):
 make
 ```
 
-To compile the C++ testbench:
-
-```shell
-make aie.exe
-```
 ### C++ Testbench
 
 To run the design:
