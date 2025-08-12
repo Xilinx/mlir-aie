@@ -76,18 +76,13 @@ def my_reduce_max(dev):
         out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
 
     # AIE Core Function declarations
-    suffix = "_bfloat16" if dtype_str == "bf16" else ""
     reduce_max_vector = Kernel(
-        f"reduce_max_vector{suffix}", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
+        f"reduce_max_vector_bfloat16", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
     )
     compute_max = Kernel(
-        f"compute_max{suffix}", "reduce_max.cc.o", [out_ty, out_ty, out_ty]
+        f"compute_max_bfloat16", "reduce_max.cc.o", [out_ty, out_ty, out_ty]
     )
-    min_val = (
-        np.array([bfloat16(float("-inf"))], dtype=dtype)
-        if dtype_str == "bf16"
-        else np.array([np.iinfo(dtype).min], dtype=dtype)
-    )
+    min_val = np.array([bfloat16(float("-inf"))], dtype=dtype)
 
     # Define a task to run
     def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
