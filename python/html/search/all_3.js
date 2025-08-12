@@ -8,7 +8,7 @@ var searchData=
   ['compile_2epy_5',['compile.py',['../compile_8py.html',1,'']]],
   ['compile_5fcxx_5fcore_5ffunction_6',['compile_cxx_core_function',['../namespaceiron_1_1compile_1_1compile.html#ad53945496ecde9f1460369beed2995a8',1,'iron::compile::compile']]],
   ['compile_5fexternal_5fkernel_7',['compile_external_kernel',['../namespaceiron_1_1jit.html#a6735e4cdaac7eed7879aa98e1cfa7142',1,'iron::jit']]],
-  ['compile_5fmlir_5fmodule_5fto_5fpdi_8',['compile_mlir_module_to_pdi',['../namespaceiron_1_1compile_1_1compile.html#a59abd3e5fd26520427a76666f8c679f1',1,'iron::compile::compile']]],
+  ['compile_5fmlir_5fmodule_8',['compile_mlir_module',['../namespaceiron_1_1compile_1_1compile.html#a68a7a1d1bd17f8e631aaf12ae2c64085',1,'iron::compile::compile']]],
   ['config_9',['config',['../namespaceiron_1_1config.html#a36e5aadbd4b10849483dc5d7e0897ea0',1,'iron::config']]],
   ['config_2epy_10',['config.py',['../config_8py.html',1,'']]],
   ['cons_11',['cons',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9074a9e04b32080262f3755b0f24b36a',1,'iron::dataflow::objectfifo::ObjectFifo']]],

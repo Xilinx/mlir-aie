@@ -256,7 +256,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>        AIE::PacketInfoAttr controller_id_attr =</div>
 <div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>            shimTile-&gt;getAttrOfType&lt;AIE::PacketInfoAttr&gt;(<span class="stringliteral">&quot;controller_id&quot;</span>);</div>
 <div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>        uint32_t data = controller_id_attr.getPktId() &lt;&lt; 8;</div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>        uint32_t mask = 0x00000F00;</div>
+<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>        uint32_t mask = 0x00001F00;</div>
 <div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>        rewriter.create&lt;NpuMaskWrite32Op&gt;(op-&gt;getLoc(), ctrl_offset, data, mask,</div>
 <div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>                                          <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
 <div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>      }</div>
@@ -826,7 +826,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Aug 12 2025 15:45:45 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Aug 12 2025 17:42:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
