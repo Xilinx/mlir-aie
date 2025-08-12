@@ -13,20 +13,21 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.helpers.dialects.ext.scf import _for as range_
+from ml_dtypes import bfloat16
 
 
 def layernorm(dev, sequence_length, embedding_dim, trace_size):
-    # enable_trace = 1 if trace_size > 0 else None
+    enable_trace = 1 if trace_size > 0 else None
 
-    n_cores = 1
+    n_cores = 8
 
     total_volume = sequence_length * embedding_dim
 
-    dtype = np.ndarray[(total_volume,), np.dtype[np.float32]]
+    dtype = np.ndarray[(total_volume,), np.dtype[bfloat16]]
 
     rows_per_core = sequence_length // n_cores
     chunk_volume = embedding_dim
-    chunk_type = np.ndarray[(chunk_volume,), np.dtype[np.float32]]
+    chunk_type = np.ndarray[(chunk_volume,), np.dtype[bfloat16]]
 
     of_in = [ObjectFifo(chunk_type, name=f"in_{i}") for i in range(n_cores)]
     of_out = [ObjectFifo(chunk_type, name=f"out_{i}") for i in range(n_cores)]
@@ -45,7 +46,7 @@ def layernorm(dev, sequence_length, embedding_dim, trace_size):
         )
         # taps.visualize(
         #     title=f"Core {i} input tap",
-        #     show_arrows=True,
+        #     show_arsequence_length=True,
         #     plot_access_count=True,
         #     file_path=f"core_{i}_input_tap.png",
         # )
@@ -60,7 +61,7 @@ def layernorm(dev, sequence_length, embedding_dim, trace_size):
         )
         # taps.visualize(
         #     title=f"Core {i} output tap",
-        #     show_arrows=True,
+        #     show_arsequence_length=True,
         #     plot_access_count=True,
         #     file_path=f"core_{i}_output_tap.png",
         # )
@@ -78,15 +79,14 @@ def layernorm(dev, sequence_length, embedding_dim, trace_size):
         Worker(
             core_body,
             fn_args=[of_in[i].cons(), of_out[i].prod(), layer_norm_kernel],
-            trace=None,
-            # trace=enable_trace,
+            trace=None,  # enable_trace
         )
         for i in range(n_cores)
     ]
 
     rt = Runtime()
     with rt.sequence(dtype, dtype) as (a_in, c_out):
-        rt.enable_trace(trace_size)
+        # rt.enable_trace(trace_size)
         rt.start(*workers)
         for i in range(n_cores):
             rt.fill(of_in[i].prod(), a_in, taps_in[i])

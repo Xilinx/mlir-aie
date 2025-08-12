@@ -1,9 +1,12 @@
+//===- layernorm.cc -------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2025 AMD Inc.
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
 #include <stdint.h>
@@ -19,7 +22,7 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
 
   ::aie::vector<T, N> gamma_v = ::aie::broadcast<T, N>(gamma);
   ::aie::vector<T, N> beta_v = ::aie::broadcast<T, N>(beta);
-  ::aie::vector<float, N> sum_acc = ::aie::zeros<float, N>();
+  ::aie::vector<T, N> sum_acc = ::aie::zeros<T, N>();
   ::aie::vector<float, N> sum_sq_acc = ::aie::zeros<float, N>();
 
   int vector_chunks = cols / N;
@@ -34,11 +37,13 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
   float sum_of_sq_vals = ::aie::reduce_add(sum_sq_acc);
 
   float mean = sum_of_vals / float(cols);
-  float variance = sum_of_sq_vals / float(cols) - mean * mean;
+  float mean_sq = mean * mean;
+  float variance = (sum_of_sq_vals / float(cols)) - mean_sq;
   float inv_std = aie::invsqrt(variance + epsilon);
+
   ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>(mean);
   ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>(inv_std);
-
+  
   for (int i = 0; i < vector_chunks; i++) {
     ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
     ::aie::vector<T, N> diff_v = ::aie::sub(reg_a, mean_v);
@@ -97,8 +102,8 @@ void layer_norm_welford(const T *restrict input, T *restrict output,
 }
 
 extern "C" {
-void layer_norm(float *input, float *output, int32_t cols) {
-  layer_norm<float, 16>(input, output, cols);
+void layer_norm(bfloat16 *input, bfloat16 *output, int32_t cols) {
+  layer_norm<bfloat16, 16>(input, output, cols);
 }
 
 void layer_norm_welford(float *input, float *output, int32_t rows,
