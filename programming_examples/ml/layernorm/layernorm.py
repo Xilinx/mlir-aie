@@ -46,7 +46,7 @@ def layernorm(dev, sequence_length, embedding_dim, trace_size):
         )
         # taps.visualize(
         #     title=f"Core {i} input tap",
-        #     show_arsequence_length=True,
+        #     show_arrows=True,
         #     plot_access_count=True,
         #     file_path=f"core_{i}_input_tap.png",
         # )
@@ -61,7 +61,7 @@ def layernorm(dev, sequence_length, embedding_dim, trace_size):
         )
         # taps.visualize(
         #     title=f"Core {i} output tap",
-        #     show_arsequence_length=True,
+        #     show_arrows=True,
         #     plot_access_count=True,
         #     file_path=f"core_{i}_output_tap.png",
         # )
