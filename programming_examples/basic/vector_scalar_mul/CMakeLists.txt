@@ -52,8 +52,7 @@ target_compile_definitions(${currentTarget} PUBLIC
     IN2_SIZE=${IN2_SIZE}
     OUT_SIZE=${OUT_SIZE}
     INT_BIT_WIDTH=${INT_BIT_WIDTH}
-    DISABLE_ABI_CHECK=1
-    )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${XRT_INC_DIR}

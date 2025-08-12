@@ -45,8 +45,7 @@ add_executable(${currentTarget}
 
 target_compile_definitions(${currentTarget} PUBLIC
         PASSTHROUGH_SIZE=${PASSTHROUGH_SIZE}
-        DISABLE_ABI_CHECK=1
-        )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils

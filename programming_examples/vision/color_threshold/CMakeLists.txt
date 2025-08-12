@@ -58,7 +58,6 @@ add_executable(${currentTarget}
 target_compile_definitions(${currentTarget} PUBLIC
 	COLORTHRESHOLD_WIDTH=${COLORTHRESHOLD_WIDTH}
 	COLORTHRESHOLD_HEIGHT=${COLORTHRESHOLD_HEIGHT}
-	DISABLE_ABI_CHECK=1
 )
 
 target_include_directories (${currentTarget} PUBLIC
