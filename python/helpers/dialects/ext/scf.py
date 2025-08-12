@@ -6,6 +6,7 @@ from ....dialects.scf import IfOp, ForOp, yield_
 from ....extras.dialects.ext.arith import constant, index_cast
 from ....extras.util import get_user_code_loc
 from contextlib import contextmanager
+from ....extras import types as T
 
 
 def _for(
@@ -34,7 +35,7 @@ def _for(
         if isinstance(p, int):
             p = constant(p, index=True)
         if not _is_index_type(p.type):
-            p = index_cast(p)
+            p = index_cast(p, to=T.index())
         params[i] = p
 
     start, stop, step = params

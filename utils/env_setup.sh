@@ -18,7 +18,7 @@
 ##===----------------------------------------------------------------------===##
 
 FORCE_INSTALL=0
-if [ "$1" == "--force-install" ]; then
+if [ "$1" = "--force-install" ]; then
   FORCE_INSTALL=1
   shift
 fi
@@ -54,6 +54,7 @@ if ! test -f "$XRTSMI"; then
   source /opt/xilinx/xrt/setup.sh
 fi
 NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
+NPU="${NPU:-$(/mnt/c/Windows/System32/AMD/xrt-smi.exe examine 2>/dev/null | tr -d '\r' | grep -E 'NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]' || true)}"
 # Check if the current environment is NPU2
 # npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
 if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]"; then
@@ -67,7 +68,7 @@ export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
 export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
 
 echo ""
-echo "Note: Peano has not been added to PATH so that it does not conflict with"
+echo "Note: Peano (llvm-aie) has not been added to PATH to avoid conflict with"
 echo "      system clang/clang++. It can be found in: \$PEANO_INSTALL_DIR/bin"
 echo ""
 echo "PATH              : $PATH"
