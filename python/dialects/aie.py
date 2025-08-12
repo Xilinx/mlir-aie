@@ -118,7 +118,7 @@ def bd_pad_layout(const_pad_before, const_pad_after):
     
     
 @register_attribute_builder("PacketInfoAttr")
-def bd_dim_layout_array_attr_builder(tups: Tuple[int] | List[int], context=None):
+def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     assert (isinstance(tups, list) or isinstance(tups, Tuple)) and len(tups) == 2
     return Attribute.parse(
         f'#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>', context=context
