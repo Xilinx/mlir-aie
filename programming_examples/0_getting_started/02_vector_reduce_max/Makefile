@@ -8,47 +8,75 @@
 # 
 ##===----------------------------------------------------------------------===##
 
-srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-VPATH := ${srcdir}/../../../../aie_kernels/aie2
+# ----------------------------------------------------------------------------
+# Configuration
+# ----------------------------------------------------------------------------
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-targetname = aie
-.PHONY: all template clean
+# Set SRC_DIR to the directory in which this Makefile sits.
+SRC_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-all: build/final.xclbin
+# We need to find the root directories for the following dependencies:
+# - Xilinx XRT (runtime library) for the host code
+# - MLIR-AIE with AIE-API headers for the kernel code
+XILINX_XRT_DIR?=$(shell realpath $(dir $(shell which xrt-smi))/..)
+MLIR_AIE_OPT_DIR?=$(shell realpath $(dir $(shell which aie-opt))/..)
 
-build/%.cc.o: %.cc
-	mkdir -p ${@D}
-ifeq ($(devicename),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+# Configuration of this example.
+DEVICE_NAME?=$(if $(filter 1,$(NPU2)),npu2,npu)
+
+# Host C++ compiler selection / flags
+HOST_CXX?=g++-13
+HOST_CFLAGS?=-I${XILINX_XRT_DIR}/include -L${XILINX_XRT_DIR}/lib
+HOST_LDLIBS?=-lxrt_coreutil
+
+# Kernel C++ compiler selection / flags
+KERNEL_CXX?=${PEANO_INSTALL_DIR}/bin/clang++
+KERNEL_CFLAGS?=-O2 -std=c++20 -I${MLIR_AIE_OPT_DIR}/include
+ifeq (${DEVICE_NAME}, npu)
+	KERNEL_CFLAGS+=--target=aie2-none-unknown-elf
+endif
+ifeq (${DEVICE_NAME}, npu2)
+	KERNEL_CFLAGS+=--target=aie2p-none-unknown-elf
 endif
 
-build/aie.mlir: ${srcdir}/aie.py
-	mkdir -p ${@D}
-	python3 $< -d ${devicename} > $@
 
-build/final.xclbin: build/aie.mlir build/reduce_max.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-    		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+# ----------------------------------------------------------------------------
+# Build Targets
+# ----------------------------------------------------------------------------
 
-${targetname}.exe: ${srcdir}/../test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}/..` -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@ 
-endif
+.PHONY: all clean run
+all: build/final.xclbin build/insts.bin build/test
 
-run: ${targetname}.exe build/final.xclbin build/insts.bin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE 
+# Create the build directory
+build:
+	mkdir -p $@
 
-clean:
-	rm -rf build _build ${targetname}*.exe
+# Host code: Program executed on the CPU that will invoke our NPU design
+# generated below and verify its outputs.
+build/test: ${SRC_DIR}/test.cpp | build
+	${HOST_CXX} ${HOST_CFLAGS} -o $@ $< ${HOST_LDLIBS}
+
+# The final.xclbin contains static configuration for the NPU (including data 
+# movement configuration, compure core program memories). 
+build/final.xclbin: build/aie.mlir build/kernel.o | build
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --xclbin-name=${@F} --no-xchesscc --no-xbridge ${<:%=../%}
+
+build/insts.bin: build/aie.mlir | build
+# insts.bin contains instructions for the command processor to execute
+# at runtime (i.e., dispatch running the design, read from DRAM, etc.).
+	cd ${@D} && aiecc.py -v --aie-generate-npu-insts --npu-insts-name=${@F} --no-xchesscc --no-xbridge ${<:%=../%}
+
+# Lower-level MLIR design built from higher-level Python IRON design
+build/aie.mlir: ${SRC_DIR}/aie.py | build
+	python3 $< ${DEVICE_NAME} > $@
+
+# External single compute core kernel code defined in C source
+build/kernel.o: ${SRC_DIR}/kernel.cc | build
+	cd ${@D} && ${KERNEL_CXX} ${KERNEL_CFLAGS} -c $< -o ${@F}
+
+run: build/test build/final.xclbin build/insts.bin
+	./build/test build/final.xclbin build/insts.bin MLIR_AIE
+
+clean: 
+	rm -rf build
