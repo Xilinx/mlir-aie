@@ -1,17 +1,8 @@
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
-// 
-//===----------------------------------------------------------------------===//-->
-
 # Getting Started: Vector Reduce Max
 
 This example demonstrates how to efficiently compute the maximum value of an input vector using a distributed, parallel approach across multiple cores in a AIE column. The input vector is partitioned into equal-sized chunks, with each core assigned a chunk to process. Each core independently calculates the local maximum for its chunk. These local maxima are then propagated along the column of cores in a cascade-style reduction, where each core compares its local result with the incoming partial maxima from previous cores. The process continues until the final core produces the overall maximum value of the vector.
 
-<br><img src="figures/Datatflow.png" alt="Vector Reduce Max Dataflow" width="300"/>
+<br><img src="figures/Dataflow.png" alt="Dataflow" width="300"/>
 
 ## Overview
 
