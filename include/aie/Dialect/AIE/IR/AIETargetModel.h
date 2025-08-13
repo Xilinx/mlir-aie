@@ -270,6 +270,9 @@ public:
   virtual uint32_t getMemTileSize() const = 0;
   /// Return the number of memory banks of a given tile.
   virtual uint32_t getNumBanks(int col, int row) const = 0;
+
+  virtual uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const = 0;
+
   /// Return the number of destinations of connections inside a switchbox. These
   /// are the targets of connect operations in the switchbox.
   virtual uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -317,6 +320,9 @@ public:
   // their corresponding lengths in bytes (second).
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
+
+  // Returns true if the target model supports the given block format.
+  virtual bool isSupportedBlockFormat(std::string const &format) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -378,6 +384,10 @@ public:
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
   uint32_t getNumBanks(int col, int row) const override { return 4; }
+
+  uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
+    return 0;
+  }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
@@ -479,6 +489,10 @@ public:
 
   uint32_t getNumBanks(int col, int row) const override {
     return isMemTile(col, row) ? 8 : 4;
+  }
+
+  uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
+    return 4;
   }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -691,6 +705,8 @@ public:
 
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
+
+  bool isSupportedBlockFormat(std::string const &format) const override;
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&

@@ -12,6 +12,7 @@
 
 module @test0 {
   aie.device(npu1) {
+    // expected-error@+1 {{'aie.tile' op Bank-aware allocation failed.}}
     %tile34 = aie.tile(3, 4)
     %buf0 = aie.buffer(%tile34) : memref<200xi32>
     %buf1 = aie.buffer(%tile34) : memref<100xi32>
@@ -27,6 +28,7 @@ module @test0 {
 
 module @test1 {
   aie.device(npu1) {
+    // expected-error@+1 {{'aie.tile' op Bank-aware allocation failed.}}
     %tile34 = aie.tile(3, 4)
     %buf0 = aie.buffer(%tile34) { sym_name = "a", address = 0 : i32 } : memref<1024xi32>
     // expected-error@+1 {{'aie.buffer' op would override allocated address}}

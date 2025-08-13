@@ -4,7 +4,5 @@
 // REQUIRES: ryzen_ai_npu1, peano
 //
 // RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile 
-// RUN: %run_on_npu1% make -f %S/Makefile run
-// RUN: make -f %S/Makefile clean
-// RUN: %run_on_npu1% make -f %S/Makefile trace
+// RUN: make -f %S/Makefile devicename=npu 
+// RUN: %run_on_npu1% make -f %S/Makefile devicename=npu run

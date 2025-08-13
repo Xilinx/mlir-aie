@@ -55,3 +55,15 @@ class ObjectFifoSubviewType:
 
     @staticmethod
     def isinstance(other: Type) -> bool: ...
+
+class blockFloatType:
+    """Custom Block Floating Point type."""
+
+    @staticmethod
+    def get(subtype) -> blockFloatType:
+        """
+        Create a block floating point type
+        """
+
+    @staticmethod
+    def isinstance(other: Type) -> bool: ...

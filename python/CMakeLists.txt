@@ -34,7 +34,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/ml.py
     utils/trace.py
     utils/trace_events_enum.py
-    utils/compile.py
     utils/config.py
 )
 
@@ -314,22 +313,6 @@ else ()
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()
-
-  declare_mlir_python_extension(AIEPythonExtensions.AIERT
-    MODULE_NAME _aiert
-    ADD_TO_PARENT AIEPythonExtensions
-    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-
-    PARTIAL_SOURCES_INTENDED
-    SOURCES
-      AIERTModule.cpp
-
-    PRIVATE_LINK_LIBS
-      LLVMSupport
-
-    PYTHON_BINDINGS_LIBRARY
-      nanobind
-  )
 
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules
