@@ -12,20 +12,17 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-# ---
-
-# The following environment variables that point to the Xilinx runtime (XRT)
-# should be set up by an environment setup script already.
-XILINX_XRT?=/opt/xilinx/xrt
-
-# ---
-
+XILINX_XRT=/opt/xilinx/xrt/
 XILINX_XRT_INCLUDE?=${XILINX_XRT}/include
 XILINX_XRT_LIB?=${XILINX_XRT}/lib
 
 XRT_FLAGS=-I${XILINX_XRT_INCLUDE} -L${XILINX_XRT_LIB}
 XRT_LIBS=-lxrt_coreutil
-CXX=g++-13 -ggdb 
+CXX=g++-13 -ggdb
+
+UTILS_INCLUDE := -I$(srcdir)/../../../runtime_lib/test_lib/
+UTILS_LIB=$(srcdir)/../../../runtime_lib/test_lib/test_utils.cpp
+
 
 mlir_target?=build/aie.mlir
 xclbin_target?=build/final.xclbin
@@ -68,16 +65,11 @@ ${xclbin_target}: ${mlir_target} build/kernel.o
 
 ${host_target}: ${srcdir}/test.cpp ${xclbin_target}
 	mkdir -p ${@D}
-	${CXX} ${XRT_FLAGS} -DM=$M -DN=$N -o $@ $< ${XRT_LIBS}
+	${CXX} ${XRT_FLAGS} ${UTILS_INCLUDE} ${UTILS_LIB} -DSIZE_M=$M -DSIZE_N=$N -o $@ $< ${XRT_LIBS}
 
 .PHONY: run
 run: ${host_target}
 	./${host_target}
-
-xclbin_sign=${XILINX_XRT}/amdxdna/setup_xclbin_firmware.sh 
-.PHONY: sign
-sign: ${xclbin_target}
-	${xclbin_sign} -dev Phoenix -xclbin $<
 
 .PHONY: clean
 clean:

@@ -24,7 +24,7 @@ def my_vector_scalar_memcpy(module):
 
     buffer_depth = 2
 
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         n_ty = np.ndarray[(n,), np.dtype[np.int32]]
         N_ty = np.ndarray[(N,), np.dtype[np.int32]]
@@ -53,7 +53,7 @@ def my_vector_scalar_tasks(module):
 
     buffer_depth = 2
 
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         n_ty = np.ndarray[(n,), np.dtype[np.int32]]
         N_ty = np.ndarray[(N,), np.dtype[np.int32]]

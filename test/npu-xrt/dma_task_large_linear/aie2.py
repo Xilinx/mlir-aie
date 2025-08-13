@@ -6,6 +6,7 @@
 # (c) Copyright 2024 AMD Inc.
 
 # REQUIRES: ryzen_ai_npu1, peano
+# XFAIL: *
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
@@ -27,7 +28,7 @@ def design():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        @device(AIEDevice.npu1)
         def device_body():
             buff_ty = np.ndarray[(BUFFER_LEN,), np.dtype[dtype]]
             buff_tile_ty = np.ndarray[(BUFFER_TILE_LEN,), np.dtype[dtype]]

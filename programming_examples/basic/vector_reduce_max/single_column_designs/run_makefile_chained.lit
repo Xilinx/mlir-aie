@@ -1,0 +1,13 @@
+// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano 
+//
+// RUN: mkdir -p test_single_col_cascade
+// RUN: cd test_single_col_cascade
+// RUN: make -f %S/Makefile clean
+// RUN: env dtype=bf16 make -f %S/Makefile 
+// RUN: env dtype=bf16 use_chained=1 %run_on_npu1% make -f %S/Makefile run
+// RUN: make -f %S/Makefile clean
+// RUN: env CHESS=false dtype=bf16 use_chained=1 %run_on_npu1% make -f %S/Makefile trace 
+  

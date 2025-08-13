@@ -98,8 +98,13 @@ else
 	cp _build/${targetname} $@ 
 endif
 
+ifeq ($(devicename),npu)
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --npu 1
+else ifeq ($(devicename),npu2)
+run: ${targetname}.exe build/final.xclbin
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --npu 2
+endif
 
 profile: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -p results.csv

@@ -202,7 +202,6 @@ xilinx::AIE::myVerifyOffsetSizeAndStrideOp(OffsetSizeAndStrideOpInterface op) {
 static VC1902TargetModel VC1902model;
 static VE2302TargetModel VE2302model;
 static VE2802TargetModel VE2802model;
-static NPU1TargetModel NPUmodel;
 static VirtualizedNPU1TargetModel NPUmodel1col(1);
 static VirtualizedNPU1TargetModel NPUmodel2col(2);
 static VirtualizedNPU1TargetModel NPUmodel3col(3);
@@ -236,15 +235,13 @@ const AIETargetModel &xilinx::AIE::getTargetModel(AIEDevice device) {
   case AIEDevice::xcve2802:
     return VE2802model;
   case AIEDevice::npu1:
-    return NPUmodel;
+    return NPUmodel4col;
   case AIEDevice::npu1_1col:
     return NPUmodel1col;
   case AIEDevice::npu1_2col:
     return NPUmodel2col;
   case AIEDevice::npu1_3col:
     return NPUmodel3col;
-  case AIEDevice::npu1_4col:
-    return NPUmodel4col;
   case AIEDevice::npu2:
     return NPU2model;
   case AIEDevice::npu2_1col:
@@ -1328,7 +1325,8 @@ TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 int64_t BufferOp::getAllocationSize() {
   auto type = llvm::cast<MemRefType>(getType());
-  return type.getNumElements() * type.getElementTypeBitWidth() / 8;
+  DataLayout dataLayout = DataLayout::closest(getOperation());
+  return type.getNumElements() * dataLayout.getTypeSize(type.getElementType());
 }
 
 TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
@@ -1773,6 +1771,10 @@ LogicalResult DMABDOp::verify() {
     if (getBufferElementTypeWidthInBytes() < 4 && dims->back().getStride() != 1)
       return emitOpError(
           "For <32b width datatypes, inner-most dim stride must be 1");
+
+    if (getBufferElementTypeWidthInBytes() > 4 && dims->back().getStride() != 1)
+      return emitOpError(
+          "For >32b width datatypes, inner-most dim stride must be 1");
   }
   if (auto paddims = getPadDimensions(); paddims.has_value()) {
     auto dims = getDimensions();

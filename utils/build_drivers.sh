@@ -31,7 +31,7 @@ fi
 
 echo "Cloning the XDNA driver repository..."
 # Clone the XDNA driver repository and initialize submodules
-XDNA_SHA=0e6d303b2cc2b3fe1cf10aba0acbf57a422588fb
+XDNA_SHA=e9d2788a884784e3531e95d65b923c2252a1132e
 git clone https://github.com/amd/xdna-driver.git
 export XDNA_SRC_DIR=$(realpath xdna-driver)
 cd xdna-driver
@@ -72,10 +72,12 @@ case "$UBUNTU_VERSION" in
     "24.04")
         base_suffix="24.04-amd64-base.deb"
         dev_suffix="24.04-amd64-base-dev.deb"
+        runtime_suffix="24.04-amd64-Runtime.deb"
         ;;
     "24.10")
         base_suffix="24.10-amd64-base.deb"
         dev_suffix="24.10-amd64-base-dev.deb"
+        runtime_suffix="24.10-amd64-Runtime.deb"
         ;;
     *)
         echo "Error: Unsupported Ubuntu version ($UBUNTU_VERSION). Supported versions: 24.04, 24.10"
@@ -86,14 +88,17 @@ esac
 # Find matching .deb files
 base_pkg=$(ls *"$base_suffix" 2>/dev/null | head -n 1)
 dev_pkg=$(ls *"$dev_suffix" 2>/dev/null | head -n 1)
-if [[ -z "$base_pkg" || -z "$dev_pkg" ]]; then
-    echo "Error: Could not find .deb packages matching suffixes:"
+runtime_pkg=$(ls *"$runtime_suffix" 2>/dev/null | head -n 1)
+if [[ -z "$base_pkg" || -z "$dev_pkg" || -z "$runtime_pkg" ]]; then
+    echo "Error: Could not find .deb packages matching one or more suffixes:"
     echo " - $base_suffix"
     echo " - $dev_suffix"
+    echo " - $runtime_suffix"
     exit 1
 fi
 sudo apt reinstall "./$base_pkg"
 sudo apt reinstall "./$dev_pkg"
+sudo apt reinstall "./$runtime_pkg"
 
 echo "Building XDNA Driver..."
 # Build XDNA Driver
