@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include "../aie_kernel_utils.h"
+#include "../../../aie_kernels/aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T, typename V>

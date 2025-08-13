@@ -138,3 +138,21 @@ regular row-major tile as the output moves out of the computation core.
 Note that all of these tiles are arranged in row-major order.
 
 ![The 64x64 tiles of A, B and C, are tiled into tiles of size 8x2, 2x8 and 8x8, respectively, to allow processing using the VMAC intrinsics.](./diagrams/matmul_l2l1.svg)
+
+## Ryzen™ AI Usage
+
+### Compilation
+
+To compile the design:
+
+```shell
+make
+```
+
+### C++ Testbench
+
+To run the design:
+
+```shell
+make run
+```

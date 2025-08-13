@@ -58,8 +58,8 @@ build/test: ${SRC_DIR}/test.cpp | build
 	${HOST_CXX} ${HOST_CFLAGS} -o $@ $< ${HOST_LDLIBS}
 
 # The final.xclbin contains static configuration for the NPU (including data 
-# movement configuration, compure core program memories). 
-build/final.xclbin: build/aie.mlir build/kernel.o | build
+# movement configuration, compute core program memories). 
+build/final.xclbin: build/aie.mlir build/vector_reduce_max.o | build
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --xclbin-name=${@F} --no-xchesscc --no-xbridge ${<:%=../%}
 
 build/insts.bin: build/aie.mlir | build
@@ -68,11 +68,11 @@ build/insts.bin: build/aie.mlir | build
 	cd ${@D} && aiecc.py -v --aie-generate-npu-insts --npu-insts-name=${@F} --no-xchesscc --no-xbridge ${<:%=../%}
 
 # Lower-level MLIR design built from higher-level Python IRON design
-build/aie.mlir: ${SRC_DIR}/aie.py | build
+build/aie.mlir: ${SRC_DIR}/vector_reduce_max_1col.py | build
 	python3 $< ${DEVICE_NAME} > $@
 
 # External single compute core kernel code defined in C source
-build/kernel.o: ${SRC_DIR}/kernel.cc | build
+build/vector_reduce_max.o: ${SRC_DIR}/vector_reduce_max.cc | build
 	cd ${@D} && ${KERNEL_CXX} ${KERNEL_CFLAGS} -c $< -o ${@F}
 
 run: build/test build/final.xclbin build/insts.bin

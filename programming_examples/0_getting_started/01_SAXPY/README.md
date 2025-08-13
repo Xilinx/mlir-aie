@@ -22,3 +22,21 @@ This design consists of the following:
 ## Data Movement and Compute
 
 Input tensors `X` and `Y` are moved from DRAM to the AI Engine compute core using ObjectFIFOs `of_x` and `of_y`. The output tensor `Z` is moved from the AI Engine compute core to DRAM using ObjectFIFO `of_z`. The AI Engine program calls the external kernel `saxpy_kernel` defined in `saxpy_vector.cc`.
+
+## Ryzen™ AI Usage
+
+### Compilation
+
+To compile the design:
+
+```shell
+make
+```
+
+### C++ Testbench
+
+To run the design:
+
+```shell
+make run
+```
