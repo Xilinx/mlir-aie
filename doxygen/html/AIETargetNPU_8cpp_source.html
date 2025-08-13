@@ -356,43 +356,63 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>    ModuleOp module, std::vector&lt;uint32_t&gt; &amp;instructions,</div>
 <div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>    StringRef sequenceName) {</div>
 <div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>  DeviceOp deviceOp = *<span class="keyword">module</span>.getOps&lt;DeviceOp&gt;().begin();</div>
-<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>  <span class="keyword">auto</span> sequenceOps = deviceOp.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
-<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> seq : sequenceOps) {</div>
-<div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span>    <span class="keywordflow">if</span> (sequenceName.size() &amp;&amp; sequenceName != seq.getSymName())</div>
-<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>      <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>    Block &amp;entry = seq.getBody().front();</div>
-<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;o : entry) {</div>
-<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>      llvm::TypeSwitch&lt;Operation *&gt;(&amp;o).Case&lt;NpuControlPacketOp&gt;([&amp;](<span class="keyword">auto</span> op) {</div>
-<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>        uint32_t size = 0;</div>
-<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>        <span class="keyword">auto</span> data = op.getData();</div>
-<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>        <span class="keyword">auto</span> length = op.getLength();</div>
-<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>        <span class="keywordflow">if</span> (data)</div>
-<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>          size = data-&gt;size();</div>
-<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>        <span class="keyword">auto</span> words = reserveAndGetTail(instructions, 1 + size);</div>
-<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>        <span class="keywordflow">if</span> (!data &amp;&amp; length)</div>
-<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>          size = *length;</div>
-<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>        <span class="keyword">auto</span> parity = [](uint32_t n) {</div>
-<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>          uint32_t p = 0;</div>
-<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>          <span class="keywordflow">while</span> (n) {</div>
-<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>            p += n &amp; 1;</div>
-<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>            n &gt;&gt;= 1;</div>
-<div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>          }</div>
-<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>          <span class="keywordflow">return</span> (p % 2) == 0;</div>
-<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>        };</div>
-<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>        uint32_t addr = op.getAddress() &amp; 0xFFFFF;</div>
-<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>        uint32_t beats = size - 1;</div>
-<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>        uint32_t opc = op.getOpcode();</div>
-<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>        uint32_t <span class="keywordtype">id</span> = op.getStreamId();</div>
-<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>        uint32_t hdr = <span class="keywordtype">id</span> &lt;&lt; 24 | opc &lt;&lt; 22 | beats &lt;&lt; 20 | addr;</div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>        words[0] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>        <span class="keywordflow">if</span> (opc == 0x0 || opc == 0x2)</div>
-<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>          <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; size; i++)</div>
-<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>            words[i + 1] = data.value()[i];</div>
-<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>      });</div>
-<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>    }</div>
-<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>  }</div>
-<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>}</div>
+<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>  OpBuilder builder = OpBuilder::atBlockBegin(deviceOp.getBody());</div>
+<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span> </div>
+<div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span>  <span class="keyword">auto</span> sequenceOps = deviceOp.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
+<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> seq : sequenceOps) {</div>
+<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>    <span class="keywordflow">if</span> (sequenceName.size() &amp;&amp; sequenceName != seq.getSymName())</div>
+<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>      <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>    Block &amp;entry = seq.getBody().front();</div>
+<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;o : entry) {</div>
+<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>      <span class="keyword">auto</span> packetOp = dyn_cast&lt;AIEX::NpuControlPacketOp&gt;(o);</div>
+<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>      <span class="keywordflow">if</span> (!packetOp)</div>
+<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span> </div>
+<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>      uint32_t size = 0;</div>
+<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>      <span class="keyword">auto</span> data = packetOp.getData();</div>
+<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>      <span class="keywordflow">if</span> (data)</div>
+<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>        size = data-&gt;size();</div>
+<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span> </div>
+<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>      <span class="keyword">auto</span> words = reserveAndGetTail(instructions, 2 + size);</div>
+<div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span> </div>
+<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>      <span class="keywordflow">if</span> (!data &amp;&amp; packetOp.getLength())</div>
+<div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>        size = *packetOp.getLength();</div>
+<div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span> </div>
+<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>      <span class="keyword">auto</span> parity = [](uint32_t n) {</div>
+<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>        uint32_t p = 0;</div>
+<div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>        <span class="keywordflow">while</span> (n) {</div>
+<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>          p += n &amp; 1;</div>
+<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>          n &gt;&gt;= 1;</div>
+<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>        }</div>
+<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>        <span class="keywordflow">return</span> (p % 2) == 0;</div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>      };</div>
+<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span> </div>
+<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>      <span class="comment">// stream header is attached here instead of by shim dma</span></div>
+<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = packetOp.getColumnFromAddr();</div>
+<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = packetOp.getRowFromAddr();</div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>      <span class="keyword">auto</span> destTile = TileOp::getOrCreate(builder, deviceOp, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>      <span class="keyword">auto</span> info = destTile-&gt;getAttrOfType&lt;AIE::PacketInfoAttr&gt;(<span class="stringliteral">&quot;controller_id&quot;</span>);</div>
+<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>      <span class="keywordflow">if</span> (!info)</div>
+<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>        <span class="keywordflow">return</span> destTile-&gt;emitError(<span class="stringliteral">&quot;Expected controller_id attribute&quot;</span>);</div>
+<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>      uint32_t hdr = (info.getPktType() &amp; 0x7) &lt;&lt; 12 | (info.getPktId() &amp; 0xff);</div>
+<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>      words[0] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
+<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span> </div>
+<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>      <span class="comment">// control packet header</span></div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>      uint32_t addr = packetOp.getAddress() &amp; 0xFFFFF;</div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>      uint32_t beats = size - 1;</div>
+<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>      uint32_t opc = packetOp.getOpcode();</div>
+<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>      uint32_t <span class="keywordtype">id</span> = packetOp.getStreamId();</div>
+<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>      hdr = <span class="keywordtype">id</span> &lt;&lt; 24 | opc &lt;&lt; 22 | beats &lt;&lt; 20 | addr;</div>
+<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>      words[1] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
+<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span> </div>
+<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>      <span class="comment">// configuration data</span></div>
+<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>      <span class="keywordflow">if</span> (opc == 0x0 || opc == 0x2)</div>
+<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>        <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; size; i++)</div>
+<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>          words[i + 2] = data.value()[i];</div>
+<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>    }</div>
+<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>  }</div>
+<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>}</div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0">XAie_TxnOpcode</a></div><div class="ttdeci">XAie_TxnOpcode</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00029">AIETargetNPU.cpp:29</a></div></div>
 <div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0a0224ffc31ffd9ef5ee11478d198d72be"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a0224ffc31ffd9ef5ee11478d198d72be">XAIE_IO_LOAD_PM_START</a></div><div class="ttdeci">@ XAIE_IO_LOAD_PM_START</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00039">AIETargetNPU.cpp:39</a></div></div>
@@ -442,7 +462,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Aug 13 2025 19:09:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Aug 13 2025 21:42:21 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
