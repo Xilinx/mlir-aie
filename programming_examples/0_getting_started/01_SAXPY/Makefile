@@ -32,7 +32,7 @@ HOST_LDLIBS?=-lxrt_coreutil
 
 # Kernel C++ compiler selection / flags
 KERNEL_CXX?=${PEANO_INSTALL_DIR}/bin/clang++
-KERNEL_CFLAGS?=-O2 -std=c++20 -I${MLIR_AIE_OPT_DIR}/include
+KERNEL_CFLAGS?=-O2 -std=c++23 -I${MLIR_AIE_OPT_DIR}/include
 ifeq (${DEVICE_NAME}, npu)
 	KERNEL_CFLAGS+=--target=aie2-none-unknown-elf
 endif

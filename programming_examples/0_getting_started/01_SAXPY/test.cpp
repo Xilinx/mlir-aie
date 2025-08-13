@@ -1,212 +1,117 @@
-#include "cxxopts.hpp"
-#include <bits/stdc++.h>
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2025 AMD Inc.
+
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
+#include <iomanip>
 
-#include "xrt/xrt_bo.h"
-#include "xrt/xrt_device.h"
-#include "xrt/xrt_kernel.h"
+#include <xrt/xrt_bo.h>
+#include <xrt/xrt_device.h>
+#include <xrt/xrt_kernel.h>
 
-#include "test_utils.h"
-
-#ifndef DATATYPES_USING_DEFINED
-#define DATATYPES_USING_DEFINED
+#include <stdfloat>
 
 using INPUT_DATATYPE = std::bfloat16_t;
-using OUTPUT_DATATYPE = std::bfloat16_t;
-#endif
+constexpr unsigned tensor_size = 4096;
 
-// ----------------------------------------------------------------------------
-// Main
-// ----------------------------------------------------------------------------
+void reference(INPUT_DATATYPE *A, INPUT_DATATYPE *B, INPUT_DATATYPE *C) {  
+    for(int i = 0; i < tensor_size; i++) {
+        C[i] = 3.141f * static_cast<float>(A[i]) + static_cast<float>(B[i]);    
+    }   
+}
+
+int read_insts(std::string insts_path, std::vector<char>& into) {
+	std::ifstream insts_file(insts_path, std::ios::binary);
+	if (!insts_file) {
+		return 1;
+	}
+	into.assign((std::istreambuf_iterator<char>(insts_file)), std::istreambuf_iterator<char>());
+	return 0;
+}
+
 int main(int argc, const char *argv[]) {
+	// Assign command line arguments
+	if (argc != 4) {
+		std::cerr << "Usage: " << argv[0] << " <xclbin> <insts> <kernel>" << std::endl;
+		return 1;
+	}
+	std::string xclbin_path = argv[1];
+	std::string insts_path = argv[2];
+	std::string kernel_name = argv[3];
 
-  // ------------------------------------------------------
-  // Parse program arguments
-  // ------------------------------------------------------
-  cxxopts::Options options("SAXPY Test");
-  cxxopts::ParseResult vm;
-  test_utils::add_default_options(options);
+	// Read insts.bin file (instructions to the NPU's command processor)
+	std::vector<char> insts = {};
+	if (0 != read_insts(insts_path, insts)) {
+		std::cerr << "Unable to open insts file: " << insts_path << std::endl;
+		return 1;
+	}
 
-  test_utils::parse_options(argc, argv, options, vm);
-  int verbosity = vm["verbosity"].as<int>();
-  int do_verify = vm["verify"].as<bool>();
-  int n_iterations = vm["iters"].as<int>();
-  int n_warmup_iterations = vm["warmup"].as<int>();
+	// Initialize the NPU and load our design
+    constexpr unsigned device_index = 0;
+    xrt::device device = xrt::device(device_index);
+    xrt::xclbin xclbin(xclbin_path);
+    device.register_xclbin(xclbin);
+    xrt::hw_context context(device, xclbin.get_uuid());
+    xrt::kernel kernel = xrt::kernel(context, kernel_name);
 
-  int INPUT_VOLUME = 4096;
-  int OUTPUT_VOLUME = 4096;
+	// Initialzie input/output XRT buffers
+    xrt::bo bo_insts = xrt::bo(device, insts.size() * sizeof(insts[0]), XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+    xrt::bo bo_a = xrt::bo(device, tensor_size * sizeof(INPUT_DATATYPE), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+    xrt::bo bo_b = xrt::bo(device, tensor_size * sizeof(INPUT_DATATYPE), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+    xrt::bo bo_c = xrt::bo(device, tensor_size * sizeof(INPUT_DATATYPE), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+    char *buf_insts = bo_insts.map<char *>();
+    std::copy(insts.begin(), insts.end(), buf_insts);
+    INPUT_DATATYPE *buf_a = bo_a.map<INPUT_DATATYPE *>();
+    INPUT_DATATYPE *buf_b = bo_b.map<INPUT_DATATYPE *>();
+    INPUT_DATATYPE *buf_c = bo_c.map<INPUT_DATATYPE *>();
 
-  size_t INPUT_SIZE = INPUT_VOLUME * sizeof(INPUT_DATATYPE);
-  size_t OUTPUT_SIZE = OUTPUT_VOLUME * sizeof(OUTPUT_DATATYPE);
+	// Prepare input data (initialize random matrices) and sync to NPU
+	std::generate(buf_a, buf_a + tensor_size, []() { return rand() % 256; });
+	std::generate(buf_b, buf_b + tensor_size, []() { return rand() % 256; });
+	std::fill(buf_c, buf_c + tensor_size, 0);
+    bo_insts.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    bo_c.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-  srand(time(NULL));
+	// Run our design
+    auto t_start = std::chrono::system_clock::now();
+    constexpr unsigned opcode = 3;
+    auto run = kernel(opcode, bo_insts, insts.size(), bo_a, bo_b, bo_c);
+    ert_cmd_state r = run.wait();
+    auto t_stop = std::chrono::system_clock::now();
+    if (r != ERT_CMD_STATE_COMPLETED) {
+        std::cout << "Kernel did not complete. Returned status: " << r << std::endl;
+        return 1;
+    }
+    float t_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t_stop - t_start).count();
+    bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  // Load instruction sequence
-  std::vector<uint32_t> instr_v =
-      test_utils::load_instr_binary(vm["instr"].as<std::string>());
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
+	// // Print elapsed time
+	// constexpr unsigned n_ops = M * K * N * 2;
+  //   float throughput = n_ops / t_elapsed / 1e3;  // GOP/s
+  //   std::cout << "Elapsed: " << t_elapsed << " us "
+  //             << "(" << throughput << " GOP/s)" << std::endl;
 
-  // ------------------------------------------------------
-  // Get device, load the xclbin & kernel and register them
-  // ------------------------------------------------------
-  xrt::device device;
-  xrt::kernel kernel;
+	// Validate correctness of output
+	INPUT_DATATYPE *ref_c = static_cast<INPUT_DATATYPE *>(std::malloc(tensor_size * sizeof(INPUT_DATATYPE))); // reference output calculated on the CPU
+	reference(buf_a, buf_b, ref_c);
 
-  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
-                                   vm["xclbin"].as<std::string>(),
-                                   vm["kernel"].as<std::string>());
-
-  // ------------------------------------------------------
-  // Initialize input/ output buffer sizes and sync them
-  // ------------------------------------------------------
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_input_x =
-      xrt::bo(device, INPUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_input_y =
-      xrt::bo(device, INPUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-  auto bo_output =
-      xrt::bo(device, OUTPUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
-  auto bo_dummy0 =
-      xrt::bo(device, 4, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
-  auto bo_trace =
-      xrt::bo(device, 16384, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(7));
-
-  if (verbosity >= 1)
-    std::cout << "Writing data into buffer objects.\n";
-
-  // Initialize instruction buffer
-  void *bufInstr = bo_instr.map<void *>();
-  memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
-
-  // Initialize input buffers
-  INPUT_DATATYPE *bufInputX = bo_input_x.map<INPUT_DATATYPE *>();
-  INPUT_DATATYPE *bufInputY = bo_input_y.map<INPUT_DATATYPE *>();
-  for (int i = 0; i < INPUT_VOLUME; i++) {
-    bufInputX[i] = test_utils::random_bfloat16_t(1.0f, 0.0f);
-    bufInputY[i] = test_utils::random_bfloat16_t(1.0f, 0.0f);
-  }
-
-  // Initialize trace buffer
-  void *bufTrace = bo_trace.map<void *>();
-  memset(bufTrace, 0, 16384);
-
-  // Sync buffers to update input buffer values
-  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_input_x.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_input_y.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_dummy0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-  // ------------------------------------------------------
-  // Initialize run configs
-  // ------------------------------------------------------
-  unsigned num_iter = n_iterations + n_warmup_iterations;
-  float npu_time_total = 0;
-  float npu_time_min = 9999999;
-  float npu_time_max = 0;
-
-  int errors = 0;
-
-  // ------------------------------------------------------
-  // Main run loop
-  // ------------------------------------------------------
-  for (unsigned iter = 0; iter < num_iter; iter++) {
-
-    if (verbosity >= 1) {
-      std::cout << "Running Kernel.\n";
+	if (std::equal(ref_c, ref_c + tensor_size, buf_c)) {
+        std::cout << "PASS!" << std::endl;
+    }   else {
+        std::cout << "FAIL." << std::endl;
+        return 1;
     }
 
-    // Run kernel
-    auto start = std::chrono::high_resolution_clock::now();
-    unsigned int opcode = 3;
-    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_input_x, bo_input_y, bo_output, bo_dummy0, bo_trace);
-    run.wait();
-    auto stop = std::chrono::high_resolution_clock::now();
-    bo_output.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    OUTPUT_DATATYPE *bufOutput = bo_output.map<OUTPUT_DATATYPE *>();
-
-    if (iter < n_warmup_iterations) {
-      /* Warmup iterations do not count towards average runtime. */
-      continue;
-    }
-
-    // Copy output results and verify they are correct
-    if (do_verify) {
-      if (verbosity >= 1) {
-        std::cout << "Verifying results ..." << std::endl;
-      }
-      auto vstart = std::chrono::system_clock::now();
-      for (int i = 0; i < OUTPUT_VOLUME; i++) {
-        float expected = 3.141f * static_cast<float>(bufInputX[i]) + static_cast<float>(bufInputY[i]);
-        if (!test_utils::nearly_equal(static_cast<float>(bufOutput[i]), expected, 0.008f)) {
-          errors++;
-          std::cout << "Mismatch at index " << i << ": expected " << expected << ", got " << bufOutput[i] << std::endl;
-        }
-      }
-      auto vstop = std::chrono::system_clock::now();
-      float vtime =
-          std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
-              .count();
-      if (verbosity >= 1) {
-        std::cout << "Verify time: " << vtime << "secs." << std::endl;
-      }
-    } else {
-      if (verbosity >= 1)
-        std::cout << "WARNING: results not verified." << std::endl;
-    }
-
-    // Write trace values if trace_size > 0
-    test_utils::write_out_trace(((char *)bufTrace), 16384, "trace.txt");
-
-    // Accumulate run times
-    float npu_time =
-        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
-            .count();
-
-    npu_time_total += npu_time;
-    npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
-    npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
-  }
-
-  // ------------------------------------------------------
-  // Print verification and timing results
-  // ------------------------------------------------------
-
-  // TODO - Mac count to guide gflops
-  float macs = 0;
-
-  std::cout << std::endl
-            << "Avg NPU time: " << npu_time_total / n_iterations << "us."
-            << std::endl;
-  if (macs > 0)
-    std::cout << "Avg NPU gflops: "
-              << macs / (1000 * npu_time_total / n_iterations) << std::endl;
-
-  std::cout << std::endl
-            << "Min NPU time: " << npu_time_min << "us." << std::endl;
-  if (macs > 0)
-    std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_min)
-              << std::endl;
-
-  std::cout << std::endl
-            << "Max NPU time: " << npu_time_max << "us." << std::endl;
-  if (macs > 0)
-    std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_max)
-              << std::endl;
-
-  if (!errors) {
-    std::cout << "\nPASS!\n\n";
     return 0;
-  } else {
-    std::cout << "\nError count: " << errors << "\n\n";
-    std::cout << "\nFailed.\n\n";
-    return 1;
-  }
 }
