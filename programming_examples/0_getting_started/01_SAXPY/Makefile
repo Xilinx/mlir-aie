@@ -59,7 +59,7 @@ build/test: ${SRC_DIR}/test.cpp | build
 
 # The final.xclbin contains static configuration for the NPU (including data 
 # movement configuration, compute core program memories). 
-build/final.xclbin: build/aie.mlir build/matrix_multiplication.o | build
+build/final.xclbin: build/aie.mlir build/saxpy.o | build
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --xclbin-name=${@F} --no-xchesscc --no-xbridge ${<:%=../%}
 
 build/insts.bin: build/aie.mlir | build
@@ -68,11 +68,11 @@ build/insts.bin: build/aie.mlir | build
 	cd ${@D} && aiecc.py -v --aie-generate-npu-insts --npu-insts-name=${@F} --no-xchesscc --no-xbridge ${<:%=../%}
 
 # Lower-level MLIR design built from higher-level Python IRON design
-build/aie.mlir: ${SRC_DIR}/matrix_multiplication_single_core.py | build
+build/aie.mlir: ${SRC_DIR}/saxpy.py | build
 	python3 $< ${DEVICE_NAME} > $@
 
 # External single compute core kernel code defined in C source
-build/matrix_multiplication.o: ${SRC_DIR}/matrix_multiplication.cc | build
+build/saxpy.o: ${SRC_DIR}/saxpy_vector.cc | build
 	cd ${@D} && ${KERNEL_CXX} ${KERNEL_CFLAGS} -c $< -o ${@F}
 
 run: build/test build/final.xclbin build/insts.bin
