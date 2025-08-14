@@ -128,14 +128,22 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
         // Load partial results from C buffer for accumulation in-place. The
         // zero.cc function handles the zeroing of data when a new
         // accumulation is needed (after the 'K' reduction dimension)
-        aie::vector<T_out, MMUL::size_C> acc_C00 =
-            aie::load_v<MMUL::size_C>(pC1);
-        aie::vector<T_out, MMUL::size_C> acc_C01 =
-            aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
-        aie::vector<T_out, MMUL::size_C> acc_C10 =
-            aie::load_v<MMUL::size_C>(pC2);
-        aie::vector<T_out, MMUL::size_C> acc_C11 =
-            aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+        aie::vector<T_out, MMUL::size_C> acc_C01;
+        aie::vector<T_out, MMUL::size_C> acc_C10;
+        aie::vector<T_out, MMUL::size_C> acc_C11;
+        if constexpr (c_row_maj) {
+          acc_C00 = aie::load_v<MMUL::size_C>(pC1);
+          acc_C01 = aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
+          acc_C10 = aie::load_v<MMUL::size_C>(pC2);
+          acc_C11 = aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+        } else {
+          acc_C00 = aie::transpose(aie::load_v<MMUL::size_C>(pC1), t, r);
+          acc_C01 = aie::transpose(aie::load_v<MMUL::size_C>(pC2), t, r);
+          acc_C10 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C), t, r);
+          acc_C11 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C), t, r);
+        }
 
         MMUL C00(acc_C00);
         MMUL C01(acc_C01);
@@ -267,22 +275,40 @@ static inline void matmul_vectorized_4x2_mmul(const T_in *__restrict pA,
         aie::vector<T_in, MMUL::size_B> B0;
         aie::vector<T_in, MMUL::size_B> B1;
 
-        aie::vector<T_out, MMUL::size_C> acc_C00 =
-            aie::load_v<MMUL::size_C>(pC1);
-        aie::vector<T_out, MMUL::size_C> acc_C01 =
-            aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
-        aie::vector<T_out, MMUL::size_C> acc_C10 =
-            aie::load_v<MMUL::size_C>(pC2);
-        aie::vector<T_out, MMUL::size_C> acc_C11 =
-            aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
-        aie::vector<T_out, MMUL::size_C> acc_C20 =
-            aie::load_v<MMUL::size_C>(pC3);
-        aie::vector<T_out, MMUL::size_C> acc_C21 =
-            aie::load_v<MMUL::size_C>(pC3 + MMUL::size_C);
-        aie::vector<T_out, MMUL::size_C> acc_C30 =
-            aie::load_v<MMUL::size_C>(pC4);
-        aie::vector<T_out, MMUL::size_C> acc_C31 =
-            aie::load_v<MMUL::size_C>(pC4 + MMUL::size_C);
+        aie::vector<T_out, MMUL::size_C> acc_C00;
+        aie::vector<T_out, MMUL::size_C> acc_C01;
+        aie::vector<T_out, MMUL::size_C> acc_C10;
+        aie::vector<T_out, MMUL::size_C> acc_C11;
+        aie::vector<T_out, MMUL::size_C> acc_C20;
+        aie::vector<T_out, MMUL::size_C> acc_C21;
+        aie::vector<T_out, MMUL::size_C> acc_C30;
+        aie::vector<T_out, MMUL::size_C> acc_C31;
+
+        if constexpr (c_row_maj) {
+          acc_C00 = aie::load_v<MMUL::size_C>(pC1);
+          acc_C01 = aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
+          acc_C10 = aie::load_v<MMUL::size_C>(pC2);
+          acc_C11 = aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C);
+          acc_C20 = aie::load_v<MMUL::size_C>(pC3);
+          acc_C21 = aie::load_v<MMUL::size_C>(pC3 + MMUL::size_C);
+          acc_C30 = aie::load_v<MMUL::size_C>(pC4);
+          acc_C31 = aie::load_v<MMUL::size_C>(pC4 + MMUL::size_C);
+        } else {
+          acc_C00 = aie::transpose(aie::load_v<MMUL::size_C>(pC1), t, r);
+          acc_C01 = aie::transpose(aie::load_v<MMUL::size_C>(pC2), t, r);
+          acc_C10 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C), t, r);
+          acc_C11 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C), t, r);
+          acc_C20 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC1 + 2 * MMUL::size_C), t, r);
+          acc_C21 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC2 + 2 * MMUL::size_C), t, r);
+          acc_C30 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC1 + 3 * MMUL::size_C), t, r);
+          acc_C31 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC2 + 3 * MMUL::size_C), t, r);
+        }
 
         MMUL C00(acc_C00);
         MMUL C01(acc_C01);
