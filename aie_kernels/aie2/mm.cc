@@ -74,7 +74,7 @@ static inline void matmul_scalar(T_in *a, T_in *b, T_out *c) {
  * 	    |.
  * 	    |.
  * 	    |.
-
+ *
  * A simplified example of this kernel can be found in the AIE-API
  * documentation: https://xilinx.github.io/aie_api/group__group__mmul.html
  */
@@ -104,6 +104,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
       AIE_LOOP_FLATTEN
 #endif
       {
+
         if constexpr (!c_row_maj) {
           pC1 = pC + j * rowA * MMUL::size_C + z * MMUL::size_C;
           pC2 = pC + (j + 1) * rowA * MMUL::size_C + z * MMUL::size_C;
