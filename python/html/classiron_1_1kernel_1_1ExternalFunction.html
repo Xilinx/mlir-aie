@@ -113,8 +113,8 @@ Collaboration diagram for iron.kernel.ExternalFunction:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:ab1dc41ae1f521128863a4da7cf98e298" id="r_ab1dc41ae1f521128863a4da7cf98e298"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#ab1dc41ae1f521128863a4da7cf98e298">__init__</a> (self, str name, str|None source_file=None, str|None source_string=None, list[type[np.ndarray]|np.dtype] <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a4f5fc776cd2b7e3f6719d40cfaeedc6e">arg_types</a>=[], list[str] include_dirs=[], list[str] compile_flags=[])</td></tr>
-<tr class="separator:ab1dc41ae1f521128863a4da7cf98e298"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1de5718fef3540afc05b82678d8f2d79" id="r_a1de5718fef3540afc05b82678d8f2d79"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a1de5718fef3540afc05b82678d8f2d79">__init__</a> (self, str name, str|None object_file_name=None, str|None source_file=None, str|None source_string=None, list[type[np.ndarray]|np.dtype] <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a4f5fc776cd2b7e3f6719d40cfaeedc6e">arg_types</a>=[], list[str] include_dirs=[], list[str] compile_flags=[])</td></tr>
+<tr class="separator:a1de5718fef3540afc05b82678d8f2d79"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:add822131e0bbcb98415b5c620ce3c22a" id="r_add822131e0bbcb98415b5c620ce3c22a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#add822131e0bbcb98415b5c620ce3c22a">__enter__</a> (self)</td></tr>
 <tr class="separator:add822131e0bbcb98415b5c620ce3c22a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae5ea66546b03ea1ef1832fadcd6723e3" id="r_ae5ea66546b03ea1ef1832fadcd6723e3"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#ae5ea66546b03ea1ef1832fadcd6723e3">__exit__</a> (self, exc_type, exc_value, traceback)</td></tr>
@@ -161,14 +161,12 @@ Protected Attributes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-static-attribs" name="pro-static-attribs"></a>
 Static Protected Attributes</h2></td></tr>
-<tr class="memitem:ab1c3be955c82d5f2dcd4b4765f178a3c" id="r_ab1c3be955c82d5f2dcd4b4765f178a3c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#ab1c3be955c82d5f2dcd4b4765f178a3c">_object_files</a> = set()</td></tr>
-<tr class="separator:ab1c3be955c82d5f2dcd4b4765f178a3c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad4703264e9c242c3a77ca36eb3b16411" id="r_ad4703264e9c242c3a77ca36eb3b16411"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#ad4703264e9c242c3a77ca36eb3b16411">_instances</a> = set()</td></tr>
 <tr class="separator:ad4703264e9c242c3a77ca36eb3b16411"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="ab1dc41ae1f521128863a4da7cf98e298" name="ab1dc41ae1f521128863a4da7cf98e298"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab1dc41ae1f521128863a4da7cf98e298">&#9670;&#160;</a></span>__init__()</h2>
+<a id="a1de5718fef3540afc05b82678d8f2d79" name="a1de5718fef3540afc05b82678d8f2d79"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1de5718fef3540afc05b82678d8f2d79">&#9670;&#160;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -184,6 +182,12 @@ Static Protected Attributes</h2></td></tr>
           <td></td>
           <td class="paramtype">str&#160;</td>
           <td class="paramname"><em>name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">str | None &#160;</td>
+          <td class="paramname"><em>object_file_name</em> = <code>None</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -227,6 +231,7 @@ If it is called, a CallOp will be generated.
 
 Args:
     name (str): The name of the function
+    object_file_name (str, optional): The name of the object file. If None, it will be name.o.
     source_file (str): Path to the C/C++ source file
     source_string (str): C/C++ source code as a string
     arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
@@ -586,28 +591,6 @@ Returns:
   </td>
   <td class="mlabels-right">
 <span class="mlabels"><span class="mlabel">protected</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
-<a id="ab1c3be955c82d5f2dcd4b4765f178a3c" name="ab1c3be955c82d5f2dcd4b4765f178a3c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab1c3be955c82d5f2dcd4b4765f178a3c">&#9670;&#160;</a></span>_object_files</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">iron.kernel.ExternalFunction._object_files = set()</td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">static</span><span class="mlabel">protected</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
