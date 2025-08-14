@@ -128,6 +128,7 @@ static inline void matmul_vectorized_2x2_mmul(const T_in *__restrict pA,
         // Load partial results from C buffer for accumulation in-place. The
         // zero.cc function handles the zeroing of data when a new
         // accumulation is needed (after the 'K' reduction dimension)
+        aie::vector<T_out, MMUL::size_C> acc_C00;
         aie::vector<T_out, MMUL::size_C> acc_C01;
         aie::vector<T_out, MMUL::size_C> acc_C10;
         aie::vector<T_out, MMUL::size_C> acc_C11;
