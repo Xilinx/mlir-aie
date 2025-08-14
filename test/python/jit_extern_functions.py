@@ -10,7 +10,6 @@
 import numpy as np
 import os
 import tempfile
-import shutil
 import pytest
 
 import aie.iron as iron
@@ -110,17 +109,11 @@ def test_simple_add_one():
     )
 
     # Apply the transform
-    print("Applying transform")
-    print(f"Input tensor: {input_tensor}")
-    print(f"Output tensor: {output_tensor}")
-    print(f"Initial tensor: {initial_tensor}")
     transform(input_tensor, output_tensor, add_one)
 
     # Verify results
     expected = initial_tensor + 1
     actual = output_tensor.numpy()
-    print(f"Actual tensor: {actual}")
-    print(f"Expected tensor: {expected}")
     np.testing.assert_array_equal(actual, expected)
 
 
@@ -842,5 +835,39 @@ def test_compiler_flag_combinations(compile_flags, expected_value):
 
     # Verify results
     expected = initial_tensor + expected_value
+    actual = output_tensor.numpy()
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_object_file_name():
+    """Test ExternalFunction with explicit object file name."""
+    # Create input and output tensors
+    input_tensor = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    output_tensor = iron.zeros((1024,), dtype=np.int32, device="npu")
+    initial_tensor = input_tensor.numpy().copy()
+
+    # Create ExternalFunction for adding one
+    add_one = ExternalFunction(
+        "add_one",
+        object_file_name="my_add_one.o",
+        source_string="""extern "C" {
+            void add_one(int* input, int* output, int tile_size) {
+                for (int i = 0; i < tile_size; i++) {
+                    output[i] = input[i] + 1;
+                }
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    # Apply the transform
+    transform(input_tensor, output_tensor, add_one)
+
+    # Verify results
+    expected = initial_tensor + 1
     actual = output_tensor.numpy()
     np.testing.assert_array_equal(actual, expected)
