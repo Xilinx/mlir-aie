@@ -496,7 +496,7 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
         aie::vector<T_out, MMUL::size_C> acc_C31;
         aie::vector<T_out, MMUL::size_C> acc_C32;
         aie::vector<T_out, MMUL::size_C> acc_C33;
-        
+
         if constexpr (c_row_maj) {
           acc_C00 = aie::load_v<MMUL::size_C>(pC1);
           acc_C01 = aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C);
@@ -519,24 +519,36 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
           acc_C33 = aie::load_v<MMUL::size_C>(pC4 + 3 * MMUL::size_C);
         } else {
           acc_C00 = aie::transpose(aie::load_v<MMUL::size_C>(pC1), t, r);
-          acc_C01 = aie::transpose(aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C), t, r);
-          acc_C02 = aie::transpose(aie::load_v<MMUL::size_C>(pC1 + 2 * MMUL::size_C), t, r);
-          acc_C03 = aie::transpose(aie::load_v<MMUL::size_C>(pC1 + 3 * MMUL::size_C), t, r);
+          acc_C01 = aie::transpose(aie::load_v<MMUL::size_C>(pC2), t, r);
+          acc_C02 = aie::transpose(aie::load_v<MMUL::size_C>(pC3), t, r);
+          acc_C03 = aie::transpose(aie::load_v<MMUL::size_C>(pC4), t, r);
 
-          acc_C10 = aie::transpose(aie::load_v<MMUL::size_C>(pC2), t, r);
-          acc_C11 = aie::transpose(aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C), t, r);
-          acc_C12 = aie::transpose(aie::load_v<MMUL::size_C>(pC2 + 2 * MMUL::size_C), t, r);
-          acc_C13 = aie::transpose(aie::load_v<MMUL::size_C>(pC2 + 3 * MMUL::size_C), t, r);
+          acc_C10 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC1 + MMUL::size_C), t, r);
+          acc_C11 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC2 + MMUL::size_C), t, r);
+          acc_C12 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC3 + MMUL::size_C), t, r);
+          acc_C13 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC4 + MMUL::size_C), t, r);
 
-          acc_C20 = aie::transpose(aie::load_v<MMUL::size_C>(pC3), t, r);
-          acc_C21 = aie::transpose(aie::load_v<MMUL::size_C>(pC3 + MMUL::size_C), t, r);
-          acc_C22 = aie::transpose(aie::load_v<MMUL::size_C>(pC3 + 2 * MMUL::size_C), t, r);
-          acc_C23 = aie::transpose(aie::load_v<MMUL::size_C>(pC3 + 3 * MMUL::size_C), t, r);
+          acc_C20 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC1 + 2 * MMUL::size_C), t, r);
+          acc_C21 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC2 + 2 * MMUL::size_C), t, r);
+          acc_C22 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC3 + 2 * MMUL::size_C), t, r);
+          acc_C23 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC4 + 2 * MMUL::size_C), t, r);
 
-          acc_C30 = aie::transpose(aie::load_v<MMUL::size_C>(pC4), t, r);
-          acc_C31 = aie::transpose(aie::load_v<MMUL::size_C>(pC4 + MMUL::size_C), t, r);
-          acc_C32 = aie::transpose(aie::load_v<MMUL::size_C>(pC4 + 2 * MMUL::size_C), t, r);
-          acc_C33 = aie::transpose(aie::load_v<MMUL::size_C>(pC4 + 3 * MMUL::size_C), t, r);
+          acc_C30 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC1 + 3 * MMUL::size_C), t, r);
+          acc_C31 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC2 + 3 * MMUL::size_C), t, r);
+          acc_C32 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC3 + 3 * MMUL::size_C), t, r);
+          acc_C33 = aie::transpose(
+              aie::load_v<MMUL::size_C>(pC4 + 3 * MMUL::size_C), t, r);
         }
 
         MMUL C00(acc_C00);
@@ -660,6 +672,7 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
           aie::store_v(pC4,
                        aie::transpose(C03.template to_vector<T_out>(), r, t));
           pC4 += MMUL::size_C;
+
           aie::store_v(pC1,
                        aie::transpose(C10.template to_vector<T_out>(), r, t));
           pC1 += MMUL::size_C;
@@ -672,6 +685,7 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
           aie::store_v(pC4,
                        aie::transpose(C13.template to_vector<T_out>(), r, t));
           pC4 += MMUL::size_C;
+
           aie::store_v(pC1,
                        aie::transpose(C20.template to_vector<T_out>(), r, t));
           pC1 += MMUL::size_C;
@@ -684,6 +698,7 @@ static inline void matmul_vectorized_4x4(const T_in *__restrict pA,
           aie::store_v(pC4,
                        aie::transpose(C23.template to_vector<T_out>(), r, t));
           pC4 += MMUL::size_C;
+
           aie::store_v(pC1,
                        aie::transpose(C30.template to_vector<T_out>(), r, t));
           pC1 += MMUL::size_C;
