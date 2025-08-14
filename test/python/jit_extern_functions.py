@@ -109,17 +109,11 @@ def test_simple_add_one():
     )
 
     # Apply the transform
-    print("Applying transform")
-    print(f"Input tensor: {input_tensor}")
-    print(f"Output tensor: {output_tensor}")
-    print(f"Initial tensor: {initial_tensor}")
     transform(input_tensor, output_tensor, add_one)
 
     # Verify results
     expected = initial_tensor + 1
     actual = output_tensor.numpy()
-    print(f"Actual tensor: {actual}")
-    print(f"Expected tensor: {expected}")
     np.testing.assert_array_equal(actual, expected)
 
 
@@ -871,15 +865,9 @@ def test_object_file_name():
     )
 
     # Apply the transform
-    print("Applying transform")
-    print(f"Input tensor: {input_tensor}")
-    print(f"Output tensor: {output_tensor}")
-    print(f"Initial tensor: {initial_tensor}")
     transform(input_tensor, output_tensor, add_one)
 
     # Verify results
     expected = initial_tensor + 1
     actual = output_tensor.numpy()
-    print(f"Actual tensor: {actual}")
-    print(f"Expected tensor: {expected}")
     np.testing.assert_array_equal(actual, expected)
