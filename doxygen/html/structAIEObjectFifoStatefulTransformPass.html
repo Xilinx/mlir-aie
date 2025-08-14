@@ -197,7 +197,7 @@ Public Attributes</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00145">145</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00144">144</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 </div><h2 class="groupheader">Member Function Documentation</h2>
 <a id="a6c40135b86b59dc85f2c7fe5dbd20234" name="a6c40135b86b59dc85f2c7fe5dbd20234"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6c40135b86b59dc85f2c7fe5dbd20234">&#9670;&#160;</a></span>addExternalBuffer()</h2>
@@ -235,7 +235,7 @@ Public Attributes</h2></td></tr>
 
 <p>Function used to add an external buffer to the externalBuffersPerFifo map. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01539">1539</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01550">1550</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -264,9 +264,9 @@ Public Attributes</h2></td></tr>
 
 <p>Function to analyze cross-tile buffer allocations in splitFifos Returns a simple map of (ObjectFifoCreateOp, bool) indicating cross-tile issues. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00454">454</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00453">453</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00148">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00329">getOptionalLinkOp()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00158">objFifoLinks</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00155">splitFifos</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00328">getOptionalLinkOp()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00157">objFifoLinks</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00154">splitFifos</a>.</p>
 
 </div>
 </div>
@@ -318,9 +318,9 @@ Public Attributes</h2></td></tr>
 
 <p>Helper function to assign DMA channel indices for FIFOs based on cross-tile conditions. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01648">1648</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01660">1660</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00116">DMAChannelAnalysis::getDMAChannelIndex()</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00111">DMAChannelAnalysis::getDMAChannelIndex()</a>.</p>
 
 </div>
 </div>
@@ -366,11 +366,11 @@ Public Attributes</h2></td></tr>
 
 <p>Function to calculate total memory usage on a specific tile based on all buffers allocated to that tile from buffersPerFifo map. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00423">423</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00421">421</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00148">buffersPerFifo</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">buffersPerFifo</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -412,11 +412,11 @@ Public Attributes</h2></td></tr>
 <li>1 if it is that of the second input tile</li>
 </ul>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00294">294</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00293">293</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00169">isSharedMemory()</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00168">isSharedMemory()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00206">requiresDMAs()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00205">requiresDMAs()</a>.</p>
 
 </div>
 </div>
@@ -444,9 +444,9 @@ Public Attributes</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01172">1172</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01183">1183</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01180">unrollForLoops()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01191">unrollForLoops()</a>.</p>
 
 </div>
 </div>
@@ -517,11 +517,11 @@ Public Attributes</h2></td></tr>
 <p>Function used to create a MemOp region with a DMA channel. </p>
 <p>It uses creatBdBlock(), see there for lockMode input. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00821">821</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00832">832</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00148">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00722">findEndOpBlock()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00329">getOptionalLinkOp()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00158">objFifoLinks</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00733">findEndOpBlock()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00328">getOptionalLinkOp()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00157">objFifoLinks</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00801">createDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00812">createDMA()</a>.</p>
 
 </div>
 </div>
@@ -623,9 +623,9 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to create a Bd block. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00732">732</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00743">743</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00758">createBdBlock()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00769">createBdBlock()</a>.</p>
 
 </div>
 </div>
@@ -740,9 +740,9 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create a Bd block. </p>
 <p>If lockMode is 0 we create a consumerDMA (i.e. on producer tile) else a producerDMA (i.e. on consumer tile). </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00758">758</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00769">769</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00732">createBd()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00153">locksPerFifo</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00743">createBd()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00152">locksPerFifo</a>.</p>
 
 </div>
 </div>
@@ -818,9 +818,9 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function that either calls <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a10c4785cb8786ab6602a2d8427b881b3" title="Function used to create a MemOp region with a DMA channel.">createAIETileDMA()</a>, <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a6a921597c4b55f5596189f12e8b09f8e" title="Function used to create a ShimDMAOp region with a DMA channel.">createShimDMA()</a> or <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a120dece523054fe699f66bd9c79de8e8" title="Function used to create a MemTileDMAOp region with a DMA channel.">createMemTileDMA()</a> based on op tile row value. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00801">801</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00812">812</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00821">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00994">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00920">createShimDMA()</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00832">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01005">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00931">createShimDMA()</a>.</p>
 
 </div>
 </div>
@@ -897,11 +897,11 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create a MemTileDMAOp region with a DMA channel. </p>
 <p>It uses creatBdBlock(), see there for lockMode input. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00994">994</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01005">1005</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00148">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00722">findEndOpBlock()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00329">getOptionalLinkOp()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00158">objFifoLinks</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00733">findEndOpBlock()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00328">getOptionalLinkOp()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00157">objFifoLinks</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00801">createDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00812">createDMA()</a>.</p>
 
 </div>
 </div>
@@ -975,7 +975,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00343">343</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00342">342</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1045,7 +1045,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to generate, from an objectFifo with a shimTile endpoint, a shimDMAAllocationOp containing the channelDir, channelIndex and shimTile col assigned by the objectFifo lowering. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01616">1616</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01627">1627</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1098,9 +1098,9 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create objectFifo elements and their locks. </p>
 <p>It maps the input objectFifo to associated buffers and locks. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">547</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">546</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00148">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00423">calculateCurrentUsedMemory()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00356">createObjectFifoLocks()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00516">findOrCreateTile()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00329">getOptionalLinkOp()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00169">isSharedMemory()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00153">locksPerFifo</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00158">objFifoLinks</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00421">calculateCurrentUsedMemory()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00355">createObjectFifoLocks()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00514">findOrCreateTile()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00328">getOptionalLinkOp()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00168">isSharedMemory()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00152">locksPerFifo</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00157">objFifoLinks</a>.</p>
 
 </div>
 </div>
@@ -1171,11 +1171,11 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create objectFifo locks based on target architecture. </p>
 <p>Called by <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a08910a35d07da95580f3670b16a133d6" title="Function used to create objectFifo elements and their locks.">createObjectFifoElements()</a>. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00356">356</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00355">355</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00150">externalBuffersPerFifo</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00061">LockAnalysis::getLockID()</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00149">externalBuffersPerFifo</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00059">LockAnalysis::getLockID()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -1246,11 +1246,11 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create a ShimDMAOp region with a DMA channel. </p>
 <p>It uses creatBdBlock(), see there for lockMode input. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00920">920</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00931">931</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00150">externalBuffersPerFifo</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00722">findEndOpBlock()</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00149">externalBuffersPerFifo</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00733">findEndOpBlock()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00801">createDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00812">createDMA()</a>.</p>
 
 </div>
 </div>
@@ -1315,9 +1315,9 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create a UseLockOp based on input parameters. </p>
 <p>acc is an accumulator map that tracks the indices of the next locks to acquire (or release). Uses op to find index of acc for next lockID. Updates acc. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01458">1458</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01469">1469</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00083">xilinx::AIE::AIETargetModel::UsesSemaphoreLocks</a>.</p>
+<p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00084">xilinx::AIE::AIETargetModel::UsesSemaphoreLocks</a>.</p>
 
 </div>
 </div>
@@ -1369,7 +1369,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to detect all external buffers associated with parent objectFifo and tile then map them to child objectFifo. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01549">1549</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01560">1560</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1413,7 +1413,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01317">1317</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01328">1328</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>.</p>
 
@@ -1445,9 +1445,9 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function that returns a pointer to the block of a Region that contains the AIEEndOp. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00722">722</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00733">733</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00821">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00994">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00920">createShimDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00832">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01005">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00931">createShimDMA()</a>.</p>
 
 </div>
 </div>
@@ -1494,7 +1494,7 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to find the size of an objectFifo after split based on the maximum number of elements (of the original objectFifo) acquired by a process running on given tile. </p>
 <p>If no CoreOp exists for this tile return 0. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01577">1577</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01588">1588</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1551,14 +1551,13 @@ template&lt;typename MyOp &gt; </div>
 </div><div class="memdoc">
 
 <p>Helper function to find a tile at specific coordinates. </p>
-<p>If a tile is not found, it creates a new one and returns it. hostTile is the original tile from which we are searching for neighbors. we create the new tile below the hostTile <br  />
- </p>
+<p>If a tile is not found, it creates a new one and returns it. hostTile is the original tile from which we are searching for neighbors. we create the new tile below the hostTile </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00516">516</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00514">514</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -1588,9 +1587,9 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp, if it belongs to one. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00329">329</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00328">328</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00454">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00821">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00994">createMemTileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">createObjectFifoElements()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00206">requiresDMAs()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00453">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00832">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01005">createMemTileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">createObjectFifoElements()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00205">requiresDMAs()</a>.</p>
 
 </div>
 </div>
@@ -1641,11 +1640,11 @@ template&lt;typename MyOp &gt; </div>
 <li>0 is no memory module is shared. </li>
 </ul>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00169">169</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00168">168</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00294">checkAndApplyViaSharedMemAttribute()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">createObjectFifoElements()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00206">requiresDMAs()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00293">checkAndApplyViaSharedMemAttribute()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">createObjectFifoElements()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00205">requiresDMAs()</a>.</p>
 
 </div>
 </div>
@@ -1691,7 +1690,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to replace uses of split objectFifos. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01559">1559</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01570">1570</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1729,9 +1728,9 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00206">206</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00205">205</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00294">checkAndApplyViaSharedMemAttribute()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00329">getOptionalLinkOp()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00169">isSharedMemory()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00161">splitBecauseLink</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00293">checkAndApplyViaSharedMemAttribute()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00328">getOptionalLinkOp()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00168">isSharedMemory()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00160">splitBecauseLink</a>.</p>
 
 </div>
 </div>
@@ -1758,7 +1757,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01677">1677</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01697">1697</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>.</p>
 
@@ -1804,9 +1803,9 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01180">1180</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01191">1191</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01172">computeLCM()</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01183">computeLCM()</a>.</p>
 
 </div>
 </div>
@@ -1847,7 +1846,7 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to check whether op is already contained in map. </p>
 <p>If it is then return the associated int, if not create new entry and return 0. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01528">1528</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01539">1539</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1903,7 +1902,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01296">1296</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01307">1307</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1933,7 +1932,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to verify that an objectfifo is present in at most one ObjectFifoLinkOp. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01629">1629</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01640">1640</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1950,9 +1949,9 @@ template&lt;typename MyOp &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00148">148</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">147</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00454">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00423">calculateCurrentUsedMemory()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00821">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00994">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00453">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00421">calculateCurrentUsedMemory()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00832">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01005">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -1968,9 +1967,9 @@ template&lt;typename MyOp &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00150">150</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00149">149</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00356">createObjectFifoLocks()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00920">createShimDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00355">createObjectFifoLocks()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00931">createShimDMA()</a>.</p>
 
 </div>
 </div>
@@ -1986,9 +1985,9 @@ template&lt;typename MyOp &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00153">153</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00152">152</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00758">createBdBlock()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00769">createBdBlock()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -2004,9 +2003,9 @@ template&lt;typename MyOp &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00158">158</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00157">157</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00454">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00821">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00994">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00547">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00453">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00832">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01005">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00546">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -2022,9 +2021,9 @@ template&lt;typename MyOp &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00161">161</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00160">160</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00206">requiresDMAs()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00205">requiresDMAs()</a>.</p>
 
 </div>
 </div>
@@ -2040,9 +2039,9 @@ template&lt;typename MyOp &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00155">155</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00154">154</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00454">analyzeCrossTileFIFOBuffers()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00453">analyzeCrossTileFIFOBuffers()</a>.</p>
 
 </div>
 </div>
@@ -2052,7 +2051,7 @@ template&lt;typename MyOp &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Aug 14 2025 01:29:52 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Aug 14 2025 20:01:12 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
