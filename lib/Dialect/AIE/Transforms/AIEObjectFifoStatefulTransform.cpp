@@ -1863,9 +1863,10 @@ struct AIEObjectFifoStatefulTransformPass
                             true);
 
     // Then assign channel indices for FIFOs without cross-tile issues
-    assignDMAChannelIndices(
-        dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
-        false); //===------------------------------------------------------------------===//
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
+                            false);
+
+    //===------------------------------------------------------------------===//
     // Create flows and tile DMAs
     //===------------------------------------------------------------------===//
     // Only the objectFifos we split above require DMA communication; the others
