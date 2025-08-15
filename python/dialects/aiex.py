@@ -264,6 +264,7 @@ def shim_dma_single_bd_task(
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
+        packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
 
     Example:
         out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
