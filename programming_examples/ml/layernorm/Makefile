@@ -17,8 +17,8 @@ all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = layernorm
-rows = 16
-cols = 16
+rows = 64
+cols = 4096
 trace_size = 65536
 
 aie_py_src=${targetname}.py
