@@ -12,7 +12,7 @@
 extern "C" {
    void saxpy(bfloat16* x, bfloat16* y, bfloat16* z) {
        event0();
-       bfloat16 a = 3.141f;
+       bfloat16 a = 3;
        for (int i = 0; i < 4096; ++i) {
            z[i] = a * x[i] + y[i];
        }
