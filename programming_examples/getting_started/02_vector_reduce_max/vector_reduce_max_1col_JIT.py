@@ -24,7 +24,7 @@ from aie.helpers.util import np_ndarray_type_get_shape
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
 def saxpy(input0, output):
-    N = 4096 # Tensor size
+    N = 4096  # Tensor size
     element_type = output.dtype
 
     in_size = 524288
@@ -40,7 +40,6 @@ def saxpy(input0, output):
     num_iter = in_tensor_size // n_mem_elems
 
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
-
 
     # --------------------------------------------------------------------------
     # In-Array Data Movement
@@ -72,7 +71,6 @@ def saxpy(input0, output):
     )
     for i in range(n_cores):
         out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
-
 
     # --------------------------------------------------------------------------
     # Task each core will run
@@ -160,7 +158,6 @@ def saxpy(input0, output):
                 )
             )
 
-
     # --------------------------------------------------------------------------
     # DRAM-NPU data movement and work dispatch
     # --------------------------------------------------------------------------
@@ -170,7 +167,6 @@ def saxpy(input0, output):
         rt.start(*workers)
         rt.fill(of_in.prod(), a_in)
         rt.drain(out_fifos[0].cons(), c_out, wait=True)
-
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
@@ -201,7 +197,7 @@ def main():
     # Check the correctness of the result and print
     ref_max = 0
     for i in input0:
-        if (i > ref_max):
+        if i > ref_max:
             ref_max = i
 
     errors = 0

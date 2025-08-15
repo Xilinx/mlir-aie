@@ -26,10 +26,7 @@ from aie.iron.controlflow import range_
 # Configuration
 # --------------------------------------------------------------------------
 
-devices = {
-    "npu": NPU1Col1(),
-    "npu2": NPU2Col1()
-}
+devices = {"npu": NPU1Col1(), "npu2": NPU2Col1()}
 if len(sys.argv) != 2 or sys.argv[1] not in devices:
     print(f"Usage {sys.argv[0]} <{'|'.join(devices.keys())}>")
     sys.exit(1)
@@ -95,6 +92,7 @@ compute_max = Kernel(
 )
 min_val = np.array([bfloat16(float("-inf"))], dtype=dtype)
 
+
 def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
     nextC_buffer = LocalBuffer(
         type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
@@ -112,6 +110,7 @@ def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
         of_in.release(1)
     elem_out[0] = nextC_buffer[0]
     of_out.release(1)
+
 
 def core_body(of_in, of_out, in0, reduce_max_vector, compute_max):
     nextC_buffer = LocalBuffer(
@@ -134,6 +133,7 @@ def core_body(of_in, of_out, in0, reduce_max_vector, compute_max):
     compute_max(elem_in1, nextC_buffer, elem_out)
     in0.release(1)
     of_out.release(1)
+
 
 workers = []
 for i in range(n_cores):

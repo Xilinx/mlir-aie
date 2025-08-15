@@ -23,9 +23,8 @@ from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
 def saxpy(input0, input1, output):
-    N = 4096 # Tensor size
+    N = 4096  # Tensor size
     element_type = output.dtype
-
 
     # --------------------------------------------------------------------------
     # In-Array Data Movement
@@ -38,7 +37,6 @@ def saxpy(input0, input1, output):
     of_y = ObjectFifo(in_ty, name="y")
     of_z = ObjectFifo(out_ty, name="z")
 
-
     # --------------------------------------------------------------------------
     # Task each core will run
     # --------------------------------------------------------------------------
@@ -48,9 +46,10 @@ def saxpy(input0, input1, output):
 
     saxpy_kernel = ExternalFunction(
         "saxpy",
-        source_file="saxpy_vector.cc", 
+        source_file="saxpy_vector.cc",
         arg_types=[in_ty, in_ty, out_ty],
     )
+
     def core_body(of_x, of_y, of_z, saxpy_kernel):
         elem_x = of_x.acquire(1)
         elem_y = of_y.acquire(1)
@@ -59,8 +58,10 @@ def saxpy(input0, input1, output):
         of_x.release(1)
         of_y.release(1)
         of_z.release(1)
-    worker = Worker(core_body, fn_args=[of_x.cons(), of_y.cons(), of_z.prod(), saxpy_kernel])
 
+    worker = Worker(
+        core_body, fn_args=[of_x.cons(), of_y.cons(), of_z.prod(), saxpy_kernel]
+    )
 
     # --------------------------------------------------------------------------
     # DRAM-NPU data movement and work dispatch
@@ -72,7 +73,6 @@ def saxpy(input0, input1, output):
         rt.fill(of_x.prod(), a_x)
         rt.fill(of_y.prod(), a_y)
         rt.drain(of_z.cons(), c_z, wait=True)
-
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
