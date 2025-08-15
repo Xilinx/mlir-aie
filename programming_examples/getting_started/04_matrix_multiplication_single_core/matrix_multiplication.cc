@@ -96,5 +96,4 @@ void matrix_multiplication_scalar(const int16 *__restrict A, const int16 *__rest
         }
     }
 }
-
 }
