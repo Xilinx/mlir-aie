@@ -8,16 +8,13 @@ This design consists of the following:
 
 * `saxpy.py`: The NPU design for this application,
   which describes which cores of the NPU we will use, how to route data between
-  cores, and what program to run on each core.
+  cores, and what program to run on each core. This design leverages the IRON
+  JIT decorator to compile the design into a binary to run on the NPU.
 * `saxpy_scalar_baseline.cc`: A C++ scalar SAXPY kernel.
 * `saxpy_vector.cc`: A C++ vectorized kernel that exposes efficient 
   vector operations on the AI Engine using the 
   [AIE API](https://xilinx.github.io/aie_api/index.html).
-* `test.cpp`: A program that runs on the CPU (host) to dispatch our design to 
-  run on the NPU, calculates a correct reference output, verifies and times
-  our NPU design's execution.
-* `Makefile`: Contains the compilation instructions for the constituent
-  parts of this design. Study it to see how the pieces are assembled together.
+* `run.lit`: lit test that runs the design on different NPU devices.
 
 ## Data Movement and Compute
 
