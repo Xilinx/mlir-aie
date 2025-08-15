@@ -87,11 +87,6 @@ for i in range(n_cores):
 # Task each core will run
 # --------------------------------------------------------------------------
 
-# The kernel repeatedly acquires one subtile of A and B, multiplies them,
-# and accumulates the result on top of C. As these tiles come in, the DMAs
-# will have rearranged them into r*s-, s*t-, and r*t-sized subtiles, which
-# the computation kernel relies on.
-
 reduce_max_vector = Kernel(
     f"reduce_max_vector_bfloat16", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
 )
@@ -174,11 +169,6 @@ for i in range(n_cores):
 # --------------------------------------------------------------------------
 # DRAM-NPU data movement and work dispatch
 # --------------------------------------------------------------------------
-
-# The data movement patterns from DRAM divide the input matrices (sizes 
-# M*K, K*N) into m*k- and k*n-sized subtiles and produce output into C in
-# m*n-sized subtiles. Each single "task group" encompasses all data
-# movement required for a single row of the output matrix.
 
 rt = Runtime()
 with rt.sequence(in_ty, out_ty) as (a_in, c_out):

@@ -16,6 +16,11 @@ from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 
 
+# JIT decorator for IRON
+# Decorator to compile an IRON kernel into a binary to run on the NPU.
+# Parameters:
+#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
+#     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
 def saxpy(input0, input1, output):
     N = 4096 # Tensor size
