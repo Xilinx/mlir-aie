@@ -3,14 +3,6 @@ name = "mlir-aie"
 version = "1.0.3"
 description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
 readme = "README.md"
-depependencies = [
-    "PyYAML>=6.0.2",
-    "aiofiles",
-    "dataclasses>=0.6, <=0.8",
-    "numpy>=1.19.5, <2.0",
-    "rich",
-    "ml_dtypes",
-]
 requires-python = ">=3.8"
 
 [tool.cibuildwheel]
