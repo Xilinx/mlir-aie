@@ -996,7 +996,8 @@ class FlowRunner:
         )
         run_passes(
             f"builtin.module(aie.device(convert-aie-to-control-packets{{"
-            + f"device-name={device_name} elf-dir={self.tmpdirname}}}))",
+            + f"device-name={device_name} elf-dir={self.tmpdirname}}}, "
+            + f"aie-txn-to-ctrl-packet, aie-legalize-ctrl-packet))",
             module_str,
             file_ctrlpkt_mlir,
             self.opts.verbose,
