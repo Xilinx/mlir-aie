@@ -490,6 +490,22 @@ static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
   return isa<FloatType>(scalarType) && laneSize == 16 && elWidth == 16;
 }
 
+static bool matchTanhOpForLUT(math::TanhOp tanhOp) {
+  auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
+  if (!srcType)
+    return false;
+
+  Type scalarType = srcType.getElementType();
+  if (!isa<FloatType>(scalarType))
+    return false;
+
+  unsigned laneSize = getVectorLaneSize(srcType);
+  unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+  if (elWidth != 16 || laneSize != 16)
+    return false;
+
+  return true;
+}
 //===----------------------------------------------------------------------===//
 // Rewrite patterns
 //===----------------------------------------------------------------------===//
@@ -2062,6 +2078,30 @@ struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
   }
 };
 
+struct ComputeTanhOpByLUTLLVMPattern : OpConversionPattern<math::TanhOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!matchTanhOpForLUT(tanhOp))
+      return failure();
+
+    StringRef funcName = "getTanhBf16";
+    auto moduleOp = tanhOp->getParentOfType<mlir::ModuleOp>();
+    VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
+
+    func::FuncOp fn_op =
+        getOrInsertFuncDecl(rewriter, moduleOp, funcName, TypeRange{v16bf16Ty},
+                            TypeRange{v16bf16Ty});
+
+    rewriter.setInsertionPoint(tanhOp);
+    SmallVector<Value> tanhOperands = {adaptor.getOperand()};
+    rewriter.replaceOpWithNewOp<func::CallOp>(tanhOp, fn_op, tanhOperands);
+
+    return success();
+  }
+};
 // Convert math.tanh to a function call to compute tanh(x) by look up tables
 struct ComputeTanhOpByLUTPattern : OpConversionPattern<math::TanhOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -2069,17 +2109,7 @@ struct ComputeTanhOpByLUTPattern : OpConversionPattern<math::TanhOp> {
   LogicalResult
   matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
-    if (!srcType)
-      return failure();
-
-    Type scalarType = srcType.getElementType();
-    if (!isa<FloatType>(scalarType))
-      return failure();
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    if (elWidth != 16 || laneSize != 16)
+    if (!matchTanhOpForLUT(tanhOp))
       return failure();
 
     StringRef includeName = "lut_based_ops.h";
@@ -3093,6 +3123,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
         ComputeExpOpByLUTPattern,
+        ComputeTanhOpByLUTPattern,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
@@ -3100,12 +3131,12 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
-      ComputeExpOpByLUTLLVMPattern
+      ComputeExpOpByLUTLLVMPattern,
+      ComputeTanhOpByLUTLLVMPattern
       >(patterns.getContext());
   }
   patterns.add<
       ComputeInvOpByLUTPattern,
-      ComputeTanhOpByLUTPattern,
       ComputeSqrtOpPattern,
       ComputeRsqrtOpPattern,
       ComputeErfOpPattern,
