@@ -3,7 +3,8 @@ name = "mlir-aie"
 version = "1.0.3"
 description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
+dynamic = ["dependencies"]
 
 [tool.cibuildwheel]
 build-verbosity = 3
