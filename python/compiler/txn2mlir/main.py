@@ -11,6 +11,7 @@ from aie.dialects.aie import *
 
 import argparse
 
+
 def main():
     # Parse arguments
     parser = argparse.ArgumentParser()
