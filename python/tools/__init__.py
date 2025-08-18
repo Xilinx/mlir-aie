@@ -30,7 +30,7 @@ def __dir__() -> list[str]:
     return __all__
 
 
-MLIR_AIE_BIN_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "bin")
+MLIR_AIE_BIN_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "bin")
 assert os.path.isdir(MLIR_AIE_BIN_DIR), "MLIR-AIE tools directory does not exist"
 
 
