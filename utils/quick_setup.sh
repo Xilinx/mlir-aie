@@ -87,7 +87,7 @@ python3 -m ipykernel install --user --name ironenv
 venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'`
 echo ${MLIR_AIE_INSTALL_DIR}/python > $venv_site_packages/mlir-aie.pth
 
-# Setup environment and add tools to PATHs
+# Setup environment
 source utils/env_setup.sh
 
 pushd programming_examples

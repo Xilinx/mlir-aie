@@ -1,16 +1,16 @@
 #!/bin/bash
 ##===- utils/env_setup.sh - Setup mlir-aie env to compile IRON designs --*- Script -*-===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
 ##===----------------------------------------------------------------------===##
 #
 # This script sets up the environment to compile IRON designs.
 # The script will download and set up mlir-aie and llvm-aie (peano).
-# 
-# source env_setup.sh [--force-install] <mlir-aie install dir> 
+#
+# source env_setup.sh [--force-install] <mlir-aie install dir>
 #                                      <llvm-aie/peano install dir>
 #
 # e.g. source env_setup.sh /scratch/mlir-aie/install /scratch/llvm-aie/install
@@ -25,6 +25,7 @@ fi
 
 if [ "$#" -ge 1 ]; then
     export MLIR_AIE_INSTALL_DIR=`realpath $1`
+    export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH}
     FORCE_INSTALL=0
 else
     export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie 2>/dev/null | grep ^Location: | awk '{print $2}')/mlir_aie"
@@ -63,7 +64,6 @@ else
     export NPU2=0
 fi
 
-export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH} 
 export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
 export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
 
