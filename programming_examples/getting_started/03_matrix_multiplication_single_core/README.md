@@ -23,6 +23,7 @@ This design consists of the following:
   our NPU design's execution.
 * `Makefile`: Contains the compilation instructions for the constituent
   parts of this design. Study it to see how the pieces are assembled together.
+* `run_*.lit`: lit tests that run the design on different NPU devices.
 
 ## Problem Size, Tile Size and Intrinsic Size
 
