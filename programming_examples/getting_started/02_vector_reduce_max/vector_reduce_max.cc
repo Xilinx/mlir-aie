@@ -25,8 +25,6 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   V after_vector;
   V running_max = tiny;
 
-  assert(input_size / VECTOR_SIZE >= 8);
-
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(8)
   for (int32_t i = 0; i < input_size; i += VECTOR_SIZE) {
