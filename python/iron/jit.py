@@ -253,7 +253,11 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         target_arch: Target architecture (e.g., "aie2" or "aie2p")
     """
     # Check if we can reuse a cached object file
-    if hasattr(func, "_cache_key") and func._cache_key in func._cache:
+    if (
+        hasattr(func, "_cache_key")
+        and func._cache_key
+        and func._cache_key in func._cache
+    ):
         cached_info = func._cache[func._cache_key]
         cached_object_file = cached_info["object_file_name"]
 
@@ -320,7 +324,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         )
 
         # Only add to cache after successful compilation
-        if hasattr(func, "_cache_key"):
+        if hasattr(func, "_cache_key") and func._cache_key:
             # Store both object file name and source directory for future copying
             func.add_to_cache(func._cache_key, func._object_file_name, kernel_dir)
 

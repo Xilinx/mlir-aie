@@ -95,7 +95,7 @@ class ExternalFunction(BaseKernel):
 
         Args:
             name (str): The name of the function
-            object_file_name (str, optional): The name of the object file. If None, it will be name.o.
+            object_file_name (str, optional): The name of the object file. If None, it will be name.o. If provided, this bypasses all caching mechanisms and uses the exact filename specified.
             source_file (str): Path to the C/C++ source file
             source_string (str): C/C++ source code as a string
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
@@ -107,16 +107,18 @@ class ExternalFunction(BaseKernel):
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
 
-        # Generate a hash-based cache key for this function
-        self._cache_key = self._generate_cache_key()
-
-        # Check if we can reuse a cached object file
-        if self._cache_key in ExternalFunction._cache:
-            cached_info = ExternalFunction._cache[self._cache_key]
-            self._object_file_name = cached_info["object_file_name"]
+        # If object_file_name is provided, bypass caching entirely
+        if object_file_name:
+            self._object_file_name = object_file_name
+            self._cache_key = None  # No cache key needed when bypassing cache
         else:
-            if object_file_name:
-                self._object_file_name = object_file_name
+            # Generate a hash-based cache key for this function
+            self._cache_key = self._generate_cache_key()
+
+            # Check if we can reuse a cached object file
+            if self._cache_key in ExternalFunction._cache:
+                cached_info = ExternalFunction._cache[self._cache_key]
+                self._object_file_name = cached_info["object_file_name"]
             else:
                 # We never compile the code object until we resolve the ExternalFunction
                 # so we use the cache key as the object file name to avoid having two object files or
