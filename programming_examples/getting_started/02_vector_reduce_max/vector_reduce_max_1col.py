@@ -85,10 +85,10 @@ for i in range(n_cores):
 # --------------------------------------------------------------------------
 
 reduce_max_vector = Kernel(
-    f"reduce_max_vector_bfloat16", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
+    f"reduce_max_vector_bfloat16", "vector_reduce_max.o", [op_ty, out_ty, np.int32]
 )
 compute_max = Kernel(
-    f"compute_max_bfloat16", "reduce_max.cc.o", [out_ty, out_ty, out_ty]
+    f"compute_max_bfloat16", "vector_reduce_max.o", [out_ty, out_ty, out_ty]
 )
 min_val = np.array([bfloat16(float("-inf"))], dtype=dtype)
 
