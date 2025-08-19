@@ -39,9 +39,9 @@ class ObjectFifo(Resolvable):
 
     def __init__(
         self,
-        name: str | None = None,
-        depth: int | None = 2,
         obj_type: type[np.ndarray],
+        depth: int | None = 2,
+        name: str | None = None,
         dims_to_stream: list[Sequence[int]] | None = None,
         dims_from_stream_per_cons: list[Sequence[int]] | None = None,
         plio: bool = False,
@@ -512,9 +512,9 @@ class ObjectFifoHandle(Resolvable):
         for i in range(num_subfifos):
             subfifos.append(
                 ObjectFifo(
+                    obj_types[i],
                     name=names[i],
                     depth=depths[i],
-                    obj_types[i],
                     dims_to_stream=dims_to_stream[i],
                     plio=plio,
                 )
@@ -594,9 +594,9 @@ class ObjectFifoHandle(Resolvable):
         for i in range(num_subfifos):
             subfifos.append(
                 ObjectFifo(
+                    obj_types[i],
                     name=names[i],
                     depth=depths[i],
-                    obj_types[i],
                     dims_to_stream=dims_to_stream[i],
                     dims_from_stream_per_cons=dims_from_stream[i],
                     plio=plio,
