@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime
+from itertools import chain
 from pathlib import Path
 from pprint import pprint
 from textwrap import dedent
@@ -13,6 +14,8 @@ from typing import Union
 from importlib_metadata import files
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.command.develop import develop
+from setuptools.command.install import install
 
 
 def check_env(build, default=0):
@@ -232,6 +235,30 @@ class CMakeBuild(build_ext):
         )
 
 
+pth_file = Path(__file__) / "aie.pth"
+
+
+class DevelopCommand(develop):
+    """Customized setuptools install command - copies .pth file."""
+
+    def run(self):
+        super().run()
+        self.copy_file(pth_file, os.path.join(self.install_dir, "aie.pth"))
+
+
+class InstallCommand(install):
+    """Customized setuptools install command - copies .pth file."""
+
+    def run(self):
+        super().run()
+        dest = os.path.join(self.install_dir, "aie.pth")
+        self.copy_file(pth_file, dest)
+        self.outputs = [dest]
+
+    def get_outputs(self):
+        return chain(install.get_outputs(self), self.outputs)
+
+
 commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
 release_version = "0.0.1"
 now = datetime.now()
@@ -247,11 +274,15 @@ MLIR_AIE_SOURCE_DIR = Path(
     )
 ).absolute()
 
+
 def parse_requirements(filename):
     with open(filename) as f:
         lines = f.read().splitlines()
         # Remove comments and empty lines
-        return [line.strip() for line in lines if line.strip() and not line.startswith('#')]
+        return [
+            line.strip() for line in lines if line.strip() and not line.startswith("#")
+        ]
+
 
 setup(
     version=version,
@@ -261,12 +292,12 @@ setup(
     description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
     long_description=dedent(
         """\
-        This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for Xilinx Versal 
-        AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the 
-        device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is 
-        included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with 
-        convenient low-level access to devices and enable the development of a wide variety of programming models 
-        from higher level abstractions.  As such, although it contains some examples, this project is not intended to 
+        This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for Xilinx Versal
+        AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the
+        device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is
+        included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with
+        convenient low-level access to devices and enable the development of a wide variety of programming models
+        from higher level abstractions.  As such, although it contains some examples, this project is not intended to
         represent end-to-end compilation flows or to be particularly easy to use for system design.
         """
     ),
@@ -274,8 +305,14 @@ setup(
     # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
     # actually build the wheel.
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
-    cmdclass={"build_ext": CMakeBuild},
+    cmdclass={
+        "build_ext": CMakeBuild,
+        "develop": DevelopCommand,
+        "install": InstallCommand,
+    },
     zip_safe=False,
     python_requires=">=3.10",
-    install_requires=parse_requirements(Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"),
+    install_requires=parse_requirements(
+        Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
+    ),
 )
