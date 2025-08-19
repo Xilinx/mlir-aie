@@ -27,6 +27,7 @@ print(module)
 from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx
 
+
 def mlir_aie_design():
 
     @device(AIEDevice.npu1)

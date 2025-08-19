@@ -196,7 +196,7 @@ public:
         AIE::PacketInfoAttr controller_id_attr =
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
         uint32_t data = controller_id_attr.getPktId() << 8;
-        uint32_t mask = 0x00000F00;
+        uint32_t mask = 0x00001F00;
         rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset, data, mask,
                                           nullptr, nullptr, nullptr);
       }
