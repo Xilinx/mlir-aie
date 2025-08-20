@@ -37,7 +37,6 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
     # Chunk size sent per DMA channel
     chunk = size // num_columns // num_channels
 
-
     # --------------------------------------------------------------------------
     # In-Array Data Movement
     # --------------------------------------------------------------------------
