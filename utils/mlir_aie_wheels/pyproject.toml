@@ -54,6 +54,7 @@ before-build = [
 
 [build-system]
 requires = ["setuptools", "nanobind"]
+build-backend = "setuptools.build_meta"
 
 [project.scripts]
 aie-lsp-server = "aie.tools:aie_lsp_server"
