@@ -43,56 +43,71 @@ const int32_t SMIN = 128;
 //     ch/8 is channels divided by 8 but we only process 16 channels so ch/8=2
 //
 // Output - ch/8 t/8 t8 c8 --> 2 2 8 8
-//         
+//
 //*****************************************************************************
-void conv2dk14_i8_scalar(int8_t *input, int8_t *kernels, int8_t *output, 
-                        const int32_t input_width, const int32_t input_channels,
-                        const int32_t output_channels, 
-                        const int32_t kernel_width, const int scale) {
+void conv2dk14_i8_scalar(int8_t *input, int8_t *kernels, int8_t *output,
+                         const int32_t input_width,
+                         const int32_t input_channels,
+                         const int32_t output_channels,
+                         const int32_t kernel_width, const int scale) {
   event0();
 
   int oc, oc8, nt, pix, nt8, p2;
 
-  int32_t sum;
-  int sum_srs;
   int in_indx = 0;
   int wts_indx = 0;
   int out_indx = 0;
 
-//  int num_tiles = input_width/kernel_width; // 16*14 / 14 = 16
-  int num_tiles = 16; 
+  const int num_tiles = 16; // input_width/kernel_width; // 16*14 / 14 = 16
 
-  for (oc = 0; oc < output_channels/8; oc++) { // 16 out of 1152
-    for (oc8 = 0; oc8 < 8; oc8++) { 
-      for (nt = 0; nt < num_tiles/8; nt++) { // 16 out of 4096
-        for (nt8 = 0; nt8 < 8 ; nt8++) {
-          sum = 0;
-          for (pix = 0; pix < kernel_width*kernel_width/2; pix++) { // 196
+  const int output_channelsT = 16;
+  const int output_channels_8 = output_channels / 8;
+  const int kernel_widthT = 14;
+  const int num_tiles_8 = num_tiles / 8;
+  const int num_pix_2 = 98; // kernel_width*kernel_width/2;
+
+  for (oc = 0; oc < output_channels_8; oc++) { // 16 out of 1152
+    for (oc8 = 0; oc8 < 8; oc8++) {
+      for (nt = 0; nt < num_tiles_8; nt++) { // 16 out of 4096
+        for (nt8 = 0; nt8 < 8; nt8++) {
+          int sum = 0;
+          int sum_srs = 0;
+          // for (pix = 0; pix < kernel_widthT*kernel_widthT/2; pix++) { // 196
+          for (pix = 0; pix < num_pix_2; pix++) { // 196
             for (p2 = 0; p2 < 2; p2++) {
 
-              in_indx = ((nt*(num_tiles/8)*8*2) + (pix*8*2) + (nt8*2) + p2)*4;
-              wts_indx = ((oc*98*2*8) + (pix*2*8) + (p2*8) + oc8)*4;
-              sum += input[in_indx] * kernels[wts_indx]
-                     + input[in_indx+1] * kernels[wts_indx+1]
-                     + input[in_indx+2] * kernels[wts_indx+2];
+              // in_indx = ((nt*(num_tiles/8)*8*2) + (pix*8*2) + (nt8*2) +
+              // p2)*4;
+              in_indx =
+                  ((nt * num_pix_2 * 8 * 2) + (pix * 8 * 2) + (nt8 * 2) + p2) *
+                  4;
+              wts_indx =
+                  ((oc * num_pix_2 * 2 * 8) + (pix * 2 * 8) + (p2 * 8) + oc8) *
+                  4;
+              // sum += input[in_indx] * kernels[wts_indx]
+              //        + input[in_indx+1] * kernels[wts_indx+1]
+              //        + input[in_indx+2] * kernels[wts_indx+2];
+              sum += input[in_indx] * kernels[wts_indx];
+              // sum += input[in_indx+1] * kernels[wts_indx+1];
+              // sum += input[in_indx+2] * kernels[wts_indx+2];
             }
           }
           sum_srs = (sum + (1 << (scale - 1))) >> scale;
-          sum_srs = (sum_srs > SMAX) ? SMAX : (sum_srs < -SMIN) ? -SMIN : sum_srs;
-          out_indx = (oc*(num_tiles/8)*8*8) + (nt*8*8) + (nt8*8) + oc8;
+          sum_srs = (sum_srs > SMAX)    ? SMAX
+                    : (sum_srs < -SMIN) ? -SMIN
+                                        : sum_srs;
+          out_indx =
+              (oc * (num_tiles / 8) * 8 * 8) + (nt * 8 * 8) + (nt8 * 8) + oc8;
           output[out_indx] = sum_srs;
-          // output[out_indx] = SMAX;        
         }
       }
     }
   }
-  // output[0] = 0;        
 
   event1();
 }
 
 #else // UINT8_ACT
-
 
 #endif // UINT8_ACT
 
@@ -115,76 +130,87 @@ void conv2dk14_i8_scalar(int8_t *input, int8_t *kernels, int8_t *output,
 //     ch/8 is channels divided by 8 but we only process 16 channels so ch/8=2
 //
 // Output - ch/8 t/8 t8 c8 --> 2 2 8 8
-//         
+//
 //*****************************************************************************
-void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output, 
-                        const int32_t input_width, const int32_t input_channels,
-                        const int32_t output_channels, 
-                        const int32_t kernel_width, const int scale) {
+void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
+                         const int32_t input_width,
+                         const int32_t input_channels,
+                         const int32_t output_channels,
+                         const int32_t kernel_width, const int scale) {
   event0();
 
   // Compute
   using MMUL8x8x8 = aie::mmul<8, 8, 8, int8, int8>;
   ::aie::set_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
+  // ::aie::set_rounding(
+  //     aie::rounding_mode::positive_inf); // Needed to saturate properly to
+  //     uint8
   ::aie::set_rounding(
-      aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
+      aie::rounding_mode::symmetric_inf); // Needed to saturate properly to int8
 
   // constexpr unsigned VecFactor = 16;
 
   aie::vector<int8, 64> zero64 = aie::zeros<int8, 64>();
 
   MMUL8x8x8 acc1 = aie::zeros<acc32, 64>();
+  aie::vector<int8, 64> maxv = aie::broadcast<int8, 64>(127);
 
   int ch_div_2 = 2;
   int pixels_div_2 = 98; // kernel_width * kernel_width / 2; // 14*14/2 = 98
   int tiles_div_8 = 2;
 
-  for (int k = 0; k < ch_div_2; k++) {
-    for (int j = 0; j < tiles_div_8; j++) {
+  int8_t *in_ptr = input;
+  int8_t *k_ptr = kernels;
+  int8_t *out_ptr = output;
+
+  for (int k = 0; k < ch_div_2; k++) {      // 2
+    for (int j = 0; j < tiles_div_8; j++) { // 2
       AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_MIN_ITERATION_COUNT(98)
       // AIE_LOOP_UNROLL_FULL
-      for (int i = 0; i < pixels_div_2; i++) {
-        auto tmp_a1 = aie::load_v<64>(input); // 8 tiles x 2 pixels
-        input += 64;
-        auto tmp_a2 = aie::load_v<64>(kernels); // 2 pixels x 8 channels
-        kernels += 64;
+      for (int i = 0; i < pixels_div_2; i++) { // 98
+        auto tmp_a1 = aie::load_v<64>(in_ptr); // 8 tiles x 2 pixels
+        in_ptr += 64;
+        auto tmp_a2 = aie::load_v<64>(k_ptr); // 2 pixels x 8 channels
+        k_ptr += 64;
         acc1.mac(tmp_a1, tmp_a2); // 8 tiles x 8 channels (for 2 pixels)
       }
       aie::vector<int8, 64> o1 = acc1.to_vector<int8>(scale);
-      aie::store_v(output, o1);
-      output += 64;
+      // aie::vector<int8, 64> o1 = acc1.to_vector<int8>(10);
+      aie::store_v(out_ptr, o1);
+      // aie::store_v(out_ptr, maxv);
+      out_ptr += 64;
       acc1 = aie::zeros<acc32, 64>();
-      kernels -= 64*pixels_div_2;
+      k_ptr -= 64 * pixels_div_2;
     }
-    kernels += 64*pixels_div_2;
+    k_ptr += 64 * pixels_div_2;
+    in_ptr -= tiles_div_8 * 64 * pixels_div_2;
   }
-  
 
   event1();
 }
-
 
 // //*****************************************************************************
 // // conv2d 3x3 - vector
 // // act: int8, wts: int8, out: uint8
 // //*****************************************************************************
 // void conv2dk14_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
-//                         int8_t *wts, uint8_t *output, const int32_t input_width,
-//                         const int32_t input_channels,
-//                         const int32_t output_channels,
-//                         const int32_t kernel_width, const int32_t kernel_height,
-//                         const int32_t check, const int scale,
-//                         const int channel_offset) {
+//                         int8_t *wts, uint8_t *output, const int32_t
+//                         input_width, const int32_t input_channels, const
+//                         int32_t output_channels, const int32_t kernel_width,
+//                         const int32_t kernel_height, const int32_t check,
+//                         const int scale, const int channel_offset) {
 //   event0();
 
 //   // Compute
 //   using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
 //   ::aie::set_saturation(
-//       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
+//       aie::saturation_mode::saturate); // Needed to saturate properly to
+//       uint8
 //   ::aie::set_rounding(
-//       aie::rounding_mode::positive_inf); // Needed to saturate properly to uint8
+//       aie::rounding_mode::positive_inf); // Needed to saturate properly to
+//       uint8
 
 //   constexpr unsigned VecFactor = 16;
 
@@ -305,12 +331,13 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 //         // AIE_LOOP_UNROLL_FULL
 //         for (int i = kernel_height_start; i < kernel_height_end; i++) {
 //           // aie::vector<int8, 32> tmp_a1, tmp_a2;
-//           // Load input data [a0 a1 a2 a3 a4 a5 a6 a7] where each position has
+//           // Load input data [a0 a1 a2 a3 a4 a5 a6 a7] where each position
+//           has
 //           // data for 8 channels
 //           auto tmp_a1 = aie::load_v<32>(line[i]);
-//           line[i] += 32;                          // act 0..3 (ic0..7 for each)
-//           auto tmp_a2 = aie::load_v<32>(line[i]); // act 4..7 (ic0..7 for each)
-//           auto in_a = aie::concat(tmp_a1, tmp_a2);
+//           line[i] += 32;                          // act 0..3 (ic0..7 for
+//           each) auto tmp_a2 = aie::load_v<32>(line[i]); // act 4..7 (ic0..7
+//           for each) auto in_a = aie::concat(tmp_a1, tmp_a2);
 
 // #ifdef BORDER_REPLICATE
 //           tmp_a1 = aie::shuffle_up(tmp_a1, 24);
@@ -318,7 +345,8 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 // #else
 //           tmp_a = aie::zeros<int8, 64>();
 // #endif
-//           // Shift right 1 input (8 channels) [- a0 a1 a2 a3 a4 a5 a6] where -
+//           // Shift right 1 input (8 channels) [- a0 a1 a2 a3 a4 a5 a6] where
+//           -
 //           // is either a0 or 0's
 //           in_a = aie::shuffle_up_fill(in_a, tmp_a, 8);
 
@@ -330,7 +358,8 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 //           // prev_a[i] = aie::shuffle_up(prev_a[i], 24); // Shift right
 //           // (4-1)*8
 
-//           // For kernel width, we load 64 weights (8 ics x 8 ocs) and multiply
+//           // For kernel width, we load 64 weights (8 ics x 8 ocs) and
+//           multiply
 //           // it with the act buffer. acc[32] += in_a[32] * wts[64] We then
 //           // shift the buffer left by 1 data position (8 channels).
 //           // AIE_LOOP_UNROLL_FULL
@@ -409,7 +438,8 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 //               aie::vector<int8, 64> wtsVec = aie::load_v<64>(wtsLine[i]);
 //               wtsLine[i] += 64;
 
-//               // auto prev = prev_a[i].extract<32>(1);                  // prev
+//               // auto prev = prev_a[i].extract<32>(1);                  //
+//               prev
 //               // = x0..x3(ci0..ci7)
 //               auto prev = aie::load_v<32>((line[i] - 32));
 //               auto curr = aie::load_v<32>((line[i]));
@@ -434,7 +464,8 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
 //                 acc_tmp[x].mac(tmp3.extract<32>(0), wtsVec);
 //               }               // for(int x=0; x<8; x++)
-//               line[i] -= 320; // (8+2)*32, Reset line buffer ptr to beginning of
+//               line[i] -= 320; // (8+2)*32, Reset line buffer ptr to beginning
+//               of
 //                               // line (after first 4)
 //             }                 // for(int j=0; j<kernel_width;j++) {
 //             wtsLine[i] += ((kernel_height - 1) * kernel_width *
@@ -442,7 +473,8 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 //             line[i] += (iw * 8); // Increment to next ic/8 position (reset at
 //                                  // end of outermost loop)
 
-//           } // for(int i=kernel_height_start; i<kernel_height_end; i++) { // 1
+//           } // for(int i=kernel_height_start; i<kernel_height_end; i++) { //
+//           1
 //             // to 3
 //         }   // for(int ic=0; ic<(input_channels/8); ic++) {
 //         for (int x = 0; x < 8; x++) {
@@ -462,14 +494,16 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 //            32); // Shift past remainder output and left section of next oc/8
 //     }           //     for(int oc=0; oc<(output_channels/8); oc++) {
 
-//     // Reset weights and line buffers for last section of middle (or right side
+//     // Reset weights and line buffers for last section of middle (or right
+//     side
 //     // it there is no last section)
 //     for (int i = kernel_height_start; i < kernel_height_end; i++) {
 //       wtsLine[i] -= (output_channels / 8) * (input_channels / 8) *
 //                     kernel_width * kernel_height *
 //                     64; // kernel_width*kernel_height*8*8
 //       // TODO line already shifted back to next data
-//       line[i] += iw_32 * 256; // 8*4*8, shift to beginnign of secondary loop }
+//       line[i] += iw_32 * 256; // 8*4*8, shift to beginnign of secondary loop
+//       }
 //     }
 //     output -= (output_channels / 8) * (iw * 8) - (iw_32 * 32); // 32 = 4*8
 
@@ -486,7 +520,8 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 //             // New weight every kernel_width
 //             aie::vector<int8, 64> wtsVec = aie::load_v<64>(wtsLine[i]);
 //             wtsLine[i] += 64;
-//             // auto prev = prev_a[i].extract<32>(1);                  // prev =
+//             // auto prev = prev_a[i].extract<32>(1);                  // prev
+//             =
 //             // x0..x3(ci0..ci7)
 //             auto prev = aie::load_v<32>((line[i] - 32));
 //             auto curr = aie::load_v<32>((line[i]));
@@ -503,7 +538,8 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 //                   tmp1, tprev, 8); // curr      = x3..x6(ci0..ci7)
 //               auto tmp3 = aie::shuffle_down(
 //                   tmp2,
-//                   j * 8); // curr      = x3..x6(ci0..ci7) to x5..x8(ci0..ci7)ss
+//                   j * 8); // curr      = x3..x6(ci0..ci7) to
+//                   x5..x8(ci0..ci7)ss
 
 //               prev = curr;
 //               curr = next;
@@ -513,15 +549,18 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 //               acc_tmp[x].mac(tmp3.extract<32>(0), wtsVec);
 //             }
 //             line[i] -=
-//                 (iw_32_rem + 2) * 32; // Reset line buffer ptr to beginning of
+//                 (iw_32_rem + 2) * 32; // Reset line buffer ptr to beginning
+//                 of
 //                                       // line (after first 4)
 //           }                           //  for(int j=0; j<kernel_width;j++)
 //           wtsLine[i] += ((kernel_height - 1) * kernel_width *
 //                          64);  // Move to next ic/8 position
-//           line[i] += (iw * 8); // Increment to next ic/8 position (reset at end
+//           line[i] += (iw * 8); // Increment to next ic/8 position (reset at
+//           end
 //                                // of outermost loop)
 //         } // for(int i=kernel_height_start; i<kernel_height_end; i++)
-//         // For next 8 input channels, line buffer and weights are automatically
+//         // For next 8 input channels, line buffer and weights are
+//         automatically
 //         // incremented to the right offset
 //       } // for(int ic=0; ic<(input_channels/8); ic++)
 //       // Write output from accumulator
@@ -629,18 +668,17 @@ extern "C" {
 
 #ifdef INT8_ACT
 
-void conv2dk14_i8(int8_t *input, int8_t *kernels, int8_t *output, 
+void conv2dk14_i8(int8_t *input, int8_t *kernels, int8_t *output,
                   const int32_t input_width, const int32_t input_channels,
-                  const int32_t output_channels, 
-                  const int32_t kernel_width, const int scale) {
-  conv2dk14_i8_scalar(input, kernels, output,
-                     input_width, input_channels, output_channels, 
-                     kernel_width, scale);
+                  const int32_t output_channels, const int32_t kernel_width,
+                  const int scale) {
+  conv2dk14_i8_scalar(input, kernels, output, input_width, input_channels,
+                      output_channels, kernel_width, scale);
 }
 
 #else // UINT8_ACT
 
-// void conv2dk14_ui8(uint8_t *input, int8_t *kernels, uint8_t *output, 
+// void conv2dk14_ui8(uint8_t *input, int8_t *kernels, uint8_t *output,
 //                   const int32_t input_width, const int32_t input_channels,
 //                   const int32_t output_channels, const int scale) {
 //   conv2dk14_ui8_scalar(input, kernels, output,
@@ -653,18 +691,17 @@ void conv2dk14_i8(int8_t *input, int8_t *kernels, int8_t *output,
 
 #ifdef INT8_ACT
 
-void conv2dk14_i8(int8_t *input, int8_t *kernels, int8_t *output, 
+void conv2dk14_i8(int8_t *input, int8_t *kernels, int8_t *output,
                   const int32_t input_width, const int32_t input_channels,
-                  const int32_t output_channels, 
-                  const int32_t kernel_width, const int scale) {
-  conv2dk14_i8_vector(input, kernels, output,
-                     input_width, input_channels, output_channels, 
-                     kernel_width, scale);
+                  const int32_t output_channels, const int32_t kernel_width,
+                  const int scale) {
+  conv2dk14_i8_vector(input, kernels, output, input_width, input_channels,
+                      output_channels, kernel_width, scale);
 }
 
 #else // UINT8_ACT
 
-// void conv2dk14_ui8(uint8_t *input, int8_t *kernels, uint8_t *output, 
+// void conv2dk14_ui8(uint8_t *input, int8_t *kernels, uint8_t *output,
 //                   const int32_t input_width, const int32_t input_channels,
 //                   const int32_t output_channels, const int scale) {
 //   conv2dk14_ui8_vector(input, kernels, output,

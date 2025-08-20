@@ -27,7 +27,8 @@ in_channels = 4
 out_channels = 1152
 vectorized ?= true
 # vectorized ?= false
-trace_size = 16384
+#trace_size = 16384
+trace_size = 32768
 
 ifeq ($(devicename),npu2)
 VPATH := ${srcdir}/../../../aie_kernels/aie2p

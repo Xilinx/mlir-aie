@@ -12,15 +12,23 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.dialects.ext.scf import _for as range_
 import aie.utils.trace as trace_utils
+from aie.utils.trace import PortEvent
+from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
 
 def conv2dk14(
-    dev, width: int, height: int, in_channels: int, out_channels: int, kernel_size: int, trace_size: int
+    dev,
+    width: int,
+    height: int,
+    in_channels: int,
+    out_channels: int,
+    kernel_size: int,
+    trace_size: int,
 ):
     with mlir_mod_ctx() as ctx:
 
         # Kernel transfer sizes
-        actIn = 16 * kernel_size * kernel_size * in_channels # 16 tiles
+        actIn = 16 * kernel_size * kernel_size * in_channels  # 16 tiles
         # bufIn = actIn * 4 # 64 tiles (1 tile row)
         # bufIn = width * kernel_size * in_channels # 64 tiles (1 tile row)
 
@@ -71,7 +79,7 @@ def conv2dk14(
                     np.int32,
                     np.int32,
                     np.int32,
-                ]
+                ],
             )
 
             # Tile declarations
@@ -84,22 +92,29 @@ def conv2dk14(
             # AIE-array data movement with object fifos
             # Input
             of_inOF_act_L3L2 = object_fifo(
-                "inOF_act_L3L2", ShimTile, MemTile, 2, 
-                #np.ndarray[(kernel_size, width*in_channels), np.dtype[np.int8]],
+                "inOF_act_L3L2",
+                ShimTile,
+                MemTile,
+                2,
+                # np.ndarray[(kernel_size, width*in_channels), np.dtype[np.int8]],
                 np.ndarray[(14, 3584), np.dtype[np.int8]],
-                dimensionsToStream = None,
-                dimensionsFromStreamPerConsumer =
-                [[
-                    # (kernel_size,kernel_size*in_channels),
-                    # (64, kernel_size*kernel_size*in_channels),
-                    # (kernel_size*in_channels,1),
-                    (14,56),
-                    (64,784),
-                    (56,1),
-                ],], 
+                dimensionsToStream=None,
+                dimensionsFromStreamPerConsumer=[
+                    [
+                        # (kernel_size,kernel_size*in_channels),
+                        # (64, kernel_size*kernel_size*in_channels),
+                        # (kernel_size*in_channels,1),
+                        (14, 56),
+                        (64, 784),
+                        (56, 1),
+                    ],
+                ],
             )
             of_act_L2_02 = object_fifo(
-                "act_L2_02", MemTile, ComputeTile2, 2,
+                "act_L2_02",
+                MemTile,
+                ComputeTile2,
+                2,
                 # np.ndarray[(kernel_size, (width/4)*in_channels), np.dtype[np.int8]],
                 # np.ndarray[(14, 896), np.dtype[np.int8]],
                 np.ndarray[(actIn,), np.dtype[np.int8]],
@@ -108,18 +123,17 @@ def conv2dk14(
                 #     (16,kernel_size*in_channels),
                 #     (kernel_size,width*in_channels),
                 #     (kernel_size*in_channels,1),
-                # ], 
-                dimensionsToStream =
-                [
+                # ],
+                dimensionsToStream=[
                     # (2,kernel_size*kernel_size*in_channels*8),
                     # # (kernel_size*kernel_size/2,2*in_channels),
                     # (98,2*in_channels),
                     # (8, kernel_size*kernel_size*in_channels),
                     # (2*in_channels, 1),
-                    (2,6272),
-                    (98,8),
-                    (8,784),
-                    (8,1),
+                    (2, 6272),
+                    (98, 8),
+                    (8, 784),
+                    (8, 1),
                 ],
             )
             object_fifo_link(of_inOF_act_L3L2, of_act_L2_02)
@@ -130,25 +144,29 @@ def conv2dk14(
             )
 
             # Output
-            of_out_02_L2 = object_fifo("out_02_L2", ComputeTile2, [MemTile], 2,
+            of_out_02_L2 = object_fifo(
+                "out_02_L2",
+                ComputeTile2,
+                [MemTile],
+                2,
                 # np.ndarray[(16, 16), np.dtype[np.int8]],
                 np.ndarray[(actOut,), np.dtype[np.int8]],
-                dimensionsFromStreamPerConsumer =
-                [[
-                    (2,128),
-                    (8,1),
-                    (16,8), 
-                    (1,1),                                                
-                ],],
-            )
-            of_outOFL2L3 = object_fifo("outOFL2L3", MemTile, [ShimTile], 2, 
-                np.ndarray[(16, 4096), np.dtype[np.int8]],
-                dimensionsToStream =
-                [
-                    (16,16),
-                    (256,256),
-                    (16,1)
+                dimensionsFromStreamPerConsumer=[
+                    [
+                        (2, 128),
+                        (8, 1),
+                        (16, 8),
+                        (1, 1),
+                    ],
                 ],
+            )
+            of_outOFL2L3 = object_fifo(
+                "outOFL2L3",
+                MemTile,
+                [ShimTile],
+                2,
+                np.ndarray[(16, 4096), np.dtype[np.int8]],
+                dimensionsToStream=[(16, 16), (256, 256), (16, 1)],
             )
             object_fifo_link(of_out_02_L2, of_outOFL2L3)
 
@@ -174,7 +192,7 @@ def conv2dk14(
                 # x_dim = width
                 x_blocks = 4
                 # x_dim = width * in_channels // x_blocks
-                x_dim = 14*16
+                x_dim = 14 * 16
                 ci = in_channels
                 co = 16
                 # co16 = out_channels // 16
@@ -190,8 +208,19 @@ def conv2dk14(
                         for _ in range_(y_dim):
                             for _ in range_(x_blocks):
                                 elemIn = of_act_L2_02.acquire(ObjectFifoPort.Consume, 1)
-                                elemOut0 = of_out_02_L2.acquire(ObjectFifoPort.Produce, 1)
-                                conv2dk14_i8(elemIn, elemWts, elemOut0, x_dim, ci, co, kernel_size, scale)
+                                elemOut0 = of_out_02_L2.acquire(
+                                    ObjectFifoPort.Produce, 1
+                                )
+                                conv2dk14_i8(
+                                    elemIn,
+                                    elemWts,
+                                    elemOut0,
+                                    x_dim,
+                                    ci,
+                                    co,
+                                    kernel_size,
+                                    scale,
+                                )
                                 of_act_L2_02.release(ObjectFifoPort.Consume, 1)
                                 of_out_02_L2.release(ObjectFifoPort.Produce, 1)
 
@@ -204,7 +233,21 @@ def conv2dk14(
 
                 if trace_size > 0:
                     trace_utils.configure_packet_tracing_aie2(
-                        tiles_to_trace, ShimTile, trace_size, N_in_bytes, ddr_id=2
+                        tiles_to_trace=tiles_to_trace,
+                        shim=ShimTile,
+                        trace_size=trace_size,
+                        trace_offset=N_in_bytes,
+                        ddr_id=2,
+                        coretile_events=[
+                            CoreEvent.INSTR_EVENT_0,
+                            CoreEvent.INSTR_EVENT_1,
+                            CoreEvent.INSTR_VECTOR,
+                            PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
+                            PortEvent(CoreEvent.PORT_RUNNING_1, 2, True),  # master(2)
+                            PortEvent(CoreEvent.PORT_RUNNING_2, 1, False),  # slave(1)
+                            CoreEvent.MEMORY_STALL,
+                            CoreEvent.LOCK_STALL,
+                        ],
                     )
 
                 rtp2[0] = 10
@@ -259,9 +302,7 @@ if __name__ == "__main__":
             raise ValueError
         in_channels = int(sys.argv[4])
         if in_channels != 4:
-            print(
-                "Input channels size must be equal to 4"
-            )
+            print("Input channels size must be equal to 4")
             raise ValueError
         out_channels = int(sys.argv[5])
         if out_channels % 8 != 0 or out_channels < 8:
@@ -271,9 +312,7 @@ if __name__ == "__main__":
             raise ValueError
         kernel_size = int(sys.argv[6])
         if kernel_size != 14:
-            print(
-                "Kernel size must be 14 right now."
-            )
+            print("Kernel size must be 14 right now.")
             raise ValueError
         trace_size = 0 if (len(sys.argv) != 8) else int(sys.argv[7])
     except ValueError:
