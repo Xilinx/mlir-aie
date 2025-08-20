@@ -26,6 +26,7 @@ kernel_size = 14
 in_channels = 4
 out_channels = 1152
 vectorized ?= true
+# vectorized ?= false
 trace_size = 16384
 
 ifeq ($(devicename),npu2)

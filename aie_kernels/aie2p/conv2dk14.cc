@@ -21,11 +21,10 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
-enum region { top, middle, bottom };
-
 #ifdef SCALAR
 
-const int32_t MAX = 255;
+const int32_t SMAX = 127;
+const int32_t SMIN = 128;
 
 #ifdef INT8_ACT
 
@@ -52,33 +51,42 @@ void conv2dk14_i8_scalar(int8_t *input, int8_t *kernels, int8_t *output,
                         const int32_t kernel_width, const int scale) {
   event0();
 
+  int oc, oc8, nt, pix, nt8, p2;
+
   int32_t sum;
   int sum_srs;
   int in_indx = 0;
   int wts_indx = 0;
+  int out_indx = 0;
+
+//  int num_tiles = input_width/kernel_width; // 16*14 / 14 = 16
+  int num_tiles = 16; 
 
   for (oc = 0; oc < output_channels/8; oc++) { // 16 out of 1152
-    for (oc8 = 0; oc8 < 8; oc8++) { // 16 out of 1152
+    for (oc8 = 0; oc8 < 8; oc8++) { 
       for (nt = 0; nt < num_tiles/8; nt++) { // 16 out of 4096
-        sum = 0;
-        for (pix = 0; pix < kernel_width*kernel_width/2; pix++) { // 196
-          for (nt8 = 0; nt8 < 8 ; nt8++) {
+        for (nt8 = 0; nt8 < 8 ; nt8++) {
+          sum = 0;
+          for (pix = 0; pix < kernel_width*kernel_width/2; pix++) { // 196
             for (p2 = 0; p2 < 2; p2++) {
+
               in_indx = ((nt*(num_tiles/8)*8*2) + (pix*8*2) + (nt8*2) + p2)*4;
-              wts_indx = ((oc*(num_tiles/8)*2*8) + (pix*2*8) + (p2*8) + oc8)*4;
+              wts_indx = ((oc*98*2*8) + (pix*2*8) + (p2*8) + oc8)*4;
               sum += input[in_indx] * kernels[wts_indx]
-                        + input[in_indx+1] * kernels[wts_indx+1]
-                        + input[in_indx+2] * kernels[wts_indx+2];
+                     + input[in_indx+1] * kernels[wts_indx+1]
+                     + input[in_indx+2] * kernels[wts_indx+2];
             }
           }
+          sum_srs = (sum + (1 << (scale - 1))) >> scale;
+          sum_srs = (sum_srs > SMAX) ? SMAX : (sum_srs < -SMIN) ? -SMIN : sum_srs;
+          out_indx = (oc*(num_tiles/8)*8*8) + (nt*8*8) + (nt8*8) + oc8;
+          output[out_indx] = sum_srs;
+          // output[out_indx] = SMAX;        
         }
-        sum_srs = (sum + (1 << (scale - 1))) >> scale;
-        sum_srs = (sum_srs > MAX) ? MAX : (sum_srs < 0) ? 0 : sum_srs;
-        out_indx = (oc*(num_tiles/8)*8*8) + (nt*8*8) + (nt8*8) + oc8;
-        output[out_indx] = sum_srs;
       }
     }
   }
+  // output[0] = 0;        
 
   event1();
 }
@@ -147,7 +155,7 @@ void conv2dk14_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
       aie::vector<int8, 64> o1 = acc1.to_vector<int8>(scale);
       aie::store_v(output, o1);
       output += 64;
-
+      acc1 = aie::zeros<acc32, 64>();
       kernels -= 64*pixels_div_2;
     }
     kernels += 64*pixels_div_2;
