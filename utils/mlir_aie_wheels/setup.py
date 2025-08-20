@@ -14,6 +14,7 @@ from typing import Union
 from importlib_metadata import files
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.command.install import install
 
 
 def check_env(build, default=0):
@@ -233,6 +234,16 @@ class CMakeBuild(build_ext):
         )
 
 
+class InstallWithPth(install):
+    """Custom install command to copy a .pth file into the site-packages directory."""
+
+    def run(self):
+        super().run()
+        pth_source = os.path.join(os.path.dirname(__file__), "aie.pth")
+        pth_target = os.path.join(self.install_lib, "aie.pth")
+        self.copy_file(pth_source, pth_target)
+
+
 commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
 release_version = "0.0.1"
 now = datetime.now()
@@ -279,11 +290,13 @@ setup(
     # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
     # actually build the wheel.
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
-    cmdclass={"build_ext": CMakeBuild},
+    cmdclass={
+        "build_ext": CMakeBuild,
+        "install": InstallWithPth,
+    },
     zip_safe=False,
     python_requires=">=3.10",
     install_requires=parse_requirements(
         Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
     ),
-    package_data={"": ["*.pth"]},  # include .pth file
 )
