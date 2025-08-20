@@ -119,8 +119,7 @@ int main(int argc, const char *argv[]) {
     std::cout << "Running Kernel 0.\n";
 
   unsigned int opcode = 3;
-  auto run0 =
-      kernel0(opcode, bo0_instr, instr_v.size(), bo0_inA, bo0_out);
+  auto run0 = kernel0(opcode, bo0_instr, instr_v.size(), bo0_inA, bo0_out);
 
   // same instructions as kernel1
   bufInstr = bo1_instr.map<void *>();
@@ -130,13 +129,12 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel 1.\n";
   // Use the output of kernel0 as input to kernel1
-  auto run1 =
-      kernel1(opcode, bo1_instr, instr_v.size(), bo0_out, bo1_out);
+  auto run1 = kernel1(opcode, bo1_instr, instr_v.size(), bo0_out, bo1_out);
 
   // Creating a runlist to contain two seperate runs
   xrt::runlist runlist = xrt::runlist(context);
   runlist.add(run0);
-  runlist.add(run1);  
+  runlist.add(run1);
   runlist.execute();
   runlist.wait();
 
