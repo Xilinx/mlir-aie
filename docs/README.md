@@ -95,7 +95,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    python3 -m pip install --upgrade pip
    ```
 
-1. Install IRON library, mlir-aie and llvm-aie compilers from whls:
+1. Install IRON library, mlir-aie and llvm-aie compilers from wheels and dependencies:
 
    For release v1.0:
    ```bash
@@ -104,6 +104,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # Install Peano from a llvm-aie wheel
    python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025041501+b2a279c1-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+
+   # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
+   python3 -m pip install -r python/requirements.txt
+
+   # Install MLIR Python Extras
+   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
    For daily latest:
@@ -113,12 +119,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # Install Peano from llvm-aie wheel
    python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-   ```
-
-1. Install required Python packages:
-   ```bash
-   # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
-   python3 -m pip install -r python/requirements.txt
 
    # Install MLIR Python Extras
    HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
@@ -147,8 +147,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # This creates an ipykernel (for use in notebooks) using the ironenv venv
    python3 -m ipykernel install --user --name ironenv
 
+   # Only for Release v1.0 and non wheel-based installs:
    # The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.
-   # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g. if they are run with
+   # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g., if they are run with
    # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
    # ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is
    # available or not.
@@ -157,8 +158,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    echo ${MLIR_AIE_INSTALL}/python > $venv_site_packages/mlir-aie.pth
    ```
 
-1. Setup environment
+1. (Optional) Setup environment
    ```bash
+   # Only for Release v1.0 and non wheel-based installs:
    source utils/env_setup.sh
    ```
 
