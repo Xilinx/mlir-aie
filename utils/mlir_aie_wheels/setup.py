@@ -14,9 +14,6 @@ from typing import Union
 from importlib_metadata import files
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
-from setuptools.command.develop import develop
-from setuptools.command.install import install
-from setuptools.command.install_lib import install_lib
 
 
 def check_env(build, default=0):
@@ -236,28 +233,6 @@ class CMakeBuild(build_ext):
         )
 
 
-pth_file = Path(__file__) / "aie.pth"
-
-
-class DevelopCommand(develop):
-    """Customized setuptools install command - copies .pth file."""
-
-    def run(self):
-        super().run()
-        self.copy_file(pth_file, os.path.join(self.install_dir, "aie.pth"))
-
-
-class InstallLibCommand(install_lib):
-    def run(self):
-        super().run()
-        dest = os.path.join(self.install_dir, "aie.pth")
-        self.copy_file(pth_file, dest)
-        self.outputs = [dest]
-
-    def get_outputs(self):
-        return chain(install_lib.get_outputs(self), self.outputs)
-
-
 commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
 release_version = "0.0.1"
 now = datetime.now()
@@ -304,14 +279,11 @@ setup(
     # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
     # actually build the wheel.
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
-    cmdclass={
-        "build_ext": CMakeBuild,
-        "develop": DevelopCommand,
-        "install_lib": InstallLibCommand,
-    },
+    cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
     python_requires=">=3.10",
     install_requires=parse_requirements(
         Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
     ),
+    package_data={"": ["*.pth"]},  # include .pth file
 )
