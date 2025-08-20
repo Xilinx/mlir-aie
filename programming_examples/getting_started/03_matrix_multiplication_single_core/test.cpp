@@ -23,46 +23,46 @@ constexpr unsigned K = 512;
 constexpr unsigned N = 512;
 
 void reference(int16_t *A, int16_t *B, int16_t *C) {
-  for(int row = 0; row < M; row++) {
-    for(int col = 0; col < N; col++) {
+  for (int row = 0; row < M; row++) {
+    for (int col = 0; col < N; col++) {
       int16_t acc = 0;
-      for(int i = 0; i < K; i++) {
+      for (int i = 0; i < K; i++) {
         acc += A[row * K + i] * B[i * N + col];
       }
       C[row * N + col] = acc;
     }
-  }   
+  }
 }
 
-int read_insts(std::string insts_path, std::vector<char>& into) {
-	std::ifstream insts_file(insts_path, std::ios::binary);
-	if (!insts_file) {
-		return 1;
-	}
-	into.assign((std::istreambuf_iterator<char>(insts_file)),
+int read_insts(std::string insts_path, std::vector<char> &into) {
+  std::ifstream insts_file(insts_path, std::ios::binary);
+  if (!insts_file) {
+    return 1;
+  }
+  into.assign((std::istreambuf_iterator<char>(insts_file)),
               std::istreambuf_iterator<char>());
-	return 0;
+  return 0;
 }
 
 int main(int argc, const char *argv[]) {
-	// Assign command line arguments
-	if (argc != 4) {
-		std::cerr << "Usage: " << argv[0] << " <xclbin> <insts> <kernel>"
+  // Assign command line arguments
+  if (argc != 4) {
+    std::cerr << "Usage: " << argv[0] << " <xclbin> <insts> <kernel>"
               << std::endl;
-		return 1;
-	}
-	std::string xclbin_path = argv[1];
-	std::string insts_path = argv[2];
-	std::string kernel_name = argv[3];
+    return 1;
+  }
+  std::string xclbin_path = argv[1];
+  std::string insts_path = argv[2];
+  std::string kernel_name = argv[3];
 
-	// Read insts.bin file (instructions to the NPU's command processor)
-	std::vector<char> insts = {};
-	if (0 != read_insts(insts_path, insts)) {
-		std::cerr << "Unable to open insts file: " << insts_path << std::endl;
-		return 1;
-	}
+  // Read insts.bin file (instructions to the NPU's command processor)
+  std::vector<char> insts = {};
+  if (0 != read_insts(insts_path, insts)) {
+    std::cerr << "Unable to open insts file: " << insts_path << std::endl;
+    return 1;
+  }
 
-	// Initialize the NPU and load our design
+  // Initialize the NPU and load our design
   constexpr unsigned device_index = 0;
   xrt::device device = xrt::device(device_index);
   xrt::xclbin xclbin(xclbin_path);
@@ -70,11 +70,11 @@ int main(int argc, const char *argv[]) {
   xrt::hw_context context(device, xclbin.get_uuid());
   xrt::kernel kernel = xrt::kernel(context, kernel_name);
 
-	// Initialzie input/output XRT buffers
+  // Initialzie input/output XRT buffers
   constexpr unsigned size_a = M * K;
   constexpr unsigned size_b = K * N;
   constexpr unsigned size_c = M * N;
- xrt::bo bo_insts = xrt::bo(device, insts.size() * sizeof(insts[0]),
+  xrt::bo bo_insts = xrt::bo(device, insts.size() * sizeof(insts[0]),
                              XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   xrt::bo bo_a = xrt::bo(device, size_a * sizeof(int16_t),
                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
@@ -88,43 +88,42 @@ int main(int argc, const char *argv[]) {
   int16_t *buf_b = bo_b.map<int16_t *>();
   int16_t *buf_c = bo_c.map<int16_t *>();
 
-	// Prepare input data (initialize random matrices) and sync to NPU
-	std::generate(buf_a, buf_a + size_a, []() { return rand() % 256; });
-	std::generate(buf_b, buf_b + size_b, []() { return rand() % 256; });
-	std::fill(buf_c, buf_c + size_c, 0);
+  // Prepare input data (initialize random matrices) and sync to NPU
+  std::generate(buf_a, buf_a + size_a, []() { return rand() % 256; });
+  std::generate(buf_b, buf_b + size_b, []() { return rand() % 256; });
+  std::fill(buf_c, buf_c + size_c, 0);
   bo_insts.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_b.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_c.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
-	// Run our design
+  // Run our design
   auto t_start = std::chrono::system_clock::now();
   constexpr unsigned opcode = 3;
   auto run = kernel(opcode, bo_insts, insts.size(), bo_a, bo_b, bo_c);
   ert_cmd_state r = run.wait();
   auto t_stop = std::chrono::system_clock::now();
   if (r != ERT_CMD_STATE_COMPLETED) {
-      std::cout << "Kernel did not complete. Returned status: " << r << std::endl;
-      return 1;
+    std::cout << "Kernel did not complete. Returned status: " << r << std::endl;
+    return 1;
   }
   float t_elapsed =
       std::chrono::duration_cast<std::chrono::microseconds>(t_stop - t_start)
           .count();
   bo_c.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-	// Print elapsed time
-	constexpr unsigned n_ops = M * K * N * 2;
-  float throughput = n_ops / t_elapsed / 1e3;  // GOP/s
+  // Print elapsed time
+  constexpr unsigned n_ops = M * K * N * 2;
+  float throughput = n_ops / t_elapsed / 1e3; // GOP/s
   std::cout << "Elapsed: " << t_elapsed << " us "
             << "(" << throughput << " GOP/s)" << std::endl;
 
-	// Validate correctness of output
-	int16_t *ref_c =
-    static_cast<int16_t *>(std::malloc(M * N * sizeof(int16_t)));
-    // reference output calculated on the CPU
-	reference(buf_a, buf_b, ref_c);
+  // Validate correctness of output
+  int16_t *ref_c = static_cast<int16_t *>(std::malloc(M * N * sizeof(int16_t)));
+  // reference output calculated on the CPU
+  reference(buf_a, buf_b, ref_c);
 
-	if (std::equal(ref_c, ref_c + size_c, buf_c)) {
+  if (std::equal(ref_c, ref_c + size_c, buf_c)) {
     std::cout << "PASS!" << std::endl;
   } else {
     std::cout << "FAIL." << std::endl;

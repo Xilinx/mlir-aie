@@ -53,12 +53,12 @@ void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict
       MMUL C10(C10_in);
       MMUL C11(C11_in);
 
-      // The following loop iterates over the k dimension of the 
+      // The following loop iterates over the k dimension of the
       // input matrices, i.e., over each tile in the same row of
       // A and each tile in the same column of B.
       for (unsigned i = 0; i < k / s; i += 1, A0_ptr += MMUL::size_A,
                     A1_ptr += MMUL::size_A, B0_ptr += (n / t) * MMUL::size_B,
-                    B1_ptr += (n / t) * MMUL::size_B) {  
+                    B1_ptr += (n / t) * MMUL::size_B) {
         const aie::vector<int16, MMUL::size_A> A0 =
             aie::load_v<MMUL::size_A>(A0_ptr);
         const aie::vector<int16, MMUL::size_A> A1 =
@@ -67,7 +67,6 @@ void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict
             aie::load_v<MMUL::size_B>(B0_ptr);
         const aie::vector<int16, MMUL::size_B> B1 =
             aie::load_v<MMUL::size_B>(B1_ptr);
-    
         C00.mac(A0, B0);
         C01.mac(A0, B1);
         C10.mac(A1, B0);
@@ -91,18 +90,18 @@ void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict
 void matrix_multiplication_scalar(const int16 *__restrict A,
                                   const int16 *__restrict B,
                                   int16 *__restrict C) {
-  for(unsigned tile_row = 0; tile_row < m / r; tile_row += 1) {
-    for(unsigned tile_col = 0; tile_col < n / t; tile_col += 1) {
-      for(unsigned tile_i = 0; tile_i < k / s; tile_i += 1) {
-        const int16 *A_base = A + (tile_row * (k / s) + tile_i)   * r * s;
-        const int16 *B_base = B + (tile_i   * (n / t) + tile_col) * s * t;
-        int16 *C_base       = C + (tile_row * (n / t) + tile_col) * r * t;
-        for(unsigned row = 0; row < r; row += 1) {
-          for(unsigned col = 0; col < t; col += 1) {
-            for(unsigned i = 0; i < s; i += 1) {
-                C_base[row * t + col] += 
-                    A_base[row * s + i] * B_base[i * t + col];
-            } 
+  for (unsigned tile_row = 0; tile_row < m / r; tile_row += 1) {
+    for (unsigned tile_col = 0; tile_col < n / t; tile_col += 1) {
+      for (unsigned tile_i = 0; tile_i < k / s; tile_i += 1) {
+        const int16 *A_base = A + (tile_row * (k / s) + tile_i) * r * s;
+        const int16 *B_base = B + (tile_i * (n / t) + tile_col) * s * t;
+        int16 *C_base = C + (tile_row * (n / t) + tile_col) * r * t;
+        for (unsigned row = 0; row < r; row += 1) {
+          for (unsigned col = 0; col < t; col += 1) {
+            for (unsigned i = 0; i < s; i += 1) {
+              C_base[row * t + col] +=
+                  A_base[row * s + i] * B_base[i * t + col];
+            }
           }
         }
       }
