@@ -14,6 +14,7 @@ from typing import Union
 from importlib_metadata import files
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.command.develop import develop
 from setuptools.command.install import install
 
 
@@ -234,6 +235,16 @@ class CMakeBuild(build_ext):
         )
 
 
+class DevelopWithPth(develop):
+    """Custom develop command to copy a .pth file into the site-packages directory."""
+
+    def run(self):
+        super().run()
+        pth_source = os.path.join(os.path.dirname(__file__), "aie.pth")
+        pth_target = os.path.join(self.install_dir, "aie.pth")
+        self.copy_file(pth_source, pth_target)
+
+
 class InstallWithPth(install):
     """Custom install command to copy a .pth file into the site-packages directory."""
 
@@ -292,6 +303,7 @@ setup(
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
     cmdclass={
         "build_ext": CMakeBuild,
+        "develop": DevelopWithPth,
         "install": InstallWithPth,
     },
     zip_safe=False,
