@@ -24,10 +24,10 @@ void zero(int16 *__restrict C) {
 // Multiply A and B, and add the result onto the values already in C.
 // A, B, and C must be tiled into tiles of size r*s, s*t, and r*t,
 // respectively (in our design, the DMA performs this tiling).
-void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict
-                           B, int16 *__restrict C) {
-  for(unsigned row = 0; row < m / r; row += 2) {
-    for(unsigned col = 0; col < n / t; col += 2) {
+void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict B,
+                           int16 *__restrict C) {
+  for (unsigned row = 0; row < m / r; row += 2) {
+    for (unsigned col = 0; col < n / t; col += 2) {
 
       // The following pointers point to the start of two rows of A and
       // tow columns of B, respectively.
