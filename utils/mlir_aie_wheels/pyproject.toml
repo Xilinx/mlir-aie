@@ -1,9 +1,7 @@
 [project]
-name = "mlir-aie"
 description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
 readme = "README.md"
-requires-python = ">=3.10"
-dynamic = ["dependencies", "version"]
+dynamic = ["name", "dependencies", "requires-python", "version"]
 
 [tool.cibuildwheel]
 build-verbosity = 3

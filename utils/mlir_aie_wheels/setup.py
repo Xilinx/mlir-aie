@@ -22,6 +22,9 @@ def check_env(build, default=0):
     return os.getenv(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
+name = "mlir-aie" if check_env("ENABLE_RTTI", 1) else "mlir-aie-no-rtti"
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: Union[str, Path] = "") -> None:
         super().__init__(name, sources=[])
@@ -48,9 +51,7 @@ def get_cross_cmake_args():
             if f.name.startswith("mlir-tblgen")
         )
         mlir_tblgen_target = next(
-            f.locate()
-            for f in files("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
-            if f.name.startswith("mlir-tblgen")
+            f.locate() for f in files(name) if f.name.startswith("mlir-tblgen")
         )
         os.remove(mlir_tblgen_target)
         shutil.copy(mlir_tblgen_host, mlir_tblgen_target)
@@ -60,9 +61,7 @@ def get_cross_cmake_args():
             if f.name.startswith("mlir-pdll")
         )
         mlir_pdll_target = next(
-            f.locate()
-            for f in files("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
-            if f.name.startswith("mlir-pdll")
+            f.locate() for f in files(name) if f.name.startswith("mlir-pdll")
         )
         os.remove(mlir_pdll_target)
         shutil.copy(mlir_pdll_host, mlir_pdll_target)
@@ -105,9 +104,7 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-        install_dir = extdir / (
-            "mlir_aie" if check_env("ENABLE_RTTI", 1) else "mlir_aie_no_rtti"
-        )
+        install_dir = extdir / name
         cfg = "Release"
 
         cmake_generator = os.getenv("CMAKE_GENERATOR", "Ninja")
@@ -115,8 +112,7 @@ class CMakeBuild(build_ext):
         MLIR_INSTALL_ABS_PATH = Path(
             os.getenv(
                 "MLIR_INSTALL_ABS_PATH",
-                Path(__file__).parent
-                / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti"),
+                Path(__file__).parent / name,
             )
         ).absolute()
 
@@ -236,23 +232,23 @@ class CMakeBuild(build_ext):
 
 
 class DevelopWithPth(develop):
-    """Custom develop command to copy a .pth file into the site-packages directory."""
+    """Custom develop command to create a .pth file into the site-packages directory."""
 
     def run(self):
         super().run()
-        pth_source = os.path.join(os.path.dirname(__file__), "aie.pth")
         pth_target = os.path.join(self.install_dir, "aie.pth")
-        self.copy_file(pth_source, pth_target)
+        with open(pth_target, "w") as pth_file:
+            pth_file.write(dedent(f"{name}/python"))
 
 
 class InstallWithPth(install):
-    """Custom install command to copy a .pth file into the site-packages directory."""
+    """Custom install command to create a .pth file into the site-packages directory."""
 
     def run(self):
         super().run()
-        pth_source = os.path.join(os.path.dirname(__file__), "aie.pth")
         pth_target = os.path.join(self.install_lib, "aie.pth")
-        self.copy_file(pth_source, pth_target)
+        with open(pth_target, "w") as pth_file:
+            pth_file.write(dedent(f"{name}/python"))
 
 
 commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
@@ -283,7 +279,7 @@ def parse_requirements(filename):
 setup(
     version=version,
     author="",
-    name="mlir-aie" if check_env("ENABLE_RTTI", 1) else "mlir-aie-no-rtti",
+    name=name,
     include_package_data=True,
     description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
     long_description=dedent(
