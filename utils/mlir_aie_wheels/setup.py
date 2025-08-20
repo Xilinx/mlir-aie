@@ -16,6 +16,7 @@ from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
 from setuptools.command.install import install
+from setuptools.command.install_lib import install_lib
 
 
 def check_env(build, default=0):
@@ -246,9 +247,7 @@ class DevelopCommand(develop):
         self.copy_file(pth_file, os.path.join(self.install_dir, "aie.pth"))
 
 
-class InstallCommand(install):
-    """Customized setuptools install command - copies .pth file."""
-
+class InstallLibCommand(install_lib):
     def run(self):
         super().run()
         dest = os.path.join(self.install_dir, "aie.pth")
@@ -256,7 +255,7 @@ class InstallCommand(install):
         self.outputs = [dest]
 
     def get_outputs(self):
-        return chain(install.get_outputs(self), self.outputs)
+        return chain(install_lib.get_outputs(self), self.outputs)
 
 
 commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
@@ -308,7 +307,7 @@ setup(
     cmdclass={
         "build_ext": CMakeBuild,
         "develop": DevelopCommand,
-        "install": InstallCommand,
+        "install_lib": InstallLibCommand,
     },
     zip_safe=False,
     python_requires=">=3.10",
