@@ -72,7 +72,6 @@ void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict B,
         C10.mac(A1, B0);
         C11.mac(A1, B1);
       }
-  
       aie::store_v(C + ((row + 0) * (n / t) + (col + 0)) * MMUL::size_C,
                    C00.template to_vector<int16>());
       aie::store_v(C + ((row + 0) * (n / t) + (col + 1)) * MMUL::size_C,
