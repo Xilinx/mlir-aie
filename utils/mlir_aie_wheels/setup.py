@@ -5,7 +5,6 @@ import shutil
 import subprocess
 import sys
 from datetime import datetime
-from itertools import chain
 from pathlib import Path
 from pprint import pprint
 from textwrap import dedent
@@ -22,7 +21,20 @@ def check_env(build, default=0):
     return os.getenv(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
-name = "mlir-aie" if check_env("ENABLE_RTTI", 1) else "mlir-aie-no-rtti"
+def get_name():
+    """Get the package name based on the ENABLE_RTTI environment variable."""
+    if check_env("ENABLE_RTTI", 1):
+        return "mlir_aie"
+    else:
+        return "mlir_aie_no_rtti"
+
+
+def get_mlir_name():
+    """Get the MLIR name based on the ENABLE_RTTI environment variable."""
+    if check_env("ENABLE_RTTI", 1):
+        return "mlir"
+    else:
+        return "mlir_no_rtti"
 
 
 class CMakeExtension(Extension):
@@ -51,7 +63,9 @@ def get_cross_cmake_args():
             if f.name.startswith("mlir-tblgen")
         )
         mlir_tblgen_target = next(
-            f.locate() for f in files(name) if f.name.startswith("mlir-tblgen")
+            f.locate()
+            for f in files(get_mlir_name())
+            if f.name.startswith("mlir-tblgen")
         )
         os.remove(mlir_tblgen_target)
         shutil.copy(mlir_tblgen_host, mlir_tblgen_target)
@@ -61,7 +75,7 @@ def get_cross_cmake_args():
             if f.name.startswith("mlir-pdll")
         )
         mlir_pdll_target = next(
-            f.locate() for f in files(name) if f.name.startswith("mlir-pdll")
+            f.locate() for f in files(get_mlir_name()) if f.name.startswith("mlir-pdll")
         )
         os.remove(mlir_pdll_target)
         shutil.copy(mlir_pdll_host, mlir_pdll_target)
@@ -104,7 +118,7 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-        install_dir = extdir / name
+        install_dir = extdir / get_name()
         cfg = "Release"
 
         cmake_generator = os.getenv("CMAKE_GENERATOR", "Ninja")
@@ -112,7 +126,7 @@ class CMakeBuild(build_ext):
         MLIR_INSTALL_ABS_PATH = Path(
             os.getenv(
                 "MLIR_INSTALL_ABS_PATH",
-                Path(__file__).parent / name,
+                Path(__file__).parent / get_mlir_name(),
             )
         ).absolute()
 
@@ -238,7 +252,7 @@ class DevelopWithPth(develop):
         super().run()
         pth_target = os.path.join(self.install_dir, "aie.pth")
         with open(pth_target, "w") as pth_file:
-            pth_file.write(dedent(f"{name}/python"))
+            pth_file.write(dedent(f"{get_name()}/python"))
 
 
 class InstallWithPth(install):
@@ -248,7 +262,7 @@ class InstallWithPth(install):
         super().run()
         pth_target = os.path.join(self.install_lib, "aie.pth")
         with open(pth_target, "w") as pth_file:
-            pth_file.write(dedent(f"{name}/python"))
+            pth_file.write(dedent(f"{get_name()}/python"))
 
 
 commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
@@ -279,7 +293,7 @@ def parse_requirements(filename):
 setup(
     version=version,
     author="",
-    name=name,
+    name=get_name(),
     include_package_data=True,
     description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
     long_description=dedent(
