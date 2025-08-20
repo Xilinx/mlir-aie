@@ -8,10 +8,7 @@
 # RUN: %run_on_npu2% %pytest %s
 
 import numpy as np
-import os
 import tempfile
-import shutil
-import pytest
 
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit

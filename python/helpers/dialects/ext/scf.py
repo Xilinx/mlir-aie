@@ -2,8 +2,10 @@ from typing import Sequence
 
 from ....ir import InsertionPoint, Value
 from ....dialects.linalg.opdsl.lang.emitter import _is_index_type
-from ....dialects.scf import ForOp, yield_
+from ....dialects.scf import IfOp, ForOp, yield_
 from ....extras.dialects.ext.arith import constant, index_cast
+from ....extras.util import get_user_code_loc
+from contextlib import contextmanager
 from ....extras import types as T
 
 
@@ -50,3 +52,25 @@ def _for(
             yield iv
         if insert_yield:
             yield_([])
+
+
+@contextmanager
+def if_(cond, hasElse=True, insert_yield=True, loc=None, ip=None):
+    if loc is None:
+        loc = get_user_code_loc()
+    if_op = IfOp(cond, hasElse=hasElse, loc=loc, ip=ip)
+    with InsertionPoint(if_op.thenRegion.blocks[0]):
+        yield if_op
+        if insert_yield:
+            yield_([])
+    if hasElse:
+        with InsertionPoint(if_op.elseRegion.blocks[0]):
+            if insert_yield:
+                yield_([])
+
+
+# This assumes that the parent if_ context manager passes down the else region.
+@contextmanager
+def else_(if_op, insert_yield=True):
+    with InsertionPoint.at_block_terminator(if_op.elseRegion.blocks[0]):
+        yield

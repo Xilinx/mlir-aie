@@ -157,7 +157,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    echo ${MLIR_AIE_INSTALL}/python > $venv_site_packages/mlir-aie.pth
    ```
 
-1. Setup environment and add tools to PATHs
+1. Setup environment
    ```bash
    source utils/env_setup.sh
    ```
