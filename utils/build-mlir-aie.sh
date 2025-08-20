@@ -38,7 +38,7 @@ if [ ! -z LibXAIE_x86_64_DIR ]; then
   MAYBE_LIBXAIE_DEF="-DLibXAIE_x86_64_DIR=${LibXAIE_x86_64_DIR}"
 fi
 if [ ! -z LibXAIE_aarch64_DIR ]; then
-  MAYBE_LIBXAIE_DEF="-DLibXAIE_aarch64_DIR=${LibXAIE_aarch64_DIR}"
+  MAYBE_LIBXAIE_DEF+=" -DLibXAIE_aarch64_DIR=${LibXAIE_aarch64_DIR}"
 fi
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 
