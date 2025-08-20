@@ -32,7 +32,7 @@ def compile_cxx_core_function(
         include_dirs (list[str], optional): List of include directories to add with -I.
         compile_args (list[str], optional): Additional compile arguments to peano.
         cwd (str, optional): Overrides the current working directory.
-        verbose (bool): Enable verbose output.
+        verbose (bool): If True, enable verbose output.
     """
     cmd = [
         config.peano_cxx_path(),
@@ -61,7 +61,7 @@ def compile_cxx_core_function(
         cmd.extend(compile_args)
 
     if verbose:
-        print("Executing:", " ".join(cmd))
+        print("Compiling with:", " ".join(cmd))
     ret = subprocess.run(
         cmd,
         cwd=cwd,
@@ -96,7 +96,7 @@ def compile_mlir_module(
         insts_path (str): Path to the instructions binary file.
         pdi_path (str): Path to the PDI file.
         xclbin_path (str): Path to the xclbin file.
-        verbose (bool): Enable verbose output.
+        verbose (bool): If True, enable verbose output.
         work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
     """
