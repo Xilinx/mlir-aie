@@ -260,7 +260,7 @@ def get_version():
         "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
     )
     suffix = "" if check_env("ENABLE_RTTI", 1) else "-no_rtti"
-    return f"{release_version}{suffix}.{timestamp}+{commit_hash}{suffix}"
+    return f"{release_version}.{timestamp}+{commit_hash}{suffix}"
 
 
 MLIR_AIE_SOURCE_DIR = Path(
