@@ -17,6 +17,7 @@ from aie.iron.device import NPU2Col1, NPU2
 # CHECK:      %init_local_buf = aie.buffer(%tile_0_2) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
 # CHECK:      %shim_noc_tile_0_0 = aie.tile(0, 0)
 
+
 def passthrough_local_buff():
     in1_size = 4096
     out_size = 4096

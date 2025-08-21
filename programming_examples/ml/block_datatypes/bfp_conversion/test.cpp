@@ -184,7 +184,7 @@ int main(int argc, const char *argv[]) {
   std::vector<float> floatBVec(floatB, floatB + numberFloats);
   std::vector<float> expectedResultVec(numberFloats);
   matmul_common::matmul<float, float, float>(matrixSize, matrixSize, matrixSize, floatAVec,
-                                             floatBVec, expectedResultVec, false);
+                                             floatBVec, expectedResultVec, false, false);
 
   printBfp16ebs8Array(numberFloats * 1.125, std::vector(bufOut, bufOut + bfpBytesSize));
   auto outputTransformed = bfp16ebs8ToFloat(bfpBytesSize, bufOut, 0);

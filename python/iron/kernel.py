@@ -7,7 +7,6 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 import numpy as np
-import os
 
 from .. import ir  # type: ignore
 from ..extras.dialects.ext.func import FuncOp  # type: ignore
@@ -77,12 +76,12 @@ class Kernel(BaseKernel):
 
 
 class ExternalFunction(BaseKernel):
-    _object_files = set()
     _instances = set()
 
     def __init__(
         self,
         name: str,
+        object_file_name: str | None = None,
         source_file: str | None = None,
         source_string: str | None = None,
         arg_types: list[type[np.ndarray] | np.dtype] = [],
@@ -94,6 +93,7 @@ class ExternalFunction(BaseKernel):
 
         Args:
             name (str): The name of the function
+            object_file_name (str, optional): The name of the object file. If None, it will be name.o.
             source_file (str): Path to the C/C++ source file
             source_string (str): C/C++ source code as a string
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
@@ -104,7 +104,10 @@ class ExternalFunction(BaseKernel):
         self._setup_source(source_file, source_string)
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
-        self._object_file_name = f"{self._name}.o"
+        if object_file_name:
+            self._object_file_name = object_file_name
+        else:
+            self._object_file_name = f"{self._name}.o"
         self._compiled = False
 
         # Track this instance for JIT compilation
