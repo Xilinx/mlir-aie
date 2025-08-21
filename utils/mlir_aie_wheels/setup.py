@@ -256,11 +256,11 @@ def get_version():
     release_version = "0.0.1"
     commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
     now = datetime.now()
-    datetime = os.environ.get(
+    timestamp = os.environ.get(
         "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
     )
     suffix = "" if check_env("ENABLE_RTTI", 1) else ".no_rtti"
-    return f"{release_version}{suffix}.{datetime}+{commit_hash}"
+    return f"{release_version}{suffix}.{timestamp}+{commit_hash}"
 
 
 MLIR_AIE_SOURCE_DIR = Path(
