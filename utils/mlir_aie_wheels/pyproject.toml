@@ -53,7 +53,7 @@ before-build = [
 ]
 
 [build-system]
-requires = ["setuptools", "nanobind"]
+requires = ["setuptools>=61.0", "nanobind"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
