@@ -6,14 +6,15 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
-from os import PathLike
 import subprocess
+from os import PathLike
+
 import aie.utils.config as config
 
 
 def merge_object_files(
-    object_files: list[PathLike],
-    output_file: PathLike,
+    object_paths: list[PathLike],
+    output_path: PathLike,
     cwd=None,
     verbose=False,
 ) -> None:
@@ -30,8 +31,8 @@ def merge_object_files(
         config.peano_linker_path(),
         "-r",  # relocatable output
         "-o",
-        str(output_file),
-        *[str(obj) for obj in object_files],
+        str(output_path),
+        *[str(obj) for obj in object_paths],
     ]
     if verbose:
         print("Linking object files with:", " ".join(cmd))

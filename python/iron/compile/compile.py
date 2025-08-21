@@ -15,9 +15,9 @@ def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
     output_path: str,
-    include_dirs=None,
-    compile_args=None,
-    cwd=None,
+    include_dirs: list[str] | None = None,
+    compile_args: list[str] | None = None,
+    cwd: str | None = None,
     verbose=False,
 ):
     """
@@ -73,17 +73,16 @@ def compile_cxx_core_function(
     if ret.returncode != 0:
         if ret.stderr:
             raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
-        else:
-            raise RuntimeError("[Peano] compilation failed")
+        raise RuntimeError("[Peano] compilation failed")
 
 
 def compile_mlir_module(
     mlir_module: str,
-    insts_path=None,
-    pdi_path=None,
-    xclbin_path=None,
+    insts_path: str | None = None,
+    pdi_path: str | None = None,
+    xclbin_path: str | None = None,
     verbose=False,
-    work_dir=None,
+    work_dir: str | None = None,
     options=None,
 ):
     """
