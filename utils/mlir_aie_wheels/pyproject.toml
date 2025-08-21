@@ -1,9 +1,3 @@
-[project]
-name = "mlir-aie"
-description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
-readme = "README.md"
-dynamic = ["dependencies", "requires-python", "version"]
-
 [tool.cibuildwheel]
 build-verbosity = 3
 build = "cp312-*"
@@ -54,7 +48,7 @@ before-build = [
 ]
 
 [build-system]
-requires = ["setuptools", "nanobind"]
+requires = ["setuptools>=61.0", "nanobind"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
