@@ -17,6 +17,7 @@
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/PatternMatch.h"
@@ -546,7 +547,14 @@ struct AIEVecConvAnalysis : public AIEVecConvAnalysisBase<AIEVecConvAnalysis> {
     markAllAnalysesPreserved();
     AnalysisManager am = getAnalysisManager();
     LongestConvMACChainAnalysis::am = &am;
-    Operation *op = getOperation();
+    ModuleOp op = dyn_cast_if_present<ModuleOp>(getOperation());
+
+    auto aieVersionOpt = getAIEVersionFromModule(op);
+    if (!aieVersionOpt)
+      return;
+    auto aieVersion = *aieVersionOpt;
+    if (aieVersion != AIE::AIEArch::AIE2)
+      return;
 
     // Compute all the chains
     op->walk([&](arith::AddIOp addOp) {

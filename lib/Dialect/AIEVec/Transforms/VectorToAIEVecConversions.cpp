@@ -16,7 +16,6 @@
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
@@ -452,14 +451,14 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
 }
 
 static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
-                                        mlir::ModuleOp parentModuleOp,
+                                        Operation *parentSymTabOp,
                                         StringRef funcName, TypeRange inTypes,
                                         TypeRange outTypes) {
 
   mlir::OpBuilder::InsertionGuard insertGuard(rewriter);
   rewriter.setInsertionPointToStart(
-      &parentModuleOp.getRegion().getBlocks().front());
-  SymbolTable st = SymbolTable(parentModuleOp);
+      &parentSymTabOp->getRegion(0).getBlocks().front());
+  SymbolTable st = SymbolTable(parentSymTabOp);
   func::FuncOp fnOpLookup = st.lookup<func::FuncOp>(funcName);
   func::FuncOp fnOp;
   // if the function is already declared, use the existing function, don't
@@ -472,7 +471,7 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
     NamedAttribute funcAccess = NamedAttribute(t1, t2);
     FunctionType fnType =
         mlir::FunctionType::get(rewriter.getContext(), inTypes, outTypes);
-    fnOp = rewriter.create<func::FuncOp>(parentModuleOp.getLoc(), funcName,
+    fnOp = rewriter.create<func::FuncOp>(parentSymTabOp->getLoc(), funcName,
                                          fnType, funcAccess);
   }
   return fnOp;
@@ -1942,12 +1941,12 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
 
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
     StringRef funcName = "getExpBf16";
-    auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
+    Operation *symTabOp = mlir::SymbolTable::getNearestSymbolTable(expOp);
 
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
     VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
     func::FuncOp fnOp = getOrInsertFuncDecl(
-        rewriter, moduleOp, funcName, TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
+        rewriter, symTabOp, funcName, TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
 
     SmallVector<Value> expOperands = {adaptor.getOperand()};
 
@@ -3791,7 +3790,7 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
 
   LowerVectorToAIEVec(const LowerVectorToAIEVecOptions &options)
       : LowerVectorToAIEVec() {
-    aieTarget = options.aieTarget;
+    // aieTarget = options.aieTarget;
     targetBackend = options.targetBackend;
   }
 
@@ -3809,11 +3808,11 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
                 emitc::EmitCDialect>();
   }
 
-  Option<std::string> aieTarget{
-      *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
-      llvm::cl::init("aie")};
+  // Option<std::string> aieTarget{
+  //     *this, "aie-target",
+  //     llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
+  //                    "determine the vector size and available operations."),
+  //     llvm::cl::init("aie")};
 
   Option<std::string> targetBackend{
       *this, "target-backend",
@@ -3823,27 +3822,23 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
       llvm::cl::init("cpp")};
 
   void runOnOperation() override {
-    auto *op = getOperation();
+    ModuleOp op = dyn_cast_if_present<ModuleOp>(getOperation());
+
+    auto aieVersionOpt = getAIEVersionFromModule(op);
+    if (!aieVersionOpt)
+      return;
+    auto aieVersion = *aieVersionOpt;
+
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
-    auto aieVersion = AIEArch::AIE;
-    if (!aieTarget.empty()) {
-      std::string targetStr = aieTarget;
-      if (targetStr == "aieml" || targetStr == "aie2")
-        aieVersion = AIEArch::AIE2;
-      else if (targetStr != "aie") {
-        op->emitError() << "unknown AIE target '" << aieTarget << "'";
-        return signalPassFailure();
-      }
-    }
 
     TargetBackend backend = TargetBackend::CPP;
     if (!targetBackend.empty()) {
       std::string backendStr = targetBackend;
       if (backendStr == "llvmir") {
         backend = TargetBackend::LLVMIR;
-        if (aieVersion == AIEArch::AIE) {
+        if (aieVersion == AIE::AIEArch::AIE1) {
           op->emitError() << "targetting LLVM IR is not supported for AIEv1";
           signalPassFailure();
           return;
@@ -3857,13 +3852,14 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
 
     populateAIEVecCommonConversionPatterns(patterns, backend);
     configureAIEVecCommonLegalizations(target, backend);
-    if (aieVersion == AIEArch::AIE) {
+    if (aieVersion == AIE::AIEArch::AIE1) {
       populateAIEVecV1ConversionPatterns(patterns, backend);
       configureAIEVecV1Legalizations(target, backend);
-    } else {
+    } else if (aieVersion == AIE::AIEArch::AIE2) {
       populateAIEVecV2ConversionPatterns(patterns, backend);
       configureAIEVecV2Legalizations(target, backend);
-    }
+    } else
+      return;
 
     if (failed(applyPartialConversion(op, target, std::move(patterns))))
       return signalPassFailure();
