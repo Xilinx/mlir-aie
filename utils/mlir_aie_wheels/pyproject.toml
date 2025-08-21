@@ -2,8 +2,7 @@
 name = "mlir-aie"
 description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
 readme = "README.md"
-requires-python = ">=3.10"
-dynamic = ["dependencies", "version"]
+dynamic = ["dependencies", "requires-python", "version"]
 
 [tool.cibuildwheel]
 build-verbosity = 3
@@ -55,7 +54,8 @@ before-build = [
 ]
 
 [build-system]
-requires = ["setuptools", "nanobind"]
+requires = ["setuptools>=61.0", "nanobind"]
+build-backend = "setuptools.build_meta"
 
 [project.scripts]
 aie-lsp-server = "aie.tools:aie_lsp_server"
