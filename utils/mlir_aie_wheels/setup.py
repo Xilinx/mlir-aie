@@ -21,22 +21,6 @@ def check_env(build, default=0):
     return os.getenv(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
-def get_name():
-    """Get the package name based on the ENABLE_RTTI environment variable."""
-    if check_env("ENABLE_RTTI", 1):
-        return "mlir_aie"
-    else:
-        return "mlir_aie_no_rtti"
-
-
-def get_mlir_name():
-    """Get the MLIR name based on the ENABLE_RTTI environment variable."""
-    if check_env("ENABLE_RTTI", 1):
-        return "mlir"
-    else:
-        return "mlir_no_rtti"
-
-
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: Union[str, Path] = "") -> None:
         super().__init__(name, sources=[])
@@ -64,7 +48,7 @@ def get_cross_cmake_args():
         )
         mlir_tblgen_target = next(
             f.locate()
-            for f in files(get_mlir_name())
+            for f in files("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
             if f.name.startswith("mlir-tblgen")
         )
         os.remove(mlir_tblgen_target)
@@ -75,7 +59,9 @@ def get_cross_cmake_args():
             if f.name.startswith("mlir-pdll")
         )
         mlir_pdll_target = next(
-            f.locate() for f in files(get_mlir_name()) if f.name.startswith("mlir-pdll")
+            f.locate()
+            for f in files("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti")
+            if f.name.startswith("mlir-pdll")
         )
         os.remove(mlir_pdll_target)
         shutil.copy(mlir_pdll_host, mlir_pdll_target)
@@ -118,7 +104,7 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-        install_dir = extdir / get_name()
+        install_dir = extdir / "mlir_aie"
         cfg = "Release"
 
         cmake_generator = os.getenv("CMAKE_GENERATOR", "Ninja")
@@ -126,7 +112,8 @@ class CMakeBuild(build_ext):
         MLIR_INSTALL_ABS_PATH = Path(
             os.getenv(
                 "MLIR_INSTALL_ABS_PATH",
-                Path(__file__).parent / get_mlir_name(),
+                Path(__file__).parent
+                / ("mlir" if check_env("ENABLE_RTTI", 1) else "mlir_no_rtti"),
             )
         ).absolute()
 
@@ -252,7 +239,7 @@ class DevelopWithPth(develop):
         super().run()
         pth_target = os.path.join(self.install_dir, "aie.pth")
         with open(pth_target, "w") as pth_file:
-            pth_file.write(dedent(f"{get_name()}/python"))
+            pth_file.write("mlir_aie//python")
 
 
 class InstallWithPth(install):
@@ -262,16 +249,19 @@ class InstallWithPth(install):
         super().run()
         pth_target = os.path.join(self.install_lib, "aie.pth")
         with open(pth_target, "w") as pth_file:
-            pth_file.write(dedent(f"{get_name()}/python"))
+            pth_file.write("mlir_aie//python")
 
 
-commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
-release_version = "0.0.1"
-now = datetime.now()
-datetime = os.environ.get(
-    "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
-)
-version = f"{release_version}.{datetime}+{commit_hash}"
+def get_version():
+    release_version = "0.0.1"
+    commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
+    now = datetime.now()
+    datetime = os.environ.get(
+        "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
+    )
+    suffix = "" if check_env("ENABLE_RTTI", 1) else ".no_rtti"
+    return f"{release_version}{suffix}.{datetime}+{commit_hash}"
+
 
 MLIR_AIE_SOURCE_DIR = Path(
     os.getenv(
@@ -291,9 +281,9 @@ def parse_requirements(filename):
 
 
 setup(
-    version=version,
+    version=get_version(),
     author="",
-    name=get_name(),
+    name="mlir-aie",
     include_package_data=True,
     description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
     long_description=dedent(
