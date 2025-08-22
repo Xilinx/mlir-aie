@@ -109,7 +109,7 @@ LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output) {
     arch = targetOp.getTargetModel().getTargetArch();
   }
   if (arch == AIEArch::AIE1)
-    output << "AIE\n";
+    output << "AIE1\n";
   else
     output << stringifyEnum(arch) << "\n";
   return success();
