@@ -599,7 +599,7 @@ struct AIEObjectFifoStatefulTransformPass
       creation_tile = consumerTileOp;
 
     std::optional<ObjectFifoAllocateOp> opAlloc = getOptionalAllocateOp(op);
-    if (opAllo.has_value()) {
+    if (opAlloc.has_value()) {
       TileOp delegate = opAlloc->getDelegateTileOp();
       int prodShareDir;
       int consShareDir;
