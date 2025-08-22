@@ -196,6 +196,23 @@ struct AIEObjectFifoStatefulTransformPass
     return leftShared || rightShared;
   }
 
+  /// Function to retrieve ObjectFifoAllocateOp of ObjectFifoCreateOp,
+  /// if it exists.
+  std::optional<ObjectFifoAllocateOp> getOptionalAllocateOp(ObjectFifoCreateOp op) {
+    ObjectFifoAllocateOp allocOp;
+    auto device = op->getParentOfType<DeviceOp>();
+    bool foundAlloc = false;
+    for (ObjectFifoAllocateOp alloc : device.getOps<ObjectFifoAllocateOp>()) {
+      if (alloc.getObjectFifo() == op) {
+        if (foundAlloc)
+          op.emitOpError("has more than one allocate operation");
+        opAlloc = alloc;
+        foundAlloc = true;
+      }
+    }
+    return allocOp;
+  }
+
   // Return true if the objectFifo created by createOp requires a DMA to be set
   // up. This is the case if the tiles are not adjacent (no shared memory), if
   // the objectFifo broadcasts to multiple tiles, if one of the consumers or
@@ -269,9 +286,16 @@ struct AIEObjectFifoStatefulTransformPass
             // memory without DMAs
             splitBecauseLink.push_back(createOp);
           }
-          if (createOp.getViaSharedMem().has_value()) {
-            checkAndApplyViaSharedMemAttribute(createOp, share_dir);
-            if (share_direction == share_dir)
+          std::optional<ObjectFifoAllocateOp> opAlloc = getOptionalAllocateOp(createOp);
+          if (opAlloc.has_value()) {
+            TileOp delegate = opAlloc->getDelegateTileOp();
+            int prodShareDir;
+            int consShareDir;
+            auto consumerTileOp =
+                dyn_cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
+            isSharedMemory(delegate, createOp.getProducerTileOp(), &prodShareDir);
+            isSharedMemory(delegate, consumerTileOp, &consShareDir);
+            if (prodShareDir == -1 && consShareDir == -1)
               isUsedInLinkOp = false;
             else
               splitBecauseLink.push_back(createOp);
@@ -572,19 +596,9 @@ struct AIEObjectFifoStatefulTransformPass
     else
       creation_tile = consumerTileOp;
 
-    ObjectFifoAllocateOp opAlloc;
-    auto device = op->getParentOfType<DeviceOp>();
-    bool foundAlloc = false;
-    for (ObjectFifoAllocateOp alloc : device.getOps<ObjectFifoAllocateOp>()) {
-      if (alloc.getObjectFifo() == op) {
-        if (foundAlloc)
-          op.emitOpError("has more than one allocate operation");
-        opAlloc = alloc;
-        foundAlloc = true;
-      }
-    }
-    if (opAlloc) {
-      TileOp delegate = opAlloc.getDelegateTileOp();
+    std::optional<ObjectFifoAllocateOp> opAlloc = getOptionalAllocateOp(op);
+    if (opAllo.has_value()) {
+      TileOp delegate = opAlloc->getDelegateTileOp();
       int prodShareDir;
       int consShareDir;
       isSharedMemory(delegate, op.getProducerTileOp(), &prodShareDir);
@@ -592,8 +606,8 @@ struct AIEObjectFifoStatefulTransformPass
       if (prodShareDir == -1 && consShareDir == -1)
         creation_tile = delegate;
       else
-        opAlloc.emitOpError("objectfifo has no shared memory access to "
-                            "delegate tile's memory module");
+        opAlloc->emitOpError("objectfifo has no shared memory access to "
+                             "delegate tile's memory module");
     }
 
     // Reset opbuilder location to after the last tile declaration

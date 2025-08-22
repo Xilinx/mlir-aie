@@ -4,9 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-//
-// Date: October 1st 2024
+// Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -42,6 +40,10 @@
 // CHECK:      aie.end
 // CHECK:    }
 // CHECK:  }
+
+// In this design, the allocate operation applies to tile_2_2, to which tile_1_2
+// does not have direct shared memory access: buffers and locks are created on
+// both tiles, following default behaviour of a link.
 
 module @link_AIE2 {
     aie.device(xcve2302) {

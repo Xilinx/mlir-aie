@@ -87,6 +87,9 @@
 //CHECK:    }
 //CHECK:  }
 
+// In this design, there is no allocate operation: buffers and locks are created
+// on both tiles, following default behaviour of a link.
+
 module @link_AIE2 {
     aie.device(xcve2302) {
         %tile20 = aie.tile(2, 0)
