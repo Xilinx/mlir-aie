@@ -127,7 +127,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer8_1Out_ty,
             disable_synchronization=True,
         )
-        #self.of_act_bn8_1_2.allocate(self.L1Tile) # TODO
+        # self.of_act_bn8_1_2.allocate(self.L1Tile) # TODO
         self.of_act_bn8_2_3 = object_fifo(
             self.bottleneckName + "_" + "act_bn8_2_3",
             self.computeTile,
