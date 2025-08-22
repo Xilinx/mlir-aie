@@ -211,7 +211,9 @@ struct AIEObjectFifoStatefulTransformPass
         foundAlloc = true;
       }
     }
-    return allocOp;
+    if (foundAlloc)
+      return {allocOp};
+    return {};
   }
 
   // Return true if the objectFifo created by createOp requires a DMA to be set
