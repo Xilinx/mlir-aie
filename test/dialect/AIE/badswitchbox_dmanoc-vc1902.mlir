@@ -11,7 +11,6 @@
 
 // RUN: not %PYTHON aiecc.py %s 2>&1 | FileCheck %s
 // CHECK: error:
-// XFAIL: *
 
 module {
   aie.device(xcvc1902) {
