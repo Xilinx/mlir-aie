@@ -592,8 +592,10 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (objFifo.getRepeatCount().has_value())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set `repeat_count` attribute");
-  if (!objFifo.getDimensionsToStream().empty() &&
-      !objFifo.getDimensionsFromStreamPerConsumer().empty())
+  if (!objFifo.getDimensionsToStream().empty())
+    return emitError("cannot allocate a shared memory module to objectfifo "
+                     "with set dimensions attribute");
+  if (!objFifo.getDimensionsFromStreamPerConsumer().empty())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set dimensions attribute");
   return success();
