@@ -198,7 +198,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function to retrieve ObjectFifoAllocateOp of ObjectFifoCreateOp,
   /// if it exists.
-  std::optional<ObjectFifoAllocateOp> getOptionalAllocateOp(ObjectFifoCreateOp op) {
+  std::optional<ObjectFifoAllocateOp>
+  getOptionalAllocateOp(ObjectFifoCreateOp op) {
     ObjectFifoAllocateOp allocOp;
     auto device = op->getParentOfType<DeviceOp>();
     bool foundAlloc = false;
