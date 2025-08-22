@@ -557,6 +557,7 @@ def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [
 
 def AIE_ConfigureOp: AIEX_Op<"configure", [
   HasParent<"RuntimeSequenceOp">,
+  NoTerminator
 ]>,
   Results<(outs Index:$result)>
  {
@@ -566,29 +567,36 @@ def AIE_ConfigureOp: AIEX_Op<"configure", [
   );
 
   let assemblyFormat = [{
-     $symbol attr-dict
+     $symbol regions attr-dict
   }];
 
   let extraClassDeclaration = [{
     AIE::DeviceOp getReferencedDeviceOp();
   }];
+
+  let regions = (region
+    AnyRegion:$body
+  );
+
+  let hasVerifier = 1;
 }
 
-def AIE_RunOp: AIEX_Op<"run", [HasParent<"RuntimeSequenceOp">]> {
+def AIE_RunOp: AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
   let arguments = (
-    ins Index:$config,
-        FlatSymbolRefAttr:$runtime_sequence_symbol,
+    ins FlatSymbolRefAttr:$runtime_sequence_symbol,
         Variadic<AnyType>:$args
   );
 
   let assemblyFormat = [{
-     $config `->` $runtime_sequence_symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
+     $runtime_sequence_symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     AIE::DeviceOp getCalleeDeviceOp();
     RuntimeSequenceOp getCalleeRuntimeSequenceOp();
   }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [

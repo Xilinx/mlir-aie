@@ -993,24 +993,38 @@ AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
   }
   Operation *maybeReferencedDevice = SymbolTable::lookupSymbolIn(moduleOp.getOperation(), getSymbolAttr());
   if (!maybeReferencedDevice) {
-    emitError("Referenced symbol is not defined");
+    emitError("No such device: '") << getSymbolAttr() << "'";
     return nullptr;
   }
   AIE::DeviceOp referencedDevice = llvm::dyn_cast<AIE::DeviceOp>(maybeReferencedDevice);
   if (!referencedDevice) {
-    emitError("Referenced symbol is not a device");
+    emitError("Not a device: '") << getSymbolAttr() << "'";
     return nullptr;
   }
   return referencedDevice;
 }
 
+LogicalResult AIEX::ConfigureOp::verify() {
+  AIE::DeviceOp parentDev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  AIE::DeviceOp referencedDev = getReferencedDeviceOp();
+  if(!referencedDev) {
+    return failure();
+  }
+  if(parentDev.getDevice() != referencedDev.getDevice()) {
+    emitError("Device types do not match: '") 
+      << AIE::stringifyAIEDevice(parentDev.getDevice()) << "' vs. '" 
+      << AIE::stringifyAIEDevice(referencedDev.getDevice()) << "'";
+    return failure();
+  }
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // RunOp
 //===----------------------------------------------------------------------===//
 
 AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
-  AIEX::ConfigureOp configureOp = getConfig().getDefiningOp<AIEX::ConfigureOp>();
+  AIEX::ConfigureOp configureOp = getOperation()->getParentOfType<AIEX::ConfigureOp>();
   if (!configureOp) {
     return nullptr;
   }
@@ -1019,7 +1033,7 @@ AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
 }
 
 AIEX::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
-  AIEX::ConfigureOp configureOp = getConfig().getDefiningOp<AIEX::ConfigureOp>();
+  AIEX::ConfigureOp configureOp = getOperation()->getParentOfType<AIEX::ConfigureOp>();
   if (!configureOp) {
     return nullptr;
   }
@@ -1034,15 +1048,22 @@ AIEX::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
   );
 
   if (!maybeRuntimeSequence) {
-    auto err = configureOp.emitError() << "No " << getRuntimeSequenceSymbol() << " runtime sequence found for this configuration";
-    err.attachNote(referencedDevice.getLoc()) << "This device does not have a " << getRuntimeSequenceSymbol() << " runtime sequence";
+    auto err = emitError() << "No such runtime sequence for device '" << referencedDevice.getSymName() << "': '" << getRuntimeSequenceSymbol() << "'";
+    err.attachNote(referencedDevice.getLoc()) << "This device does not have a '" << getRuntimeSequenceSymbol() << "' runtime sequence";
     return nullptr;
   }
   AIEX::RuntimeSequenceOp runtimeSequence = llvm::dyn_cast<AIEX::RuntimeSequenceOp>(maybeRuntimeSequence);
   if (!runtimeSequence) {
-    configureOp.emitError() << "Referenced " << getRuntimeSequenceSymbol() << " symbol is not a runtime sequence";
+    emitError() << "Not a runtime sequence: '" << getRuntimeSequenceSymbol() << "'";
     return nullptr;
   }
 
   return runtimeSequence;
+}
+
+LogicalResult AIEX::RunOp::verify() {
+  if (getCalleeDeviceOp() && getCalleeRuntimeSequenceOp()) {
+    return success();
+  }
+  return failure();
 }
