@@ -394,6 +394,11 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
     return llvmir_chesslinked
 
 
+def downgrade_ir_for_peano(llvmir):
+    llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    return llvmir
+
+
 def drop_alignment_for_peano(llvmir):
     # Remove any ", align <integer>" attribute occurrences
     llvmir = re.sub(r",\s*align\s+\d+", "", llvmir)
@@ -504,7 +509,8 @@ class FlowRunner:
             return llvmir_peanohack
 
         llvmir_ir = await read_file_async(llvmir)
-        llvmir_hacked_ir = drop_alignment_for_peano(llvmir_ir)
+        llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        llvmir_hacked_ir = drop_alignment_for_peano(llvmir_hacked_ir)
         await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
 
         return llvmir_peanohack
