@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(NPUDEVICE) {
     memref.global "public" @objFifo_in0 : memref<64x64xi8>
     memref.global "public" @objFifo_out0 : memref<64x64xi8>
 
@@ -117,7 +117,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c13_i8 = arith.constant 13 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%tile_0_3_lock_3, AcquireGreaterEqual, 1)
@@ -125,7 +125,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %tile_0_3_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c13_i8 : i8
           memref.store %1, %tile_0_3_buff_1[%arg1, %arg2] : memref<64x64xi8>
         }
       }
@@ -153,7 +153,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c14_i8 = arith.constant 14 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%tile_0_4_lock_3, AcquireGreaterEqual, 1)
@@ -161,7 +161,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %tile_0_4_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c14_i8 : i8
           memref.store %1, %tile_0_4_buff_1[%arg1, %arg2] : memref<64x64xi8>
         }
       }
@@ -189,7 +189,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c15_i8 = arith.constant 15 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%tile_0_5_lock_3, AcquireGreaterEqual, 1)
@@ -197,7 +197,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %tile_0_5_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c15_i8 : i8
           memref.store %1, %tile_0_5_buff_1[%arg1, %arg2] : memref<64x64xi8>
         }
       }
@@ -284,14 +284,14 @@ module {
     aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
     aie.shim_dma_allocation @objFifo_out0(S2MM, 0, 0)
 
-    aiex.runtime_sequence @run(%arg0: memref<4x64x64xi8>, %arg1: memref<32xi8>, %arg2: memref<4x64x64xi8>) {
+    aiex.runtime_sequence @run(%arg0: memref<4x64x64xi8>, %arg1: memref<4x64x64xi8>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c4_i64 = arith.constant 4 : i64
       %c4096_i64 = arith.constant 4096 : i64
       %c64_i64 = arith.constant 64 : i64
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64], packet = <pkt_id = 0, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<4x64x64xi8>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<4x64x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64], packet = <pkt_id = 0, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<4x64x64xi8>
+      aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<4x64x64xi8>
       aiex.npu.dma_wait { symbol = @objFifo_out0 }
     }
   }

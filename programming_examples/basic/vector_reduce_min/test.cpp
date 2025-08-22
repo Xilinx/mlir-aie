@@ -9,8 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "cxxopts.hpp"
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -31,8 +31,6 @@ using INOUT0_DATATYPE = std::int32_t;
 using INOUT1_DATATYPE = std::int32_t;
 #endif
 
-namespace po = boost::program_options;
-
 // ----------------------------------------------------------------------------
 // Main
 // ----------------------------------------------------------------------------
@@ -41,11 +39,11 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("Vector Reduce Min Test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -65,7 +63,7 @@ int main(int argc, const char *argv[]) {
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 

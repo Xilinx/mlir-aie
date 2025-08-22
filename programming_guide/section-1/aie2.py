@@ -4,26 +4,42 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
-from aie.dialects.aie import *  # primary mlir-aie dialect definitions
-from aie.extras.context import mlir_mod_ctx  # mlir-aie context
+import numpy as np
 
+from aie.iron import Program, Runtime, Worker, LocalBuffer
+from aie.iron.placers import SequentialPlacer
+from aie.iron.device import NPU1Col1, Tile
+from aie.iron.controlflow import range_
 
-# AI Engine structural design function
-def mlir_aie_design():
+data_size = 48
+data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
-    # Device declaration - aie2 device NPU
-    @device(AIEDevice.npu1)
-    def device_body():
-
-        # Tile(s) declarations
-        ComputeTile1 = tile(1, 3)
-        ComputeTile2 = tile(2, 3)
-        ComputeTile3 = tile(2, 4)
+# Dataflow configuration
+# described in a future section of the guide...
 
 
-# Declares that subsequent code is in mlir-aie context
-with mlir_mod_ctx() as ctx:
-    mlir_aie_design()  # Call design function within the mlir-aie context
-    print(ctx.module)  # Print the python-to-mlir conversion to stdout
+# Task for the worker to perform
+def core_fn():
+    local = LocalBuffer(data_ty, name="local")
+    for i in range_(data_size):
+        local[i] = 0
+
+
+# Create a worker to perform the task
+my_worker = Worker(core_fn, [], placement=Tile(0, 2), while_true=False)
+
+# Runtime operations to move data to/from the AIE-array
+rt = Runtime()
+with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+    rt.start(my_worker)
+
+# Create the program from the device type and runtime
+my_program = Program(NPU1Col1(), rt)
+
+# Place components (assign them resources on the device) and generate an MLIR module
+module = my_program.resolve_program(SequentialPlacer())
+
+# Print the generated MLIR
+print(module)

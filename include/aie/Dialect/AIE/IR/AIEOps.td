@@ -28,7 +28,7 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 def AIE_DeviceOp: AIE_Op<"device", [
     AIETarget, HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlock, NoTerminator, IsolatedFromAbove
+    SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -63,7 +63,6 @@ def AIE_DeviceOp: AIE_Op<"device", [
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
   }];
-  let hasVerifier = 1;
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
@@ -74,12 +73,14 @@ def AIE_TileOp: AIE_Op<"tile", [
   ]>, Results<(outs Index:$result)> {
   let arguments = (
     ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$col,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row,
+        OptionalAttr<StrAttr>:$allocation_scheme
   );
 
   let summary = "Declare an AIE tile";
   let description = [{
-    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
+    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile. 
+    Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).
 
     A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
     memory buffer (BufferOp), and lock (LockOp).
@@ -87,7 +88,7 @@ def AIE_TileOp: AIE_Op<"tile", [
     A tile is a logical abstraction. We use a tile to establish ownership of a hardware entity.
 
     Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
-    the AIE array proper and the PL.  The South-West/Lower Right most core exists in Tile(0,1)
+    the AIE array proper and the PL. The South-West/Lower Right most core exists in Tile(0,1).
   }];
 
   let extraClassDeclaration = [{
@@ -131,13 +132,31 @@ def AIE_TileOp: AIE_Op<"tile", [
   let extraClassDefinition = [{
     void $cppClass::getAsmResultNames(
         function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
-       std::string nameWithoutDialect =
+       std::string tileName =
              getOperationName().str().substr(getOperationName().find('.') + 1);
-       setNameFn(getResult(), nameWithoutDialect + "_" +
+       // Specialize the SSA value name according to the tile kind
+       if (isMemTile())
+         tileName = "mem_" + tileName;
+       else if (isShimNOCTile())
+         tileName = "shim_noc_" + tileName;
+       else if (isShimPLTile())
+         tileName = "shim_pl_" + tileName;
+       else if (isShimTile())
+         tileName = "shim_" + tileName;
+       setNameFn(getResult(), tileName + "_" +
                                   std::to_string(getCol()) + "_" +
                                   std::to_string(getRow()));
     }
   }];
+
+  let builders = [
+    OpBuilder<(ins "int32_t":$col, "int32_t":$row), [{
+      build($_builder, $_state, col, row, nullptr);
+    }]>,
+    OpBuilder<(ins "mlir::Type":$type, "int32_t":$col, "int32_t":$row), [{
+      build($_builder, $_state, type, col, row, nullptr);
+    }]>
+  ];
 }
 
 def AIE_EndOp: AIE_Op<"end", [Terminator]> {
@@ -643,13 +662,13 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let description = [{
     A logical packet-switched flow between tiles.  During place and
     route, this is replaced by MasterSets and PacketRules inside
-    switchboxes. 
-    
-    The optional attribute keep_pkt_header indicates whether each 
-    data packet's packet header gets preserved at the flow's 
+    switchboxes.
+
+    The optional attribute keep_pkt_header indicates whether each
+    data packet's packet header gets preserved at the flow's
     destination. The optional attribute priority_route indicates
-    whether the packet flow is routed in priority over other flows, 
-    so that they always get allocated with the same master, slave 
+    whether the packet flow is routed in priority over other flows,
+    so that they always get allocated with the same master, slave
     ports, arbiters and master selects (msel).
 
     Example:
@@ -771,7 +790,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         2. the transfer length;
         3. the sizes and strides for n-d tensor addressing (described below);
         4. the "bd_id" with which to associate the buffer descriptor (most often left empty);
-        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below).
+        5. the number of zeros to pad before and after every dimension of an n-d tensor (described below);
+        6. the burst length to use for the DMA operation. This option is only available for data movement between the host memory and Shim NOC tiles.
+          The default value of 0 is interpreted as the maximum available burst length in the architecture.
 
     `offset`, `len`, `size`s and `stride`s are all denominated in element width; e.g., transferring the whole of
     `memref<512xi32>` means `len == 512`, and also while transferring the whole of `memref<512xi16>`, `len == 512`.
@@ -865,9 +886,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     ## DMA constant padding on AIE-ML Devices
 
     AIE-ML devices can apply constant padding at the buffer descriptor level, described with pairs of padding
-    counts before and after a dimension, to all dimensions in the data layout transformations. The padding 
-    counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes 
-    `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default 
+    counts before and after a dimension, to all dimensions in the data layout transformations. The padding
+    counts can be supplied to the `dma_bd` through an optional argument, an array of "tuple-like" attributes
+    `bd_pad_layout<const_pad_before, const_pad_after>`, followed by an optional argument `const_val` (default
     is 0). All counts are expressed in multiples of the element width.
   }];
 
@@ -882,6 +903,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
   );
@@ -892,10 +914,11 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
     int32_t getBufferElementTypeWidthInBytes() {
-      return getBuffer().getType().getElementTypeBitWidth() / 8;
+      mlir::DataLayout dataLayout = mlir::DataLayout::closest(*this);
+      return dataLayout.getTypeSize(getBuffer().getType().getElementType());
     }
-    int32_t getLenInBytes() {
-      if (std::optional<int32_t> len = getLen(); len.has_value())
+    uint32_t getLenInBytes() {
+      if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
       else
         return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();
@@ -1005,6 +1028,8 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
     bool isSend() { return getChannelDir() == DMAChannelDir::MM2S; }
     bool isRecv() { return getChannelDir() == DMAChannelDir::S2MM; }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def AIE_DMAOp: AIE_Op<"dma", [
@@ -1042,10 +1067,8 @@ def AIE_DMAOp: AIE_Op<"dma", [
   }];
 }
 
-// MemOps are not actually Callable, but we want to inline code into them, so we have to
-// implement CallableOpInterface
 def AIE_MemOp: AIE_Op<"mem", [
-    TileElement, FlowEndPoint, CallableOpInterface,
+    TileElement, FlowEndPoint,
     IsCoreTile, HasValidBDs, HasValidDMAChannels,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -1080,19 +1103,12 @@ def AIE_MemOp: AIE_Op<"mem", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    int maxSizeInBytes() { return 32768; }
-    // CallableOpInterface
-    mlir::Region *getCallableRegion();
-    llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
-    llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
     using ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames;
   }];
 }
 
-// This op is not actually Callable, but we want to inline code into them, so we have to
-// implement CallableOpInterface
 def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
-    TileElement, FlowEndPoint, CallableOpInterface,
+    TileElement, FlowEndPoint,
     IsMemTile, HasValidBDs, HasValidDMAChannels,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -1131,10 +1147,6 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    // CallableOpInterface
-    mlir::Region *getCallableRegion();
-    llvm::ArrayRef<mlir::Type> getArgumentTypes() { return getOperand().getType(); }
-    llvm::ArrayRef<mlir::Type> getResultTypes() { return getType(); }
     using ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames;
   }];
 }
@@ -1253,12 +1265,17 @@ def AIE_LockOp: AIE_Op<"lock", [
 def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   let summary = "acquire/release lock op";
   let description = [{
-    This operation uses a lock. In AIE1, a lock can be acquired with a value
-    or released with a value. This should be understood as a "blocking"
-    operation. In AIE2, locks are counting semaphores without an inherent
-    acquired/release characteristic. This lock must appear in a parent op where
-    the tile can be determined (A CoreOp, a ShimDMAOp, a MemOp, or a
-    MemTileDMAOp).
+    This operation uses a lock.
+    AIE1 locks are binary locks while AIE2 locks are counting semaphores
+    without an inherent acquire/release characteristic.
+    This operation must appear in a parent op where the tile can be determined
+    (A CoreOp, a ShimDMAOp, a MemOp, or a MemTileDMAOp).
+    The behavior of this operation is dependent on `action`:
+    - Acquire: blocks execution until the lock is set to `value`.
+    - AcquireGreaterEqual (only AIE2): blocks execution until the lock is set to `value` or greater.
+      Then, the value of the lock is decremented by `value`.
+    - Release: In AIE1, set the lock to `value`.
+      In AIE2, increment the lock by `value`.
   }];
 
   let arguments = (
@@ -1316,10 +1333,10 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
   let arguments = (
     ins Index:$tile,
-    OptionalAttr<StrAttr>:$sym_name,
-    OptionalAttr<AIEI32Attr>:$address,
-    OptionalAttr<ElementsAttr>:$initial_value,
-    OptionalAttr<AIEI32Attr>:$mem_bank
+        OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<AIEI32Attr>:$address,
+        OptionalAttr<ElementsAttr>:$initial_value,
+        OptionalAttr<AIEI32Attr>:$mem_bank
   );
 
   let results = (outs AnyMemRef:$buffer);
@@ -1384,7 +1401,10 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
     This operation represents an external buffer.
   }];
 
-  let arguments = (ins OptionalAttr<StrAttr>:$sym_name);
+  let arguments = (
+    ins OptionalAttr<StrAttr>:$sym_name,
+        OptionalAttr<AIEI64Attr>:$address
+  );
 
   let results = (outs AnyMemRef:$buffer);
   let assemblyFormat = [{ attr-dict `:` type($buffer) }];
@@ -1479,8 +1499,8 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
   );
   let summary = "A cascade connection between tiles";
   let description = [{
-    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.  
-    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on 
+    The `aie.cascade_flow` operation represents a cascade connection between two `aie.tile` operations.
+    During lowering, this is replaced by `aie.configure_cascade` operations for each `aie.tile` based on
     their relative placement to one another.
 
     Example:
@@ -1503,7 +1523,7 @@ def AIE_CascadeFlowOp: AIE_Op<"cascade_flow", []> {
 def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]> {
   let summary = "An op to configure the input and output directions of the cascade for a single AIE tile";
   let description = [{
-    An operation to configure the cascade on a single tile in both the input and the output 
+    An operation to configure the cascade on a single tile in both the input and the output
     directions.
 
     Example:
@@ -1523,7 +1543,7 @@ def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]>
   let assemblyFormat = [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
 }
 
-def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascade_value)> {
+def AIE_GetCascadeOp: AIE_Op<"get_cascade", []>, Results<(outs AnyType:$cascade_value)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
@@ -1534,7 +1554,7 @@ def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(out
   let assemblyFormat = [{ `(` `)` attr-dict `:` type($cascade_value) }];
 }
 
-def AIE_PutCascadeOp: AIE_Op<"put_cascade", [HasParent<"CoreOp">]> {
+def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
   let summary = "An op to write to a cascading stream from a neighboring core";
   let description = [{
     An op to write to a cascading stream from a neighboring core.
@@ -1678,11 +1698,13 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
         DefaultValuedAttr<BoolAttr, "false">:$plio,
-        // disable_synchronization==true will skip lock generation for 
+        // disable_synchronization==true will skip lock generation for
         // objectfifo synchronous accesses
         DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
-        // memtile_repeat==0 means "do it once" and don't repeat
-        OptionalAttr<AIEI32Attr>:$memtile_repeat
+        // repeat_count==1 means "do it once"
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        InitValuesArrayAttr:$initValues,
+        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions
   );
 
   let assemblyFormat = [{
@@ -1695,6 +1717,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `,`
         $elemNumber
     `)` attr-dict `:` $elemType
+    custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
   }];
 
   let hasVerifier = 1;
@@ -1721,7 +1744,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     OpBuilder<(ins "mlir::StringAttr":$sym_name, "mlir::Value":$producerTile,
                    "mlir::ValueRange":$consumerTiles, "mlir::Attribute":$elemNumber, "mlir::Type":$elem_type,
                    CArg<"llvm::ArrayRef<AIE::BDDimLayoutAttr>", "{}">:$dimensionsToStream,
-                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer), [{
+                   CArg<"llvm::ArrayRef<AIE::BDDimLayoutArrayAttr>", "{}">:$dimensionsFromStreamPerConsumer,
+                   CArg<"llvm::ArrayRef<AIE::BDPadLayoutArrayAttr>", "{}">:$padDimensions), [{
       odsState.addOperands(producerTile);
       odsState.addOperands(consumerTiles);
       odsState.addAttribute(getSymNameAttrName(odsState.name), sym_name);
@@ -1738,7 +1762,9 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
 def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp">]> {
   let summary = "Sets a tile's memory module as the target for an objectfifo's memory allocation";
   let description = [{
-    TODO
+    Specify a tile's memory module to be used as the allocation target for this objectfifo.
+    Only works if all the objectfifo's tiles, producer and consumers, have shared memory access to
+    the specified tile's memory module.
   }];
 
   let arguments = (
@@ -1763,7 +1789,7 @@ def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
-    The `aie.objectFifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
+    The `aie.objectfifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
     one dataflow movement which is split accross multiple `objectFifos`. Specifically, during the `objectFifo` lowering there will
     be less memory elements generated at the link point (i.e., the shared tile of all `objectFifos` in the link) as the `objectFifos` can share.
 
@@ -1878,13 +1904,13 @@ def AIE_ObjectFifoAcquireOp: AIE_Op<"objectfifo.acquire", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
   );
 
   let results = (outs AIE_ObjectFifoSubviewType:$subview);
 
   let assemblyFormat = [{
-    attr-dict $objFifo_name `(` $port `,` $size `)` `:` type($subview)
+    attr-dict $objFifo_name `(` $port `,` $size `)` `:` qualified(type($subview))
   }];
 
   let hasVerifier = 1;
@@ -1914,7 +1940,7 @@ def AIE_ObjectFifoReleaseOp: AIE_Op<"objectfifo.release", []> {
   let arguments = (
     ins ObjectFifoPort:$port,
         FlatSymbolRefAttr:$objFifo_name,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$size
+        ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>:$size
   );
 
   let assemblyFormat = [{
@@ -1945,7 +1971,7 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   }];
 
   let arguments = (
-    ins AIE_ObjectFifoSubviewType:$subview, 
+    ins AIE_ObjectFifoSubviewType:$subview,
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$index
   );
 
@@ -1954,13 +1980,8 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let results = (outs AnyMemRef:$output);
 
   let assemblyFormat = [{
-    $subview `[` $index `]` attr-dict `:` type($subview) `->` type($output)
+    $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
   }];
-
-  // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$subview, "size_t":$index)>
-  ];
 }
 
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
@@ -2037,11 +2058,11 @@ def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
 def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
   let description = [{
-    This operation allows you to define buffer descriptor chains with parametrizable inputs. 
+    This operation allows you to define buffer descriptor chains with parametrizable inputs.
     This is useful for common patterns such as double buffering (ping-pong) that may look identical but use different input/output buffers and locks.
     Currently, only buffers and locks are parametrizable.
 
-    Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence. 
+    Once defined, an abstract BD chain can be used elsewhere using AIEX ops in the runtime sequence.
     In the future, abstract BD chains will also be usable elsewhere, inside the static configuration.
     At its usage sites, the abstract BD chain will be concretized with the given input arguments.
   }];

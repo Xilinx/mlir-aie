@@ -53,8 +53,54 @@ using TileID = struct TileID {
 };
 
 class AIETargetModel {
+
 public:
-  AIETargetModel() = default;
+  enum TargetModelKind {
+    TK_AIE1_VC1902,
+    TK_AIE1_Last,
+    TK_AIE2_VE2302,
+    TK_AIE2_VE2802,
+    TK_AIE2_NPU1_1Col,
+    TK_AIE2_NPU1_2Col,
+    TK_AIE2_NPU1_3Col,
+    TK_AIE2_NPU1_4Col, // whole array must be last because of how we
+                       // cast/initialize the VirtualizedNPU1TargetModel class
+    TK_AIE2_NPU1_Last,
+    TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
+    TK_AIE2_NPU2_1Col,
+    TK_AIE2_NPU2_2Col,
+    TK_AIE2_NPU2_3Col,
+    TK_AIE2_NPU2_4Col,
+    TK_AIE2_NPU2_5Col,
+    TK_AIE2_NPU2_6Col,
+    TK_AIE2_NPU2_7Col,
+    TK_AIE2_NPU2_Last,
+    TK_AIE2_Last = TK_AIE2_NPU2_Last,
+  };
+
+  // One-hot encoded list of target model properties.
+  enum ModelProperty {
+    // Device uses semaphore locks.
+    UsesSemaphoreLocks = 1U << 0,
+    // Device is an NPU-based device.
+    // There are several special cases for handling the NPU at the moment.
+    IsNPU = 1U << 1,
+    // Device model is virtualized.
+    // This is used during CDO code generation to configure aie-rt properly.
+    IsVirtualized = 1U << 2,
+    // Device uses multi-dimensional buffer descriptors.
+    UsesMultiDimensionalBDs = 1U << 3,
+  };
+
+private:
+  const TargetModelKind kind;
+
+  uint32_t ModelProperties = 0;
+
+public:
+  TargetModelKind getKind() const { return kind; }
+
+  AIETargetModel(TargetModelKind k) : kind(k) {}
 
   virtual ~AIETargetModel();
 
@@ -153,12 +199,29 @@ public:
   virtual bool isLegalMemAffinity(int coreCol, int coreRow, int memCol,
                                   int memRow) const = 0;
 
-  /// Return the base address in the local address map of different memories.
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemInternalBaseAddress(TileID src) const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemSouthBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemWestBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemNorthBaseAddress() const = 0;
+  /// Return the base address in the local address map for a core.
   virtual uint32_t getMemEastBaseAddress() const = 0;
+
+  /// Return the lock base index (or offset) in the local tile when accessing a
+  /// neighbor's lock or an empty optional if an invalid neighbor is given
+  /// Takes into account differences between Memory and Core tiles
+  std::optional<uint32_t> getLockLocalBaseIndex(int localCol, int localRow,
+                                                int lockCol, int lockRow) const;
+
+  /// Return the memory base address (or offset) in the local tile when
+  /// accessing a neighbor's memory or an empty optional if an invalid neighbor
+  /// is given
+  /// Takes into account differences between Memory and Core tiles
+  std::optional<uint32_t> getMemLocalBaseAddress(int localCol, int localRow,
+                                                 int memCol, int memRow) const;
 
   /// Return the size (in bytes) of the local data memory of a core.
   virtual uint32_t getLocalMemorySize() const = 0;
@@ -169,6 +232,14 @@ public:
   /// Return the number of lock objects
   virtual uint32_t getNumLocks(int col, int row) const = 0;
 
+  /// Return the maximum value that can be stored in a lock register
+  virtual uint32_t getMaxLockValue() const = 0;
+
+  // Return the lock address for the lock ID in the local memory for a given
+  // tile or a nullopt if invalid arguments are given.
+  virtual std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                                      TileID tile) const = 0;
+
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
   virtual uint32_t getNumBDs(int col, int row) const = 0;
@@ -178,9 +249,32 @@ public:
   virtual bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                                      int channel) const = 0;
 
+  /// Return the array address of the dma buffer descriptor for the given
+  /// col, row, buffer descriptor id, channel and direction. Not all
+  /// architecture variants will use channel and direction so these have default
+  /// values.
+  virtual uint64_t getDmaBdAddress(
+      int col, int row, uint32_t bd_id, int channel = -1,
+      AIE::DMAChannelDir direction = AIE::DMAChannelDir::MM2S) const = 0;
+
+  /// Return the offset of the base address field within the shim dma buffer
+  /// descriptor.
+  virtual uint32_t getDmaBdAddressOffset(int col, int row) const = 0;
+
+  /// Return the array address of the dma task queue register for the given
+  /// col, row, channel and direction
+  virtual uint32_t getDmaControlAddress(int col, int row, int channel,
+                                        AIE::DMAChannelDir direction) const = 0;
+
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
+  /// Return the number of memory banks of a given tile.
+  virtual uint32_t getNumBanks(int col, int row) const = 0;
+
+  virtual uint32_t getMaxChannelNumForAdjacentMemTile(int col,
+                                                      int row) const = 0;
+
   /// Return the number of destinations of connections inside a switchbox. These
   /// are the targets of connect operations in the switchbox.
   virtual uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -207,9 +301,12 @@ public:
   // Run consistency checks on the target model.
   void validate() const;
 
-  // Return true if this is an NPU-based device
-  // There are several special cases for handling the NPU at the moment.
-  virtual bool isNPU() const { return false; }
+  uint32_t getModelProperties() const { return ModelProperties; }
+  void addModelProperty(uint32_t prop) { ModelProperties |= prop; }
+  // Return true if this device has a given property.
+  bool hasProperty(ModelProperty Prop) const {
+    return (getModelProperties() & Prop) == Prop;
+  }
 
   // Return the bit offset of the column within a tile address.
   // This is used to compute the control address of a tile from it's column
@@ -220,11 +317,19 @@ public:
   // This is used to compute the control address of a tile from it's row
   // location.
   virtual uint32_t getRowShift() const = 0;
+
+  // Returns the list of possible burst encodings (first) and
+  // their corresponding lengths in bytes (second).
+  virtual std::vector<std::pair<uint32_t, uint32_t>>
+  getShimBurstEncodingsAndLengths() const = 0;
+
+  // Returns true if the target model supports the given block format.
+  virtual bool isSupportedBlockFormat(std::string const &format) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
 public:
-  AIE1TargetModel() = default;
+  AIE1TargetModel(TargetModelKind k) : AIETargetModel(k) {}
 
   bool isCoreTile(int col, int row) const override { return row > 0; }
   bool isMemTile(int col, int row) const override { return false; }
@@ -261,13 +366,30 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
   uint32_t getNumLocks(int col, int row) const override { return 16; }
+  uint32_t getMaxLockValue() const override { return 1; }
+  std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                              TileID tile) const override;
   uint32_t getNumBDs(int col, int row) const override { return 16; }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
   }
+
+  uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
+                           AIE::DMAChannelDir direction) const override;
+
+  uint32_t getDmaBdAddressOffset(int col, int row) const override;
+
+  uint32_t getDmaControlAddress(int col, int row, int channel,
+                                AIE::DMAChannelDir direction) const override;
+
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
+  uint32_t getNumBanks(int col, int row) const override { return 4; }
+
+  uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
+    return 0;
+  }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
@@ -283,11 +405,23 @@ public:
 
   uint32_t getColumnShift() const override { return 23; }
   uint32_t getRowShift() const override { return 18; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE1_VC1902 &&
+           model->getKind() < TK_AIE1_Last;
+  }
+
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getShimBurstEncodingsAndLengths() const override;
 };
 
 class AIE2TargetModel : public AIETargetModel {
 public:
-  AIE2TargetModel() = default;
+  AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::UsesSemaphoreLocks);
+    addModelProperty(AIETargetModel::UsesMultiDimensionalBDs);
+  }
 
   AIEArch getTargetArch() const override;
 
@@ -323,6 +457,11 @@ public:
     return isMemTile(col, row) ? 64 : 16;
   }
 
+  uint32_t getMaxLockValue() const override { return 0x3F; }
+
+  std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
+                                              TileID tile) const override;
+
   uint32_t getNumBDs(int col, int row) const override {
     return isMemTile(col, row) ? 48 : 16;
   }
@@ -340,7 +479,23 @@ public:
     }
   }
 
+  uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
+                           AIE::DMAChannelDir direction) const override;
+
+  uint32_t getDmaBdAddressOffset(int col, int row) const override;
+
+  uint32_t getDmaControlAddress(int col, int row, int channel,
+                                AIE::DMAChannelDir direction) const override;
+
   uint32_t getMemTileSize() const override { return 0x00080000; }
+
+  uint32_t getNumBanks(int col, int row) const override {
+    return isMemTile(col, row) ? 8 : 4;
+  }
+
+  uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
+    return 4;
+  }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
@@ -356,6 +511,14 @@ public:
 
   uint32_t getColumnShift() const override { return 25; }
   uint32_t getRowShift() const override { return 20; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_VE2302 &&
+           model->getKind() < TK_AIE2_Last;
+  }
+
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getShimBurstEncodingsAndLengths() const override;
 };
 
 class VC1902TargetModel : public AIE1TargetModel {
@@ -363,7 +526,7 @@ class VC1902TargetModel : public AIE1TargetModel {
       2, 3, 6, 7, 10, 11, 18, 19, 26, 27, 34, 35, 42, 43, 46, 47};
 
 public:
-  VC1902TargetModel() = default;
+  VC1902TargetModel() : AIE1TargetModel(TK_AIE1_VC1902) {}
 
   uint32_t getAddressGenGranularity() const override { return 32; }
 
@@ -382,13 +545,17 @@ public:
   bool isShimNOCorPLTile(int col, int row) const override {
     return isShimNOCTile(col, row) || isShimPLTile(col, row);
   }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE1_VC1902;
+  }
 };
 
 class VE2302TargetModel : public AIE2TargetModel {
   llvm::SmallDenseSet<unsigned, 8> nocColumns = {2, 3, 6, 7, 10, 11};
 
 public:
-  VE2302TargetModel() = default;
+  VE2302TargetModel() : AIE2TargetModel(TK_AIE2_VE2302) {}
 
   int columns() const override { return 17; }
 
@@ -412,6 +579,10 @@ public:
   }
 
   uint32_t getNumMemTileRows() const override { return 1; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2_VE2302;
+  }
 };
 
 class VE2802TargetModel : public AIE2TargetModel {
@@ -419,7 +590,7 @@ class VE2802TargetModel : public AIE2TargetModel {
                                                   22, 23, 30, 31, 34, 35};
 
 public:
-  VE2802TargetModel() = default;
+  VE2802TargetModel() : AIE2TargetModel(TK_AIE2_VE2802) {}
 
   int columns() const override { return 38; }
 
@@ -446,11 +617,18 @@ public:
   }
 
   uint32_t getNumMemTileRows() const override { return 2; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2_VE2802;
+  }
 };
 
-class BaseNPUTargetModel : public AIE2TargetModel {
+class BaseNPU1TargetModel : public AIE2TargetModel {
 public:
-  BaseNPUTargetModel() = default;
+  BaseNPU1TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::IsNPU);
+  }
 
   int rows() const override {
     return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
@@ -469,46 +647,108 @@ public:
 
   uint32_t getNumMemTileRows() const override { return 1; }
 
-  // Return true if the device model is virtualized.  This is used
-  // during CDO code generation to configure aie-rt properly.
-  virtual bool isVirtualized() const = 0;
-
-  virtual bool isNPU() const override { return true; }
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU1_1Col &&
+           model->getKind() < TK_AIE2_NPU1_Last;
+  }
 };
 
-// The full Phoenix NPU
-class NPUTargetModel : public BaseNPUTargetModel {
-public:
-  NPUTargetModel() = default;
-
-  int columns() const override { return 5; }
-
-  bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && col > 0;
-  }
-
-  bool isShimPLTile(int col, int row) const override {
-    // This isn't useful because it's not connected to anything.
-    return row == 0 && col == 0;
-  }
-
-  bool isVirtualized() const override { return false; }
-};
-
-// A sub-portion of the NPU
-class VirtualizedNPUTargetModel : public BaseNPUTargetModel {
+// A sub-portion of the Phoenix NPU
+class VirtualizedNPU1TargetModel : public BaseNPU1TargetModel {
   int cols;
 
 public:
-  VirtualizedNPUTargetModel(int _cols) : cols(_cols) {}
-
-  uint32_t getAddressGenGranularity() const override { return 32; }
+  VirtualizedNPU1TargetModel(int _cols)
+      : BaseNPU1TargetModel(static_cast<TargetModelKind>(
+            static_cast<std::underlying_type_t<TargetModelKind>>(
+                TK_AIE2_NPU1_1Col) +
+            _cols - 1)),
+        cols(_cols) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::IsVirtualized);
+  }
 
   int columns() const override { return cols; }
 
   bool isShimNOCTile(int col, int row) const override { return row == 0; }
 
-  bool isVirtualized() const override { return true; }
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU1_1Col &&
+           model->getKind() < TK_AIE2_NPU1_Last;
+  }
+};
+
+class BaseNPU2TargetModel : public AIE2TargetModel {
+public:
+  BaseNPU2TargetModel(TargetModelKind k) : AIE2TargetModel(k) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::IsNPU);
+  }
+
+  AIEArch getTargetArch() const override;
+
+  int rows() const override {
+    return 6; /* 1 Shim row, 1 memtile row, and 4 Core rows. */
+  }
+
+  bool isCoreTile(int col, int row) const override { return row > 1; }
+  bool isMemTile(int col, int row) const override { return row == 1; }
+
+  bool isShimPLTile(int col, int row) const override {
+    return false; // No PL tiles
+  }
+
+  bool isShimNOCTile(int col, int row) const override { return row == 0; }
+
+  bool isShimNOCorPLTile(int col, int row) const override {
+    return isShimNOCTile(col, row);
+  }
+
+  uint32_t getNumMemTileRows() const override { return 1; }
+
+  std::vector<std::pair<uint32_t, uint32_t>>
+  getShimBurstEncodingsAndLengths() const override;
+
+  bool isSupportedBlockFormat(std::string const &format) const override;
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU2 &&
+           model->getKind() < TK_AIE2_NPU2_Last;
+  }
+};
+
+// The full Strix NPU
+class NPU2TargetModel : public BaseNPU2TargetModel {
+public:
+  NPU2TargetModel() : BaseNPU2TargetModel(TK_AIE2_NPU2) {}
+
+  int columns() const override { return 8; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() == TK_AIE2_NPU2;
+  }
+};
+
+// A sub-portion of the Strix NPU
+class VirtualizedNPU2TargetModel : public BaseNPU2TargetModel {
+  int cols;
+
+public:
+  VirtualizedNPU2TargetModel(int _cols)
+      : BaseNPU2TargetModel(static_cast<TargetModelKind>(
+            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU2) +
+            _cols)),
+        cols(_cols) {
+    // Device properties initialization
+    addModelProperty(AIETargetModel::IsVirtualized);
+  }
+
+  int columns() const override { return cols; }
+
+  static bool classof(const AIETargetModel *model) {
+    return model->getKind() >= TK_AIE2_NPU2_1Col &&
+           model->getKind() < TK_AIE2_NPU2_Last;
+  }
 };
 
 } // namespace xilinx::AIE

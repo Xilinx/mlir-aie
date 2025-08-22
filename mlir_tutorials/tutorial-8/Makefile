@@ -1,4 +1,5 @@
-include ../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+include ${srcdir}/../makefile-common
 
 .PHONY: all clean
 
@@ -8,16 +9,16 @@ all: tutorial-8.exe
 	@cp ./elf/*.elf ./elf/*.elf.map .
 
 # Command line AIE kernel compile. See tutorial-2 for more info.
-%.o: %.cc
+%.o: ${srcdir}/%.cc
 	xchesscc ${CHESSCC_FLAGS} -c $<
 
 # Command line mlir-aie compile script "aiecc.py"
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
-tutorial-8.exe: test.cpp aie.mlir kernel1.o kernel2.o
+tutorial-8.exe: ${srcdir}/test.cpp ${srcdir}/aie.mlir kernel1.o kernel2.o
 	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
-sim : test.cpp aie.mlir
+sim : ${srcdir}/test.cpp ${srcdir}/aie.mlir
 	aiecc.py -j4 --xchesscc --xbridge --aiesim $(word 2,$^) -I$(AIE_RUNTIME_LIB)/x86_64/test_lib/include -L$(AIE_RUNTIME_LIB)/x86_64/test_lib/lib -ltest_lib ./$<
 
 clean:
@@ -26,5 +27,5 @@ clean:
 #------------------------------------------------------------------------------
 # Additional make targets for tutorial exercises
 #------------------------------------------------------------------------------
-tutorial-8_q3.exe: test.cpp ./answers/aie.mlir kernel1.o kernel2.o
+tutorial-8_q3.exe: ${srcdir}/test.cpp ${srcdir}/answers/aie.mlir kernel1.o kernel2.o
 	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@

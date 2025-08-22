@@ -13,8 +13,7 @@
 #  -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build runtime libs for, default: x86_64; cross compilation for aarch64 against default Vitis Sysroot
 #  -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64 or aarch64) used for running unit test and tutorials, default x86_64
 
-cmake_minimum_required(VERSION 3.23)
-
+cmake_minimum_required(VERSION 3.30)
 set(TOOLCHAINFILES_PATH ${CMAKE_SOURCE_DIR}/cmake/modulesXilinx)
 
 set(AIE_RUNTIME_TARGETS
@@ -24,7 +23,7 @@ set(AIE_RUNTIME_TEST_TARGET
     "x86_64"
     CACHE STRING "Runtime architecture to test with.")
 
-set(AIE_VITIS_COMPONENTS "AIE;AIE2" CACHE STRING "Vitis components")
+set(AIE_VITIS_COMPONENTS "AIE;AIE2;AIE2P" CACHE STRING "Vitis components")
 
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
@@ -71,8 +70,11 @@ set(HOST_COMPILER
     "NONE"
     CACHE STRING "Host program compiler selection")
 set(PEANO_INSTALL_DIR
-    "<unset>"
+    "$ENV{PEANO_INSTALL_DIR}"
     CACHE STRING "Location of Peano compiler")
+if(NOT PEANO_INSTALL_DIR OR PEANO_INSTALL_DIR STREQUAL "")
+    set(PEANO_INSTALL_DIR "<unset>" CACHE STRING "Location of Peano compiler" FORCE)
+endif()
 
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS
@@ -251,7 +253,6 @@ endif()
 add_subdirectory(include)
 add_subdirectory(lib)
 add_subdirectory(aie_runtime_lib)
-add_subdirectory(aie_kernels)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
 

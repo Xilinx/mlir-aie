@@ -10,48 +10,42 @@
 
 # <ins>Vector Vector Add</ins>
 
-A simple binary operator, which uses a single AIE core to add two vectors together.  The overall vector size in this design is `256` and it processed by the core in smaller sub tiles of size `16`.  It shows how simple it can be to just feed data into the AIEs using the Object FIFO abstraction, and drain the results back to external memory.  This reference design can be run on either a Ryzen™ AI NPU or a VCK5000.
+A simple binary operator, which uses a single AIE core to add two vectors together.The input vectors are processed by the core in smaller sub tiles of size `16`. The input vector size is configurable via command line arguments but must be multiple of `16`.  The example shows how simple it can be to just feed data into the AIEs using the `ObjectFifo` abstraction, and drain the results back to external memory. This reference design can be run on Ryzen™ AI NPU.
 
-The kernel executes on AIE tile (`col`, 2). Both input vectors are brought into the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targeting NPU or VCK5000. The AIE tile performs the summation operations and the Shim tile brings the data back out to external memory.
+Both input vectors are brought into a Compute tile from a Shim tile. In the placed design, the value of `col` is dependent on whether the application is targeting NPU. The AIE tile performs the summation operations and the Shim tile brings the data back out to external memory.
 
 ## Source Files Overview
 
-1. `aie2.py`: defines the AIE array structural design using IRON AIE language bindings. This generates mlir-aie that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_vector_add.py`: A Python script that defines a JIT-compiled AIE array structural design using MLIR-AIE operations alongside the host-side code for launching the kernel on the NPU in Ryzen™ AI. 
 
-1. `test.cpp`: This C++ code is a testbench for the design example targeting Ryzen™ AI (AIE-ML). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
+1. `vector_vector_add_placed.py`: An alternative version of the design in `vector_vector_add.py`, that is expressed in a lower-level version of IRON.
 
-1. `test_vck5000.cpp`: This C++ code is a testbench for the design example targeting the VCK5000 PCIe card (AIE). The code is responsible for configuring the AIEs, allocating memory, providing input data, and executing the AIE design on the VCK5000. After executing, the program verifies the results.
 
 ## Ryzen™ AI Usage
 
-### C++ Testbench
+To run the design on Strix:
 
-To compile the design and C++ testbench:
-
-```
-make
-make vectorAdd.exe
+```shell
+python3 vector_vector_add.py --device npu2
 ```
 
-To run the design:
+and on Phoenix:
 
-```
-make run
-```
-
-## VCK5000 Usage
-
-### C++ Testbench
-
-To compile the design and C++ testbench:
-
-```
-make vck5000
+```shell
+python3 vector_vector_add.py --device npu
 ```
 
-To run the design:
 
+To run the placed design on Strix:
+
+```shell
+python3 vector_vector_add_placed.py --device npu2
 ```
-./test.elf
+
+and on Phoenix:
+
+```shell
+python3 vector_vector_add_placed.py --device npu
 ```
+
 

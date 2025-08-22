@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/IR/PatternMatch.h"
@@ -170,7 +171,7 @@ struct SplitUnalignedTransferReadPattern
     // Create the aligned transfer read for a vector 2x as long that covers the
     // elements of the unaligned vector.
     auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        loc, longVecTy, adaptor.getSource(), alignedIdx, adaptor.getPadding());
+        loc, longVecTy, adaptor.getBase(), alignedIdx, adaptor.getPadding());
 
     // Create a `vector.extract_strided_slice` to extract the unaligned vector.
     rewriter.replaceOpWithNewOp<vector::ExtractStridedSliceOp>(
@@ -201,7 +202,7 @@ struct ConvertSplatTransferReadToBroadcastPattern
     if (!map.isConstant())
       return failure();
 
-    Value srcMemRef = adaptor.getSource();
+    Value srcMemRef = adaptor.getBase();
     SmallVector<Value, 8> indices;
     Value newIdx;
     int64_t offset = 0;
@@ -432,7 +433,7 @@ struct FlattenMultDimTransferReadPattern
     if (vectorTy.getRank() < 2)
       return failure();
     // Work only on bufferized reads
-    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getSource().getType());
+    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getBase().getType());
     if (!memRefTy)
       return failure();
     auto memRefShape = memRefTy.getShape();
@@ -447,9 +448,12 @@ struct FlattenMultDimTransferReadPattern
         collapseInnerMostDimIndices(rewriter, readOp.getLoc(), vecShape.size(),
                                     adaptor.getIndices(), memRefShape, layout);
     auto newSource = collapseInnerMostShapeDims(
-        rewriter, readOp.getLoc(), vecShape.size(), adaptor.getSource());
+        rewriter, readOp.getLoc(), vecShape.size(), adaptor.getBase());
     auto newVector = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, newSource, newIndices);
+        readOp.getLoc(), newVectorTy, newSource, newIndices,
+        /*padding*/
+        arith::getZeroConstant(rewriter, readOp.getLoc(),
+                               newVectorTy.getElementType()));
 
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
@@ -483,11 +487,11 @@ struct FlattenMultDimTransferWritePattern
     // map.
     if (!adaptor.getPermutationMap().isMinorIdentity() || adaptor.getMask())
       return failure();
-    VectorType vectorTy = cast<VectorType>(adaptor.getVector().getType());
+    VectorType vectorTy = cast<VectorType>(adaptor.getValueToStore().getType());
     if (vectorTy.getRank() < 2)
       return failure();
     // Work only on bufferized reads
-    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getSource().getType());
+    MemRefType memRefTy = dyn_cast<MemRefType>(adaptor.getBase().getType());
     if (!memRefTy)
       return failure();
     auto memRefShape = memRefTy.getShape();
@@ -498,15 +502,16 @@ struct FlattenMultDimTransferWritePattern
                                          std::multiplies<>())},
                         vectorTy.getElementType());
     AffineMap layout = memRefTy.getLayout().getAffineMap();
-    auto newVector = rewriter
-                         .create<vector::ShapeCastOp>(
-                             writeOp.getLoc(), newVectorTy, adaptor.getVector())
-                         .getResult();
+    auto newVector =
+        rewriter
+            .create<vector::ShapeCastOp>(writeOp.getLoc(), newVectorTy,
+                                         adaptor.getValueToStore())
+            .getResult();
     auto newIndices =
         collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),
                                     adaptor.getIndices(), memRefShape, layout);
     auto newSource = collapseInnerMostShapeDims(
-        rewriter, writeOp.getLoc(), vecShape.size(), adaptor.getSource());
+        rewriter, writeOp.getLoc(), vecShape.size(), adaptor.getBase());
 
     auto newOp = rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
         writeOp, newVector, newSource, newIndices);
@@ -638,7 +643,7 @@ struct ConvertLeadingUnitDimInsertToReshapePattern
 
   LogicalResult matchAndRewrite(vector::InsertOp insOp,
                                 PatternRewriter &rewriter) const override {
-    auto insSrcTy = dyn_cast<VectorType>(insOp.getSourceType());
+    auto insSrcTy = dyn_cast<VectorType>(insOp.getValueToStoreType());
     if (!insSrcTy)
       return failure();
 
@@ -667,7 +672,7 @@ struct ConvertLeadingUnitDimInsertToReshapePattern
       return failure();
 
     rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(
-        insOp, insOp.getDestVectorType(), insOp.getSource());
+        insOp, insOp.getDestVectorType(), insOp.getValueToStore());
     return success();
   }
 };
@@ -679,7 +684,8 @@ static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target,
                                             TargetBackend backend) {
   target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
-                         memref::MemRefDialect, vector::VectorDialect>();
+                         memref::MemRefDialect, vector::VectorDialect,
+                         ub::UBDialect>();
 }
 
 static void
@@ -758,7 +764,7 @@ struct VectorBroadcastLoweringPass
     patterns.add<ConvertLeadingUnitDimInsertToReshapePattern>(
         patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    (void)applyPatternsGreedily(op, std::move(patterns));
   }
 };
 
@@ -799,8 +805,9 @@ struct CanonicalizeVectorForAIEVecPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect, affine::AffineDialect>();
+    registry
+        .insert<arith::ArithDialect, memref::MemRefDialect,
+                vector::VectorDialect, affine::AffineDialect, ub::UBDialect>();
   }
 
   Option<std::string> aieTarget{
@@ -872,7 +879,7 @@ struct HoistCastOpToDataSourcePass
 
     patterns.add<HoistCastOpToDataSourcePattern>(patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    (void)applyPatternsGreedily(op, std::move(patterns));
   }
 };
 
@@ -899,7 +906,7 @@ struct ReorderOperationsPass
                                  extInElemTy);
         });
 
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    (void)applyPatternsGreedily(op, std::move(patterns));
   }
 };
 

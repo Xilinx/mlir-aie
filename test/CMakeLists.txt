@@ -4,8 +4,7 @@
 #
 # (c) Copyright 2021 Xilinx Inc.
 
-cmake_minimum_required(VERSION 3.10)
-
+cmake_minimum_required(VERSION 3.30)
 if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
@@ -46,7 +45,7 @@ set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runt
 list(GET AIE_RUNTIME_TARGETS 0 firstRuntimeTarget)
 set(AIE_RUNTIME_TEST_TARGET ${firstRuntimeTarget} CACHE STRING "Runtime architecture to test with.")
 
-set(AIE_VITIS_COMPONENTS "AIE;AIE2" CACHE STRING "Vitis components")
+set(AIE_VITIS_COMPONENTS "AIE;AIE2;AIE2P" CACHE STRING "Vitis components")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -87,7 +86,6 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 
-include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
 include(HandleLLVMOptions)
@@ -119,3 +117,5 @@ add_lit_testsuite(check-aie "Running the aie regression tests"
   ARGS "-sv --timeout 600"
 )
 set_target_properties(check-aie PROPERTIES FOLDER "Tests")
+
+add_subdirectory(CppTests)

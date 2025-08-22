@@ -12,7 +12,6 @@ import asyncio
 import glob
 import json
 import os
-import random
 import re
 import shutil
 import stat
@@ -22,6 +21,7 @@ import tempfile
 from textwrap import dedent
 import time
 import uuid
+import struct
 
 from aie.extras.runtime.passes import Pipeline
 from aie.extras.util import find_ops
@@ -34,32 +34,30 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda basic_alloc_scheme=False, dynamic_objFifos=False, ctrl_pkt_overlay=False: (
+INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overlay: (
+    Pipeline()
+    .lower_affine()
+    .add_pass("aie-canonicalize-device")
+    .Nested(
+        "aie.device",
         Pipeline()
-        .lower_affine()
-        .add_pass("aie-canonicalize-device")
-        .Nested(
-            "aie.device",
-            Pipeline()
-            .add_pass("aie-assign-lock-ids")
-            .add_pass("aie-register-objectFifos")
-            .add_pass(
-                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
-            )
-            .add_pass("aie-assign-bd-ids")
-            .add_pass("aie-lower-cascade-flows")
-            .add_pass("aie-lower-broadcast-packet")
-            .add_pass("aie-lower-multicast")
-            .add_pass("aie-assign-tile-controller-ids")
-            .add_pass(
-                "aie-generate-column-control-overlay",
-                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
-            )
-            .add_pass("aie-assign-buffer-addresses", basic_alloc=basic_alloc_scheme),
+        .add_pass("aie-assign-lock-ids")
+        .add_pass("aie-register-objectFifos")
+        .add_pass(
+            "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
         )
-        .convert_scf_to_cf()
+        .add_pass("aie-assign-bd-ids")
+        .add_pass("aie-lower-cascade-flows")
+        .add_pass("aie-lower-broadcast-packet")
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-tile-controller-ids")
+        .add_pass(
+            "aie-generate-column-control-overlay",
+            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+        )
+        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
     )
+    .convert_scf_to_cf()
 )
 
 LOWER_TO_LLVM_PIPELINE = (
@@ -87,7 +85,8 @@ AIE_LOWER_TO_LLVM = (
             "aie.device",
             Pipeline()
             .add_pass("aie-localize-locks")
-            .add_pass("aie-normalize-address-spaces"),
+            .add_pass("aie-normalize-address-spaces")
+            .add_pass("aie-transform-bfp-types"),
         )
         .add_pass("aie-standard-lowering", tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
@@ -95,18 +94,16 @@ AIE_LOWER_TO_LLVM = (
     + LOWER_TO_LLVM_PIPELINE
 )
 
-CREATE_PATH_FINDER_FLOWS = Pipeline().Nested(
-    "aie.device", Pipeline().add_pass("aie-create-pathfinder-flows")
-)
-
-DMA_TO_NPU = Pipeline().Nested(
+# pipeline to lower and legalize runtime sequence for NPU
+NPU_LOWERING_PIPELINE = Pipeline().Nested(
     "aie.device",
     Pipeline()
     .add_pass("aie-materialize-bd-chains")
     .add_pass("aie-substitute-shim-dma-allocations")
     .add_pass("aie-assign-runtime-sequence-bd-ids")
     .add_pass("aie-dma-tasks-to-npu")
-    .add_pass("aie-dma-to-npu"),
+    .add_pass("aie-dma-to-npu")
+    .add_pass("aie-lower-set-lock"),
 )
 
 
@@ -212,31 +209,25 @@ mem_topology = {
 }
 
 
-def emit_partition(mlir_module_str, kernel_id="0x901", start_columns=None):
+def emit_partition(mlir_module_str, kernel_id="0x901"):
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
-        tiles = find_ops(
-            module.operation,
-            lambda o: isinstance(o.operation.opview, aiedialect.TileOp),
-        )
-        min_col = min([t.col.value for t in tiles], default=0)
-        max_col = max([t.col.value for t in tiles], default=0)
-    num_cols = max_col - min_col + 1
     device = find_ops(
         module.operation,
         lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
     )
+    device = aiedialect.AIEDevice(int(device[0].device))
+    num_cols = aiedialect.get_target_model(device).columns()
 
-    if start_columns is None:
-        # It's arguable that this should should come from the device model
-        # somehow.  Or perhaps that it shouldn't be needed in the
-        # XCLbin at all, since it is basically describing information
-        # which is already inherent in the CDO.
-        # For the time being, we just leave it here.
-        if len(device) > 0 and int(device[0].device) == int(aiedialect.AIEDevice.npu1):
-            start_columns = [0]
-        else:
-            start_columns = list(range(1, 6 - num_cols))
+    # It's arguable that this should should come from the device model
+    # somehow.  Or perhaps that it shouldn't be needed in the
+    # XCLbin at all, since it is basically describing information
+    # which is already inherent in the CDO.
+    # For the time being, we just leave it here.
+    if device in [aiedialect.AIEDevice.npu1, aiedialect.AIEDevice.npu2]:
+        start_columns = [0]
+    else:
+        start_columns = list(range(1, 6 - num_cols))
 
     # Generate a uuid
     pdi_uuid = uuid.uuid4()
@@ -329,14 +320,36 @@ def do_run(command, verbose=False):
 def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
     if verbose:
         print("Running:", pass_pipeline)
-    with Context() as ctx, Location.unknown():
+    with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
-        PassManager.parse(pass_pipeline).run(module.operation)
+        pm = PassManager.parse(pass_pipeline)
+        try:
+            pm.run(module.operation)
+        except Exception as e:
+            print("Error running pass pipeline: ", pass_pipeline, e)
+            raise e
         mlir_module_str = str(module)
         if outputfile:
             with open(outputfile, "w") as g:
                 g.write(mlir_module_str)
     return mlir_module_str
+
+
+def run_passes_module(pass_pipeline, mlir_module, outputfile=None, verbose=False):
+    if verbose:
+        print("Running:", pass_pipeline)
+    with mlir_module.context, Location.unknown():
+        pm = PassManager.parse(pass_pipeline)
+        try:
+            pm.run(mlir_module.operation)
+        except Exception as e:
+            print("Error running pass pipeline: ", pass_pipeline, e)
+            raise e
+        if outputfile:
+            mlir_module_str = str(mlir_module)
+            with open(outputfile, "w") as g:
+                g.write(mlir_module_str)
+    return mlir_module
 
 
 def corefile(dirname, core, ext):
@@ -373,8 +386,15 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
             "memory(argmem: write, inaccessiblemem: write)",
             "inaccessiblemem_or_argmemonly writeonly",
         )
+        .replace("captures(none)", "nocapture")
+        .replace("getelementptr inbounds nuw", "getelementptr inbounds")
     )
     return llvmir_chesslinked
+
+
+def downgrade_ir_for_peano(llvmir):
+    llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    return llvmir
 
 
 class FlowRunner:
@@ -404,9 +424,15 @@ class FlowRunner:
         if self.opts.verbose:
             print(commandstr)
         if self.opts.execute or force:
-            proc = await asyncio.create_subprocess_exec(*command)
-            await proc.wait()
+            proc = await asyncio.create_subprocess_exec(
+                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await proc.communicate()
             ret = proc.returncode
+            if self.opts.verbose and stdout:
+                print(f"{stdout.decode()}")
+            if ret != 0 and stderr:
+                print(f"{stderr.decode()}", file=sys.stderr)
         else:
             ret = 0
         end = time.time()
@@ -443,6 +469,8 @@ class FlowRunner:
 
         if aie_target.casefold() == "AIE2".casefold():
             target = "target_aie_ml"
+        elif aie_target.casefold() == "AIE2P".casefold():
+            target = "target_aie2p"
         else:
             target = "target"
         assert os.path.exists(llvmir_chesshack)
@@ -465,6 +493,18 @@ class FlowRunner:
         )
 
         return llvmir_chesslinked_path
+
+    # In order to run peano on modern ll code, we need a bunch of hacks.
+    async def peanohack(self, llvmir):
+        llvmir_peanohack = llvmir + "peanohack.ll"
+        if not self.opts.execute:
+            return llvmir_peanohack
+
+        llvmir_ir = await read_file_async(llvmir)
+        llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
+
+        return llvmir_peanohack
 
     async def process_core(
         self,
@@ -535,8 +575,9 @@ class FlowRunner:
 
             elif opts.compile:
                 if not opts.unified:
+                    file_core_llvmir_peanohacked = await self.peanohack(file_core_llvmir)
                     file_core_llvmir_stripped = corefile(self.tmpdirname, core, "stripped.ll")
-                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir, "-o", file_core_llvmir_stripped])
+                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])
                     await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
                 else:
                     file_core_obj = self.unified_file_core_obj
@@ -547,80 +588,177 @@ class FlowRunner:
                 elif opts.link:
                     await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
-            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
-            if task:
-                self.progress_bar.update(task, advance=0, visible=False)
+            if opts.progress:
+                self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+                if task:
+                    self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
-    async def process_cdo(self):
-        from aie.dialects.aie import generate_cdo
-
+    async def process_cdo(self, module_str):
         with Context(), Location.unknown():
-            for elf in glob.glob("*.elf"):
-                try:
-                    shutil.copy(elf, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            for elf_map in glob.glob("*.elf.map"):
-                try:
-                    shutil.copy(elf_map, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            input_physical = Module.parse(
-                await read_file_async(self.prepend_tmp("input_physical.mlir"))
-            )
-            generate_cdo(input_physical.operation, self.tmpdirname)
+            input_physical = Module.parse(module_str)
+            aiedialect.generate_cdo(input_physical.operation, self.tmpdirname)
 
-    async def process_txn(self):
-
+    async def process_txn(self, module_str):
         with Context(), Location.unknown():
-            for elf in glob.glob("*.elf"):
-                try:
-                    shutil.copy(elf, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            for elf_map in glob.glob("*.elf.map"):
-                try:
-                    shutil.copy(elf_map, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            input_physical = await read_file_async(
-                self.prepend_tmp("input_physical.mlir")
-            )
             run_passes(
                 "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
                 + self.tmpdirname
                 + "}))",
-                input_physical,
+                module_str,
                 self.prepend_tmp("txn.mlir"),
                 self.opts.verbose,
             )
+            tmp = self.prepend_tmp("txn.mlir")
+            if opts.verbose:
+                print(f"copy {tmp} to {opts.txn_name}")
+            shutil.copy(tmp, opts.txn_name)
 
-    async def process_ctrlpkt(self):
+    async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
 
-        with Context(), Location.unknown():
-            for elf in glob.glob("*.elf"):
-                try:
-                    shutil.copy(elf, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            for elf_map in glob.glob("*.elf.map"):
-                try:
-                    shutil.copy(elf_map, self.tmpdirname)
-                except shutil.SameFileError:
-                    pass
-            input_physical = await read_file_async(
-                self.prepend_tmp("input_physical.mlir")
+        # find aiebu-asm binary
+        asm_bin = "aiebu-asm"
+        if shutil.which(asm_bin) is None:
+            asm_bin = os.path.join("/", "opt", "xilinx", "aiebu", "bin", "aiebu-asm")
+            if shutil.which(asm_bin) is None:
+                asm_bin = None
+
+        if asm_bin is None:
+            print(
+                "Error: aiebu-asm not found, generation of ELF file failed.",
+                file=sys.stderr,
             )
+            sys.exit(1)
+
+        args = [
+            asm_bin,
+            "-t",
+            "aie2txn",
+            "-c",
+            input_file,
+            "-o",
+            output_file,
+        ]
+
+        if ctrl_packet_file:
+            ctrl_packet_size = os.path.getsize(ctrl_packet_file)
+            exteral_buffers_json = {
+                "external_buffers": {
+                    "buffer_ctrl": {
+                        "xrt_id": 0,
+                        "logical_id": -1,
+                        "size_in_bytes": ctrl_packet_size,
+                        "ctrl_pkt_buffer": 1,
+                        "name": "runtime_control_packet",
+                    },
+                }
+            }
+            with open(self.prepend_tmp("external_buffers.json"), "w") as f:
+                json.dump(exteral_buffers_json, f, indent=2)
+            args = args + [
+                "-j",
+                self.prepend_tmp("external_buffers.json"),
+                "-p",
+                ctrl_packet_file,
+            ]
+
+        await self.do_call(None, args)
+
+    async def process_ctrlpkt(self, module_str):
+        with Context(), Location.unknown():
             run_passes(
                 "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
                 + self.tmpdirname
                 + "}))",
-                input_physical,
+                module_str,
                 self.prepend_tmp("ctrlpkt.mlir"),
                 self.opts.verbose,
             )
+            await self.do_call(
+                None,
+                [
+                    "aie-translate",
+                    "-aie-ctrlpkt-to-bin",
+                    "-aie-sequence-name",
+                    "configure",
+                    self.prepend_tmp("ctrlpkt.mlir"),
+                    "-o",
+                    "ctrlpkt.bin",
+                ],
+            )
+            ctrlpkt_mlir_str = await read_file_async(self.prepend_tmp("ctrlpkt.mlir"))
+            run_passes(
+                "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
+                ctrlpkt_mlir_str,
+                self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+                self.opts.verbose,
+            )
+            await self.do_call(
+                None,
+                [
+                    "aie-translate",
+                    "-aie-npu-to-binary",
+                    "-aie-sequence-name",
+                    "configure",
+                    self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+                    "-o",
+                    "ctrlpkt_dma_seq.bin",
+                ],
+            )
+            await self.aiebu_asm(
+                "ctrlpkt_dma_seq.bin", "ctrlpkt_dma_seq.elf", "ctrlpkt.bin"
+            )
 
+    async def process_elf(self, module_str):
+        with Context(), Location.unknown():
+            module = Module.parse(module_str)
+            pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+            npu_insts_mlir = (
+                self.prepend_tmp("elf_insts.mlir") if self.opts.verbose else None
+            )
+            npu_insts_module = run_passes_module(
+                pass_pipeline,
+                module,
+                npu_insts_mlir,
+                self.opts.verbose,
+            )
+            # translate npu instructions to binary and write to file
+            npu_insts = aiedialect.translate_npu_to_binary(npu_insts_module.operation)
+
+        npu_insts_bin = self.prepend_tmp("elf_insts.bin")
+        with open(npu_insts_bin, "wb") as f:
+            f.write(struct.pack("I" * len(npu_insts), *npu_insts))
+
+        await self.aiebu_asm(npu_insts_bin, opts.elf_name)
+
+    async def process_pdi_gen(self):
+
+        await write_file_async(
+            emit_design_bif(self.tmpdirname),
+            self.prepend_tmp("design.bif"),
+        )
+
+        await self.do_call(
+            None,
+            [
+                "bootgen",
+                "-arch",
+                "versal",
+                "-image",
+                self.prepend_tmp("design.bif"),
+                "-o",
+                self.prepend_tmp("design.pdi"),
+                "-w",
+            ],
+        )
+        if opts.pdi:
+            tmp = self.prepend_tmp("design.pdi")
+            if opts.verbose:
+                print(f"copy {tmp} to {opts.pdi_name}")
+            shutil.copy(tmp, opts.pdi_name)
+
+    # generate an xclbin. The inputs are self.mlir_module_str and the cdo
+    # binaries from the process_cdo step.
     async def process_xclbin_gen(self):
         if opts.progress:
             task = self.progress_bar.add_task(
@@ -629,41 +767,72 @@ class FlowRunner:
         else:
             task = None
 
-        await write_file_async(
-            json.dumps(mem_topology, indent=2),
-            self.prepend_tmp("mem_topology.json"),
+        # collect the tasks to generate the inputs to xclbinutil
+        processes = []
+
+        # generate mem_topology.json
+        processes.append(
+            write_file_async(
+                json.dumps(mem_topology, indent=2),
+                self.prepend_tmp("mem_topology.json"),
+            )
         )
 
-        await write_file_async(
-            json.dumps(emit_partition(self.mlir_module_str, opts.kernel_id), indent=2),
-            self.prepend_tmp("aie_partition.json"),
-        )
-
-        buffer_arg_names = [f"bo{i}" for i in range(5)]
-        await write_file_async(
-            json.dumps(
-                emit_design_kernel_json(
-                    opts.kernel_name,
-                    opts.kernel_id,
-                    opts.instance_name,
-                    buffer_arg_names,
+        # generate aie_partition.json
+        processes.append(
+            write_file_async(
+                json.dumps(
+                    emit_partition(self.mlir_module_str, opts.kernel_id),
+                    indent=2,
                 ),
-                indent=2,
-            ),
-            self.prepend_tmp("kernels.json"),
+                self.prepend_tmp("aie_partition.json"),
+            )
         )
 
-        await write_file_async(
-            emit_design_bif(self.tmpdirname),
-            self.prepend_tmp("design.bif"),
+        # generate kernels.json
+        buffer_arg_names = [f"bo{i}" for i in range(5)]
+        processes.append(
+            write_file_async(
+                json.dumps(
+                    emit_design_kernel_json(
+                        opts.kernel_name,
+                        opts.kernel_id,
+                        opts.instance_name,
+                        buffer_arg_names,
+                    ),
+                    indent=2,
+                ),
+                self.prepend_tmp("kernels.json"),
+            )
         )
+
+        # generate pdi
+        processes.append(self.process_pdi_gen())
+
+        # get partition info from input xclbin, if present
+        if opts.xclbin_input:
+            processes.append(
+                self.do_call(
+                    task,
+                    [
+                        "xclbinutil",
+                        "--dump-section",
+                        "AIE_PARTITION:JSON:"
+                        + self.prepend_tmp("aie_input_partition.json"),
+                        "--force",
+                        "--quiet",
+                        "--input",
+                        opts.xclbin_input,
+                    ],
+                )
+            )
+
+        # wait for all of the above to finish
+        await asyncio.gather(*processes)
 
         # fmt: off
-        await self.do_call(task, ["bootgen", "-arch", "versal", "-image", self.prepend_tmp("design.bif"), "-o", self.prepend_tmp("design.pdi"), "-w"])
         if opts.xclbin_input:
-            await self.do_call(task, ["xclbinutil",
-                                      "--dump-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_input_partition.json"),
-                                      "--force", "--quiet", "--input", opts.xclbin_input])
+            # patch the input partition json with the new partition information
             with open(self.prepend_tmp("aie_input_partition.json")) as f:
                 input_partition = json.load(f)
             with open(self.prepend_tmp("aie_partition.json")) as f:
@@ -675,13 +844,14 @@ class FlowRunner:
         else:
             flag = ["--add-replace-section", "MEM_TOPOLOGY:JSON:" + self.prepend_tmp("mem_topology.json")]
 
+        # run xclbinutil to generate the xclbin
         await self.do_call(task, ["xclbinutil"] + flag +
                                  ["--add-kernel", self.prepend_tmp("kernels.json"),
                                   "--add-replace-section", "AIE_PARTITION:JSON:" + self.prepend_tmp("aie_partition.json"),
                                   "--force", "--quiet", "--output", opts.xclbin_name])
         # fmt: on
 
-    async def process_host_cgen(self, aie_target, file_with_addresses):
+    async def process_host_cgen(self, aie_target, file_physical):
         async with self.limit:
             if self.stopall:
                 return
@@ -693,19 +863,6 @@ class FlowRunner:
             else:
                 task = None
 
-            # Generate the included host interface
-            file_physical = self.prepend_tmp("input_physical.mlir")
-            await self.do_call(
-                task,
-                [
-                    "aie-opt",
-                    "--aie-create-pathfinder-flows",
-                    file_with_addresses,
-                    "-o",
-                    file_physical,
-                ],
-            )
-
             if opts.airbin:
                 file_airbin = self.prepend_tmp("air.bin")
                 await self.do_call(
@@ -716,18 +873,6 @@ class FlowRunner:
                         file_physical,
                         "-o",
                         file_airbin,
-                    ],
-                )
-            else:
-                file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
-                await self.do_call(
-                    task,
-                    [
-                        "aie-translate",
-                        "--aie-generate-xaie",
-                        file_physical,
-                        "-o",
-                        file_inc_cpp,
                     ],
                 )
 
@@ -839,11 +984,12 @@ class FlowRunner:
             if len(opts.host_args) > 0:
                 await self.do_call(task, cmd + opts.host_args)
 
-            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
-            if task:
-                self.progress_bar.update(task, advance=0, visible=False)
+            if opts.progress:
+                self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+                if task:
+                    self.progress_bar.update(task, advance=0, visible=False)
 
-    async def gen_sim(self, task, aie_target):
+    async def gen_sim(self, task, aie_target, file_physical):
         # For simulation, we need to additionally parse the 'remaining' options to avoid things
         # which conflict with the options below (e.g. -o)
         print(opts.host_args)
@@ -890,7 +1036,6 @@ class FlowRunner:
             "include",
         )
         sim_genwrapper = os.path.join(runtime_simlib_path, "genwrapper_for_ps.cpp")
-        file_physical = self.prepend_tmp("input_physical.mlir")
         memory_allocator = os.path.join(
             runtime_testlib_path, "libmemory_allocator_sim_aie.a"
         )
@@ -1051,14 +1196,18 @@ class FlowRunner:
             redirect_stderr=False,
         ) as progress_bar:
             self.progress_bar = progress_bar
-            progress_bar.task = progress_bar.add_task(
-                "[green] MLIR compilation:", total=1, command="1 Worker"
-            )
+            if opts.progress:
+                progress_bar.task = progress_bar.add_task(
+                    "[green] MLIR compilation:", total=1, command="1 Worker"
+                )
+            else:
+                progress_bar.task = None
+
+            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
+                opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
+            ).materialize(module=True)
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.basic_alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
-            ).materialize(module=True)
             run_passes(
                 pass_pipeline,
                 self.mlir_module_str,
@@ -1076,39 +1225,37 @@ class FlowRunner:
                 self.opts.verbose,
             )
             aie_target = t.stdout.strip()
-            if not re.fullmatch("AIE.?", aie_target):
+            if not re.fullmatch("AIE.?.?", aie_target):
                 print(
                     "Unexpected target " + aie_target + ". Exiting...",
                     file=sys.stderr,
                 )
                 exit(-3)
-            aie_peano_target = aie_target.lower() + "-none-elf"
+            aie_peano_target = aie_target.lower() + "-none-unknown-elf"
 
             # Optionally generate insts.txt for NPU instruction stream
-            if opts.npu or opts.only_npu:
-                generated_insts_mlir = self.prepend_tmp("generated_npu_insts.mlir")
-                await self.do_call(
-                    progress_bar.task,
-                    [
-                        "aie-opt",
-                        f"--pass-pipeline={DMA_TO_NPU}",
-                        file_with_addresses,
-                        "-o",
-                        generated_insts_mlir,
-                    ],
-                )
-                await self.do_call(
-                    progress_bar.task,
-                    [
-                        "aie-translate",
-                        "--aie-npu-instgen",
-                        generated_insts_mlir,
-                        "-o",
-                        opts.insts_name,
-                    ],
-                )
-                if opts.only_npu:
-                    return
+            if opts.npu:
+                with Context(), Location.unknown():
+                    file_with_addresses_module = Module.parse(
+                        await read_file_async(file_with_addresses)
+                    )
+                    pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+                    npu_insts_file = (
+                        self.prepend_tmp("npu_insts.mlir")
+                        if self.opts.verbose
+                        else None
+                    )
+                    npu_insts_module = run_passes_module(
+                        pass_pipeline,
+                        file_with_addresses_module,
+                        npu_insts_file,
+                        self.opts.verbose,
+                    )
+                    npu_insts = aiedialect.translate_npu_to_binary(
+                        npu_insts_module.operation
+                    )
+                    with open(opts.insts_name, "wb") as f:
+                        f.write(struct.pack("I" * len(npu_insts), *npu_insts))
 
             # fmt: off
             if opts.unified:
@@ -1123,25 +1270,59 @@ class FlowRunner:
                     file_llvmir_hacked = await self.chesshack(progress_bar.task, file_llvmir, aie_target)
                     await self.do_call(progress_bar.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", self.unified_file_core_obj])
                 elif opts.compile:
+                    file_llvmir_hacked = await self.peanohack(file_llvmir)
                     file_llvmir_opt = self.prepend_tmp("input.opt.ll")
-                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir, "-o", file_llvmir_opt])
+                    await self.do_call(progress_bar.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
                     await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
-            progress_bar.update(progress_bar.task, advance=0, visible=False)
-            progress_bar.task_completed = progress_bar.add_task(
-                "[green] AIE Compilation:",
-                total=len(cores) + 1,
-                command="%d Workers" % nworkers,
-            )
+            if opts.progress:
+                progress_bar.update(progress_bar.task, advance=0, visible=False)
+                progress_bar.task_completed = progress_bar.add_task(
+                    "[green] AIE Compilation:",
+                    total=len(cores) + 1,
+                    command="%d Workers" % nworkers,
+                )
 
-            processes = [self.process_host_cgen(aie_target, file_with_addresses)]
-            await asyncio.gather(
-                *processes
-            )  # ensure that process_host_cgen finishes before running gen_sim
+            input_physical = self.prepend_tmp("input_physical.mlir")
+            processes = [
+                self.do_call(
+                    None,
+                    [
+                        "aie-opt",
+                        "--aie-create-pathfinder-flows",
+                        file_with_addresses,
+                        "-o",
+                        input_physical,
+                    ],
+                    force=True,
+                )
+            ]
+            await asyncio.gather(*processes)
+
+            if opts.compile_host or opts.aiesim:
+                file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
+                await self.do_call(
+                    None,
+                    [
+                        "aie-translate",
+                        "--aie-generate-xaie",
+                        input_physical,
+                        "-o",
+                        file_inc_cpp,
+                    ],
+                )
+
+            if opts.compile_host and len(opts.host_args) > 0:
+                await self.process_host_cgen(aie_target, input_physical)
+
+            input_physical_str = await read_file_async(input_physical)
+
             processes = []
             if opts.aiesim:
-                processes.append(self.gen_sim(progress_bar.task, aie_target))
+                processes.append(
+                    self.gen_sim(progress_bar.task, aie_target, input_physical)
+                )
             for core in cores:
                 processes.append(
                     self.process_core(
@@ -1153,18 +1334,39 @@ class FlowRunner:
                 )
             await asyncio.gather(*processes)
 
-            # Must have elfs, before we build the final binary assembly
-            if opts.cdo and opts.execute:
-                await self.process_cdo()
+            # copy the elfs left by proess_core to the tmpdir for process_cdo
+            for elf in glob.glob("*.elf"):
+                try:
+                    shutil.copy(elf, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
+            for elf_map in glob.glob("*.elf.map"):
+                try:
+                    shutil.copy(elf_map, self.tmpdirname)
+                except shutil.SameFileError:
+                    pass
 
-            if opts.cdo or opts.xcl:
-                await self.process_xclbin_gen()
+            if (opts.cdo or opts.xcl or opts.pdi) and opts.execute:
+                await self.process_cdo(input_physical_str)
+
+            processes = []
+            if opts.xcl:
+                processes.append(self.process_xclbin_gen())
+            # self.process_pdi_gen is called in process_xclbin_gen,
+            # so don't call it again if opts.xcl is set
+            elif opts.pdi:
+                processes.append(self.process_pdi_gen())
 
             if opts.txn and opts.execute:
-                await self.process_txn()
+                processes.append(self.process_txn(input_physical_str))
 
             if opts.ctrlpkt and opts.execute:
-                await self.process_ctrlpkt()
+                processes.append(self.process_ctrlpkt(input_physical_str))
+
+            if opts.elf and opts.execute:
+                processes.append(self.process_elf(input_physical_str))
+
+            await asyncio.gather(*processes)
 
     def dumpprofile(self):
         sortedruntimes = sorted(
@@ -1189,7 +1391,8 @@ def run(mlir_module, args=None):
 
         version = ryzen_ai.__about__.__version__
         path = os.path.realpath(ryzen_ai.__path__[0])
-        print(f"Found Ryzen AI software version {version} at {path}")
+        if opts.verbose:
+            print(f"Found Ryzen AI software version {version} at {path}")
         # if ryzenai software is pip installed then the path is something like:
         # <workdir>/venv/lib/python3.10/site-packages/
         opts.aietools_path = os.path.realpath(os.path.join(path, ".."))
@@ -1201,15 +1404,18 @@ def run(mlir_module, args=None):
     if xchesscc_path:
         xchesscc_bin_path = os.path.dirname(os.path.realpath(xchesscc_path))
         xchesscc_path = os.path.dirname(xchesscc_bin_path)
-        print(f"Found xchesscc at {xchesscc_path}")
+        if opts.verbose:
+            print(f"Found xchesscc at {xchesscc_path}")
         os.environ["PATH"] = os.pathsep.join([os.environ["PATH"], xchesscc_bin_path])
         if opts.aietools_path is None:
             opts.aietools_path = xchesscc_path
     else:
-        print("xchesscc not found.")
+        if opts.verbose:
+            print("xchesscc not found.")
 
     if opts.aietools_path is None:
-        print("Could not find aietools from Vitis or Ryzen AI Software.")
+        if opts.verbose:
+            print("Could not find aietools from Vitis or Ryzen AI Software.")
         opts.aietools_path = "<aietools not found>"
 
     os.environ["AIETOOLS"] = opts.aietools_path
@@ -1223,7 +1429,7 @@ def run(mlir_module, args=None):
         sys.exit("AIE Simulation (--aiesim) currently requires --xbridge")
 
     if opts.verbose:
-        sys.stderr.write(f"\ncompiling {opts.filename}\n")
+        print(f"Compiling {opts.filename}")
 
     if opts.tmpdir:
         tmpdirname = opts.tmpdir

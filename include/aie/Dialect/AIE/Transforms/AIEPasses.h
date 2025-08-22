@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 
 namespace xilinx::AIE {
@@ -70,7 +71,7 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
       : analyzer(std::move(analyzer)) {}
 
   void runOnOperation() override;
-  void runOnFlow(DeviceOp d, mlir::OpBuilder &builder);
+  void runOnFlow(DeviceOp d);
   void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder);
 
   typedef std::pair<mlir::Operation *, Port> PhysPort;

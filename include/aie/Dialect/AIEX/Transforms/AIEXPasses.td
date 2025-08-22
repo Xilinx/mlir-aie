@@ -210,4 +210,29 @@ def AIECtrlPacketInferTiles : Pass<"aie-ctrl-packet-infer-tiles", "AIE::DeviceOp
   ];
 }
 
+def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
+  let summary = "Lowers all aiex.set_lock operations to npu.write32Op";
+
+  let constructor = "xilinx::AIEX::createAIELowerSetLockPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
+  let summary = "Transform bfp types to standard builtin types";
+
+  let description = [{
+      Lowers bfp types to standard builtin types.
+      Adapts operations as necessary to accomodate for bfp data movement.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIETransformBfpTypesPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif

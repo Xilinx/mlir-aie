@@ -1,4 +1,5 @@
-include ../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+include ${srcdir}/../../makefile-common
 
 .PHONY: all clean
 
@@ -10,7 +11,7 @@ all: tutorial-4.exe
 # Command line mlir-aie compile script "aiecc.py"
 # Sysroot and host target used to cross compile  host executable
 # Local runtime_lib needed for testbench functions
-tutorial-4.exe: test.cpp aie.mlir
+tutorial-4.exe: ${srcdir}/test.cpp ${srcdir}/aie.mlir
 	aiecc.py -j4 $(AIECC_FLAGS) $(word 2,$^) $(AIECC_HOST_FLAGS) ./$< -o $@
 
 clean:

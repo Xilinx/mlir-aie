@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
+#include "cxxopts.hpp"
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-#include "experimental/xrt_kernel.h" // for xrt::runlist
+#include "xrt/experimental/xrt_kernel.h" // for xrt::runlist
 #include "xrt/xrt_aie.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -24,18 +24,15 @@
 
 #include "test_utils.h"
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("Vector Scalar Add Runlist Test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -47,7 +44,7 @@ int main(int argc, const char *argv[]) {
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -109,8 +106,6 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr_1 = xrt::bo(device, instr_v.size() * sizeof(int),
                             XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA_1 = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_out_1 = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
                           XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
@@ -119,18 +114,12 @@ int main(int argc, const char *argv[]) {
 
   // Initializing the input vectors
   std::vector<uint32_t> srcVecA;
-  std::vector<uint32_t> srcVecA_1;
   for (int i = 0; i < IN_SIZE; i++)
     srcVecA.push_back(i + 1);
 
-  for (int i = 0; i < IN_SIZE; i++)
-    srcVecA_1.push_back(i + 2);
-
   // Getting handles to the input data BOs and copying input data to them
   uint32_t *bufInA_0 = bo_inA_0.map<uint32_t *>();
-  uint32_t *bufInA_1 = bo_inA_1.map<uint32_t *>();
   memcpy(bufInA_0, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
-  memcpy(bufInA_1, srcVecA_1.data(), (srcVecA_1.size() * sizeof(uint32_t)));
 
   // Getting handles to the instruction sequence BOs and copy data to them
   void *bufInstr_0 = bo_instr_0.map<void *>();
@@ -142,7 +131,6 @@ int main(int argc, const char *argv[]) {
   bo_instr_0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_instr_1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA_0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA_1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   unsigned int opcode = 3;
 
@@ -156,20 +144,14 @@ int main(int argc, const char *argv[]) {
   run0.set_arg(2, instr_v.size());
   run0.set_arg(3, bo_inA_0);
   run0.set_arg(4, bo_out_0);
-  run0.set_arg(5, 0);
-  run0.set_arg(6, 0);
-  run0.set_arg(7, 0);
 
   // Creating the second run
   xrt::run run1 = xrt::run(kernel);
   run1.set_arg(0, opcode);
   run1.set_arg(1, bo_instr_1);
   run1.set_arg(2, instr_v.size());
-  run1.set_arg(3, bo_inA_1);
+  run1.set_arg(3, bo_out_0);
   run1.set_arg(4, bo_out_1);
-  run1.set_arg(5, 0);
-  run1.set_arg(6, 0);
-  run1.set_arg(7, 0);
 
   // Executing and waiting on the runlist
   runlist.add(run0);

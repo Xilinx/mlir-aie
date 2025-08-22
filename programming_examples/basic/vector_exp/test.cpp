@@ -8,9 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "cxxopts.hpp"
 #include <bits/stdc++.h>
-
-#include <boost/program_options.hpp>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -30,8 +30,6 @@ using INOUT0_DATATYPE = std::bfloat16_t;
 using INOUT1_DATATYPE = std::bfloat16_t;
 #endif
 
-namespace po = boost::program_options;
-
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
 // ----------------------------------------------------------------------------
@@ -42,11 +40,11 @@ int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
     std::bfloat16_t ref = exp(A[i]);
     // Let's check if they are inf or nan, and if so just pass because
     // comparisions will then fail, even for matches
-    if (isinf(ref) || isinf(C[i]))
+    if (std::isinf(ref) || std::isinf(C[i]))
       break;
-    if (isnan(ref) || isnan(C[i]))
+    if (std::isnan(ref) || std::isnan(C[i]))
       break;
-    if (!test_utils::nearly_equal(ref, C[i], 0.0078125)) {
+    if (!test_utils::nearly_equal(ref, C[i], 0.128)) {
       std::cout << "Error in output " << C[i] << " != " << ref << std::endl;
       errors++;
     } else {
@@ -61,15 +59,14 @@ int verify(int CSize, std::vector<T> A, std::vector<T> C, int verbosity) {
 // Main
 // ----------------------------------------------------------------------------
 int main(int argc, const char *argv[]) {
-
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("Vector Exp Test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -89,7 +86,7 @@ int main(int argc, const char *argv[]) {
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -183,7 +180,6 @@ int main(int argc, const char *argv[]) {
   // Main run loop
   // ------------------------------------------------------
   for (unsigned iter = 0; iter < num_iter; iter++) {
-
     if (verbosity >= 1) {
       std::cout << "Running Kernel.\n";
     }

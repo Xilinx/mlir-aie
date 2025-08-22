@@ -14,14 +14,14 @@
     * [Section 2a - Introduction](../section-2a/)
     * [Section 2b - Key Object FIFO Patterns](../section-2b/)
     * Section 2c - Data Layout Transformations
-    * [Section 2d - Programming for multiple cores](../section-2d/)
-    * [Section 2e - Practical Examples](../section-2e/)
-    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
-    * [Section 2g - Runtime Data Movement](../section-2g/)
+    * [Section 2d - Runtime Data Movement](../section-2d/)
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
 
 -----
 
-While the Object FIFO primitive aims to reduce the complexity tied to data movement configuration on the AI Engine array, it also gives the user control over some advanced features of the underlying architecture. One such feature is the ability to do data layout transformations on the fly using the tile's dedicated hardware: the Data Movement Accelerators (DMAs). **This is available on AIE-ML devices.**
+While the Object FIFO primitive aims to reduce the complexity tied to data movement configuration on the AI Engine array, it also gives the user control over some advanced features of the underlying architecture. One such feature is the ability to do data layout transformations on the fly using the tile's dedicated hardware: the Direct Memory Access channels (DMAs). **This is available on AIE-ML devices.**
 
 Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout when pushed may be different than how it is stored in the tile's local memory. In the same way, a user can also specify in what layout a DMA should store the data retrieved from the AXI stream.
 
@@ -129,6 +129,14 @@ and further represented as in the image below:
 <img height="300" src="./../../assets/DataLayoutTransformation.svg">
 
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
+
+### Data Layout Transformations with the Runtime Sequence
+
+The runtime sequence uses another representation of data layout transformations named `Tensor Access Pattern`, or `tap`, which is available in the `taplib` library on AIEs with IRON. An in-depth introduction to `taplib` is available [here](../../../programming_examples/basic/tiling_exploration/README.md).
+
+Runtime sequence operations such as `fill()` and `drain()` at the highest IRON abstraction level, or `dma_wait` and `npu_dma_memcpy_nd` at the placed level, can optionally take a `tap` as input to change the access pattern to/from external memory on-the-fly. For more details on programming the runtime sequence please see the corresponding [section](../section-2d/README.md).
+
+Examples containing `tap`s are available in the [programming_examples](../../../programming_examples/). A few notable ones are [dma_transpose](../../../programming_examples/basic/dma_transpose/) and [row_wise_bias_add](../../../programming_examples/basic/row_wise_bias_add/).
 
 -----
 [[Prev - Section 2b](../section-2b/)] [[Up](..)] [[Next - Section 2d](../section-2d/)]

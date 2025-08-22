@@ -26,6 +26,12 @@ declare_mlir_python_sources(AIEPythonSources.Util
     util.py
 )
 
+declare_mlir_python_sources(AIEPythonSources.Tools
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    tools/__init__.py
+)
+
 declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
@@ -34,6 +40,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/ml.py
     utils/trace.py
     utils/trace_events_enum.py
+    utils/config.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Helpers
@@ -42,6 +49,13 @@ declare_mlir_python_sources(AIEPythonSources.Helpers
     helpers/*.py
     helpers/dialects/ext/*.py
     helpers/runtime/*.py
+    helpers/taplib/*.py
+)
+
+declare_mlir_python_sources(AIEPythonSources.Iron
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES_GLOB
+    iron/*.py
 )
 
 declare_mlir_dialect_python_bindings(
@@ -84,14 +98,14 @@ install(
   DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/compiler/aiecc
 )
 
-# Note that compiler/ is not globbed but compiler/aiecc/
-# this is so that compiler/aiecc.py does not get distributed
+# Note that compiler/ is not globbed but compiler/aiecc/ and compiler/txn2mlir/
+# this is so that compiler/aiecc.py and compiler/txn2mlir.py do not get distributed
 # through this dir but actually through bin (see all the way at the bottom of this file)
 declare_mlir_python_sources(AIEPythonSources.Compiler
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     compiler/aiecc/*.py
-    compiler/util.py
+    compiler/txn2mlir/*.py
 )
 
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -185,6 +199,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
     PRIVATE_LINK_LIBS
       ${_py_libs}
+
+    PYTHON_BINDINGS_LIBRARY
+      nanobind
   )
   target_include_directories(
     AIEPythonExtensions.MLIR
@@ -203,6 +220,9 @@ if (AIE_ENABLE_PYTHON_PASSES)
     set_property(TARGET ${t} PROPERTY mlir_python_DEPENDS "")
   endforeach()
   set_property(TARGET MLIRPythonSources.ExecutionEngine PROPERTY mlir_python_DEPENDS "")
+
+  # Set NB_DOMAIN for nanobind, to avoid domain conflict with other LLVM projects.
+  set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "_aie")
 
   add_mlir_python_modules(AIEPythonModules
     ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
@@ -276,6 +296,8 @@ else ()
       AIECAPI
     PRIVATE_LINK_LIBS
       LLVMSupport
+    PYTHON_BINDINGS_LIBRARY
+      nanobind
   )
 
   if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -292,23 +314,12 @@ else ()
         LLVMSupport
         xrt_coreutil
         uuid
+      PYTHON_BINDINGS_LIBRARY
+        nanobind
     )
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()
-
-  declare_mlir_python_extension(AIEPythonExtensions.AIERT
-    MODULE_NAME _aiert
-    ADD_TO_PARENT AIEPythonExtensions
-    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-
-    PARTIAL_SOURCES_INTENDED
-    SOURCES
-      AIERTModule.cpp
-
-    PRIVATE_LINK_LIBS
-      LLVMSupport
-  )
 
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules

@@ -38,7 +38,7 @@ concurrency:
 env:
   DEBIAN_FRONTEND: noninteractive
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
-  VITIS: /opt/ryzen_ai-1.3.0/vitis_aie_essentials
+  VITIS: /opt/ryzen_ai-1.3.0.1/vitis_aie_essentials
   CMAKE_ARGS: |
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -46,16 +46,20 @@ env:
             -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DXRT_ROOT=/opt/xilinx/xrt \
+            -DAIE_VITIS_COMPONENTS=AIE2;AIE2P \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
-  # -j12 here to reduce the number of parallel chess jobs.
-  LIT_OPTS: -sv --time-tests -j12 --timeout 600 --show-unsupported --show-excluded
+  LIT_OPTS: -sv --time-tests --timeout 600 --show-unsupported --show-excluded
 
 jobs:
   build-tests:
     name: Run Tests on Ryzen AI
-    runs-on: amd7940hs
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ amd7940hs, amdhx370 ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,15 +77,21 @@ jobs:
 
       - name: Run commands
         run: |
-
+          sudo prlimit -lunlimited --pid $$
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
           HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
-          pip install jupyter
+          pip install -r python/requirements_dev.txt
+
+          # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code
+          pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+          export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+          
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
@@ -97,8 +107,18 @@ jobs:
           mkdir build
           pushd build
 
+          # -j here to reduce the number of parallel chess jobs.
+          # -j4 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j4 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
+
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          
           cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
             -DPython3_EXECUTABLE=$(which python) \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
@@ -108,12 +128,15 @@ jobs:
 
           ninja install
           ninja check-aie
-
           popd
 
   build-quick-setup:
     name: Run Examples on Ryzen AI
-    runs-on: amd7940hs
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ amd7940hs, amdhx370 ]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -131,17 +154,34 @@ jobs:
 
       - name: Run commands
         run: |
-
+          sudo prlimit -lunlimited --pid $$
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
-          ./utils/build-mlir-aie-from-wheels.sh ./my_install/mlir build install ./my_install/llvm-aie
+          pip install -r python/requirements_dev.txt
+
+          ./utils/build-mlir-aie-from-wheels.sh
+
+          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+          # That means wheels have file with time stamps in the future which makes ninja loop
+          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+          pushd my_install
+          find mlir -exec touch -a -m -t 201108231405.14 {} \;
+          popd
 
           # build is created by the build-mlir-aie-from-wheels.sh script
           pushd build
+
+          # -j here to reduce the number of parallel chess jobs.
+          # -j4 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j4 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
 
           ninja install
           ninja check-reference-designs

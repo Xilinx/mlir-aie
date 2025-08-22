@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
@@ -18,6 +19,7 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
@@ -37,6 +39,8 @@ static StringRef getArchIntrinsicString(AIEArch arch) {
     return "aie";
   case AIEArch::AIE2:
     return "aie2";
+  case AIEArch::AIE2p:
+    return "aie2p";
   }
   llvm::report_fatal_error("unsupported arch");
 }
@@ -49,7 +53,7 @@ static auto getAIE1Intrinsics(OpBuilder &builder) {
   Type int32Type = IntegerType::get(builder.getContext(), 32);
   Type int128Type = IntegerType::get(builder.getContext(), 128);
   Type int384Type = IntegerType::get(builder.getContext(), 384);
-  Type floatType = FloatType::getF32(builder.getContext());
+  Type floatType = Float32Type::get(builder.getContext());
 
   // Note that not all of these are valid for a particular design, or needed.
   // For right now, we will just accept the noise.
@@ -106,6 +110,33 @@ static auto getAIE2Intrinsics(OpBuilder &builder) {
   return functions;
 }
 
+static auto getAIE2pIntrinsics(OpBuilder &builder) {
+  Type int32Type = IntegerType::get(builder.getContext(), 32);
+  Type accType = VectorType::get({16}, int32Type);
+  IntrinsicDecls functions = {
+      {"debug_i32", {int32Type}, {}},
+      {"llvm.aie2p.put.ms",
+       {int32Type, int32Type},
+       {}}, //(%value, %tlast) -> ()
+      {"llvm.aie2p.get.ss",
+       {},
+       {int32Type, int32Type}}, //() -> (%value, %tlast)
+      {"llvm.aie2p.mcd.write.vec",
+       {accType, int32Type},
+       {}}, // (%value, %enable) -> ()
+      {"llvm.aie2p.scd.read.vec",
+       {int32Type},
+       {accType}}, // (%enable) -> (%value)
+      {"llvm.aie2p.acquire",
+       {int32Type, int32Type},
+       {}}, //(%lock_id, %lock_val) -> ()
+      {"llvm.aie2p.release",
+       {int32Type, int32Type},
+       {}}, //(%lock_id, %lock_val) -> ()
+  };
+  return functions;
+}
+
 static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   auto registerIntrinsics = [&builder](IntrinsicDecls functions) {
     for (auto &i : functions) {
@@ -123,6 +154,9 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
     return;
   case AIEArch::AIE2:
     registerIntrinsics(getAIE2Intrinsics(builder));
+    return;
+  case AIEArch::AIE2p:
+    registerIntrinsics(getAIE2pIntrinsics(builder));
     return;
   }
   llvm::report_fatal_error("unsupported arch");
@@ -185,8 +219,10 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
     std::string funcName;
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.put.";
-    else
+    else if (targetModel.getTargetArch() == AIEArch::AIE2)
       funcName = "llvm.aie2.put.";
+    else
+      funcName = "llvm.aie2p.put.";
 
     if (op.isWideStream())
       funcName += "wms";
@@ -231,8 +267,10 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
     std::string funcName;
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.get.";
-    else
+    else if (targetModel.getTargetArch() == AIEArch::AIE2)
       funcName = "llvm.aie2.get.";
+    else
+      funcName = "llvm.aie2p.get.";
 
     if (op.isWideStream())
       funcName += "wss";
@@ -272,15 +310,17 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
     std::string funcName;
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.put.mcd";
-    else
+    else if (targetModel.getTargetArch() == AIEArch::AIE2)
       funcName = "llvm.aie2.mcd.write.vec";
+    else
+      funcName = "llvm.aie2p.mcd.write.vec";
     auto putMCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!putMCDFunc)
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
     args.push_back(op.getCascadeValue());
-    if (targetModel.getTargetArch() == AIEArch::AIE2)
+    if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
@@ -307,14 +347,16 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
     std::string funcName;
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       funcName = "llvm.aie.get.scd";
-    else
+    else if (targetModel.getTargetArch() == AIEArch::AIE2)
       funcName = "llvm.aie2.scd.read.vec";
+    else
+      funcName = "llvm.aie2p.scd.read.vec";
     auto getSCDFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!getSCDFunc)
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    if (targetModel.getTargetArch() == AIEArch::AIE2)
+    if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
@@ -347,8 +389,10 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
       std::string funcName;
       if (targetModel.getTargetArch() == AIEArch::AIE1)
         funcName = "llvm.aie.lock.";
-      else
+      else if (targetModel.getTargetArch() == AIEArch::AIE2)
         funcName = "llvm.aie2.";
+      else
+        funcName = "llvm.aie2p.";
       if (useLock.acquire() || useLock.acquireGE())
         funcName += "acquire";
       else if (useLock.release())
@@ -553,7 +597,9 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     target.addLegalDialect<cf::ControlFlowDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<VectorDialect>();
+    target.addLegalDialect<aievec::AIEVecDialect>();
     target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalDialect<ub::UBDialect>();
     target.addLegalDialect<math::MathDialect>();
     target.addLegalDialect<index::IndexDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();

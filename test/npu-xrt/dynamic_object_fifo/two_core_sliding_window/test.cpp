@@ -14,11 +14,11 @@
 #include "xrt/xrt_kernel.h"
 
 #ifndef XCLBIN
-#define XCLBIN "final.xclbin"
+#define XCLBIN std::string("final.xclbin")
 #endif
 
 #ifndef INSTS_TXT
-#define INSTS_TXT "insts.txt"
+#define INSTS_TXT "insts.bin"
 #endif
 
 #ifndef KERNEL_NAME
@@ -28,6 +28,7 @@
 #define INPUT_SIZE (100 * sizeof(int))  // in bytes
 #define OUTPUT_SIZE (100 * sizeof(int)) // in bytes
 #define WIDTH_SIZE (10 * sizeof(int))   // in bytes
+
 #define INPUT_ROWS INPUT_SIZE / WIDTH_SIZE
 #define OUTPUT_ROWS OUTPUT_SIZE / WIDTH_SIZE
 
@@ -35,7 +36,7 @@
 
 int main(int argc, const char *argv[]) {
 
-  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence(INSTS_TXT);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(INSTS_TXT);
   assert(instr_v.size() > 0);
 
   // Get a device handle
@@ -121,5 +122,5 @@ int main(int argc, const char *argv[]) {
   std::cout << std::endl << std::endl;
   std::cout << (pass ? "PASS!" : "FAIL.") << std::endl;
 
-  return 0;
+  return !pass;
 }

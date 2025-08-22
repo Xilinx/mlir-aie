@@ -11,16 +11,14 @@ import pyxrt as xrt
 import sys
 import time
 
+import aie.utils.xrt as xrt_utils
 import aie.utils.test as test_utils
 
 
 def main(opts):
 
     # Load instruction sequence
-    with open(opts.instr, "r") as f:
-        instr_text = f.read().split("\n")
-        instr_text = [l for l in instr_text if l != ""]
-        instr_v = np.array([int(i, 16) for i in instr_text], dtype=np.uint32)
+    instr_v = xrt_utils.read_insts(opts.instr)
 
     # ------------------------------------------------------------
     # Configure this to match your design's buffer size and type
@@ -117,17 +115,25 @@ def main(opts):
 
     # TODO - Mac count to guide gflops
 
+    print(
+        "\nNumber of iterations:",
+        str(opts.iters),
+        "(warmup iterations:",
+        str(opts.warmup_iters),
+        ")",
+    )
+
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / opts.iters) / 1000)))
-    print("\nMin NPU time: {}us.".format(int((npu_time_min / opts.iters) / 1000)))
-    print("\nMax NPU time: {}us.".format(int((npu_time_max / opts.iters) / 1000)))
+    print("\nMin NPU time: {}us.".format(int((npu_time_min) / 1000)))
+    print("\nMax NPU time: {}us.".format(int((npu_time_max) / 1000)))
 
     if not errors:
         print("\nPASS!\n")
-        exit(0)
+        sys.exit(0)
     else:
         print("\nError count: ", errors)
         print("\nFailed.\n")
-        exit(-1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -5,8 +5,7 @@
 #
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 
-cmake_minimum_required(VERSION 3.10)
-
+cmake_minimum_required(VERSION 3.30)
 if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
@@ -41,7 +40,7 @@ set(AIE_RUNTIME_TARGETS "x86_64" CACHE STRING "Architectures to compile the runt
 list(GET AIE_RUNTIME_TARGETS 0 firstRuntimeTarget)
 set(AIE_RUNTIME_TEST_TARGET ${firstRuntimeTarget} CACHE STRING "Runtime architecture to test with.")
 
-set(AIE_VITIS_COMPONENTS "AIE;AIE2" CACHE STRING "Vitis components")
+set(AIE_VITIS_COMPONENTS "AIE;AIE2;AIE2P" CACHE STRING "Vitis components")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -98,7 +97,6 @@ set(LLVM_LIT_ARGS "${LIT_ARGS_DEFAULT}" CACHE STRING "Default options for lit")
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 
-include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
 include(HandleLLVMOptions)

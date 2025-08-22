@@ -19,6 +19,7 @@
 
 // clang-format off
 #include <aie_api/aie.hpp>
+#include "../aie_kernel_utils.h"
 #include "lut_inv_8b.h"
 // clang-format on
 
@@ -86,48 +87,48 @@ __attribute__((noinline)) void rgba2hue_aie(uint8_t *rgba_in, uint8_t *hue_out,
   ::aie::vector<int16_t, 32> fourEightFive =
       aie::broadcast<int16_t, 32>(341); // 340 + 1
 
-  for (int j = 0; (j < (width * height) / 32); j += 1)
-    chess_prepare_for_pipelining {
-      xf_extract_rgb(rgba_in, r, g, b);
+  AIE_PREPARE_FOR_PIPELINING
+  for (int j = 0; (j < (width * height) / 32); j += 1) {
+    xf_extract_rgb(rgba_in, r, g, b);
 
-      // Get rgbMin and rgbMax
-      rgbMin = ::aie::min(::aie::min(r, g), b);
-      rgbMax = ::aie::max(::aie::max(r, g), b);
+    // Get rgbMin and rgbMax
+    rgbMin = ::aie::min(::aie::min(r, g), b);
+    rgbMax = ::aie::max(::aie::max(r, g), b);
 
-      // Get divisor and select the fixed point divisor to multiply by
-      auto divisor = ::aie::sub(rgbMax, rgbMin);
-      ::aie::vector<uint16, 32> divisor_sel;
-      comp_divisor_16b(divisor, divisor_sel);
+    // Get divisor and select the fixed point divisor to multiply by
+    auto divisor = ::aie::sub(rgbMax, rgbMin);
+    ::aie::vector<uint16, 32> divisor_sel;
+    comp_divisor_16b(divisor, divisor_sel);
 
-      // Initialize accum with value since 340 is larger than uint8
-      aie::accum<acc32, 32> hr_partial(one, 9);
-      aie::accum<acc32, 32> hg_partial(twoEightFive, 9);
-      aie::accum<acc32, 32> hb_partial(fourEightFive, 9);
+    // Initialize accum with value since 340 is larger than uint8
+    aie::accum<acc32, 32> hr_partial(one, 9);
+    aie::accum<acc32, 32> hg_partial(twoEightFive, 9);
+    aie::accum<acc32, 32> hb_partial(fourEightFive, 9);
 
-      // Performa uin8*int16 vector multiply
-      hr_partial = aie::mac(hr_partial, g, divisor_sel);
-      hg_partial = aie::mac(hg_partial, b, divisor_sel);
-      hb_partial = aie::mac(hb_partial, r, divisor_sel);
+    // Performa uin8*int16 vector multiply
+    hr_partial = aie::mac(hr_partial, g, divisor_sel);
+    hg_partial = aie::mac(hg_partial, b, divisor_sel);
+    hb_partial = aie::mac(hb_partial, r, divisor_sel);
 
-      hr_partial = aie::msc(hr_partial, b, divisor_sel);
-      hg_partial = aie::msc(hg_partial, r, divisor_sel);
-      hb_partial = aie::msc(hb_partial, g, divisor_sel);
+    hr_partial = aie::msc(hr_partial, b, divisor_sel);
+    hg_partial = aie::msc(hg_partial, r, divisor_sel);
+    hb_partial = aie::msc(hb_partial, g, divisor_sel);
 
-      auto hr = hr_partial.to_vector<uint8>(10); // Q7.9 shift + 1 (div 2)
-      auto hg = hg_partial.to_vector<uint8>(10); // Q7.9 shift + 1 (div 2)
-      auto hb = hb_partial.to_vector<uint8>(10); // Q7.9 shift + 1 (div 2)
+    auto hr = hr_partial.to_vector<uint8>(10); // Q7.9 shift + 1 (div 2)
+    auto hg = hg_partial.to_vector<uint8>(10); // Q7.9 shift + 1 (div 2)
+    auto hb = hb_partial.to_vector<uint8>(10); // Q7.9 shift + 1 (div 2)
 
-      aie::mask<32> sel1 = aie::eq(rgbMax, r);
-      auto tmp1 = aie::select(hb, hr, sel1);
-      aie::mask<32> sel2 = aie::eq(rgbMax, g);
-      auto tmp2 = aie::select(tmp1, hg, sel2);
-      aie::mask<32> sel3 = aie::eq(divisor, zero32);
-      hue = aie::select(tmp2, zero32, sel3);
+    aie::mask<32> sel1 = aie::eq(rgbMax, r);
+    auto tmp1 = aie::select(hb, hr, sel1);
+    aie::mask<32> sel2 = aie::eq(rgbMax, g);
+    auto tmp2 = aie::select(tmp1, hg, sel2);
+    aie::mask<32> sel3 = aie::eq(divisor, zero32);
+    hue = aie::select(tmp2, zero32, sel3);
 
-      ::aie::store_v(hue_out, hue);
-      rgba_in += 128;
-      hue_out += 32;
-    }
+    ::aie::store_v(hue_out, hue);
+    rgba_in += 128;
+    hue_out += 32;
+  }
 }
 
 void rgba2hue_aie_scalar(uint8_t *rgba_in, uint8_t *hue_out,

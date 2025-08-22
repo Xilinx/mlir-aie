@@ -13,15 +13,12 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Analysis/CallGraph.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Interfaces/CallInterfaces.h"
-#include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-
-#include <set>
 
 using namespace mlir;
 using namespace xilinx;
@@ -119,24 +116,24 @@ struct AIEMaterializeBDChainsPass
     MLIRContext *ctx = &getContext();
     AIE::DeviceOp device = getOperation();
     GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
-    rewriter_config.enableRegionSimplification =
-        GreedySimplifyRegionLevel::Disabled;
+    rewriter_config.setRegionSimplificationLevel(
+        GreedySimplifyRegionLevel::Disabled);
 
     RewritePatternSet patterns_0(ctx);
     patterns_0.insert<DMAStartBdChainForOpPattern>(ctx);
     DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_0, ctx);
-    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns_0),
-                                            rewriter_config))) {
+    if (failed(applyPatternsGreedily(device, std::move(patterns_0),
+                                     rewriter_config))) {
       signalPassFailure();
     }
 
     RewritePatternSet patterns_1(ctx);
     patterns_1.insert<DMAInlineBDChainPattern>(ctx);
-    rewriter_config.enableRegionSimplification =
-        GreedySimplifyRegionLevel::Disabled;
+    rewriter_config.setRegionSimplificationLevel(
+        GreedySimplifyRegionLevel::Disabled);
     DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_1, ctx);
-    if (failed(applyPatternsAndFoldGreedily(device, std::move(patterns_1),
-                                            rewriter_config))) {
+    if (failed(applyPatternsGreedily(device, std::move(patterns_1),
+                                     rewriter_config))) {
       signalPassFailure();
     }
   }

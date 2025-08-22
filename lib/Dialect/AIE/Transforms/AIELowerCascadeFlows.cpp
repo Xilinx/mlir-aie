@@ -30,7 +30,7 @@ struct AIELowerCascadeFlowsPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     std::set<TileOp> tilesWithCascadeFlow;
     DenseMap<TileOp, WireBundle> cascadeInputsPerTile;

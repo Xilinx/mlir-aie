@@ -80,6 +80,7 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
                                                    bool enableCores) {
   auto ps = std::filesystem::path::preferred_separator;
 
+  LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_elfs.bin");
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
               .str(),
@@ -88,12 +89,14 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
           })))
     return failure();
 
+  LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_init.bin");
   if (failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_init.bin")
               .str(),
           [&ctl, &targetOp] { return ctl.addInitConfig(targetOp); })))
     return failure();
 
+  LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_enable.bin");
   if (enableCores &&
       failed(generateCDOBinary(
           (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
@@ -134,12 +137,13 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
   assert(llvm::range_size(devOps) == 1 &&
          "only exactly 1 device op supported.");
   DeviceOp targetOp = *devOps.begin();
-  const BaseNPUTargetModel &targetModel =
-      (const BaseNPUTargetModel &)targetOp.getTargetModel();
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)targetOp.getTargetModel();
 
   // things like XAIE_MEM_TILE_ROW_START and the missing
   // shim dma on tile (0,0) are hard-coded assumptions about NPU...
-  assert(targetModel.isNPU() && "Only NPU currently supported");
+  assert(targetModel.hasProperty(AIETargetModel::IsNPU) &&
+         "Only NPU currently supported");
 
   AIERTControl ctl(targetModel);
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))

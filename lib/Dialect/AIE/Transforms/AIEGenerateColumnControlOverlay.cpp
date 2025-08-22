@@ -187,7 +187,7 @@ struct AIEGenerateColumnControlOverlayPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     const auto &targetModel = device.getTargetModel();
-    OpBuilder builder = OpBuilder::atBlockEnd(device.getBody());
+    OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       return; // Disable this pass for AIE1; AIE1 support NYI.
@@ -221,7 +221,7 @@ struct AIEGenerateColumnControlOverlayPass
 
         generatePacketFlowsForControl(
             builder, device, shimTile, AIE::WireBundle::South, tilesOnCol,
-            AIE::WireBundle::Ctrl, 0, tileIDMap, false);
+            AIE::WireBundle::TileControl, 0, tileIDMap, false);
       }
       if (clRouteShimDmaToTileCTRL) {
         // Get all tile ops on column col
@@ -234,7 +234,7 @@ struct AIEGenerateColumnControlOverlayPass
 
         generatePacketFlowsForControl(
             builder, device, shimTile, AIE::WireBundle::DMA, tilesOnCol,
-            AIE::WireBundle::Ctrl, 0, tileIDMap, true);
+            AIE::WireBundle::TileControl, 0, tileIDMap, true);
       }
     }
   }
@@ -314,7 +314,7 @@ struct AIEGenerateColumnControlOverlayPass
     auto availableShimChans =
         getAvailableShimChans(device, shimTile, shimWireBundle, isShimMM2S);
 
-    builder.setInsertionPointToEnd(device.getBody());
+    builder.setInsertionPoint(device.getBody()->getTerminator());
     for (auto tOp : ctrlTiles) {
       if (tOp->hasAttr("controller_id"))
         ctrlPktFlowID =

@@ -8,18 +8,24 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Vision Pass Through</ins>
+# <ins>Vision Passthrough</ins>
 
-Single tile applies a pass through kernel on data from local memory. There are three versions of this pipeline that differ in the sizes of input and output data tensors. This pipeline mainly serves to test whether the data movement between Shim tile (0, 0) and AIE tile (0, 2) works correctly.
+Single tile applies a pass through kernel on data from local memory. There are three versions of this pipeline that differ in the sizes of input and output data tensors. This pipeline mainly serves to test whether the data movement between a Shim tile and an AIE tile works correctly.
 
-To compile desing in Windows:
-```
+To compile the design:
+```shell
 make
-make passThrough.exe
+make vision_passthrough.exe
+```
+
+To compile the placed design:
+```shell
+env use_placed=1 make
+make vision_passthrough.exe
 ```
 
 To run the design:
-```
+```shell
 make run
 ```
 

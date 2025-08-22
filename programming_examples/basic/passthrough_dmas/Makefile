@@ -12,34 +12,33 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-all: build/final.xclbin build/insts.txt
+all: build/final.xclbin
 
-devicename ?= npu
-targetname = passThroughDMAs
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+targetname = passthrough_dmas
 LENGTH ?= 4096
 
-build/aie.mlir: ${srcdir}/aie2.py
+aie_py_src=${targetname}.py
+use_placed?=0
+
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
+endif
+
+build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${LENGTH} ${devicename} ${col} > $@
 
-.PHONY: inst/insts.txt
-inst/insts.txt: ${srcdir}/aie2.py
-	rm -rf inst
-	mkdir -p inst 
-	python3 $< ${LENGTH} > inst/aie.mlir
-	pushd inst && aiecc.py --aie-only-generate-npu --npu-insts-name=insts.txt aie.mlir && popd
-	${powershell} ./build/${targetname}.exe -x build/final.xclbin -i inst/insts.txt -k MLIR_AIE -l ${LENGTH}
-
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=insts.txt $(<:%=../%)
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+		--no-xchesscc --no-xbridge \
+		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -47,8 +46,8 @@ else
 	cp _build/${targetname} $@ 
 endif
 
-run: ${targetname}.exe build/final.xclbin build/insts.txt
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE -l ${LENGTH}
+run: ${targetname}.exe build/final.xclbin
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${LENGTH}
 
 # Changing variables when we target VCK5000
 vck5000: devicename=xcvc1902

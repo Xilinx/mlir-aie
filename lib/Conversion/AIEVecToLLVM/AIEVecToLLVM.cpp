@@ -20,6 +20,7 @@
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/TypeUtilities.h"
 #include <sstream>
 
@@ -1156,8 +1157,8 @@ public:
         getVectorSizeInBits(cast<VectorType>(op.getResult().getType()));
 
     auto ptr = this->getStridedElementPtr(
-        op->getLoc(), cast<MemRefType>(op.getSource().getType()),
-        adaptor.getSource(), adaptor.getIndices(), rewriter);
+        rewriter, op->getLoc(), cast<MemRefType>(op.getSource().getType()),
+        adaptor.getSource(), adaptor.getIndices());
 
     // TODO: handle the offset field
 
@@ -2368,7 +2369,7 @@ struct ConvertAIEVecToLLVMPass
     target.addIllegalDialect<xilinx::aievec::AIEVecDialect,
                              xilinx::aievec::aie1::AIEVecAIE1Dialect>();
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
-                           xilinx::xllvm::XLLVMDialect>();
+                           xilinx::xllvm::XLLVMDialect, ub::UBDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();

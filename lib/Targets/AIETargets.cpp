@@ -12,6 +12,7 @@
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -21,6 +22,8 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -73,11 +76,13 @@ namespace xilinx::AIE {
 static void registerDialects(DialectRegistry &registry) {
   registry.insert<xilinx::AIE::AIEDialect>();
   registry.insert<xilinx::AIEX::AIEXDialect>();
+  registry.insert<xilinx::aievec::AIEVecDialect>();
   registry.insert<func::FuncDialect>();
   registry.insert<scf::SCFDialect>();
   registry.insert<cf::ControlFlowDialect>();
   registry.insert<DLTIDialect>();
   registry.insert<arith::ArithDialect>();
+  registry.insert<ub::UBDialect>();
   registry.insert<math::MathDialect>();
   registry.insert<memref::MemRefDialect>();
   registry.insert<VectorDialect>();
@@ -154,10 +159,10 @@ void registerAIETranslations() {
       llvm::cl::desc("Enable cores in CDO"));
 
   static llvm::cl::opt<bool> outputBinary(
-      "aie-output-binary", llvm::cl::init(false),
+      "aie-output-binary", llvm::cl::init(true),
       llvm::cl::desc(
           "Select binary (true) or text (false) output for supported "
-          "translations. e.g. aie-npu-instgen, aie-ctrlpkt-to-bin"));
+          "translations. e.g. aie-npu-to-binary, aie-ctrlpkt-to-bin"));
 
   static llvm::cl::opt<std::string> sequenceName(
       "aie-sequence-name", llvm::cl::init(""),
@@ -344,35 +349,38 @@ void registerAIETranslations() {
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
-      "aie-npu-instgen", "Translate npu instructions to binary",
+      "aie-npu-to-binary", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
-        if (outputBinary == true) {
-          std::vector<uint32_t> instructions;
-          auto r = AIETranslateToNPU(module, instructions, sequenceName);
-          if (failed(r))
-            return r;
+        std::vector<uint32_t> instructions;
+        auto r = AIETranslateNpuToBinary(module, instructions, sequenceName);
+        if (failed(r))
+          return r;
+        if (outputBinary) {
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
-          return success();
+        } else {
+          for (auto w : instructions)
+            output << llvm::format("%08X\n", w);
         }
-        return AIETranslateToNPU(module, output, sequenceName);
+        return success();
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationCtrlPkt(
       "aie-ctrlpkt-to-bin", "Translate aiex.control_packet ops to binary",
       [](ModuleOp module, raw_ostream &output) {
-        if (outputBinary == true) {
-          std::vector<uint32_t> instructions;
-          auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
-                                                       sequenceName);
-          if (failed(r))
-            return r;
+        std::vector<uint32_t> instructions;
+        auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
+                                                     sequenceName);
+        if (failed(r))
+          return r;
+        if (outputBinary) {
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
-          return success();
+        } else {
+          for (auto w : instructions)
+            output << llvm::format("%08X\n", w);
         }
-        return AIETranslateControlPacketsToUI32Vec(module, output,
-                                                   sequenceName);
+        return success();
       },
       registerDialects);
 }

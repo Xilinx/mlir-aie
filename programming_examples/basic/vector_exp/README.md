@@ -17,7 +17,9 @@ $e^x$ is typically used in machine learning applications with relatively small n
 
 ## Source Files Overview
 
-1. `aie2.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (i.e., XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_exp.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (i.e., XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+
+1. `vector_exp_placed.py`: A functionally equivalent design to `vector_exp.py` that uses a lower-level IRON API than `vector_exp.py`
 
 1. `bf16_exp.cc`: A C++ implementation of vectorized table lookup operations for AIE cores. The lookup operation `getExpBf16` operates on vectors of size `16`, loading the vectorized accumulator registers with the look up table results.  It is then necessary to copy the accumulator register to a regular vector register before storing it back into memory.  The source can be found [here](../../../aie_kernels/aie2/bf16_exp.cc).
 
@@ -28,23 +30,27 @@ The design also uses a single file from the AIE runtime to initialize the look u
 
 ## Usage
 
-### C++ Testbench
+### Compilation
 
 To compile the design:
-
-```
+```shell
 make
 ```
 
-To compile the C++ testbench:
-
+To compile the placed design:
+```shell
+env use_placed=1 make
 ```
-make testExp.exe
+
+### C++ Testbench
+
+To compile the C++ testbench:
+```shell
+make text_exp.exe
 ```
 
 To run the design:
-
-```
+```shell
 make run
 ```
 

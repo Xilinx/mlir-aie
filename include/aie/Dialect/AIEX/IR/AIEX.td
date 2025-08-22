@@ -19,6 +19,8 @@ include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/DataLayoutInterfaces.td"
+include "mlir/IR/BuiltinTypeInterfaces.td"
 include "mlir/IR/CommonAttrConstraints.td"
 
 def AIEX_Dialect : Dialect {
@@ -34,8 +36,67 @@ def AIEX_Dialect : Dialect {
   let extraClassDeclaration = [{
   }];
 
+  let useDefaultTypePrinterParser = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// AIEX Types
+//===----------------------------------------------------------------------===//
+def AIEX_BlockFloatingPointType : TypeDef<AIEX_Dialect, "BlockFloat", [
+    MemRefElementTypeInterface,
+    DeclareTypeInterfaceMethods<DataLayoutTypeInterface>
+  ]> {
+  let summary = "AIEX type representing a block floating point type.";
+  let mnemonic = "bfp";
+  let description = [{
+    This is a type representing a block floating point.
+    It is meant to eventually be lowered into a standard type further down the pipeline.
+    It the meantime, it can be used for blocked fp related dataflow adaptations.
+    Available types are v8bfp16ebs8 and v16bfp16ebs16.
+  }];
+
+  let parameters = (
+    ins StringRefParameter<"">:$block_type
+  );
+
+  let assemblyFormat = "`<` $block_type `>`";
+
+  let extraClassDeclaration = [{
+    int getBlockSize() const;
+    int getMantissaBits() const;
+    int getExponentBits() const;
+    int getSubtileShiftBits() const;
+
+    using BlockFormat = struct BlockFormat {
+      int blockSize;
+      int mantissaBits;
+      int exponentBits;
+      int subtileShiftBits;
+    };
+
+    std::optional<BlockFormat> getBlockFormat() const;
+    static std::optional<BlockFormat> getBlockFormat(llvm::StringRef blockType);
+
+    uint64_t getTotalSizeInBits() const;
+  }];
+
+  let extraClassDefinition = [{
+    int $cppClass::getBlockSize() const { return getBlockFormat().value().blockSize; }
+    int $cppClass::getMantissaBits() const { return getBlockFormat().value().mantissaBits; }
+    int $cppClass::getExponentBits() const { return getBlockFormat().value().exponentBits; }
+    int $cppClass::getSubtileShiftBits() const { return getBlockFormat().value().subtileShiftBits; }
+
+    std::optional<$cppClass::BlockFormat> $cppClass::getBlockFormat() const {
+      return getBlockFormat(getBlockType());
+    }
+  }];
+
+  let genVerifyDecl = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// AIEX Operations
+//===----------------------------------------------------------------------===//
 
 class AIEX_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEX_Dialect, mnemonic, traits>;
@@ -494,14 +555,16 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   let description = [{
     An n-dimensional half DMA operator.
 
-    Programs a DMA on coordinates (`x`, `y`) to access a memory `memref` with an access
-    pattern specified by `offsets`, `sizes` and `strides` or `static_offsets`, `static_sizes`
-    and `static_strides`. The operator references the target channel through the `metadata`
+    Programs a DMA to access a memory `memref` with an access pattern specified by `offsets`,
+    `sizes` and `strides` or `static_offsets`, `static_sizes` and `static_strides`. The operator
+    references the target DMA coordinates (`x`, `y`) and channel through the `metadata`
     symbol and specifies a descriptor `id` to be used, which will become the `bd_id` to be used
     when lowered further. The `issue_token` attribute specifies whether the execution of this
     operation should issue a token which can be received and read for synchronization purposes.
     This `issue_token` attribute is set to `false` by default for `MM2S` for backward compatibility
     and **is always set to true for** `S2MM` channels.
+    The burst length attribute specifies the burst length in bytes for the DMA operation. A value
+    of 0 indicates that the burst length is not specified and the maximal burst length is used.
 
     #### `metadata` -- Specifying Tile, Channel, Direction and Linking a `dma_memcpy_nd` to its Other Half
 
@@ -557,9 +620,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
   }];
 
   let arguments = (
-    ins I64Attr:$x,
-        I64Attr:$y,
-        AnyMemRef:$memref,
+    ins AnyRankedOrUnrankedMemRef:$memref,
         // NOTE: these are in reverse order: offset3, offset2, ...
         Variadic<I64>:$offsets,
         Variadic<I64>:$sizes,
@@ -570,11 +631,18 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         OptionalAttr<PacketInfoAttr>:$packet,
         FlatSymbolRefAttr:$metadata,
         I64Attr:$id,
-        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_before,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_before,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_after,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d1_zero_after,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$d2_zero_after,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$burst_length
   );
 
   let assemblyFormat = [{
-    `(` $x `,` $y `,` $memref ``
+    `(` $memref ``
     custom<DynamicIndexList>($offsets, $static_offsets) ``
     custom<DynamicIndexList>($sizes, $static_sizes) ``
     custom<DynamicIndexList>($strides, $static_strides) ``
@@ -592,11 +660,19 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     int64_t getOffsetInBytes();
 
     bool isLinearTransferWithoutTransformation();
+
+    /* Returns the bitwidth of the type inside the memref through a 
+    call to DataLayout */
+    uint64_t getElementTypeBitwidth();
   }];
 
   let extraClassDefinition = [{
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
     std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 4}; }
+    uint64_t $cppClass::getElementTypeBitwidth() {
+      DataLayout dataLayout = DataLayout::closest(*this);
+      return dataLayout.getTypeSizeInBits(getMemref().getType().getElementType());
+    }
   }];
 
   let hasVerifier = 1;
@@ -791,6 +867,25 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   }];
 }
 
+def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
+  let summary = "Preempt transaction operation";
+  let arguments = (
+    ins UI8Attr:$level
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    attr-dict
+  }];
+  let description = [{
+    Yield to higher priority task(s). Indicates to the transaction processor that the instruction stream can be interrupted at this point.
+    Levels: 
+    0: Noop.
+    1: Mem tile.
+    2: AIE tile.
+    3: AIE registers.
+  }];
+}
+
 def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   let summary = "AIE control packet";
   let arguments = (
@@ -828,6 +923,7 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
         I32Attr:$d0_stride,
         I32Attr:$d1_size,
         I32Attr:$d1_stride,
+        I32Attr:$d2_size,
         I32Attr:$d2_stride,
         I32Attr:$iteration_current,
         I32Attr:$iteration_size,
@@ -840,7 +936,14 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
         I32Attr:$lock_rel_id,
         I32Attr:$lock_acq_enable,
         I32Attr:$lock_acq_val,
-        I32Attr:$lock_acq_id
+        I32Attr:$lock_acq_id,
+        I32Attr:$d0_zero_before,
+        I32Attr:$d1_zero_before,
+        I32Attr:$d2_zero_before,
+        I32Attr:$d0_zero_after,
+        I32Attr:$d1_zero_after,
+        I32Attr:$d2_zero_after,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
@@ -1033,6 +1136,37 @@ def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"Runt
 
   let assemblyFormat = [{
      $symbol `(` $args `)` `:` `(` type($args) `)` ` ` `for` ` ` $alloc attr-dict
+  }];
+}
+
+def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Set the value of a lock";
+  let description = [{
+    This operation sets the value of `lock` inside of a RuntimeSequenceOp.
+    The operation is non blocking and does not offer any synchronization guarantees.
+    Should be used in combination with blocking operations.
+
+    Example:
+    ```
+      %tile22 = aie.tile(2, 2)
+      %lock22_0 = aie.lock(%tile22, 0)
+      ...
+      aiex.set_lock(%lock22_0, 5)
+    ```
+  }];
+  let arguments = (
+    ins Index:$lock,
+        I32Attr:$value
+  );
+  let assemblyFormat = [{ `(` $lock `,` $value `)` attr-dict }];
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    AIE::LockOp getLockOp();
+  }];
+
+  let extraClassDefinition = [{
+    AIE::LockOp SetLockOp::getLockOp() { return cast<AIE::LockOp>(getLock().getDefiningOp()); }
   }];
 }
 

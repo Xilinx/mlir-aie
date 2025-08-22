@@ -44,28 +44,41 @@ The compilation process is different from the other design examples, and is show
 1. This generated C++ is compiled into a first object file
 1. A file called `lut_based_ops.cpp` from the AIE2 runtime library is compiled into a second object file.  This file contains the look up table contents to approximate the $e^x$ function.
 1. A wrapper file is also compiled into an object file, which prevents C++ name mangling, and allows the wrapped C function to be called from the strucural Python
-1. These 3 object files are combined into a single .a file, which is then referenced inside the aie2.py structural Python.
+1. These 3 object files are combined into a single .a file, which is then referenced inside the `softmax.py` structural Python.
 
 This is a slightly more complex process than the rest of the examples, which typically only use a single object file containing the wrapped C++ function call, but is provided to show how a library-based flow can also be used.
+
+1. `softmax.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc.py to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI).
+
+2. `softmax_placed.py`: An alternative version of the design in softmax.py, that is expressed in a lower-level version of IRON.
+
+3. `softmax_whole_array_placed.py`: This Python script extends the design to utilize the entire AIE array, scaling up from the use of two cores in `softmax_placed.py`. The number of cores of the AIE array (`n_cores`) is configurable via the `n_col` and `n_cores_per_col` variables.
 
 ## Usage
 
 ### C++ Testbench
 
 To compile the design and C++ testbench:
-
-```
+```shell
 make
 ```
 
-To run the design:
-
+To compile the placed design:
+```shell
+env use_placed=1 make
 ```
+
+To compile the design on whole array:
+```shell
+env use_whole_array=1 make
+```
+
+To run the design:
+```shell
 make run
 ```
 
 To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
-
-```
-make trace
+```shell
+env use_placed=1 make trace
 ```

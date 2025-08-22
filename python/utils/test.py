@@ -68,6 +68,27 @@ def create_default_argparser():
         default="trace.txt",
         help="where to store trace output",
     )
+    p.add_argument(
+        "-i1s",
+        "--in1_size",
+        dest="in1_size",
+        default=0,
+        help="Input 1 buffer size in bytes",
+    )
+    p.add_argument(
+        "-i2s",
+        "--in2_size",
+        dest="in2_size",
+        default=0,
+        help="Input 2 buffer size in bytes",
+    )
+    p.add_argument(
+        "-os",
+        "--out_size",
+        dest="out_size",
+        default=0,
+        help="Output buffer size in bytes",
+    )
     return p
 
 
@@ -77,15 +98,12 @@ def parse_args(args):
     return p.parse_args(args)
 
 
-# def write_out_trace(trace_buffer, trace_size, trace_file):
-#     try:
-#         with open(trace_file, "wt") as f:
-#             f.write(trace_buffer)
-#     except Exception as e:
-#         print(e)
-#         sys.exit(1)
-
-
+#
+# Create new device and kernel based on xclbin
+#
+# If you want to setup XRT buffers as well, look at xrt.py/setup_aie
+# to setup your environment
+#
 def init_xrt_load_kernel(opts):
     # Get a device handle
     device = xrt.device(0)

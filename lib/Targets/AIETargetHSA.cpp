@@ -8,7 +8,7 @@
 // (c) Copyright 2021-2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-#include "AIETargetShared.h"
+#include "aie/Targets/AIETargetShared.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -142,10 +142,10 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     // buffer_offset
     size_t stride = 1;
     size_t offset = 0;
-    MemRefType my_memref = op.getMemref().getType();
+    BaseMemRefType my_memref = op.getMemref().getType();
     auto shape = my_memref.getShape();
     size_t R = shape.size();
-    size_t el_bit_width = my_memref.getElementTypeBitWidth();
+    size_t el_bit_width = op.getElementTypeBitwidth();
     assert(el_bit_width % 8 == 0 &&
            "Expected Memref element bitwidth to be multiple of 8.");
     size_t S = el_bit_width / 8;

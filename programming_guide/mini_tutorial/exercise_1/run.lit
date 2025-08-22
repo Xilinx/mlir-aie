@@ -1,0 +1,15 @@
+// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano 
+//
+// RUN: %run_on_npu1% python3 %S/exercise_1.py
+// RUN: %run_on_npu2% python3 %S/exercise_1.py
+// RUN: %run_on_npu1% python3 %S/answer_2.py
+// RUN: %run_on_npu2% python3 %S/answer_2.py
+// RUN: %run_on_npu1% python3 %S/answer_3.py
+// RUN: %run_on_npu2% python3 %S/answer_3.py
+// RUN: %run_on_npu1% python3 %S/answer_4.py
+// RUN: %run_on_npu2% python3 %S/answer_4.py
+// RUN: %run_on_npu1% python3 %S/answer_5.py
+// RUN: %run_on_npu2% python3 %S/answer_5.py

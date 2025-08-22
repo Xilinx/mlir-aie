@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/XLLVM/XLLVMDialect.h"
+#include "llvm/IR/IRBuilder.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/TypeUtilities.h"

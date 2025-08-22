@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
-from typing import List, Tuple, Dict, Any, Optional, Union
+from typing import List, Tuple, Dict, Any, Union
 import contextlib
 
 import numpy as np
@@ -21,6 +21,7 @@ from ..extras.dialects.ext.memref import (
     load as memref_load,
 )
 from .._mlir_libs import get_dialect_registry
+from array import array
 
 # noinspection PyUnresolvedReferences
 from .._mlir_libs._aie import (
@@ -32,7 +33,7 @@ from .._mlir_libs._aie import (
     generate_cdo,
     generate_xaie,
     generate_control_packets,
-    npu_instgen,
+    translate_npu_to_binary,
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
@@ -65,6 +66,7 @@ from ..ir import (
     UnitAttr,
     Value,
     _i32ArrayAttr,
+    _arrayAttr,
 )
 
 # Comes from _aie
@@ -103,8 +105,24 @@ class external_func(FuncOp):
         return call(self, call_args)
 
 
+@register_attribute_builder("BDDimLayoutAttr")
 def bd_dim_layout(size, stride):
     return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>")
+
+
+@register_attribute_builder("BDPadLayoutAttr")
+def bd_pad_layout(const_pad_before, const_pad_after):
+    return Attribute.parse(
+        f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>"
+    )
+
+
+@register_attribute_builder("PacketInfoAttr")
+def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
+    assert (isinstance(tups, list) or isinstance(tups, Tuple)) and len(tups) == 2
+    return Attribute.parse(
+        f"#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>", context=context
+    )
 
 
 @register_attribute_builder("BDDimLayoutArrayAttr")
@@ -122,6 +140,17 @@ def bd_dim_layout_array_array_attr_builder(tup_arrs: List[List[tuple]], context=
     return Attribute.parse(
         f'#aie<bd_dim_layout_array_array[{", ".join(map(str, tup_arrs))}]>',
         context=context,
+    )
+
+
+@register_attribute_builder("BDPadLayoutArrayAttr")
+def bd_pad_layout_array_attr_builder(
+    tups: List[Union[Attribute, Tuple[int]]], context=None
+):
+    if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
+        tups = list(map(lambda t: bd_pad_layout(*t), tups))
+    return Attribute.parse(
+        f'#aie<bd_pad_layout_array[{", ".join(map(str, tups))}]>', context=context
     )
 
 
@@ -226,10 +255,13 @@ Device = DeviceOp
 
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
-    def __init__(self, tile, link_with=None, dynamic_objfifo_lowering=None):
+    def __init__(
+        self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
+    ):
         super().__init__(
             result=T.index(),
             tile=tile,
+            stack_size=stack_size,
             link_with=link_with,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
@@ -238,7 +270,8 @@ class Core(CoreOp):
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the BufferOp and instead pretends to be a MemRef
-class buffer(BufferOp, ShapedValue):
+@ShapedValue
+class buffer(BufferOp):
     def __init__(self):
         raise ValueError("Should never be called")
 
@@ -247,6 +280,7 @@ class buffer(BufferOp, ShapedValue):
         tile,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
+        address=None,
         initial_value: np.ndarray | None = None,
         use_write_rtp: bool = False,
         loc=None,
@@ -265,13 +299,14 @@ class buffer(BufferOp, ShapedValue):
             buffer=self.type,
             tile=tile,
             sym_name=name,
+            address=address,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
         )
 
     def get_name(self):
-        return self.result.get_name()
+        return self.sym_name.value if self.sym_name else self.result.get_name()
 
     def __str__(self):
         return str(self.result)
@@ -352,12 +387,14 @@ class external_buffer(MemRef):
         cls,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
+        address=None,
         loc=None,
         ip=None,
     ):
         my_buffer = ExternalBufferOp(
             buffer=try_convert_np_type_to_mlir_type(datatype),
             sym_name=name,
+            address=address,
             loc=loc,
             ip=ip,
         )
@@ -376,8 +413,10 @@ class object_fifo(ObjectFifoCreateOp):
         datatype: MemRefType | type[np.ndarray],
         dimensionsToStream=None,
         dimensionsFromStreamPerConsumer=None,
+        initValues=None,
         via_DMA=None,
         plio=None,
+        padDimensions=None,
         disable_synchronization=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
@@ -388,6 +427,14 @@ class object_fifo(ObjectFifoCreateOp):
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
+        if initValues is not None:
+            values = []
+            for e in initValues:
+                init_val = e
+                if e is list:
+                    init_val = array("i", e)
+                values.append(DenseElementsAttr.get(init_val, type=self.datatype))
+            initValues = _arrayAttr(values, None)
         super().__init__(
             sym_name=name,
             producerTile=producerTile,
@@ -398,7 +445,9 @@ class object_fifo(ObjectFifoCreateOp):
             dimensionsFromStreamPerConsumer=dimensionsFromStreamPerConsumer,
             via_DMA=via_DMA,
             plio=plio,
+            padDimensions=padDimensions,
             disable_synchronization=disable_synchronization,
+            initValues=initValues,
         )
 
     def acquire(self, port, num_elem):
@@ -422,9 +471,9 @@ class object_fifo(ObjectFifoCreateOp):
     def allocate(self, tile):
         return objectfifo_allocate(self.sym_name.value, tile)
 
-    def set_memtile_repeat(self, num):
+    def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
-        self.attributes["memtile_repeat"] = int_num
+        self.attributes["repeat_count"] = int_num
 
 
 # Create an aie objectFifo_link between input and output objectFifos.
@@ -474,7 +523,7 @@ class packetflow(PacketFlowOp):
 
 
 core = region_op(Core, terminator=lambda *_: EndOp())
-device = region_op(Device)
+device = region_op(Device, terminator=lambda *_: EndOp())
 switchbox = region_op(
     lambda tile, *, loc=None, ip=None: SwitchboxOp(T.index(), tile, loc=loc, ip=ip)
 )
@@ -598,8 +647,8 @@ def dma_start(
     channel_dir,
     channel_index,
     *,
-    dest: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
-    chain: Optional[Union[Successor, Block, ContextManagedBlock]] = None,
+    dest: Successor | Block | ContextManagedBlock | None = None,
+    chain: Successor | Block | ContextManagedBlock | None = None,
     loc=None,
     ip=None,
 ):
@@ -849,6 +898,8 @@ class TileOp(TileOp):
         )
 
     def __eq__(self, other):
+        if not isinstance(other, TileOp):
+            return False
         return tuple(map(int, (self.col, self.row))) == tuple(
             map(int, (other.col, other.row))
         )
@@ -873,13 +924,11 @@ class TileOp(TileOp):
         )
 
 
-def tile(col, row, *, loc=None, ip=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip)
+def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
+    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
 
 
 # BDChainOp
-
-_orig_bd_chain = bd_chain
 
 
 def bd_chain(*inputs: T.Type | type[np.ndarray]):

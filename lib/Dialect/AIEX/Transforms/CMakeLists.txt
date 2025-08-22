@@ -19,6 +19,8 @@ add_mlir_dialect_library(AIEXTransforms
   AIEDMATasksToNPU.cpp
   AIESubstituteShimDMAAllocations.cpp
   AIECtrlPacketToDma.cpp
+  AIELowerSetLock.cpp
+  AIETransformBfpTypes.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 

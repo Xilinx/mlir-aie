@@ -36,8 +36,6 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                              DynamicTileAnalysis &a, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit), device(d), analyzer(a) {}
 
-  LogicalResult match(FlowOp op) const override { return success(); }
-
   void addConnection(ConversionPatternRewriter &rewriter,
                      // could be a shim-mux or a switchbox.
                      Interconnect op, FlowOp flowOp, WireBundle inBundle,
@@ -60,8 +58,9 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                << outIndex << "\n");
   }
 
-  void rewrite(FlowOp flowOp, OpAdaptor adaptor,
-               ConversionPatternRewriter &rewriter) const override {
+  mlir::LogicalResult
+  matchAndRewrite(FlowOp flowOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
     Operation *Op = flowOp.getOperation();
 
     auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
@@ -90,7 +89,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     if (analyzer.processedFlows[srcPoint]) {
       LLVM_DEBUG(llvm::dbgs() << "Flow already processed!\n");
       rewriter.eraseOp(Op);
-      return;
+      return failure();
     }
     // std::map<TileID, SwitchSetting>
     SwitchSettings settings = analyzer.flowSolutions[srcPoint];
@@ -158,8 +157,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         }
       }
 
-      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | "
-                              << "\n");
+      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | " << "\n");
     }
 
     LLVM_DEBUG(llvm::dbgs()
@@ -167,6 +165,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
     analyzer.processedFlows[srcPoint] = true;
     rewriter.eraseOp(Op);
+    return success();
   }
 };
 
@@ -174,7 +173,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
 namespace xilinx::AIE {
 
-void AIEPathfinderPass::runOnFlow(DeviceOp d, OpBuilder &builder) {
+void AIEPathfinderPass::runOnFlow(DeviceOp d) {
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
   // operation inside
   ConversionTarget target(getContext());
@@ -691,19 +690,34 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     LLVM_DEBUG(llvm::dbgs()
                << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
                << channel << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "Mask "
-                            << "0x" << llvm::Twine::utohexstr(mask) << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "ID "
-                            << "0x" << llvm::Twine::utohexstr(ID) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "Mask " << "0x" << llvm::Twine::utohexstr(mask) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "ID " << "0x" << llvm::Twine::utohexstr(ID) << '\n');
     for (int i = 0; i < 31; i++) {
       if ((i & mask) == (ID & mask))
-        LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
-                                << "0x" << llvm::Twine::utohexstr(i) << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "matches flow ID " << "0x"
+                                << llvm::Twine::utohexstr(i) << '\n');
     }
   }
 #endif
 
   // Realize the routes in MLIR
+
+  // Update tiles map if any new tile op declaration is needed for constructing
+  // the flow.
+  for (const auto &swMap : mastersets) {
+    if (llvm::none_of(
+            tiles,
+            [&swMap](
+                std::pair<xilinx::AIE::TileID, Operation *> &tileMapEntry) {
+              return tileMapEntry.second == swMap.first.first;
+            })) {
+      auto newTileOp = dyn_cast<TileOp>(swMap.first.first);
+      tiles[{newTileOp.colIndex(), newTileOp.rowIndex()}] = newTileOp;
+    }
+  }
+
   for (auto map : tiles) {
     Operation *tileOp = map.second;
     auto tile = dyn_cast<TileOp>(tileOp);
@@ -928,15 +942,15 @@ void AIEPathfinderPass::runOnOperation() {
   DeviceOp d = getOperation();
   if (failed(analyzer.runAnalysis(d)))
     return signalPassFailure();
-  OpBuilder builder = OpBuilder::atBlockEnd(d.getBody());
+  OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
 
   if (clRouteCircuit)
-    runOnFlow(d, builder);
+    runOnFlow(d);
   if (clRoutePacket)
     runOnPacketFlow(d, builder);
 
   // Populate wires between switchboxes and tiles.
-  builder.setInsertionPointToEnd(d.getBody());
+  builder.setInsertionPoint(d.getBody()->getTerminator());
   for (int col = 0; col <= analyzer.getMaxCol(); col++) {
     for (int row = 0; row <= analyzer.getMaxRow(); row++) {
       TileOp tile;
