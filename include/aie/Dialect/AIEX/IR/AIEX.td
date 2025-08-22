@@ -542,7 +542,7 @@ def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
   }];
   let arguments = (
-    ins DefaultValuedAttr<SymbolNameAttr, "\"sequence\"">:$sym_name
+    ins DefaultValuedAttr<SymbolNameAttr, "xilinx::AIEX::defaultRuntimeSequenceName">:$sym_name
   );
   let regions = (region
     AnyRegion:$body
