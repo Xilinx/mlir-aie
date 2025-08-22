@@ -86,7 +86,9 @@ class Worker(ObjectFifoEndpoint):
 
         # Check arguments to the core. Some information is saved for resolution.
         for arg in self.fn_args:
-            if isinstance(arg, (Kernel, ExternalFunction)):
+            if isinstance(arg, ExternalFunction):
+                bin_names.add(ExternalFunction._bin_name)
+            if isinstance(arg, Kernel):
                 bin_names.add(arg.bin_name)
             elif isinstance(arg, ObjectFifoHandle):
                 arg.endpoint = self

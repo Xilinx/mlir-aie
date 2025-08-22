@@ -77,6 +77,7 @@ class Kernel(BaseKernel):
 
 class ExternalFunction(BaseKernel):
     _instances = set()
+    _bin_name = str()
 
     def __init__(
         self,
@@ -108,7 +109,6 @@ class ExternalFunction(BaseKernel):
             self._object_file_name = object_file_name
         else:
             self._object_file_name = f"{self._name}.o"
-        self._compiled = False
 
         # Track this instance for JIT compilation
         ExternalFunction._instances.add(self)
@@ -132,9 +132,9 @@ class ExternalFunction(BaseKernel):
         """Exit the context."""
         pass
 
-    @property
-    def bin_name(self) -> str:
-        return self._object_file_name
+    @classmethod
+    def bin_name(cls) -> str:
+        return ExternalFunction._bin_name
 
     def tile_size(self, arg_index: int = 0) -> int:
         """Get the tile size from the specified array argument type.
