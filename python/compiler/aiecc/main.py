@@ -34,31 +34,37 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overlay: (
-    Pipeline()
-    .add_pass("convert-vector-to-aievec{target-backend=llvmir}")
-    .lower_affine()
-    .add_pass("aie-canonicalize-device")
-    .Nested(
-        "aie.device",
+INPUT_WITH_ADDRESSES_PIPELINE = (
+    lambda scheme, dynamic_objFifos, ctrl_pkt_overlay, aie_target: (
         Pipeline()
-        .add_pass("aie-assign-lock-ids")
-        .add_pass("aie-register-objectFifos")
         .add_pass(
-            "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+            "convert-vector-to-aievec",
+            aie_target=aie_target.lower(),
+            target_backend="llvmir",
         )
-        .add_pass("aie-assign-bd-ids")
-        .add_pass("aie-lower-cascade-flows")
-        .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-tile-controller-ids")
-        .add_pass(
-            "aie-generate-column-control-overlay",
-            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+        .lower_affine()
+        .add_pass("aie-canonicalize-device")
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-assign-lock-ids")
+            .add_pass("aie-register-objectFifos")
+            .add_pass(
+                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+            )
+            .add_pass("aie-assign-bd-ids")
+            .add_pass("aie-lower-cascade-flows")
+            .add_pass("aie-lower-broadcast-packet")
+            .add_pass("aie-lower-multicast")
+            .add_pass("aie-assign-tile-controller-ids")
+            .add_pass(
+                "aie-generate-column-control-overlay",
+                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+            )
+            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
         )
-        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
+        .convert_scf_to_cf()
     )
-    .convert_scf_to_cf()
 )
 
 LOWER_TO_LLVM_PIPELINE = (
@@ -1212,24 +1218,11 @@ class FlowRunner:
             else:
                 progress_bar.task = None
 
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
-            ).materialize(module=True)
-
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            run_passes(
-                pass_pipeline,
-                self.mlir_module_str,
-                file_with_addresses,
-                self.opts.verbose,
-            )
-
-            cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(
                 [
                     "aie-translate",
                     "--aie-generate-target-arch",
-                    file_with_addresses,
+                    opts.filename,
                 ],
                 self.opts.verbose,
             )
@@ -1241,6 +1234,23 @@ class FlowRunner:
                 )
                 exit(-3)
             aie_peano_target = aie_target.lower() + "-none-unknown-elf"
+
+            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
+                opts.alloc_scheme,
+                opts.dynamic_objFifos,
+                opts.ctrl_pkt_overlay,
+                aie_target,
+            ).materialize(module=True)
+
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+            run_passes(
+                pass_pipeline,
+                self.mlir_module_str,
+                file_with_addresses,
+                self.opts.verbose,
+            )
+
+            cores = generate_cores_list(await read_file_async(file_with_addresses))
 
             # Optionally generate insts.txt for NPU instruction stream
             if opts.npu:
