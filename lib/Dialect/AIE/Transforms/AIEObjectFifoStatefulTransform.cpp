@@ -271,7 +271,6 @@ struct AIEObjectFifoStatefulTransformPass
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
         isUsedInLinkOp = true;
-        int share_dir = 0;
         if (!linkOp->isDistribute() && !linkOp->isJoin()) {
           auto fifoInType = llvm::cast<AIEObjectFifoType>(
               linkOp->getInputObjectFifos()[0].getElemType());
