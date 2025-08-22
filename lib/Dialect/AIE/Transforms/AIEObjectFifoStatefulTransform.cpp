@@ -293,9 +293,10 @@ struct AIEObjectFifoStatefulTransformPass
             TileOp delegate = opAlloc->getDelegateTileOp();
             int prodShareDir;
             int consShareDir;
-            auto consumerTileOp =
-                dyn_cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
-            isSharedMemory(delegate, createOp.getProducerTileOp(), &prodShareDir);
+            auto consumerTileOp = dyn_cast<TileOp>(
+                createOp.getConsumerTiles()[0].getDefiningOp());
+            isSharedMemory(delegate, createOp.getProducerTileOp(),
+                           &prodShareDir);
             isSharedMemory(delegate, consumerTileOp, &consShareDir);
             if (prodShareDir == -1 && consShareDir == -1)
               isUsedInLinkOp = false;
