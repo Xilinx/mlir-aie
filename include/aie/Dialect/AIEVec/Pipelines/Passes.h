@@ -39,11 +39,6 @@ namespace aievec {
 /// Options for the "canonicalize-vector-for-aievec" pipeline.
 struct CanonicalizeVectorForAIEVecOptions
     : public mlir::PassPipelineOptions<CanonicalizeVectorForAIEVecOptions> {
-  PassOptions::Option<std::string> aieTarget{
-      *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
-      llvm::cl::init("aie")};
   PassOptions::Option<std::string> targetBackend{
       *this, "target-backend",
       llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
@@ -55,11 +50,6 @@ struct CanonicalizeVectorForAIEVecOptions
 /// Options for the "lower-vector-to-aievec" pipeline.
 struct LowerVectorToAIEVecOptions
     : public mlir::PassPipelineOptions<LowerVectorToAIEVecOptions> {
-  PassOptions::Option<std::string> aieTarget{
-      *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
-      llvm::cl::init("aie")};
   PassOptions::Option<std::string> targetBackend{
       *this, "target-backend",
       llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
@@ -71,11 +61,6 @@ struct LowerVectorToAIEVecOptions
 /// Options for the "optimize-aievec" pipeline.
 struct OptimizeAIEVecOptions
     : public mlir::PassPipelineOptions<OptimizeAIEVecOptions> {
-  PassOptions::Option<std::string> aieTarget{
-      *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
-      llvm::cl::init("aie")};
   PassOptions::Option<std::string> targetBackend{
       *this, "target-backend",
       llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
@@ -107,11 +92,6 @@ struct ConvertVectorToAIEVecOptions
       llvm::cl::desc("Duplication factor for each value in convolution filter "
                      "(useful in 8x8 scheme)"),
       llvm::cl::init(2)};
-  PassOptions::Option<std::string> aieTarget{
-      *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
-      llvm::cl::init("aie")};
   PassOptions::Option<std::string> targetBackend{
       *this, "target-backend",
       llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
@@ -122,11 +102,8 @@ struct ConvertVectorToAIEVecOptions
   mlir::LogicalResult parseFromString(mlir::StringRef options) {
     auto res = PassPipelineOptions::parseFromString(options);
     if (!failed(res)) {
-      lowerOptions.aieTarget = aieTarget;
       lowerOptions.targetBackend = targetBackend;
-      canonicalizeOptions.aieTarget = aieTarget;
       canonicalizeOptions.targetBackend = targetBackend;
-      optimizeOptions.aieTarget = aieTarget;
       optimizeOptions.targetBackend = targetBackend;
       optimizeOptions.shiftParam = shiftParam;
     }
