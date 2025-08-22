@@ -59,7 +59,7 @@ aie.device(xcve2302) {
 
 // -----
 
-// CHECK: cannot allocate a shared memory module to objectfifo with set dimensions attribute
+// CHECK: error: cannot allocate a shared memory module to objectfifo with set dimensions attribute
 
 aie.device(xcve2302) {
    %tile12 = aie.tile(1, 2)
