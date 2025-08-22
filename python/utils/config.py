@@ -37,9 +37,17 @@ def peano_linker_path():
     return peano_ld
 
 
+def root_path():
+    """Returns the root path of the MLIR-AIE project."""
+    root_dir = config.install_path()
+    if not os.path.isdir(root_dir):
+        raise RuntimeError(f"Invalid MLIR-AIE root directory: {root_dir}")
+    return root_dir
+
+
 def cxx_header_path():
     """Returns the path to the MLIR-AIE C++ headers."""
-    include_dir = os.path.join(config.install_path(), "include")
+    include_dir = os.path.join(root_path(), "include")
     if not os.path.isdir(include_dir):
         raise RuntimeError(f"MLIR-AIE C++ headers not found in {include_dir}")
     return include_dir
