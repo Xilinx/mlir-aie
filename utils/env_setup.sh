@@ -26,6 +26,8 @@ fi
 if [ "$#" -ge 1 ]; then
     export MLIR_AIE_INSTALL_DIR=`realpath $1`
     export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH}
+    export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
+    export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
     FORCE_INSTALL=0
 else
     export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie 2>/dev/null | grep ^Location: | awk '{print $2}')/mlir_aie"
@@ -51,7 +53,7 @@ if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 2 && -z "$(pip show llvm-aie | grep ^Lo
 fi
 
 XRTSMI=`which xrt-smi`
-if ! test -f "$XRTSMI"; then 
+if ! test -f "$XRTSMI"; then
   source /opt/xilinx/xrt/setup.sh
 fi
 NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
@@ -63,9 +65,6 @@ if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456
 else
     export NPU2=0
 fi
-
-export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
-export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
 
 echo ""
 echo "Note: Peano (llvm-aie) has not been added to PATH to avoid conflict with"
