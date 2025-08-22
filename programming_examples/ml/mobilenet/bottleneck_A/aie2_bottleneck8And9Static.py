@@ -127,7 +127,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer8_1Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn8_1_2.allocate(self.L1Tile)
+        #self.of_act_bn8_1_2.allocate(self.L1Tile) # TODO
         self.of_act_bn8_2_3 = object_fifo(
             self.bottleneckName + "_" + "act_bn8_2_3",
             self.computeTile,
@@ -136,7 +136,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer8_2Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn8_2_3.allocate(self.L1Tile)
+        # self.of_act_bn8_2_3.allocate(self.L1Tile) # TODO
         self.of_act_bn8_bn9 = object_fifo(
             self.bottleneckName + "_" + "act_bn8_bn9",
             self.computeTile,
@@ -145,7 +145,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer8_3Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn8_bn9.allocate(self.L1Tile)
+        # self.of_act_bn8_bn9.allocate(self.L1Tile) # TODO
         self.of_act_bn9_1_2 = object_fifo(
             self.bottleneckName + "_" + "act_bn9_1_2",
             self.computeTile,
@@ -154,7 +154,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer9_1Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn9_1_2.allocate(self.L1Tile)
+        # self.of_act_bn9_1_2.allocate(self.L1Tile) # TODO
         self.of_act_bn9_2_3 = object_fifo(
             self.bottleneckName + "_" + "act_bn9_2_3",
             self.computeTile,
@@ -163,7 +163,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer9_2Out_ty,
             disable_synchronization=True,
         )
-        self.of_act_bn9_2_3.allocate(self.L1Tile)
+        # self.of_act_bn9_2_3.allocate(self.L1Tile) # TODO
 
         # Compute tile
         @core(self.computeTile, self.objectArchiveName, False)
