@@ -36,6 +36,7 @@ from aie.passmanager import PassManager
 
 INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overlay: (
     Pipeline()
+    .add_pass("convert-vector-to-aievec{target-backend=llvmir}")
     .lower_affine()
     .add_pass("aie-canonicalize-device")
     .Nested(
@@ -90,6 +91,7 @@ AIE_LOWER_TO_LLVM = (
         )
         .add_pass("aie-standard-lowering", tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
+        .add_pass("convert-aievec-to-llvm")
     )
     + LOWER_TO_LLVM_PIPELINE
 )
@@ -397,6 +399,12 @@ def downgrade_ir_for_peano(llvmir):
     return llvmir
 
 
+def drop_alignment_for_peano(llvmir):
+    # Remove any ", align <integer>" attribute occurrences
+    llvmir = re.sub(r",\s*align\s+\d+", "", llvmir)
+    return llvmir
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -502,6 +510,7 @@ class FlowRunner:
 
         llvmir_ir = await read_file_async(llvmir)
         llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        llvmir_hacked_ir = drop_alignment_for_peano(llvmir_hacked_ir)
         await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
 
         return llvmir_peanohack
