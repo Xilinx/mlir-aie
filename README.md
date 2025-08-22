@@ -145,6 +145,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    pre-commit install
    ```
 
+1. Setup environment
+   ```bash
+   source utils/env_setup.sh
+   ```
+
 1. (Optional) Install ML Python packages for ml programming examples:
    ```bash
    # Install Torch for ML examples
@@ -168,12 +173,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    MLIR_AIE_INSTALL=`$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie` \
    venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'` \
    echo ${MLIR_AIE_INSTALL}/python > $venv_site_packages/mlir-aie.pth
-   ```
-
-1. (Optional) Setup environment
-   ```bash
-   # Only for Release v1.0 and non wheel-based installs:
-   source utils/env_setup.sh
    ```
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
@@ -250,7 +249,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 > **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
 
-# Detailed Getting Started Guides and Documentation: 
+# Detailed Getting Started Guides and Documentation:
 
 [IRON AIE Application Programming Guide](programming_guide)
 
