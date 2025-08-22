@@ -403,7 +403,7 @@ For your design of interest, for instance from [programming_examples](../program
 1. Run (program arguments are just an example for add_one design)
     ```bash
     cd Release
-    .\<testName>.exe -x ..\..\build\final.xclbin -k MLIR_AIE -i ..\..\build\insts.txt -v 1
+    .\<testName>.exe -x ..\..\build\main.xclbin -k MLIR_AIE -i ..\..\build\main_sequence.bin -v 1
     ```
 
 # Troubleshooting

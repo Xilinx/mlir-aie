@@ -62,7 +62,7 @@ class Program:
             # For dynamically created device classes, the constructor takes no arguments
             self._device = device_type()
 
-            @device(device_name, self._device.resolve())
+            @device(self._device.resolve(), sym_name = device_name)
             def device_body():
                 # Collect all fifos
                 all_fifos = set()

@@ -230,7 +230,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--npu-insts-name",
         dest="insts_name",
-        default="npu_insts_{0}_{1}.bin",
+        default="{0}_{1}.bin",
         help="Output instructions filename for NPU target. `{0}` is replaced with device name, `{1}` with the selected runtime sequence.",
     )
     parser.add_argument(
@@ -288,7 +288,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--xclbin-name",
         dest="xclbin_name",
-        default="final_{0}.xclbin",
+        default="{0}.xclbin",
         help="Output xclbin filename for CDO/XCLBIN target. `{0}` is replaced with device name.",
     )
     parser.add_argument(
@@ -302,7 +302,7 @@ def parse_args(args=None):
     parser.add_argument(
         "--pdi-name",
         dest="pdi_name",
-        default="design_{0}.pdi",
+        default="{0}.pdi",
         help="Output pdi filename for PDI/CDO/XCLBIN target. `{0}` is replaced with device name.",
     )
     parser.add_argument(
