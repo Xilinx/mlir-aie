@@ -837,11 +837,7 @@ Case when LockID is not assigned:
   Before AIEAssignLockIDs: `%tile33 = aie.tile(3)`
   After AIEAssignLockIDs: `%tile33 = aie.tile(3, $assigned_value)`
 
-Traits: `AlwaysSpeculatableImplTrait`
-
-Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`, `TileElement`
-
-Effects: `MemoryEffects::Effect{}`
+Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 
 #### Attributes:
 
