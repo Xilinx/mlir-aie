@@ -124,9 +124,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
-1. (Optional) Setup environment
+1. Setup environment
    ```bash
-   # Only for Release v1.0, non wheel-based installs, and any install that needs to run tutorials and programming examples:
    source utils/env_setup.sh
    ```
 
