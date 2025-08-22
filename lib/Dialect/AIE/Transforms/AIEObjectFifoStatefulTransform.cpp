@@ -207,7 +207,7 @@ struct AIEObjectFifoStatefulTransformPass
       if (alloc.getObjectFifo() == op) {
         if (foundAlloc)
           op.emitOpError("has more than one allocate operation");
-        opAlloc = alloc;
+        allocOp = alloc;
         foundAlloc = true;
       }
     }
