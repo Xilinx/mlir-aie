@@ -11,6 +11,7 @@
 #ifndef AIE_DIALECT_AIEVEC_UTILS_UTILS_H
 #define AIE_DIALECT_AIEVEC_UTILS_UTILS_H
 
+#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include <cstdint>
 #include <optional>
@@ -38,6 +39,8 @@ std::optional<int64_t> getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
                                                       int64_t alignment);
 
 mlir::VectorType getFlattenedVectorType(mlir::VectorType vecTy);
+
+std::optional<xilinx::AIE::AIEArch> getAIEVersionFromModule(mlir::ModuleOp moduleOp);
 
 } // namespace xilinx::aievec
 
