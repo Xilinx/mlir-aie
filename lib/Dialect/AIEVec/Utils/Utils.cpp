@@ -111,7 +111,7 @@ std::optional<xilinx::AIE::AIEArch> getAIEVersionFromModule(ModuleOp moduleOp) {
   moduleOp.walk([&](xilinx::AIE::DeviceOp d) { deviceOps.push_back(d); });
 
   if (deviceOps.empty())
-    return AIE::AIEArch::AIE2;
+    return std::nullopt;
 
   const auto &targetModel = deviceOps.front().getTargetModel();
   return targetModel.getTargetArch();
