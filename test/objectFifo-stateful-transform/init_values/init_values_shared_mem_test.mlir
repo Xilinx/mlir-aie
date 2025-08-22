@@ -35,7 +35,8 @@ module @init_shared_mem {
     aie.objectfifo @of0 (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[[0, 1], [2, 3]]> : memref<2x2xi32>, 
                                                                                             dense<[[4, 5], [6, 7]]> : memref<2x2xi32>]
 
-    aie.objectfifo @of1 (%tile12, {%tile13}, 2 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<2x2xi32>> = [dense<[[0, 1], [2, 3]]> : memref<2x2xi32>, 
-                                                                                                                       dense<[[4, 5], [6, 7]]> : memref<2x2xi32>]
+    aie.objectfifo @of1 (%tile12, {%tile13}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[[0, 1], [2, 3]]> : memref<2x2xi32>, 
+                                                                                            dense<[[4, 5], [6, 7]]> : memref<2x2xi32>]
+    aie.objectfifo.allocate @of1 (%tile13)
  }
 }
