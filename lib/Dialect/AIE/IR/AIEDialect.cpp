@@ -586,7 +586,6 @@ LogicalResult ObjectFifoAllocateOp::verify() {
     return emitError("cannot retrieve associated object FIFO");
   if (objFifo.getConsumerTiles().size() != 1)
     return emitError("can only be used in 1-to-1 object FIFOs");
-  return success();
   if (objFifo.getVia_DMA())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set `via_DMA` attribute");
@@ -597,6 +596,7 @@ LogicalResult ObjectFifoAllocateOp::verify() {
         objFifo.getDimensionsFromStreamPerConsumer().empty()))
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set dimensions attribute");
+  return success();
 }
 
 TileOp ObjectFifoAllocateOp::getDelegateTileOp() {

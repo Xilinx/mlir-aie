@@ -43,7 +43,7 @@ aie.device(npu1) {
 
 aie.device(npu1) {
    %tile12 = aie.tile(1, 2)
-   %tile32 = aie.tile(2, 2)
+   %tile22 = aie.tile(2, 2)
    // expected-error@+1 {{'aie.objectfifo' op has more than one allocate operation}}
    aie.objectfifo @of1 (%tile12, {%tile22}, 1 : i32) : !aie.objectfifo<memref<16xi32>>
    aie.objectfifo.allocate @of1 (%tile12)
