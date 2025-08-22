@@ -393,7 +393,6 @@ static LogicalResult convertTransactionOpsToMLIR(
   seq.getBody().push_back(new Block);
 
   // create the txn ops
-  builder.setInsertionPointToStart(&seq.getBody().front());
   if (outputType == OutputType::Transaction) {
     if (failed(emitTransactionOps(builder, operations, global_data)))
       return failure();
@@ -437,7 +436,11 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   // create aie.device
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
                                  AIEDevice::npu1_3col, AIEDevice::npu1};
-  auto device = builder.create<DeviceOp>(loc, devices[columns - 1]);
+  auto device = builder.create<DeviceOp>(
+    loc, 
+    devices[columns - 1],
+    StringAttr::get(builder.getContext(), "main")
+  );
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
   builder.setInsertionPointToStart(device.getBody());
