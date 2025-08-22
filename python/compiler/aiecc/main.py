@@ -34,15 +34,23 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = (
-    lambda scheme, dynamic_objFifos, ctrl_pkt_overlay, aie_target: (
-        Pipeline()
-        .add_pass(
+
+def _create_input_with_addresses_pipeline(
+    scheme, dynamic_objFifos, ctrl_pkt_overlay, aie_target
+):
+    pipeline = Pipeline()
+
+    # Only add convert-vector-to-aievec for AIE2 and later targets
+    # AIE1 ("aie") does not support target_backend="llvmir"
+    if aie_target.lower() in ["aie2", "aieml", "aie2p"]:
+        pipeline.add_pass(
             "convert-vector-to-aievec",
             aie_target=aie_target.lower(),
             target_backend="llvmir",
         )
-        .lower_affine()
+
+    return (
+        pipeline.lower_affine()
         .add_pass("aie-canonicalize-device")
         .Nested(
             "aie.device",
@@ -65,7 +73,9 @@ INPUT_WITH_ADDRESSES_PIPELINE = (
         )
         .convert_scf_to_cf()
     )
-)
+
+
+INPUT_WITH_ADDRESSES_PIPELINE = _create_input_with_addresses_pipeline
 
 LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
