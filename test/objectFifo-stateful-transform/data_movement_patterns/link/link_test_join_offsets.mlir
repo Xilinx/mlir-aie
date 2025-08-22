@@ -27,8 +27,6 @@
 // CHECK:     %{{.*}}tile_2_2 = aie.tile(2, 2)
 // CHECK:     %{{.*}}tile_2_3 = aie.tile(2, 3)
 // CHECK:     %{{.*}}tile_3_3 = aie.tile(3, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.lock(%{{.*}}tile_2_0, 0) {init = 1 : i32, sym_name = "link4_cons_prod_lock_0"}
-// CHECK:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_2_0, 1) {init = 0 : i32, sym_name = "link4_cons_cons_lock_0"}
 // CHECK:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_2_1) {sym_name = "link4_buff_0"} : memref<48xi32> 
 // CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_2_1) {sym_name = "link4_buff_1"} : memref<48xi32> 
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_2_1, 0) {init = 2 : i32, sym_name = "link4_prod_lock_0"}
