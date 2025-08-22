@@ -596,7 +596,7 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (!(objFifo.getDimensionsToStream().empty() &&
         objFifo.getDimensionsFromStreamPerConsumer().empty()))
     return emitError("cannot allocate a shared memory module to objectfifo "
-                     "with set dimensions attributes");
+                     "with set dimensions attribute");
 }
 
 TileOp ObjectFifoAllocateOp::getDelegateTileOp() {

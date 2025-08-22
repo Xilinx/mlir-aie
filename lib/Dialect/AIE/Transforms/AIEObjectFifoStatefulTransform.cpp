@@ -574,9 +574,14 @@ struct AIEObjectFifoStatefulTransformPass
 
     ObjectFifoAllocateOp opAlloc;
     auto device = op->getParentOfType<DeviceOp>();
+    bool foundAlloc = false;
     for (ObjectFifoAllocateOp alloc : device.getOps<ObjectFifoAllocateOp>()) {
-      if (alloc.getObjectFifo() == op)
+      if (alloc.getObjectFifo() == op) {
+        if (foundAlloc)
+          op.emitOpError("has more than one allocate operation");
         opAlloc = alloc;
+        foundAlloc = true;
+      }
     }
     if (opAlloc) {
       TileOp delegate = opAlloc.getDelegateTileOp();
