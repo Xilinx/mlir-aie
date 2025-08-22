@@ -18,7 +18,6 @@
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "aie/Dialect/AIEVec/Utils/Utils.h"
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -250,6 +249,7 @@ struct AIEVecTransformationPass
 
   AIEVecTransformationPass(const OptimizeAIEVecOptions &options)
       : AIEVecTransformationPass() {
+    aieTarget = options.aieTarget;
     targetBackend = options.targetBackend;
   }
 
@@ -281,23 +281,28 @@ struct AIEVecTransformationPass
       llvm::cl::init("cpp")};
 
   void runOnOperation() override {
-    ModuleOp op = dyn_cast_if_present<ModuleOp>(getOperation());
-
-    auto aieVersionOpt = getAIEVersionFromModule(op);
-    if (!aieVersionOpt)
-      return;
-    auto aieVersion = *aieVersionOpt;
-
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
+    AIEArch aieVersion = AIEArch::AIE;
+    if (!aieTarget.empty()) {
+      std::string target = aieTarget;
+      if (target == "aieml" || target == "aie2") {
+        aieVersion = AIEArch::AIE2;
+      } else if (target != "aie") {
+        op->emitError() << "unknown AIE target '" << aieTarget << "'";
+        signalPassFailure();
+        return;
+      }
+    }
 
     TargetBackend backend = TargetBackend::CPP;
     if (!targetBackend.empty()) {
       std::string backendStr = targetBackend;
       if (backendStr == "llvmir") {
         backend = TargetBackend::LLVMIR;
-        if (aieVersion == AIE::AIEArch::AIE1) {
+        if (aieVersion == AIEArch::AIE) {
           op->emitError() << "targetting LLVM IR is not supported for AIEv1";
           signalPassFailure();
           return;
@@ -309,7 +314,7 @@ struct AIEVecTransformationPass
       }
     }
 
-    if (aieVersion == AIE::AIEArch::AIE1) {
+    if (aieVersion == AIEArch::AIE) {
       populateAIEVecV1TransformationPatterns(patterns, backend);
       configureAIEVecV1TransformationLegalizations(target, backend);
     } else {
@@ -338,6 +343,7 @@ struct AIEVecConvOpTransformationPass
 
   AIEVecConvOpTransformationPass(const OptimizeAIEVecOptions &options)
       : AIEVecConvOpTransformationPass() {
+    aieTarget = options.aieTarget;
     targetBackend = options.targetBackend;
     shiftParam = options.shiftParam;
   }
@@ -377,25 +383,28 @@ struct AIEVecConvOpTransformationPass
       llvm::cl::init(0)};
 
   void runOnOperation() override {
-    ModuleOp op = dyn_cast_if_present<ModuleOp>(getOperation());
-
-    auto aieVersionOpt = getAIEVersionFromModule(op);
-    if (!aieVersionOpt)
-      return;
-    auto aieVersion = *aieVersionOpt;
-    if (aieVersion != AIE::AIEArch::AIE2)
-      return;
-
+    auto op = getOperation();
     MLIRContext *context = &getContext();
     RewritePatternSet patterns(context);
     ConversionTarget target(*context);
+    AIEArch aieVersion = AIEArch::AIE;
+    if (!aieTarget.empty()) {
+      std::string target = aieTarget;
+      if (target == "aieml" || target == "aie2") {
+        aieVersion = AIEArch::AIE2;
+      } else if (target != "aie") {
+        op->emitError() << "unknown AIE target '" << aieTarget << "'";
+        signalPassFailure();
+        return;
+      }
+    }
 
     TargetBackend backend = TargetBackend::CPP;
     if (!targetBackend.empty()) {
       std::string backendStr = targetBackend;
       if (backendStr == "llvmir") {
         backend = TargetBackend::LLVMIR;
-        if (aieVersion == AIE::AIEArch::AIE1) {
+        if (aieVersion == AIEArch::AIE) {
           op->emitError() << "targetting LLVM IR is not supported for AIEv1";
           signalPassFailure();
           return;
@@ -408,7 +417,7 @@ struct AIEVecConvOpTransformationPass
     }
 
     AnalysisManager am = getAnalysisManager();
-    if (aieVersion == AIE::AIEArch::AIE2) {
+    if (aieVersion == AIEArch::AIE2) {
       populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam,
                                                  backend);
       configureAIEVecConvOpTransformationLegalizations(target, am, backend);
@@ -438,8 +447,10 @@ void xilinx::aievec::buildOptimizeAIEVec(OpPassManager &pm,
   pm.addPass(createCanonicalizerPass());
 
   // Add generating aievec convolution ops pass
-  pm.addPass(createAIEVecConvolutionAnalysisPass());
-  pm.addPass(createAIEVecConvOpTransformationPass(options));
+  if (options.aieTarget == "aieml" || options.aieTarget == "aie2") {
+    pm.addPass(createAIEVecConvolutionAnalysisPass());
+    pm.addPass(createAIEVecConvOpTransformationPass(options));
+  }
 
   // Add post-lowering canonicalization passes.
   pm.addPass(createCSEPass());

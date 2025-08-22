@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEVec/Utils/Utils.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -104,17 +103,6 @@ VectorType getFlattenedVectorType(VectorType vecTy) {
   return VectorType::get(
       {std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<>())},
       vecTy.getElementType());
-}
-
-std::optional<xilinx::AIE::AIEArch> getAIEVersionFromModule(ModuleOp moduleOp) {
-  llvm::SmallVector<xilinx::AIE::DeviceOp> deviceOps;
-  moduleOp.walk([&](xilinx::AIE::DeviceOp d) { deviceOps.push_back(d); });
-
-  if (deviceOps.empty())
-    return std::nullopt;
-
-  const auto &targetModel = deviceOps.front().getTargetModel();
-  return targetModel.getTargetArch();
 }
 
 } // namespace xilinx::aievec
