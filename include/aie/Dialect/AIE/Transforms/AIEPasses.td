@@ -66,6 +66,7 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
 
   }];
   let options = [
+    Option<"deviceName", "device", "std::string", /*default=*/"\"\"", "Device to generate code for">,
     Option<"tileCol", "tilecol", "unsigned",
            /*default=*/"-1", "X coordinate of tile to generate code for">,
     Option<"tileRow", "tilerow", "unsigned",
@@ -269,6 +270,26 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
             "Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,      
     Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
             "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,  
+  ];
+}
+
+def AIESetELFforCore : Pass<"aie-set-elf-for-core", "DeviceOp"> {
+  let summary = "Set the ELF file for a core";
+  let description = [{
+    This pass sets the `elf_file` attribute for the given core in the design,
+    erasing the core's MLIR body.
+  }];
+
+  let constructor = "xilinx::AIE::createAIESetELFforCorePass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+
+  let options = [
+    Option<"clDevice", "device", "std::string", /*default=*/"\"\"", "Device for whose cores ELF file should be set.">,
+    Option<"clTileCol", "col", "unsigned", /*default=*/"0", "Column index of tile to set the ELF file for.">,      
+    Option<"clTileRow", "row", "unsigned", /*default=*/"0", "Row index of tile to set the ELF file for.">,  
+    Option<"clElfFile", "elf-file", "std::string", /*default=*/"", "Path to the ELF file to set for the core.">,
   ];
 }
 

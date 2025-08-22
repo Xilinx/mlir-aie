@@ -27,8 +27,12 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
+    Symbol,
+    AIETarget, 
+    HasParent<"mlir::ModuleOp">,
+    SymbolTable, 
+    SingleBlockImplicitTerminator<"EndOp">, 
+    IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -55,13 +59,18 @@ def AIE_DeviceOp: AIE_Op<"device", [
     ```
   }];
 
-  let arguments = (ins AIEDevice:$device);
+  let arguments = (
+    ins AIEDevice:$device,
+        DefaultValuedAttr<SymbolNameAttr, "\"main\"">:$sym_name
+  );
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
-    `(` $device `)` regions attr-dict
+    `(` $device `)` $sym_name regions attr-dict
   }];
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
+    static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
+    static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
   }];
 }
 
@@ -324,6 +333,11 @@ def AIE_CoreOp: AIE_Op<"core", [
     typically be outlined into the LLVM dialect, eventually resulting in a binary file
     for each core.  The name of this file can be be specified using the `elf_file`
     attribute.
+
+    If the `elf_file` attribute is present, no MLIR besides a terminator may be
+    present in the core; in that case, the binary file linked dictates what 
+    will run in the core. The path specified should is relative to the MLIR
+    file.
 
     This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
     reserved for the stack.  The default value is 1024.  The stack (and other data allocations)

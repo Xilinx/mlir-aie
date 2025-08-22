@@ -137,9 +137,9 @@ npu_dma_memcpy_nd = NpuDmaMemcpyNd
 
 # Runtime sequence
 
-def runtime_sequence(*inputs: Type, sym_name=None, context=None):
+def runtime_sequence(*inputs: Type, sym_name="sequence", context=None):
     def decorator(f):
-        seq_op = RuntimeSequenceOp()
+        seq_op = RuntimeSequenceOp(sym_name)
         my_inputs = []
         for input in inputs:
             my_inputs.append(try_convert_np_type_to_mlir_type(input))

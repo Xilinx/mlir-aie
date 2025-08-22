@@ -230,8 +230,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--npu-insts-name",
         dest="insts_name",
-        default="npu_insts.bin",
-        help="Output instructions filename for NPU target",
+        default="npu_insts_{0}_{1}.bin",
+        help="Output instructions filename for NPU target. `{0}` is replaced with device name, `{1}` with the selected runtime sequence.",
     )
     parser.add_argument(
         "--aie-generate-cdo",
@@ -288,8 +288,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--xclbin-name",
         dest="xclbin_name",
-        default="final.xclbin",
-        help="Output xclbin filename for CDO/XCLBIN target",
+        default="final_{0}.xclbin",
+        help="Output xclbin filename for CDO/XCLBIN target. `{0}` is replaced with device name.",
     )
     parser.add_argument(
         "--aie-generate-pdi",
@@ -302,8 +302,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--pdi-name",
         dest="pdi_name",
-        default="design.pdi",
-        help="Output pdi filename for PDI/CDO/XCLBIN target",
+        default="design_{0}.pdi",
+        help="Output pdi filename for PDI/CDO/XCLBIN target. `{0}` is replaced with device name.",
     )
     parser.add_argument(
         "--xclbin-kernel-name",
@@ -334,8 +334,20 @@ def parse_args(args=None):
     parser.add_argument(
         "--elf-name",
         dest="elf_name",
-        default="design.elf",
-        help="Output elf filename for ELF target",
+        default="design_{0}.elf",
+        help="Output elf filename for ELF target. `{0}` is replaced with the device name.",
+    )
+    parser.add_argument(
+        "--device-name",
+        dest="device_name",
+        default="",
+        help="Symbol name of the device configuration to compile. If none supplied, all devices are compiled.",
+    )
+    parser.add_argument(
+        "--sequence-name",
+        dest="sequence_name",
+        default="",
+        help="Symbol name of the runtime sequence to compile. If none supplied, all runtime sequences in the selected device(s) are compiled."
     )
 
     opts = parser.parse_args(args)

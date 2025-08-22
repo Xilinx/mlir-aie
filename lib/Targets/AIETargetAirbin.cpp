@@ -561,11 +561,13 @@ static void configMETile(TileOp tileOp, const std::string &coreFilesDir) {
   // read the AIE executable and copy the loadable parts
   if (auto coreOp = tileOp.getCoreOp()) {
     std::string fileName;
-    if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file"))
+    if (auto fileAttr = coreOp->getAttrOfType<StringAttr>("elf_file")) {
       fileName = fileAttr.str();
-    else
-      fileName = llvm::formatv("{0}/core_{1}_{2}.elf", coreFilesDir,
-                               tileOp.colIndex(), tileOp.rowIndex());
+    } else {
+      return coreOp.emitOpError()
+             << "Expected lowered ELF file to be given as attribute "
+                "`elf_file` for this core. Compile cores first.";
+    }
     loadElf(tileAddress, fileName);
   }
 }
@@ -1181,6 +1183,7 @@ Elf_Data *sectionAddData(Elf_Scn *scn, const Section *section) {
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,
                                          const std::string &coreFilesDir,
+                                         llvm::StringRef deviceName,
                                          bool testAirBin) {
   int tmpElfFD;
   Elf *outElf;
@@ -1192,12 +1195,11 @@ mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
   char strTabName[] = ".shstrtab";
   std::vector<Section *> sections;
 
-  if (module.getOps<DeviceOp>().empty()) {
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  if (!targetOp) {
     LLVM_DEBUG(llvm::dbgs() << "no device ops found");
     return success();
   }
-
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   // Write the initial configuration for every tile specified in the MLIR.
   for (auto tileOp : targetOp.getOps<TileOp>()) {

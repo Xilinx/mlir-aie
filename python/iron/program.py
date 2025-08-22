@@ -43,7 +43,7 @@ class Program:
         self._device = device
         self._rt = rt
 
-    def resolve_program(self, placer: Placer | None = None):
+    def resolve_program(self, placer: Placer | None = None, device_name = "main"):
         """This method resolves the program components in order to generate MLIR.
 
         Args:
@@ -62,7 +62,7 @@ class Program:
             # For dynamically created device classes, the constructor takes no arguments
             self._device = device_type()
 
-            @device(self._device.resolve())
+            @device(device_name, self._device.resolve())
             def device_body():
                 # Collect all fifos
                 all_fifos = set()
