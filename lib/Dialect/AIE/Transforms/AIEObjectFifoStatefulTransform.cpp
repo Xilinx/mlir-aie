@@ -198,7 +198,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function to retrieve ObjectFifoAllocateOp of ObjectFifoCreateOp,
   /// if it exists.
-  std::optional<ObjectFifoAllocateOp> getOptionalAllocateOp(ObjectFifoCreateOp op) {
+  std::optional<ObjectFifoAllocateOp>
+  getOptionalAllocateOp(ObjectFifoCreateOp op) {
     ObjectFifoAllocateOp allocOp;
     auto device = op->getParentOfType<DeviceOp>();
     bool foundAlloc = false;
@@ -285,14 +286,16 @@ struct AIEObjectFifoStatefulTransformPass
             // memory without DMAs
             splitBecauseLink.push_back(createOp);
           }
-          std::optional<ObjectFifoAllocateOp> opAlloc = getOptionalAllocateOp(createOp);
+          std::optional<ObjectFifoAllocateOp> opAlloc =
+              getOptionalAllocateOp(createOp);
           if (opAlloc.has_value()) {
             TileOp delegate = opAlloc->getDelegateTileOp();
             int prodShareDir;
             int consShareDir;
-            auto consumerTileOp =
-                dyn_cast<TileOp>(createOp.getConsumerTiles()[0].getDefiningOp());
-            isSharedMemory(delegate, createOp.getProducerTileOp(), &prodShareDir);
+            auto consumerTileOp = dyn_cast<TileOp>(
+                createOp.getConsumerTiles()[0].getDefiningOp());
+            isSharedMemory(delegate, createOp.getProducerTileOp(),
+                           &prodShareDir);
             isSharedMemory(delegate, consumerTileOp, &consShareDir);
             if (prodShareDir == -1 && consShareDir == -1)
               isUsedInLinkOp = false;
