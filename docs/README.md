@@ -124,6 +124,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
+1. (Optional) Setup environment
+   ```bash
+   # Only for Release v1.0, non wheel-based installs, and any install that needs to run tutorials and programming examples:
+   source utils/env_setup.sh
+   ```
+
 1. (Optional) Install Python packages required for development and testing:
    ```bash
    # Install Python requirements for development and testing
@@ -156,12 +162,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    MLIR_AIE_INSTALL=`$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie` \
    venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'` \
    echo ${MLIR_AIE_INSTALL}/python > $venv_site_packages/mlir-aie.pth
-   ```
-
-1. (Optional) Setup environment
-   ```bash
-   # Only for Release v1.0 and non wheel-based installs:
-   source utils/env_setup.sh
    ```
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
