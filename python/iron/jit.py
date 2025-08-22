@@ -173,10 +173,7 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         # Compile all ExternalFunction instances that were created during this JIT compilation
         for func in ExternalFunction._instances:
-            if (
-                not hasattr(func, "_compiled") or not func._compiled
-            ):  # Don't compile if already compiled
-                external_kernels.append(func)
+            external_kernels.append(func)
 
         # Determine target architecture based on device type
         try:
@@ -255,9 +252,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         kernel_dir: Directory to place the compiled object file
         target_arch: Target architecture (e.g., "aie2" or "aie2p")
     """
-    # Skip if already compiled
-    if hasattr(func, "_compiled") and func._compiled:
-        return
 
     # Check if object file already exists in kernel directory
     output_file = os.path.join(kernel_dir, func._object_file_name)
@@ -302,9 +296,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         )
     except Exception as e:
         raise
-
-    # Mark the function as compiled
-    func._compiled = True
 
 
 def hash_module(module, external_kernels=None, target_arch=None):
