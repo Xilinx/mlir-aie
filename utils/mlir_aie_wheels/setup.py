@@ -13,6 +13,8 @@ from typing import Union
 from importlib_metadata import files
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+from setuptools.command.develop import develop
+from setuptools.command.install import install
 
 
 def check_env(build, default=0):
@@ -102,9 +104,7 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-        install_dir = extdir / (
-            "mlir_aie" if check_env("ENABLE_RTTI", 1) else "mlir_aie_no_rtti"
-        )
+        install_dir = extdir / "mlir_aie"
         cfg = "Release"
 
         cmake_generator = os.getenv("CMAKE_GENERATOR", "Ninja")
@@ -232,13 +232,36 @@ class CMakeBuild(build_ext):
         )
 
 
-commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
-release_version = "0.0.1"
-now = datetime.now()
-datetime = os.environ.get(
-    "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
-)
-version = f"{release_version}.{datetime}+{commit_hash}"
+class DevelopWithPth(develop):
+    """Custom develop command to create a .pth file into the site-packages directory."""
+
+    def run(self):
+        super().run()
+        pth_target = os.path.join(self.install_dir, "aie.pth")
+        with open(pth_target, "w") as pth_file:
+            pth_file.write("mlir_aie//python")
+
+
+class InstallWithPth(install):
+    """Custom install command to create a .pth file into the site-packages directory."""
+
+    def run(self):
+        super().run()
+        pth_target = os.path.join(self.install_lib, "aie.pth")
+        with open(pth_target, "w") as pth_file:
+            pth_file.write("mlir_aie//python")
+
+
+def get_version():
+    release_version = "0.0.1"
+    commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
+    now = datetime.now()
+    timestamp = os.environ.get(
+        "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
+    )
+    suffix = "" if check_env("ENABLE_RTTI", 1) else "-no_rtti"
+    return f"{release_version}.{timestamp}+{commit_hash}{suffix}"
+
 
 MLIR_AIE_SOURCE_DIR = Path(
     os.getenv(
@@ -247,26 +270,30 @@ MLIR_AIE_SOURCE_DIR = Path(
     )
 ).absolute()
 
+
 def parse_requirements(filename):
     with open(filename) as f:
         lines = f.read().splitlines()
         # Remove comments and empty lines
-        return [line.strip() for line in lines if line.strip() and not line.startswith('#')]
+        return [
+            line.strip() for line in lines if line.strip() and not line.startswith("#")
+        ]
+
 
 setup(
-    version=version,
+    version=get_version(),
     author="",
-    name="mlir-aie" if check_env("ENABLE_RTTI", 1) else "mlir-aie-no-rtti",
+    name="mlir-aie",
     include_package_data=True,
     description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
     long_description=dedent(
         """\
-        This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for Xilinx Versal 
-        AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the 
-        device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is 
-        included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with 
-        convenient low-level access to devices and enable the development of a wide variety of programming models 
-        from higher level abstractions.  As such, although it contains some examples, this project is not intended to 
+        This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for Xilinx Versal
+        AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the
+        device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is
+        included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with
+        convenient low-level access to devices and enable the development of a wide variety of programming models
+        from higher level abstractions.  As such, although it contains some examples, this project is not intended to
         represent end-to-end compilation flows or to be particularly easy to use for system design.
         """
     ),
@@ -274,8 +301,14 @@ setup(
     # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
     # actually build the wheel.
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
-    cmdclass={"build_ext": CMakeBuild},
+    cmdclass={
+        "build_ext": CMakeBuild,
+        "develop": DevelopWithPth,
+        "install": InstallWithPth,
+    },
     zip_safe=False,
     python_requires=">=3.10",
-    install_requires=parse_requirements(Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"),
+    install_requires=parse_requirements(
+        Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
+    ),
 )

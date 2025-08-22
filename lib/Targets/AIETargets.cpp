@@ -12,6 +12,7 @@
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -75,6 +76,7 @@ namespace xilinx::AIE {
 static void registerDialects(DialectRegistry &registry) {
   registry.insert<xilinx::AIE::AIEDialect>();
   registry.insert<xilinx::AIEX::AIEXDialect>();
+  registry.insert<xilinx::aievec::AIEVecDialect>();
   registry.insert<func::FuncDialect>();
   registry.insert<scf::SCFDialect>();
   registry.insert<cf::ControlFlowDialect>();
