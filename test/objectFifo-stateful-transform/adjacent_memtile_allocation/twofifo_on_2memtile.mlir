@@ -26,8 +26,6 @@
 // CHECK-DAG:     %[[OUT1_BUFF_1:.*]] = aie.buffer(%[[TILE_0_2]]) {sym_name = "out1_buff_1"} : memref<8xi32>
 // CHECK-DAG:     %[[OUT1_PROD_LOCK:.*]] = aie.lock(%[[TILE_0_2]], 2) {init = 2 : i32, sym_name = "out1_prod_lock_0"}
 // CHECK-DAG:     %[[OUT1_CONS_LOCK:.*]] = aie.lock(%[[TILE_0_2]], 3) {init = 0 : i32, sym_name = "out1_cons_lock_0"}
-// CHECK-DAG:     %[[OUT0_CONS_PROD_LOCK:.*]] = aie.lock(%[[SHIM_NOC_TILE_0_0]], 2) {init = 1 : i32, sym_name = "out0_cons_prod_lock_0"}
-// CHECK-DAG:     %[[OUT0_CONS_CONS_LOCK:.*]] = aie.lock(%[[SHIM_NOC_TILE_0_0]], 3) {init = 0 : i32, sym_name = "out0_cons_cons_lock_0"}
 // CHECK-DAG:     %[[OUT0_BUFF_0:.*]] = aie.buffer(%[[MEM_TILE_1_1]]) {sym_name = "out0_buff_0"} : memref<64000xi32>
 // CHECK-DAG:     %[[OUT0_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE_1_1]]) {sym_name = "out0_buff_1"} : memref<64000xi32>
 // CHECK-DAG:     %[[OUT0_PROD_LOCK:.*]] = aie.lock(%[[MEM_TILE_0_1]], 2) {init = 2 : i32, sym_name = "out0_prod_lock_0"}
@@ -40,8 +38,6 @@
 // CHECK-DAG:     %[[IN0_CONS_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE_0_1]]) {sym_name = "in0_cons_buff_1"} : memref<64000xi32>
 // CHECK-DAG:     %[[IN0_CONS_PROD_LOCK:.*]] = aie.lock(%[[MEM_TILE_0_1]], 0) {init = 2 : i32, sym_name = "in0_cons_prod_lock_0"}
 // CHECK-DAG:     %[[IN0_CONS_CONS_LOCK:.*]] = aie.lock(%[[MEM_TILE_0_1]], 1) {init = 0 : i32, sym_name = "in0_cons_cons_lock_0"}
-// CHECK-DAG:     %[[IN0_PROD_LOCK:.*]] = aie.lock(%[[SHIM_NOC_TILE_0_0]], 0) {init = 1 : i32, sym_name = "in0_prod_lock_0"}
-// CHECK-DAG:     %[[IN0_CONS_LOCK:.*]] = aie.lock(%[[SHIM_NOC_TILE_0_0]], 1) {init = 0 : i32, sym_name = "in0_cons_lock_0"}
 // CHECK:     aie.flow(%[[SHIM_NOC_TILE_0_0]], DMA : 0, %[[MEM_TILE_0_1]], DMA : 1)
 // CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 1, %[[TILE_0_2]], DMA : 0)
 // CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 0, %[[SHIM_NOC_TILE_0_0]], DMA : 0)

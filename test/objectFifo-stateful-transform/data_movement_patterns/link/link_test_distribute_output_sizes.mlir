@@ -37,8 +37,6 @@
 // CHECK:     %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_2_1, 1) {init = 0 : i32, sym_name = "link1_cons_cons_lock_0"}
 // CHECK:     %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_2_1, 2) {init = 1 : i32, sym_name = "link1_cons_prod_lock_1"}
 // CHECK:     %[[VAL_12:.*]] = aie.lock(%{{.*}}tile_2_1, 3) {init = 0 : i32, sym_name = "link1_cons_cons_lock_1"}
-// CHECK:     %[[VAL_13:.*]] = aie.lock(%{{.*}}tile_2_0, 0) {init = 1 : i32, sym_name = "link1_prod_lock_0"}
-// CHECK:     %[[VAL_14:.*]] = aie.lock(%{{.*}}tile_2_0, 1) {init = 0 : i32, sym_name = "link1_cons_lock_0"}
 // CHECK:     aie.flow(%{{.*}}tile_2_0, DMA : 0, %{{.*}}tile_2_1, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_2_1, DMA : 0, %{{.*}}tile_2_2, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_2_1, DMA : 1, %{{.*}}tile_2_3, DMA : 0)
