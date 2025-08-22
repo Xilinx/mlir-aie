@@ -35,9 +35,6 @@ def root_path():
         raise RuntimeError(f"Invalid MLIR-AIE root directory: {root_dir}")
     return root_dir
 
-
-
-
     """Returns the path to the MLIR-AIE C++ headers."""
     include_dir = os.path.join(root_path(), "include")
     if not os.path.isdir(include_dir):
