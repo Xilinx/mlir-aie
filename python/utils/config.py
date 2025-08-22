@@ -36,7 +36,8 @@ def root_path():
     return root_dir
 
 
-def cxx_header_path():
+
+
     """Returns the path to the MLIR-AIE C++ headers."""
     include_dir = os.path.join(root_path(), "include")
     if not os.path.isdir(include_dir):
