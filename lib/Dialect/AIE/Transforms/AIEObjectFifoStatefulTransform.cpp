@@ -287,7 +287,8 @@ struct AIEObjectFifoStatefulTransformPass
             // memory without DMAs
             splitBecauseLink.push_back(createOp);
           }
-          std::optional<ObjectFifoAllocateOp> opAlloc = getOptionalAllocateOp(createOp);
+          std::optional<ObjectFifoAllocateOp> opAlloc =
+              getOptionalAllocateOp(createOp);
           if (opAlloc.has_value()) {
             TileOp delegate = opAlloc->getDelegateTileOp();
             int prodShareDir;
