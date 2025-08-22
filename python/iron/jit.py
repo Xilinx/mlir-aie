@@ -12,8 +12,6 @@ import hashlib
 import numpy as np
 import pyxrt as xrt
 import shutil
-import sys
-import traceback
 
 from aie.extras.context import mlir_mod_ctx
 from ..utils.xrt import read_insts_binary
@@ -147,6 +145,7 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
         ExternalFunction._instances.clear()
+        ExternalFunction._bin_name = function.__name__ + ".o"
 
         # Find ExternalFunction instances in arguments and kwargs
         external_kernels = []
@@ -216,8 +215,25 @@ def jit(function=None, is_placed=True, use_cache=True):
                     print(mlir_module, file=f)
 
                 # Compile ExternalFunctions from inside the JIT compilation directory
+                object_files = []
                 for func in external_kernels:
-                    compile_external_kernel(func, kernel_dir, target_arch)
+                    compile_external_kernel(
+                        func, kernel_dir, target_arch, func._object_file_name
+                    )
+                    object_files.append(
+                        os.path.join(kernel_dir, func._object_file_name)
+                    )
+
+                # Combine all object files in a single object file
+                if object_files:
+                    from .compile.link import merge_object_files
+
+                    merged_object_file = os.path.join(
+                        kernel_dir, ExternalFunction._bin_name
+                    )
+                    merge_object_files(
+                        object_paths=object_files, output_path=merged_object_file
+                    )
 
                 # Compile the MLIR module
                 compile_mlir_module(
@@ -243,7 +259,7 @@ def jit(function=None, is_placed=True, use_cache=True):
     return decorator
 
 
-def compile_external_kernel(func, kernel_dir, target_arch):
+def compile_external_kernel(func, kernel_dir, target_arch, output_file):
     """
     Compile an ExternalFunction to an object file in the kernel directory.
 
@@ -252,12 +268,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         kernel_dir: Directory to place the compiled object file
         target_arch: Target architecture (e.g., "aie2" or "aie2p")
     """
-
-    # Check if object file already exists in kernel directory
-    output_file = os.path.join(kernel_dir, func._object_file_name)
-    if os.path.exists(output_file):
-        return
-
     # Create source file in kernel directory
     source_file = os.path.join(kernel_dir, f"{func._name}.cc")
 
