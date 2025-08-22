@@ -2,6 +2,8 @@ from PIL import Image
 import torch
 import json
 import numpy as np
+
+
 def convert_to_numpy(array):
     if isinstance(array, np.ndarray):
         return array
@@ -9,7 +11,8 @@ def convert_to_numpy(array):
         return array.cpu().numpy()
     else:
         raise TypeError("Unsupported array type")
-    
+
+
 class ExpandChannels(object):
     def __init__(self, target_channels):
         self.target_channels = target_channels
@@ -20,7 +23,7 @@ class ExpandChannels(object):
         if channels == self.target_channels:
             return img
         elif channels > self.target_channels:
-            return img[:self.target_channels, :, :]
+            return img[: self.target_channels, :, :]
         else:
             # Repeat the existing channels to match the target_channels
             repeats = self.target_channels // channels
