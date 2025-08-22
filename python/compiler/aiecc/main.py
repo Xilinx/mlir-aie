@@ -1475,6 +1475,13 @@ def run(mlir_module, args=None):
     if opts.verbose:
         print("created temporary directory", tmpdirname)
 
+    # Create a temporary file holding the input ir, if opts.filename is None.
+    if opts.filename == None:
+        tmpinput_path = os.path.join(tmpdirname, "tmpinput.mlir")
+        with open(tmpinput_path, "w") as f:
+            f.write(str(mlir_module))
+        opts.filename = tmpinput_path
+
     runner = FlowRunner(str(mlir_module), opts, tmpdirname)
     asyncio.run(runner.run_flow())
 
