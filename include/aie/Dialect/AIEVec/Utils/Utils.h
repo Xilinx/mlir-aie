@@ -40,7 +40,8 @@ std::optional<int64_t> getTransferReadAlignmentOffset(TransferReadLikeOp readOp,
 
 mlir::VectorType getFlattenedVectorType(mlir::VectorType vecTy);
 
-std::optional<xilinx::AIE::AIEArch> getAIEVersionFromModule(mlir::ModuleOp moduleOp);
+std::optional<xilinx::AIE::AIEArch>
+getAIEVersionFromModule(mlir::ModuleOp moduleOp);
 
 } // namespace xilinx::aievec
 
