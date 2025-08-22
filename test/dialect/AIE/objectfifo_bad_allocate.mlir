@@ -10,7 +10,7 @@
 
 // RUN: not aie-opt -split-input-file %s 2>&1 | FileCheck %s
 
-// CHECK: `can only be used in 1-to-1 object FIFOs
+// CHECK: can only be used in 1-to-1 object FIFOs
 
 aie.device(xcve2302) {
    %tile20 = aie.tile(2, 0)
