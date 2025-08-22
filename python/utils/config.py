@@ -27,6 +27,7 @@ def peano_cxx_path():
         raise RuntimeError(f"Peano compiler not found in {install_dir}")
     return peano_cxx
 
+
 def root_path():
     """Returns the root path of the MLIR-AIE project."""
     root_dir = config.install_path()
