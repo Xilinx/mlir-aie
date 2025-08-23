@@ -1,25 +1,29 @@
---- 
+# Getting Started: Measure and Analyze Peak NPU Memory Bandwidth with `memcpy`
 
-# **Memcpy**
+This example is a highly parallel, parameterized design that uses shim DMAs in every NPU column. It enables both compute and bypass modes to help analyze performance charactaristics. The design measures memory bandwidth across the full NPU, not just a single AI Engine tile with the goal to evaluate how well a design utilizes available memory bandwidth across multiple columns and channels.
 
-The `memcpy.py` design is a highly parallel, parameterized design that uses shim DMAs in every NPU column. It enables both compute and bypass modes to help you analyze performance charactaristics.
-
----
-
-### **Exercise: Measure and Analyze Peak NPU Memory Bandwidth with `memcpy`**
-
-In this exercise, you'll use the `memcpy` design to measure memory bandwidth across the full NPU, not just a single AI Engine tile. This is a practical example to evaluate how well a design utilizes available memory bandwidth across multiple columns and channels.
-
-#### **Objective**
+## Objective
 
 * Understand the structure of a full NPU dataflow application using IRON
 * Measure and report the peak memory bandwidth achieved
 * Experiment with parameters (columns, channels, data size, bypass mode) to study how architecture and design choices affect performance
 * Adapt the runtime data movement code to optimize performance
 
----
+## Overview
 
-### **Step-by-Step Instructions**
+This design consists of the following:
+
+* `memcpy.py`: The NPU design for this application,
+  which describes which cores of the NPU we will use, how to route data between
+  cores, and what program to run on each core.
+* `test.cpp`: A program that runs on the CPU (host) to dispatch our design to 
+  run on the NPU, calculates a correct reference output, verifies and times
+  our NPU design's execution.
+* `Makefile`: Contains the compilation instructions for the constituent
+  parts of this design. Study it to see how the pieces are assembled together.
+* `run_*.lit`: lit tests that run the design on different NPU devices.
+
+## Step-by-Step Instructions
 
 1. **Configure Your Run Using `make` Parameters:**
 
@@ -38,8 +42,8 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 2. **Explore the Two Modes:**
 
-   * **Bypass Mode (`--bypass True`)**: Uses only shim DMA, bypassing the AIE core. This isolates raw memory movement capability
-   * **Passthrough Mode (`--bypass False`)**: Adds a minimal AIE kernel, mimicking a compute+transfer design. Helps understand potential core overhead
+   * **Bypass Mode (`--bypass True`)**: Uses only shim DMA, bypassing the AIE core. This isolates raw memory movement capability.
+   * **Passthrough Mode (`--bypass False`)**: Adds a minimal AIE kernel, mimicking a compute+transfer design. Helps understand potential core overhead.
 
 3. **Calculate Effective Bandwidth:**
 
@@ -59,7 +63,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 4. **Ensure Optimal Task Sequencing in the Runtime**
 
-	To achieve full parallelism when draining data from all 	columns and channels, the `memcpy` design can use **task groups** in the IRON 	`Runtime().sequence` to group operations and start them together before waiting for completion.
+	To achieve full parallelism when draining data from all columns and channels, the `memcpy` design can use **task groups** in the IRON `Runtime().sequence` to group operations and start them together before waiting for completion.
 
 	Modify your IRON runtime sequences to optimize performance using **task groups**:
 
@@ -117,9 +121,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
    * Discuss why bypass mode may or may not outperform passthrough
    * Understand the runtme sequence operations in the generated `memcpy.mlir` file
 
----
-
-### **Expected Outcome**
+## Expected Outcome
 
 By the end of this exercise, you should have a solid understanding of:
 

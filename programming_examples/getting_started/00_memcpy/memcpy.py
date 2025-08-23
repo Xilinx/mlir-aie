@@ -1,5 +1,3 @@
-# memcpy/memcpy.py -*- Python -*-
-#
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -24,6 +22,10 @@ from aie.helpers.taplib.tap import TensorAccessPattern
 
 
 def my_memcpy(dev, size, num_columns, num_channels, bypass):
+    # --------------------------------------------------------------------------
+    # Configuration
+    # --------------------------------------------------------------------------
+
     # Use int32 dtype as it is the addr generation granularity
     xfr_dtype = np.int32
 
@@ -35,17 +37,18 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
     # Chunk size sent per DMA channel
     chunk = size // num_columns // num_channels
 
-    # Dataflow with ObjectFifos
+    # --------------------------------------------------------------------------
+    # In-Array Data Movement
+    # --------------------------------------------------------------------------
+
     of_ins = [
         ObjectFifo(line_type, name=f"in{i}_{j}")
         for i in range(num_columns)
         for j in range(num_channels)
     ]
-    # Bypass path is a special case
-    # where we don't need to create a Worker
-    # and we can use the ObjectFifo directly
-    # to read and write the data with a `forward`
-    # through a MemTile
+    # Bypass path is a special case where we don't need to create a Worker
+    # and we can use the ObjectFifo directly to read and write the data with
+    # a `forward` through a MemTile.
     if bypass:
         of_outs = [
             of_ins[i * num_channels + j].cons().forward()
@@ -58,6 +61,10 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
             for i in range(num_columns)
             for j in range(num_channels)
         ]
+
+        # --------------------------------------------------------------------------
+        # Task core will run
+        # --------------------------------------------------------------------------
 
         # External, binary kernel definition
         passthrough_fn = Kernel(
@@ -88,11 +95,13 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
             for j in range(num_channels)
         ]
 
-    # Create a TensorAccessPattern for each channel
-    # to describe the data movement
-    # The pattern chops the data in equal chunks
-    # and moves them in parallel across the columns
-    # and channels.
+    # --------------------------------------------------------------------------
+    # DRAM-NPU data movement and work dispatch
+    # --------------------------------------------------------------------------
+
+    # Create a TensorAccessPattern for each channel to describe the data movement.
+    # The pattern chops the data in equal chunks and moves them in parallel across
+    # the columns and channels.
     taps = [
         TensorAccessPattern(
             (1, size),
