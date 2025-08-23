@@ -1170,7 +1170,6 @@ Interfaces: `Symbol`
 <tr><td><code>via_DMA</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>disable_synchronization</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
-<tr><td><code>via_shared_mem</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
 <tr><td><code>initValues</code></td><td>::mlir::ArrayAttr</td><td>array of ElementsAttr</td></tr>
 <tr><td><code>padDimensions</code></td><td>::xilinx::AIE::BDPadLayoutArrayAttr</td><td></td></tr>
@@ -1231,6 +1230,43 @@ port and returns a subview of the acquired objects.
 
 
 
+### `aie.objectfifo.allocate` (::xilinx::AIE::ObjectFifoAllocateOp)
+
+_Sets a tile's memory module as the target for an objectfifo's memory allocation_
+
+Syntax:
+
+```
+operation ::= `aie.objectfifo.allocate` $objFifo_name `(` $delegateTile `)` attr-dict
+```
+
+Specify a tile's memory module to be used as the allocation target for this objectfifo.
+Only works if all the objectfifo's tiles, producer and consumers, have shared memory access to
+the specified tile's memory module.
+
+In the following example the objects of @of4 will be allocated on %tile14:
+```
+  aie.objectfifo @of4 (%tile13, {%tile14}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+  aie.objectfifo.allocate @of4 (%tile14)
+```
+
+Traits: `HasParent<DeviceOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `delegateTile` | index |
+
+
+
 ### `aie.objectfifo.link` (::xilinx::AIE::ObjectFifoLinkOp)
 
 _Links two objectFifos through an intermediary tile's DMA_
@@ -1241,7 +1277,7 @@ Syntax:
 operation ::= `aie.objectfifo.link` $fifoIns `->` $fifoOuts `(` $src_offsets $dst_offsets `)` attr-dict
 ```
 
-The `aie.objectFifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
+The `aie.objectfifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
 one dataflow movement which is split accross multiple `objectFifos`. Specifically, during the `objectFifo` lowering there will
 be less memory elements generated at the link point (i.e., the shared tile of all `objectFifos` in the link) as the `objectFifos` can share.
 
