@@ -4,9 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-//
-// Date: October 1st 2024
+// Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -24,8 +22,6 @@
 //CHECK:     %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32> 
 //CHECK:     %[[VAL_5:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
 //CHECK:     %[[VAL_6:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-//CHECK:     %[[VAL_7:.*]] = aie.lock(%[[VAL_0:.*]], 0) {init = 1 : i32, sym_name = "of1_prod_lock_0"}
-//CHECK:     %[[VAL_8:.*]] = aie.lock(%[[VAL_0:.*]], 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 //CHECK:     aie.flow(%[[VAL_0:.*]], DMA : 0, %[[VAL_1]], DMA : 0)
 //CHECK:     %[[VAL_11:.*]] = aie.mem(%[[VAL_1]]) {
 //CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
@@ -45,6 +41,9 @@
 //CHECK:   }
 //CHECK: }
 
+// In this design, the allocate operation applies to tile_1_2, to which tile_2_2
+// has direct shared memory access: buffers and locks are created only on tile_1_2.
+
 module @link_AIE2 {
     aie.device(xcve2302) {
         %tile20 = aie.tile(2, 0)
@@ -52,7 +51,8 @@ module @link_AIE2 {
         %tile22 = aie.tile(2, 2)
 
         aie.objectfifo @of1 (%tile20, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) {via_shared_mem = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo.allocate @of2 (%tile12)
 
         aie.objectfifo.link [@of1] -> [@of2] ([] [])
     }

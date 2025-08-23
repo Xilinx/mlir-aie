@@ -4,9 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-//
-// Date: October 1st 2024
+// Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,8 +21,6 @@
 // CHECK:    %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
 // CHECK:    %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
 // CHECK:    %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-// CHECK:    %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_2_0, 0) {init = 1 : i32, sym_name = "of1_prod_lock_0"}
-// CHECK:    %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_2_0, 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 // CHECK:    aie.flow(%{{.*}}tile_2_0, DMA : 0, %{{.*}}tile_1_2, DMA : 0)
 // CHECK:    %[[VAL_6:.*]] = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:      %[[VAL_7:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
@@ -43,6 +39,10 @@
 // CHECK:    }
 // CHECK:  }
 
+// In this design, the allocate operation applies to tile_2_2, to which tile_1_2
+// does not have direct shared memory access: buffers and locks are created on
+// both tiles, following default behaviour of a link.
+
 module @link_AIE2 {
     aie.device(xcve2302) {
         %tile20 = aie.tile(2, 0)
@@ -50,7 +50,8 @@ module @link_AIE2 {
         %tile22 = aie.tile(2, 2)
 
         aie.objectfifo @of1 (%tile20, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo.allocate @of2 (%tile22)
 
         aie.objectfifo.link [@of1] -> [@of2] ([] [])
     }
