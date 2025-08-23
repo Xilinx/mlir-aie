@@ -191,7 +191,7 @@ Public Attributes</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03792">3792</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00058">xilinx::aievec::LowerVectorToAIEVecOptions::aieTarget</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03812">aieTarget</a>, <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00063">xilinx::aievec::LowerVectorToAIEVecOptions::targetBackend</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03818">targetBackend</a>.</p>
+<p class="reference">References <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00058">xilinx::aievec::LowerVectorToAIEVecOptions::aieTarget</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03812">aieTarget</a>, <a class="el" href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00063">xilinx::aievec::LowerVectorToAIEVecOptions::targetBackend</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03819">targetBackend</a>.</p>
 
 </div>
 </div>
@@ -301,9 +301,9 @@ Public Attributes</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03825">3825</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03826">3826</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03812">aieTarget</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03818">targetBackend</a>.</p>
+<p class="reference">References <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03812">aieTarget</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03819">targetBackend</a>.</p>
 
 </div>
 </div>
@@ -321,13 +321,14 @@ Public Attributes</h2></td></tr>
 </div><div class="memdoc">
 <b>Initial value:</b><div class="fragment"><div class="line">{</div>
 <div class="line">      *<span class="keyword">this</span>, <span class="stringliteral">&quot;aie-target&quot;</span>,</div>
-<div class="line">      llvm::cl::desc(<span class="stringliteral">&quot;Select AIE version: \&quot;aie\&quot; or \&quot;aie2\&quot;. This will &quot;</span></div>
-<div class="line">                     <span class="stringliteral">&quot;determine the vector size and available operations.&quot;</span>),</div>
+<div class="line">      llvm::cl::desc(</div>
+<div class="line">          <span class="stringliteral">&quot;Select AIE version: \&quot;aie\&quot;, \&quot;aie2\&quot;, or \&quot;aie2p\&quot;. This will &quot;</span></div>
+<div class="line">          <span class="stringliteral">&quot;determine the vector size and available operations.&quot;</span>),</div>
 <div class="line">      llvm::cl::init(<span class="stringliteral">&quot;aie&quot;</span>)}</div>
 </div><!-- fragment -->
 <p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03812">3812</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03792">LowerVectorToAIEVec()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03825">runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03792">LowerVectorToAIEVec()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03826">runOnOperation()</a>.</p>
 
 </div>
 </div>
@@ -349,9 +350,9 @@ Public Attributes</h2></td></tr>
 <div class="line">                     <span class="stringliteral">&quot;from vector dialect.&quot;</span>),</div>
 <div class="line">      llvm::cl::init(<span class="stringliteral">&quot;cpp&quot;</span>)}</div>
 </div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03818">3818</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03819">3819</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03792">LowerVectorToAIEVec()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03825">runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03792">LowerVectorToAIEVec()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03826">runOnOperation()</a>.</p>
 
 </div>
 </div>
@@ -361,7 +362,7 @@ Public Attributes</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Aug 23 2025 00:17:23 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sat Aug 23 2025 00:55:48 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
