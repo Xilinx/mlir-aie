@@ -4,9 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-//
-// Date: October 1st 2024
+// Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -41,6 +39,10 @@
 // CHECK:    }
 // CHECK:  }
 
+// In this design, the allocate operation applies to tile_2_2, to which tile_1_2
+// does not have direct shared memory access: buffers and locks are created on
+// both tiles, following default behaviour of a link.
+
 module @link_AIE2 {
     aie.device(xcve2302) {
         %tile20 = aie.tile(2, 0)
@@ -48,7 +50,8 @@ module @link_AIE2 {
         %tile22 = aie.tile(2, 2)
 
         aie.objectfifo @of1 (%tile20, {%tile12}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo @of2 (%tile12, {%tile22}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+        aie.objectfifo.allocate @of2 (%tile22)
 
         aie.objectfifo.link [@of1] -> [@of2] ([] [])
     }
