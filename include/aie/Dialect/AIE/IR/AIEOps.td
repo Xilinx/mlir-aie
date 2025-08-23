@@ -1765,6 +1765,12 @@ def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp
     Specify a tile's memory module to be used as the allocation target for this objectfifo.
     Only works if all the objectfifo's tiles, producer and consumers, have shared memory access to
     the specified tile's memory module.
+
+    In the following example the objects of @of4 will be allocated on %tile14:
+    ```
+      aie.objectfifo @of4 (%tile13, {%tile14}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+      aie.objectfifo.allocate @of4 (%tile14)
+    ```
   }];
 
   let arguments = (
