@@ -1182,7 +1182,7 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
 }
 
 def AIE_LockOp: AIE_Op<"lock", [
-    TileElement, Pure,
+    TileElement,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a physical lock";

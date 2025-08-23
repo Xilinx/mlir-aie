@@ -288,7 +288,7 @@ struct AIEVecTransformationPass
     AIEArch aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string target = aieTarget;
-      if (target == "aieml" || target == "aie2") {
+      if (target == "aieml" || target == "aie2" || target == "aie2p") {
         aieVersion = AIEArch::AIE2;
       } else if (target != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
@@ -390,7 +390,7 @@ struct AIEVecConvOpTransformationPass
     AIEArch aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string target = aieTarget;
-      if (target == "aieml" || target == "aie2") {
+      if (target == "aieml" || target == "aie2" || target == "aie2p") {
         aieVersion = AIEArch::AIE2;
       } else if (target != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
@@ -447,7 +447,8 @@ void xilinx::aievec::buildOptimizeAIEVec(OpPassManager &pm,
   pm.addPass(createCanonicalizerPass());
 
   // Add generating aievec convolution ops pass
-  if (options.aieTarget == "aieml" || options.aieTarget == "aie2") {
+  if (options.aieTarget == "aieml" || options.aieTarget == "aie2" ||
+      options.aieTarget == "aie2p") {
     pm.addPass(createAIEVecConvolutionAnalysisPass());
     pm.addPass(createAIEVecConvOpTransformationPass(options));
   }

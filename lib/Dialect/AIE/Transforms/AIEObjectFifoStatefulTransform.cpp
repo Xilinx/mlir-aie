@@ -357,7 +357,7 @@ struct AIEObjectFifoStatefulTransformPass
     // if shimTile external buffers are collected from input code
     // create as many locks as there are external buffers
     if (creation_tile.isShimTile()) {
-      numElem = 1;
+      numElem = 0;
       if (!externalBuffersPerFifo[op].empty())
         numElem = externalBuffersPerFifo[op].size();
     }

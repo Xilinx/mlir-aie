@@ -22,8 +22,6 @@
 //CHECK:     %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32> 
 //CHECK:     %[[VAL_5:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "of1_cons_prod_lock_0"}
 //CHECK:     %[[VAL_6:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "of1_cons_cons_lock_0"}
-//CHECK:     %[[VAL_7:.*]] = aie.lock(%[[VAL_0:.*]], 0) {init = 1 : i32, sym_name = "of1_prod_lock_0"}
-//CHECK:     %[[VAL_8:.*]] = aie.lock(%[[VAL_0:.*]], 1) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 //CHECK:     aie.flow(%[[VAL_0:.*]], DMA : 0, %[[VAL_1]], DMA : 0)
 //CHECK:     %[[VAL_11:.*]] = aie.mem(%[[VAL_1]]) {
 //CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
