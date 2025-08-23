@@ -3811,8 +3811,9 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
   Option<std::string> targetBackend{
@@ -3830,7 +3831,7 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     auto aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string targetStr = aieTarget;
-      if (targetStr == "aieml" || targetStr == "aie2")
+      if (targetStr == "aieml" || targetStr == "aie2" || targetStr == "aie2p")
         aieVersion = AIEArch::AIE2;
       else if (targetStr != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";

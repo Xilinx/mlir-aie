@@ -53,7 +53,7 @@ static TargetBackend decodeTargetBackend(const std::string &backend) {
 
 static AIEArch decodeAIETarget(const std::string &target) {
   if (!target.empty()) {
-    if (target == "aieml" || target == "aie2")
+    if (target == "aieml" || target == "aie2" || target == "aie2p")
       return AIEArch::AIE2;
     if (target != "aie")
       return AIEArch::UNKNOWN;
@@ -938,8 +938,9 @@ struct CanonicalizeVectorForAIEVecPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
   Option<std::string> targetBackend{
