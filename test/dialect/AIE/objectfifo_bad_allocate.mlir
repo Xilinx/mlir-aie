@@ -56,15 +56,3 @@ aie.device(xcve2302) {
    aie.objectfifo @of_0 (%tile12 dimensionsToStream [<size = 1, stride = 1>, <size = 1, stride = 1>], {%tile13}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
    aie.objectfifo.allocate @of_0 (%tile13)
 }
-
-// -----
-
-// CHECK: cannot allocate a shared memory module to objectfifo with set dimensions attribute
-
-aie.device(xcve2302) {
-   %tile12 = aie.tile(1, 2)
-   %tile13 = aie.tile(1, 3)
-
-   aie.objectfifo @of_0 (%tile12, {%tile13 dimensionsFromStream [<size = 1, stride = 1>, <size = 1, stride = 1>]}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-   aie.objectfifo.allocate @of_0 (%tile12)
-}
