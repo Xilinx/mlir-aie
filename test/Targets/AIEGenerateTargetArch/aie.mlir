@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-translate --aie-generate-target-arch %s | FileCheck --match-full-lines %s
-// CHECK: AIE1
+// CHECK: AIE
 
 module {
   %01 = aie.tile(0, 1)
