@@ -17,4 +17,5 @@ add_mlir_translation_library(MLIRTargetAIEVecCpp
   MLIRAIEVecDialect
   MLIRIR
   MLIRSupport
+  AIE
 )
