@@ -1638,7 +1638,7 @@ struct AIEObjectFifoStatefulTransformPass
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex),
-                                        builder.getBoolAttr(plio));
+                                        builder.getBoolAttr(plio), nullptr);
   }
 
   /// Function used to verify that an objectfifo is present in at most one
