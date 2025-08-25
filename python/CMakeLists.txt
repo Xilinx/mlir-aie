@@ -26,6 +26,12 @@ declare_mlir_python_sources(AIEPythonSources.Util
     util.py
 )
 
+declare_mlir_python_sources(AIEPythonSources.Tools
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    tools/__init__.py
+)
+
 declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
@@ -34,7 +40,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/ml.py
     utils/trace.py
     utils/trace_events_enum.py
-    utils/compile.py
     utils/config.py
 )
 
@@ -93,13 +98,14 @@ install(
   DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/compiler/aiecc
 )
 
-# Note that compiler/ is not globbed but compiler/aiecc/
-# this is so that compiler/aiecc.py does not get distributed
+# Note that compiler/ is not globbed but compiler/aiecc/ and compiler/txn2mlir/
+# this is so that compiler/aiecc.py and compiler/txn2mlir.py do not get distributed
 # through this dir but actually through bin (see all the way at the bottom of this file)
 declare_mlir_python_sources(AIEPythonSources.Compiler
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     compiler/aiecc/*.py
+    compiler/txn2mlir/*.py
 )
 
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)

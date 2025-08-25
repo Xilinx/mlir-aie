@@ -1,24 +1,24 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-aie2_runtime_dir = ${AIEOPT_DIR}/aie_runtime_lib/AIE2
+aie2_runtime_dir = ${MLIR_AIE_DIR}/aie_runtime_lib/AIE2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 ifeq ($(devicename),npu2)
 VPATH :=${srcdir}/../../../aie_kernels/aie2p
-else 
+else
 VPATH :=${srcdir}/../../../aie_kernels/aie2
 endif
 
@@ -45,7 +45,7 @@ build/lut_based_ops.o: ${aie2_runtime_dir}/lut_based_ops.cpp
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -c $< -o ${@F}
 endif
 
-	
+
 build/softmax.o: ${VPATH}/softmax.cc
 	mkdir -p ${@D}
 ifeq ($(devicename),npu)
@@ -95,7 +95,7 @@ ${targetname}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
 ifeq ($(devicename),npu)
@@ -114,6 +114,6 @@ trace: ${targetname}.exe build/final_trace.xclbin
 	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_softmax.json
 	${srcdir}/../../utils/get_trace_summary.py --input trace_softmax.json
 
-clean: 
-	rm -rf build _build ${targetname}.exe 
+clean:
+	rm -rf build _build ${targetname}.exe
 
