@@ -216,6 +216,8 @@ struct AIEObjectFifoStatefulTransformPass
     return {};
   }
 
+  // TEST COMMENT
+
   // Return true if the objectFifo created by createOp requires a DMA to be set
   // up. This is the case if the tiles are not adjacent (no shared memory), if
   // the objectFifo broadcasts to multiple tiles, if one of the consumers or
@@ -1636,7 +1638,7 @@ struct AIEObjectFifoStatefulTransformPass
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex),
-                                        builder.getBoolAttr(plio));
+                                        builder.getBoolAttr(plio), nullptr);
   }
 
   /// Function used to verify that an objectfifo is present in at most one
