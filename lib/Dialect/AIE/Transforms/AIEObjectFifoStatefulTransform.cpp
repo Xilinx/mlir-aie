@@ -216,6 +216,8 @@ struct AIEObjectFifoStatefulTransformPass
     return {};
   }
 
+  // TEST COMMENT
+
   // Return true if the objectFifo created by createOp requires a DMA to be set
   // up. This is the case if the tiles are not adjacent (no shared memory), if
   // the objectFifo broadcasts to multiple tiles, if one of the consumers or
