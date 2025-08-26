@@ -676,8 +676,8 @@ build/post_conv2dk1_relu_xy_pool_padded_i8_ui8.o: bottleneck/bn_conv2dk1_relu${D
 build/post_L2_conv2dk1_relu_ui16_ui16_pad.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DPOSTL2_PAD -DUINT16_ACT -c $< -o ${@F}
 
-insts.bin: build/${MLIR_FILE}.mlir
-	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
+#insts.bin: build/${MLIR_FILE}.mlir
+#	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
 build/final_mobilenet.xclbin: build/${MLIR_FILE}.mlir $(OBJ)
 	mkdir -p ${@D}
@@ -696,11 +696,8 @@ trace_py_mobilenet: build/trace_mobilenet.xclbin build/${MLIR_FILE}_trace.mlir
 	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift 1 > trace_mbv4_full.json
 
-# clean:
-# 	rm -rf build *.elf* *.lst *.bif ${mlirFileName}.mlir.prj log .xclbin sim \
-# 		chess* *.o insts.bin \
-# 		*.log aie_partition.json *.bin BOOT.BIN _x test.exe
+shallow_clean:
+	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
+
 clean:
-	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim \
-		build/insts.bin \
-		build/*.log aie_partition.json build/*.bin build/BOOT.BIN _x build/test.exe
+	rm -rf build __pycache__

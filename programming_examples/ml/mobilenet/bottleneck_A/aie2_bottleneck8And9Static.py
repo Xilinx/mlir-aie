@@ -127,7 +127,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer8_1Out_ty,
             disable_synchronization=True,
         )
-        # self.of_act_bn8_1_2.allocate(self.L1Tile) # TODO
+        self.of_act_bn8_1_2.allocate(self.L1Tile) # TODO
         self.of_act_bn8_2_3 = object_fifo(
             self.bottleneckName + "_" + "act_bn8_2_3",
             self.computeTile,
@@ -136,7 +136,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer8_2Out_ty,
             disable_synchronization=True,
         )
-        # self.of_act_bn8_2_3.allocate(self.L1Tile) # TODO
+        self.of_act_bn8_2_3.allocate(self.L1Tile) # TODO
         self.of_act_bn8_bn9 = object_fifo(
             self.bottleneckName + "_" + "act_bn8_bn9",
             self.computeTile,
@@ -145,7 +145,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer8_3Out_ty,
             disable_synchronization=True,
         )
-        # self.of_act_bn8_bn9.allocate(self.L1Tile) # TODO
+        self.of_act_bn8_bn9.allocate(self.L1Tile) # TODO
         self.of_act_bn9_1_2 = object_fifo(
             self.bottleneckName + "_" + "act_bn9_1_2",
             self.computeTile,
@@ -154,7 +154,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer9_1Out_ty,
             disable_synchronization=True,
         )
-        # self.of_act_bn9_1_2.allocate(self.L1Tile) # TODO
+        self.of_act_bn9_1_2.allocate(self.L1Tile) # TODO
         self.of_act_bn9_2_3 = object_fifo(
             self.bottleneckName + "_" + "act_bn9_2_3",
             self.computeTile,
@@ -163,7 +163,7 @@ class bottleneckAFused_8and9:
             self.tensorLayer9_2Out_ty,
             disable_synchronization=True,
         )
-        # self.of_act_bn9_2_3.allocate(self.L1Tile) # TODO
+        self.of_act_bn9_2_3.allocate(self.L1Tile) # TODO
 
         # Compute tile
         @core(self.computeTile, self.objectArchiveName, False)
@@ -888,6 +888,15 @@ def mobilenetV3Bottleneck8And9(
         )
         tensorLayer9_3Out_ty = MemRefType.get((tensorOutW, 1, tensorL9_3OutC), int8_ty)
 
+        weightsAllLayers = (
+                tensorL8_1OutC * tensorL8_1InC
+                + 3 * 3 * tensorL8_2OutC * 1
+                + 1 * 1 * tensorL8_3OutC * tensorL8_3InC
+                + 1 * 1 * tensorL9_1OutC * tensorL9_1InC
+                + 3 * 3 * tensorL9_2OutC * 1
+                + 1 * 1 * tensorL9_3OutC * tensorL9_3InC
+        )
+
         weightsAllLayers_ty = MemRefType.get(
             (
                 tensorL8_1OutC * tensorL8_1InC
@@ -1011,19 +1020,33 @@ def mobilenetV3Bottleneck8And9(
             tensorLayer8_1In_ty,
             via_DMA=False,
         )
-        act_in.set_via_shared_mem(ObjectFifoPort.Produce)
+        # act_in.set_via_shared_mem(ObjectFifoPort.Produce)
+        act_in.allocate(ComputeTileForL1)
         # object_fifo_link(act_in_tmp, act_in)
 
         # wts
-        wts_OF_L3L2 = object_fifo(
-            "wts_OF_L3L2", ShimTile, ComputeTile, 1, weightsAllLayers_ty
+        # wts_OF_L3L2 = object_fifo(
+        #     "wts_OF_L3L2", ShimTile, ComputeTile, 1, weightsAllLayers_ty
+        # )
+        
+        file_path = "weights/"
+        wts_ary = np.fromfile(
+            file_path + "bn8_9_chain.txt", sep=",", dtype=np.int8
+        )
+
+        wts_OF_L3L2 = buffer(
+            ComputeTile, 
+            np.ndarray[(weightsAllLayers,), np.dtype[np.int8]], 
+            "wts_OF_L3L2",
+            initial_value=wts_ary,
         )
 
         # Output
         act_out = object_fifo(
             "act_out", ComputeTile, ComputeTileForL1, 2, tensorLayer9_3Out_ty
         )
-        act_out.set_via_shared_mem(ObjectFifoPort.Consume)
+        # act_out.set_via_shared_mem(ObjectFifoPort.Consume)
+        act_out.allocate(ComputeTileForL1)
         act_out_tmp = object_fifo(
             "act_out_tmp", ComputeTileForL1, [ShimTile], 2, tensorLayer9_3Out_ty
         )
@@ -1120,10 +1143,10 @@ def mobilenetV3Bottleneck8And9(
                 mem=outputToL3,
                 sizes=[1, 1, 1, activationsOutSize32b],
             )
-            npu_dma_memcpy_nd(
-                metadata="wts_OF_L3L2",
-                bd_id=1,
-                mem=weightsFromL3,
-                sizes=[1, 1, 1, totalWeightsSize32b],
-            )
+            # npu_dma_memcpy_nd(
+            #     metadata="wts_OF_L3L2",
+            #     bd_id=1,
+            #     mem=weightsFromL3,
+            #     sizes=[1, 1, 1, totalWeightsSize32b],
+            # )
             npu_sync(column=0, row=0, direction=0, channel=0)

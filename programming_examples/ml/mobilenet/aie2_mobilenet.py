@@ -969,7 +969,7 @@ class BottleneckBCore:
             4,
             b10_layer2_in,
         )
-        OF_b10_act_layer1_layer2.set_via_shared_mem(ObjectFifoPort.Consume)
+        # OF_b10_act_layer1_layer2.set_via_shared_mem(ObjectFifoPort.Consume) # TODO
         OF_b10_act_layer2_layer3 = object_fifo(
             "OF_b10_act_layer2_layer3",
             self.computeTileBN10_2,
@@ -998,7 +998,7 @@ class BottleneckBCore:
             4,
             b11_layer2_in,
         )
-        OF_b11_act_layer1_layer2.set_via_shared_mem(ObjectFifoPort.Consume)
+        # OF_b11_act_layer1_layer2.set_via_shared_mem(ObjectFifoPort.Consume) # TODO
         OF_b11_act_layer2_layer3 = object_fifo(
             "OF_b11_act_layer2_layer3",
             self.computeTileBN11_2,
@@ -5679,7 +5679,7 @@ def mobilenetV3_A_B(
         act_bn9_bn10 = object_fifo(
             "act_bn9_bn10", bn8_bn9_tile, bn10_tile_1, [1, 2], bn8_tensorLayer3Out_ty
         )  #  GAGAN: make it double buffered $
-        act_bn9_bn10.set_via_shared_mem(ObjectFifoPort.Consume)
+        # act_bn9_bn10.set_via_shared_mem(ObjectFifoPort.Consume) # TODO
         # act_bn9_bn10 = object_fifo("act_bn9_bn10", bn8_bn9_tile, bn10_tile_1, 1, bn8_tensorLayer3Out_ty)  # make it double buffered $
 
         # act_out = object_fifo("act_out", bn8_bn9_tile, [ShimTile10], 1, bn8_tensorLayer3Out_ty)

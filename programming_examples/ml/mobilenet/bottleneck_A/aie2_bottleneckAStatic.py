@@ -445,6 +445,7 @@ class bottleneckACoreStatic:
 
 def mobilenetV3BottleneckA(
     bottleneckName,
+    weights_file="bn1_after_weights_mem_fmt_final.txt",
     tileRowIndex=2,
     tileColIndex=0,
     tensorInW=112,
@@ -497,6 +498,11 @@ def mobilenetV3BottleneckA(
         )
         tensorLayer3Out_ty = MemRefType.get((tensorOutW, 1, tensorL3OutC), int8_ty)
 
+        weightsAllLayers_size = (
+            1 * 1 * tensorL1OutC * tensorL1InC
+            + 3 * 3 * tensorL2OutC * 1
+            + 1 * 1 * tensorL3OutC * tensorL3InC            
+        )
         weightsAllLayers_ty = MemRefType.get(
             (
                 1 * 1 * tensorL1OutC * tensorL1InC
@@ -593,8 +599,20 @@ def mobilenetV3BottleneckA(
         act_in = object_fifo("act_in", ShimTile, ComputeTile, 2, tensorLayer1In_ty)
 
         # wts
-        wts_OF_L3L1 = object_fifo(
-            "wts_OF_L3L1", ShimTile, ComputeTile, 1, weightsAllLayers_ty
+        # wts_OF_L3L1 = object_fifo(
+        #     "wts_OF_L3L1", ShimTile, ComputeTile, 1, weightsAllLayers_ty
+        # )
+
+        file_path = "weights/"
+        wts_ary = np.fromfile(
+            file_path + weights_file, sep=",", dtype=np.int8
+        )
+
+        weightsAllLayers = buffer(
+            ComputeTile,
+            np.ndarray[(weightsAllLayers_size,), np.dtype[np.int8]],
+            "weights",
+            initial_value=wts_ary,
         )
 
         # Output
@@ -611,11 +629,12 @@ def mobilenetV3BottleneckA(
             % (depthWiseStride, "skip" if (withSkip) else "")
         )
 
-        bottleneckACore(
+        bottleneckACoreStatic(
             bottleneckName,
             ComputeTile,
             act_in,
-            wts_OF_L3L1,
+            # wts_OF_L3L1,
+            weightsAllLayers,
             act_out,
             rtpComputeTile,
             objectArchiveName,
@@ -666,10 +685,10 @@ def mobilenetV3BottleneckA(
                 mem=outputToL3,
                 sizes=[1, 1, 1, activationsOutSize32b],
             )
-            npu_dma_memcpy_nd(
-                metadata="wts_OF_L3L1",
-                bd_id=1,
-                mem=weightsFromL3,
-                sizes=[1, 1, 1, totalWeightsSize32b],
-            )
+            # npu_dma_memcpy_nd(
+            #     metadata="wts_OF_L3L1",
+            #     bd_id=1,
+            #     mem=weightsFromL3,
+            #     sizes=[1, 1, 1, totalWeightsSize32b],
+            # )
             npu_sync(column=0, row=0, direction=0, channel=0)

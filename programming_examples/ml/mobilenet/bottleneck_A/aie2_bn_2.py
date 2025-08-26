@@ -5,7 +5,6 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-#from aie2_bottleneckA import mobilenetV3BottleneckA
 from aie2_bottleneckAStatic import mobilenetV3BottleneckA
 
 from aie.dialects.aie import *
@@ -13,23 +12,23 @@ from aie.extras.context import mlir_mod_ctx
 
 with mlir_mod_ctx() as ctx:
     mobilenetV3BottleneckA(
-        "bn1",
-        # weights_file="bn1_after_weights_mem_fmt_final.txt",
-        weights_file="bn1_chain.txt",
-        withSkip=False,
-        depthWiseStride=2,
-        tensorInW=112,
-        tensorInH=112,
-        tensorInC=16,
+        "bn2",
+        weights_file="bn2_chain.txt",
+        withSkip=True,
+        depthWiseStride=1,
+        tensorInW=56,
+        tensorInH=56,
+        tensorInC=24,
         tensorOutC=24,
-        depthWiseChannels=64,
-        scaleFactor1=8,
-        scaleFactor2=7,
-        scaleFactor3=9,
-    )  # bottleneck 1
-
+        depthWiseChannels=72,
+        scaleFactor1=9,
+        scaleFactor2=8,
+        scaleFactor3=10,
+        scaleFactorAdd=1,
+    )  # bottleneck 2
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)
     else:
         print(res)
+

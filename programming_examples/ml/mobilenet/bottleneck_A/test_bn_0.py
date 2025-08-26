@@ -15,7 +15,6 @@ import os
 import numpy as np
 from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
 import aie.utils.test as test_utils
-from dolphin import print_dolphin
 from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
 from brevitas.quant.fixed_point import (
     Int8ActPerTensorFixedPoint,
@@ -183,7 +182,9 @@ def main(opts):
         in_planes=bneck_0_InC2, bn0_expand=bneck_0_InC2, bn0_project=bneck_0_OutC3
     )
 
-    from utils import ExpandChannels
+    #import pathlib
+    sys.path.append("..")
+    from mb_utils import ExpandChannels
     from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
     import torchvision
     import torch.utils.data as data_utils
@@ -324,7 +325,7 @@ def main(opts):
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
-    from utils import convert_to_numpy
+    from mb_utils import convert_to_numpy
 
     golden = convert_to_numpy(golden_output)
     ofm_mem_fmt_out = convert_to_numpy(ofm_mem_fmt_out)
@@ -338,7 +339,6 @@ def main(opts):
         atol=1,
     ):
         print("\nPASS!\n")
-        print_dolphin()
         exit(0)
     else:
         print("\nFailed.\n")
