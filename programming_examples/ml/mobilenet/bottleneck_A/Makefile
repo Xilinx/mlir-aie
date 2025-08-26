@@ -13,7 +13,8 @@ VPATH := ${srcdir}/../../../../aie_kernels/aie2
 
 CHESS ?= true
 
-all: build/final_bn_0.xclbin
+#all: build/final_bn_0.xclbin
+all: build/final_bn_chain.xclbin
 
 #build/aie2_%.mlir: ${srcdir}/aie2_%.py ${srcdir}/aie2_bottleneckA.py ${srcdir}/aie2_bottleneck0.py ${srcdir}/aie2_bottleneck0And1.py ${srcdir}/aie2_bottleneck2And3.py
 #build/aie2_%.mlir: ${srcdir}/aie2_%.py ${srcdir}/aie2_bottleneckA.py ${srcdir}/aie2_bottleneck0Static.py ${srcdir}/aie2_bottleneck0And1.py ${srcdir}/aie2_bottleneck2And3.py
@@ -25,27 +26,27 @@ build/aie2_%.mlir: ${srcdir}/aie2_%.py ${srcdir}/aie2_bottleneckAStatic.py ${src
 # 	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
 # ****************************************************************************************
-# bn2
-build/bn2_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
-	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DINT8_ACT -DBN2 -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DINT8_ACT -DBN2 -c $< -o ${@F}
-endif
+# # bn2
+# build/bn2_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+# 	mkdir -p ${@D}
+# ifeq ($(CHESS), true)
+# 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DINT8_ACT -DBN2 -c $< -o ${@F}
+# else
+# 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DINT8_ACT -DBN2 -c $< -o ${@F}
+# endif
 
-# bn3
-build/bn3_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
-	mkdir -p ${@D}
-ifeq ($(CHESS), true)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DINT8_ACT -DBN3 -c $< -o ${@F}
-else
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DINT8_ACT -DBN3 -c $< -o ${@F}
-endif
+# # bn3
+# build/bn3_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+# 	mkdir -p ${@D}
+# ifeq ($(CHESS), true)
+# 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DINT8_ACT -DBN3 -c $< -o ${@F}
+# else
+# 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DINT8_ACT -DBN3 -c $< -o ${@F}
+# endif
 
-build/combined_bn2_bn3.a: build/conv2dk3_dw_stride1.o build/bn2_conv2dk1_fused_relu.o  build/conv2dk1_skip.o build/bn3_conv2dk1_fused_relu.o
-	mkdir -p ${@D}
-	ar rvs $@ $^ $(word 2,$^) $(word 3,$^) $(word 4,$^) $(word 5,$^)
+# build/combined_bn2_bn3.a: build/conv2dk3_dw_stride1.o build/bn2_conv2dk1_fused_relu.o  build/conv2dk1_skip.o build/bn3_conv2dk1_fused_relu.o
+# 	mkdir -p ${@D}
+# 	ar rvs $@ $^ $(word 2,$^) $(word 3,$^) $(word 4,$^) $(word 5,$^)
 
 # ****************************************************************************************
 
@@ -210,6 +211,9 @@ shallow_clean:
 
 clean:
 	rm -rf build __pycache__
+
+run_py: build/final_bn_chain.xclbin build/insts_bn_chain.bin build/aie2_bn_chain.mlir
+	${powershell} python3 ${srcdir}/test_bn_chain.py -x build/final_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE
 
 run_py_0: build/final_bn_0.xclbin build/insts_bn_0.bin build/aie2_bn_0.mlir
 	${powershell} python3 ${srcdir}/test_bn_0.py -x build/final_bn_0.xclbin -i build/insts_bn_0.bin -k MLIR_AIE

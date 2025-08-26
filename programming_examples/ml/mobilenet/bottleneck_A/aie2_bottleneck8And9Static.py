@@ -1100,6 +1100,14 @@ def mobilenetV3Bottleneck8And9(
             bn9_depthWiseStride,
             bn9_depthWiseChannels,
             tensorOutC,
+            scaleFactor8_1,
+            scaleFactor8_2,
+            scaleFactor8_3,
+            scaleFactorAdd8,
+            scaleFactor9_1,
+            scaleFactor9_2,
+            scaleFactor9_3,
+            scaleFactorAdd9,
         )
 
         # instruction stream generation

@@ -5,7 +5,8 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-from aie2_bottleneck8And9Static import mobilenetV3Bottleneck8And9
+ from aie2_bottleneck8And9Static import mobilenetV3Bottleneck8And9
+#from aie2_bottleneck8And9 import mobilenetV3Bottleneck8And9
 
 from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx

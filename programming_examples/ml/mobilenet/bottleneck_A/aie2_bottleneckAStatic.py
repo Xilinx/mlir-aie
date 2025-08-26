@@ -650,6 +650,10 @@ def mobilenetV3BottleneckA(
             depthWiseChannels,
             tensorOutC,
             withSkip,
+            scaleFactor1,
+            scaleFactor2,
+            scaleFactor3,
+            scaleFactorAdd,
         )
 
         # instruction stream generation
