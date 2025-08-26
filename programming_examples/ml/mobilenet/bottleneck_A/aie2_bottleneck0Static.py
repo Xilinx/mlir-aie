@@ -252,6 +252,7 @@ class bottleneckBN0Static:
 
 
 def mobilenetV3Bottleneck0(
+    weights_file="bn0_chain.txt",
     tileRowIndex=2,
     tileColIndex=0,
     tensorInW=112,
@@ -362,9 +363,7 @@ def mobilenetV3Bottleneck0(
         #         wts = list(reader)
         # wts_ary = numpy.array(wts, dtype=np.int8)
 
-        wts_ary = np.fromfile(
-            file_path + "bn0_after_weights_mem_fmt_final.txt", sep=",", dtype=np.int8
-        )
+        wts_ary = np.fromfile(file_path + weights_file, sep=",", dtype=np.int8)
 
         # file_path = "weights/bn0_layer2_after_weights_mem_fmt_final.txt"
         # wts_ary2 = np.fromfile(file_path, sep=",", dtype=np.int8)

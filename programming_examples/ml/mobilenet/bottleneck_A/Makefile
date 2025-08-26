@@ -122,19 +122,35 @@ build/combined_conv2dk3dwstride1_conv2dk1skip.a: build/conv2dk3_dw_stride1.o bui
 # bn8
 build/bn8_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN8 -DINT8_ACT -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DSCALAR -DBN8 -DINT8_ACT -c $< -o ${@F}
+endif
 
 build/bn8_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN8 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBN8 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
+endif
 
 build/bn8_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN8 -DSCALAR -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBN8 -DSCALAR  -c $< -o ${@F}
+endif
 
 build/bn8_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8${DUMMY}.cc
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN8 -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DSCALAR -DBN8 -c $< -o ${@F}
+endif
 
 build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_i8.o 
 	mkdir -p ${@D}
@@ -143,14 +159,27 @@ build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn8_conv
 # bn9
 build/bn9_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu${DUMMY}.cc
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN9 -DINT8_ACT -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS}  -DSCALAR -DBN9 -DINT8_ACT -c $< -o ${@F}
+endif
 
 build/bn9_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw${DUMMY}.cc
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN9 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBN9 -DSCALAR -DSTRIDE1 -c $< -o ${@F}
+endif
+
 build/bn9_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip${DUMMY}.cc
 	mkdir -p ${@D}
+ifeq ($(CHESS), true)
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN9 -DSCALAR -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBN9 -DSCALAR -c $< -o ${@F}
+endif
 
 build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o 
 	mkdir -p ${@D}

@@ -12,20 +12,20 @@ from aie.extras.context import mlir_mod_ctx
 
 with mlir_mod_ctx() as ctx:
     mobilenetV3BottleneckA(
-        "bn2",
-        weights_file="bn2_chain.txt",
-        withSkip=True,
-        depthWiseStride=1,
+        "bn3",
+        weights_file="bn3_chain.txt",
+        withSkip=False,
+        depthWiseStride=2,
         tensorInW=56,
         tensorInH=56,
         tensorInC=24,
-        tensorOutC=24,
+        tensorOutC=40,
         depthWiseChannels=72,
-        scaleFactor1=9,
+        scaleFactor1=8,
         scaleFactor2=8,
-        scaleFactor3=10,
-        scaleFactorAdd=1,
-    )  # bottleneck 2
+        scaleFactor3=11,
+    )  # bottleneck 3
+
     res = ctx.module.operation.verify()
     if res == True:
         print(ctx.module)

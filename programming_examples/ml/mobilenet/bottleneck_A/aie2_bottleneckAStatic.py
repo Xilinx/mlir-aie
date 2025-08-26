@@ -445,7 +445,7 @@ class bottleneckACoreStatic:
 
 def mobilenetV3BottleneckA(
     bottleneckName,
-    weights_file="bn1_after_weights_mem_fmt_final.txt",
+    weights_file="bn1_chain.txt",
     tileRowIndex=2,
     tileColIndex=0,
     tensorInW=112,
@@ -501,7 +501,7 @@ def mobilenetV3BottleneckA(
         weightsAllLayers_size = (
             1 * 1 * tensorL1OutC * tensorL1InC
             + 3 * 3 * tensorL2OutC * 1
-            + 1 * 1 * tensorL3OutC * tensorL3InC            
+            + 1 * 1 * tensorL3OutC * tensorL3InC
         )
         weightsAllLayers_ty = MemRefType.get(
             (
@@ -604,9 +604,7 @@ def mobilenetV3BottleneckA(
         # )
 
         file_path = "weights/"
-        wts_ary = np.fromfile(
-            file_path + weights_file, sep=",", dtype=np.int8
-        )
+        wts_ary = np.fromfile(file_path + weights_file, sep=",", dtype=np.int8)
 
         weightsAllLayers = buffer(
             ComputeTile,

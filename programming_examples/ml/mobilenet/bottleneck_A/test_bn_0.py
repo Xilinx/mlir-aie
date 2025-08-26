@@ -182,7 +182,7 @@ def main(opts):
         in_planes=bneck_0_InC2, bn0_expand=bneck_0_InC2, bn0_project=bneck_0_OutC3
     )
 
-    #import pathlib
+    # import pathlib
     sys.path.append("..")
     from mb_utils import ExpandChannels
     from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate

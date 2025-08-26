@@ -2686,7 +2686,9 @@ def main(opts):
     # print("\nMax NPU time: {}us.".format(int((npu_time_max) / 1000)))
     golden = convert_to_numpy(padded_golden_output)
     ofm_mem_fmt_out = convert_to_numpy(ofm_mem_fmt_out)
-    max_difference = np.max(np.abs((golden.astype(int)) - (ofm_mem_fmt_out.astype(int))))
+    max_difference = np.max(
+        np.abs((golden.astype(int)) - (ofm_mem_fmt_out.astype(int)))
+    )
     print("max_difference:", max_difference)
     # Find the indices where the mismatch happens
     # Find the indices where the mismatch happens
@@ -2716,7 +2718,7 @@ def main(opts):
         ofm_mem_fmt_out,
         golden_output,
         rtol=0,
-        #atol=3,
+        # atol=3,
         atol=9,
     ):
         print("\nPASS!\n")

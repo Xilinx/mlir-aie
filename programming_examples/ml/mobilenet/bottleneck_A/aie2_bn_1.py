@@ -5,7 +5,7 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-#from aie2_bottleneckA import mobilenetV3BottleneckA
+# from aie2_bottleneckA import mobilenetV3BottleneckA
 from aie2_bottleneckAStatic import mobilenetV3BottleneckA
 
 from aie.dialects.aie import *
@@ -14,7 +14,6 @@ from aie.extras.context import mlir_mod_ctx
 with mlir_mod_ctx() as ctx:
     mobilenetV3BottleneckA(
         "bn1",
-        # weights_file="bn1_after_weights_mem_fmt_final.txt",
         weights_file="bn1_chain.txt",
         withSkip=False,
         depthWiseStride=2,
