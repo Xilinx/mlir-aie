@@ -34,10 +34,10 @@ BUILD_DIR=${2:-"build"}
 INSTALL_DIR=${3:-"install"}
 BUILD_TARGET=${4:-"x86_64"}
 LLVM_ENABLE_RTTI=${LLVM_ENABLE_RTTI:OFF}
-if [ ! -z LibXAIE_x86_64_DIR ]; then
+if [ ! -z "${LibXAIE_x86_64_DIR}" ]; then
   MAYBE_LIBXAIE_DEF="-DLibXAIE_x86_64_DIR=${LibXAIE_x86_64_DIR}"
 fi
-if [ ! -z LibXAIE_aarch64_DIR ]; then
+if [ ! -z "${LibXAIE_aarch64_DIR}" ]; then
   MAYBE_LIBXAIE_DEF+=" -DLibXAIE_aarch64_DIR=${LibXAIE_aarch64_DIR}"
 fi
 BUILD_TYPE="${BUILD_TYPE:-Release}"
