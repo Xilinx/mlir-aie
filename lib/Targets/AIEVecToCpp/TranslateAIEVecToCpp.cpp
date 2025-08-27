@@ -13,7 +13,6 @@
 
 #include "aie/Targets/AIETargets.h"
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/AIE1/IR/AIEVecAIE1Ops.h"
 #include "aie/Dialect/AIEVec/AIEVecUtils.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
@@ -2654,32 +2653,6 @@ static LogicalResult printOperation(CppEmitter &emitter, ModuleOp moduleOp) {
 }
 
 static LogicalResult printOperation(CppEmitter &emitter,
-                                    AIE::DeviceOp deviceOp) {
-  CppEmitter::Scope scope(emitter);
-  raw_indented_ostream &os = emitter.ostream();
-
-  // Emit device as a comment with device type
-  os << "aie.device(" << deviceOp.getDevice() << ") {\n";
-  os.indent();
-
-  // Process all operations within the device's body region
-  Region &region = deviceOp.getBodyRegion();
-  for (Block &block : region.getBlocks()) {
-    for (Operation &op : block.getOperations()) {
-      // Skip terminator operations (like aie.end)
-      if (op.hasTrait<OpTrait::IsTerminator>())
-        continue;
-
-      if (failed(emitter.emitOperation(op, /*trailingSemicolon=*/false)))
-        return failure();
-    }
-  }
-
-  os.unindent() << "}\n";
-  return success();
-}
-
-static LogicalResult printOperation(CppEmitter &emitter,
                                     func::FuncOp functionOp) {
   // We need to declare variables at top if the function has multiple blocks.
   if (!emitter.shouldDeclareVariablesAtTop() &&
@@ -3323,9 +3296,6 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 MulConvOp, FMAConvOp, ShiftOp, ShuffleOp, CastOp, MinOp, MaxOp,
                 NegOp, CmpOp, SelOp, ExtElemOp, BxorOp, BnegOp, BandOp, BorOp,
                 UnpackOp, MatMulOp, LegacyShuffleOp>(
-              [&](auto op) { return printOperation(*this, op); })
-          // AIE dialect ops.
-          .Case<AIE::DeviceOp>(
               [&](auto op) { return printOperation(*this, op); })
           .Default([&](Operation *) {
             return op.emitOpError("unable to find printer for op");
