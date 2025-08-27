@@ -436,6 +436,17 @@ def drop_alignment_for_peano(llvmir):
     return llvmir
 
 
+def get_peano_target(aie_target):
+    if not re.fullmatch("AIE.?.?", aie_target):
+        print(
+            "Unexpected target " + aie_target + ". Exiting...",
+            file=sys.stderr,
+        )
+        exit(-3)
+    aie_peano_target = aie_target.lower() + "-none-unknown-elf"
+    return (aie_target, aie_peano_target)
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -1325,7 +1336,7 @@ class FlowRunner:
 
         print("Simulation generated...")
         print("To run simulation: " + sim_script)
-
+    
     async def get_aie_target_for_device(self, mlir_input_file, device_name):
         t = do_run(
             [
@@ -1338,16 +1349,8 @@ class FlowRunner:
             self.opts.verbose,
         )
         aie_target = t.stdout.strip()
-        if not re.fullmatch("AIE.?.?", aie_target):
-            print(
-                "Unexpected target " + aie_target + ". Exiting...",
-                file=sys.stderr,
-            )
-            exit(-3)
-        aie_peano_target = aie_target.lower() + "-none-unknown-elf"
-
-        return (aie_target, aie_peano_target)
-
+        return (aie_target, get_peano_target(aie_target))
+    
     async def run_flow(self):
         # First, we run some aie-opt passes that transform the MLIR for every
         # device. Then, we generate the core code for each AIE core tile in
@@ -1383,6 +1386,9 @@ class FlowRunner:
                 progress_bar.task = None
 
             devices = generate_devices_list(module)
+            if len(devices) == 0:
+                print("error: input MLIR must contain at least one aie.device")
+                sys.exit(1)
             aie_targets, aie_peano_targets = [], []
             for (device_op, device_name) in devices:
                 aie_target, aie_peano_target = await self.get_aie_target_for_device(opts.filename, device_name)
