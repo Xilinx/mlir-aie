@@ -1361,9 +1361,9 @@ TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 bool CoreOp::isEmpty() {
   Region &body = getBody();
   // Return iff. core body contains exactly one block with exactly one AIE.EndOp
-  return (!body.hasOneBlock()
-      || body.front().getOperations().size() != 1
-      || !llvm::isa<AIE::EndOp>(body.front().front()));
+  return (body.hasOneBlock()
+      && body.front().getOperations().size() == 1
+      && llvm::isa<AIE::EndOp>(body.front().front()));
 }
 
 
