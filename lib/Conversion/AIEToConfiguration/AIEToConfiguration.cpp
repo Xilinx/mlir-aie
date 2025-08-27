@@ -393,6 +393,7 @@ static LogicalResult convertTransactionOpsToMLIR(
   seq.getBody().push_back(new Block);
 
   // create the txn ops
+  builder.setInsertionPointToStart(&seq.getBody().front());
   if (outputType == OutputType::Transaction) {
     if (failed(emitTransactionOps(builder, operations, global_data)))
       return failure();
