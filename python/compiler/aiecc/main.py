@@ -1228,25 +1228,6 @@ class FlowRunner:
             else:
                 progress_bar.task = None
 
-<<<<<<< HEAD
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.alloc_scheme,
-                opts.dynamic_objFifos,
-                opts.packet_sw_objFifos,
-                opts.ctrl_pkt_overlay,
-            ).materialize(module=True)
-
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            run_passes(
-                pass_pipeline,
-                self.mlir_module_str,
-                file_with_addresses,
-                self.opts.verbose,
-            )
-
-            cores = generate_cores_list(await read_file_async(file_with_addresses))
-=======
->>>>>>> 237c0f94e88760b60a4b01a2e927d88e419b503f
             t = do_run(
                 [
                     "aie-translate",
@@ -1267,6 +1248,7 @@ class FlowRunner:
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
                 opts.alloc_scheme,
                 opts.dynamic_objFifos,
+                opts.packet_sw_objFifos,
                 opts.ctrl_pkt_overlay,
                 aie_target,
             ).materialize(module=True)
