@@ -393,7 +393,9 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
              << "  __mlir_aie_try(XAie_LockRelease(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0));\n";
       if (auto coreOp = tileOp.getCoreOp()) {
-        if (coreOp.isEmpty()) {
+        if (coreOp.isEmpty() && coreOp.getElfFile() == std::nullopt) {
+          // This core has no MLIR code and references no ELF file -- it is
+          // completely empty, so don't generate any code for it.
           continue;
         }
         std::string fileName;

@@ -815,7 +815,8 @@ class FlowRunner:
                     "--aie-ctrlpkt-to-bin",
                     "--aie-device-name",
                     device_name,
-                    '--aie-sequence-name="configure"',
+                    '--aie-sequence-name',
+                    'configure',
                     self.prepend_tmp("ctrlpkt.mlir"),
                     "-o",
                     "ctrlpkt.bin",
@@ -835,7 +836,8 @@ class FlowRunner:
                     "--aie-npu-to-binary",
                     "--aie-device-name",
                     device_name,
-                    '--aie-sequence-name="configure"',
+                    '--aie-sequence-name',
+                    'configure',
                     self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
                     "-o",
                     "ctrlpkt_dma_seq.bin",
@@ -877,7 +879,7 @@ class FlowRunner:
             ],
         )
         if opts.pdi:
-            tmp = file_design_pdi,
+            tmp = file_design_pdi
             if opts.verbose:
                 print(f"copy {tmp} to {opts.pdi_name.format(device_name)}")
             shutil.copy(tmp, opts.pdi_name.format(device_name))
