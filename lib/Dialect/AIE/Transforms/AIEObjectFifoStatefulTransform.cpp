@@ -1884,7 +1884,8 @@ struct AIEObjectFifoStatefulTransformPass
     std::map<ObjectFifoCreateOp, int> fifo_dma_channel_index;
 
     // assign channel indices for FIFOs with cross-tile issues first
-    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, true);
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
+                            true);
     // then assign channel indices for FIFOs without cross-tile issues
     assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
                             false);
