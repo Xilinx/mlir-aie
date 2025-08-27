@@ -1894,9 +1894,6 @@ struct AIEObjectFifoStatefulTransformPass
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
 
-    // analyze cross-tile buffer allocations and print results
-    auto crossTileInfos = analyzeCrossTileFIFOBuffers();
-
     // maps ends of split FIFO to DMA channels
     std::map<ObjectFifoCreateOp, int> fifo_dma_channel_index;
 
