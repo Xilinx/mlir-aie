@@ -1871,35 +1871,20 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
-    // Analyze cross-tile buffer allocations and print results
-    auto crossTileInfos = analyzeCrossTileFIFOBuffers();
-
-    // assign DMA channels for FIFOs
-    // assign the channel index for fifos that has cross-tile issues first
-    // use dmaAnalysis.getDMAChannelIndex() to assign index (which internally
-    // loop over all of available channels and assign from 0 to maximum)
-    std::map<ObjectFifoCreateOp, int> fifo_dma_channel_index;
-
-    // Assign channel indices for FIFOs with cross-tile issues first
-    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
-                            true);
-
-    // Then assign channel indices for FIFOs without cross-tile issues
-    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
-                            false);
-
     //===------------------------------------------------------------------===//
     // Create flows and tile DMAs
     //===------------------------------------------------------------------===//
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
 
+    // analyze cross-tile buffer allocations and print results
+    auto crossTileInfos = analyzeCrossTileFIFOBuffers();
+
     // maps ends of split FIFO to DMA channels
     std::map<ObjectFifoCreateOp, int> fifo_dma_channel_index;
 
     // assign channel indices for FIFOs with cross-tile issues first
-    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
-                            true);
+    assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index, true);
     // then assign channel indices for FIFOs without cross-tile issues
     assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,
                             false);
