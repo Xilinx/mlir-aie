@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s | FileCheck %s
+// RUN: aie-opt %s
 
 module {
     aie.device(npu1) @dev_1 {

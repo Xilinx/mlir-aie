@@ -1057,7 +1057,11 @@ const AIETargetModel &DeviceOp::getTargetModel() {
 xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol) {
   DeviceOp deviceOp;
   if (!symbol.size()) {
-    deviceOp = *module.getOps<DeviceOp>().begin();
+    auto maybeDeviceOp = module.getOps<DeviceOp>().begin();
+    if(maybeDeviceOp == module.getOps<DeviceOp>().end()) {
+      return nullptr;
+    }
+    deviceOp = *maybeDeviceOp;
   } else {
     Operation *maybeDeviceOp = mlir::SymbolTable::lookupSymbolIn(module, symbol);
     if (!maybeDeviceOp) {
@@ -1341,11 +1345,8 @@ LogicalResult CoreOp::verify() {
     // If an ELF file is specified, no MLIR body is allowed (to remove
     // ambiguity); the ELF file will fully dictate what runs on the 
     // core and any MLIR would be ignored.
-    Region &body = getBody();
-    if (!body.hasOneBlock()
-        || body.front().getOperations().size() != 1 
-        || !llvm::isa<AIE::EndOp>(body.front().front())) {
-      return emitOpError("When `elf_file` attribute is specified, core body must consist of exactly one `aie.end` op.");
+    if (!isEmpty()) {
+      return emitOpError("When `elf_file` attribute is specified, core body must be empty (consist of exactly one `aie.end` op).");
     }
   }
   return success();
@@ -1356,6 +1357,15 @@ int CoreOp::colIndex() { return getTileOp().colIndex(); }
 int CoreOp::rowIndex() { return getTileOp().rowIndex(); }
 
 TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
+
+bool CoreOp::isEmpty() {
+  Region &body = getBody();
+  // Return iff. core body contains exactly one block with exactly one AIE.EndOp
+  return (!body.hasOneBlock()
+      || body.front().getOperations().size() != 1
+      || !llvm::isa<AIE::EndOp>(body.front().front()));
+}
+
 
 //===----------------------------------------------------------------------===//
 // BufferOp

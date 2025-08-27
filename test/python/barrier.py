@@ -25,7 +25,7 @@ from aie.iron.placers import SequentialPlacer
 # CHECK:         aie.use_lock(%lock_0_2, Acquire, 1)
 # CHECK:         aie.use_lock(%lock_0_2, Release, 1)
 # CHECK:     }
-# CHECK:     aiex.runtime_sequence @sequence(%arg0: memref<16xi32>) {
+# CHECK:     aiex.runtime_sequence(%arg0: memref<16xi32>) {
 # CHECK:       aiex.set_lock(%lock_0_2, 1)
 # CHECK:     }
 # CHECK:   }

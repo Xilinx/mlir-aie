@@ -393,6 +393,9 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
              << "  __mlir_aie_try(XAie_LockRelease(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0));\n";
       if (auto coreOp = tileOp.getCoreOp()) {
+        if (coreOp.isEmpty()) {
+          continue;
+        }
         std::string fileName;
         if (auto fileAttr = coreOp.getElfFile()) {
           fileName = fileAttr.value().str();

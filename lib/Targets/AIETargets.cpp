@@ -105,11 +105,11 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
 }
 
 LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output, llvm::StringRef deviceName) {
-  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
-  if (!targetOp) {
-    return failure();
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  AIEArch arch = AIEArch::AIE1;
+  if (targetOp) {
+    arch = targetOp.getTargetModel().getTargetArch();
   }
-  AIEArch arch = targetOp.getTargetModel().getTargetArch();
   if (arch == AIEArch::AIE1)
     output << "AIE\n";
   else

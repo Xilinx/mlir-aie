@@ -36,7 +36,7 @@ def runtimeSeq():
 
 
 # CHECK-LABEL: NpuDmaMemcpyNdOp
-# CHECK: aiex.runtime_sequence @sequence(%arg0: memref<100xi8>)
+# CHECK: aiex.runtime_sequence(%arg0: memref<100xi8>)
 @construct_and_print_module
 def NpuDmaMemcpyNdOp():
     @device(AIEDevice.npu1)

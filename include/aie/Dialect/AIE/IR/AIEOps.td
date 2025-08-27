@@ -373,6 +373,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     int colIndex();
     int rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
+    bool isEmpty();
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames;
   }];
