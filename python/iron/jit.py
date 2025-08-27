@@ -145,6 +145,7 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
         ExternalFunction._instances.clear()
+        # Create object file name to combine the partial object files into
         ExternalFunction._bin_name = function.__name__ + ".o"
 
         # Find ExternalFunction instances in arguments and kwargs
