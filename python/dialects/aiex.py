@@ -140,7 +140,7 @@ npu_dma_memcpy_nd = NpuDmaMemcpyNd
 def runtime_sequence(*inputs: Type, sym_name=None, context=None):
     def decorator(f):
         name = sym_name if sym_name else f.__name__
-        seq_op = RuntimeSequenceOp(name)
+        seq_op = RuntimeSequenceOp(sym_name=name)
         my_inputs = []
         for input in inputs:
             my_inputs.append(try_convert_np_type_to_mlir_type(input))
@@ -148,14 +148,6 @@ def runtime_sequence(*inputs: Type, sym_name=None, context=None):
         args = entry_block.arguments
         with InsertionPoint(entry_block):
             f(*args)
-        seq_op.attributes["sym_name"] = (
-            name
-            if (
-                isinstance(name, Attribute)
-                or not AttrBuilder.contains("SymbolNameAttr")
-            )
-            else AttrBuilder.get("SymbolNameAttr")(name, context=context)
-        )
 
     return decorator
 

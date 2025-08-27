@@ -1387,7 +1387,7 @@ class FlowRunner:
                 aie_targets.append(aie_target)
                 aie_peano_targets.append(aie_peano_target)
             
-            if len(targets) == 0 or not all(aie_target == aie_targets[0] for aie_target in aie_targets):
+            if len(aie_targets) == 0 or not all(aie_target == aie_targets[0] for aie_target in aie_targets):
                 print("error: all device targets in the file must be the same")  
                 # TODO: remove this restriction? currently only needed by AIEVec
                 sys.exit(1)
