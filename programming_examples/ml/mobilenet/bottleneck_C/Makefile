@@ -18,14 +18,16 @@ VPATH := ${srcdir}/../../../../aie_kernels/aie2
 # pythonSource=aie2_bn13bn14
 # pythonSource=aie2_bottleneckC
 # pythonSource=aie2_bottleneckC_large_wts
-pythonSource=aie2_bottleneckC_large_wts_static
-#pythonSource=aie2_bottleneckC_large_wts_static_2
+# pythonSource=aie2_bottleneckC_large_wts_static
+# pythonSource=aie2_bottleneckC_large_wts_static_2
+pythonSource=aie2_bottleneckC
 
 
 # testSource=test_layer2
 # testSource=test
-testSource=test_static
-#testSource=test_static_2
+# testSource=test_static
+# testSource=test_static_2
+ testSource=test_bottleneckC
 
 trace_size = 32768
 # DUMMY = _dummy
@@ -114,13 +116,13 @@ build/${mlirFileName}_trace.mlir: ${srcdir}/${pythonSource}.py
 #insts.bin: build/${mlirFileName}.mlir
 #	aiecc.py -v --aie-only-generate-npu --npu-insts-name=$@ $<
 
-build/final.xclbin: build/${mlirFileName}.mlir $(OBJ)
+build/final.xclbin build/insts.bin &: build/${mlirFileName}.mlir $(OBJ)
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-		--aie-generate-npu-insts --npu-insts-name=insts_$*.bin $(<F)
+		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<F)
 
-build/trace.xclbin: build/${mlirFileName}_trace.mlir $(OBJ)
+build/trace.xclbin build/insts_trace.bin &: build/${mlirFileName}_trace.mlir $(OBJ)
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-		--aie-generate-npu-insts --npu-insts-name=insts_$*.bin $(<F)
+		--aie-generate-npu-insts --npu-insts-name=insts_trace.bin $(<F)
 
 
 shallow_clean:
@@ -130,9 +132,9 @@ clean:
 	rm -rf build __pycache__
 
 
-run_py: build/final.xclbin ${srcdir}/${mlirFileName}.py
+run_py: build/final.xclbin build/${mlirFileName}.mlir
 	${powershell} python3 ${srcdir}/${testSource}.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
-trace_py: build/final.xclbin ${srcdir}/${mlirFileName}.py
-	${powershell} python3 ${srcdir}/${testSource}.py -x build/trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
+trace_py: build/trace.xclbin build/${mlirFileName}_trace.mlir
+	${powershell} python3 ${srcdir}/${testSource}.py -x build/trace.xclbin -i build/insts_trace.bin -k MLIR_AIE -t ${trace_size}
 	${srcdir}/../../../utils/parse_trace.py --filename trace.bin --mlir build/${mlirFileName}_trace.mlir --colshift 1 > trace_mbv4_C.json

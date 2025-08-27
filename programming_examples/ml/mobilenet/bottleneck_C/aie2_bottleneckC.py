@@ -147,10 +147,10 @@ class bottleneckCCore:
 
         bneck_13_InW1 = 7
         bneck_13_InH1 = 7
-        bneck_13_InC1 = 160
+        bneck_13_InC1 = 80
         bneck_13_OutC1 = 960
         InputSplit = 2
-        OutputSplit = 4  # split output channels based on your preference
+        OutputSplit = 2  # split output channels based on your preference
         OC8 = bneck_13_OutC1 // (8 * OutputSplit)  # how many loops of OC8
 
         bneck_13_InW2 = bneck_13_InW1
@@ -159,8 +159,8 @@ class bottleneckCCore:
 
         bneck_13_InW3 = bneck_13_InW2
         bneck_13_InH3 = bneck_13_InH2
-        bneck_13_OutC3 = 160
-        OutputSplit2 = 4  # calculate 8 OCs at a time, should bneck_13_InC1rease to more
+        bneck_13_OutC3 = 80
+        OutputSplit2 = 2  # calculate 8 OCs at a time, should bneck_13_InC1rease to more
         OC8_out = bneck_13_OutC3 // (8 * OutputSplit2)  # how many loops of OC8
 
         # second block
@@ -175,7 +175,7 @@ class bottleneckCCore:
 
         bneck_14_InW3 = bneck_14_InW2
         bneck_14_InH3 = bneck_14_InH2
-        bneck_14_OutC3 = 160
+        bneck_14_OutC3 = 80
 
         self.rtp_bn13_tile_layer1_get = _rtp_bn13_tile_layer1_get
         self.rtp_bn13_tile_layer3_get = _rtp_bn13_tile_layer3_get
@@ -1206,10 +1206,10 @@ def mobilenetV3_bn_13_14(
 
     bneck_13_InW1 = 7
     bneck_13_InH1 = 7
-    bneck_13_InC1 = 160
+    bneck_13_InC1 = 80
     bneck_13_OutC1 = 960
     InputSplit = 2
-    OutputSplit = 4  # split output channels based on your preference
+    OutputSplit = 2  # split output channels based on your preference
 
     RepeatChannels = math.floor(bneck_13_InH1)
 
@@ -1219,7 +1219,7 @@ def mobilenetV3_bn_13_14(
 
     bneck_13_InW3 = bneck_13_InW2
     bneck_13_InH3 = bneck_13_InH2
-    bneck_13_OutC3 = 160
+    bneck_13_OutC3 = 80
 
     # second block
     bneck_14_InW1 = bneck_13_InW1
@@ -1227,7 +1227,7 @@ def mobilenetV3_bn_13_14(
     bneck_14_InC1 = bneck_13_OutC3
     bneck_14_OutC1 = 960
 
-    OutputSplit2 = 4  # split output channels based on your preference
+    OutputSplit2 = 2  # split output channels based on your preference
 
     bneck_14_InW2 = bneck_14_InW1
     bneck_14_InH2 = bneck_14_InH1
@@ -1235,7 +1235,7 @@ def mobilenetV3_bn_13_14(
 
     bneck_14_InW3 = bneck_14_InW2
     bneck_14_InH3 = bneck_14_InH2
-    bneck_14_OutC3 = 160
+    bneck_14_OutC3 = 80
 
     @device(AIEDevice.npu2)
     def device_body():
@@ -1407,9 +1407,11 @@ def mobilenetV3_bn_13_14(
         MemTile01 = tile(0, 1)
         MemTile11 = tile(1, 1)
         MemTile21 = tile(2, 1)
+        MemTile31 = tile(3, 1)
 
         bn13_tile_layer1_put = tile(0, 5)
-        bn13_tile_layer1_get = tile(0, 4)
+        # bn13_tile_layer1_get = tile(0, 4)
+        bn13_tile_layer1_get = tile(1, 5)
         bn13_tile_layer2 = tile(1, 4)
         # ComputeTile15 = tile(1, 5)
 
@@ -1433,6 +1435,7 @@ def mobilenetV3_bn_13_14(
         # conv
         bn14_tile_layer3_put = tile(2, 5)  # put
         bn14_tile_layer3_get = tile(2, 4)  # get
+        # bn14_tile_layer3_get = tile(3, 5)  # get
         cascade_flow(bn14_tile_layer3_put, bn14_tile_layer3_get)
 
         # Input
@@ -1498,20 +1501,20 @@ def mobilenetV3_bn_13_14(
         bn13_wts_L3L2_layer3 = object_fifo(
             "bn13_wts_L3L2_layer3",
             ShimTile10,
-            MemTile01,
+            MemTile11,
             1,
             ty_bneck_13_layer3_wts_full,
         )
         bn13_wts_memtile_layer3_put = object_fifo(
             "bn13_wts_memtile_layer3_put",
-            MemTile01,
+            MemTile11,
             bn13_tile_layer3_put,
             1,
             ty_bneck_13_layer3_wts_split,
         )
         bn13_wts_memtile_layer3_get = object_fifo(
             "bn13_wts_memtile_layer3_get",
-            MemTile01,
+            MemTile11,
             bn13_tile_layer3_get,
             1,
             ty_bneck_13_layer3_wts_split,
@@ -1574,20 +1577,20 @@ def mobilenetV3_bn_13_14(
         bn14_wts_L3L2_layer3 = object_fifo(
             "bn14_wts_L3L2_layer3",
             ShimTile30,
-            MemTile21,
+            MemTile31,
             1,
             ty_bneck_14_layer3_wts_full,
         )
         bn14_wts_memtile_layer3_put = object_fifo(
             "bn14_wts_memtile_layer3_put",
-            MemTile21,
+            MemTile31,
             bn14_tile_layer3_put,
             [1, 1],
             ty_bneck_14_layer3_wts_split,
         )
         bn14_wts_memtile_layer3_get = object_fifo(
             "bn14_wts_memtile_layer3_get",
-            MemTile21,
+            MemTile31,
             bn14_tile_layer3_get,
             [1, 1],
             ty_bneck_14_layer3_wts_split,

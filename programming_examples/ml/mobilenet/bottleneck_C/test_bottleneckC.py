@@ -58,7 +58,7 @@ vectorSize = 8
 
 bneck_13_InW1 = 7
 bneck_13_InH1 = 7
-bneck_13_InC1 = 160
+bneck_13_InC1 = 80
 bneck_13_OutC1 = 960
 WeightChunks = 2  # 2 splits for input channel and then output
 
@@ -68,7 +68,7 @@ bneck_13_OutC2 = bneck_13_OutC1
 
 bneck_13_InW3 = bneck_13_InW1
 bneck_13_InH3 = bneck_13_InH1
-bneck_13_OutC3 = 160
+bneck_13_OutC3 = 80
 
 bneck_13_InC1_vec = math.floor(bneck_13_InC1 / vectorSize)
 bneck_13_OutC3_vec = math.floor(bneck_13_OutC3 / vectorSize)
@@ -342,7 +342,7 @@ def main(opts):
         bn14_expand=bneck_13_OutC2,
         bn14_project=bneck_13_OutC3,
     )
-   
+
     sys.path.append("..")
     from mb_utils import ExpandChannels
     from brevitas_examples.imagenet_classification.ptq.ptq_common import calibrate
@@ -394,13 +394,13 @@ def main(opts):
     block_13_skip_add = quant_bottleneck_model.bn13_add.act_quant.scale()
 
     block_13_weight_scale1 = (
-        quant_bottleneck_model.bn13_quant_conv1.quant_weight_scale()
+        quant_bottleneck_model.bn13_quant_conv1.weight_quant.scale()
     )
     block_13_weight_scale2 = (
-        quant_bottleneck_model.bn13_quant_conv2.quant_weight_scale()
+        quant_bottleneck_model.bn13_quant_conv2.weight_quant.scale()
     )
     block_13_weight_scale3 = (
-        quant_bottleneck_model.bn13_quant_conv3.quant_weight_scale()
+        quant_bottleneck_model.bn13_quant_conv3.weight_quant.scale()
     )
     block_13_combined_scale1 = -torch.log2(
         block_13_inp_scale1 * block_13_weight_scale1 / block_13_relu_1
@@ -420,13 +420,13 @@ def main(opts):
     block_14_skip_add = quant_bottleneck_model.bn14_add.act_quant.scale()
 
     block_14_weight_scale1 = (
-        quant_bottleneck_model.bn14_quant_conv1.quant_weight_scale()
+        quant_bottleneck_model.bn14_quant_conv1.weight_quant.scale()
     )
     block_14_weight_scale2 = (
-        quant_bottleneck_model.bn14_quant_conv2.quant_weight_scale()
+        quant_bottleneck_model.bn14_quant_conv2.weight_quant.scale()
     )
     block_14_weight_scale3 = (
-        quant_bottleneck_model.bn14_quant_conv3.quant_weight_scale()
+        quant_bottleneck_model.bn14_quant_conv3.weight_quant.scale()
     )
     block_14_combined_scale1 = -torch.log2(
         block_13_skip_add * block_14_weight_scale1 / block_14_relu_1
@@ -553,15 +553,15 @@ def main(opts):
         "OIYXI8O8",
         "OIYX",
     )
-    bn13_wts1.tofile(weight_folder + "/bn13_1_chain.txt", sep=",", format="%d")
-    bn13_wts2.tofile(weight_folder + "/bn13_2_chain.txt", sep=",", format="%d")
-    bn13_wts3_put.tofile(weight_folder + "/bn13_3_put_chain.txt", sep=",", format="%d")
-    bn13_wts3_get.tofile(weight_folder + "/bn13_3_get_chain.txt", sep=",", format="%d")
+    bn13_wts1.tofile(log_folder + "/bn13_1_chain.txt", sep=",", format="%d")
+    bn13_wts2.tofile(log_folder + "/bn13_2_chain.txt", sep=",", format="%d")
+    bn13_wts3_put.tofile(log_folder + "/bn13_3_put_chain.txt", sep=",", format="%d")
+    bn13_wts3_get.tofile(log_folder + "/bn13_3_get_chain.txt", sep=",", format="%d")
 
-    bn14_wts1.tofile(weight_folder + "/bn14_1_chain.txt", sep=",", format="%d")
-    bn14_wts2.tofile(weight_folder + "/bn14_2_chain.txt", sep=",", format="%d")
-    bn14_wts3_put.tofile(weight_folder + "/bn14_3_put_chain.txt", sep=",", format="%d")
-    bn14_wts3_get.tofile(weight_folder + "/bn14_3_get_chain.txt", sep=",", format="%d")
+    bn14_wts1.tofile(log_folder + "/bn14_1_chain.txt", sep=",", format="%d")
+    bn14_wts2.tofile(log_folder + "/bn14_2_chain.txt", sep=",", format="%d")
+    bn14_wts3_put.tofile(log_folder + "/bn14_3_put_chain.txt", sep=",", format="%d")
+    bn14_wts3_get.tofile(log_folder + "/bn14_3_get_chain.txt", sep=",", format="%d")
 
     total_wts = np.concatenate(
         (
