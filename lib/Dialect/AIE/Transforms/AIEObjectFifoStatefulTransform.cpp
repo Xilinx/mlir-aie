@@ -196,6 +196,26 @@ struct AIEObjectFifoStatefulTransformPass
     return leftShared || rightShared;
   }
 
+  /// Function to retrieve ObjectFifoAllocateOp of ObjectFifoCreateOp,
+  /// if it exists.
+  std::optional<ObjectFifoAllocateOp>
+  getOptionalAllocateOp(ObjectFifoCreateOp op) {
+    ObjectFifoAllocateOp allocOp;
+    auto device = op->getParentOfType<DeviceOp>();
+    bool foundAlloc = false;
+    for (ObjectFifoAllocateOp alloc : device.getOps<ObjectFifoAllocateOp>()) {
+      if (alloc.getObjectFifo() == op) {
+        if (foundAlloc)
+          op.emitOpError("has more than one allocate operation");
+        allocOp = alloc;
+        foundAlloc = true;
+      }
+    }
+    if (foundAlloc)
+      return {allocOp};
+    return {};
+  }
+
   // Return true if the objectFifo created by createOp requires a DMA to be set
   // up. This is the case if the tiles are not adjacent (no shared memory), if
   // the objectFifo broadcasts to multiple tiles, if one of the consumers or
@@ -254,7 +274,6 @@ struct AIEObjectFifoStatefulTransformPass
     if (hasSharedMemory) {
       if (auto linkOp = getOptionalLinkOp(createOp)) {
         isUsedInLinkOp = true;
-        int share_dir = 0;
         if (!linkOp->isDistribute() && !linkOp->isJoin()) {
           auto fifoInType = llvm::cast<AIEObjectFifoType>(
               linkOp->getInputObjectFifos()[0].getElemType());
@@ -269,9 +288,18 @@ struct AIEObjectFifoStatefulTransformPass
             // memory without DMAs
             splitBecauseLink.push_back(createOp);
           }
-          if (createOp.getViaSharedMem().has_value()) {
-            checkAndApplyViaSharedMemAttribute(createOp, share_dir);
-            if (share_direction == share_dir)
+          std::optional<ObjectFifoAllocateOp> opAlloc =
+              getOptionalAllocateOp(createOp);
+          if (opAlloc.has_value()) {
+            TileOp delegate = opAlloc->getDelegateTileOp();
+            int prodShareDir;
+            int consShareDir;
+            auto consumerTileOp = dyn_cast<TileOp>(
+                createOp.getConsumerTiles()[0].getDefiningOp());
+            isSharedMemory(delegate, createOp.getProducerTileOp(),
+                           &prodShareDir);
+            isSharedMemory(delegate, consumerTileOp, &consShareDir);
+            if (prodShareDir == -1 && consShareDir == -1)
               isUsedInLinkOp = false;
             else
               splitBecauseLink.push_back(createOp);
@@ -284,43 +312,6 @@ struct AIEObjectFifoStatefulTransformPass
 
     return !hasSharedMemory || atLeastOneConsumerWantsTransform ||
            isUsedInLinkOp;
-  }
-
-  // Checks if via_shared_mem attribute of the objectfifo is set and if so
-  // tries to apply it. If the desired shared memory module is available to
-  // both producer and consumer then it will be used, otherwise an error is
-  // emitted.
-  void checkAndApplyViaSharedMemAttribute(ObjectFifoCreateOp createOp,
-                                          int &share_direction) {
-    if (createOp.getViaSharedMem().has_value()) {
-      int desiredSharedTile = createOp.getViaSharedMem().value();
-      int desiredSharedModule = 1;
-      if (desiredSharedTile == 0)
-        desiredSharedModule = -1;
-      if (share_direction != desiredSharedModule) {
-        bool desiredSharedModuleIsShared = false;
-        int newShareDirection = 0;
-        for (auto consumerTile : createOp.getConsumerTiles()) {
-          if (auto consumerTileOp =
-                  dyn_cast<TileOp>(consumerTile.getDefiningOp()))
-            if (share_direction == -1)
-              ///   * -1 if the shared memory module is that of the first input
-              ///   tile,
-              ///   * 1 if it is that of the second input tile
-              desiredSharedModuleIsShared =
-                  isSharedMemory(consumerTileOp, createOp.getProducerTileOp(),
-                                 &newShareDirection);
-        }
-        if (desiredSharedModuleIsShared) {
-          if (share_direction == newShareDirection)
-            share_direction = (share_direction == -1) ? 1 : -1;
-          else
-            createOp->emitOpError(
-                "no access to shared memory module specified by "
-                "`via_shared_mem`");
-        }
-      }
-    }
   }
 
   /// Function to retrieve ObjectFifoLinkOp of ObjectFifoCreateOp,
@@ -366,7 +357,7 @@ struct AIEObjectFifoStatefulTransformPass
     // if shimTile external buffers are collected from input code
     // create as many locks as there are external buffers
     if (creation_tile.isShimTile()) {
-      numElem = 1;
+      numElem = 0;
       if (!externalBuffersPerFifo[op].empty())
         numElem = externalBuffersPerFifo[op].size();
     }
@@ -602,12 +593,25 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     TileOp creation_tile;
+    auto consumerTileOp =
+        dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
     if (share_direction == 0 || share_direction == -1)
       creation_tile = op.getProducerTileOp();
-    else {
-      auto consumerTileOp =
-          dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
+    else
       creation_tile = consumerTileOp;
+
+    std::optional<ObjectFifoAllocateOp> opAlloc = getOptionalAllocateOp(op);
+    if (opAlloc.has_value()) {
+      TileOp delegate = opAlloc->getDelegateTileOp();
+      int prodShareDir;
+      int consShareDir;
+      isSharedMemory(delegate, op.getProducerTileOp(), &prodShareDir);
+      isSharedMemory(delegate, consumerTileOp, &consShareDir);
+      if (prodShareDir == -1 && consShareDir == -1)
+        creation_tile = delegate;
+      else
+        opAlloc->emitOpError("objectfifo has no shared memory access to "
+                             "delegate tile's memory module");
     }
 
     // Reset opbuilder location to after the last tile declaration
@@ -1820,17 +1824,9 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
-
-        checkAndApplyViaSharedMemAttribute(createOp, share_direction);
         createObjectFifoElements(builder, lockAnalysis, createOp,
                                  share_direction);
       } else {
-
-        if (createOp.getViaSharedMem().has_value())
-          createOp->emitOpError(
-              "no access to shared memory module specified by "
-              "`via_shared_mem`");
-
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
               builder.getI32IntegerAttr(createOp.size()));
@@ -2181,7 +2177,8 @@ struct AIEObjectFifoStatefulTransformPass
     device.walk([&](Operation *op) {
       if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp,
               ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,
-              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp>(op))
+              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp,
+              ObjectFifoAllocateOp>(op))
         opsToErase.insert(op);
     });
     SmallVector<Operation *> sorted{opsToErase.begin(), opsToErase.end()};

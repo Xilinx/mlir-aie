@@ -35,31 +35,48 @@ from aie.dialects import aiex as aiexdialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overlay: (
-    Pipeline()
-    .lower_affine()
-    .add_pass("aie-canonicalize-device")
-    .Nested(
-        "aie.device",
-        Pipeline()
-        .add_pass("aie-assign-lock-ids")
-        .add_pass("aie-register-objectFifos")
-        .add_pass(
-            "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+
+def _create_input_with_addresses_pipeline(
+    scheme, dynamic_objFifos, ctrl_pkt_overlay, aie_target
+):
+    pipeline = Pipeline()
+
+    # Only add convert-vector-to-aievec for AIE2 and later targets
+    # AIE1 ("aie") does not support target_backend="llvmir"
+    if aie_target.lower() in ["aie2", "aieml", "aie2p"]:
+        pipeline.add_pass(
+            "convert-vector-to-aievec",
+            aie_target=aie_target.lower(),
+            target_backend="llvmir",
         )
-        .add_pass("aie-assign-bd-ids")
-        .add_pass("aie-lower-cascade-flows")
-        .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-tile-controller-ids")
-        .add_pass(
-            "aie-generate-column-control-overlay",
-            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+
+    return (
+        pipeline.lower_affine()
+        .add_pass("aie-canonicalize-device")
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-assign-lock-ids")
+            .add_pass("aie-register-objectFifos")
+            .add_pass(
+                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+            )
+            .add_pass("aie-assign-bd-ids")
+            .add_pass("aie-lower-cascade-flows")
+            .add_pass("aie-lower-broadcast-packet")
+            .add_pass("aie-lower-multicast")
+            .add_pass("aie-assign-tile-controller-ids")
+            .add_pass(
+                "aie-generate-column-control-overlay",
+                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+            )
+            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
         )
-        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
+        .convert_scf_to_cf()
     )
-    .convert_scf_to_cf()
-)
+
+
+INPUT_WITH_ADDRESSES_PIPELINE = _create_input_with_addresses_pipeline
 
 LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
@@ -91,6 +108,7 @@ AIE_LOWER_TO_LLVM = (
         )
         .add_pass("aie-standard-lowering", device=device_name, tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
+        .add_pass("convert-aievec-to-llvm")
     )
     + LOWER_TO_LLVM_PIPELINE
 )
@@ -412,6 +430,12 @@ def downgrade_ir_for_peano(llvmir):
     return llvmir
 
 
+def drop_alignment_for_peano(llvmir):
+    # Remove any ", align <integer>" attribute occurrences
+    llvmir = re.sub(r",\s*align\s+\d+", "", llvmir)
+    return llvmir
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -517,6 +541,7 @@ class FlowRunner:
 
         llvmir_ir = await read_file_async(llvmir)
         llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        llvmir_hacked_ir = drop_alignment_for_peano(llvmir_hacked_ir)
         await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
 
         return llvmir_peanohack
@@ -1355,8 +1380,24 @@ class FlowRunner:
             else:
                 progress_bar.task = None
 
+            devices = generate_devices_list(module)
+            aie_targets, aie_peano_targets = [], []
+            for (device_op, device_name) in devices:
+                aie_target, aie_peano_target = await self.get_aie_target_for_device(opts.filename, device_name)
+                aie_targets.append(aie_target)
+                aie_peano_targets.append(aie_peano_target)
+            
+            if len(targets) == 0 or not all(aie_target == aie_targets[0] for aie_target in aie_targets):
+                print("error: all device targets in the file must be the same")  
+                # TODO: remove this restriction? currently only needed by AIEVec
+                sys.exit(1)
+            aie_target, aie_peano_target = aie_targets[0], aie_peano_targets[0]
+
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
+                opts.alloc_scheme, 
+                opts.dynamic_objFifos, 
+                opts.ctrl_pkt_overlay,
+                aie_target
             ).materialize(module=True)
 
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
@@ -1387,10 +1428,9 @@ class FlowRunner:
             # 2.) Generate code for each core
 
             # create core ELF files for each device and core
-            devices = generate_devices_list(module)
             elf_paths = {}
-            for (device_op, device_name) in devices:
-                aie_target, aie_peano_target = await self.get_aie_target_for_device(input_physical, device_name)
+            for i, (device_op, device_name) in enumerate(devices):
+                aie_target, aie_peano_target = aie_targets[i], aie_peano_targets[i]
                 elf_paths[device_name] = await self.process_cores(device_op, device_name, file_with_addresses, aie_target, aie_peano_target)
             input_physical_with_elfs = await self.write_elf_paths_to_mlir(input_physical, elf_paths)
 
@@ -1570,6 +1610,13 @@ def run(mlir_module, args=None):
         pass
     if opts.verbose:
         print("created temporary directory", tmpdirname)
+
+    # Create a temporary file holding the input ir, if opts.filename is None.
+    if opts.filename == None:
+        tmpinput_path = os.path.join(tmpdirname, "tmpinput.mlir")
+        with open(tmpinput_path, "w") as f:
+            f.write(str(mlir_module))
+        opts.filename = tmpinput_path
 
     runner = FlowRunner(str(mlir_module), opts, tmpdirname)
     asyncio.run(runner.run_flow())
