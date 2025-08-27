@@ -444,7 +444,7 @@ def get_peano_target(aie_target):
         )
         exit(-3)
     aie_peano_target = aie_target.lower() + "-none-unknown-elf"
-    return (aie_target, aie_peano_target)
+    return aie_peano_target
 
 
 class FlowRunner:
