@@ -50,13 +50,11 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     find_package(LibXAIE REQUIRED)
     message(STATUS "FOUND LibXAIE: ${LibXAIE_FOUND}, XILINX_XAIE_LIB_DIR: ${XILINX_XAIE_LIB_DIR}, XILINX_XAIE_INCLUDE_DIR: ${XILINX_XAIE_INCLUDE_DIR}")
 
-  elseif (DEFINED VITIS_AIETOOLS_DIR)
-  
-    # if no LibXAIE_{target}_DIR specified, build xaiengine_${target} from Vitis
+  else()
     message("LibXAIE_${target}_DIR not specified: Building xaiengine for ${target} from aietools at ${VITIS_AIETOOLS_DIR}.") 
     set(LibXAIE_FOUND TRUE)
-    set(XILINX_XAIE_INCLUDE_DIR ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
-    set(XILINX_XAIE_LIBS ${VITIS_AIETOOLS_DIR}/lib/lnx64.o/libxaiengine.so)
+    set(XILINX_XAIE_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine/include)
+    set(XILINX_XAIE_LIBS ${CMAKE_CURRENT_BINARY_DIR}/${target}/xaiengine/lib/libxaienginecdo.so)
 
   endif()
 
@@ -73,8 +71,6 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
           -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
           -DAIE_RUNTIME_TARGET=${target}
-          -DAIERT_INCLUDE_DIR=${XILINX_XAIE_INCLUDE_DIR}
-          -DAIERT_LIBS=${XILINX_XAIE_LIBS}
           -DVITIS_ROOT=${VITIS_ROOT}
           -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
           -DVitis_VERSION_MAJOR=${Vitis_VERSION_MAJOR}
@@ -108,10 +104,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DCMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
           -DAIE_RUNTIME_TARGET=${target}
           -DLibXAIE_INC_DIR=${XILINX_XAIE_INCLUDE_DIR}
-          -DVITIS_ROOT=${VITIS_ROOT}
-          -DVITIS_AIETOOLS_DIR=${VITIS_AIETOOLS_DIR}
           -DXRT_ROOT=${XRT_ROOT}
-          -DSysroot=${Sysroot}
           -Dhsa-runtime64_DIR=${hsa-runtime64_DIR}
           -Dhsakmt_DIR=${hsakmt_DIR}
       DEPENDS ${testLibDependsOnXaiengine}
@@ -133,8 +126,8 @@ set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../third_party/bootgen)
 
 add_aiert_headers(xaienginecdo_static
         ${XAIE_SOURCE_DIR}
-        ${AIE_BINARY_DIR}/include
-        ${CMAKE_INSTALL_PREFIX}/include/xaiengine
+        ${AIE_BINARY_DIR}/include/xaienginecdo_static
+        ${CMAKE_INSTALL_PREFIX}/include/xaienginecdo_static
 )
 add_aiert_library(xaienginecdo_static ${XAIE_SOURCE_DIR} STATIC)
 
@@ -146,6 +139,7 @@ target_compile_definitions(xaienginecdo_static PRIVATE -D__AIECDO__ -D__AIEDEBUG
 # https://github.com/Kitware/CMake/blob/16b1f0c3e99023316b12fdabd1980a18b738d942/Source/cmExportInstallFileGenerator.cxx#L224
 install(TARGETS xaienginecdo_static DESTINATION lib EXPORT xaienginecdo_static)
 install(EXPORT xaienginecdo_static DESTINATION lib/cmake/aie)
+target_include_directories(xaienginecdo_static SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR}/cdo-driver)
 
 include("aie_api/aieapi.cmake")
 set(AIEAPI_SOURCE_DIR "../third_party/aie_api/include/aie_api")

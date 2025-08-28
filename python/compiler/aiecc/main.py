@@ -993,12 +993,11 @@ class FlowRunner:
                 memory_allocator,
                 "-I" + xaiengine_include_path,
                 "-L" + xaiengine_lib_path,
-                "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"),
                 "-Wl,-R" + xaiengine_lib_path,
                 "-I" + self.tmpdirname,
                 "-fuse-ld=lld",
                 "-lm",
-                "-lxaiengine",
+                "-lxaienginecdo"
             ]
             # Linking against HSA
             if opts.link_against_hsa:
@@ -1066,7 +1065,12 @@ class FlowRunner:
         memory_allocator = os.path.join(
             runtime_testlib_path, "libmemory_allocator_sim_aie.a"
         )
-
+        # Getting a pointer to the libxaie include and library
+        runtime_xaiengine_path = os.path.join(
+            install_path, "runtime_lib", arch_name, "xaiengine"
+        )
+        xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
+        xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
         sim_cc_args = [
             "-fPIC",
             "-flto",
@@ -1082,7 +1086,7 @@ class FlowRunner:
             "-Dmain(...)=ps_main(...)",
             "-I" + self.tmpdirname,
             "-I" + opts.aietools_path + "/include",
-            "-I" + opts.aietools_path + "/include/drivers/aiengine",
+            "-I" + xaiengine_include_path,
             "-I" + opts.aietools_path + "/data/osci_systemc/include",
             "-I" + opts.aietools_path + "/include/xtlm/include",
             "-I" + opts.aietools_path + "/include/common_cpp/common_cpp_v1_0/include",
@@ -1090,17 +1094,14 @@ class FlowRunner:
             memory_allocator,
         ]  # clang is picky  # Pickup aie_inc.cpp
 
-        # Don't use shipped version of xaiengine?
         sim_link_args = [
+            "-L" + xaiengine_lib_path,
+            "-lxaienginecdo",
             "-L" + opts.aietools_path + "/lib/lnx64.o",
             "-L" + opts.aietools_path + "/data/osci_systemc/lib/lnx64",
             "-Wl,--as-needed",
-            "-lxioutils",
-            "-lxaiengine",
-            "-ladf_api",
             "-lsystemc",
             "-lxtlm",
-            "-flto",
         ]
 
         processes = []

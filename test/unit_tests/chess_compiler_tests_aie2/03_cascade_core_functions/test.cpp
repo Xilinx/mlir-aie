@@ -34,9 +34,9 @@ int main(int argc, char *argv[]) {
   mlir_aie_initialize_locks(_xaie);
 
   // FIXME: model in MLIR
-  XAie_CoreConfigAccumulatorControl(&(_xaie->DevInst), XAie_TileLoc(1, 3), WEST,
+  XAie_CoreConfigAccumulatorControl(_xaie->XAieDevInst, XAie_TileLoc(1, 3), WEST,
                                     EAST);
-  XAie_CoreConfigAccumulatorControl(&(_xaie->DevInst), XAie_TileLoc(2, 3), WEST,
+  XAie_CoreConfigAccumulatorControl(_xaie->XAieDevInst, XAie_TileLoc(2, 3), WEST,
                                     EAST);
   int errors = 0;
 

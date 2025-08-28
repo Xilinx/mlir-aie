@@ -29,8 +29,8 @@ struct ext_mem_model_t {
 };
 
 struct aie_libxaie_ctx_t {
-  XAie_Config AieConfigPtr;
-  XAie_DevInst DevInst;
+  XAie_Config *XAieConfig;
+  XAie_DevInst *XAieDevInst;
   // Some device memory allocators need this to keep track of VA->PA mappings
   std::list<ext_mem_model_t> allocations;
 #ifdef HSA_RUNTIME
