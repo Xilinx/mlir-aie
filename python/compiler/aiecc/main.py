@@ -997,7 +997,7 @@ class FlowRunner:
                 "-I" + self.tmpdirname,
                 "-fuse-ld=lld",
                 "-lm",
-                "-lxaienginecdo"
+                "-lxaienginecdo",
             ]
             # Linking against HSA
             if opts.link_against_hsa:
