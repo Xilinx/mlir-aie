@@ -17,7 +17,6 @@ extern "C" {
 
 void ess_WriteGM(uint64_t addr, const void *data, uint64_t size);
 void ess_ReadGM(uint64_t addr, void *data, uint64_t size);
-
 }
 
 int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *_xaie, ext_mem_model_t &handle,
