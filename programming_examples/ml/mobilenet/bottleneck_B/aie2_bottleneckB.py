@@ -12,6 +12,7 @@ from aie.dialects.aiex import *
 from aie.dialects.scf import *
 from aie.extras.dialects.ext import memref, arith
 from aie.extras.context import mlir_mod_ctx
+from aie.extras.dialects.ext.memref import view as memref_view
 
 import json
 
@@ -68,9 +69,10 @@ def select_cores(start_col, start_row):
     return selected_cores
 
 
-class bottleneckBCore:
+class bottleneckBCoreStatic:
     def __init__(
         self,
+        _bottleneckName,
         _computeTileBN10_1,
         _computeTileBN10_2,
         _computeTileBN10_3,
@@ -79,7 +81,7 @@ class bottleneckBCore:
         _computeTileBN11_3,
         _computeTileBN12_1,
         _computeTileBN12_2,
-        _computeTileBN12_3,
+        # _computeTileBN12_3,
         _weightsInBN10_1,
         _weightsInBN10_2,
         _weightsInBN10_3,
@@ -87,8 +89,10 @@ class bottleneckBCore:
         _weightsInBN11_2,
         _weightsInBN11_3,
         _weightsInBN12_1,
-        _weightsInBN12_2,
-        _weightsInBN12_3,
+        # _weightsInBN12_2,
+        # _weightsInBN12_3,
+        _weightsInBN12_2_3,
+        _tensorLayer12_2Out_ty,
         _rtpBN10_1,
         _rtpBN10_2,
         _rtpBN10_3,
@@ -97,7 +101,7 @@ class bottleneckBCore:
         _rtpBN11_3,
         _rtpBN12_1,
         _rtpBN12_2,
-        _rtpBN12_3,
+        # _rtpBN12_3,
         _skipMemTile,
         _actIn,
         _actOut,
@@ -112,7 +116,7 @@ class bottleneckBCore:
         bn12_scaleFactor2,
         bn12_scaleFactor3,
     ):
-
+        self.bottleneckName = _bottleneckName
         self.computeTileBN10_1 = _computeTileBN10_1
         self.computeTileBN10_2 = _computeTileBN10_2
         self.computeTileBN10_3 = _computeTileBN10_3
@@ -123,7 +127,7 @@ class bottleneckBCore:
 
         self.computeTileBN12_1 = _computeTileBN12_1
         self.computeTileBN12_2 = _computeTileBN12_2
-        self.computeTileBN12_3 = _computeTileBN12_3
+        # self.computeTileBN12_3 = _computeTileBN12_3
 
         self.weightsInBN10_layer1 = _weightsInBN10_1
         self.weightsInBN10_layer2 = _weightsInBN10_2
@@ -134,8 +138,11 @@ class bottleneckBCore:
         self.weightsInBN11_layer3 = _weightsInBN11_3
 
         self.weightsInBN12_layer1 = _weightsInBN12_1
-        self.weightsInBN12_layer2 = _weightsInBN12_2
-        self.weightsInBN12_layer3 = _weightsInBN12_3
+        self.weightsInBN12_layer2_3 = _weightsInBN12_2_3
+        # self.weightsInBN12_layer2 = _weightsInBN12_2
+        # self.weightsInBN12_layer3 = _weightsInBN12_3
+
+        self.tensorLayer12_2Out_ty = _tensorLayer12_2Out_ty
 
         self.rtpBN10_layer1 = _rtpBN10_1
         self.rtpBN10_layer2 = _rtpBN10_2
@@ -147,7 +154,7 @@ class bottleneckBCore:
 
         self.rtpBN12_layer1 = _rtpBN12_1
         self.rtpBN12_layer2 = _rtpBN12_2
-        self.rtpBN12_layer3 = _rtpBN12_3
+        # self.rtpBN12_layer3 = _rtpBN12_3
 
         self.skipMemTile = _skipMemTile
         self.actIn = _actIn
@@ -215,10 +222,10 @@ class bottleneckBCore:
         b10_layer1_wts = MemRefType.get((b10_InC1 * b10_OutC1,), int8_ty)
         b10_layer2_wts = MemRefType.get((3 * 3 * b10_OutC2 * 1,), int8_ty)
         b10_layer3_wts = MemRefType.get((b10_OutC2 * b10_OutC3,), int8_ty)
-        b10_all_wts = MemRefType.get(
-            (b10_InC1 * b10_OutC1 + 3 * 3 * b10_OutC2 * 1 + b10_OutC2 * b10_OutC3,),
-            int8_ty,
-        )
+        # b10_all_wts = MemRefType.get(
+        #     (b10_InC1 * b10_OutC1 + 3 * 3 * b10_OutC2 * 1 + b10_OutC2 * b10_OutC3,),
+        #     int8_ty,
+        # )
         # output
         b10_layer1_out = MemRefType.get(
             (
@@ -275,10 +282,10 @@ class bottleneckBCore:
         b11_layer1_wts = MemRefType.get((b10_OutC3 * b11_OutC1,), int8_ty)
         b11_layer2_wts = MemRefType.get((3 * 3 * b11_OutC2 * 1,), int8_ty)
         b11_layer3_wts = MemRefType.get((b11_OutC2 * b11_OutC3,), int8_ty)
-        b11_all_wts = MemRefType.get(
-            (b10_OutC3 * b11_OutC1 + 3 * 3 * b11_OutC2 * 1 + b11_OutC2 * b11_OutC3,),
-            int8_ty,
-        )
+        # b11_all_wts = MemRefType.get(
+        #     (b10_OutC3 * b11_OutC1 + 3 * 3 * b11_OutC2 * 1 + b11_OutC2 * b11_OutC3,),
+        #     int8_ty,
+        # )
         # output
         b11_layer1_out = MemRefType.get(
             (
@@ -333,10 +340,10 @@ class bottleneckBCore:
         b12_layer1_wts = MemRefType.get((b11_OutC3 * b12_OutC1,), int8_ty)
         b12_layer2_wts = MemRefType.get((3 * 3 * b12_OutC2 * 1,), int8_ty)
         b12_layer3_wts = MemRefType.get((b12_OutC2 * b12_OutC3,), int8_ty)
-        b12_all_wts = MemRefType.get(
-            (b11_OutC3 * b12_OutC1 + 3 * 3 * b12_OutC2 * 1 + b12_OutC2 * b12_OutC3,),
-            int8_ty,
-        )
+        # b12_all_wts = MemRefType.get(
+        #     (b11_OutC3 * b12_OutC1 + 3 * 3 * b12_OutC2 * 1 + b12_OutC2 * b12_OutC3,),
+        #     int8_ty,
+        # )
         # output
         b12_layer1_out = MemRefType.get(
             (
@@ -519,7 +526,7 @@ class bottleneckBCore:
             [self.computeTileBN10_2],
             4,
             b10_layer2_in,
-            via_DMA=True,
+            # via_DMA=True, # TODO
         )
         OF_b10_act_layer2_layer3 = object_fifo(
             "OF_b10_act_layer2_layer3",
@@ -546,7 +553,7 @@ class bottleneckBCore:
             [self.computeTileBN11_2],
             4,
             b11_layer2_in,
-            via_DMA=True,
+            # via_DMA=True, # TODO
         )
         OF_b11_act_layer2_layer3 = object_fifo(
             "OF_b11_act_layer2_layer3",
@@ -571,18 +578,26 @@ class bottleneckBCore:
             b12_layer1_out,
             via_DMA=True,
         )
-        OF_b12_act_layer2_layer3 = object_fifo(
-            "OF_b12_act_layer2_layer3",
+        # OF_b12_act_layer2_layer3 = object_fifo(
+        #     "OF_b12_act_layer2_layer3",
+        #     self.computeTileBN12_2,
+        #     [self.computeTileBN12_3],
+        #     2,
+        #     b12_layer2_out,
+        # )
+        self.of_act_bn12_2_3 = object_fifo(
+            "act_bn12_2_3",
             self.computeTileBN12_2,
-            [self.computeTileBN12_3],
-            2,
-            b12_layer2_out,
+            self.computeTileBN12_2,
+            1,
+            self.tensorLayer12_2Out_ty,
         )
 
         # self.actOut = object_fifo("self.actOut", self.computeTileBN12_3, [MemTile21], 2, b12_layer3_out)
         # OF_outOFL2L3 = object_fifo("outOFL2L3", MemTile21, [ShimTile10], 2, b12_layer3_out)
         # object_fifo_link(self.actOut, OF_outOFL2L3)
         # Set up compute tiles
+        objectArchiveName = "fused_bn12_layer2_3.a"
 
         # ************************ bneck10 ************************
         # 1x1 conv2d
@@ -591,9 +606,9 @@ class bottleneckBCore:
             for _ in for_(sys.maxsize):
 
                 # acquire weights once
-                element0Weights = self.weightsInBN10_layer1.acquire(
-                    ObjectFifoPort.Consume, 1
-                )
+                # element0Weights = self.weightsInBN10_layer1.acquire(
+                #     ObjectFifoPort.Consume, 1
+                # )
                 # scale = memref.load(self.rtpBN10_layer1, [0])
                 scale = bn10_scaleFactor1
                 for _ in for_(b10_InH1):
@@ -607,7 +622,8 @@ class bottleneckBCore:
                         bn10_conv2dk1_fused_relu,
                         [
                             element0ActivactionsIn,
-                            element0Weights,
+                            # element0Weights,
+                            self.weightsInBN10_layer1,
                             element0ActivactionsOut,
                             b10_InW1,
                             b10_InC1,
@@ -618,7 +634,7 @@ class bottleneckBCore:
                     self.actIn.release(ObjectFifoPort.Consume, 1)
                     OF_b10_act_layer1_layer2.release(ObjectFifoPort.Produce, 1)
                     yield_([])
-                self.weightsInBN10_layer1.release(ObjectFifoPort.Consume, 1)
+                # self.weightsInBN10_layer1.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 
         # # # Compute tile 3
@@ -628,9 +644,9 @@ class bottleneckBCore:
             for _ in for_(sys.maxsize):
 
                 # acquire weights and rtps once
-                element0Weights = self.weightsInBN10_layer2.acquire(
-                    ObjectFifoPort.Consume, 1
-                )
+                # element0Weights = self.weightsInBN10_layer2.acquire(
+                #     ObjectFifoPort.Consume, 1
+                # )
                 # scale = memref.load(rtpself.computeTileBN10_2, 0)
 
                 # pre-amble: top row
@@ -646,7 +662,8 @@ class bottleneckBCore:
                         elementActivactionsIn[0],
                         elementActivactionsIn[0],
                         elementActivactionsIn[1],
-                        element0Weights,
+                        # element0Weights,
+                        self.weightsInBN10_layer2,
                         element0ActivactionsOut,
                         b10_InW2,
                         1,
@@ -674,7 +691,8 @@ class bottleneckBCore:
                             elementActivactionsIn[0],
                             elementActivactionsIn[1],
                             elementActivactionsIn[2],
-                            element0Weights,
+                            # element0Weights,
+                            self.weightsInBN10_layer2,
                             element0ActivactionsOut,
                             b10_InW2,
                             1,
@@ -704,7 +722,8 @@ class bottleneckBCore:
                         elementActivactionsIn[0],
                         elementActivactionsIn[1],
                         elementActivactionsIn[1],
-                        element0Weights,
+                        # element0Weights,
+                        self.weightsInBN10_layer2,
                         element0ActivactionsOut,
                         b10_InW2,
                         1,
@@ -719,7 +738,7 @@ class bottleneckBCore:
 
                 OF_b10_act_layer1_layer2.release(ObjectFifoPort.Consume, 2)
                 OF_b10_act_layer2_layer3.release(ObjectFifoPort.Produce, 1)
-                self.weightsInBN10_layer2.release(ObjectFifoPort.Consume, 1)
+                # self.weightsInBN10_layer2.release(ObjectFifoPort.Consume, 1)
 
                 yield_([])
 
@@ -727,7 +746,7 @@ class bottleneckBCore:
         @core(self.computeTileBN10_3, "bn10_conv2dk1_ui8.o")
         def core_body():
             for _ in for_(0xFFFFFFFF):
-                elemWts = self.weightsInBN10_layer3.acquire(ObjectFifoPort.Consume, 1)
+                # elemWts = self.weightsInBN10_layer3.acquire(ObjectFifoPort.Consume, 1)
 
                 # scale = memref.load(self.rtpBN10_layer3, [0])
                 scale = bn10_scaleFactor3
@@ -743,7 +762,8 @@ class bottleneckBCore:
                         bn10_conv2dk1_ui8,
                         [
                             elemIn,
-                            elemWts,
+                            # elemWts,
+                            self.weightsInBN10_layer3,
                             elemOut0,
                             b10_InW3,
                             b10_OutC2,
@@ -754,7 +774,7 @@ class bottleneckBCore:
                     OF_b10_act_layer2_layer3.release(ObjectFifoPort.Consume, 1)
                     OF_b10_layer3_bn_11_layer1.release(ObjectFifoPort.Produce, 1)
                     yield_([])
-                self.weightsInBN10_layer3.release(ObjectFifoPort.Consume, 1)
+                # self.weightsInBN10_layer3.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 
         # # # ************************ bneck11 ************************
@@ -764,9 +784,9 @@ class bottleneckBCore:
             for _ in for_(sys.maxsize):
 
                 # acquire weights once
-                element0Weights = self.weightsInBN11_layer1.acquire(
-                    ObjectFifoPort.Consume, 1
-                )
+                # element0Weights = self.weightsInBN11_layer1.acquire(
+                #     ObjectFifoPort.Consume, 1
+                # )
                 # scale = memref.load(self.rtpBN11_layer1, [0])
                 scale = bn11_scaleFactor1
                 for _ in for_(b10_InH1):
@@ -780,7 +800,8 @@ class bottleneckBCore:
                         bn11_conv2dk1_fused_relu,
                         [
                             element0ActivactionsIn,
-                            element0Weights,
+                            # element0Weights,
+                            self.weightsInBN11_layer1,
                             element0ActivactionsOut,
                             b10_InW1,
                             b10_OutC3,
@@ -791,7 +812,7 @@ class bottleneckBCore:
                     OF_b10_layer3_bn_11_layer1.release(ObjectFifoPort.Consume, 1)
                     OF_b11_act_layer1_layer2.release(ObjectFifoPort.Produce, 1)
                     yield_([])
-                self.weightsInBN11_layer1.release(ObjectFifoPort.Consume, 1)
+                # self.weightsInBN11_layer1.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 
         # # # # # # Compute tile 3
@@ -801,9 +822,9 @@ class bottleneckBCore:
             for _ in for_(sys.maxsize):
 
                 # acquire weights and rtps once
-                element0Weights = self.weightsInBN11_layer2.acquire(
-                    ObjectFifoPort.Consume, 1
-                )
+                # element0Weights = self.weightsInBN11_layer2.acquire(
+                #     ObjectFifoPort.Consume, 1
+                # )
                 # scale = memref.load(rtpself.computeTileBN10_2, 0)
 
                 # pre-amble: top row
@@ -819,7 +840,8 @@ class bottleneckBCore:
                         elementActivactionsIn[0],
                         elementActivactionsIn[0],
                         elementActivactionsIn[1],
-                        element0Weights,
+                        # element0Weights,
+                        self.weightsInBN11_layer2,
                         element0ActivactionsOut,
                         b10_InW2,
                         1,
@@ -847,7 +869,8 @@ class bottleneckBCore:
                             elementActivactionsIn[0],
                             elementActivactionsIn[1],
                             elementActivactionsIn[2],
-                            element0Weights,
+                            # element0Weights,
+                            self.weightsInBN11_layer2,
                             element0ActivactionsOut,
                             b10_InW2,
                             1,
@@ -876,7 +899,8 @@ class bottleneckBCore:
                         elementActivactionsIn[0],
                         elementActivactionsIn[1],
                         elementActivactionsIn[1],
-                        element0Weights,
+                        # element0Weights,
+                        self.weightsInBN11_layer2,
                         element0ActivactionsOut,
                         b10_InW2,
                         1,
@@ -891,7 +915,7 @@ class bottleneckBCore:
                 OF_b11_act_layer1_layer2.release(ObjectFifoPort.Consume, 2)
                 OF_b11_act_layer2_layer3.release(ObjectFifoPort.Produce, 1)
 
-                self.weightsInBN11_layer2.release(ObjectFifoPort.Consume, 1)
+                # self.weightsInBN11_layer2.release(ObjectFifoPort.Consume, 1)
 
                 yield_([])
 
@@ -900,7 +924,7 @@ class bottleneckBCore:
         def core_body():
 
             for _ in for_(0xFFFFFFFF):
-                elemWts = self.weightsInBN11_layer3.acquire(ObjectFifoPort.Consume, 1)
+                # elemWts = self.weightsInBN11_layer3.acquire(ObjectFifoPort.Consume, 1)
                 scale = bn11_scaleFactor3
                 skipScale = bn11_scaleFactorAdd
                 # scale = memref.load(self.rtpBN11_layer3 , [0])
@@ -917,7 +941,8 @@ class bottleneckBCore:
                         bn11_conv2dk1_skip,
                         [
                             elemIn,
-                            elemWts,
+                            # elemWts,
+                            self.weightsInBN11_layer3,
                             elemOut0,
                             elementSkipsIn,
                             b10_InW3,
@@ -932,7 +957,7 @@ class bottleneckBCore:
                     OF_b11_layer3_bn_12_layer1.release(ObjectFifoPort.Produce, 1)
                     OF_b11_skip.release(ObjectFifoPort.Consume, 1)
                     yield_([])
-                self.weightsInBN11_layer3.release(ObjectFifoPort.Consume, 1)
+                # self.weightsInBN11_layer3.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 
         # # # ************************ bneck12 ************************
@@ -942,9 +967,9 @@ class bottleneckBCore:
             for _ in for_(sys.maxsize):
 
                 # acquire weights once
-                element0Weights = self.weightsInBN12_layer1.acquire(
-                    ObjectFifoPort.Consume, 1
-                )
+                # element0Weights = self.weightsInBN12_layer1.acquire(
+                #     ObjectFifoPort.Consume, 1
+                # )
                 # scale = memref.load(self.rtpBN12_layer1, [0])
                 scale = bn12_scaleFactor1
                 for _ in for_(b10_InH1):
@@ -958,7 +983,8 @@ class bottleneckBCore:
                         bn12_conv2dk1_fused_relu,
                         [
                             element0ActivactionsIn,
-                            element0Weights,
+                            # element0Weights,
+                            self.weightsInBN12_layer1,
                             element0ActivactionsOut,
                             b10_InW1,
                             b11_OutC3,
@@ -969,25 +995,35 @@ class bottleneckBCore:
                     OF_b11_layer3_bn_12_layer1.release(ObjectFifoPort.Consume, 1)
                     OF_b12_act_layer1_layer2.release(ObjectFifoPort.Produce, 1)
                     yield_([])
-                self.weightsInBN12_layer1.release(ObjectFifoPort.Consume, 1)
+                # self.weightsInBN12_layer1.release(ObjectFifoPort.Consume, 1)
                 yield_([])
 
-        @core(self.computeTileBN12_2, "bn12_conv2dk3_dw_stride2.o")
+        # @core(self.computeTileBN12_2, "bn12_conv2dk3_dw_stride2.o")
+        @core(self.computeTileBN12_2, objectArchiveName)
         def core_body():
-            scale = bn12_scaleFactor2
+            scale2 = bn12_scaleFactor2
+            scale3 = bn12_scaleFactor3
             for _ in for_(sys.maxsize):
-
-                # acquire weights and rtps once
-                element0Weights = self.weightsInBN12_layer2.acquire(
-                    ObjectFifoPort.Consume, 1
+                weightsInBN12_layer2 = memref_view(
+                    self.weightsInBN12_layer2_3, [3 * 3 * b12_OutC2 * 1], shift=0
                 )
+                weightsInBN12_layer3 = memref_view(
+                    self.weightsInBN12_layer2_3,
+                    [b12_OutC2 * b12_OutC3],
+                    shift=3 * 3 * b12_OutC2 * 1,
+                )
+                # acquire weights and rtps once
+                # element0Weights = self.weightsInBN12_layer2.acquire(
+                #     ObjectFifoPort.Consume, 1
+                # )
                 # scale = memref.load(rtpComputeTile3, 0)
 
                 # pre-amble: top row
                 elementActivactionsIn = OF_b12_act_layer1_layer2.acquire(
                     ObjectFifoPort.Consume, 2
                 )
-                element0ActivactionsOut = OF_b12_act_layer2_layer3.acquire(
+                # element0ActivactionsOut = OF_b12_act_layer2_layer3.acquire(
+                element0ActivactionsOut = self.of_act_bn12_2_3.acquire(
                     ObjectFifoPort.Produce, 1
                 )
                 res = call(
@@ -996,7 +1032,8 @@ class bottleneckBCore:
                         elementActivactionsIn[0],
                         elementActivactionsIn[0],
                         elementActivactionsIn[1],
-                        element0Weights,
+                        # element0Weights,
+                        weightsInBN12_layer2,
                         element0ActivactionsOut,
                         b10_InW3,
                         1,
@@ -1004,19 +1041,40 @@ class bottleneckBCore:
                         3,
                         3,
                         0,
-                        scale,
+                        # scale,
+                        scale2,
                         0,
                     ],
                 )
-                OF_b12_act_layer2_layer3.release(ObjectFifoPort.Produce, 1)
+                # OF_b12_act_layer2_layer3.release(ObjectFifoPort.Produce, 1)
+                self.of_act_bn12_2_3.release(ObjectFifoPort.Produce, 1)
                 OF_b12_act_layer1_layer2.release(ObjectFifoPort.Consume, 1)
 
+                elemIn = self.of_act_bn12_2_3.acquire(ObjectFifoPort.Consume, 1)
+                elemOut0 = self.actOut.acquire(ObjectFifoPort.Produce, 1)
+                call(
+                    bn12_conv2dk1_ui8,
+                    [
+                        elemIn,
+                        weightsInBN12_layer3,
+                        elemOut0,
+                        b12_InW2,
+                        b12_OutC2,
+                        b12_OutC3,
+                        scale3,
+                    ],
+                )
+                self.of_act_bn12_2_3.release(ObjectFifoPort.Consume, 1)
+                self.actOut.release(ObjectFifoPort.Produce, 1)
+
                 # middle
-                for _ in for_(b12_InH2 - 1):
+                # for _ in for_(b12_InH2 - 1):
+                for _ in for_(b12_InH2 - 2):
                     elementActivactionsIn = OF_b12_act_layer1_layer2.acquire(
                         ObjectFifoPort.Consume, 3
                     )
-                    element0ActivactionsOut = OF_b12_act_layer2_layer3.acquire(
+                    # element0ActivactionsOut = OF_b12_act_layer2_layer3.acquire(
+                    element0ActivactionsOut = self.of_act_bn12_2_3.acquire(
                         ObjectFifoPort.Produce, 1
                     )
                     res = call(
@@ -1025,7 +1083,8 @@ class bottleneckBCore:
                             elementActivactionsIn[0],
                             elementActivactionsIn[1],
                             elementActivactionsIn[2],
-                            element0Weights,
+                            # element0Weights,
+                            weightsInBN12_layer2,
                             element0ActivactionsOut,
                             b10_InW3,
                             1,
@@ -1033,51 +1092,103 @@ class bottleneckBCore:
                             3,
                             3,
                             1,
-                            scale,
+                            # scale,
+                            scale2,
                             0,
                         ],
                     )
                     OF_b12_act_layer1_layer2.release(ObjectFifoPort.Consume, 2)
-                    OF_b12_act_layer2_layer3.release(ObjectFifoPort.Produce, 1)
+                    self.of_act_bn12_2_3.release(ObjectFifoPort.Produce, 1)
+        #             OF_b12_act_layer2_layer3.release(ObjectFifoPort.Produce, 1)
 
-                    yield_([])
+        #             yield_([])
 
-                OF_b12_act_layer1_layer2.release(ObjectFifoPort.Consume, 1)
-                self.weightsInBN12_layer2.release(ObjectFifoPort.Consume, 1)
-                yield_([])
+        #         OF_b12_act_layer1_layer2.release(ObjectFifoPort.Consume, 1)
+        #         self.weightsInBN12_layer2.release(ObjectFifoPort.Consume, 1)
+        #         yield_([])
 
-        #     # # Compute tile 4
-        @core(self.computeTileBN12_3, "bn12_conv2dk1_ui8.o")
-        def core_body():
-            for _ in for_(0xFFFFFFFF):
-                elemWts = self.weightsInBN12_layer3.acquire(ObjectFifoPort.Consume, 1)
+        # #     # # Compute tile 4
+        # @core(self.computeTileBN12_3, "bn12_conv2dk1_ui8.o")
+        # def core_body():
+        #     for _ in for_(0xFFFFFFFF):
+        #         elemWts = self.weightsInBN12_layer3.acquire(ObjectFifoPort.Consume, 1)
 
-                # scale = memref.load(self.rtpBN12_layer3, [0])
-                scale = bn12_scaleFactor3
-                # scale = memref.load(rtpself.computeTileBN10_1, [0])
+        #         # scale = memref.load(self.rtpBN12_layer3, [0])
+        #         scale = bn12_scaleFactor3
+        #         # scale = memref.load(rtpself.computeTileBN10_1, [0])
 
-                for _ in for_(b12_InH2):
-                    elemIn = OF_b12_act_layer2_layer3.acquire(ObjectFifoPort.Consume, 1)
+        #         for _ in for_(b12_InH2):
+                    # elemIn = OF_b12_act_layer2_layer3.acquire(ObjectFifoPort.Consume, 1)
+                    elemIn = self.of_act_bn12_2_3.acquire(ObjectFifoPort.Consume, 1)
                     elemOut0 = self.actOut.acquire(ObjectFifoPort.Produce, 1)
 
                     call(
                         bn12_conv2dk1_ui8,
                         [
                             elemIn,
-                            elemWts,
+                            # elemWts,
+                            weightsInBN12_layer3,                            
                             elemOut0,
                             b12_InW2,
                             b12_OutC2,
                             b12_OutC3,
-                            scale,
+                            # scale,
+                            scale3,
                         ],
                     )
-                    OF_b12_act_layer2_layer3.release(ObjectFifoPort.Consume, 1)
+                    # OF_b12_act_layer2_layer3.release(ObjectFifoPort.Consume, 1)
+                    self.of_act_bn12_2_3.release(ObjectFifoPort.Consume, 1)
                     self.actOut.release(ObjectFifoPort.Produce, 1)
                     yield_([])
-                self.weightsInBN12_layer3.release(ObjectFifoPort.Consume, 1)
+                # self.weightsInBN12_layer3.release(ObjectFifoPort.Consume, 1)
+                # yield_([])
+
+                elementActivactionsIn = OF_b12_act_layer1_layer2.acquire(
+                    ObjectFifoPort.Consume, 3
+                )
+                element0ActivactionsOut = self.of_act_bn12_2_3.acquire(
+                    ObjectFifoPort.Produce, 1
+                )
+                res = call(
+                    bn12_conv2dk3_dw,
+                    [
+                        elementActivactionsIn[0],
+                        elementActivactionsIn[1],
+                        elementActivactionsIn[2],
+                        weightsInBN12_layer2,
+                        element0ActivactionsOut,
+                        b10_InW3,
+                        1,
+                        b12_OutC2,
+                        3,
+                        3,
+                        1,
+                        scale2,
+                        0,
+                    ],
+                )
+                OF_b12_act_layer1_layer2.release(ObjectFifoPort.Consume, 3)
+                self.of_act_bn12_2_3.release(ObjectFifoPort.Produce, 1)
+
+                elemIn = self.of_act_bn12_2_3.acquire(ObjectFifoPort.Consume, 1)
+                elemOut0 = self.actOut.acquire(ObjectFifoPort.Produce, 1)
+                call(
+                    bn12_conv2dk1_ui8,
+                    [
+                        elemIn,
+                        weightsInBN12_layer3,
+                        elemOut0,
+                        b12_InW2,
+                        b12_OutC2,
+                        b12_OutC3,
+                        scale3,
+                    ],
+                )
+                self.of_act_bn12_2_3.release(ObjectFifoPort.Consume, 1)
+                self.actOut.release(ObjectFifoPort.Produce, 1)
                 yield_([])
 
+weights_path = "weights/"
 
 def mobilenetV3_bn_10_11_12(
     start_row=2,
@@ -1120,6 +1231,20 @@ def mobilenetV3_bn_10_11_12(
     trace_size = 16384
     traceSizeInInt32s = trace_size // 4
 
+    b10_layer1_wts_size = b10_InC1 * b10_OutC1
+    b10_layer2_wts_size = 3 * 3 * b10_OutC2 * 1
+    b10_layer3_wts_size = b10_OutC2 * b10_OutC3
+
+    b11_layer1_wts_size = b10_OutC3 * b11_OutC1
+    b11_layer2_wts_size = 3 * 3 * b11_OutC2 * 1
+    b11_layer3_wts_size = b11_OutC2 * b11_OutC3
+
+    b12_layer1_wts_size = b11_OutC3 * b12_OutC1
+    b12_layer2_wts_size = 3 * 3 * b12_OutC2 * 1
+    b12_layer3_wts_size = b12_OutC2 * b12_OutC3
+
+    b12_layer2_3_wts_size = b12_layer2_wts_size + b12_layer3_wts_size
+
     # @device(AIEDevice.npu1_3col)
     @device(AIEDevice.npu2)
     def device_body():
@@ -1136,19 +1261,30 @@ def mobilenetV3_bn_10_11_12(
         # Get the selected cores
         selected_cores = select_cores(b_start_col, b_start_row)
         # Assign the selected cores to variables
-        bn10_tile_1 = tile(selected_cores[0][0], selected_cores[0][1])
-        bn10_tile_2 = tile(selected_cores[1][0], selected_cores[1][1])
-        bn10_tile_3 = tile(selected_cores[2][0], selected_cores[2][1])
+        # bn10_tile_1 = tile(selected_cores[0][0], selected_cores[0][1])
+        # bn10_tile_2 = tile(selected_cores[1][0], selected_cores[1][1])
+        # bn10_tile_3 = tile(selected_cores[2][0], selected_cores[2][1])
 
         # Moving to the next group, starting from the 4th core
-        bn11_tile_1 = tile(selected_cores[3][0], selected_cores[3][1])
-        bn11_tile_2 = tile(selected_cores[4][0], selected_cores[4][1])
-        bn11_tile_3 = tile(selected_cores[5][0], selected_cores[5][1])
+        # bn11_tile_1 = tile(selected_cores[3][0], selected_cores[3][1])
+        # bn11_tile_2 = tile(selected_cores[4][0], selected_cores[4][1])
+        # bn11_tile_3 = tile(selected_cores[5][0], selected_cores[5][1])
 
         # Moving to the next group, starting from the 7th core
-        bn12_tile_1 = tile(selected_cores[6][0], selected_cores[6][1])
-        bn12_tile_2 = tile(selected_cores[7][0], selected_cores[7][1])
-        bn12_tile_3 = tile(selected_cores[8][0], selected_cores[8][1])
+        # bn12_tile_1 = tile(selected_cores[6][0], selected_cores[6][1])
+        # bn12_tile_2 = tile(selected_cores[7][0], selected_cores[7][1])
+        # bn12_tile_3 = tile(selected_cores[8][0], selected_cores[8][1])
+
+        bn10_tile_1 = tile(1,5)
+        bn10_tile_2 = tile(2,4)
+        bn10_tile_3 = tile(2,5)
+
+        bn11_tile_1 = tile(3,2)
+        bn11_tile_2 = tile(3,4)
+        bn11_tile_3 = tile(2,2)
+
+        bn12_tile_1 = tile(3,5)
+        bn12_tile_2 = tile(4,4)
 
         ShimTile00 = tile(0, 0)
         ShimTile10 = tile(1, 0)
@@ -1326,91 +1462,174 @@ def mobilenetV3_bn_10_11_12(
         )
         # Input
         act_in = object_fifo("act_in", ShimTile00, bn10_tile_1, 2, b10_layer1_in)
-        act_out = object_fifo("act_out", bn12_tile_3, ShimTile10, 2, b12_layer3_out)
+        # act_out = object_fifo("act_out", bn12_tile_3, ShimTile10, 2, b12_layer3_out)
+        # act_out = object_fifo("act_out", bn12_tile_2, ShimTile10, 2, b12_layer2_out)
+        act_out = object_fifo("act_out", bn12_tile_2, ShimTile10, 2, b12_layer3_out)
 
         # wts
-        wts_b10_L3L2 = object_fifo(
-            "wts_b10_L3L2", ShimTile00, MemTile01, 1, b10_all_wts
+        bn10_1_wts_ary = np.fromfile(
+            weights_path + "bn10_1_chain.txt", sep=",", dtype=np.int8
         )
-        bn10_1_wts_OF_L3L1 = object_fifo(
-            "weightsInBN10_layer1", MemTile01, bn10_tile_1, 1, b10_layer1_wts
+        bn10_2_wts_ary = np.fromfile(
+            weights_path + "bn10_2_chain.txt", sep=",", dtype=np.int8
         )
-        bn10_2_wts_OF_L3L1 = object_fifo(
-            "weightsInBN10_layer2",
-            MemTile01,
+        bn10_3_wts_ary = np.fromfile(
+            weights_path + "bn10_3_chain.txt", sep=",", dtype=np.int8
+        )
+
+        bn11_1_wts_ary = np.fromfile(
+            weights_path + "bn11_1_chain.txt", sep=",", dtype=np.int8
+        )
+        bn11_2_wts_ary = np.fromfile(
+            weights_path + "bn11_2_chain.txt", sep=",", dtype=np.int8
+        )
+        bn11_3_wts_ary = np.fromfile(
+            weights_path + "bn11_3_chain.txt", sep=",", dtype=np.int8
+        )
+
+        bn12_1_wts_ary = np.fromfile(
+            weights_path + "bn12_1_chain.txt", sep=",", dtype=np.int8
+        )
+        # bn12_2_wts_ary=np.fromfile(weights_path+"bn12_2_chain.txt", sep=",", dtype=np.int8)
+        # bn12_3_wts_ary=np.fromfile(weights_path+"bn12_3_chain.txt", sep=",", dtype=np.int8)
+        bn12_2_3_wts_ary = np.fromfile(
+            weights_path + "bn12_2_3_chain.txt", sep=",", dtype=np.int8
+        )
+        
+        bn10_1_wts_static = buffer(
+            bn10_tile_1,
+            np.ndarray[(b10_layer1_wts_size,), np.dtype[np.int8]],
+            "bn10_1_wts_static",
+            initial_value=bn10_1_wts_ary,
+        )
+        bn10_2_wts_static = buffer(
             bn10_tile_2,
-            1,
-            b10_layer2_wts,
+            np.ndarray[(b10_layer2_wts_size,), np.dtype[np.int8]],
+            "bn10_2_wts_static",
+            initial_value=bn10_2_wts_ary,
         )
-        bn10_3_wts_OF_L3L1 = object_fifo(
-            "weightsInBN10_layer3",
-            MemTile01,
+        bn10_3_wts_static = buffer(
             bn10_tile_3,
-            1,
-            b10_layer3_wts,
-        )
-        object_fifo_link(
-            wts_b10_L3L2,
-            [bn10_1_wts_OF_L3L1, bn10_2_wts_OF_L3L1, bn10_3_wts_OF_L3L1],
-            [],
-            [0, b10_InC1 * b10_OutC1, b10_InC1 * b10_OutC1 + 3 * 3 * b10_OutC2 * 1],
+            np.ndarray[(b10_layer3_wts_size,), np.dtype[np.int8]],
+            "bn10_3_wts_static",
+            initial_value=bn10_3_wts_ary,
         )
 
-        # wts
-        wts_b11_L3L2 = object_fifo(
-            "wts_b11_L3L2", ShimTile10, MemTile11, 1, b11_all_wts
+        bn11_1_wts_static = buffer(
+            bn11_tile_1,
+            np.ndarray[(b11_layer1_wts_size,), np.dtype[np.int8]],
+            "bn11_1_wts_static",
+            initial_value=bn11_1_wts_ary,
         )
-        bn11_1_wts_OF_L3L1 = object_fifo(
-            "weightsInBN11_layer1", MemTile11, bn11_tile_1, 1, b11_layer1_wts
-        )
-        bn11_2_wts_OF_L3L1 = object_fifo(
-            "weightsInBN11_layer2",
-            MemTile11,
+        bn11_2_wts_static = buffer(
             bn11_tile_2,
-            1,
-            b11_layer2_wts,
+            np.ndarray[(b11_layer2_wts_size,), np.dtype[np.int8]],
+            "bn11_2_wts_static",
+            initial_value=bn11_2_wts_ary,
         )
-        bn11_3_wts_OF_L3L1 = object_fifo(
-            "weightsInBN11_layer3",
-            MemTile11,
+        bn11_3_wts_static = buffer(
             bn11_tile_3,
-            1,
-            b11_layer3_wts,
+            np.ndarray[(b11_layer3_wts_size,), np.dtype[np.int8]],
+            "bn11_3_wts_static",
+            initial_value=bn11_3_wts_ary,
         )
-        object_fifo_link(
-            wts_b11_L3L2,
-            [bn11_1_wts_OF_L3L1, bn11_2_wts_OF_L3L1, bn11_3_wts_OF_L3L1],
-            [],
-            [0, b10_OutC3 * b11_OutC1, b10_OutC3 * b11_OutC1 + 3 * 3 * b11_OutC2 * 1],
+
+        bn12_1_wts_static = buffer(
+            bn12_tile_1,
+            np.ndarray[(b12_layer1_wts_size,), np.dtype[np.int8]],
+            "bn12_1_wts_static",
+            initial_value=bn12_1_wts_ary,
+        )
+        bn12_2_3_wts_static = buffer(
+            bn12_tile_2,
+            np.ndarray[(b12_layer2_3_wts_size,), np.dtype[np.int8]],
+            "bn12_2_3_wts_static",
+            initial_value=bn12_2_3_wts_ary,
         )
 
         # # wts
-        wts_b12_L3L2 = object_fifo(
-            "wts_b12_L3L2", ShimTile10, MemTile21, 1, b12_all_wts
-        )
-        bn12_1_wts_OF_L3L1 = object_fifo(
-            "weightsInBN12_layer1", MemTile21, bn12_tile_1, 1, b12_layer1_wts
-        )
-        bn12_2_wts_OF_L3L1 = object_fifo(
-            "weightsInBN12_layer2",
-            MemTile21,
-            bn12_tile_2,
-            1,
-            b12_layer2_wts,
-        )
-        bn12_3_wts_OF_L3L1 = object_fifo(
-            "weightsInBN12_layer3",
-            MemTile21,
-            bn12_tile_3,
-            1,
-            b12_layer3_wts,
-        )
-        object_fifo_link(
-            wts_b12_L3L2,
-            [bn12_1_wts_OF_L3L1, bn12_2_wts_OF_L3L1, bn12_3_wts_OF_L3L1],
-            [],
-            [0, b11_OutC3 * b12_OutC1, b11_OutC3 * b12_OutC1 + 3 * 3 * b12_OutC2 * 1],
-        )
+        # wts_b10_L3L2 = object_fifo(
+        #     "wts_b10_L3L2", ShimTile00, MemTile01, 1, b10_all_wts
+        # )
+        # bn10_1_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN10_layer1", MemTile01, bn10_tile_1, 1, b10_layer1_wts
+        # )
+        # bn10_2_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN10_layer2",
+        #     MemTile01,
+        #     bn10_tile_2,
+        #     1,
+        #     b10_layer2_wts,
+        # )
+        # bn10_3_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN10_layer3",
+        #     MemTile01,
+        #     bn10_tile_3,
+        #     1,
+        #     b10_layer3_wts,
+        # )
+        # object_fifo_link(
+        #     wts_b10_L3L2,
+        #     [bn10_1_wts_OF_L3L1, bn10_2_wts_OF_L3L1, bn10_3_wts_OF_L3L1],
+        #     [],
+        #     [0, b10_InC1 * b10_OutC1, b10_InC1 * b10_OutC1 + 3 * 3 * b10_OutC2 * 1],
+        # )
+
+        # # wts
+        # wts_b11_L3L2 = object_fifo(
+        #     "wts_b11_L3L2", ShimTile10, MemTile11, 1, b11_all_wts
+        # )
+        # bn11_1_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN11_layer1", MemTile11, bn11_tile_1, 1, b11_layer1_wts
+        # )
+        # bn11_2_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN11_layer2",
+        #     MemTile11,
+        #     bn11_tile_2,
+        #     1,
+        #     b11_layer2_wts,
+        # )
+        # bn11_3_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN11_layer3",
+        #     MemTile11,
+        #     bn11_tile_3,
+        #     1,
+        #     b11_layer3_wts,
+        # )
+        # object_fifo_link(
+        #     wts_b11_L3L2,
+        #     [bn11_1_wts_OF_L3L1, bn11_2_wts_OF_L3L1, bn11_3_wts_OF_L3L1],
+        #     [],
+        #     [0, b10_OutC3 * b11_OutC1, b10_OutC3 * b11_OutC1 + 3 * 3 * b11_OutC2 * 1],
+        # )
+
+        # # # wts
+        # wts_b12_L3L2 = object_fifo(
+        #     "wts_b12_L3L2", ShimTile10, MemTile21, 1, b12_all_wts
+        # )
+        # bn12_1_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN12_layer1", MemTile21, bn12_tile_1, 1, b12_layer1_wts
+        # )
+        # bn12_2_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN12_layer2",
+        #     MemTile21,
+        #     bn12_tile_2,
+        #     1,
+        #     b12_layer2_wts,
+        # )
+        # bn12_3_wts_OF_L3L1 = object_fifo(
+        #     "weightsInBN12_layer3",
+        #     MemTile21,
+        #     bn12_tile_3,
+        #     1,
+        #     b12_layer3_wts,
+        # )
+        # object_fifo_link(
+        #     wts_b12_L3L2,
+        #     [bn12_1_wts_OF_L3L1, bn12_2_wts_OF_L3L1, bn12_3_wts_OF_L3L1],
+        #     [],
+        #     [0, b11_OutC3 * b12_OutC1, b11_OutC3 * b12_OutC1 + 3 * 3 * b12_OutC2 * 1],
+        # )
 
         bn10_1_rtp = buffer(
             bn10_tile_1, np.ndarray[(16,), np.dtype[np.int32]], "bn10_1_rtp"
@@ -1438,11 +1657,13 @@ def mobilenetV3_bn_10_11_12(
         bn12_2_rtp = buffer(
             bn12_tile_2, np.ndarray[(16,), np.dtype[np.int32]], "bn12_2_rtp"
         )
-        bn12_3_rtp = buffer(
-            bn12_tile_3, np.ndarray[(16,), np.dtype[np.int32]], "bn12_3_rtp"
-        )
+        # TODO 
+        # bn12_3_rtp = buffer(
+        #     bn12_tile_3, np.ndarray[(16,), np.dtype[np.int32]], "bn12_3_rtp"
+        # )
 
-        bottleneckBCore(
+        bottleneckBCoreStatic(
+            "B",
             bn10_tile_1,
             bn10_tile_2,
             bn10_tile_3,
@@ -1451,16 +1672,25 @@ def mobilenetV3_bn_10_11_12(
             bn11_tile_3,
             bn12_tile_1,
             bn12_tile_2,
-            bn12_tile_3,
-            bn10_1_wts_OF_L3L1,
-            bn10_2_wts_OF_L3L1,
-            bn10_3_wts_OF_L3L1,
-            bn11_1_wts_OF_L3L1,
-            bn11_2_wts_OF_L3L1,
-            bn11_3_wts_OF_L3L1,
-            bn12_1_wts_OF_L3L1,
-            bn12_2_wts_OF_L3L1,
-            bn12_3_wts_OF_L3L1,
+            # bn12_tile_3,
+            # bn10_1_wts_OF_L3L1,
+            # bn10_2_wts_OF_L3L1,
+            # bn10_3_wts_OF_L3L1,
+            # bn11_1_wts_OF_L3L1,
+            # bn11_2_wts_OF_L3L1,
+            # bn11_3_wts_OF_L3L1,
+            # bn12_1_wts_OF_L3L1,
+            # bn12_2_wts_OF_L3L1,
+            # bn12_3_wts_OF_L3L1,
+            bn10_1_wts_static,
+            bn10_2_wts_static,
+            bn10_3_wts_static,
+            bn11_1_wts_static,
+            bn11_2_wts_static,
+            bn11_3_wts_static,
+            bn12_1_wts_static,
+            bn12_2_3_wts_static,
+            b12_layer2_out,
             bn10_1_rtp,
             bn10_2_rtp,
             bn10_3_rtp,
@@ -1469,7 +1699,7 @@ def mobilenetV3_bn_10_11_12(
             bn11_3_rtp,
             bn12_1_rtp,
             bn12_2_rtp,
-            bn12_3_rtp,
+            # bn12_3_rtp,
             MemTile01,
             act_in,
             act_out,
@@ -1527,7 +1757,8 @@ def mobilenetV3_bn_10_11_12(
 
             NpuWriteRTPOp("bn12_1_rtp", index=0, value=bn12_scaleFactor1)
             NpuWriteRTPOp("bn12_2_rtp", index=0, value=bn12_scaleFactor2)
-            NpuWriteRTPOp("bn12_3_rtp", index=0, value=bn12_scaleFactor3)
+            NpuWriteRTPOp("bn12_2_rtp", index=1, value=bn12_scaleFactor3)
+            # NpuWriteRTPOp("bn12_3_rtp", index=0, value=bn12_scaleFactor3)
 
             npu_dma_memcpy_nd(
                 metadata="act_in",
@@ -1537,30 +1768,31 @@ def mobilenetV3_bn_10_11_12(
             )
             npu_dma_memcpy_nd(
                 metadata="act_out",
+                # metadata="b12_layer2_out",
                 bd_id=2,
                 mem=outputToL3,
                 sizes=[1, 1, 1, acitivationsOutSize32b],
             )
-            npu_dma_memcpy_nd(
-                metadata="wts_b10_L3L2",
-                bd_id=1,
-                mem=weightsFromL3,
-                sizes=[1, 1, 1, bn10_totalWeightsSize32b],
-            )
-            npu_dma_memcpy_nd(
-                metadata="wts_b11_L3L2",
-                bd_id=1,
-                mem=weightsFromL3,
-                offsets=[0, 0, 0, bn10_totalWeightsSize32b],
-                sizes=[1, 1, 1, bn11_totalWeightsSize32b],
-            )
-            npu_dma_memcpy_nd(
-                metadata="wts_b12_L3L2",
-                bd_id=1,
-                mem=weightsFromL3,
-                offsets=[0, 0, 0, bn12_Offset_32b],
-                sizes=[1, 1, 1, bn12_totalWeightsSize32b],
-            )
+            # npu_dma_memcpy_nd(
+            #     metadata="wts_b10_L3L2",
+            #     bd_id=1,
+            #     mem=weightsFromL3,
+            #     sizes=[1, 1, 1, bn10_totalWeightsSize32b],
+            # )
+            # npu_dma_memcpy_nd(
+            #     metadata="wts_b11_L3L2",
+            #     bd_id=1,
+            #     mem=weightsFromL3,
+            #     offsets=[0, 0, 0, bn10_totalWeightsSize32b],
+            #     sizes=[1, 1, 1, bn11_totalWeightsSize32b],
+            # )
+            # npu_dma_memcpy_nd(
+            #     metadata="wts_b12_L3L2",
+            #     bd_id=1,
+            #     mem=weightsFromL3,
+            #     offsets=[0, 0, 0, bn12_Offset_32b],
+            #     sizes=[1, 1, 1, bn12_totalWeightsSize32b],
+            # )
             npu_sync(column=1, row=0, direction=0, channel=0)
 
 
@@ -1578,8 +1810,8 @@ with mlir_mod_ctx() as ctx:
         bn12_scaleFactor3=scale_factors["BN12"]["conv1x1_2"],
     )
 
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+    # res = ctx.module.operation.verify()
+    # if res == True:
+    print(ctx.module)
+    # else:
+        # print(res)

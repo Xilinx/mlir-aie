@@ -69,9 +69,13 @@ build/bn12_conv2dk1_ui8.o: bottleneck/bn_conv2dk1_i8.cc
 	mkdir -p ${@D}
 	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS}  -DBN12 -DSCALAR  -c $< -o ${@F}
 
+build/fused_bn12_layer2_3.a: build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o
+	mkdir -p ${@D}
+	ar rvs $@ $^ $(word 2,$^) $(word 3,$^) 
+
 build/final.xclbin: build/${mlirFileName}.mlir build/bn10_conv2dk1_fused_relu.o  build/bn10_conv2dk3_dw.o build/bn10_conv2dk1_ui8.o \
 						build/bn11_conv2dk1_fused_relu.o build/bn11_conv2dk3_dw.o build/bn11_conv2dk1_skip.o \
-						build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o
+						build/bn12_conv2dk1_fused_relu.o build/bn12_conv2dk3_dw_stride2.o build/bn12_conv2dk1_ui8.o build/fused_bn12_layer2_3.a
 	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
 		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<F)
 

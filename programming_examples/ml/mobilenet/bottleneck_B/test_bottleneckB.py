@@ -583,14 +583,15 @@ def main(opts):
     )
     ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
     ifm_mem_fmt.tofile(log_folder + "/after_ifm_mem_fmt.txt", sep=",", format="%d")
+
     # **************************** bn10 ****************************
-    wts1 = ds.reorder_mat(
+    bn10_wts1 = ds.reorder_mat(
         block_10_int_weight_1.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
-    wts2 = ds.reorder_mat(
+    bn10_wts2 = ds.reorder_mat(
         block_10_int_weight_2.data.numpy().astype(dtype_wts), "OIYXI1O8", "OIYX"
     )
-    wts3 = ds.reorder_mat(
+    bn10_wts3 = ds.reorder_mat(
         block_10_int_weight_3.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
 
@@ -614,7 +615,23 @@ def main(opts):
     bn12_wts3 = ds.reorder_mat(
         block_12_int_weight_3.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
-    bn10_total_wts = np.concatenate((wts1, wts2, wts3), axis=None)
+
+    bn12_wts2_3 = np.concatenate((bn12_wts2, bn12_wts3), axis=None)
+
+    bn10_wts1.tofile(log_folder + "/bn10_1_chain.txt", sep=",", format="%d")
+    bn10_wts2.tofile(log_folder + "/bn10_2_chain.txt", sep=",", format="%d")
+    bn10_wts3.tofile(log_folder + "/bn10_3_chain.txt", sep=",", format="%d")
+
+    bn11_wts1.tofile(log_folder + "/bn11_1_chain.txt", sep=",", format="%d")
+    bn11_wts2.tofile(log_folder + "/bn11_2_chain.txt", sep=",", format="%d")
+    bn11_wts3.tofile(log_folder + "/bn11_3_chain.txt", sep=",", format="%d")
+
+    bn12_wts1.tofile(log_folder + "/bn12_1_chain.txt", sep=",", format="%d")
+    bn12_wts2.tofile(log_folder + "/bn12_2_chain.txt", sep=",", format="%d")
+    bn12_wts3.tofile(log_folder + "/bn12_3_chain.txt", sep=",", format="%d")
+    bn12_wts2_3.tofile(log_folder + "/bn12_2_3_chain.txt", sep=",", format="%d")
+
+    bn10_total_wts = np.concatenate((bn10_wts1, bn10_wts2, bn10_wts3), axis=None)
     bn11_total_wts = np.concatenate((bn11_wts1, bn11_wts2, bn11_wts3), axis=None)
     bn12_total_wts = np.concatenate((bn12_wts1, bn12_wts2, bn12_wts3), axis=None)
     total_wts = np.concatenate(
