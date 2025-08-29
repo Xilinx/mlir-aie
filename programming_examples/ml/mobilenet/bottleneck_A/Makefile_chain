@@ -1,0 +1,327 @@
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+
+include ${srcdir}/../../../makefile-common
+
+VPATH := ${srcdir}/../../../../aie_kernels/aie2
+
+# EXTREME_FUSE can be "bn8+bn9", "bn8+bn9+static", "bn4+bn5_bn8+bn9+static" ,"bn0+bn1_bn4+bn5_bn8+bn9+static","bn0+bn1", or any other desired value to not fuse any bns
+
+# # EXTREME_FUSE ?= bn4+bn5_bn8+bn9+static
+# EXTREME_FUSE ?= bn0+bn1_bn4+bn5_bn8+bn9+static
+# # EXTREME_FUSE ?= unfuse
+
+# # Conditional logic based on the value of EXTREME_FUSE
+# ifeq ($(EXTREME_FUSE), bn0+bn1)
+#     MLIR_FILE = aie2_bn_chain_bn0_bn1_fused
+#     TEST_FILE = test_bn_chain
+#     OBJ = build/fused_bn0_bn1.a \
+#           build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn4_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn5_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
+#           build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
+#           build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a
+# else ifeq ($(EXTREME_FUSE), bn8+bn9)
+#     MLIR_FILE = aie2_bn_chain_bn8_bn9_fused
+#     TEST_FILE = test_bn_chain_bn8_bn9_fused
+#     OBJ = build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a \
+#           build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn4_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn5_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
+#           build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/combined_bn_8_9.a
+# else ifeq ($(EXTREME_FUSE), bn8+bn9+static)
+#     MLIR_FILE = aie2_bn_chain_bn8_bn9_fused_static
+#     TEST_FILE = test_bn_chain_bn8_bn9_fused_static
+#     OBJ = build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a \
+#           build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn4_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn5_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
+#           build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/combined_bn_8_9.a
+# else ifeq ($(EXTREME_FUSE), bn4+bn5_bn8+bn9+static)
+#     MLIR_FILE = aie2_bn_chain_bn4+bn5_bn8+bn9_fused_static
+#     TEST_FILE = test_bn_chain_bn4+bn5_bn8+bn9_fused_static
+#     OBJ = build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a \
+#           build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+# 		  build/combined_bn_4_5.a \
+# 		  build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/combined_bn_8_9.a
+# else ifeq ($(EXTREME_FUSE), bn0+bn1_bn4+bn5_bn8+bn9+static)
+#     MLIR_FILE = aie2_bn_chain_bn0+bn1_bn4+bn5_bn8+bn9_fused_static
+#     TEST_FILE = test_bn_chain_bn0+bn1_bn4+bn5_bn8+bn9_fused_static
+#     OBJ = build/fused_bn0_bn1.a \
+#           build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+# 		  build/combined_bn_4_5.a \
+# 		  build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/combined_bn_8_9.a
+
+# else
+#     MLIR_FILE = aie2_bn_chain_extreme_unfused
+#     TEST_FILE = test_bn_chain
+#     OBJ = build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a \
+#           build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn4_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn5_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
+#           build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+#           build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+#           build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
+#           build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a
+# endif
+
+# MLIR_FILE = aie2_bn_chain
+# TEST_FILE = test_bn_chain
+MLIR_FILE = aie2_bottleneckA_chain
+TEST_FILE = test_bottleneckA
+OBJ = build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a \
+		build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+		build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+		build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+		build/bn4_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+		build/bn5_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
+		build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
+		build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+		build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
+		build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a
+
+trace_size = 32768
+# DUMMY = _dummy
+DUMMY =
+
+all: build/final_bn_chain.xclbin run_py_bn_chain
+
+trace: build/trace_bn_chain.xclbin trace_py_bn_chain
+
+build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py 
+	mkdir -p ${@D}
+	python3 $< > $@
+
+build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py 
+	mkdir -p ${@D}
+	python3 $< -t ${trace_size} > $@
+
+# bn0
+build/bn0_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN0  -DSCALAR  -DSTRIDE1 -c $< -o ${@F}
+
+build/bn0_conv2dk1_skipui8.o: bottleneck/bn_conv2dk1_skip.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN0 -DSCALAR -DUNSIGNED_SKIP -c $< -o ${@F}
+
+
+build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a: build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+# bn1 
+build/bn1_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN1 -DINT8_ACT -c $< -o ${@F}
+
+build/bn1_conv2dk3_dw_stride2.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN1  -DSCALAR -DSTRIDE2 -c $< -o ${@F}
+
+build/bn1_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS}  -DSCALAR -DBN1 -c $< -o ${@F}
+
+build/bn1_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/bn1_conv2dk1_fused_relu.o build/bn1_conv2dk3_dw_stride2.o build/bn1_conv2dk1_i8.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+build/fused_bn0_bn1.a: build/bn0_conv2dk3_dw_stride1.o build/bn0_conv2dk1_skipui8.o build/bn1_conv2dk1_fused_relu.o build/bn1_conv2dk3_dw_stride2.o build/bn1_conv2dk1_i8.o 
+	mkdir -p ${@D}
+	ar rvs $@ $^ $(word 2,$^) $(word 3,$^) $(word 4,$^) $(word 5,$^)
+
+# bn2
+build/bn2_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN2 -DINT8_ACT -c $< -o ${@F}
+
+build/bn2_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN2  -DSCALAR  -DSTRIDE1 -c $< -o ${@F}
+build/bn2_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN2 -DSCALAR -c $< -o ${@F}
+
+build/bn2_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn2_conv2dk1_fused_relu.o build/bn2_conv2dk3_dw_stride1.o build/bn2_conv2dk1_skip.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+# bn3
+build/bn3_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN3 -DINT8_ACT -c $< -o ${@F}
+build/bn3_conv2dk3_dw_stride2.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN3  -DSCALAR -DSTRIDE2 -c $< -o ${@F}
+build/bn3_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS}  -DSCALAR -DBN3 -c $< -o ${@F}
+
+build/bn3_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/bn3_conv2dk1_fused_relu.o build/bn3_conv2dk3_dw_stride2.o build/bn3_conv2dk1_i8.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+# bn4
+build/bn4_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN4 -DINT8_ACT -c $< -o ${@F}
+
+build/bn4_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN4  -DSCALAR  -DSTRIDE1 -c $< -o ${@F}
+build/bn4_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN4 -DSCALAR -c $< -o ${@F}
+
+build/bn4_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+# 
+
+# bn5
+build/bn5_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN5 -DINT8_ACT -c $< -o ${@F}
+
+build/bn5_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN5  -DSCALAR  -DSTRIDE1 -c $< -o ${@F}
+build/bn5_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN5 -DSCALAR -c $< -o ${@F}
+
+build/bn5_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS}  -DSCALAR -DBN5 -c $< -o ${@F}
+
+
+build/bn5_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_i8.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+
+build/combined_bn_4_5.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o
+	mkdir -p ${@D}
+	ar rvs $@ $^
+
+
+# bn6
+build/bn6_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN6 -DINT8_ACT -c $< -o ${@F}
+build/bn6_conv2dk3_dw_stride2.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN6  -DSCALAR -DSTRIDE2 -c $< -o ${@F}
+build/bn6_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS}  -DSCALAR -DBN6 -c $< -o ${@F}
+
+build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a: build/bn6_conv2dk1_fused_relu.o build/bn6_conv2dk3_dw_stride2.o build/bn6_conv2dk1_i8.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# bn7
+build/bn7_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN7 -DINT8_ACT -c $< -o ${@F}
+
+build/bn7_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN7  -DSCALAR  -DSTRIDE1 -c $< -o ${@F}
+build/bn7_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN7 -DSCALAR -c $< -o ${@F}
+
+build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn7_conv2dk1_fused_relu.o build/bn7_conv2dk3_dw_stride1.o build/bn7_conv2dk1_skip.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+# bn8
+build/bn8_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN8 -DINT8_ACT -c $< -o ${@F}
+
+build/bn8_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN8  -DSCALAR  -DSTRIDE1 -c $< -o ${@F}
+build/bn8_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN8 -DSCALAR -c $< -o ${@F}
+
+build/bn8_conv2dk1_i8.o: bottleneck/bn_conv2dk1_i8.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS}  -DSCALAR -DBN8 -c $< -o ${@F}
+
+build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_i8.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+
+# bn9
+build/bn9_conv2dk1_fused_relu.o: bottleneck/bn_conv2dk1_relu.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DSCALAR -DBN9 -DINT8_ACT -c $< -o ${@F}
+
+build/bn9_conv2dk3_dw_stride1.o: bottleneck/bn_conv2dk3_dw.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN9  -DSCALAR  -DSTRIDE1 -c $< -o ${@F}
+build/bn9_conv2dk1_skip.o: bottleneck/bn_conv2dk1_skip.cc
+	mkdir -p ${@D}
+	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBN9 -DSCALAR -c $< -o ${@F}
+
+build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o  
+	mkdir -p ${@D}
+	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
+# ****************************************************************************************
+
+build/combined_bn_8_9.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
+	mkdir -p ${@D}
+	ar rvs $@ $^
+
+build/final_bn_chain.xclbin: build/${MLIR_FILE}.mlir  $(OBJ)
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+		--aie-generate-npu-insts --npu-insts-name=insts_bn_chain.bin ${<F}
+
+build/trace_bn_chain.xclbin: build/${MLIR_FILE}_trace.mlir  $(OBJ)
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+		--aie-generate-npu-insts --npu-insts-name=insts_bn_chain.bin ${<F}
+
+run_py_bn_chain: build/final_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}.mlir
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE
+
+trace_py_bn_chain: build/trace_bn_chain.xclbin build/insts_bn_chain.bin build/${MLIR_FILE}_trace.mlir
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_bn_chain.xclbin -i build/insts_bn_chain.bin -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../../../utils/parse_trace.py --filename trace.txt --mlir build/${MLIR_FILE}_trace.mlir --colshift 1 > trace_mbv4_A_chain.json
+
+shallow_clean:
+	rm -rf build/*.elf* build/*.lst build/*.bif build/*.mlir.prj build/*.mlir log build/.xclbin build/sim build/*.bin 
+
+clean:
+	rm -rf build __pycache__
