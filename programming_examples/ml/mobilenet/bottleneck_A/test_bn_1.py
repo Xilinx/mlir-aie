@@ -293,7 +293,7 @@ def main(opts):
     total_wts = np.concatenate((bn1_wts1, bn1_wts2, bn1_wts3), axis=None)
 
     total_wts.tofile(
-        log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d"
+        log_folder + "/bn1_after_weights_mem_fmt_final.txt", sep=",", format="%d"
     )
     print(total_wts.shape)
     # ------------------------------------------------------

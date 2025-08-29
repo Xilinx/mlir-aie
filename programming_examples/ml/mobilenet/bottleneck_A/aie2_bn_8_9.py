@@ -5,8 +5,8 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
- from aie2_bottleneck8And9Static import mobilenetV3Bottleneck8And9
-#from aie2_bottleneck8And9 import mobilenetV3Bottleneck8And9
+# from aie2_bottleneck8And9Static import mobilenetV3Bottleneck8And9
+from aie2_bottleneck8And9 import mobilenetV3Bottleneck8And9
 
 from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx
@@ -22,11 +22,11 @@ with mlir_mod_ctx() as ctx:
         bn8_depthWiseChannels=184,
         bn9_depthWiseStride=1,
         bn9_depthWiseChannels=184,
-        scaleFactor8_1=9,
-        scaleFactor8_2=8,
-        scaleFactor8_3=10,
+        scaleFactor8_1=10,
+        scaleFactor8_2=7,
+        scaleFactor8_3=11,
         scaleFactorAdd8=0,
-        scaleFactor9_1=9,
+        scaleFactor9_1=10,
         scaleFactor9_2=7,
         scaleFactor9_3=11,
         scaleFactorAdd9=1,

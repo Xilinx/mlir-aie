@@ -1543,6 +1543,13 @@ def main(opts):
         block_1_int_weight_3.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
 
+    bn0_total_wts = np.concatenate(
+        (bn0_wts2, bn0_wts3), axis=None
+    )
+    bn1_total_wts = np.concatenate(
+        (bn1_wts1, bn1_wts2, bn1_wts3), axis=None
+    )
+
     bn01_total_wts = np.concatenate(
         (bn0_wts2, bn0_wts3, bn1_wts1, bn1_wts2, bn1_wts3), axis=None
     )
@@ -1594,6 +1601,7 @@ def main(opts):
         block_5_int_weight_3.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
     bn5_total_wts = np.concatenate((bn5_wts1, bn5_wts2, bn5_wts3), axis=None)
+    bn4_5_total_wts = np.concatenate((bn4_total_wts, bn5_total_wts), axis=None)
 
     # **************************** bn6 ****************************
     bn6_wts1 = ds.reorder_mat(
@@ -1643,6 +1651,7 @@ def main(opts):
     )
 
     bn9_total_wts = np.concatenate((bn9_wts1, bn9_wts2, bn9_wts3), axis=None)
+    bn8_9_total_wts = np.concatenate((bn8_total_wts, bn9_total_wts), axis=None)
 
     total_wts = np.concatenate(
         (
@@ -1662,6 +1671,7 @@ def main(opts):
     total_wts.tofile(
         log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d"
     )
+
     # print("{}+{}+{}".format(bn6_wts1.shape, bn6_wts2.shape, bn6_wts3.shape))
     print(shape_total_wts)
     print(total_wts.shape)

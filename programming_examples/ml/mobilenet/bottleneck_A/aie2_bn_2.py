@@ -13,7 +13,7 @@ from aie.extras.context import mlir_mod_ctx
 with mlir_mod_ctx() as ctx:
     mobilenetV3BottleneckA(
         "bn2",
-        weights_file="bn2_chain.txt",
+        weights_file="bn2_single.txt",
         withSkip=True,
         depthWiseStride=1,
         tensorInW=56,

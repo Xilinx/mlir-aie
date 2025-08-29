@@ -16,7 +16,7 @@ from bottleneck_A.aie2_bottleneckAStatic import bottleneckACoreStatic
 # from bottleneck_A.aie2_bottleneckFusedA import bottleneckAFused
 # from bottleneck_A.aie2_bottleneck0 import bottleneckBN0
 from bottleneck_A.aie2_bottleneck0Static import bottleneckBN0Static
-from bottleneck_A.aie2_bottleneck8And9Static import bottleneckAFused_8and9
+from bottleneck_A.aie2_bottleneck8And9Static import bottleneckAFused_8and9Static
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
@@ -5217,7 +5217,7 @@ def mobilenetV3_A_B(
         #                    bn5_tensorLayer1Out_ty, bn5_tensorLayer2Out_ty, tensorL5_1InW, tensorL5_1InH, tensorL5_1InC,  bn5_depthWiseStride, bn5_depthWiseChannels, tensorL5_3OutC, bn5_withSkip,
         #                    bn5_scaleFactor1, bn5_scaleFactor2, bn5_scaleFactor3,  bn5_scaleFactorAdd)
 
-        bottleneckAFused_8and9(
+        bottleneckAFused_8and9Static(
             "bn4_bn5",
             bn4_5_tile,
             init_tile,
@@ -5684,7 +5684,7 @@ def mobilenetV3_A_B(
 
         # act_out = object_fifo("act_out", bn8_bn9_tile, [ShimTile10], 1, bn8_tensorLayer3Out_ty)
 
-        bottleneckAFused_8and9(
+        bottleneckAFused_8and9Static(
             "bn8_bn9",
             bn8_bn9_tile,
             bn11_tile_2,
