@@ -31,7 +31,7 @@ NUM_EVENTS = 8  # number of events we can view per trace
 _trace_active = False
 _trace_tensor = None
 DEBUG = False
-_trace_size = 1024  # Default trace size
+_trace_size = 4096  # Default trace size (4k)
 _trace_buffer = []
 _dummy_tensor = None  # Reusable dummy tensor
 _mlir_module = None  # Global to store MLIR from JIT
@@ -288,9 +288,21 @@ def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
     trace_events.append(trace_event)
 
 
-def start_trace():
-    """Start tracing functionality."""
+def start_tracing(size=4096):
+    """
+    Start tracing functionality with optional size parameter.
+
+    Args:
+        size (int, optional): The maximum size of the trace buffer. Defaults to 4096 (4k).
+    """
     global _trace_active, _trace_buffer, _trace_tensor, _trace_size, _dummy_tensor
+
+    # Set trace size
+    if size > 0:
+        _trace_size = size
+    else:
+        raise RuntimeError("Trace size must be positive")
+
     if not _trace_active:
         _trace_active = True
         _trace_buffer = []
@@ -301,7 +313,7 @@ def start_trace():
         _dummy_tensor = zeros(1, dtype=np.uint32)
 
 
-def stop_trace(output_file="trace.json"):
+def stop_tracing(output_file="trace.json"):
     """Stop tracing functionality and optionally save to file."""
     if not output_file.endswith(".json"):
         raise RuntimeError("Only JSON output files are supported")
@@ -329,15 +341,6 @@ def stop_trace(output_file="trace.json"):
             raise RuntimeError("No trace tensor found")
     else:
         raise RuntimeError("Tracing was not active")
-
-
-def set_trace_size(size):
-    """Set the maximum size of the trace buffer."""
-    global _trace_size
-    if size > 0:
-        _trace_size = size
-    else:
-        raise RuntimeError("Trace size must be positive")
 
 
 def set_mlir_module(mlir_module):
