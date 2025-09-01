@@ -106,7 +106,7 @@ def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
     for _ in range_(num_iter):
         elem_in = of_in.acquire(1)
         reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-        compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+        nextC_buffer[0] = max(nextC_buffer[0], tmp_buffer[0])
         of_in.release(1)
     elem_out[0] = nextC_buffer[0]
     of_out.release(1)
@@ -125,12 +125,12 @@ def core_body(of_in, of_out, in0, reduce_max_vector, compute_max):
     for _ in range_(num_iter):
         elem_in = of_in.acquire(1)
         reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-        compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+        nextC_buffer[0] = max(nextC_buffer[0], tmp_buffer[0])
         of_in.release(1)
 
     elem_out = of_out.acquire(1)
     elem_in1 = in0.acquire(1)
-    compute_max(elem_in1, nextC_buffer, elem_out)
+    elem_out[0] = max(nextC_buffer[0], elem_in1[0])
     in0.release(1)
     of_out.release(1)
 
