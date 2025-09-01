@@ -4,6 +4,8 @@ This example demonstrates how to efficiently compute the maximum value of an inp
 
 <br><img src="figures/Dataflow.png" alt="Dataflow" width="300"/>
 
+For more versions of the vector reduce max design, with customizable parameters, please see [here](../../basic/vector_reduce_max/).
+
 ## Overview
 
 This design consists of the following:

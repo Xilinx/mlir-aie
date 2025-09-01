@@ -8,6 +8,8 @@ output into sub-tiles that are processed individually.
 
 ![Matrix Multiplication AxB = C](diagrams/matmul.svg)
 
+For more versions of the matrix multiplication design, with customizable parameters, please see [here](../../basic/matrix_multiplication/).
+
 ## Overview
 
 This design consists of the following:
