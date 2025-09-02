@@ -1907,7 +1907,7 @@ struct AIEObjectFifoStatefulTransformPass
       std::optional<PacketInfoAttr> bdPacket = {};
       if (clPacketSwObjectFifos) {
         bdPacket = {
-            AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ 0)};
+            AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ bdPacket)};
         packetID++;
         if (packetID > 31)
           device.emitOpError("max number of packet IDs reached");
@@ -1922,7 +1922,7 @@ struct AIEObjectFifoStatefulTransformPass
         createObjectFifoAllocationInfo(
             builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
             producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel, producer.getPlio(), bdPacket);
+            producerChan.channel, producer.getPlio(), {});
 
       //PacketFlowOp packetflow;
       // if (clPacketSwObjectFifos) {
