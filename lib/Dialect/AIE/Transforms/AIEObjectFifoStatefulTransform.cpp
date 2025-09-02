@@ -1922,7 +1922,7 @@ struct AIEObjectFifoStatefulTransformPass
         createObjectFifoAllocationInfo(
             builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
             producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel, producer.getPlio(), {});
+            producerChan.channel, producer.getPlio(), bdPacket);
 
       //PacketFlowOp packetflow;
       // if (clPacketSwObjectFifos) {
