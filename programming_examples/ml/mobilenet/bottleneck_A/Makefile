@@ -187,6 +187,10 @@ build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a: build/bn9_
 	ar rvs $@ $< $(word 2,$^) $(word 3,$^)
 # ****************************************************************************************
 
+build/combined_bn_4_5.a: build/bn4_conv2dk1_fused_relu.o build/bn4_conv2dk3_dw_stride1.o build/bn4_conv2dk1_skip.o build/bn5_conv2dk1_fused_relu.o build/bn5_conv2dk3_dw_stride1.o build/bn5_conv2dk1_skip.o
+	mkdir -p ${@D}
+	ar rvs $@ $^
+
 build/combined_bn_8_9.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_stride1.o build/bn8_conv2dk1_skip.o build/bn9_conv2dk1_fused_relu.o build/bn9_conv2dk3_dw_stride1.o build/bn9_conv2dk1_skip.o
 	mkdir -p ${@D}
 	ar rvs $@ $^
@@ -194,7 +198,7 @@ build/combined_bn_8_9.a: build/bn8_conv2dk1_fused_relu.o build/bn8_conv2dk3_dw_s
 # ****************************************************************************************
 
 # build/final_%.xclbin build/inst_%.bin &: build/aie2_%.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a build/combined_conv2dk3dwstride1_conv2dk1skip.a build/combined_bn0_bn1.a  build/combined_bn2_bn3.a
-build/final_%.xclbin build/inst_%.bin &: build/aie2_%.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a build/combined_conv2dk3dwstride1_conv2dk1skip.a build/combined_bn_8_9.a 
+build/final_%.xclbin build/inst_%.bin &: build/aie2_%.mlir build/combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a build/combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a build/combined_conv2dk3dwstride1_conv2dk1skip.a build/combined_bn_8_9.a  build/combined_bn_4_5.a
 
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
@@ -252,6 +256,9 @@ run_py_9: build/final_bn_9.xclbin build/insts_bn_9.bin build/aie2_bn_9.mlir
 
 #run_py_2_3: build/final_bn_2_3.xclbin build/insts_bn_2_3.bin build/aie2_bn_2_3.mlir
 #	${powershell} python3 ${srcdir}/test_bn_2_3.py -x build/final_bn_2_3.xclbin -i build/insts_bn_2_3.bin -k MLIR_AIE
+
+run_py_4_5: build/final_bn_4_5.xclbin build/insts_bn_4_5.bin build/aie2_bn_4_5.mlir build/combined_bn_4_5.a
+	${powershell} python3 ${srcdir}/test_bn_4_5.py -x build/final_bn_4_5.xclbin -i build/insts_bn_4_5.bin -k MLIR_AIE
 
 run_py_8_9: build/final_bn_8_9.xclbin build/insts_bn_8_9.bin build/aie2_bn_8_9.mlir build/combined_bn_8_9.a
 	${powershell} python3 ${srcdir}/test_bn_8_9.py -x build/final_bn_8_9.xclbin -i build/insts_bn_8_9.bin -k MLIR_AIE
