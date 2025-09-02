@@ -1905,13 +1905,13 @@ struct AIEObjectFifoStatefulTransformPass
             "number of output DMA channel exceeded!");
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
       std::optional<PacketInfoAttr> bdPacket = {};
-      // if (clPacketSwObjectFifos) {
-      //   bdPacket = {
-      //       AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
-      //   packetID++;
-      //   if (packetID > 31)
-      //     device.emitOpError("max number of packet IDs reached");
-      // }
+      if (clPacketSwObjectFifos) {
+        bdPacket = {
+            AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ 0)};
+        // packetID++;
+        // if (packetID > 31)
+        //   device.emitOpError("max number of packet IDs reached");
+      }
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
                 producer.getPadDimensionsAttr(), bdPacket);
