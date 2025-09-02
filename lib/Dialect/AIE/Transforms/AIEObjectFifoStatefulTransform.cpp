@@ -1645,7 +1645,7 @@ struct AIEObjectFifoStatefulTransformPass
                                       int channelIndex, bool plio,
                                       std::optional<PacketInfoAttr> packet) {
     PacketInfoAttr packetInfo = nullptr;
-    if (packet)
+    if (packet.has_value())
       packetInfo = *packet;
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
@@ -1977,7 +1977,7 @@ struct AIEObjectFifoStatefulTransformPass
           createObjectFifoAllocationInfo(
               builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
               consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel, producer.getPlio());
+              consumerChan.channel, producer.getPlio(), {});
 
         if (!clPacketSwObjectFifos) {
           // create flow
