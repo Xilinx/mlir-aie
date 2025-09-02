@@ -754,11 +754,11 @@ struct AIEObjectFifoStatefulTransformPass
     if (acqLock)
       builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                                 acqMode);
-    if (bdPacket) {
-      builder.create<DMABDPACKETOp>(builder.getUnknownLoc(),
-                                    bdPacket->getPktType(),
-                                    bdPacket->getPktId());
-    }
+    // if (bdPacket) {
+    //   builder.create<DMABDPACKETOp>(builder.getUnknownLoc(),
+    //                                 bdPacket->getPktType(),
+    //                                 bdPacket->getPktId());
+    // }
     if (!dims.getValue().empty() && padDimensions) {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims,
                               padDimensions);
