@@ -1977,7 +1977,7 @@ struct AIEObjectFifoStatefulTransformPass
           createObjectFifoAllocationInfo(
               builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
               consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel, producer.getPlio(), {});
+              consumerChan.channel, producer.getPlio());
 
         if (!clPacketSwObjectFifos) {
           // create flow
