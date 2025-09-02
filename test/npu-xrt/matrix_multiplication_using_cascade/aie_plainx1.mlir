@@ -88,7 +88,7 @@ module {
       func.call @flush_trace() : () -> ()
       // </trace>
       cf.br ^bb1
-    } {elf_file = "segment_0_core_0_2.elf", link_with = "mm.o"}
+    } {link_with = "mm.o"}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_0, DMA : 1, %tile_1_1, DMA : 0)
     aie.flow(%tile_2_1, DMA : 0, %tile_0_0, DMA : 0)

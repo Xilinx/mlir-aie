@@ -63,14 +63,17 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 
 LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
                                                   raw_ostream &output,
-                                                  int tileCol, int tileRow) {
+                                                  int tileCol, 
+                                                  int tileRow,
+                                                  llvm::StringRef deviceName) {
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
+
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
 
   if (module.getOps<DeviceOp>().empty()) {
     module.emitOpError("expected AIE.device operation at toplevel");
   }
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
