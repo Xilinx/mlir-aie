@@ -1905,13 +1905,13 @@ struct AIEObjectFifoStatefulTransformPass
             "number of output DMA channel exceeded!");
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
       std::optional<PacketInfoAttr> bdPacket = {};
-      if (clPacketSwObjectFifos) {
-        bdPacket = {
-            AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
-        packetID++;
-        if (packetID > 31)
-          device.emitOpError("max number of packet IDs reached");
-      }
+      // if (clPacketSwObjectFifos) {
+      //   bdPacket = {
+      //       AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
+      //   packetID++;
+      //   if (packetID > 31)
+      //     device.emitOpError("max number of packet IDs reached");
+      // }
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
                 producer.getPadDimensionsAttr(), bdPacket);
@@ -1924,21 +1924,21 @@ struct AIEObjectFifoStatefulTransformPass
             producer.getProducerTileOp().colIndex(), producerChan.direction,
             producerChan.channel, producer.getPlio(), bdPacket);
 
-      //PacketFlowOp packetflow;
-      // if (clPacketSwObjectFifos) {
-      //   // create packet flow
-      //   builder.setInsertionPointAfter(producer);
-      //   packetflow = builder.create<PacketFlowOp>(
-      //       builder.getUnknownLoc(),
-      //       builder.getIntegerAttr(builder.getI8Type(), bdPacket->getPktId()),
-      //       nullptr, nullptr);
-      //   {
-      //     OpBuilder::InsertionGuard g(builder);
-      //     builder.setInsertionPointToStart(
-      //         &packetflow.getRegion().emplaceBlock());
-      //     builder.create<EndOp>(builder.getUnknownLoc());
-      //   }
-      // }
+      PacketFlowOp packetflow;
+      if (clPacketSwObjectFifos) {
+        // create packet flow
+        builder.setInsertionPointAfter(producer);
+        packetflow = builder.create<PacketFlowOp>(
+            builder.getUnknownLoc(),
+            builder.getIntegerAttr(builder.getI8Type(), bdPacket->getPktId()),
+            nullptr, nullptr);
+        {
+          OpBuilder::InsertionGuard g(builder);
+          builder.setInsertionPointToStart(
+              &packetflow.getRegion().emplaceBlock());
+          builder.create<EndOp>(builder.getUnknownLoc());
+        }
+      }
 
       for (auto consumer : consumers) {
         int consumerChanIndex = fifo_dma_channel_index[consumer];
@@ -1960,12 +1960,12 @@ struct AIEObjectFifoStatefulTransformPass
           consumerWireType = WireBundle::DMA;
         }
 
-        // if (clPacketSwObjectFifos) {
-        //   builder.setInsertionPointToStart(&packetflow.getPorts().front());
-        //   builder.create<PacketDestOp>(builder.getUnknownLoc(),
-        //                                consumer.getProducerTile(),
-        //                                WireBundle::DMA, consumerChan.channel);
-        // }
+        if (clPacketSwObjectFifos) {
+          builder.setInsertionPointToStart(&packetflow.getPorts().front());
+          builder.create<PacketDestOp>(builder.getUnknownLoc(),
+                                       consumer.getProducerTile(),
+                                       WireBundle::DMA, consumerChan.channel);
+        }
 
         BDDimLayoutArrayAttr consumerDims =
             consumer.getDimensionsFromStreamPerConsumer()[0];
@@ -1991,12 +1991,12 @@ struct AIEObjectFifoStatefulTransformPass
         }
       }
 
-      // if (clPacketSwObjectFifos) {
-      //   builder.setInsertionPointToStart(&packetflow.getPorts().front());
-      //   builder.create<PacketSourceOp>(builder.getUnknownLoc(),
-      //                                  producer.getProducerTile(),
-      //                                  WireBundle::DMA, producerChan.channel);
-      // }
+      if (clPacketSwObjectFifos) {
+        builder.setInsertionPointToStart(&packetflow.getPorts().front());
+        builder.create<PacketSourceOp>(builder.getUnknownLoc(),
+                                       producer.getProducerTile(),
+                                       WireBundle::DMA, producerChan.channel);
+      }
     }
 
     //===------------------------------------------------------------------===//
