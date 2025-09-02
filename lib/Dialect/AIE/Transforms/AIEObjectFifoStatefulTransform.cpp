@@ -754,11 +754,11 @@ struct AIEObjectFifoStatefulTransformPass
     if (acqLock)
       builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                                 acqMode);
-    // if (bdPacket) {
-    //   builder.create<DMABDPACKETOp>(builder.getUnknownLoc(),
-    //                                 bdPacket->getPktType(),
-    //                                 bdPacket->getPktId());
-    // }
+    if (bdPacket) {
+      builder.create<DMABDPACKETOp>(builder.getUnknownLoc(),
+                                    bdPacket->getPktType(),
+                                    bdPacket->getPktId());
+    }
     if (!dims.getValue().empty() && padDimensions) {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, offset, len, dims,
                               padDimensions);
@@ -1645,13 +1645,13 @@ struct AIEObjectFifoStatefulTransformPass
                                       int channelIndex, bool plio,
                                       std::optional<PacketInfoAttr> packet) {
     PacketInfoAttr packetInfo = nullptr;
-    if (packet.has_value())
+    if (packet)
       packetInfo = *packet;
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex),
-                                        builder.getBoolAttr(plio), packetInfo);
+                                        builder.getBoolAttr(plio), nullptr);
   }
 
   /// Function used to verify that an objectfifo is present in at most one
