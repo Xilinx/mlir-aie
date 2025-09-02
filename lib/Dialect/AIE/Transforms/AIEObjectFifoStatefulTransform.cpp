@@ -1897,7 +1897,7 @@ struct AIEObjectFifoStatefulTransformPass
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
     
-    int packetID = getStartPacketID(device);
+    //int packetID = getStartPacketID(device);
     for (auto &[producer, consumers] : splitFifos) {
       int producerChanIndex = fifo_dma_channel_index[producer];
       if (producerChanIndex == -1)
