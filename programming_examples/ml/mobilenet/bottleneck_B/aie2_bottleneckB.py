@@ -1099,25 +1099,25 @@ class bottleneckBCoreStatic:
                     )
                     OF_b12_act_layer1_layer2.release(ObjectFifoPort.Consume, 2)
                     self.of_act_bn12_2_3.release(ObjectFifoPort.Produce, 1)
-        #             OF_b12_act_layer2_layer3.release(ObjectFifoPort.Produce, 1)
+                    #             OF_b12_act_layer2_layer3.release(ObjectFifoPort.Produce, 1)
 
-        #             yield_([])
+                    #             yield_([])
 
-        #         OF_b12_act_layer1_layer2.release(ObjectFifoPort.Consume, 1)
-        #         self.weightsInBN12_layer2.release(ObjectFifoPort.Consume, 1)
-        #         yield_([])
+                    #         OF_b12_act_layer1_layer2.release(ObjectFifoPort.Consume, 1)
+                    #         self.weightsInBN12_layer2.release(ObjectFifoPort.Consume, 1)
+                    #         yield_([])
 
-        # #     # # Compute tile 4
-        # @core(self.computeTileBN12_3, "bn12_conv2dk1_ui8.o")
-        # def core_body():
-        #     for _ in for_(0xFFFFFFFF):
-        #         elemWts = self.weightsInBN12_layer3.acquire(ObjectFifoPort.Consume, 1)
+                    # #     # # Compute tile 4
+                    # @core(self.computeTileBN12_3, "bn12_conv2dk1_ui8.o")
+                    # def core_body():
+                    #     for _ in for_(0xFFFFFFFF):
+                    #         elemWts = self.weightsInBN12_layer3.acquire(ObjectFifoPort.Consume, 1)
 
-        #         # scale = memref.load(self.rtpBN12_layer3, [0])
-        #         scale = bn12_scaleFactor3
-        #         # scale = memref.load(rtpself.computeTileBN10_1, [0])
+                    #         # scale = memref.load(self.rtpBN12_layer3, [0])
+                    #         scale = bn12_scaleFactor3
+                    #         # scale = memref.load(rtpself.computeTileBN10_1, [0])
 
-        #         for _ in for_(b12_InH2):
+                    #         for _ in for_(b12_InH2):
                     # elemIn = OF_b12_act_layer2_layer3.acquire(ObjectFifoPort.Consume, 1)
                     elemIn = self.of_act_bn12_2_3.acquire(ObjectFifoPort.Consume, 1)
                     elemOut0 = self.actOut.acquire(ObjectFifoPort.Produce, 1)
@@ -1127,7 +1127,7 @@ class bottleneckBCoreStatic:
                         [
                             elemIn,
                             # elemWts,
-                            weightsInBN12_layer3,                            
+                            weightsInBN12_layer3,
                             elemOut0,
                             b12_InW2,
                             b12_OutC2,
@@ -1188,7 +1188,9 @@ class bottleneckBCoreStatic:
                 self.actOut.release(ObjectFifoPort.Produce, 1)
                 yield_([])
 
+
 weights_path = "weights/"
+
 
 def mobilenetV3_bn_10_11_12(
     start_row=2,
@@ -1275,16 +1277,16 @@ def mobilenetV3_bn_10_11_12(
         # bn12_tile_2 = tile(selected_cores[7][0], selected_cores[7][1])
         # bn12_tile_3 = tile(selected_cores[8][0], selected_cores[8][1])
 
-        bn10_tile_1 = tile(1,5)
-        bn10_tile_2 = tile(2,4)
-        bn10_tile_3 = tile(2,5)
+        bn10_tile_1 = tile(1, 5)
+        bn10_tile_2 = tile(2, 4)
+        bn10_tile_3 = tile(2, 5)
 
-        bn11_tile_1 = tile(3,2)
-        bn11_tile_2 = tile(3,4)
-        bn11_tile_3 = tile(2,2)
+        bn11_tile_1 = tile(3, 2)
+        bn11_tile_2 = tile(3, 4)
+        bn11_tile_3 = tile(2, 2)
 
-        bn12_tile_1 = tile(3,5)
-        bn12_tile_2 = tile(4,4)
+        bn12_tile_1 = tile(3, 5)
+        bn12_tile_2 = tile(4, 4)
 
         ShimTile00 = tile(0, 0)
         ShimTile10 = tile(1, 0)
@@ -1495,7 +1497,7 @@ def mobilenetV3_bn_10_11_12(
         bn12_2_3_wts_ary = np.fromfile(
             weights_path + "bn12_2_3_chain.txt", sep=",", dtype=np.int8
         )
-        
+
         bn10_1_wts_static = buffer(
             bn10_tile_1,
             np.ndarray[(b10_layer1_wts_size,), np.dtype[np.int8]],
@@ -1657,7 +1659,7 @@ def mobilenetV3_bn_10_11_12(
         bn12_2_rtp = buffer(
             bn12_tile_2, np.ndarray[(16,), np.dtype[np.int32]], "bn12_2_rtp"
         )
-        # TODO 
+        # TODO
         # bn12_3_rtp = buffer(
         #     bn12_tile_3, np.ndarray[(16,), np.dtype[np.int32]], "bn12_3_rtp"
         # )
@@ -1814,4 +1816,4 @@ with mlir_mod_ctx() as ctx:
     # if res == True:
     print(ctx.module)
     # else:
-        # print(res)
+    # print(res)

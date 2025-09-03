@@ -9,6 +9,7 @@ import argparse
 import sys
 
 from aie2_bottleneckAStatic import bottleneckACoreStatic
+
 # from aie2_bottleneckAStatic import bottleneckACoreStatic
 
 # from aie2_bottleneckA_TEST import bottleneckACoreTEST
@@ -37,6 +38,7 @@ file_path = "scale_factors_fused.json"
 scale_factors = read_scale_factors(file_path)
 
 weights_path = "weights/"
+
 
 def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
     tileColIndex=0,
@@ -390,8 +392,8 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
         bn6_tile = tile(tileColIndex + 1, 4)  # bn6
         bn7_tile = tile(tileColIndex + 2, 3)  # bn7
         bn8_9_tile = tile(tileColIndex + 3, 3)  # bn8+bn9
-        L1_tile_for_bn4_5 = tile(tileColIndex + 0, 2)  
-        L1_tile_for_bn8_9 = tile(tileColIndex + 3, 4)  
+        L1_tile_for_bn4_5 = tile(tileColIndex + 0, 2)
+        L1_tile_for_bn8_9 = tile(tileColIndex + 3, 4)
 
         # Set up compute tiles
         # rtp_bn0_tile = buffer(bn0_tile, [16], T.i32(), "rtp03") #bn0
@@ -1409,7 +1411,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             "act_bn5_bn6", bn4_5_tile, bn6_tile, 2, bn5_tensorLayer3Out_ty
         )
         # act_out = object_fifo("act_out", bn5_tile, [ShimTile10], 1, bn5_tensorLayer3Out_ty)
-        bottleneckAFused_8and9Static( # TODO Static?
+        bottleneckAFused_8and9Static(  # TODO Static?
             "bn4_bn5",
             bn4_5_tile,
             L1_tile_for_bn4_5,
@@ -1871,9 +1873,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             ],
         )
 
-        act_out = object_fifo(
-            "act_out", bn8_9_tile, [ShimTile10], 1, tensorLayerOut_ty
-        )
+        act_out = object_fifo("act_out", bn8_9_tile, [ShimTile10], 1, tensorLayerOut_ty)
 
         bottleneckAFused_8and9Static(
             "bn8_bn9",
@@ -1910,7 +1910,7 @@ def mobilenetV3_bn_0_1_2_3_4_5_6_7_8_9(
             bn8_scaleFactorAdd,
             bn9_scaleFactor1,
             bn9_scaleFactor2,
-            bn9_scaleFactor3, 
+            bn9_scaleFactor3,
             bn9_scaleFactorAdd,
         )
 

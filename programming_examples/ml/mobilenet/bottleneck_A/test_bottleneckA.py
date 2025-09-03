@@ -1532,9 +1532,7 @@ def main(opts):
     bn0_wts3 = ds.reorder_mat(
         block_0_int_weight_3.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
-    bn0_total_wts = np.concatenate(
-        (bn0_wts2, bn0_wts3), axis=None
-    )
+    bn0_total_wts = np.concatenate((bn0_wts2, bn0_wts3), axis=None)
     # **************************** bn1 ****************************
     bn1_wts1 = ds.reorder_mat(
         block_1_int_weight_1.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
@@ -1545,9 +1543,7 @@ def main(opts):
     bn1_wts3 = ds.reorder_mat(
         block_1_int_weight_3.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX"
     )
-    bn1_total_wts = np.concatenate(
-        (bn1_wts1, bn1_wts2, bn1_wts3), axis=None
-    )
+    bn1_total_wts = np.concatenate((bn1_wts1, bn1_wts2, bn1_wts3), axis=None)
     bn01_total_wts = np.concatenate(
         (bn0_wts2, bn0_wts3, bn1_wts1, bn1_wts2, bn1_wts3), axis=None
     )
