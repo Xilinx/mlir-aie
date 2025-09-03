@@ -339,7 +339,8 @@ void print_error_summary(std::ostream &os, int n_errors,
   }
   if (n_errors > 0) {
     os << "Maximum relative error: " << std::setw(3) << std::setprecision(0)
-       << max_rel_error * 100 << "%" << " (last above)" << std::endl;
+       << max_rel_error * 100 << "%"
+       << " (last above)" << std::endl;
   }
 }
 
