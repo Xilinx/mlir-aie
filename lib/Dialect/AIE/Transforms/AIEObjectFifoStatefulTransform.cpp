@@ -1681,8 +1681,6 @@ struct AIEObjectFifoStatefulTransformPass
         packetID = packetflow.getID() + 1;
       }
     }
-    if (packetID > 31)
-      device.emitOpError("max number of packet IDs reached");
     return packetID;
   }
 
@@ -1899,11 +1897,11 @@ struct AIEObjectFifoStatefulTransformPass
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
       std::optional<PacketInfoAttr> bdPacket = {};
       if (clPacketSwObjectFifos) {
+        if (packetID > 31)
+          device.emitOpError("max number of packet IDs reached");
         bdPacket = {
             AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
         packetID++;
-        if (packetID > 31)
-          device.emitOpError("max number of packet IDs reached");
       }
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
