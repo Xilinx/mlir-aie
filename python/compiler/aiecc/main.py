@@ -58,7 +58,9 @@ def _create_input_with_addresses_pipeline(
             .add_pass("aie-assign-lock-ids")
             .add_pass("aie-register-objectFifos")
             .add_pass(
-                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos, packet_sw_objFifos=packet_sw_objFifos
+                "aie-objectFifo-stateful-transform",
+                dynamic_objFifos=dynamic_objFifos,
+                packet_sw_objFifos=packet_sw_objFifos,
             )
             .add_pass("aie-assign-bd-ids")
             .add_pass("aie-lower-cascade-flows")
