@@ -342,7 +342,8 @@ matmul_vectorized_8x8x8_bf16_f32(const bfloat16 *__restrict pA,
   static_assert(n % (2 * t) == 0);
 
   return matmul_vectorized_2x2_mmul<bfloat16, float, (m / r), (k / s), (n / t),
-                                    r, s, t, is_b_row_maj, is_c_row_maj>(pA, pB, pC);
+                                    r, s, t, is_b_row_maj, is_c_row_maj>(pA, pB,
+                                                                         pC);
 }
 
 template <unsigned m, unsigned k, unsigned n>
@@ -481,8 +482,8 @@ extern "C" {
                              r, s, t)                                          \
   void matmul_scalar_##mlir_type_in##_##mlir_type_out(                         \
       ctype_in *a_in, ctype_in *b_in, ctype_out *c_out) {                      \
-    matmul_scalar<ctype_in, ctype_out, DIM_M, DIM_K, DIM_N, is_b_row_maj, is_c_row_maj>(a_in, b_in,        \
-                                                            c_out);            \
+    matmul_scalar<ctype_in, ctype_out, DIM_M, DIM_K, DIM_N, is_b_row_maj,      \
+                  is_c_row_maj>(a_in, b_in, c_out);                            \
   }
 
 #define zero_vectorized_c_func(ctype_in, mlir_type_in, ctype_out,              \

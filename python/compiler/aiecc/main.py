@@ -34,31 +34,48 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overlay: (
-    Pipeline()
-    .lower_affine()
-    .add_pass("aie-canonicalize-device")
-    .Nested(
-        "aie.device",
-        Pipeline()
-        .add_pass("aie-assign-lock-ids")
-        .add_pass("aie-register-objectFifos")
-        .add_pass(
-            "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+
+def _create_input_with_addresses_pipeline(
+    scheme, dynamic_objFifos, ctrl_pkt_overlay, aie_target
+):
+    pipeline = Pipeline()
+
+    # Only add convert-vector-to-aievec for AIE2 and later targets
+    # AIE1 ("aie") does not support target_backend="llvmir"
+    if aie_target.lower() in ["aie2", "aieml", "aie2p"]:
+        pipeline.add_pass(
+            "convert-vector-to-aievec",
+            aie_target=aie_target.lower(),
+            target_backend="llvmir",
         )
-        .add_pass("aie-assign-bd-ids")
-        .add_pass("aie-lower-cascade-flows")
-        .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-tile-controller-ids")
-        .add_pass(
-            "aie-generate-column-control-overlay",
-            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+
+    return (
+        pipeline.lower_affine()
+        .add_pass("aie-canonicalize-device")
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-assign-lock-ids")
+            .add_pass("aie-register-objectFifos")
+            .add_pass(
+                "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+            )
+            .add_pass("aie-assign-bd-ids")
+            .add_pass("aie-lower-cascade-flows")
+            .add_pass("aie-lower-broadcast-packet")
+            .add_pass("aie-lower-multicast")
+            .add_pass("aie-assign-tile-controller-ids")
+            .add_pass(
+                "aie-generate-column-control-overlay",
+                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+            )
+            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
         )
-        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
+        .convert_scf_to_cf()
     )
-    .convert_scf_to_cf()
-)
+
+
+INPUT_WITH_ADDRESSES_PIPELINE = _create_input_with_addresses_pipeline
 
 LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
@@ -90,6 +107,7 @@ AIE_LOWER_TO_LLVM = (
         )
         .add_pass("aie-standard-lowering", tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
+        .add_pass("convert-aievec-to-llvm")
     )
     + LOWER_TO_LLVM_PIPELINE
 )
@@ -397,6 +415,12 @@ def downgrade_ir_for_peano(llvmir):
     return llvmir
 
 
+def drop_alignment_for_peano(llvmir):
+    # Remove any ", align <integer>" attribute occurrences
+    llvmir = re.sub(r",\s*align\s+\d+", "", llvmir)
+    return llvmir
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -502,6 +526,7 @@ class FlowRunner:
 
         llvmir_ir = await read_file_async(llvmir)
         llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        llvmir_hacked_ir = drop_alignment_for_peano(llvmir_hacked_ir)
         await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
 
         return llvmir_peanohack
@@ -1203,24 +1228,11 @@ class FlowRunner:
             else:
                 progress_bar.task = None
 
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
-            ).materialize(module=True)
-
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            run_passes(
-                pass_pipeline,
-                self.mlir_module_str,
-                file_with_addresses,
-                self.opts.verbose,
-            )
-
-            cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(
                 [
                     "aie-translate",
                     "--aie-generate-target-arch",
-                    file_with_addresses,
+                    opts.filename,
                 ],
                 self.opts.verbose,
             )
@@ -1232,6 +1244,23 @@ class FlowRunner:
                 )
                 exit(-3)
             aie_peano_target = aie_target.lower() + "-none-unknown-elf"
+
+            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
+                opts.alloc_scheme,
+                opts.dynamic_objFifos,
+                opts.ctrl_pkt_overlay,
+                aie_target,
+            ).materialize(module=True)
+
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+            run_passes(
+                pass_pipeline,
+                self.mlir_module_str,
+                file_with_addresses,
+                self.opts.verbose,
+            )
+
+            cores = generate_cores_list(await read_file_async(file_with_addresses))
 
             # Optionally generate insts.txt for NPU instruction stream
             if opts.npu:
@@ -1445,6 +1474,13 @@ def run(mlir_module, args=None):
         pass
     if opts.verbose:
         print("created temporary directory", tmpdirname)
+
+    # Create a temporary file holding the input ir, if opts.filename is None.
+    if opts.filename == None:
+        tmpinput_path = os.path.join(tmpdirname, "tmpinput.mlir")
+        with open(tmpinput_path, "w") as f:
+            f.write(str(mlir_module))
+        opts.filename = tmpinput_path
 
     runner = FlowRunner(str(mlir_module), opts, tmpdirname)
     asyncio.run(runner.run_flow())

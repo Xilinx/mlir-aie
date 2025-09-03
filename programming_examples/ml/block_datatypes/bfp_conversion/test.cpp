@@ -57,7 +57,8 @@ int main(int argc, const char *argv[]) {
   const int bfpBytesSize = numberFloats * 1.125;
 
   // Load instruction sequence
-  std::vector<uint32_t> instr = test_utils::load_instr_binary(vm["instr"].as<std::string>());
+  std::vector<uint32_t> instr =
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr.size() << "\n";
 
@@ -80,18 +81,20 @@ int main(int argc, const char *argv[]) {
 
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::ranges::find_if(xkernels, [node, verbosity](xrt::xclbin::kernel &k) {
-    auto name = k.get_name();
-    if (verbosity >= 1) {
-      std::cout << "Name: " << name << std::endl;
-    }
-    return name.rfind(node, 0) == 0;
-  });
+  auto xkernel = *std::ranges::find_if(
+      xkernels, [node, verbosity](xrt::xclbin::kernel &k) {
+        auto name = k.get_name();
+        if (verbosity >= 1) {
+          std::cout << "Name: " << name << std::endl;
+        }
+        return name.rfind(node, 0) == 0;
+      });
   auto kernelName = xkernel.get_name();
 
   // Register xclbin
   if (verbosity >= 1)
-    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>() << "\n";
+    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
+              << "\n";
   device.register_xclbin(xclbin);
 
   // Get a hardware context
@@ -108,14 +111,14 @@ int main(int argc, const char *argv[]) {
   // Initialize input/ output buffer sizes and sync them
   // ------------------------------------------------------
 
-  auto boInstr =
-      xrt::bo(device, instr.size() * sizeof(int), XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto boInA = xrt::bo(device, numberFloats * sizeof(std::bfloat16_t), XRT_BO_FLAGS_HOST_ONLY,
-                       kernel.group_id(3));
-  auto boInB = xrt::bo(device, numberFloats * sizeof(std::bfloat16_t), XRT_BO_FLAGS_HOST_ONLY,
-                       kernel.group_id(3));
-  auto boOut =
-      xrt::bo(device, bfpBytesSize * sizeof(int8_t), XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+  auto boInstr = xrt::bo(device, instr.size() * sizeof(int),
+                         XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+  auto boInA = xrt::bo(device, numberFloats * sizeof(std::bfloat16_t),
+                       XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto boInB = xrt::bo(device, numberFloats * sizeof(std::bfloat16_t),
+                       XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto boOut = xrt::bo(device, bfpBytesSize * sizeof(int8_t),
+                       XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -129,16 +132,20 @@ int main(int argc, const char *argv[]) {
   float floatA[numberFloats];
   float floatB[numberFloats];
 
-  std::ranges::transform(floatA, floatA,
-                         [&](float _) { return generateRandomFloatingPoint(rng, -5, 5); });
-  std::ranges::transform(floatB, floatB,
-                         [&](float _) { return generateRandomFloatingPoint(rng, -5, 5); });
+  std::ranges::transform(floatA, floatA, [&](float _) {
+    return generateRandomFloatingPoint(rng, -5, 5);
+  });
+  std::ranges::transform(floatB, floatB, [&](float _) {
+    return generateRandomFloatingPoint(rng, -5, 5);
+  });
 
   std::bfloat16_t bfloatA[numberFloats];
   std::bfloat16_t bfloatB[numberFloats];
 
-  std::ranges::transform(floatA, bfloatA, [](float f) { return static_cast<std::bfloat16_t>(f); });
-  std::ranges::transform(floatB, bfloatB, [](float f) { return static_cast<std::bfloat16_t>(f); });
+  std::ranges::transform(
+      floatA, bfloatA, [](float f) { return static_cast<std::bfloat16_t>(f); });
+  std::ranges::transform(
+      floatB, bfloatB, [](float f) { return static_cast<std::bfloat16_t>(f); });
 
   // ------------------------------------------------------
   // Write data into buffers
@@ -183,10 +190,12 @@ int main(int argc, const char *argv[]) {
   std::vector<float> floatAVec(floatA, floatA + numberFloats);
   std::vector<float> floatBVec(floatB, floatB + numberFloats);
   std::vector<float> expectedResultVec(numberFloats);
-  matmul_common::matmul<float, float, float>(matrixSize, matrixSize, matrixSize, floatAVec,
-                                             floatBVec, expectedResultVec, false, false);
+  matmul_common::matmul<float, float, float>(matrixSize, matrixSize, matrixSize,
+                                             floatAVec, floatBVec,
+                                             expectedResultVec, false, false);
 
-  printBfp16ebs8Array(numberFloats * 1.125, std::vector(bufOut, bufOut + bfpBytesSize));
+  printBfp16ebs8Array(numberFloats * 1.125,
+                      std::vector(bufOut, bufOut + bfpBytesSize));
   auto outputTransformed = bfp16ebs8ToFloat(bfpBytesSize, bufOut, 0);
 
   int errors = 0;
@@ -198,14 +207,15 @@ int main(int argc, const char *argv[]) {
     // Note that this nearly equal function parameters are handpicked for this
     // particular example and do not reflect how the general case should be
     // handled for any bfp type.
-    if (!test_utils::nearly_equal(outputTransformed[i], expectedResultVec[i], 0.25, 3.5)) {
-      std::cout << "Error in output " << outputTransformed[i] << " != " << expectedResultVec[i]
-                << std::endl;
+    if (!test_utils::nearly_equal(outputTransformed[i], expectedResultVec[i],
+                                  0.25, 3.5)) {
+      std::cout << "Error in output " << outputTransformed[i]
+                << " != " << expectedResultVec[i] << std::endl;
       errors++;
     } else {
       if (verbosity > 1)
-        std::cout << "Correct output " << outputTransformed[i] << " ~= " << expectedResultVec[i]
-                  << std::endl;
+        std::cout << "Correct output " << outputTransformed[i]
+                  << " ~= " << expectedResultVec[i] << std::endl;
     }
   }
 
