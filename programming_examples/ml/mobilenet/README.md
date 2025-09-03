@@ -33,7 +33,7 @@ The below figures shows our dataflow mapping of MobileNetV3 on 4x8 AI Engine arr
 
 ### Bottleneck A
 
-In this mapping, each bottleneck block is implemented on a single AI core. 
+In this mapping, each bottleneck block is implemented on a single AI core with some layers combined to balance the pipe and leave enough tile for the fully connected layers at the end.
 
 ### Bottleneck B
 
@@ -42,3 +42,12 @@ In this mapping, each bottleneck block is distributed across three AI cores. Thi
 ### Bottleneck C
 
 In this mapping, each bottleneck block is distributed across five AI cores. This maximizes parallelism and is designed to achieve the best performance by fully utilizing the available AI cores.
+
+## Setup
+
+### Building the Project
+
+To compile and run the chained design:
+```
+make run_py_mobilenet
+```
