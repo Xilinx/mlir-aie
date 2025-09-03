@@ -38,7 +38,8 @@ MLIR_CAPI_EXPORTED MlirType aieObjectFifoSubviewTypeGet(MlirType type);
 //===---------------------------------------------------------------------===//
 
 MLIR_CAPI_EXPORTED bool aieTypeIsBlockFloatType(MlirType type);
-MLIR_CAPI_EXPORTED MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string& blockType);
+MLIR_CAPI_EXPORTED MlirType aieBlockFloatTypeGet(MlirContext ctx,
+                                                 const std::string &blockType);
 
 #ifdef __cplusplus
 }
