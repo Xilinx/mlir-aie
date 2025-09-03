@@ -647,7 +647,7 @@ void conv2dk3_i8_vector(int8_t *line0, int8_t *line1, int8_t *line2,
                 line[i] += 32; // next_prev = x4..x7(ci0..ci7)
 
                 acc_tmp[x].mac(tmp3.extract<32>(0), wtsVec);
-              }               // for(int x=0; x<8; x++)
+              } // for(int x=0; x<8; x++)
               line[i] -= 320; // (8+2)*32, Reset line buffer ptr to beginning of
                               // line (after first 4)
             }                 // for(int j=0; j<kernel_width;j++) {
@@ -1139,10 +1139,10 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
                 line[i] += 32;
                 tmp1 = aie::shuffle_down(tmp1, j2 * 8);
 
-              }               // for(int x=0; x<8; x++)
+              } // for(int x=0; x<8; x++)
               line[i] -= 320; // (8+2)*32, Reset line buffer ptr to
                               // beginning of line (after first 4)
-            }                 // for(int j=0; j<kernel_width;j++) {
+            } // for(int j=0; j<kernel_width;j++) {
             wtsLine[i] += ((kernel_height - 1) * kernel_width *
                            64);  // Move to next ic/8 position
             line[i] += (iw * 8); // Increment to next ic/8 position (reset
@@ -1150,7 +1150,7 @@ void conv2dk3_ui8_vector(uint8_t *line0, uint8_t *line1, uint8_t *line2,
 
           } // for(int i=kernel_height_start; i<kernel_height_end; i++) { //
             // 1 to 3
-        }   // for(int ic=0; ic<(input_channels/8); ic++) {
+        } // for(int ic=0; ic<(input_channels/8); ic++) {
         AIE_LOOP_RANGE(8, 8)
         AIE_LOOP_UNROLL_FULL
         for (int x = 0; x < 8; x++) {

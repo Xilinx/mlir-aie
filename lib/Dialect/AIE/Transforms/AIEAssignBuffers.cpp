@@ -22,9 +22,8 @@ using namespace xilinx::AIE;
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
-bool checkAndPrintOverflow(TileOp tile, int address,
-                                    int maxDataMemorySize, int stacksize,
-                                    SmallVector<BufferOp> &buffers) {
+bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
+                           int stacksize, SmallVector<BufferOp> &buffers) {
   if (address > maxDataMemorySize) {
     InFlightDiagnostic error =
         tile.emitOpError("allocated buffers exceeded available memory\n");
@@ -220,10 +219,8 @@ void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
                << "Current configuration of buffers in bank(s) : ";
   note << "MemoryMap:\n";
   auto printbuffer = [&](StringRef name, int address, int size) {
-    note << "\t"
-         << "\t" << name << " \t"
-         << ": 0x" << llvm::utohexstr(address) << "-0x"
-         << llvm::utohexstr(address + size - 1) << " \t(" << size
+    note << "\t" << "\t" << name << " \t" << ": 0x" << llvm::utohexstr(address)
+         << "-0x" << llvm::utohexstr(address + size - 1) << " \t(" << size
          << " bytes)\n";
   };
   for (int i = 0; i < numBanks; i++) {
@@ -233,9 +230,8 @@ void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
       else
         note << "(no stack allocated)\n";
     }
-    note << "\t"
-         << "bank : " << i << "\t"
-         << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
+    note << "\t" << "bank : " << i << "\t" << "0x"
+         << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
          << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
     for (auto buffer : preAllocatedBuffers) {
       auto addr = buffer.getAddress().value();
@@ -292,9 +288,9 @@ int setBufferAddress(BufferOp buffer, int numBanks, int &startBankIndex,
 }
 
 bool checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
-                                    SmallVector<BufferOp> &allBuffers,
-                                    std::vector<int64_t> &nextAddrInBanks,
-                                    std::vector<BankLimits> &bankLimits) {
+                           SmallVector<BufferOp> &allBuffers,
+                           std::vector<int64_t> &nextAddrInBanks,
+                           std::vector<BankLimits> &bankLimits) {
   bool foundOverflow = false;
   std::vector<int> overflow_banks;
   for (int i = 0; i < numBanks; i++) {

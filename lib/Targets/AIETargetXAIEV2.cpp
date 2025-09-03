@@ -650,13 +650,10 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
       output << "__mlir_aie_try(XAie_StrmPktSwMstrPortEnable(" << deviceInstRef
              << ", " << tileLocStr("x", "y") << ", "
              << wireBundleToPortType(connectOp.getDestBundle()) << ", "
-             << connectOp.destIndex() << ", "
-             << "/* drop_header */ "
+             << connectOp.destIndex() << ", " << "/* drop_header */ "
              << (isdma ? "XAIE_SS_PKT_DROP_HEADER"
                        : "XAIE_SS_PKT_DONOT_DROP_HEADER")
-             << ", "
-             << "/* arbiter */ " << arbiter << ", "
-             << "/* MSelEn */ "
+             << ", " << "/* arbiter */ " << arbiter << ", " << "/* MSelEn */ "
              << "0x" << llvm::utohexstr(mask) << "));\n";
     }
 
@@ -676,14 +673,12 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
         output << "__mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable("
                << deviceInstRef << ", " << tileLocStr("x", "y") << ", "
                << wireBundleToPortType(connectOp.getSourceBundle()) << ", "
-               << connectOp.sourceIndex() << ", "
-               << "/* slot */ " << slot << ", "
-               << "/* packet */ " << packetStr(slotOp.valueInt(), /*type*/ 0)
-               << ", "
-               << "/* mask */ "
-               << "0x" << llvm::utohexstr(slotOp.maskInt()) << ", "
-               << "/* msel */ " << msel << ", "
-               << "/* arbiter */ " << arbiter << "));\n";
+               << connectOp.sourceIndex() << ", " << "/* slot */ " << slot
+               << ", " << "/* packet */ "
+               << packetStr(slotOp.valueInt(), /*type*/ 0) << ", "
+               << "/* mask */ " << "0x" << llvm::utohexstr(slotOp.maskInt())
+               << ", " << "/* msel */ " << msel << ", " << "/* arbiter */ "
+               << arbiter << "));\n";
         slot++;
       }
     }
