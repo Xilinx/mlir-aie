@@ -1,9 +1,9 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
@@ -35,9 +35,9 @@ else
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 endif
 
-build/aie.mlir: ${srcdir}/${aie_py_src}
+build/aie.mlir: ${srcdir}/${aie_py_src} build/reduce_min.cc.o
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${col} > $@
+	cd ${@D} && python3 $< ${devicename} ${col} > ${@F}
 
 build/final.xclbin: build/aie.mlir build/reduce_min.cc.o
 	mkdir -p ${@D}
@@ -53,7 +53,7 @@ ${targetname}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
 run: ${targetname}.exe build/final.xclbin

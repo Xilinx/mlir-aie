@@ -4,15 +4,47 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc.
 
+import os
 import numpy as np
+import cxxfilt
+from elftools.elf.elffile import ELFFile
+from elftools.elf.sections import SymbolTableSection
 
 from .. import ir  # type: ignore
 from ..extras.dialects.ext.func import FuncOp  # type: ignore
 from ..helpers.dialects.ext.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable
+
+
+def find_mangled_symbol(file: os.PathLike, demangled_name):
+    """
+    Find the mangled symbol that corresponds to the demangled_name.
+
+    Args:
+        file (str): Path to the file to analyze
+        demangled_name (str): The demangled name of the symbol to find
+
+    Returns:
+        str: The mangled name of the symbol if found, otherwise None
+    """
+    with open(file, "rb") as file:
+        elf_file = ELFFile(file)
+
+        for section in elf_file.iter_sections():
+            if isinstance(section, SymbolTableSection):
+                for symbol in section.iter_symbols():
+                    # Filter out function symbols
+                    if symbol and symbol["st_info"]["type"] == "STT_FUNC":
+                        if symbol.name == demangled_name:
+                            # Name matches the demangled name, thus it has C linkage
+                            return symbol.name
+                        if cxxfilt.demangle(symbol.name) == demangled_name:
+                            # Demangled symbol name matches the demangled name, thus it has C++ linkage
+                            return symbol.name
+    return None
 
 
 class BaseKernel(Resolvable):
@@ -72,7 +104,13 @@ class Kernel(BaseKernel):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         if not self._op:
-            self._op = external_func(self._name, inputs=self._arg_types)
+            bin_file = os.path.abspath(self._bin_name)
+            symbol_name = find_mangled_symbol(bin_file, self._name)
+            if not symbol_name:
+                raise ValueError(
+                    f"Could not find symbol for {self._name} in {bin_file}"
+                )
+            self._op = external_func(symbol_name, inputs=self._arg_types)
 
 
 class ExternalFunction(BaseKernel):
