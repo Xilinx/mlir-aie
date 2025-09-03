@@ -1683,8 +1683,6 @@ struct AIEObjectFifoStatefulTransformPass
         packetID = packetflow.getID() + 1;
       }
     }
-    if (packetID > 31)
-      device.emitOpError("max number of packet IDs reached");
     return packetID;
   }
 
@@ -1897,7 +1895,7 @@ struct AIEObjectFifoStatefulTransformPass
     // Only the objectFifos we split above require DMA communication; the others
     // rely on shared memory and share the same buffers.
     
-    int packetID = 0;//getStartPacketID(device);
+    int packetID = getStartPacketID(device);
     for (auto &[producer, consumers] : splitFifos) {
       int producerChanIndex = fifo_dma_channel_index[producer];
       if (producerChanIndex == -1)
@@ -1906,11 +1904,11 @@ struct AIEObjectFifoStatefulTransformPass
       DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
       std::optional<PacketInfoAttr> bdPacket = {};
       if (clPacketSwObjectFifos) {
+        if (packetID > 31)
+          device.emitOpError("max number of packet IDs reached");
         bdPacket = {
             AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
         packetID++;
-        if (packetID > 31)
-          device.emitOpError("max number of packet IDs reached");
       }
       createDMA(device, builder, producer, producerChan.direction,
                 producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
