@@ -102,7 +102,7 @@ def vector_reduce_max(input0, output):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-            #compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+            # compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
             with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
@@ -122,15 +122,15 @@ def vector_reduce_max(input0, output):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-            #compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
-            #*out = (*in1 > *in2) ? *in1 : *in2;
+            # compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+            # *out = (*in1 > *in2) ? *in1 : *in2;
             with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
 
         elem_out = of_out.acquire(1)
         elem_in1 = in0.acquire(1)
-        #compute_max(elem_in1, nextC_buffer, elem_out)
+        # compute_max(elem_in1, nextC_buffer, elem_out)
         with if_(elem_in1[0] > nextC_buffer[0]) as if_op:
             elem_out[0] = elem_in1[0]
         with else_(if_op):

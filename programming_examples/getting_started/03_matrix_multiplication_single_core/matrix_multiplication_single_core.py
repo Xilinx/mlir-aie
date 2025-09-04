@@ -46,15 +46,13 @@ def matrix_multiplication_single_core(input0, input1, output):
     fifo_A_L3L2 = ObjectFifo(a_ty, name="A_L3L2")
     tap_A_L2L1 = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
     fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
-        dims_to_stream=tap_A_L2L1.transformation_dims, 
-        name="A_L2L1"
+        dims_to_stream=tap_A_L2L1.transformation_dims, name="A_L2L1"
     )
 
     fifo_B_L3L2 = ObjectFifo(b_ty, name="B_L3L2")
     tap_B_L2L1 = TensorTiler2D.group_tiler((k, n), (s, t), (k // s, n // t))[0]
     fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
-        dims_to_stream=tap_B_L2L1.transformation_dims, 
-        name="B_L2L1"
+        dims_to_stream=tap_B_L2L1.transformation_dims, name="B_L2L1"
     )
 
     fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
@@ -62,11 +60,10 @@ def matrix_multiplication_single_core(input0, input1, output):
         tensor_dims=(m, n),
         offset=0,
         sizes=[m // r, r, n // t, t],
-        strides=[r * n, t, r * t, 1]
+        strides=[r * n, t, r * t, 1],
     )
     fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
-        dims_to_stream=tap_C_L1L2.transformation_dims, 
-        name="C_L2L3"
+        dims_to_stream=tap_C_L1L2.transformation_dims, name="C_L2L3"
     )
 
     # --------------------------------------------------------------------------
@@ -87,10 +84,11 @@ def matrix_multiplication_single_core(input0, input1, output):
         source_file="matrix_multiplication.cc",
         arg_types=[a_ty, b_ty, c_ty],
     )
+
     def core_fn(of_a, of_b, of_c, matmul):
         for _ in range_(M // m * N // n):
             elem_out = of_c.acquire(1)
-            #zero(elem_out)
+            # zero(elem_out)
             for i in range_(m):
                 for j in range_(n):
                     elem_out[i, j] = 0
@@ -101,20 +99,27 @@ def matrix_multiplication_single_core(input0, input1, output):
                 of_a.release(1)
                 of_b.release(1)
             of_c.release(1)
-    worker = Worker(core_fn, [fifo_A_L2L1.cons(), fifo_B_L2L1.cons(), fifo_C_L1L2.prod(), matmul_kernel])
 
+    worker = Worker(
+        core_fn,
+        [fifo_A_L2L1.cons(), fifo_B_L2L1.cons(), fifo_C_L1L2.prod(), matmul_kernel],
+    )
 
     # --------------------------------------------------------------------------
     # DRAM-NPU data movement and work dispatch
     # --------------------------------------------------------------------------
 
-    # The data movement patterns from DRAM divide the input matrices (sizes 
+    # The data movement patterns from DRAM divide the input matrices (sizes
     # M*K, K*N) into m*k- and k*n-sized subtiles and produce output into C in
     # m*n-sized subtiles. Each single "task group" encompasses all data
     # movement required for a single row of the output matrix.
 
-    a_taps = TensorTiler2D.group_tiler((M, K), (m, k), (1, K // k), pattern_repeat=(N // n))
-    b_tap = TensorTiler2D.group_tiler((K, N), (k, n), (K // k, N // n), tile_group_col_major=True)[0]
+    a_taps = TensorTiler2D.group_tiler(
+        (M, K), (m, k), (1, K // k), pattern_repeat=(N // n)
+    )
+    b_tap = TensorTiler2D.group_tiler(
+        (K, N), (k, n), (K // k, N // n), tile_group_col_major=True
+    )[0]
     c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
 
     rt = Runtime()
@@ -124,7 +129,13 @@ def matrix_multiplication_single_core(input0, input1, output):
             task_group = rt.task_group()
             rt.fill(fifo_A_L3L2.prod(), A, tap=a_taps[tile_row], task_group=task_group)
             rt.fill(fifo_B_L3L2.prod(), B, tap=b_tap, task_group=task_group)
-            rt.drain(fifo_C_L2L3.cons(), C, tap=c_taps[tile_row], task_group=task_group, wait=True)
+            rt.drain(
+                fifo_C_L2L3.cons(),
+                C,
+                tap=c_taps[tile_row],
+                task_group=task_group,
+                wait=True,
+            )
             rt.finish_task_group(task_group)
 
     # --------------------------------------------------------------------------
@@ -144,10 +155,10 @@ def main():
     # The two tensors are in memory accessible to the NPU
     input0 = iron.randint(0, 256, (M, K), dtype=element_type, device="npu")
     input1 = iron.randint(0, 256, (K, N), dtype=element_type, device="npu")
-    output = iron.zeros(M*N, dtype=element_type, device="npu")
+    output = iron.zeros(M * N, dtype=element_type, device="npu")
 
     # Generate reference pattern
-    #ref_vec = iron.zeros_like(output)
+    # ref_vec = iron.zeros_like(output)
     ref_vec = np.matmul(input0.numpy(), input1.numpy())
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
