@@ -25,20 +25,19 @@ from aie.helpers.dialects.ext.scf import if_, else_
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
 def vector_reduce_max(input0, output):
-    N = 4096  # Tensor size
     element_type = output.dtype
 
     in_size = 524288
     out_size = 4
 
     n_cores = 4
-    n_mem_elems = 2048
-    elems_per_core = n_mem_elems // n_cores
+    N = 2048
+    elems_per_core = N // n_cores
 
     in_tensor_size = in_size // element_type(0).nbytes
     out_tensor_size = out_size // element_type(0).nbytes
 
-    num_iter = in_tensor_size // n_mem_elems
+    num_iter = in_tensor_size // N
 
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
 
@@ -47,7 +46,7 @@ def vector_reduce_max(input0, output):
     # --------------------------------------------------------------------------
 
     in_ty = np.ndarray[(in_tensor_size,), np.dtype[element_type]]
-    mem_ty = np.ndarray[(n_mem_elems,), np.dtype[element_type]]
+    mem_ty = np.ndarray[(N,), np.dtype[element_type]]
     op_ty = np.ndarray[(elems_per_core,), np.dtype[element_type]]
     out_ty = np.ndarray[(out_tensor_size,), np.dtype[element_type]]
 
@@ -82,12 +81,6 @@ def vector_reduce_max(input0, output):
         source_file="vector_reduce_max.cc",
         arg_types=[op_ty, out_ty, np.int32],
     )
-    # TODO: use when multiple external functions are supported with JIT
-    # compute_max = ExternalFunction(
-    #     f"compute_max_bfloat16",
-    #     source_file="vector_reduce_max.cc",
-    #     arg_types=[out_ty, out_ty, out_ty],
-    # )
     min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
 
     def start_core_body(of_in, of_out, reduce_max_vector):
@@ -103,7 +96,6 @@ def vector_reduce_max(input0, output):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-            # compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
             with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
@@ -123,15 +115,12 @@ def vector_reduce_max(input0, output):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-            # compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
-            # *out = (*in1 > *in2) ? *in1 : *in2;
             with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
 
         elem_out = of_out.acquire(1)
         elem_in1 = in0.acquire(1)
-        # compute_max(elem_in1, nextC_buffer, elem_out)
         with if_(elem_in1[0] > nextC_buffer[0]) as if_op:
             elem_out[0] = elem_in1[0]
         with else_(if_op):
