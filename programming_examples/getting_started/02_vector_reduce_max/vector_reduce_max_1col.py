@@ -82,6 +82,7 @@ def vector_reduce_max(input0, output):
         source_file="vector_reduce_max.cc",
         arg_types=[op_ty, out_ty, np.int32],
     )
+    # TODO: use when multiple external functions are supported with JIT
     # compute_max = ExternalFunction(
     #     f"compute_max_bfloat16",
     #     source_file="vector_reduce_max.cc",

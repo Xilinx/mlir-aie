@@ -13,7 +13,6 @@
 #include <stdlib.h>
 #include <type_traits>
 
-//#include "../../../aie_kernels/aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T, typename V>
@@ -25,8 +24,6 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   V after_vector;
   V running_max = tiny;
 
-  //AIE_PREPARE_FOR_PIPELINING
-  //AIE_LOOP_MIN_ITERATION_COUNT(8)
   for (int32_t i = 0; i < input_size; i += VECTOR_SIZE) {
     V next = aie::load_v(in + i);
     V test = max(running_max, next);

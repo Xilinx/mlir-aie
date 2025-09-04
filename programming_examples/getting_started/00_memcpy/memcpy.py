@@ -22,6 +22,7 @@ from aie.helpers.taplib.tap import TensorAccessPattern
 # a template for multi-core unary operations.
 #
 
+
 # JIT decorator for IRON
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
@@ -50,12 +51,16 @@ def my_memcpy(input0, output):
     if isinstance(device, NPU1):
         if num_columns > 4:
             raise ValueError(
-                "[ERROR] Device {} cannot allocate more than 4 columns".format(opts.device)
+                "[ERROR] Device {} cannot allocate more than 4 columns".format(
+                    opts.device
+                )
             )
     elif isinstance(device, NPU2):
         if num_columns > 8:
             raise ValueError(
-                "[ERROR] Device {} cannot allocate more than 8 columns".format(opts.device)
+                "[ERROR] Device {} cannot allocate more than 8 columns".format(
+                    opts.device
+                )
             )
     if num_channels < 1 or num_channels > 2:
         raise ValueError("Number of channels must be 1 or 2")
@@ -187,7 +192,7 @@ def main():
     # columns and 2 channels per column
     length = 16384
     # Use int32 dtype as it is the addr generation granularity
-    element_type = np.int32 
+    element_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
