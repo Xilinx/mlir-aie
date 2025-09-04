@@ -18,8 +18,7 @@ from aie.helpers.taplib.tap import TensorAccessPattern
 
 #
 # Memcpy is designed to use every column's shimDMA in-out pairs
-# to fully saturate DDR bandwidth. It is a superset of passthrough_kernel
-# and passthrough_dmas. As such, it can be used as a microbenchmark or as
+# to fully saturate DDR bandwidth. It can be used as a microbenchmark or as
 # a template for multi-core unary operations.
 #
 
@@ -37,32 +36,20 @@ def my_memcpy(input0, output):
 
     xfr_dtype = output.dtype
 
-    # Number of columns must be less than or equal to 4 for npu1 and 8 for npu2
-    num_columns = 8
     # Number of channels must be 1 or 2
     num_channels = 2
-    # Bypass is required to define if the bypass path should be used
-    bypass = False
 
     # Transfer size must be a multiple of 1024 and divisible by the number of
     # columns and 2 channels per column
     size = output.numel()
 
+
+    # Number of columns must be less than or equal to 4 for npu1 and 8 for npu2
     device = iron.get_current_device()
+    num_columns = 8
     if isinstance(device, NPU1):
-        if num_columns > 4:
-            raise ValueError(
-                "[ERROR] Device {} cannot allocate more than 4 columns".format(
-                    opts.device
-                )
-            )
-    elif isinstance(device, NPU2):
-        if num_columns > 8:
-            raise ValueError(
-                "[ERROR] Device {} cannot allocate more than 8 columns".format(
-                    opts.device
-                )
-            )
+        num_columns = 4
+
     if num_channels < 1 or num_channels > 2:
         raise ValueError("Number of channels must be 1 or 2")
     if ((size % 1024) % num_columns % num_channels) != 0:
@@ -90,54 +77,44 @@ def my_memcpy(input0, output):
         for i in range(num_columns)
         for j in range(num_channels)
     ]
-    # Bypass path is a special case where we don't need to create a Worker
-    # and we can use the ObjectFifo directly to read and write the data with
-    # a `forward` through a MemTile.
-    if bypass:
-        of_outs = [
-            of_ins[i * num_channels + j].cons().forward()
-            for i in range(num_columns)
-            for j in range(num_channels)
-        ]
-    else:
-        of_outs = [
-            ObjectFifo(line_type, name=f"out{i}_{j}")
-            for i in range(num_columns)
-            for j in range(num_channels)
-        ]
+    of_outs = [
+        ObjectFifo(line_type, name=f"out{i}_{j}")
+        for i in range(num_columns)
+        for j in range(num_channels)
+    ]
 
-        # --------------------------------------------------------------------------
-        # Task core will run
-        # --------------------------------------------------------------------------
+    # --------------------------------------------------------------------------
+    # Task core will run
+    # --------------------------------------------------------------------------
 
-        # External, binary kernel definition
-        passthrough_fn = ExternalFunction(
-            "passThroughLine",
-            source_file="passThrough.cc",
-            arg_types=[line_type, line_type, np.int32],
+    # External, binary kernel definition
+    passthrough_fn = ExternalFunction(
+        "passThroughLine",
+        source_file="passThrough.cc",
+        arg_types=[line_type, line_type, np.int32],
+    )
+
+    # Task for the core to perform
+    def core_fn(of_in, of_out, passThroughLine):
+        elemOut = of_out.acquire(1)
+        elemIn = of_in.acquire(1)
+        passThroughLine(elemIn, elemOut, line_size)
+        of_in.release(1)
+        of_out.release(1)
+
+    # Create a worker to perform the task
+    my_workers = [
+        Worker(
+            core_fn,
+            [
+                of_ins[i * num_channels + j].cons(),
+                of_outs[i * num_channels + j].prod(),
+                passthrough_fn,
+            ],
         )
-
-        # Task for the core to perform
-        def core_fn(of_in, of_out, passThroughLine):
-            elemOut = of_out.acquire(1)
-            elemIn = of_in.acquire(1)
-            passThroughLine(elemIn, elemOut, line_size)
-            of_in.release(1)
-            of_out.release(1)
-
-        # Create a worker to perform the task
-        my_workers = [
-            Worker(
-                core_fn,
-                [
-                    of_ins[i * num_channels + j].cons(),
-                    of_outs[i * num_channels + j].prod(),
-                    passthrough_fn,
-                ],
-            )
-            for i in range(num_columns)
-            for j in range(num_channels)
-        ]
+        for i in range(num_columns)
+        for j in range(num_channels)
+    ]
 
     # --------------------------------------------------------------------------
     # DRAM-NPU data movement and work dispatch
@@ -159,9 +136,9 @@ def my_memcpy(input0, output):
 
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
-        # Start the workers if not bypass
-        if not bypass:
-            rt.start(*my_workers)
+        # Start the workers
+        rt.start(*my_workers)
+
         # Fill the input objectFIFOs with data
         for i in range(num_columns):
             for j in range(num_channels):
@@ -170,28 +147,32 @@ def my_memcpy(input0, output):
                     a_in,
                     taps[i * num_channels + j],
                 )
+
         # Drain the output objectFIFOs with data
+        tg_out = rt.task_group()  # Initialize a group for parallel drain tasks
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.drain(
                     of_outs[i * num_channels + j].cons(),
                     b_out,
                     taps[i * num_channels + j],
-                    wait=True,  # wait for the transfer to complete and data to be available
+                    wait=True,  # Wait for the transfer to complete and data to be available
+                    task_group=tg_out, # Add task to the group 
                 )
+        rt.finish_task_group(tg_out) # Wait for all drain tasks together
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt)
+    my_program = Program(device, rt)
     return my_program.resolve_program(SequentialPlacer())
 
 
 def main():
     # Transfer size must be a multiple of 1024 and divisible by the number of
     # columns and 2 channels per column
-    length = 16384
+    length = 32768
     # Use int32 dtype as it is the addr generation granularity
     element_type = np.int32
 
@@ -205,6 +186,7 @@ def main():
     my_memcpy(input0, output)
 
     # Measure peformance on the second execution using the JIT cached design
+    # FIXME: currently the JIT is not hitting the cache
     start_time = time.perf_counter()
     my_memcpy(input0, output)
     end_time = time.perf_counter()
