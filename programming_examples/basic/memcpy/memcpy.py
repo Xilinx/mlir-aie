@@ -8,11 +8,9 @@ import numpy as np
 import argparse
 import sys
 
-import aie.iron as iron
-from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1, NPU2
+from aie.iron.device import Tile, NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 
 #
@@ -22,50 +20,14 @@ from aie.helpers.taplib.tap import TensorAccessPattern
 # a template for multi-core unary operations.
 #
 
-# JIT decorator for IRON
-# Decorator to compile an IRON kernel into a binary to run on the NPU.
-# Parameters:
-#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
-#     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit(is_placed=False)
-def my_memcpy(input0, output):
+
+def my_memcpy(dev, size, num_columns, num_channels, bypass):
     # --------------------------------------------------------------------------
     # Configuration
     # --------------------------------------------------------------------------
 
-    xfr_dtype = output.dtype
-
-    # Number of columns must be less than or equal to 4 for npu1 and 8 for npu2
-    num_columns = 8
-    # Number of channels must be 1 or 2
-    num_channels = 2
-    # Bypass is required to define if the bypass path should be used
-    bypass = False
-
-    # Transfer size must be a multiple of 1024 and divisible by the number of
-    # columns and 2 channels per column
-    size = output.numel()
-
-    device = iron.get_current_device()
-    if isinstance(device, NPU1):
-        if num_columns > 4:
-            raise ValueError(
-                "[ERROR] Device {} cannot allocate more than 4 columns".format(opts.device)
-            )
-    elif isinstance(device, NPU2):
-        if num_columns > 8:
-            raise ValueError(
-                "[ERROR] Device {} cannot allocate more than 8 columns".format(opts.device)
-            )
-    if num_channels < 1 or num_channels > 2:
-        raise ValueError("Number of channels must be 1 or 2")
-    if ((size % 1024) % num_columns % num_channels) != 0:
-        print(
-            "transfer size ("
-            + str(size)
-            + ") must be a multiple of 1024 and divisible by the number of columns and 2 channels per column"
-        )
-        raise ValueError
+    # Use int32 dtype as it is the addr generation granularity
+    xfr_dtype = np.int32
 
     # Define tensor types
     line_size = 1024
@@ -105,10 +67,10 @@ def my_memcpy(input0, output):
         # --------------------------------------------------------------------------
 
         # External, binary kernel definition
-        passthrough_fn = ExternalFunction(
+        passthrough_fn = Kernel(
             "passThroughLine",
-            source_file="passThrough.cc",
-            arg_types=[line_type, line_type, np.int32],
+            "passThrough.cc.o",
+            [line_type, line_type, np.int32],
         )
 
         # Task for the core to perform
@@ -151,6 +113,7 @@ def my_memcpy(input0, output):
         for j in range(num_channels)
     ]
 
+    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
         # Start the workers if not bypass
@@ -174,44 +137,67 @@ def my_memcpy(input0, output):
                     wait=True,  # wait for the transfer to complete and data to be available
                 )
 
-    # --------------------------------------------------------------------------
-    # Place and generate MLIR program
-    # --------------------------------------------------------------------------
-
-    my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program(SequentialPlacer())
+    # Place components (assign them resources on the device) and generate an MLIR module
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-def main():
-    # Transfer size must be a multiple of 1024 and divisible by the number of
-    # columns and 2 channels per column
-    length = 16384
-    # Use int32 dtype as it is the addr generation granularity
-    element_type = np.int32 
+p = argparse.ArgumentParser()
+## Parse command line arguments
 
-    # Construct an input tensor and an output zeroed tensor
-    # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(length, dtype=element_type, device="npu")
-    output = iron.zeros_like(input0)
+## Device name is required to select the AIE device: npu or npu2
+p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
+## Transfer size is required to define the size of the data to be transferred
+## It must be a multiple of 1024 and divisible by the number of columns and 2 channels per column
+p.add_argument("-l", "--length", required=True, dest="length", help="Transfer size")
+## Number of columns is required to define the number of columns to be used
+## It must be less than or equal to 4 for npu and 8 for npu2
+p.add_argument("-co", "--columns", required=True, dest="cols", help="Number of columns")
+## Number of channels is required to define the number of channels to be used
+## It must be 1 or 2
+p.add_argument(
+    "-ch", "--channels", required=True, dest="chans", help="Number of channels"
+)
+## Bypass is required to define if the bypass path should be used
+p.add_argument(
+    "-b", "--bypass", required=True, dest="bypass", help="Use DMA-only bypass path"
+)
+opts = p.parse_args(sys.argv[1:])
 
-    # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
-    # to the kernel will use the same compiled kernel and loaded code objects
-    my_memcpy(input0, output)
+if opts.device == "npu":
+    dev = NPU1()  # Four columns of NPU1, the maximum available
+elif opts.device == "npu2":
+    dev = NPU2()  # Eight columns of NPU2, the maximum available
+else:
+    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
-    # Check the correctness of the result and print
-    e = np.equal(input0.numpy(), output.numpy())
-    errors = np.size(e) - np.count_nonzero(e)
+length = int(opts.length)
+columns = int(opts.cols)
+if opts.device == "npu":
+    if columns > 4:
+        raise ValueError(
+            "[ERROR] Device {} cannot allocate more than 4 columns".format(opts.device)
+        )
+elif opts.device == "npu2":
+    if columns > 8:
+        raise ValueError(
+            "[ERROR] Device {} cannot allocate more than 8 columns".format(opts.device)
+        )
+channels = int(opts.chans)
+if channels < 1 or channels > 2:
+    raise ValueError("Number of channels must be 1 or 2")
+if ((length % 1024) % columns % channels) != 0:
+    print(
+        "transfer size ("
+        + str(length)
+        + ") must be a multiple of 1024 and divisible by the number of columns and 2 channels per column"
+    )
+    raise ValueError
 
-    # If the result is correct, exit with a success code
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nfailed.\n")
-        sys.exit(1)
+## Bypass is a boolean value that indicates if the bypass path should be used
+## It must be one of the following: yes, true, t, 1
+## It is converted to a boolean value
+bypass = str(opts.bypass).lower() in ("yes", "true", "t", "1")
 
-
-if __name__ == "__main__":
-    main()
+## Call the my_memcpy function with the parsed arguments
+## and print the MLIR as a result
+print(my_memcpy(dev, length, columns, channels, bypass))
