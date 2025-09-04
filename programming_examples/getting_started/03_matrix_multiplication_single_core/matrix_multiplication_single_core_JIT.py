@@ -7,17 +7,21 @@
 import numpy as np
 import sys
 
+import aie.iron as iron
+from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1, NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 
-import aie.iron as iron
 
-
+# JIT decorator for IRON
+# Decorator to compile an IRON kernel into a binary to run on the NPU.
+# Parameters:
+#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
+#     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
-def matrix_multiplication_single_core(output):
+def matrix_multiplication_single_core(input0, input1, output):
     M, K, N = 512, 512, 512  # Problem size
     m, k, n = 64, 64, 64  # Tile size
     r, s, t = 8, 2, 8  # Intrinsic size
@@ -74,18 +78,22 @@ def matrix_multiplication_single_core(output):
     # will have rearranged them into r*s-, s*t-, and r*t-sized subtiles, which
     # the computation kernel relies on.
 
-    zero_kernel = ExternalFunction(
-        "zero", source_file="matrix_multiplication.cc", arg_types=[c_ty],
-    )
+    # TODO: use when multiple external functions are supported with JIT
+    # zero_kernel = ExternalFunction(
+    #     "zero", source_file="matrix_multiplication.cc", arg_types=[c_ty],
+    # )
     matmul_kernel = ExternalFunction(
         "matrix_multiplication",
         source_file="matrix_multiplication.cc",
         arg_types=[a_ty, b_ty, c_ty],
     )
-    def core_fn(of_a, of_b, of_c, zero, matmul):
+    def core_fn(of_a, of_b, of_c, matmul):
         for _ in range_(M // m * N // n):
             elem_out = of_c.acquire(1)
-            zero(elem_out)
+            #zero(elem_out)
+            for i in range_(m):
+                for j in range_(n):
+                    elem_out[i, j] = 0
             for _ in range_(K // k):
                 elem_in_a = of_a.acquire(1)
                 elem_in_b = of_b.acquire(1)
@@ -93,7 +101,7 @@ def matrix_multiplication_single_core(output):
                 of_a.release(1)
                 of_b.release(1)
             of_c.release(1)
-    worker = Worker(core_fn, [fifo_A_L2L1.cons(), fifo_B_L2L1.cons(), fifo_C_L1L2.prod(), zero_kernel, matmul_kernel])
+    worker = Worker(core_fn, [fifo_A_L2L1.cons(), fifo_B_L2L1.cons(), fifo_C_L1L2.prod(), matmul_kernel])
 
 
     # --------------------------------------------------------------------------
@@ -130,43 +138,25 @@ def matrix_multiplication_single_core(output):
 def main():
     # Define tensor shapes and data types
     M, K, N = 512, 512, 512
-    data_size = M * K * N
     element_type = np.int16
 
-    # Construct an input tensor and an output zeroed tensor
+    # Construct an input tensors and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(data_size, dtype=element_type, device="npu")
-    output = iron.zeros_like(input0)
+    input0 = iron.randint(0, 256, (M, K), dtype=element_type, device="npu")
+    input1 = iron.randint(0, 256, (K, N), dtype=element_type, device="npu")
+    output = iron.zeros(M*N, dtype=element_type, device="npu")
 
     # Generate reference pattern
-    ref_vec = [k * 8 + j * 16 + i for k in range(2) for j in range(3) for i in range(8)]
+    #ref_vec = iron.zeros_like(output)
+    ref_vec = np.matmul(input0.numpy(), input1.numpy())
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    matrix_multiplication_single_core(output)
-
-    void reference(int16_t *A, int16_t *B, int16_t *C) {
-        for(int row = 0; row < M; row++) {
-            for(int col = 0; col < N; col++) {
-                int16_t acc = 0;
-                for(int i = 0; i < K; i++) {
-                    acc += A[row * K + i] * B[i * N + col];
-                }
-                C[row * N + col] = acc;
-            }
-        }   
-    }
+    matrix_multiplication_single_core(input0, input1, output)
 
     # Check the correctness of the result
-    e = np.equal(input0.numpy(), output.numpy())
+    e = np.equal(ref_vec.flatten(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
-
-    # Print the results
-    print(f"{'input0':>4} = {'output':>4}")
-    print("-" * 34)
-    count = input0.numel()
-    for idx, (a, c) in enumerate(zip(input0[:count], output[:count])):
-        print(f"{idx:2}: {a:4} = {c:4}")
 
     # If the result is correct, exit with a success code
     # Otherwise, exit with a failure code
