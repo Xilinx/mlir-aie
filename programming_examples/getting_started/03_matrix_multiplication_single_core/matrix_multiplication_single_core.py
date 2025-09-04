@@ -163,7 +163,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    matrix_multiplication_single_core(input0, input1, output)
+    matrix_multiplication_single_core(input0, input0, output)
 
     # Check the correctness of the result
     e = np.equal(ref_vec.flatten(), output.numpy())
