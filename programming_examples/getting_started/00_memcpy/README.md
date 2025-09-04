@@ -1,6 +1,8 @@
 # Getting Started: Measure and Analyze Peak NPU Memory Bandwidth with `memcpy`
 
-This example is a highly parallel, parameterized design that uses shim DMAs in every NPU column. It enables both compute and bypass modes to help analyze performance charactaristics. The design measures memory bandwidth across the full NPU, not just a single AI Engine tile with the goal to evaluate how well a design utilizes available memory bandwidth across multiple columns and channels.
+This example is a highly parallel design that uses shim DMAs in every NPU column. It enables both compute and bypass modes to help analyze performance charactaristics. The design measures memory bandwidth across the full NPU, not just a single AI Engine tile with the goal to evaluate how well a design utilizes available memory bandwidth across multiple columns and channels.
+
+For a version of the memcpy design with customizable parameters, please see [here](../../basic/memcpy/).
 
 ## Objective
 
@@ -15,37 +17,32 @@ This design consists of the following:
 
 * `memcpy.py`: The NPU design for this application,
   which describes which cores of the NPU we will use, how to route data between
-  cores, and what program to run on each core.
-* `test.cpp`: A program that runs on the CPU (host) to dispatch our design to 
-  run on the NPU, calculates a correct reference output, verifies and times
-  our NPU design's execution.
-* `Makefile`: Contains the compilation instructions for the constituent
-  parts of this design. Study it to see how the pieces are assembled together.
-* `run_*.lit`: lit tests that run the design on different NPU devices.
+  cores, and what program to run on each core. This design leverages the IRON
+  JIT decorator to compile the design into a binary to run on the NPU, as well as 
+  to describe the program that runs on the CPU (host) that calculates a correct 
+  reference output, verifies and times our NPU design's execution.
+* `passThrough.cc`: A C++ vectorized kernel that exposes efficient 
+  vector operations on the AI Engine using the 
+  [AIE API](https://xilinx.github.io/aie_api/index.html).
+* `run.lit`: lit tests that run the design on different NPU devices.
 
 ## Step-by-Step Instructions
 
-1. **Configure Your Run Using `make` Parameters:**
+1. **Configure Your Run Using Parameters:**
 
-   Use the Makefile variables to control:
+   Use the memcpy.py variables to control:
 
    * `length`: Size of the full transfer in `int32_t` (must be divisible by `columns * channels` and a multiple of 1024)
-   * `cols`: Number of NPU columns (≤ 4 for `npu`, ≤ 8 for `npu2`)
-   * `chans`: 1 or 2 DMA channels per column
+   * `num_columns`: Number of NPU columns (≤ 4 for `npu`, ≤ 8 for `npu2`)
+   * `num_channels`: 1 or 2 DMA channels per column
    * `bypass`: Set to `True` to skip the AIE core (DMA-only mode)
-
-   Example:
-
-   ```bash
-   make run length=16777216 cols=4 chans=2 bypass=True
-   ```
 
 2. **Explore the Two Modes:**
 
-   * **Bypass Mode (`--bypass True`)**: Uses only shim DMA, bypassing the AIE core. This isolates raw memory movement capability.
-   * **Passthrough Mode (`--bypass False`)**: Adds a minimal AIE kernel, mimicking a compute+transfer design. Helps understand potential core overhead.
+   * **Bypass Mode (`True`)**: Uses only shim DMA, bypassing the AIE core. This isolates raw memory movement capability.
+   * **Passthrough Mode (`False`)**: Adds a minimal AIE kernel, mimicking a compute+transfer design. Helps understand potential core overhead.
 
-3. **Calculate Effective Bandwidth:**
+3. **Calculate Effective Bandwidth:** TODO: can we do this in JIT?
 
    In the C++ host code (`test.cpp`), a run is timed between `start` and `stop`:
 
@@ -115,11 +112,11 @@ This design consists of the following:
 
 5. **Report Your Findings:**
 
-   * Run experiments across different `cols`, `chans`, and `bypass` settings
+   * Run experiments across different `num_columns`, `num_channels`, and `bypass` settings
    * Record latency and bandwidth
    * Identify the configuration that delivers the highest bandwidth
    * Discuss why bypass mode may or may not outperform passthrough
-   * Understand the runtme sequence operations in the generated `memcpy.mlir` file
+   * Understand the runtime sequence operations
 
 ## Expected Outcome
 

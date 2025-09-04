@@ -9,7 +9,9 @@ This design consists of the following:
 * `saxpy.py`: The NPU design for this application,
   which describes which cores of the NPU we will use, how to route data between
   cores, and what program to run on each core. This design leverages the IRON
-  JIT decorator to compile the design into a binary to run on the NPU.
+  JIT decorator to compile the design into a binary to run on the NPU, as well as 
+  to describe the program that runs on the CPU (host) that calculates a correct 
+  reference output, verifies and times our NPU design's execution.
 * `saxpy_scalar_baseline.cc`: A C++ scalar SAXPY kernel.
 * `saxpy_vector.cc`: A C++ vectorized kernel that exposes efficient 
   vector operations on the AI Engine using the 

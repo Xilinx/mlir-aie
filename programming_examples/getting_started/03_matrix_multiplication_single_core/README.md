@@ -16,16 +16,14 @@ This design consists of the following:
 
 * `matrix_multiplication_single_core.py`: The NPU design for this application,
   which describes which cores of the NPU we will use, how to route data between
-  cores, and what program to run on each core.
+  cores, and what program to run on each core. This design leverages the IRON
+  JIT decorator to compile the design into a binary to run on the NPU, as well as 
+  to describe the program that runs on the CPU (host) that calculates a correct 
+  reference output, verifies and times our NPU design's execution.
 * `matrix_multiplication.cc`: A C++ kernel that exposes a function for 
   efficiently multiplying matrices using the 
   [AIE API](https://xilinx.github.io/aie_api/index.html).
-* `test.cpp`: A program that runs on the CPU (host) to dispatch our design to 
-  run on the NPU, calculates a correct reference output, verifies and times
-  our NPU design's execution.
-* `Makefile`: Contains the compilation instructions for the constituent
-  parts of this design. Study it to see how the pieces are assembled together.
-* `run_*.lit`: lit tests that run the design on different NPU devices.
+* `run.lit`: lit test that runs the design on different NPU devices.
 
 ## Problem Size, Tile Size and Intrinsic Size
 

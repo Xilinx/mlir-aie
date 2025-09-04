@@ -10,10 +10,14 @@ For more versions of the vector reduce max design, with customizable parameters,
 
 This design consists of the following:
 
-* `vector_reduce_max_1col.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+* `vector_reduce_max_1col.py`: The NPU design for this application,
+  which describes which cores of the NPU we will use, how to route data between
+  cores, and what program to run on each core. This design leverages the IRON
+  JIT decorator to compile the design into a binary to run on the NPU, as well as 
+  to describe the program that runs on the CPU (host) that calculates a correct 
+  reference output, verifies and times our NPU design's execution.
 * `vector_reduce_max.cc`: A C++ implementation of a vectorized `max` reduction operation for AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics, and whose documentation can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).
-* `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
-* `Makefile`: Provides the build automation for compiling and linking all components of the design. It defines targets for generating the MLIR, building the kernel, compiling the testbench, and running the complete workflow. Reviewing the Makefile helps understand the integration and build dependencies between the Python, C++, and MLIR-AIE components.
+* `run.lit`: lit test that runs the design on different NPU devices.
 
 ## Ryzen™ AI Usage
 

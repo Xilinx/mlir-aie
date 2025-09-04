@@ -1,27 +1,23 @@
-# Getting Started: Measure and Analyze Peak NPU Memory Bandwidth with `memcpy`
+--- 
 
-This example is a highly parallel, parameterized design that uses shim DMAs in every NPU column. It enables both compute and bypass modes to help analyze performance charactaristics. The design measures memory bandwidth across the full NPU, not just a single AI Engine tile with the goal to evaluate how well a design utilizes available memory bandwidth across multiple columns and channels.
+# **Memcpy**
 
-## Objective
+The `memcpy.py` design is a highly parallel, parameterized design that uses shim DMAs in every NPU column. It enables both compute and bypass modes to help you analyze performance charactaristics.
+
+---
+
+### **Exercise: Measure and Analyze Peak NPU Memory Bandwidth with `memcpy`**
+
+In this exercise, you'll use the `memcpy` design to measure memory bandwidth across the full NPU, not just a single AI Engine tile. This is a practical example to evaluate how well a design utilizes available memory bandwidth across multiple columns and channels.
+
+#### **Objective**
 
 * Understand the structure of a full NPU dataflow application using IRON
 * Measure and report the peak memory bandwidth achieved
 * Experiment with parameters (columns, channels, data size, bypass mode) to study how architecture and design choices affect performance
 * Adapt the runtime data movement code to optimize performance
 
-## Overview
-
-This design consists of the following:
-
-* `memcpy.py`: The NPU design for this application,
-  which describes which cores of the NPU we will use, how to route data between
-  cores, and what program to run on each core.
-* `test.cpp`: A program that runs on the CPU (host) to dispatch our design to 
-  run on the NPU, calculates a correct reference output, verifies and times
-  our NPU design's execution.
-* `Makefile`: Contains the compilation instructions for the constituent
-  parts of this design. Study it to see how the pieces are assembled together.
-* `run_*.lit`: lit tests that run the design on different NPU devices.
+---
 
 ## Step-by-Step Instructions
 
@@ -119,7 +115,7 @@ This design consists of the following:
    * Record latency and bandwidth
    * Identify the configuration that delivers the highest bandwidth
    * Discuss why bypass mode may or may not outperform passthrough
-   * Understand the runtme sequence operations in the generated `memcpy.mlir` file
+   * Understand the runtime sequence operations in the generated `memcpy.mlir` file
 
 ## Expected Outcome
 
