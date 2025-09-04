@@ -196,11 +196,10 @@ def main():
     
     # Bandwidth calculation
     total_bytes = 2.0 * length * np.dtype(element_type).itemsize  # input + output
-    bandwidth_GBps = total_bytes / elapsed_us / 1e3      # (bytes / µs) → GB/s
-    
+    bandwidth_GBps = total_bytes / elapsed_us / 1e3  # (bytes / µs) → GB/s
+
     print(f"Latency: {elapsed_time:.6f} seconds ({elapsed_us:.2f} µs)")
     print(f"Effective Bandwidth: {bandwidth_GBps:.2f} GB/s")
-    
     # Check the correctness of the result and print
     e = np.equal(input0.numpy(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
