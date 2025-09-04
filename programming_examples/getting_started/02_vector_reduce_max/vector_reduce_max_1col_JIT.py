@@ -15,6 +15,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.helpers.util import np_ndarray_type_get_shape
+from aie.helpers.dialects.ext.scf import if_, else_
 
 
 # JIT decorator for IRON
@@ -23,7 +24,7 @@ from aie.helpers.util import np_ndarray_type_get_shape
 #     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
-def saxpy(input0, output):
+def vector_reduce_max(input0, output):
     N = 4096  # Tensor size
     element_type = output.dtype
 
@@ -81,14 +82,14 @@ def saxpy(input0, output):
         source_file="vector_reduce_max.cc",
         arg_types=[op_ty, out_ty, np.int32],
     )
-    compute_max = ExternalFunction(
-        f"compute_max_bfloat16",
-        source_file="vector_reduce_max.cc",
-        arg_types=[out_ty, out_ty, out_ty],
-    )
+    # compute_max = ExternalFunction(
+    #     f"compute_max_bfloat16",
+    #     source_file="vector_reduce_max.cc",
+    #     arg_types=[out_ty, out_ty, out_ty],
+    # )
     min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
 
-    def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
+    def start_core_body(of_in, of_out, reduce_max_vector):
         nextC_buffer = LocalBuffer(
             type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
             initial_value=min_val,
@@ -101,12 +102,14 @@ def saxpy(input0, output):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-            compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+            #compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+            with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
+                nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
         elem_out[0] = nextC_buffer[0]
         of_out.release(1)
 
-    def core_body(of_in, of_out, in0, reduce_max_vector, compute_max):
+    def core_body(of_in, of_out, in0, reduce_max_vector):
         nextC_buffer = LocalBuffer(
             type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
             initial_value=min_val,
@@ -119,12 +122,19 @@ def saxpy(input0, output):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
-            compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+            #compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+            #*out = (*in1 > *in2) ? *in1 : *in2;
+            with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
+                nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
 
         elem_out = of_out.acquire(1)
         elem_in1 = in0.acquire(1)
-        compute_max(elem_in1, nextC_buffer, elem_out)
+        #compute_max(elem_in1, nextC_buffer, elem_out)
+        with if_(elem_in1[0] > nextC_buffer[0]) as if_op:
+            elem_out[0] = elem_in1[0]
+        with else_(if_op):
+            elem_out[0] = nextC_buffer[0]
         in0.release(1)
         of_out.release(1)
 
@@ -139,7 +149,6 @@ def saxpy(input0, output):
                         out_fifos[i].prod(),
                         out_fifos[i + 1].cons(),
                         reduce_max_vector,
-                        compute_max,
                     ],
                     trace=None,
                 )
@@ -152,7 +161,6 @@ def saxpy(input0, output):
                         in_fifos[i].cons(),
                         out_fifos[i].prod(),
                         reduce_max_vector,
-                        compute_max,
                     ],
                     trace=None,
                 )
@@ -192,7 +200,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    saxpy(input0, output)
+    vector_reduce_max(input0, output)
 
     # Check the correctness of the result and print
     ref_max = 0
@@ -201,17 +209,17 @@ def main():
             ref_max = i
 
     errors = 0
-    for index, (actual, ref) in enumerate(
-        zip(
-            output,
-            ref_max,
-        )
-    ):
-        if actual != ref:
-            print(f"Error at {index}: {actual} != {ref}")
-            errors += 1
-        else:
-            print(f"Correct output at {index}: {actual} == {ref}")
+    # for index, (actual, ref) in enumerate(
+    #     zip(
+    #         output,
+    #         ref_max,
+    #     )
+    # ):
+    if output[0] != ref_max:
+        print(f"Error: {output} != {ref_max}")
+        errors += 1
+    else:
+        print(f"Correct output: {output} == {ref_max}")
 
     # If the result is correct, exit with a success code
     # Otherwise, exit with a failure code
