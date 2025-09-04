@@ -7,6 +7,7 @@
 import numpy as np
 import argparse
 import sys
+import time
 
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
@@ -203,6 +204,21 @@ def main():
     # to the kernel will use the same compiled kernel and loaded code objects
     my_memcpy(input0, output)
 
+    # Measure peformance on the second execution using the JIT cached design
+    start_time = time.perf_counter()
+    my_memcpy(input0, output)
+    end_time = time.perf_counter()
+
+    elapsed_time = end_time - start_time  # seconds
+    elapsed_us = elapsed_time * 1e6       # microseconds
+    
+    # Bandwidth calculation
+    total_bytes = 2.0 * length * np.dtype(element_type).itemsize  # input + output
+    bandwidth_GBps = total_bytes / elapsed_us / 1e3      # (bytes / µs) → GB/s
+    
+    print(f"Latency: {elapsed_time:.6f} seconds ({elapsed_us:.2f} µs)")
+    print(f"Effective Bandwidth: {bandwidth_GBps:.2f} GB/s")
+    
     # Check the correctness of the result and print
     e = np.equal(input0.numpy(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
