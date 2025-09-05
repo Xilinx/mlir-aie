@@ -21,18 +21,8 @@ This design consists of the following:
 
 ## Ryzen™ AI Usage
 
-### Compilation
-
-To compile the design:
+Run and verify the design:
 
 ```shell
-make
-```
-
-### C++ Testbench
-
-To run the design:
-
-```shell
-make run
+python3 saxpy.py
 ```

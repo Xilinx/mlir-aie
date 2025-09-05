@@ -26,11 +26,10 @@ This design consists of the following:
 
 ## Step-by-Step Instructions
 
-Running the design:
+Run and verify the design:
 
-```python
-python memcpy.py
-
+```shell
+python3 saxpy.py
 ```
 
 1. **Configure Your Run Using Parameters:**
@@ -47,4 +46,3 @@ python memcpy.py
    * Record latency and bandwidth
    * Identify the configuration that delivers the highest bandwidth
    * Understand the runtime sequence operations
-
