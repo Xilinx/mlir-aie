@@ -7,6 +7,7 @@
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
+import os
 
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
@@ -80,6 +81,7 @@ def vector_reduce_max(input0, output):
         f"reduce_max_vector_bfloat16",
         source_file="vector_reduce_max.cc",
         arg_types=[op_ty, out_ty, np.int32],
+        include_dirs=[os.environ["MLIR_AIE_INSTALL_DIR"] + "/include/"],
     )
     min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
 
