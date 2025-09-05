@@ -10,6 +10,7 @@ from util import construct_and_print_module
 
 # RUN: %python %s | FileCheck %s
 
+
 # CHECK-LABEL: TEST: objectfifo_order
 # CHECK: aie.objectfifo @in_A
 # CHECK: aie.objectfifo @in_B
