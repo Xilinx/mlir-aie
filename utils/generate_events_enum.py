@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 """
-Takes the xaie_events_aie.h header file from aie-rt and generates an 
+Takes the xaie_events_aie.h header file from aie-rt and generates an
 importable Python file containing an enum of all events.
 
-The generated enum is included in python/utils/trace_events_enum.py and 
+The generated enum is included in python/utils/trace_events_enum.py and
 used by the trace utilities in python/utils/trace.py and in
 programming_examples/utils/parse_trace.py
 """

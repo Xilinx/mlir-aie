@@ -34,6 +34,7 @@ microkernel_mac_dim_map = {
     },
 }
 
+
 def main():
     argparser = argparse.ArgumentParser(
         prog="AIE Matrix Multiplication MLIR Design (Single Core)",

@@ -167,7 +167,9 @@ def bottleneck4AIEs():
     workers = []
 
     # 1x1 conv2d
-    def worker_conv2dk1_fn(of_wts, of_act_in, of_act_out, conv2dk1_kernel, rtp_buff, barrier):
+    def worker_conv2dk1_fn(
+        of_wts, of_act_in, of_act_out, conv2dk1_kernel, rtp_buff, barrier
+    ):
         # acquire weights amd rtps once
         barrier.wait_for_value(1)
         scale = rtp_buff[0]

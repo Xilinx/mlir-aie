@@ -968,7 +968,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
         DMAChannelDir:$direction,
         I32Attr:$channel,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+        OptionalAttr<PacketInfoAttr>:$packet
   );
 
   let regions = (
@@ -976,7 +977,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
   );
 
   let assemblyFormat = [{
-    `(` $tile `,` $direction `,` $channel `)` regions attr-dict
+    `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)` regions attr-dict
   }];
 
   let extraClassDeclaration = [{
@@ -991,6 +992,16 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
 
   let hasVerifier = 1;
   let hasCanonicalizeMethod = 1;
+
+  let builders = [
+    OpBuilder<(ins "::mlir::Type":$result, "mlir::Value":$tile, "xilinx::AIE::DMAChannelDir":$dir, "int":$channel_index,
+               "bool":$token, "int":$repeat), [{
+      build($_builder, $_state, result, tile,
+            xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
+            $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
+            $_builder.getI32IntegerAttr(repeat), nullptr);
+    }]>
+  ];
 }
 
 def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"RuntimeSequenceOp">]>, Results<(outs Index:$result)> {

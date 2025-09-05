@@ -169,8 +169,8 @@ jobs:
         with:
           artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: 'latest-wheels-2'
-          name: 'latest-wheels-2'
+          tag: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-2/no-rtti' }}
+          name: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-2/no-rtti' }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true

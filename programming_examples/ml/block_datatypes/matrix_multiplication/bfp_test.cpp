@@ -51,7 +51,8 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Matrix Matrix Multiplication Test");
   cxxopts::ParseResult vm;
   matmul_common::add_default_options(options);
-  options.add_options()("trows,w", "Tile size m", cxxopts::value<int>()->default_value("64"))(
+  options.add_options()("trows,w", "Tile size m",
+                        cxxopts::value<int>()->default_value("64"))(
       "tinner,y", "Tile size k", cxxopts::value<int>()->default_value("64"))(
       "tcolumns,z", "Tile size n", cxxopts::value<int>()->default_value("64"));
 
@@ -88,7 +89,8 @@ int main(int argc, const char *argv[]) {
   size_t B_VOLUME = (B_SIZE * sizeof(uint8_t)) * 1.125;
   size_t C_VOLUME = (C_SIZE * sizeof(uint8_t)) * 1.125;
 
-  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(vm["instr"].as<std::string>());
+  std::vector<uint32_t> instr_v =
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
 
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
@@ -111,18 +113,19 @@ int main(int argc, const char *argv[]) {
 
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
-  auto xkernel =
-      *std::find_if(xkernels.begin(), xkernels.end(), [Node, verbosity](xrt::xclbin::kernel &k) {
-        auto name = k.get_name();
-        if (verbosity >= 1) {
-          std::cout << "Name: " << name << std::endl;
-        }
-        return name.rfind(Node, 0) == 0;
-      });
+  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
+                               [Node, verbosity](xrt::xclbin::kernel &k) {
+                                 auto name = k.get_name();
+                                 if (verbosity >= 1) {
+                                   std::cout << "Name: " << name << std::endl;
+                                 }
+                                 return name.rfind(Node, 0) == 0;
+                               });
   auto kernelName = xkernel.get_name();
 
   if (verbosity >= 1)
-    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>() << "\n";
+    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
+              << "\n";
 
   device.register_xclbin(xclbin);
 
@@ -140,11 +143,14 @@ int main(int argc, const char *argv[]) {
   // Initialize input/output buffer sizes and sync them
   // ------------------------------------------------------
 
-  auto bo_instr =
-      xrt::bo(device, instr_v.size() * sizeof(int), XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_a = xrt::bo(device, A_VOLUME, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_b = xrt::bo(device, B_VOLUME, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-  auto bo_out = xrt::bo(device, C_VOLUME, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
+                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
+  auto bo_a =
+      xrt::bo(device, A_VOLUME, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_b =
+      xrt::bo(device, B_VOLUME, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_out =
+      xrt::bo(device, C_VOLUME, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   // ------------------------------------------------------
   // Generate data for buffers
@@ -190,12 +196,16 @@ int main(int argc, const char *argv[]) {
   auto BVecBfp = floatToBfp16(8, B_SIZE, BVec.data(), 0);
 
   auto shuffleStart = std::chrono::high_resolution_clock::now();
-  std::vector<uint8_t> AVecBfpShuffled = shuffleMatrixForBfp16ebs8(K, M, k, m, AVecBfp);
-  std::vector<uint8_t> BVecBfpShuffled = shuffleMatrixForBfp16ebs8(K, N, k, n, BVecBfp);
+  std::vector<uint8_t> AVecBfpShuffled =
+      shuffleMatrixForBfp16ebs8(K, M, k, m, AVecBfp);
+  std::vector<uint8_t> BVecBfpShuffled =
+      shuffleMatrixForBfp16ebs8(K, N, k, n, BVecBfp);
   auto shuffleStop = std::chrono::high_resolution_clock::now();
 
   float inputShuffleTime =
-      std::chrono::duration_cast<std::chrono::microseconds>(shuffleStop - shuffleStart).count();
+      std::chrono::duration_cast<std::chrono::microseconds>(shuffleStop -
+                                                            shuffleStart)
+          .count();
 
   // std::ofstream outfile1("inputB.txt");
   // matmul_common::print_matrix(BVec, K, N, K, outfile1, " ", " ... ", 3);
@@ -265,12 +275,13 @@ int main(int argc, const char *argv[]) {
       memcpy(CVecBfp.data(), bufOut, C_VOLUME);
 
       auto outShuffleStart = std::chrono::high_resolution_clock::now();
-      std::vector<uint8_t> CVecBfpShuffled = shuffleMatrixForBfp16ebs8(N, M, n, m, CVecBfp, true);
+      std::vector<uint8_t> CVecBfpShuffled =
+          shuffleMatrixForBfp16ebs8(N, M, n, m, CVecBfp, true);
       auto outShuffleStop = std::chrono::high_resolution_clock::now();
 
-      outShuffleTime +=
-          std::chrono::duration_cast<std::chrono::microseconds>(outShuffleStop - outShuffleStart)
-              .count();
+      outShuffleTime += std::chrono::duration_cast<std::chrono::microseconds>(
+                            outShuffleStop - outShuffleStart)
+                            .count();
 
       auto CVec = bfp16ebs8ToFloat(C_VOLUME, CVecBfpShuffled.data(), 0);
 
@@ -280,11 +291,11 @@ int main(int argc, const char *argv[]) {
       auto vstart = std::chrono::system_clock::now();
       if (do_verify_stochastic) {
         errors = matmul_common::verify_stochastic<float, float, float>(
-            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity, abs_tol, rel_tol,
-            true);
+            M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
+            abs_tol, rel_tol, true);
       } else {
-        errors = matmul_common::verify<float, float, float>(M, N, K, AVec, BVec, CVec, verbosity,
-                                                            abs_tol * 3, rel_tol, true);
+        errors = matmul_common::verify<float, float, float>(
+            M, N, K, AVec, BVec, CVec, verbosity, abs_tol * 3, rel_tol, true);
       }
       auto vstop = std::chrono::system_clock::now();
 
@@ -293,7 +304,9 @@ int main(int argc, const char *argv[]) {
       // // printBfp16ebs8Array(C_VOLUME, CVecBfp, 16, 16, outfile);
       // outfile.close();
 
-      float vtime = std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart).count();
+      float vtime =
+          std::chrono::duration_cast<std::chrono::seconds>(vstop - vstart)
+              .count();
       if (verbosity >= 1) {
         std::cout << "Verify time: " << vtime << " s." << std::endl;
       }
@@ -302,7 +315,9 @@ int main(int argc, const char *argv[]) {
         std::cout << "WARNING: matmul results not verified." << std::endl;
     }
 
-    float npu_time = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count();
+    float npu_time =
+        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+            .count();
 
     npu_time_total += npu_time;
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
@@ -313,17 +328,22 @@ int main(int argc, const char *argv[]) {
   // Output results
   // ------------------------------------------------------
   std::cout << std::endl
-            << "Avg NPU matmul time: " << npu_time_total / n_iterations << "us." << std::endl;
-  std::cout << "Avg NPU gflops: " << macs / (1000 * npu_time_total / n_iterations) << std::endl;
+            << "Avg NPU matmul time: " << npu_time_total / n_iterations << "us."
+            << std::endl;
+  std::cout << "Avg NPU gflops: "
+            << macs / (1000 * npu_time_total / n_iterations) << std::endl;
 
-  std::cout << std::endl << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
+  std::cout << std::endl
+            << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
   std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_min) << std::endl;
 
-  std::cout << std::endl << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
+  std::cout << std::endl
+            << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
   std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
 
   std::cout << std::endl
-            << "Shuffle time: " << inputShuffleTime + (outShuffleTime / n_iterations) << "us."
+            << "Shuffle time: "
+            << inputShuffleTime + (outShuffleTime / n_iterations) << "us."
             << std::endl;
 
   if (!errors) {
@@ -332,7 +352,8 @@ int main(int argc, const char *argv[]) {
   }
   std::cout << "\nError count: " << errors;
   if (do_verify_stochastic) {
-    std::cout << " (out of " << verify_stochastic_n_samples << " random samples)";
+    std::cout << " (out of " << verify_stochastic_n_samples
+              << " random samples)";
   }
   std::cout << "\n\n";
   std::cout << "\nFailed.\n\n";

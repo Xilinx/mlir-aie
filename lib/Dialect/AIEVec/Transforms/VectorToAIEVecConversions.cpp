@@ -494,17 +494,17 @@ static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
 // Rewrite patterns
 //===----------------------------------------------------------------------===//
 
-// This pattern fold `vector.extract` and `vector.splat` into
+// This pattern fold `vector.extract` and `vector.broadcast` into
 // `aievec.broadcast` for AIE2
 struct FoldVectorExtractAndSplatToAIEBroadcast
-    : OpConversionPattern<vector::SplatOp> {
+    : OpConversionPattern<vector::BroadcastOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
-  matchAndRewrite(vector::SplatOp splatOp, OpAdaptor adaptor,
+  matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    auto extOp = adaptor.getInput().getDefiningOp<vector::ExtractOp>();
+    auto extOp = adaptor.getSource().getDefiningOp<vector::ExtractOp>();
 
     if (!extOp)
       return failure();
@@ -513,7 +513,7 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
     auto pos = extOp.getStaticPosition();
     int64_t posVal = pos[0];
     auto srcVecType = cast<VectorType>(src.getType());
-    auto resultType = cast<VectorType>(splatOp.getResult().getType());
+    auto resultType = cast<VectorType>(bcastOp.getResult().getType());
     if (srcVecType != resultType) {
       if (srcVecType.getNumElements() != 2 * resultType.getNumElements())
         return failure();
@@ -530,17 +530,17 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
     if (unsigned laneSize = getVectorLaneSize(resultType);
         laneSize * elWidth == 512) {
       // Common use case for the broadcast_elem intrinsic
-      rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(splatOp, resultType, src,
+      rewriter.replaceOpWithNewOp<aievec::BroadcastOp>(bcastOp, resultType, src,
                                                        posVal);
     } else if (laneSize * elWidth == 256) {
       // e.g. need v16bf16 due to the subsequent v16accfloat operation
       VectorType aievecBcastType =
           createVectorType(512 / elWidth, resultType.getElementType());
       auto concatOp = rewriter.create<aievec::ConcatOp>(
-          splatOp.getLoc(), aievecBcastType, SmallVector<Value>({src, src}));
+          bcastOp.getLoc(), aievecBcastType, SmallVector<Value>({src, src}));
       auto aieBcastOp = rewriter.create<aievec::BroadcastOp>(
-          splatOp.getLoc(), aievecBcastType, concatOp.getResult(), posVal);
-      rewriter.replaceOpWithNewOp<aievec::ExtOp>(splatOp, resultType,
+          bcastOp.getLoc(), aievecBcastType, concatOp.getResult(), posVal);
+      rewriter.replaceOpWithNewOp<aievec::ExtOp>(bcastOp, resultType,
                                                  aieBcastOp.getResult(), 0);
     } else if (laneSize * elWidth == 1024) {
       // e.g. need v32int32 due to the subsequent v32acc32 operation
@@ -549,12 +549,12 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
       auto half = static_cast<int8_t>(posVal / resultType.getNumElements());
       posVal -= half * resultType.getNumElements();
       auto extOp =
-          rewriter.create<aievec::ExtOp>(splatOp.getLoc(), aievecBcastType, src,
+          rewriter.create<aievec::ExtOp>(bcastOp.getLoc(), aievecBcastType, src,
                                          rewriter.getI8IntegerAttr(half));
       auto aieBcastOp = rewriter.create<aievec::BroadcastOp>(
-          splatOp.getLoc(), aievecBcastType, extOp.getResult(), posVal);
+          bcastOp.getLoc(), aievecBcastType, extOp.getResult(), posVal);
       rewriter.replaceOpWithNewOp<aievec::ConcatOp>(
-          splatOp, resultType,
+          bcastOp, resultType,
           SmallVector<Value>({aieBcastOp.getResult(), aieBcastOp.getResult()}));
     } else {
       return failure();
@@ -564,57 +564,57 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
   }
 };
 
-struct ConvertSplatToAIEBroadcast : OpConversionPattern<vector::SplatOp> {
+struct ConvertSplatToAIEBroadcast : OpConversionPattern<vector::BroadcastOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
-  matchAndRewrite(vector::SplatOp splatOp, OpAdaptor adaptor,
+  matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    if (adaptor.getInput().getDefiningOp<vector::ExtractOp>())
+    if (adaptor.getSource().getDefiningOp<vector::ExtractOp>())
       return failure();
 
-    auto resultType = cast<VectorType>(splatOp.getResult().getType());
+    auto resultType = cast<VectorType>(bcastOp.getResult().getType());
     auto flatResultType = getFlattenedVectorType(resultType);
     Type scalarType = resultType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
-    auto src = splatOp.getInput();
+    auto src = bcastOp.getSource();
 
     if (laneSize * elWidth == 512) {
       Value newOp = rewriter.create<aievec::BroadcastScalarOp>(
-          splatOp.getLoc(), flatResultType, src);
+          bcastOp.getLoc(), flatResultType, src);
       if (resultType != flatResultType)
-        newOp = rewriter.create<vector::ShapeCastOp>(splatOp.getLoc(),
+        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
                                                      resultType, newOp);
-      rewriter.replaceOp(splatOp, newOp);
+      rewriter.replaceOp(bcastOp, newOp);
       return success();
     }
 
     if (laneSize * elWidth == 256) {
       VectorType vecType = createVectorType(512 / elWidth, scalarType);
       auto aieBcastOp = rewriter.create<aievec::BroadcastScalarOp>(
-          splatOp.getLoc(), vecType, src);
+          bcastOp.getLoc(), vecType, src);
       Value newOp = rewriter.create<aievec::ExtOp>(
-          splatOp.getLoc(), flatResultType, aieBcastOp.getResult(), 0);
+          bcastOp.getLoc(), flatResultType, aieBcastOp.getResult(), 0);
       if (resultType != flatResultType)
-        newOp = rewriter.create<vector::ShapeCastOp>(splatOp.getLoc(),
+        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
                                                      resultType, newOp);
-      rewriter.replaceOp(splatOp, newOp);
+      rewriter.replaceOp(bcastOp, newOp);
       return success();
     }
 
     if (laneSize * elWidth == 1024) {
       VectorType vecType = createVectorType(512 / elWidth, scalarType);
       auto aieBcastOp = rewriter.create<aievec::BroadcastScalarOp>(
-          splatOp.getLoc(), vecType, src);
+          bcastOp.getLoc(), vecType, src);
       Value newOp = rewriter.create<aievec::ConcatOp>(
-          splatOp.getLoc(), flatResultType,
+          bcastOp.getLoc(), flatResultType,
           SmallVector<Value>({aieBcastOp.getResult(), aieBcastOp.getResult()}));
       if (resultType != flatResultType)
-        newOp = rewriter.create<vector::ShapeCastOp>(splatOp.getLoc(),
+        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
                                                      resultType, newOp);
-      rewriter.replaceOp(splatOp, newOp);
+      rewriter.replaceOp(bcastOp, newOp);
       return success();
     }
 
@@ -961,19 +961,19 @@ struct FoldSplatToFMAOp : OpConversionPattern<aievec::aie1::FMAOp> {
         dyn_cast<aievec::ConcatOp>(adaptor.getLhs().getDefiningOp());
     if (!concatOp)
       return failure();
-    vector::SplatOp splatOp = nullptr;
+    vector::BroadcastOp bcastOp = nullptr;
     auto *concatDefOp = concatOp.getSources()[0].getDefiningOp();
     if (concatDefOp)
-      splatOp = dyn_cast<vector::SplatOp>(concatDefOp);
+      bcastOp = dyn_cast<vector::BroadcastOp>(concatDefOp);
     Value lhs = adaptor.getRhs();
-    if (!splatOp) {
-      splatOp = dyn_cast<vector::SplatOp>(adaptor.getRhs().getDefiningOp());
-      if (!splatOp)
+    if (!bcastOp) {
+      bcastOp = dyn_cast<vector::BroadcastOp>(adaptor.getRhs().getDefiningOp());
+      if (!bcastOp)
         return failure();
       lhs = concatOp.getSources()[0];
     }
     auto extOp =
-        dyn_cast<vector::ExtractOp>(splatOp.getInput().getDefiningOp());
+        dyn_cast<vector::ExtractOp>(bcastOp.getSource().getDefiningOp());
     if (!extOp)
       return failure();
 
@@ -3540,18 +3540,18 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
         if (!concatOp)
           return true;
 
-        vector::SplatOp srcSplat = nullptr;
+        vector::BroadcastOp srcBcast = nullptr;
         if (auto *lhsOp = concatOp.getSources()[0].getDefiningOp())
-          srcSplat = dyn_cast<vector::SplatOp>(lhsOp);
-        if (!srcSplat) {
+          srcBcast = dyn_cast<vector::BroadcastOp>(lhsOp);
+        if (!srcBcast) {
           auto *rhsOp = op.getRhs().getDefiningOp();
           if (!rhsOp)
             return true;
-          srcSplat = dyn_cast<vector::SplatOp>(rhsOp);
+          srcBcast = dyn_cast<vector::BroadcastOp>(rhsOp);
         }
 
-        if (srcSplat)
-          if (auto *srcOp = srcSplat.getInput().getDefiningOp())
+        if (srcBcast)
+          if (auto *srcOp = srcBcast.getSource().getDefiningOp())
             return !isa<vector::ExtractOp>(srcOp);
 
         return true;

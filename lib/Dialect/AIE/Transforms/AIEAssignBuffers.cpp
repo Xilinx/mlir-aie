@@ -22,9 +22,8 @@ using namespace xilinx::AIE;
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
-bool checkAndPrintOverflow(TileOp tile, int address,
-                                    int maxDataMemorySize, int stacksize,
-                                    SmallVector<BufferOp> &buffers) {
+bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
+                           int stacksize, SmallVector<BufferOp> &buffers) {
   if (address > maxDataMemorySize) {
     InFlightDiagnostic error =
         tile.emitOpError("allocated buffers exceeded available memory\n");
@@ -292,9 +291,9 @@ int setBufferAddress(BufferOp buffer, int numBanks, int &startBankIndex,
 }
 
 bool checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
-                                    SmallVector<BufferOp> &allBuffers,
-                                    std::vector<int64_t> &nextAddrInBanks,
-                                    std::vector<BankLimits> &bankLimits) {
+                           SmallVector<BufferOp> &allBuffers,
+                           std::vector<int64_t> &nextAddrInBanks,
+                           std::vector<BankLimits> &bankLimits) {
   bool foundOverflow = false;
   std::vector<int> overflow_banks;
   for (int i = 0; i < numBanks; i++) {
