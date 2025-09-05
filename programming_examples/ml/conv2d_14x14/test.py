@@ -81,10 +81,14 @@ def main(opts):
     # ------------------------------------------------------
     # int_inp = torch.randint(1, 20, (1, ci, height, width)).type(torch.FloatTensor)
     # int_inp = torch.randint(0, 127, (1, ci, height, width)).type(torch.FloatTensor) # ch, height, width
-    int_inp = torch.randint(0, 255, (1, ci, height, width)).type(torch.FloatTensor) # ch, height, width
+    int_inp = torch.randint(0, 255, (1, ci, height, width)).type(
+        torch.FloatTensor
+    )  # ch, height, width
 
     # int_weight = torch.randint(50, 80, (co, ci, ksz, ksz)).type(torch.FloatTensor)
-    int_weight = torch.randint(2, 20, (co, ci, ksz, ksz)).type(torch.FloatTensor) # co, ci, kh, kw
+    int_weight = torch.randint(2, 20, (co, ci, ksz, ksz)).type(
+        torch.FloatTensor
+    )  # co, ci, kh, kw
     # int_weight = torch.randint(5, 10, (co, ci, ksz, ksz)).type(torch.FloatTensor)
 
     # conv_scale = 7.6294e-06  # scale to convert int8 output to floating point 1/2^17
@@ -159,14 +163,24 @@ def main(opts):
     ds = DataShaper()
     int_inp_np = int_inp.squeeze().data.numpy().astype(dtype_in)
     # before_input.tofile(log_folder + "/act_before_mem_fmt.txt", sep=",", format="%d")
-    act_before_mem_fmt = int_inp_np.reshape(3584,896)
-    np.savetxt(log_folder + "/act_before_mem_fmt_CYX.txt", act_before_mem_fmt, fmt="%d", delimiter=",")
+    act_before_mem_fmt = int_inp_np.reshape(3584, 896)
+    np.savetxt(
+        log_folder + "/act_before_mem_fmt_CYX.txt",
+        act_before_mem_fmt,
+        fmt="%d",
+        delimiter=",",
+    )
 
     # ifm_mem_fmt = ds.reorder_mat(act_before_mem_fmt, "YCXC8", "CYX")
     ifm_mem_fmt = ds.reorder_mat(int_inp_np, "YXC", "CYX")
     # ifm_mem_fmt.tofile(log_folder + "/act_after_mem_fmt.txt", sep=",", format="%d")
-    act_after_mem_fmt = ifm_mem_fmt.reshape(802816,4)
-    np.savetxt(log_folder + "/act_after_mem_fmt_YXC.txt", act_after_mem_fmt, fmt="%d", delimiter=",")
+    act_after_mem_fmt = ifm_mem_fmt.reshape(802816, 4)
+    np.savetxt(
+        log_folder + "/act_after_mem_fmt_YXC.txt",
+        act_after_mem_fmt,
+        fmt="%d",
+        delimiter=",",
+    )
 
     print("ifm_mem_fmt:")
     print(type(ifm_mem_fmt))
@@ -179,16 +193,26 @@ def main(opts):
     int_weight_np = int_weight.data.numpy().astype(dtype_wts)
     # int_weight_np.tofile(log_folder + "/weights_before_mem_fmt.txt", sep=",", format="%d")
     weights_before_mem_fmt = int_weight_np.reshape(64512, 14)
-    np.savetxt(log_folder + "/weights_before_mem_fmt_OIYX.txt", weights_before_mem_fmt, fmt="%d", delimiter=",")
+    np.savetxt(
+        log_folder + "/weights_before_mem_fmt_OIYX.txt",
+        weights_before_mem_fmt,
+        fmt="%d",
+        delimiter=",",
+    )
 
     # wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX")
     # wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OYXX2IO8", "OIYX")
     wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OYXIO8", "OIYX")
     total_wts = np.concatenate((wts1), axis=None)
- 
+
     # total_wts.tofile(log_folder + "/weights_after_mem_fmt.txt", sep=",", format="%d")
     weights_after_mem_fmt = total_wts.reshape(112896, 8)
-    np.savetxt(log_folder + "/weights_after_mem_fmt_OYXIO8.txt", weights_after_mem_fmt, fmt="%d", delimiter=",")
+    np.savetxt(
+        log_folder + "/weights_after_mem_fmt_OYXIO8.txt",
+        weights_after_mem_fmt,
+        fmt="%d",
+        delimiter=",",
+    )
 
     # ------------------------------------------------------
     # Main run loop
@@ -227,7 +251,7 @@ def main(opts):
 
     temp_out_int = entire_buffer.reshape(72, 64, 64, 16)
     temp_out_int = ds.reorder_mat(temp_out_int, "CDYX", "CYXD")
-    ofm_int = temp_out_int.reshape(co*height_out*8, 8).astype(np.int8)
+    ofm_int = temp_out_int.reshape(co * height_out * 8, 8).astype(np.int8)
     # ofm_int = entire_buffer.reshape(co*height_out*8, 8).astype(np.int8)
     np.savetxt(log_folder + "/ofm_int_CYXX8.txt", ofm_int, fmt="%d", delimiter=",")
 
@@ -237,8 +261,10 @@ def main(opts):
         ofm_log_filename = "/ofm_after_mem_fmt.txt"
 
     # ofm_mem_fmt.tofile(log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%.4f")
-    ofm_float = ofm_mem_fmt.reshape(co*height_out*8, 8) # still in float
-    np.savetxt(log_folder + "/ofm_float_CYXX8.txt", ofm_float, fmt="%.4f", delimiter=",")
+    ofm_float = ofm_mem_fmt.reshape(co * height_out * 8, 8)  # still in float
+    np.savetxt(
+        log_folder + "/ofm_float_CYXX8.txt", ofm_float, fmt="%.4f", delimiter=","
+    )
 
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 
@@ -263,17 +289,28 @@ def main(opts):
     golden_output_2d = (
         golden_output.detach().numpy().reshape(co, height_out * width_out)
     )
-    np.savetxt(log_folder + "/golden_output_2d.txt", golden_output_2d, fmt="%.4f", delimiter=",")
+    np.savetxt(
+        log_folder + "/golden_output_2d.txt",
+        golden_output_2d,
+        fmt="%.4f",
+        delimiter=",",
+    )
 
-    golden_output_int = ((golden_output.detach().numpy().reshape(co*64*8,8))/int8_scale).astype(int)
-    np.savetxt(log_folder + "/golden_output_int.txt", golden_output_int, fmt="%d", delimiter=",")
-
+    golden_output_int = (
+        (golden_output.detach().numpy().reshape(co * 64 * 8, 8)) / int8_scale
+    ).astype(int)
+    np.savetxt(
+        log_folder + "/golden_output_int.txt",
+        golden_output_int,
+        fmt="%d",
+        delimiter=",",
+    )
 
     output_numpy = ofm_mem_fmt_out.detach().numpy()
     golden_numpy = golden_output.detach().numpy()
 
-    output_numpy_sub = output_numpy[0:,0:255,0:,0:]
-    golden_numpy_sub = golden_numpy[0:,0:255,0:,0:]
+    output_numpy_sub = output_numpy[0:, 0:255, 0:, 0:]
+    golden_numpy_sub = golden_numpy[0:, 0:255, 0:, 0:]
 
     print("output_numpy_sub")
     print(output_numpy_sub.shape)
@@ -281,20 +318,21 @@ def main(opts):
     print("golden_numpy_sub")
     print(golden_numpy_sub.shape)
 
-    golden_numpy_sub_int = (golden_numpy_sub/int8_scale).astype(int)
-    output_numpy_sub_int = (output_numpy_sub/int8_scale).astype(int)
+    golden_numpy_sub_int = (golden_numpy_sub / int8_scale).astype(int)
+    output_numpy_sub_int = (output_numpy_sub / int8_scale).astype(int)
 
-    max_difference = np.max(
-        np.abs(golden_numpy_sub_int - output_numpy_sub_int)
-    )
+    max_difference = np.max(np.abs(golden_numpy_sub_int - output_numpy_sub_int))
     print("max_abs_difference:", max_difference)
 
-    avg_difference = np.average(
-        np.abs(golden_numpy_sub_int - output_numpy_sub_int)
-    )
+    avg_difference = np.average(np.abs(golden_numpy_sub_int - output_numpy_sub_int))
     print("avg_abs_difference:", avg_difference)
 
-    print("max golden int value: ", np.max(golden_numpy_sub_int), ", min golden int value: ", np.min(golden_numpy_sub_int))
+    print(
+        "max golden int value: ",
+        np.max(golden_numpy_sub_int),
+        ", min golden int value: ",
+        np.min(golden_numpy_sub_int),
+    )
 
     # Find the indices where the mismatch happens
     mismatch_indices = np.where(golden_numpy_sub_int != output_numpy_sub_int)
@@ -308,9 +346,6 @@ def main(opts):
     #     zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)
     # ):
     #     print(f"Index: {idx}, Golden value: {golden_value}, OFM value: {ofm_value}, diff: {golden_value-ofm_value}")
-
-
-
 
     if np.allclose(
         # ofm_mem_fmt_out.detach().numpy(),

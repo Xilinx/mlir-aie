@@ -32,28 +32,27 @@ def conv2dk14(
         # bufIn = actIn * 4 # 64 tiles (1 tile row)
         # bufIn = width * kernel_size * in_channels # 64 tiles (1 tile row)
 
-
-        weights = 16 * kernel_size * kernel_size * in_channels # 16 output channels
+        weights = 16 * kernel_size * kernel_size * in_channels  # 16 output channels
         # bufWeights = weights * (out_channels/ 16)
 
         actOut = 16 * 16
         # bufOut = actOut * 2  # double buffer
         # bufOut = (64*64*out_channels)
 
-        groups = 16 # max - output_channels//16 = 72
+        groups = 16  # max - output_channels//16 = 72
         # groups = 72 # max - output_channels//16 = 72
 
         # we reload inputs 72 times (not big enough to keep in memtile)
         # tensorInSize = width * height * in_channels * (out_channels // 16)
         tensorInSize = width * height * in_channels * groups
-        
+
         # tensorWeightsSize = weights * (out_channels // 16)
         tensorWeightsSize = weights * groups
-        
+
         # # tensorOutSize = (width/kernel_size) * (height/kernel_size) * out_channels
         # tensorOutSize = 64 * 64 * out_channels
         tensorOutSize = 64 * 64 * 16 * groups
- 
+
         # tensorInSize = 231211008
         # tensorInSize = 3211264
         # tensorWeightsSize = 903168
@@ -184,7 +183,7 @@ def conv2dk14(
                 2,
                 np.ndarray[(16, 4096), np.dtype[np.int8]],
                 # dimensionsToStream=[(16, 16), (256, 256), (16, 1)],
-                dimensionsToStream=[(256,256),(16, 8), (2, 128), (8, 1)],
+                dimensionsToStream=[(256, 256), (16, 8), (2, 128), (8, 1)],
             )
             object_fifo_link(of_out_02_L2, of_outOFL2L3)
 
@@ -203,7 +202,7 @@ def conv2dk14(
             # )
 
             # Compute tile 2
-            @core(ComputeTile2, "conv2dk14.o", stack_size=0xc00)
+            @core(ComputeTile2, "conv2dk14.o", stack_size=0xC00)
             def core_body():
                 # y_dim = height // kernel_size
                 y_dim = 64
@@ -211,7 +210,7 @@ def conv2dk14(
                 x_blocks = 4
                 # x_dim = width * in_channels // x_blocks
                 # x_dim = 14 * 16
-                x_dim = 224 # num pixels for 1/4 of a row
+                x_dim = 224  # num pixels for 1/4 of a row
                 ci = in_channels
                 co = 16
                 # co16 = out_channels // 16
@@ -230,17 +229,15 @@ def conv2dk14(
                     for _ in range_(y_dim):
                         for _ in range_(x_blocks):
                             elemIn = of_act_L2_02.acquire(ObjectFifoPort.Consume, 1)
-                            elemOut0 = of_out_02_L2.acquire(
-                                ObjectFifoPort.Produce, 1
-                            )
+                            elemOut0 = of_out_02_L2.acquire(ObjectFifoPort.Produce, 1)
                             conv2dk14_i8(
                                 elemIn,
                                 elemWts,
                                 elemOut0,
-                                x_dim, # input_width
-                                ci, # input_channels
-                                co, # output_channels
-                                kernel_size, # kernel_width
+                                x_dim,  # input_width
+                                ci,  # input_channels
+                                co,  # output_channels
+                                kernel_size,  # kernel_width
                                 scale,
                             )
                             of_act_L2_02.release(ObjectFifoPort.Consume, 1)
