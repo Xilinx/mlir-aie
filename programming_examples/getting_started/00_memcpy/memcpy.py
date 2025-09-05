@@ -168,21 +168,21 @@ def my_memcpy(input0, output):
 def main():
     # Transfer size must be a multiple of 1024 and divisible by the number of
     # columns and 2 channels per column
-    length = 32768
+    length = 16777216
     # Use int32 dtype as it is the addr generation granularity
     element_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
     input0 = iron.arange(length, dtype=element_type, device="npu")
+    output_jit = iron.zeros_like(input0)
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    my_memcpy(input0, output)
+    my_memcpy(input0, output_jit)
 
     # Measure peformance on the second execution using the JIT cached design
-    # FIXME: currently the JIT is not hitting the cache
     start_time = time.perf_counter()
     my_memcpy(input0, output)
     end_time = time.perf_counter()
