@@ -9,7 +9,21 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(NPUDEVICE) {
+    aie.device(NPUDEVICE) @base {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_1_0 = aie.tile(1, 0)
+    %tile_2_0 = aie.tile(2, 0)
+    %tile_3_0 = aie.tile(3, 0)
+    %tile_0_1 = aie.tile(0, 1)
+    %tile_1_1 = aie.tile(1, 1)
+    %tile_2_1 = aie.tile(2, 1)
+    %tile_3_1 = aie.tile(3, 1)
+    %tile_0_2 = aie.tile(0, 2)
+    %tile_1_2 = aie.tile(1, 2)
+    %tile_2_2 = aie.tile(2, 2)
+    %tile_3_2 = aie.tile(3, 2)
+  }
+  aie.device(NPUDEVICE) @main {
     memref.global "public" @shim_in_0 : memref<64x64xi8>
     memref.global "public" @shim_in_1 : memref<64x64xi8>
     memref.global "public" @shim_in_2 : memref<64x64xi8>
