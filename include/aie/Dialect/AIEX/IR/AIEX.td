@@ -978,16 +978,6 @@ def AIE_NpuControlPacketOp: AIEX_Op<"control_packet", []> {
   }];
 }
 
-def AIE_NpuConfigureOp: AIEX_Op<"npu.configure", []> {
-  let summary = "Configure NPU operation";
-  let arguments = (ins );
-  let results = (outs );
-  let assemblyFormat = [{ attr-dict }];
-  let description = [{
-    This operation is used to configure the NPU.
-  }];
-}
-
 // NPU Bd Write operation
 def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   let summary = "dma operator";

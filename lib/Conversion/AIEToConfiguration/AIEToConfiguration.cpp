@@ -379,10 +379,12 @@ static LogicalResult convertTransactionOpsToMLIR(
     global_data.push_back(global);
   }
 
-  // search for npu.configure ops in runtime sequences by walking the device
-  // and collect them in a vector.
-  SmallVector<AIEX::NpuConfigureOp> configureOps;
-  device.walk([&](AIEX::NpuConfigureOp op) { configureOps.push_back(op); });
+  // search for aiex.configure ops in runtime sequences by walking the device
+  // and collect them in a vector. If there are none, create a new runtime
+  // sequence. Otherwise assume the insertion point is the first aiex.configure
+  // op.
+  SmallVector<AIEX::ConfigureOp> configureOps;
+  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
 
   if (configureOps.empty()) {
 
@@ -414,9 +416,13 @@ static LogicalResult convertTransactionOpsToMLIR(
     llvm_unreachable("bad output type");
   }
 
-  if (!configureOps.empty())
+  if (!configureOps.empty()) {
+    // splice the body into the current insertion point
+    builder.getBlock()->getOperations().splice(
+        builder.getInsertionPoint(),
+        configureOps.front().getBody().front().getOperations());
     configureOps.front().erase();
-
+  }
   return success();
 }
 
