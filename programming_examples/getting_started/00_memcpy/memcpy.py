@@ -13,7 +13,6 @@ import aie.iron as iron
 from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 
 #
@@ -43,11 +42,9 @@ def my_memcpy(input0, output):
     # columns and 2 channels per column
     size = output.numel()
 
-    # Number of columns must be less than or equal to 4 for npu1 and 8 for npu2
+    # Number of columns on the device (4 for npu1 and 8 for npu2)
     device = iron.get_current_device()
-    num_columns = 8
-    if isinstance(device, NPU1):
-        num_columns = 4
+    num_columns = device.cols
 
     if num_channels < 1 or num_channels > 2:
         raise ValueError("Number of channels must be 1 or 2")

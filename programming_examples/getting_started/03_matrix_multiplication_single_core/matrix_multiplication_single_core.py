@@ -75,10 +75,6 @@ def matrix_multiplication_single_core(input0, input1, output):
     # will have rearranged them into r*s-, s*t-, and r*t-sized subtiles, which
     # the computation kernel relies on.
 
-    # TODO: use when multiple external functions are supported with JIT
-    # zero_kernel = ExternalFunction(
-    #     "zero", source_file="matrix_multiplication.cc", arg_types=[c_ty],
-    # )
     matmul_kernel = ExternalFunction(
         "matrix_multiplication",
         source_file="matrix_multiplication.cc",
@@ -88,7 +84,6 @@ def matrix_multiplication_single_core(input0, input1, output):
     def core_fn(of_a, of_b, of_c, matmul):
         for _ in range_(M // m * N // n):
             elem_out = of_c.acquire(1)
-            # zero(elem_out)
             for i in range_(m):
                 for j in range_(n):
                     elem_out[i, j] = 0
