@@ -28,7 +28,7 @@ constexpr int OUT_SIZE = 4 * 64 * 64;
 
 int main(int argc, const char *argv[]) {
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_binary("aie2_run_seq.bin");
+      test_utils::load_instr_binary("aie_run_seq.bin");
   std::vector<uint32_t> ctrlPackets =
       test_utils::load_instr_binary("ctrlpkt.bin");
 
@@ -38,7 +38,7 @@ int main(int argc, const char *argv[]) {
   auto device = xrt::device(device_index);
 
   // Load the xclbin
-  auto xclbin = xrt::xclbin(std::string("aie1.xclbin"));
+  auto xclbin = xrt::xclbin(std::string("aie.xclbin"));
 
   std::string Node = "MLIR_AIE";
 
