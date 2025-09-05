@@ -88,7 +88,8 @@ class Program:
                     self._device.resolve_tile(t)
 
                 # Generate fifos
-                for f in all_fifos:
+                sorted_fifos = sorted(all_fifos, key=lambda obj: obj.name)
+                for f in sorted_fifos:
                     f.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
