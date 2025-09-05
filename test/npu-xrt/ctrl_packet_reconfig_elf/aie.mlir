@@ -9,7 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(NPUDEVICE) {
+
+  aie.device(NPUDEVICE) @main {
+
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
@@ -124,5 +126,11 @@ module {
       }]
       aie.end
     }
+  }
+  // FIXME: if this is not last, it breaks
+  aie.device(NPUDEVICE) @base {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_1 = aie.tile(0, 1)
+    %tile_0_2 = aie.tile(0, 2)
   }
 }

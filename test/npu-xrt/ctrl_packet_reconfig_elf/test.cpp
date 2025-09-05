@@ -38,7 +38,7 @@ int main(int argc, const char *argv[]) {
 
   // Load the xclbin
   // Skeleton xclbin containing only the control packet network
-  auto xclbin = xrt::xclbin(std::string("aie1.xclbin"));
+  auto xclbin = xrt::xclbin(std::string("aie.xclbin"));
 
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
@@ -51,7 +51,7 @@ int main(int argc, const char *argv[]) {
 
   device.register_xclbin(xclbin);
 
-  xrt::elf elf0("aie2.elf");
+  xrt::elf elf0("aie.elf");
   xrt::module mod0{elf0};
 
   // get a hardware context
