@@ -29,7 +29,7 @@ This design consists of the following:
 Run and verify the design:
 
 ```shell
-python3 saxpy.py
+python3 memcpy.py
 ```
 
 1. **Configure Your Run Using Parameters:**
