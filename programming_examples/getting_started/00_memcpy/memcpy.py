@@ -43,7 +43,6 @@ def my_memcpy(input0, output):
     # columns and 2 channels per column
     size = output.numel()
 
-
     # Number of columns must be less than or equal to 4 for npu1 and 8 for npu2
     device = iron.get_current_device()
     num_columns = 8
@@ -157,9 +156,9 @@ def my_memcpy(input0, output):
                     b_out,
                     taps[i * num_channels + j],
                     wait=True,  # Wait for the transfer to complete and data to be available
-                    task_group=tg_out, # Add task to the group 
+                    task_group=tg_out,  # Add task to the group
                 )
-        rt.finish_task_group(tg_out) # Wait for all drain tasks together
+        rt.finish_task_group(tg_out)  # Wait for all drain tasks together
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
@@ -192,8 +191,8 @@ def main():
     end_time = time.perf_counter()
 
     elapsed_time = end_time - start_time  # seconds
-    elapsed_us = elapsed_time * 1e6       # microseconds
-    
+    elapsed_us = elapsed_time * 1e6  # microseconds
+
     # Bandwidth calculation
     total_bytes = 2.0 * length * np.dtype(element_type).itemsize  # input + output
     bandwidth_GBps = total_bytes / elapsed_us / 1e3  # (bytes / µs) → GB/s
