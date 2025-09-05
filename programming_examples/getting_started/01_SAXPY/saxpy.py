@@ -14,6 +14,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.utils.config import cxx_header_path
 
 
 # JIT decorator for IRON
@@ -46,8 +47,9 @@ def saxpy(input0, input1, output):
 
     saxpy_kernel = ExternalFunction(
         "saxpy",
-        source_file="saxpy_vector.cc",
+        source_file="saxpy.cc",
         arg_types=[in_ty, in_ty, out_ty],
+        include_dirs=[cxx_header_path()],
     )
 
     def core_body(of_x, of_y, of_z, saxpy_kernel):

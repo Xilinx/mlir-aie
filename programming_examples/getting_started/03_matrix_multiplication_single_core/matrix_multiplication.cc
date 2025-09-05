@@ -15,11 +15,6 @@ using MMUL = aie::mmul<r, s, t, int16, int16>;
 extern "C" {
 
 //
-void zero(int16 *__restrict C) {
-  for (unsigned i = 0; i < m * n; i += MMUL::size_C) {
-    aie::store_v(C + i, aie::zeros<int16, MMUL::size_C>());
-  }
-}
 
 // Multiply A and B, and add the result onto the values already in C.
 // A, B, and C must be tiled into tiles of size r*s, s*t, and r*t,

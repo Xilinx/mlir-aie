@@ -14,6 +14,7 @@ from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.utils.config import cxx_header_path
 
 #
 # Memcpy is designed to use every column's shimDMA in-out pairs
@@ -85,9 +86,10 @@ def my_memcpy(input0, output):
 
     # External, binary kernel definition
     passthrough_fn = ExternalFunction(
-        "passThroughLine",
+        "passThrough",
         source_file="passThrough.cc",
         arg_types=[line_type, line_type, np.int32],
+        include_dirs=[cxx_header_path()],
     )
 
     # Task for the core to perform

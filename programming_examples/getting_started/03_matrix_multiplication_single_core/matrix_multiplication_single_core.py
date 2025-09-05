@@ -13,6 +13,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.utils.config import cxx_header_path
 
 
 # JIT decorator for IRON
@@ -79,6 +80,7 @@ def matrix_multiplication_single_core(input0, input1, output):
         "matrix_multiplication",
         source_file="matrix_multiplication.cc",
         arg_types=[a_ty, b_ty, c_ty],
+        include_dirs=[cxx_header_path()],
     )
 
     def core_fn(of_a, of_b, of_c, matmul):

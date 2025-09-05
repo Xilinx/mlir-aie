@@ -34,24 +34,8 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
 
 extern "C" {
 
-#if BIT_WIDTH == 8
-
-void passThroughLine(uint8_t *in, uint8_t *out, int32_t lineWidth) {
-  passThrough_aie<uint8_t, 64>(in, out, 1, lineWidth);
-}
-
-#elif BIT_WIDTH == 16
-
-void passThroughLine(int16_t *in, int16_t *out, int32_t lineWidth) {
-  passThrough_aie<int16_t, 32>(in, out, 1, lineWidth);
-}
-
-#else // 32
-
-void passThroughLine(int32_t *in, int32_t *out, int32_t lineWidth) {
+void passThrough(int32_t *in, int32_t *out, int32_t lineWidth) {
   passThrough_aie<int32_t, 16>(in, out, 1, lineWidth);
 }
-
-#endif
 
 } // extern "C"
