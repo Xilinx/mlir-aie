@@ -62,7 +62,7 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 
   const int output_channels_div_8 = output_channels / 8;
   const int tiles_div_8 = input_width / kernel_width / 8;
-  const int pixels_div_2 = kernel_width*kernel_width/2;
+  const int pixels_div_2 = kernel_width * kernel_width / 2;
 
   for (oc = 0; oc < output_channels_div_8; oc++) { // 16 out of 1152
     for (oc8 = 0; oc8 < 8; oc8++) {
@@ -72,13 +72,15 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
           int sum_srs = 0;
           for (pix = 0; pix < pixels_div_2; pix++) { // 196 // 2 = 98
             for (p2 = 0; p2 < 2; p2++) {
-              in_indx = ((nt*(tiles_div_8)*8*2) + (pix*8*2) + (nt8*2) + p2)*4;
-              wts_indx =
-                  ((oc*pixels_div_2*2*4*8) + (pix*2*4*8) + (p2*4*8) + oc8);
-              sum += input[in_indx] * kernels[wts_indx]
-                     + input[in_indx+1] * kernels[wts_indx+8]
-                     + input[in_indx+2] * kernels[wts_indx+16]
-                     + input[in_indx+3] * kernels[wts_indx+24];
+              in_indx = ((nt * (tiles_div_8) * 8 * 2) + (pix * 8 * 2) +
+                         (nt8 * 2) + p2) *
+                        4;
+              wts_indx = ((oc * pixels_div_2 * 2 * 4 * 8) + (pix * 2 * 4 * 8) +
+                          (p2 * 4 * 8) + oc8);
+              sum += input[in_indx] * kernels[wts_indx] +
+                     input[in_indx + 1] * kernels[wts_indx + 8] +
+                     input[in_indx + 2] * kernels[wts_indx + 16] +
+                     input[in_indx + 3] * kernels[wts_indx + 24];
             }
           }
           sum_srs = (sum + (1 << (scale - 1))) >> scale;
@@ -103,7 +105,6 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
 #ifdef INT8_ACT
 
 #else // UINT8_ACT
-
 
 //*****************************************************************************
 // conv2d 3x3 - vector
@@ -150,16 +151,16 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
   // const int output_channels_div_8 = 2;
   const int tiles_div_8 = input_width / kernel_width / 8;
   // const int tiles_div_8 = 2;
-  const int pixels_div_2 = kernel_width*kernel_width/2;
-  // const int pixels_div_2 = 98; // kernel_width * kernel_width / 2; // 14*14/2 = 98
-
+  const int pixels_div_2 = kernel_width * kernel_width / 2;
+  // const int pixels_div_2 = 98; // kernel_width * kernel_width / 2; // 14*14/2
+  // = 98
 
   uint8_t *in_ptr = input;
   int8_t *k_ptr = kernels;
   int8_t *out_ptr = output;
 
-  for (int k = 0; k < output_channels_div_8; k++) {      // 2
-    for (int j = 0; j < tiles_div_8; j++) { // 2
+  for (int k = 0; k < output_channels_div_8; k++) { // 2
+    for (int j = 0; j < tiles_div_8; j++) {         // 2
       AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_MIN_ITERATION_COUNT(98)
       // AIE_LOOP_UNROLL_FULL
