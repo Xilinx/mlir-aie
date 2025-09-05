@@ -17,6 +17,7 @@ from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.dialects.ext.scf import if_, else_
+from aie.utils.config import cxx_header_path
 
 
 # JIT decorator for IRON
@@ -81,7 +82,7 @@ def vector_reduce_max(input0, output):
         f"reduce_max_vector_bfloat16",
         source_file="vector_reduce_max.cc",
         arg_types=[op_ty, out_ty, np.int32],
-        include_dirs=[os.environ["MLIR_AIE_INSTALL_DIR"] + "/include/"],
+        include_dirs=[cxx_header_path()],
     )
     min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
 
