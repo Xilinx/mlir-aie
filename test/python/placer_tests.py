@@ -11,6 +11,37 @@ from util import construct_and_print_module
 # RUN: %python %s | FileCheck %s
 
 
+# CHECK-LABEL: TEST: objectfifo_order
+# CHECK: aie.objectfifo @in_A
+# CHECK: aie.objectfifo @in_B
+# CHECK: aie.objectfifo @out_C
+@construct_and_print_module
+def objectfifo_order(module):
+    N = 4096
+    n = 1024
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_in_A = ObjectFifo(n_ty, name="in_A")
+    of_in_B = ObjectFifo(n_ty, name="in_B")
+    of_out_C = ObjectFifo(n_ty, name="out_C")
+
+    def core_fn(in_A, in_B, out_C):
+        pass
+
+    my_worker = Worker(core_fn, [of_in_A.cons(), of_in_B.cons(), of_out_C.prod()])
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+        rt.start(my_worker)
+        rt.fill(of_in_A.prod(), A)
+        rt.fill(of_in_B.prod(), B)
+        rt.drain(of_out_C.cons(), C, wait=True)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
+
+
 # CHECK-LABEL: TEST: shim_three_in
 # CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
 # CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile
