@@ -70,6 +70,9 @@ class Program:
                 for w in self._rt.workers:
                     all_fifos.update(w.fifos)
 
+                # Sort fifos for deterministic resolve
+                all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
+
                 if placer:
                     # TODO: should maybe just take runtime?
                     placer.make_placement(
@@ -88,8 +91,7 @@ class Program:
                     self._device.resolve_tile(t)
 
                 # Generate fifos
-                sorted_fifos = sorted(all_fifos, key=lambda obj: obj.name)
-                for f in sorted_fifos:
+                for f in all_fifos:
                     f.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
