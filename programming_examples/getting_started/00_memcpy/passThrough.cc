@@ -15,6 +15,21 @@
 
 #include <aie_api/aie.hpp>
 
+#if defined(__chess__)
+#define AIE_PREPARE_FOR_PIPELINING [[chess::prepare_for_pipelining]]
+#define AIE_LOOP_MIN_ITERATION_COUNT(x) [[chess::min_loop_count(x)]]
+#elif defined(__AIECC__)
+#ifndef __STRINGIFY
+#define __STRINGIFY(a) #a
+#endif
+#define AIE_LOOP_MIN_ITERATION_COUNT(x)                                        \
+  _Pragma(__STRINGIFY(clang loop min_iteration_count(x)))
+#define AIE_PREPARE_FOR_PIPELINING
+#else
+#define AIE_LOOP_MIN_ITERATION_COUNT(x)
+#define AIE_PREPARE_FOR_PIPELINING
+#endif
+
 template <typename T, int N>
 __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
                                                const int32_t height,
@@ -24,6 +39,8 @@ __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
   v64uint8 *restrict outPtr = (v64uint8 *)out;
   v64uint8 *restrict inPtr = (v64uint8 *)in;
 
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(6)
   for (int j = 0; j < (height * width); j += N) // Nx samples per loop
   {
     *outPtr++ = *inPtr++;
