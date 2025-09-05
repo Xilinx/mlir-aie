@@ -31,7 +31,7 @@ constexpr int OUT_SIZE = 64 * 64;
 int main(int argc, const char *argv[]) {
   // AIE design's data streams
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_binary("aie2_run_seq.bin");
+      test_utils::load_instr_binary("aie_run_seq.bin");
   // AIE configuration control packets' raw data
   std::vector<uint32_t> ctrlPackets =
       test_utils::load_instr_binary("ctrlpkt.bin");
@@ -43,7 +43,7 @@ int main(int argc, const char *argv[]) {
 
   // Load the xclbin
   // Skeleton xclbin containing only the control packet network
-  auto xclbin = xrt::xclbin(std::string("aie1.xclbin"));
+  auto xclbin = xrt::xclbin(std::string("aie.xclbin"));
 
   std::string Node = "MLIR_AIE";
 

@@ -9,7 +9,12 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(NPUDEVICE) {
+  aie.device(NPUDEVICE) @base {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_1 = aie.tile(0, 1)
+    %tile_0_2 = aie.tile(0, 2)
+  }
+  aie.device(NPUDEVICE) @main {
     memref.global "public" @objFifo_in0 : memref<56x56xi8>
     memref.global "public" @objFifo_out0 : memref<64x64xi8>
 
