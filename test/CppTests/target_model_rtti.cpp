@@ -28,7 +28,7 @@ void test() {
   }
   if (llvm::isa<AIE::AIE2TargetModel, AIE::VE2302TargetModel,
                 AIE::VE2802TargetModel, AIE::BaseNPU1TargetModel,
-                AIE::BaseNPU2TargetModel, AIE::VirtualizedNPU1TargetModel, 
+                AIE::BaseNPU2TargetModel, AIE::VirtualizedNPU1TargetModel,
                 AIE::NPU2TargetModel, AIE::VirtualizedNPU2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::xcvc1902))) {
     throw std::runtime_error("Failed xcvc1902 !isa<>");
@@ -45,7 +45,7 @@ void test() {
   }
   if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                 AIE::VE2802TargetModel, AIE::BaseNPU1TargetModel,
-                AIE::BaseNPU2TargetModel, AIE::VirtualizedNPU1TargetModel, 
+                AIE::BaseNPU2TargetModel, AIE::VirtualizedNPU1TargetModel,
                 AIE::NPU2TargetModel, AIE::VirtualizedNPU2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::xcve2302))) {
     throw std::runtime_error("Failed xcve2302 !isa<>");
@@ -62,7 +62,7 @@ void test() {
   }
   if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                 AIE::VE2302TargetModel, AIE::BaseNPU1TargetModel,
-                AIE::BaseNPU2TargetModel, AIE::VirtualizedNPU1TargetModel, 
+                AIE::BaseNPU2TargetModel, AIE::VirtualizedNPU1TargetModel,
                 AIE::NPU2TargetModel, AIE::VirtualizedNPU2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::xcve2802))) {
     throw std::runtime_error("Failed xcve2802 !isa<>");
@@ -85,9 +85,8 @@ void test() {
     }
     if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                   AIE::VE2302TargetModel, AIE::VE2802TargetModel,
-                  AIE::BaseNPU2TargetModel, AIE::NPU2TargetModel, 
-                  AIE::VirtualizedNPU2TargetModel>(
-            AIE::getTargetModel(dev))) {
+                  AIE::BaseNPU2TargetModel, AIE::NPU2TargetModel,
+                  AIE::VirtualizedNPU2TargetModel>(AIE::getTargetModel(dev))) {
       throw std::runtime_error("Failed npu1_col !isa<>");
     }
   }
@@ -133,9 +132,8 @@ void test() {
     }
     if (llvm::isa<AIE::AIE1TargetModel, AIE::VC1902TargetModel,
                   AIE::VE2302TargetModel, AIE::VE2802TargetModel,
-                  AIE::BaseNPU1TargetModel, AIE::VirtualizedNPU1TargetModel, 
-                  AIE::NPU2TargetModel>(
-            AIE::getTargetModel(dev))) {
+                  AIE::BaseNPU1TargetModel, AIE::VirtualizedNPU1TargetModel,
+                  AIE::NPU2TargetModel>(AIE::getTargetModel(dev))) {
       throw std::runtime_error("Failed npu2_col !isa<>");
     }
   }

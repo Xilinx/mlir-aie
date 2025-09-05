@@ -40,7 +40,6 @@ int main(int argc, const char *argv[]) {
   // Skeleton xclbin containing only the control packet network
   auto xclbin = xrt::xclbin(std::string("aie1.xclbin"));
 
-  
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),

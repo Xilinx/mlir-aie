@@ -7,37 +7,51 @@
 #include <string>
 #include <type_traits>
 
-template <typename T> struct Format;
-template <> struct Format<double> {
+template <typename T>
+struct Format;
+template <>
+struct Format<double> {
   static constexpr const char *value = "%la";
 };
-template <> struct Format<float> { static constexpr const char *value = "%a"; };
-template <> struct Format<uint64_t> {
+template <>
+struct Format<float> {
+  static constexpr const char *value = "%a";
+};
+template <>
+struct Format<uint64_t> {
   static constexpr const char *value = "%llu";
 };
-template <> struct Format<int64_t> {
+template <>
+struct Format<int64_t> {
   static constexpr const char *value = "%lld";
 };
-template <> struct Format<uint32_t> {
+template <>
+struct Format<uint32_t> {
   static constexpr const char *value = "%u";
 };
-template <> struct Format<int32_t> {
+template <>
+struct Format<int32_t> {
   static constexpr const char *value = "%d";
 };
-template <> struct Format<uint16_t> {
+template <>
+struct Format<uint16_t> {
   static constexpr const char *value = "%hu";
 };
-template <> struct Format<int16_t> {
+template <>
+struct Format<int16_t> {
   static constexpr const char *value = "%hd";
 };
-template <> struct Format<uint8_t> {
+template <>
+struct Format<uint8_t> {
   static constexpr const char *value = "%hhu";
 };
-template <> struct Format<int8_t> {
+template <>
+struct Format<int8_t> {
   static constexpr const char *value = "%hhd";
 };
 
-template <typename T> void writeItems(FILE *file, T const *data, unsigned num) {
+template <typename T>
+void writeItems(FILE *file, T const *data, unsigned num) {
   for (unsigned ind = 0; ind < num; ++ind) {
     if constexpr (std::is_same_v<T, bfloat16>) {
       fprintf(file, Format<float>::value, float(data[ind]));
@@ -91,7 +105,8 @@ void writeData(T const *data, unsigned numWords, std::string const &filename) {
   }
 }
 
-template <typename T> unsigned readItems(FILE *file, T *data, unsigned num) {
+template <typename T>
+unsigned readItems(FILE *file, T *data, unsigned num) {
   unsigned numRead = 0;
   for (unsigned ind = 0; ind < num; ++ind) {
     if constexpr (std::is_same_v<T, bfloat16>) {
@@ -118,16 +133,19 @@ template <typename T> unsigned readItems(FILE *file, T *data, unsigned num) {
   return numRead;
 }
 
-template <> unsigned readItems<cint32>(FILE *file, cint32 *data, unsigned num) {
+template <>
+unsigned readItems<cint32>(FILE *file, cint32 *data, unsigned num) {
   return readItems<int32_t>(file, (int32_t *)data, num * 2) / 2;
 }
 
-template <> unsigned readItems<cint16>(FILE *file, cint16 *data, unsigned num) {
+template <>
+unsigned readItems<cint16>(FILE *file, cint16 *data, unsigned num) {
   return readItems<int16_t>(file, (int16_t *)data, num * 2) / 2;
 }
 
 #if __AIEARCH__ == 10
-template <> unsigned readItems<cfloat>(FILE *file, cfloat *data, unsigned num) {
+template <>
+unsigned readItems<cfloat>(FILE *file, cfloat *data, unsigned num) {
   return readItems<cfloat>(file, (cfloat *)data, num * 2) / 2;
 }
 #endif
@@ -155,11 +173,13 @@ bool almostEqual(float val1, float val2, float relTol, float absTol) {
          std::max(relTol * std::max(std::fabs(val1), std::fabs(val2)), absTol);
 }
 
-template <typename T> bool almostEqual(T val1, T val2, int absTol) {
+template <typename T>
+bool almostEqual(T val1, T val2, int absTol) {
   return (val1 < val2) ? (val2 - val1 <= absTol) : (val1 - val2 <= absTol);
 }
 
-template <typename T> class CheckData {
+template <typename T>
+class CheckData {
 public:
   CheckData(unsigned absTol, float relTol, float absTolF)
       : _absTol(absTol), _relTol(relTol), _absTolF(absTolF), _numErrors(0),
@@ -247,7 +267,8 @@ inline void reportCycleCount(int count, std::string const &filename) {
 
 // Generate a random integer in range [0,2^bits) for unsigned types and
 // [-2^(bits-1),2^(bits-1)) for signed types.
-template <typename T> T random_integer(unsigned int bits = 8 * sizeof(T)) {
+template <typename T>
+T random_integer(unsigned int bits = 8 * sizeof(T)) {
   // chess run-time library has RAND_MAX=2^15 -1
   constexpr int rbits = 15; // 32 - __builtin_ctz (uint32_t(RAND_MAX));
 

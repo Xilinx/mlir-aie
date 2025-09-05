@@ -24,7 +24,8 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
-template <typename MyOp> struct AIEOpRemoval : OpConversionPattern<MyOp> {
+template <typename MyOp>
+struct AIEOpRemoval : OpConversionPattern<MyOp> {
   using OpConversionPattern<MyOp>::OpConversionPattern;
   using OpAdaptor = typename MyOp::Adaptor;
 
