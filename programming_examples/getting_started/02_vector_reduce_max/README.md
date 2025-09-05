@@ -24,5 +24,5 @@ This design consists of the following:
 Run and verify the design:
 
 ```shell
-python3 saxpy.py
+python3 vector_reduce_max_1col.py
 ```

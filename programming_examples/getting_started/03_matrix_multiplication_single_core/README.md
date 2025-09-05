@@ -145,5 +145,5 @@ Note that all of these tiles are arranged in row-major order.
 Run and verify the design:
 
 ```shell
-python3 saxpy.py
+python3 matrix_multiplication_single_core.py
 ```
