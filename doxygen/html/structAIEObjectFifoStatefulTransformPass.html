@@ -123,26 +123,26 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a26455c8e0f1944685dc9062af57d3624" id="r_a26455c8e0f1944685dc9062af57d3624"><td class="memItemLeft" align="right" valign="top">Block *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a26455c8e0f1944685dc9062af57d3624">findEndOpBlock</a> (Region &amp;r)</td></tr>
 <tr class="memdesc:a26455c8e0f1944685dc9062af57d3624"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function that returns a pointer to the block of a Region that contains the AIEEndOp.  <br /></td></tr>
 <tr class="separator:a26455c8e0f1944685dc9062af57d3624"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a95bc7e5844e8ebc9885ef7a52dd7d59c" id="r_a95bc7e5844e8ebc9885ef7a52dd7d59c"><td class="memTemplParams" colspan="2">template&lt;typename MyOp &gt; </td></tr>
-<tr class="memitem:a95bc7e5844e8ebc9885ef7a52dd7d59c"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a95bc7e5844e8ebc9885ef7a52dd7d59c">createBd</a> (OpBuilder &amp;builder, LockOp acqLock, int acqMode, LockAction acqLockAction, LockOp relLock, int relMode, MyOp buff, int offset, int len, Block *succ, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions)</td></tr>
-<tr class="memdesc:a95bc7e5844e8ebc9885ef7a52dd7d59c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a Bd block.  <br /></td></tr>
-<tr class="separator:a95bc7e5844e8ebc9885ef7a52dd7d59c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa1c775ab517a8cb1486c4dee4784f975" id="r_aa1c775ab517a8cb1486c4dee4784f975"><td class="memTemplParams" colspan="2">template&lt;typename MyOp &gt; </td></tr>
-<tr class="memitem:aa1c775ab517a8cb1486c4dee4784f975"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#aa1c775ab517a8cb1486c4dee4784f975">createBdBlock</a> (OpBuilder &amp;builder, ObjectFifoCreateOp op, int lockMode, int acqNum, int relNum, MyOp buff, int offset, int len, DMAChannelDir channelDir, size_t lockIndex, Block *succ, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions, <a class="el" href="classbool.html">bool</a> distribOrJoin=false)</td></tr>
-<tr class="memdesc:aa1c775ab517a8cb1486c4dee4784f975"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a Bd block.  <br /></td></tr>
-<tr class="separator:aa1c775ab517a8cb1486c4dee4784f975"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a80d15e904d631bf80756036f27f3ff71" id="r_a80d15e904d631bf80756036f27f3ff71"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a80d15e904d631bf80756036f27f3ff71">createDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr pad_dims)</td></tr>
-<tr class="memdesc:a80d15e904d631bf80756036f27f3ff71"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function that either calls <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a10c4785cb8786ab6602a2d8427b881b3" title="Function used to create a MemOp region with a DMA channel.">createAIETileDMA()</a>, <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a6a921597c4b55f5596189f12e8b09f8e" title="Function used to create a ShimDMAOp region with a DMA channel.">createShimDMA()</a> or <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a120dece523054fe699f66bd9c79de8e8" title="Function used to create a MemTileDMAOp region with a DMA channel.">createMemTileDMA()</a> based on op tile row value.  <br /></td></tr>
-<tr class="separator:a80d15e904d631bf80756036f27f3ff71"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a10c4785cb8786ab6602a2d8427b881b3" id="r_a10c4785cb8786ab6602a2d8427b881b3"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a10c4785cb8786ab6602a2d8427b881b3">createAIETileDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims)</td></tr>
-<tr class="memdesc:a10c4785cb8786ab6602a2d8427b881b3"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a MemOp region with a DMA channel.  <br /></td></tr>
-<tr class="separator:a10c4785cb8786ab6602a2d8427b881b3"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a6a921597c4b55f5596189f12e8b09f8e" id="r_a6a921597c4b55f5596189f12e8b09f8e"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a6a921597c4b55f5596189f12e8b09f8e">createShimDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims)</td></tr>
-<tr class="memdesc:a6a921597c4b55f5596189f12e8b09f8e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a ShimDMAOp region with a DMA channel.  <br /></td></tr>
-<tr class="separator:a6a921597c4b55f5596189f12e8b09f8e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a120dece523054fe699f66bd9c79de8e8" id="r_a120dece523054fe699f66bd9c79de8e8"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a120dece523054fe699f66bd9c79de8e8">createMemTileDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions)</td></tr>
-<tr class="memdesc:a120dece523054fe699f66bd9c79de8e8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a MemTileDMAOp region with a DMA channel.  <br /></td></tr>
-<tr class="separator:a120dece523054fe699f66bd9c79de8e8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af4c2d2cef40e761f8639c2397d471a6b" id="r_af4c2d2cef40e761f8639c2397d471a6b"><td class="memTemplParams" colspan="2">template&lt;typename MyOp &gt; </td></tr>
+<tr class="memitem:af4c2d2cef40e761f8639c2397d471a6b"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#af4c2d2cef40e761f8639c2397d471a6b">createBd</a> (OpBuilder &amp;builder, LockOp acqLock, int acqMode, LockAction acqLockAction, LockOp relLock, int relMode, MyOp buff, int offset, int len, Block *succ, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions, std::optional&lt; PacketInfoAttr &gt; bdPacket)</td></tr>
+<tr class="memdesc:af4c2d2cef40e761f8639c2397d471a6b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a Bd block.  <br /></td></tr>
+<tr class="separator:af4c2d2cef40e761f8639c2397d471a6b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a781b9b524b66b3c4154fa2d08bd35058" id="r_a781b9b524b66b3c4154fa2d08bd35058"><td class="memTemplParams" colspan="2">template&lt;typename MyOp &gt; </td></tr>
+<tr class="memitem:a781b9b524b66b3c4154fa2d08bd35058"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a781b9b524b66b3c4154fa2d08bd35058">createBdBlock</a> (OpBuilder &amp;builder, ObjectFifoCreateOp op, int lockMode, int acqNum, int relNum, MyOp buff, int offset, int len, DMAChannelDir channelDir, size_t lockIndex, Block *succ, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions, std::optional&lt; PacketInfoAttr &gt; bdPacket, <a class="el" href="classbool.html">bool</a> distribOrJoin=false)</td></tr>
+<tr class="memdesc:a781b9b524b66b3c4154fa2d08bd35058"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a Bd block.  <br /></td></tr>
+<tr class="separator:a781b9b524b66b3c4154fa2d08bd35058"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3e715c5c79ebeaac9a0bb087a7efe08e" id="r_a3e715c5c79ebeaac9a0bb087a7efe08e"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a3e715c5c79ebeaac9a0bb087a7efe08e">createDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr pad_dims, std::optional&lt; PacketInfoAttr &gt; bdPacket)</td></tr>
+<tr class="memdesc:a3e715c5c79ebeaac9a0bb087a7efe08e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function that either calls <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ad29529858518c4664b509901704b1143" title="Function used to create a MemOp region with a DMA channel.">createAIETileDMA()</a>, <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a70518079288c7d7dffbdb8749bb8de0a" title="Function used to create a ShimDMAOp region with a DMA channel.">createShimDMA()</a> or <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ad05e96702f2fa0cfb5b213c31bc51926" title="Function used to create a MemTileDMAOp region with a DMA channel.">createMemTileDMA()</a> based on op tile row value.  <br /></td></tr>
+<tr class="separator:a3e715c5c79ebeaac9a0bb087a7efe08e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad29529858518c4664b509901704b1143" id="r_ad29529858518c4664b509901704b1143"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ad29529858518c4664b509901704b1143">createAIETileDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims, std::optional&lt; PacketInfoAttr &gt; bdPacket)</td></tr>
+<tr class="memdesc:ad29529858518c4664b509901704b1143"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a MemOp region with a DMA channel.  <br /></td></tr>
+<tr class="separator:ad29529858518c4664b509901704b1143"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a70518079288c7d7dffbdb8749bb8de0a" id="r_a70518079288c7d7dffbdb8749bb8de0a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a70518079288c7d7dffbdb8749bb8de0a">createShimDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims, std::optional&lt; PacketInfoAttr &gt; bdPacket)</td></tr>
+<tr class="memdesc:a70518079288c7d7dffbdb8749bb8de0a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a ShimDMAOp region with a DMA channel.  <br /></td></tr>
+<tr class="separator:a70518079288c7d7dffbdb8749bb8de0a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad05e96702f2fa0cfb5b213c31bc51926" id="r_ad05e96702f2fa0cfb5b213c31bc51926"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ad05e96702f2fa0cfb5b213c31bc51926">createMemTileDMA</a> (DeviceOp &amp;device, OpBuilder &amp;builder, ObjectFifoCreateOp op, DMAChannelDir channelDir, int channelIndex, int lockMode, BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions, std::optional&lt; PacketInfoAttr &gt; bdPacket)</td></tr>
+<tr class="memdesc:ad05e96702f2fa0cfb5b213c31bc51926"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to create a MemTileDMAOp region with a DMA channel.  <br /></td></tr>
+<tr class="separator:ad05e96702f2fa0cfb5b213c31bc51926"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abadde678a1e1476a6b3076c307957e49" id="r_abadde678a1e1476a6b3076c307957e49"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#abadde678a1e1476a6b3076c307957e49">computeLCM</a> (std::set&lt; int &gt; values)</td></tr>
 <tr class="separator:abadde678a1e1476a6b3076c307957e49"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aecd58f10ca7aabfc9ed4e71d597959d7" id="r_aecd58f10ca7aabfc9ed4e71d597959d7"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#aecd58f10ca7aabfc9ed4e71d597959d7">unrollForLoops</a> (DeviceOp &amp;device, OpBuilder &amp;builder, std::set&lt; TileOp &gt; objectFifoTiles)</td></tr>
@@ -169,12 +169,15 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a18afcd7104ba20c5e354909ec3e74ac5" id="r_a18afcd7104ba20c5e354909ec3e74ac5"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a18afcd7104ba20c5e354909ec3e74ac5">findObjectFifoSize</a> (DeviceOp &amp;device, Value tile, ObjectFifoCreateOp objFifo)</td></tr>
 <tr class="memdesc:a18afcd7104ba20c5e354909ec3e74ac5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to find the size of an objectFifo after split based on the maximum number of elements (of the original objectFifo) acquired by a process running on given tile.  <br /></td></tr>
 <tr class="separator:a18afcd7104ba20c5e354909ec3e74ac5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a190592067af667d3a6d041d1c6945a7a" id="r_a190592067af667d3a6d041d1c6945a7a"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a190592067af667d3a6d041d1c6945a7a">createObjectFifoAllocationInfo</a> (OpBuilder &amp;builder, MLIRContext *ctx, FlatSymbolRefAttr obj_fifo, int colIndex, DMAChannelDir channelDir, int channelIndex, <a class="el" href="classbool.html">bool</a> plio)</td></tr>
-<tr class="memdesc:a190592067af667d3a6d041d1c6945a7a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to generate, from an objectFifo with a shimTile endpoint, a shimDMAAllocationOp containing the channelDir, channelIndex and shimTile col assigned by the objectFifo lowering.  <br /></td></tr>
-<tr class="separator:a190592067af667d3a6d041d1c6945a7a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a56a87e338cea7d9f144bcb8ca32de7fe" id="r_a56a87e338cea7d9f144bcb8ca32de7fe"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a56a87e338cea7d9f144bcb8ca32de7fe">createObjectFifoAllocationInfo</a> (OpBuilder &amp;builder, MLIRContext *ctx, FlatSymbolRefAttr obj_fifo, int colIndex, DMAChannelDir channelDir, int channelIndex, <a class="el" href="classbool.html">bool</a> plio, std::optional&lt; PacketInfoAttr &gt; packet)</td></tr>
+<tr class="memdesc:a56a87e338cea7d9f144bcb8ca32de7fe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to generate, from an objectFifo with a shimTile endpoint, a shimDMAAllocationOp containing the channelDir, channelIndex and shimTile col assigned by the objectFifo lowering.  <br /></td></tr>
+<tr class="separator:a56a87e338cea7d9f144bcb8ca32de7fe"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6de3e5eafa8cc99f7d8bcd71754167d7" id="r_a6de3e5eafa8cc99f7d8bcd71754167d7"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a6de3e5eafa8cc99f7d8bcd71754167d7">verifyObjectFifoLinks</a> (DeviceOp &amp;device)</td></tr>
 <tr class="memdesc:a6de3e5eafa8cc99f7d8bcd71754167d7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to verify that an objectfifo is present in at most one ObjectFifoLinkOp.  <br /></td></tr>
 <tr class="separator:a6de3e5eafa8cc99f7d8bcd71754167d7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aeb8fca113bd4114f9e7391dc4baf2836" id="r_aeb8fca113bd4114f9e7391dc4baf2836"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#aeb8fca113bd4114f9e7391dc4baf2836">getStartPacketID</a> (DeviceOp &amp;device)</td></tr>
+<tr class="memdesc:aeb8fca113bd4114f9e7391dc4baf2836"><td class="mdescLeft">&#160;</td><td class="mdescRight">Account for already used packet IDs and return next available ID.  <br /></td></tr>
+<tr class="separator:aeb8fca113bd4114f9e7391dc4baf2836"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a91b64de63b2fbe09cc1e637cfdf06ed4" id="r_a91b64de63b2fbe09cc1e637cfdf06ed4"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a91b64de63b2fbe09cc1e637cfdf06ed4">assignDMAChannelIndices</a> (<a class="el" href="classDMAChannelAnalysis.html">DMAChannelAnalysis</a> &amp;dmaAnalysis, const std::map&lt; ObjectFifoCreateOp, <a class="el" href="classbool.html">bool</a> &gt; &amp;crossTileInfos, std::map&lt; ObjectFifoCreateOp, int &gt; &amp;fifo_dma_channel_index, <a class="el" href="classbool.html">bool</a> assignCrossTileOnly)</td></tr>
 <tr class="memdesc:a91b64de63b2fbe09cc1e637cfdf06ed4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Helper function to assign DMA channel indices for FIFOs based on cross-tile conditions.  <br /></td></tr>
 <tr class="separator:a91b64de63b2fbe09cc1e637cfdf06ed4"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -236,7 +239,7 @@ Public Attributes</h2></td></tr>
 
 <p>Function used to add an external buffer to the externalBuffersPerFifo map. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01554">1554</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01563">1563</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -319,7 +322,7 @@ Public Attributes</h2></td></tr>
 
 <p>Helper function to assign DMA channel indices for FIFOs based on cross-tile conditions. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01664">1664</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01689">1689</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00111">DMAChannelAnalysis::getDMAChannelIndex()</a>.</p>
 
@@ -399,14 +402,14 @@ Public Attributes</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01187">1187</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01196">1196</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01195">unrollForLoops()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01204">unrollForLoops()</a>.</p>
 
 </div>
 </div>
-<a id="a10c4785cb8786ab6602a2d8427b881b3" name="a10c4785cb8786ab6602a2d8427b881b3"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a10c4785cb8786ab6602a2d8427b881b3">&#9670;&#160;</a></span>createAIETileDMA()</h2>
+<a id="ad29529858518c4664b509901704b1143" name="ad29529858518c4664b509901704b1143"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad29529858518c4664b509901704b1143">&#9670;&#160;</a></span>createAIETileDMA()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -454,7 +457,13 @@ Public Attributes</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">BDDimLayoutArrayAttr&#160;</td>
-          <td class="paramname"><em>dims</em>&#160;</td>
+          <td class="paramname"><em>dims</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::optional&lt; PacketInfoAttr &gt;&#160;</td>
+          <td class="paramname"><em>bdPacket</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -472,16 +481,16 @@ Public Attributes</h2></td></tr>
 <p>Function used to create a MemOp region with a DMA channel. </p>
 <p>It uses creatBdBlock(), see there for lockMode input. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00836">836</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00843">843</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00737">findEndOpBlock()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00319">getOptionalLinkOp()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00157">objFifoLinks</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00816">createDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00822">createDMA()</a>.</p>
 
 </div>
 </div>
-<a id="a95bc7e5844e8ebc9885ef7a52dd7d59c" name="a95bc7e5844e8ebc9885ef7a52dd7d59c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a95bc7e5844e8ebc9885ef7a52dd7d59c">&#9670;&#160;</a></span>createBd()</h2>
+<a id="af4c2d2cef40e761f8639c2397d471a6b" name="af4c2d2cef40e761f8639c2397d471a6b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af4c2d2cef40e761f8639c2397d471a6b">&#9670;&#160;</a></span>createBd()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -561,7 +570,13 @@ template&lt;typename MyOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">BDPadLayoutArrayAttr&#160;</td>
-          <td class="paramname"><em>padDimensions</em>&#160;</td>
+          <td class="paramname"><em>padDimensions</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::optional&lt; PacketInfoAttr &gt;&#160;</td>
+          <td class="paramname"><em>bdPacket</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -580,12 +595,12 @@ template&lt;typename MyOp &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00747">747</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00773">createBdBlock()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00778">createBdBlock()</a>.</p>
 
 </div>
 </div>
-<a id="aa1c775ab517a8cb1486c4dee4784f975" name="aa1c775ab517a8cb1486c4dee4784f975"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa1c775ab517a8cb1486c4dee4784f975">&#9670;&#160;</a></span>createBdBlock()</h2>
+<a id="a781b9b524b66b3c4154fa2d08bd35058" name="a781b9b524b66b3c4154fa2d08bd35058"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a781b9b524b66b3c4154fa2d08bd35058">&#9670;&#160;</a></span>createBdBlock()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -676,6 +691,12 @@ template&lt;typename MyOp &gt; </div>
         <tr>
           <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">std::optional&lt; PacketInfoAttr &gt;&#160;</td>
+          <td class="paramname"><em>bdPacket</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
           <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
           <td class="paramname"><em>distribOrJoin</em> = <code>false</code>&#160;</td>
         </tr>
@@ -695,14 +716,14 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create a Bd block. </p>
 <p>If lockMode is 0 we create a consumerDMA (i.e. on producer tile) else a producerDMA (i.e. on consumer tile). </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00773">773</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00778">778</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00747">createBd()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00152">locksPerFifo</a>.</p>
 
 </div>
 </div>
-<a id="a80d15e904d631bf80756036f27f3ff71" name="a80d15e904d631bf80756036f27f3ff71"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a80d15e904d631bf80756036f27f3ff71">&#9670;&#160;</a></span>createDMA()</h2>
+<a id="a3e715c5c79ebeaac9a0bb087a7efe08e" name="a3e715c5c79ebeaac9a0bb087a7efe08e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3e715c5c79ebeaac9a0bb087a7efe08e">&#9670;&#160;</a></span>createDMA()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -756,7 +777,13 @@ template&lt;typename MyOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">BDPadLayoutArrayAttr&#160;</td>
-          <td class="paramname"><em>pad_dims</em>&#160;</td>
+          <td class="paramname"><em>pad_dims</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::optional&lt; PacketInfoAttr &gt;&#160;</td>
+          <td class="paramname"><em>bdPacket</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -771,16 +798,16 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p>Function that either calls <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a10c4785cb8786ab6602a2d8427b881b3" title="Function used to create a MemOp region with a DMA channel.">createAIETileDMA()</a>, <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a6a921597c4b55f5596189f12e8b09f8e" title="Function used to create a ShimDMAOp region with a DMA channel.">createShimDMA()</a> or <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a120dece523054fe699f66bd9c79de8e8" title="Function used to create a MemTileDMAOp region with a DMA channel.">createMemTileDMA()</a> based on op tile row value. </p>
+<p>Function that either calls <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ad29529858518c4664b509901704b1143" title="Function used to create a MemOp region with a DMA channel.">createAIETileDMA()</a>, <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a70518079288c7d7dffbdb8749bb8de0a" title="Function used to create a ShimDMAOp region with a DMA channel.">createShimDMA()</a> or <a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ad05e96702f2fa0cfb5b213c31bc51926" title="Function used to create a MemTileDMAOp region with a DMA channel.">createMemTileDMA()</a> based on op tile row value. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00816">816</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00822">822</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00836">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01009">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00935">createShimDMA()</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00843">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01017">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00943">createShimDMA()</a>.</p>
 
 </div>
 </div>
-<a id="a120dece523054fe699f66bd9c79de8e8" name="a120dece523054fe699f66bd9c79de8e8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a120dece523054fe699f66bd9c79de8e8">&#9670;&#160;</a></span>createMemTileDMA()</h2>
+<a id="ad05e96702f2fa0cfb5b213c31bc51926" name="ad05e96702f2fa0cfb5b213c31bc51926"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad05e96702f2fa0cfb5b213c31bc51926">&#9670;&#160;</a></span>createMemTileDMA()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -834,7 +861,13 @@ template&lt;typename MyOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">BDPadLayoutArrayAttr&#160;</td>
-          <td class="paramname"><em>padDimensions</em>&#160;</td>
+          <td class="paramname"><em>padDimensions</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::optional&lt; PacketInfoAttr &gt;&#160;</td>
+          <td class="paramname"><em>bdPacket</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -852,11 +885,11 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create a MemTileDMAOp region with a DMA channel. </p>
 <p>It uses creatBdBlock(), see there for lockMode input. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01009">1009</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01017">1017</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00737">findEndOpBlock()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00319">getOptionalLinkOp()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00157">objFifoLinks</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00816">createDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00822">createDMA()</a>.</p>
 
 </div>
 </div>
@@ -934,8 +967,8 @@ template&lt;typename MyOp &gt; </div>
 
 </div>
 </div>
-<a id="a190592067af667d3a6d041d1c6945a7a" name="a190592067af667d3a6d041d1c6945a7a"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a190592067af667d3a6d041d1c6945a7a">&#9670;&#160;</a></span>createObjectFifoAllocationInfo()</h2>
+<a id="a56a87e338cea7d9f144bcb8ca32de7fe" name="a56a87e338cea7d9f144bcb8ca32de7fe"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a56a87e338cea7d9f144bcb8ca32de7fe">&#9670;&#160;</a></span>createObjectFifoAllocationInfo()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -983,7 +1016,13 @@ template&lt;typename MyOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
-          <td class="paramname"><em>plio</em>&#160;</td>
+          <td class="paramname"><em>plio</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::optional&lt; PacketInfoAttr &gt;&#160;</td>
+          <td class="paramname"><em>packet</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1000,7 +1039,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to generate, from an objectFifo with a shimTile endpoint, a shimDMAAllocationOp containing the channelDir, channelIndex and shimTile col assigned by the objectFifo lowering. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01631">1631</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01640">1640</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1134,8 +1173,8 @@ template&lt;typename MyOp &gt; </div>
 
 </div>
 </div>
-<a id="a6a921597c4b55f5596189f12e8b09f8e" name="a6a921597c4b55f5596189f12e8b09f8e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6a921597c4b55f5596189f12e8b09f8e">&#9670;&#160;</a></span>createShimDMA()</h2>
+<a id="a70518079288c7d7dffbdb8749bb8de0a" name="a70518079288c7d7dffbdb8749bb8de0a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a70518079288c7d7dffbdb8749bb8de0a">&#9670;&#160;</a></span>createShimDMA()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1183,7 +1222,13 @@ template&lt;typename MyOp &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">BDDimLayoutArrayAttr&#160;</td>
-          <td class="paramname"><em>dims</em>&#160;</td>
+          <td class="paramname"><em>dims</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::optional&lt; PacketInfoAttr &gt;&#160;</td>
+          <td class="paramname"><em>bdPacket</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1201,11 +1246,11 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create a ShimDMAOp region with a DMA channel. </p>
 <p>It uses creatBdBlock(), see there for lockMode input. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00935">935</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00943">943</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00149">externalBuffersPerFifo</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00737">findEndOpBlock()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00816">createDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00822">createDMA()</a>.</p>
 
 </div>
 </div>
@@ -1270,7 +1315,7 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to create a UseLockOp based on input parameters. </p>
 <p>acc is an accumulator map that tracks the indices of the next locks to acquire (or release). Uses op to find index of acc for next lockID. Updates acc. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01473">1473</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01482">1482</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00084">xilinx::AIE::AIETargetModel::UsesSemaphoreLocks</a>.</p>
 
@@ -1324,7 +1369,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to detect all external buffers associated with parent objectFifo and tile then map them to child objectFifo. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01564">1564</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01573">1573</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1368,7 +1413,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01332">1332</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01341">1341</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>.</p>
 
@@ -1402,7 +1447,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00737">737</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00836">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01009">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00935">createShimDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00843">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01017">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00943">createShimDMA()</a>.</p>
 
 </div>
 </div>
@@ -1449,7 +1494,7 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to find the size of an objectFifo after split based on the maximum number of elements (of the original objectFifo) acquired by a process running on given tile. </p>
 <p>If no CoreOp exists for this tile return 0. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01592">1592</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01601">1601</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1576,7 +1621,37 @@ template&lt;typename MyOp &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00319">319</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00444">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00836">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01009">createMemTileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00537">createObjectFifoElements()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00225">requiresDMAs()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00444">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00843">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01017">createMemTileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00537">createObjectFifoElements()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00225">requiresDMAs()</a>.</p>
+
+</div>
+</div>
+<a id="aeb8fca113bd4114f9e7391dc4baf2836" name="aeb8fca113bd4114f9e7391dc4baf2836"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aeb8fca113bd4114f9e7391dc4baf2836">&#9670;&#160;</a></span>getStartPacketID()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int AIEObjectFifoStatefulTransformPass::getStartPacketID </td>
+          <td>(</td>
+          <td class="paramtype">DeviceOp &amp;&#160;</td>
+          <td class="paramname"><em>device</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Account for already used packet IDs and return next available ID. </p>
+
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01676">1676</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1677,7 +1752,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to replace uses of split objectFifos. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01574">1574</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01583">1583</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1744,7 +1819,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01701">1701</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01726">1726</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>.</p>
 
@@ -1790,9 +1865,9 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01195">1195</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01204">1204</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01187">computeLCM()</a>.</p>
+<p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01196">computeLCM()</a>.</p>
 
 </div>
 </div>
@@ -1833,7 +1908,7 @@ template&lt;typename MyOp &gt; </div>
 <p>Function used to check whether op is already contained in map. </p>
 <p>If it is then return the associated int, if not create new entry and return 0. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01543">1543</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01552">1552</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1889,7 +1964,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01311">1311</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01320">1320</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1919,7 +1994,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to verify that an objectfifo is present in at most one ObjectFifoLinkOp. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01644">1644</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01657">1657</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1938,7 +2013,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00147">147</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00444">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00412">calculateCurrentUsedMemory()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00836">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01009">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00537">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00444">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00412">calculateCurrentUsedMemory()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00843">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01017">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00537">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -1956,7 +2031,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00149">149</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00346">createObjectFifoLocks()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00935">createShimDMA()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00346">createObjectFifoLocks()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00943">createShimDMA()</a>.</p>
 
 </div>
 </div>
@@ -1974,7 +2049,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00152">152</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00773">createBdBlock()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00537">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00778">createBdBlock()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00537">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -1992,7 +2067,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00157">157</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00444">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00836">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01009">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00537">createObjectFifoElements()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00444">analyzeCrossTileFIFOBuffers()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00843">createAIETileDMA()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01017">createMemTileDMA()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00537">createObjectFifoElements()</a>.</p>
 
 </div>
 </div>
@@ -2038,7 +2113,7 @@ template&lt;typename MyOp &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Sep 5 2025 19:34:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Sep 5 2025 22:17:52 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

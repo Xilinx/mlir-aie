@@ -1814,7 +1814,7 @@ _Runtime allocation information for a single shim DMA_
 Syntax:
 
 ```
-operation ::= `aie.shim_dma_allocation` $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
+operation ::= `aie.shim_dma_allocation` $sym_name `(` $channel_dir `,` $channel_index `,` $col (`,` $packet^)? `)` attr-dict
 ```
 
 This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
@@ -1847,6 +1847,9 @@ Traits: `HasParent<DeviceOp>`
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+<tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
+    Tuple encoding the type and header of a packet;
+  </td></tr>
 </table>
 
 

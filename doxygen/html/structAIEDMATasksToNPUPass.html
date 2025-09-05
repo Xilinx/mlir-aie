@@ -93,8 +93,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a49b64f08d9392c9ad8ac3d3148bc7046"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac8c6f30c12a5292c1da5edea71faa58e" id="r_ac8c6f30c12a5292c1da5edea71faa58e"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEDMATasksToNPUPass.html#ac8c6f30c12a5292c1da5edea71faa58e">setAddressForSingleBD</a> (OpBuilder &amp;builder, AIE::DMABDOp &amp;bd_op, AIE::TileOp &amp;tile)</td></tr>
 <tr class="separator:ac8c6f30c12a5292c1da5edea71faa58e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5056ed596a3f6fd3b5a692b66219500e" id="r_a5056ed596a3f6fd3b5a692b66219500e"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEDMATasksToNPUPass.html#a5056ed596a3f6fd3b5a692b66219500e">rewriteSingleBD</a> (OpBuilder &amp;builder, Block &amp;block, AIE::TileOp &amp;tile, AIE::DMAChannelDir channelDir)</td></tr>
-<tr class="separator:a5056ed596a3f6fd3b5a692b66219500e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a534c2e1febf8b06ece8aa2ff3f8a6535" id="r_a534c2e1febf8b06ece8aa2ff3f8a6535"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEDMATasksToNPUPass.html#a534c2e1febf8b06ece8aa2ff3f8a6535">rewriteSingleBD</a> (OpBuilder &amp;builder, Block &amp;block, AIE::TileOp &amp;tile, AIE::DMAChannelDir channelDir, std::optional&lt; xilinx::AIE::PacketInfoAttr &gt; packet)</td></tr>
+<tr class="separator:a534c2e1febf8b06ece8aa2ff3f8a6535"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a765febe60b394ff04552fadbcf0ef6e2" id="r_a765febe60b394ff04552fadbcf0ef6e2"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEDMATasksToNPUPass.html#a765febe60b394ff04552fadbcf0ef6e2">hoistNextBdOpsIntoAttrs</a> (DMAConfigureTaskOp op)</td></tr>
 <tr class="separator:a765febe60b394ff04552fadbcf0ef6e2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa1f15215ed1c73204414943887fec5bd" id="r_aa1f15215ed1c73204414943887fec5bd"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEDMATasksToNPUPass.html#aa1f15215ed1c73204414943887fec5bd">rewriteSingleDMAConfigureTaskOp</a> (DMAConfigureTaskOp op)</td></tr>
@@ -134,7 +134,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00166">166</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00431">hoistNextBdOpsIntoAttrs()</a>, and <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00219">rewriteSingleBD()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00434">hoistNextBdOpsIntoAttrs()</a>, and <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00220">rewriteSingleBD()</a>.</p>
 
 </div>
 </div>
@@ -190,11 +190,11 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00431">431</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00434">434</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00166">getBdForBlock()</a>, and <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00082">shouldSkipBlock()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00465">rewriteSingleDMAConfigureTaskOp()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00468">rewriteSingleDMAConfigureTaskOp()</a>.</p>
 
 </div>
 </div>
@@ -222,16 +222,16 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00520">520</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00524">524</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00465">rewriteSingleDMAConfigureTaskOp()</a>.</p>
+<p class="reference">References <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00468">rewriteSingleDMAConfigureTaskOp()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00533">runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00537">runOnOperation()</a>.</p>
 
 </div>
 </div>
-<a id="a5056ed596a3f6fd3b5a692b66219500e" name="a5056ed596a3f6fd3b5a692b66219500e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5056ed596a3f6fd3b5a692b66219500e">&#9670;&#160;</a></span>rewriteSingleBD()</h2>
+<a id="a534c2e1febf8b06ece8aa2ff3f8a6535" name="a534c2e1febf8b06ece8aa2ff3f8a6535"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a534c2e1febf8b06ece8aa2ff3f8a6535">&#9670;&#160;</a></span>rewriteSingleBD()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -261,7 +261,13 @@ Public Member Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">AIE::DMAChannelDir&#160;</td>
-          <td class="paramname"><em>channelDir</em>&#160;</td>
+          <td class="paramname"><em>channelDir</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::optional&lt; xilinx::AIE::PacketInfoAttr &gt;&#160;</td>
+          <td class="paramname"><em>packet</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -276,11 +282,11 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00219">219</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00220">220</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00166">getBdForBlock()</a>, <a class="el" href="AIEXDialect_8cpp_source.html#l00087">xilinx::AIEX::getHardwareStridesWraps()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00179">setAddressForSingleBD()</a>, and <a class="el" href="AIEXDialect_8cpp_source.html#l00171">xilinx::AIEX::verifyStridesWraps()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00465">rewriteSingleDMAConfigureTaskOp()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00468">rewriteSingleDMAConfigureTaskOp()</a>.</p>
 
 </div>
 </div>
@@ -308,11 +314,11 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00465">465</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00468">468</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00431">hoistNextBdOpsIntoAttrs()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00219">rewriteSingleBD()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00082">shouldSkipBlock()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00090">verifyBdInBlock()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00140">verifyNoUnsupportedOpsInBlock()</a>, and <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00126">verifyOptionalLocksInBlock()</a>.</p>
+<p class="reference">References <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00434">hoistNextBdOpsIntoAttrs()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00220">rewriteSingleBD()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00082">shouldSkipBlock()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00090">verifyBdInBlock()</a>, <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00140">verifyNoUnsupportedOpsInBlock()</a>, and <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00126">verifyOptionalLocksInBlock()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00520">rewriteDMAConfigureTaskOp()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00524">rewriteDMAConfigureTaskOp()</a>.</p>
 
 </div>
 </div>
@@ -339,9 +345,9 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00533">533</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00537">537</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00520">rewriteDMAConfigureTaskOp()</a>.</p>
+<p class="reference">References <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00524">rewriteDMAConfigureTaskOp()</a>.</p>
 
 </div>
 </div>
@@ -389,7 +395,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a668ed6cb8d5024f4c78388b56d8c87a0">xilinx::AIE::AIETargetModel::getDmaBdAddress()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a729ed6f03e901d4370bae42be1996dc5">xilinx::AIE::AIETargetModel::getDmaBdAddressOffset()</a>, <a class="el" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel()</a>, and <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a90a0fc9b36e2b77e4be4f99987b3336e">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00219">rewriteSingleBD()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00220">rewriteSingleBD()</a>.</p>
 
 </div>
 </div>
@@ -419,7 +425,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00082">82</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00431">hoistNextBdOpsIntoAttrs()</a>, and <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00465">rewriteSingleDMAConfigureTaskOp()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00434">hoistNextBdOpsIntoAttrs()</a>, and <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00468">rewriteSingleDMAConfigureTaskOp()</a>.</p>
 
 </div>
 </div>
@@ -449,7 +455,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00090">90</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00465">rewriteSingleDMAConfigureTaskOp()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00468">rewriteSingleDMAConfigureTaskOp()</a>.</p>
 
 </div>
 </div>
@@ -479,7 +485,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00140">140</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00465">rewriteSingleDMAConfigureTaskOp()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00468">rewriteSingleDMAConfigureTaskOp()</a>.</p>
 
 </div>
 </div>
@@ -509,7 +515,7 @@ Public Member Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00126">126</a> of file <a class="el" href="AIEDMATasksToNPU_8cpp_source.html">AIEDMATasksToNPU.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00465">rewriteSingleDMAConfigureTaskOp()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00468">rewriteSingleDMAConfigureTaskOp()</a>.</p>
 
 </div>
 </div>
@@ -519,7 +525,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Sep 5 2025 19:34:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Sep 5 2025 22:17:52 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

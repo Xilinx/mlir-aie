@@ -220,7 +220,7 @@ _Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and 
 Syntax:
 
 ```
-operation ::= `aiex.dma_configure_task` `(` $tile `,` $direction `,` $channel `)` regions attr-dict
+operation ::= `aiex.dma_configure_task` `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)` regions attr-dict
 ```
 
 Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -241,6 +241,9 @@ Interfaces: `OpAsmOpInterface`, `TileElement`
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
+    Tuple encoding the type and header of a packet;
+  </td></tr>
 </table>
 
 #### Operands:

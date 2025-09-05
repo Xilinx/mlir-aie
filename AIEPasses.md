@@ -145,7 +145,8 @@ the original loop.
 #### Options
 
 ```
--dynamic-objFifos : Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.
+-dynamic-objFifos   : Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.
+-packet-sw-objFifos : Flag to enable aie.packetflow lowering from objectfifos.
 ```
 
 ### `-aie-register-objectFifos`

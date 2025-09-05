@@ -56,7 +56,7 @@ $(function() {
   <tr class="odd"><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html#a49b64f08d9392c9ad8ac3d3148bc7046">getOptionalLockOpsForBlock</a>(Block &amp;block)</td><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html">AIEDMATasksToNPUPass</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
   <tr class="even"><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html#a765febe60b394ff04552fadbcf0ef6e2">hoistNextBdOpsIntoAttrs</a>(DMAConfigureTaskOp op)</td><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html">AIEDMATasksToNPUPass</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
   <tr class="odd"><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html#a2120e3d099209010875890a23e14cdd5">rewriteDMAConfigureTaskOp</a>(AIE::DeviceOp device)</td><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html">AIEDMATasksToNPUPass</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
-  <tr class="even"><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html#a5056ed596a3f6fd3b5a692b66219500e">rewriteSingleBD</a>(OpBuilder &amp;builder, Block &amp;block, AIE::TileOp &amp;tile, AIE::DMAChannelDir channelDir)</td><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html">AIEDMATasksToNPUPass</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
+  <tr class="even"><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html#a534c2e1febf8b06ece8aa2ff3f8a6535">rewriteSingleBD</a>(OpBuilder &amp;builder, Block &amp;block, AIE::TileOp &amp;tile, AIE::DMAChannelDir channelDir, std::optional&lt; xilinx::AIE::PacketInfoAttr &gt; packet)</td><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html">AIEDMATasksToNPUPass</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
   <tr class="odd"><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html#aa1f15215ed1c73204414943887fec5bd">rewriteSingleDMAConfigureTaskOp</a>(DMAConfigureTaskOp op)</td><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html">AIEDMATasksToNPUPass</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
   <tr class="even"><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html#a00837da3efb2bc607a74be25961401c9">runOnOperation</a>() override</td><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html">AIEDMATasksToNPUPass</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
   <tr class="odd"><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html#ac8c6f30c12a5292c1da5edea71faa58e">setAddressForSingleBD</a>(OpBuilder &amp;builder, AIE::DMABDOp &amp;bd_op, AIE::TileOp &amp;tile)</td><td class="entry"><a class="el" href="structAIEDMATasksToNPUPass.html">AIEDMATasksToNPUPass</a></td><td class="entry"><span class="mlabel">inline</span></td></tr>
@@ -67,7 +67,7 @@ $(function() {
 </table></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Sep 5 2025 19:34:16 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Sep 5 2025 22:17:52 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
