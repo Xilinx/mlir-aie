@@ -3,6 +3,6 @@
 //
 // REQUIRES: ryzen_ai, peano 
 //
-// RUN: ${PEANO_INSTALL_DIR}/bin/clang++ -O2 -std=c++20 -I/install/include ./vector_reduce_max.cc $< -o ./vector_reduce_max.o
+// RUN: ${PEANO_INSTALL_DIR}/bin/clang++ %S/vector_reduce_max.cpp -o vector_reduce_max.o -O2 -std=c++20 -I/install/include
 // RUN: %run_on_npu1% python3 %S/vector_reduce_max_1col.py
 // RUN: %run_on_npu2% python3 %S/vector_reduce_max_1col.py
