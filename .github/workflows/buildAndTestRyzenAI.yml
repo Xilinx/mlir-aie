@@ -185,6 +185,8 @@ jobs:
 
           ninja install
           ninja check-reference-designs
+          echo "Printing mlir-aie install env variable: ..."
+          echo $MLIR_AIE_INSTALL_DIR
           ninja check-programming-guide
 
           popd
