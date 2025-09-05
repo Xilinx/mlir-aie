@@ -49,22 +49,10 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   return;
 }
 
-template <typename T>
-void _compute_max(T *restrict in1, T *restrict in2, T *restrict out) {
-  event0();
-  *out = (*in1 > *in2) ? *in1 : *in2;
-  event1();
-
-  return;
-}
-
 extern "C" {
 
 void reduce_max_vector_bfloat16(bfloat16 *a_in, bfloat16 *c_out,
                                 int32_t input_size) {
   _reduce_max_vector<bfloat16, aie::vector<bfloat16>>(a_in, c_out, input_size);
-}
-void compute_max_bfloat16(bfloat16 *a_in, bfloat16 *b_in, bfloat16 *c_out) {
-  _compute_max<bfloat16>(a_in, b_in, c_out);
 }
 } // extern "C"
