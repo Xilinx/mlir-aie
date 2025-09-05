@@ -556,19 +556,19 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00494" name="l00494"></a><span class="lineno">  494</span><span class="comment">// Rewrite patterns</span></div>
 <div class="line"><a id="l00495" name="l00495"></a><span class="lineno">  495</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
 <div class="line"><a id="l00496" name="l00496"></a><span class="lineno">  496</span> </div>
-<div class="line"><a id="l00497" name="l00497"></a><span class="lineno">  497</span><span class="comment">// This pattern fold `vector.extract` and `vector.splat` into</span></div>
+<div class="line"><a id="l00497" name="l00497"></a><span class="lineno">  497</span><span class="comment">// This pattern fold `vector.extract` and `vector.broadcast` into</span></div>
 <div class="line"><a id="l00498" name="l00498"></a><span class="lineno">  498</span><span class="comment">// `aievec.broadcast` for AIE2</span></div>
 <div class="foldopen" id="foldopen00499" data-start="{" data-end="};">
 <div class="line"><a id="l00499" name="l00499"></a><span class="lineno"><a class="line" href="structFoldVectorExtractAndSplatToAIEBroadcast.html">  499</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structFoldVectorExtractAndSplatToAIEBroadcast.html">FoldVectorExtractAndSplatToAIEBroadcast</a></div>
-<div class="line"><a id="l00500" name="l00500"></a><span class="lineno">  500</span>    : <a class="code hl_class" href="classOpConversionPattern.html">OpConversionPattern</a>&lt;vector::SplatOp&gt; {</div>
+<div class="line"><a id="l00500" name="l00500"></a><span class="lineno">  500</span>    : <a class="code hl_class" href="classOpConversionPattern.html">OpConversionPattern</a>&lt;vector::BroadcastOp&gt; {</div>
 <div class="line"><a id="l00501" name="l00501"></a><span class="lineno">  501</span>  <span class="keyword">using </span>OpConversionPattern::OpConversionPattern;</div>
 <div class="line"><a id="l00502" name="l00502"></a><span class="lineno">  502</span> </div>
 <div class="line"><a id="l00503" name="l00503"></a><span class="lineno">  503</span>  LogicalResult</div>
 <div class="foldopen" id="foldopen00504" data-start="{" data-end="}">
-<div class="line"><a id="l00504" name="l00504"></a><span class="lineno"><a class="line" href="structFoldVectorExtractAndSplatToAIEBroadcast.html#ad927128336e55119a9c4e507e307edad">  504</a></span>  <a class="code hl_function" href="structFoldVectorExtractAndSplatToAIEBroadcast.html#ad927128336e55119a9c4e507e307edad">matchAndRewrite</a>(vector::SplatOp splatOp, OpAdaptor adaptor,</div>
+<div class="line"><a id="l00504" name="l00504"></a><span class="lineno"><a class="line" href="structFoldVectorExtractAndSplatToAIEBroadcast.html#ab5a93b8bbdbe76ce25ec42191ef99909">  504</a></span>  <a class="code hl_function" href="structFoldVectorExtractAndSplatToAIEBroadcast.html#ab5a93b8bbdbe76ce25ec42191ef99909">matchAndRewrite</a>(vector::BroadcastOp bcastOp, OpAdaptor adaptor,</div>
 <div class="line"><a id="l00505" name="l00505"></a><span class="lineno">  505</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
 <div class="line"><a id="l00506" name="l00506"></a><span class="lineno">  506</span> </div>
-<div class="line"><a id="l00507" name="l00507"></a><span class="lineno">  507</span>    <span class="keyword">auto</span> extOp = adaptor.getInput().getDefiningOp&lt;vector::ExtractOp&gt;();</div>
+<div class="line"><a id="l00507" name="l00507"></a><span class="lineno">  507</span>    <span class="keyword">auto</span> extOp = adaptor.getSource().getDefiningOp&lt;vector::ExtractOp&gt;();</div>
 <div class="line"><a id="l00508" name="l00508"></a><span class="lineno">  508</span> </div>
 <div class="line"><a id="l00509" name="l00509"></a><span class="lineno">  509</span>    <span class="keywordflow">if</span> (!extOp)</div>
 <div class="line"><a id="l00510" name="l00510"></a><span class="lineno">  510</span>      <span class="keywordflow">return</span> failure();</div>
@@ -577,7 +577,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00513" name="l00513"></a><span class="lineno">  513</span>    <span class="keyword">auto</span> pos = extOp.getStaticPosition();</div>
 <div class="line"><a id="l00514" name="l00514"></a><span class="lineno">  514</span>    int64_t posVal = pos[0];</div>
 <div class="line"><a id="l00515" name="l00515"></a><span class="lineno">  515</span>    <span class="keyword">auto</span> srcVecType = cast&lt;VectorType&gt;(src.getType());</div>
-<div class="line"><a id="l00516" name="l00516"></a><span class="lineno">  516</span>    <span class="keyword">auto</span> resultType = cast&lt;VectorType&gt;(splatOp.getResult().getType());</div>
+<div class="line"><a id="l00516" name="l00516"></a><span class="lineno">  516</span>    <span class="keyword">auto</span> resultType = cast&lt;VectorType&gt;(bcastOp.getResult().getType());</div>
 <div class="line"><a id="l00517" name="l00517"></a><span class="lineno">  517</span>    <span class="keywordflow">if</span> (srcVecType != resultType) {</div>
 <div class="line"><a id="l00518" name="l00518"></a><span class="lineno">  518</span>      <span class="keywordflow">if</span> (srcVecType.getNumElements() != 2 * resultType.getNumElements())</div>
 <div class="line"><a id="l00519" name="l00519"></a><span class="lineno">  519</span>        <span class="keywordflow">return</span> failure();</div>
@@ -594,17 +594,17 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00530" name="l00530"></a><span class="lineno">  530</span>    <span class="keywordflow">if</span> (<span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
 <div class="line"><a id="l00531" name="l00531"></a><span class="lineno">  531</span>        laneSize * elWidth == 512) {</div>
 <div class="line"><a id="l00532" name="l00532"></a><span class="lineno">  532</span>      <span class="comment">// Common use case for the broadcast_elem intrinsic</span></div>
-<div class="line"><a id="l00533" name="l00533"></a><span class="lineno">  533</span>      rewriter.replaceOpWithNewOp&lt;aievec::BroadcastOp&gt;(splatOp, resultType, src,</div>
+<div class="line"><a id="l00533" name="l00533"></a><span class="lineno">  533</span>      rewriter.replaceOpWithNewOp&lt;aievec::BroadcastOp&gt;(bcastOp, resultType, src,</div>
 <div class="line"><a id="l00534" name="l00534"></a><span class="lineno">  534</span>                                                       posVal);</div>
 <div class="line"><a id="l00535" name="l00535"></a><span class="lineno">  535</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (laneSize * elWidth == 256) {</div>
 <div class="line"><a id="l00536" name="l00536"></a><span class="lineno">  536</span>      <span class="comment">// e.g. need v16bf16 due to the subsequent v16accfloat operation</span></div>
 <div class="line"><a id="l00537" name="l00537"></a><span class="lineno">  537</span>      VectorType aievecBcastType =</div>
 <div class="line"><a id="l00538" name="l00538"></a><span class="lineno">  538</span>          <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a48de557f2bf681ac23c475bc1163d457">createVectorType</a>(512 / elWidth, resultType.getElementType());</div>
 <div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span>      <span class="keyword">auto</span> concatOp = rewriter.create&lt;aievec::ConcatOp&gt;(</div>
-<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span>          splatOp.getLoc(), aievecBcastType, SmallVector&lt;Value&gt;({src, src}));</div>
+<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span>          bcastOp.getLoc(), aievecBcastType, SmallVector&lt;Value&gt;({src, src}));</div>
 <div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span>      <span class="keyword">auto</span> aieBcastOp = rewriter.create&lt;aievec::BroadcastOp&gt;(</div>
-<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>          splatOp.getLoc(), aievecBcastType, concatOp.getResult(), posVal);</div>
-<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>      rewriter.replaceOpWithNewOp&lt;aievec::ExtOp&gt;(splatOp, resultType,</div>
+<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>          bcastOp.getLoc(), aievecBcastType, concatOp.getResult(), posVal);</div>
+<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>      rewriter.replaceOpWithNewOp&lt;aievec::ExtOp&gt;(bcastOp, resultType,</div>
 <div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span>                                                 aieBcastOp.getResult(), 0);</div>
 <div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (laneSize * elWidth == 1024) {</div>
 <div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span>      <span class="comment">// e.g. need v32int32 due to the subsequent v32acc32 operation</span></div>
@@ -613,12 +613,12 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00549" name="l00549"></a><span class="lineno">  549</span>      <span class="keyword">auto</span> half = <span class="keyword">static_cast&lt;</span>int8_t<span class="keyword">&gt;</span>(posVal / resultType.getNumElements());</div>
 <div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span>      posVal -= half * resultType.getNumElements();</div>
 <div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>      <span class="keyword">auto</span> extOp =</div>
-<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>          rewriter.create&lt;aievec::ExtOp&gt;(splatOp.getLoc(), aievecBcastType, src,</div>
+<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>          rewriter.create&lt;aievec::ExtOp&gt;(bcastOp.getLoc(), aievecBcastType, src,</div>
 <div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span>                                         rewriter.getI8IntegerAttr(half));</div>
 <div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span>      <span class="keyword">auto</span> aieBcastOp = rewriter.create&lt;aievec::BroadcastOp&gt;(</div>
-<div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span>          splatOp.getLoc(), aievecBcastType, extOp.getResult(), posVal);</div>
+<div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span>          bcastOp.getLoc(), aievecBcastType, extOp.getResult(), posVal);</div>
 <div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span>      rewriter.replaceOpWithNewOp&lt;aievec::ConcatOp&gt;(</div>
-<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>          splatOp, resultType,</div>
+<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>          bcastOp, resultType,</div>
 <div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>          SmallVector&lt;Value&gt;({aieBcastOp.getResult(), aieBcastOp.getResult()}));</div>
 <div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>    } <span class="keywordflow">else</span> {</div>
 <div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span>      <span class="keywordflow">return</span> failure();</div>
@@ -631,58 +631,58 @@ $(document).ready(function() { init_codefold(0); });
 </div>
 <div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span> </div>
 <div class="foldopen" id="foldopen00567" data-start="{" data-end="};">
-<div class="line"><a id="l00567" name="l00567"></a><span class="lineno"><a class="line" href="structConvertSplatToAIEBroadcast.html">  567</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structConvertSplatToAIEBroadcast.html">ConvertSplatToAIEBroadcast</a> : <a class="code hl_class" href="classOpConversionPattern.html">OpConversionPattern</a>&lt;vector::SplatOp&gt; {</div>
+<div class="line"><a id="l00567" name="l00567"></a><span class="lineno"><a class="line" href="structConvertSplatToAIEBroadcast.html">  567</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structConvertSplatToAIEBroadcast.html">ConvertSplatToAIEBroadcast</a> : <a class="code hl_class" href="classOpConversionPattern.html">OpConversionPattern</a>&lt;vector::BroadcastOp&gt; {</div>
 <div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span>  <span class="keyword">using </span>OpConversionPattern::OpConversionPattern;</div>
 <div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span> </div>
 <div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>  LogicalResult</div>
 <div class="foldopen" id="foldopen00571" data-start="{" data-end="}">
-<div class="line"><a id="l00571" name="l00571"></a><span class="lineno"><a class="line" href="structConvertSplatToAIEBroadcast.html#a1d8ba7472894b814f2a165feb215e91a">  571</a></span>  <a class="code hl_function" href="structConvertSplatToAIEBroadcast.html#a1d8ba7472894b814f2a165feb215e91a">matchAndRewrite</a>(vector::SplatOp splatOp, OpAdaptor adaptor,</div>
+<div class="line"><a id="l00571" name="l00571"></a><span class="lineno"><a class="line" href="structConvertSplatToAIEBroadcast.html#a8f2839ab3e1fa8a8cfed7bd7045d010b">  571</a></span>  <a class="code hl_function" href="structConvertSplatToAIEBroadcast.html#a8f2839ab3e1fa8a8cfed7bd7045d010b">matchAndRewrite</a>(vector::BroadcastOp bcastOp, OpAdaptor adaptor,</div>
 <div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
 <div class="line"><a id="l00573" name="l00573"></a><span class="lineno">  573</span> </div>
-<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span>    <span class="keywordflow">if</span> (adaptor.getInput().getDefiningOp&lt;vector::ExtractOp&gt;())</div>
+<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span>    <span class="keywordflow">if</span> (adaptor.getSource().getDefiningOp&lt;vector::ExtractOp&gt;())</div>
 <div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span> </div>
-<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>    <span class="keyword">auto</span> resultType = cast&lt;VectorType&gt;(splatOp.getResult().getType());</div>
+<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>    <span class="keyword">auto</span> resultType = cast&lt;VectorType&gt;(bcastOp.getResult().getType());</div>
 <div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>    <span class="keyword">auto</span> flatResultType = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0788e2181d0134ca9f307a47130f886b">getFlattenedVectorType</a>(resultType);</div>
 <div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span>    Type scalarType = resultType.getElementType();</div>
 <div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>    <span class="keywordtype">unsigned</span> elWidth = scalarType.getIntOrFloatBitWidth();</div>
 <div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>    <span class="keyword">auto</span> src = splatOp.getInput();</div>
+<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>    <span class="keyword">auto</span> src = bcastOp.getSource();</div>
 <div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span> </div>
 <div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span>    <span class="keywordflow">if</span> (laneSize * elWidth == 512) {</div>
 <div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>      Value newOp = rewriter.create&lt;aievec::BroadcastScalarOp&gt;(</div>
-<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>          splatOp.getLoc(), flatResultType, src);</div>
+<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>          bcastOp.getLoc(), flatResultType, src);</div>
 <div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>      <span class="keywordflow">if</span> (resultType != flatResultType)</div>
-<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>        newOp = rewriter.create&lt;vector::ShapeCastOp&gt;(splatOp.getLoc(),</div>
+<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>        newOp = rewriter.create&lt;vector::ShapeCastOp&gt;(bcastOp.getLoc(),</div>
 <div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>                                                     resultType, newOp);</div>
-<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>      rewriter.replaceOp(splatOp, newOp);</div>
+<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>      rewriter.replaceOp(bcastOp, newOp);</div>
 <div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>      <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>    }</div>
 <div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span> </div>
 <div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>    <span class="keywordflow">if</span> (laneSize * elWidth == 256) {</div>
 <div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span>      VectorType vecType = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a48de557f2bf681ac23c475bc1163d457">createVectorType</a>(512 / elWidth, scalarType);</div>
 <div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>      <span class="keyword">auto</span> aieBcastOp = rewriter.create&lt;aievec::BroadcastScalarOp&gt;(</div>
-<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>          splatOp.getLoc(), vecType, src);</div>
+<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>          bcastOp.getLoc(), vecType, src);</div>
 <div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>      Value newOp = rewriter.create&lt;aievec::ExtOp&gt;(</div>
-<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>          splatOp.getLoc(), flatResultType, aieBcastOp.getResult(), 0);</div>
+<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>          bcastOp.getLoc(), flatResultType, aieBcastOp.getResult(), 0);</div>
 <div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>      <span class="keywordflow">if</span> (resultType != flatResultType)</div>
-<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>        newOp = rewriter.create&lt;vector::ShapeCastOp&gt;(splatOp.getLoc(),</div>
+<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>        newOp = rewriter.create&lt;vector::ShapeCastOp&gt;(bcastOp.getLoc(),</div>
 <div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>                                                     resultType, newOp);</div>
-<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>      rewriter.replaceOp(splatOp, newOp);</div>
+<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>      rewriter.replaceOp(bcastOp, newOp);</div>
 <div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>      <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>    }</div>
 <div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span> </div>
 <div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>    <span class="keywordflow">if</span> (laneSize * elWidth == 1024) {</div>
 <div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>      VectorType vecType = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a48de557f2bf681ac23c475bc1163d457">createVectorType</a>(512 / elWidth, scalarType);</div>
 <div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>      <span class="keyword">auto</span> aieBcastOp = rewriter.create&lt;aievec::BroadcastScalarOp&gt;(</div>
-<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span>          splatOp.getLoc(), vecType, src);</div>
+<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span>          bcastOp.getLoc(), vecType, src);</div>
 <div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span>      Value newOp = rewriter.create&lt;aievec::ConcatOp&gt;(</div>
-<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>          splatOp.getLoc(), flatResultType,</div>
+<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>          bcastOp.getLoc(), flatResultType,</div>
 <div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>          SmallVector&lt;Value&gt;({aieBcastOp.getResult(), aieBcastOp.getResult()}));</div>
 <div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>      <span class="keywordflow">if</span> (resultType != flatResultType)</div>
-<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>        newOp = rewriter.create&lt;vector::ShapeCastOp&gt;(splatOp.getLoc(),</div>
+<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>        newOp = rewriter.create&lt;vector::ShapeCastOp&gt;(bcastOp.getLoc(),</div>
 <div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>                                                     resultType, newOp);</div>
-<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>      rewriter.replaceOp(splatOp, newOp);</div>
+<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>      rewriter.replaceOp(bcastOp, newOp);</div>
 <div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span>      <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span>    }</div>
 <div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span> </div>
@@ -1057,19 +1057,19 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00961" name="l00961"></a><span class="lineno">  961</span>        dyn_cast&lt;aievec::ConcatOp&gt;(adaptor.getLhs().getDefiningOp());</div>
 <div class="line"><a id="l00962" name="l00962"></a><span class="lineno">  962</span>    <span class="keywordflow">if</span> (!concatOp)</div>
 <div class="line"><a id="l00963" name="l00963"></a><span class="lineno">  963</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00964" name="l00964"></a><span class="lineno">  964</span>    vector::SplatOp splatOp = <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l00964" name="l00964"></a><span class="lineno">  964</span>    vector::BroadcastOp bcastOp = <span class="keyword">nullptr</span>;</div>
 <div class="line"><a id="l00965" name="l00965"></a><span class="lineno">  965</span>    <span class="keyword">auto</span> *concatDefOp = concatOp.getSources()[0].getDefiningOp();</div>
 <div class="line"><a id="l00966" name="l00966"></a><span class="lineno">  966</span>    <span class="keywordflow">if</span> (concatDefOp)</div>
-<div class="line"><a id="l00967" name="l00967"></a><span class="lineno">  967</span>      splatOp = dyn_cast&lt;vector::SplatOp&gt;(concatDefOp);</div>
+<div class="line"><a id="l00967" name="l00967"></a><span class="lineno">  967</span>      bcastOp = dyn_cast&lt;vector::BroadcastOp&gt;(concatDefOp);</div>
 <div class="line"><a id="l00968" name="l00968"></a><span class="lineno">  968</span>    Value lhs = adaptor.getRhs();</div>
-<div class="line"><a id="l00969" name="l00969"></a><span class="lineno">  969</span>    <span class="keywordflow">if</span> (!splatOp) {</div>
-<div class="line"><a id="l00970" name="l00970"></a><span class="lineno">  970</span>      splatOp = dyn_cast&lt;vector::SplatOp&gt;(adaptor.getRhs().getDefiningOp());</div>
-<div class="line"><a id="l00971" name="l00971"></a><span class="lineno">  971</span>      <span class="keywordflow">if</span> (!splatOp)</div>
+<div class="line"><a id="l00969" name="l00969"></a><span class="lineno">  969</span>    <span class="keywordflow">if</span> (!bcastOp) {</div>
+<div class="line"><a id="l00970" name="l00970"></a><span class="lineno">  970</span>      bcastOp = dyn_cast&lt;vector::BroadcastOp&gt;(adaptor.getRhs().getDefiningOp());</div>
+<div class="line"><a id="l00971" name="l00971"></a><span class="lineno">  971</span>      <span class="keywordflow">if</span> (!bcastOp)</div>
 <div class="line"><a id="l00972" name="l00972"></a><span class="lineno">  972</span>        <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00973" name="l00973"></a><span class="lineno">  973</span>      lhs = concatOp.getSources()[0];</div>
 <div class="line"><a id="l00974" name="l00974"></a><span class="lineno">  974</span>    }</div>
 <div class="line"><a id="l00975" name="l00975"></a><span class="lineno">  975</span>    <span class="keyword">auto</span> extOp =</div>
-<div class="line"><a id="l00976" name="l00976"></a><span class="lineno">  976</span>        dyn_cast&lt;vector::ExtractOp&gt;(splatOp.getInput().getDefiningOp());</div>
+<div class="line"><a id="l00976" name="l00976"></a><span class="lineno">  976</span>        dyn_cast&lt;vector::ExtractOp&gt;(bcastOp.getSource().getDefiningOp());</div>
 <div class="line"><a id="l00977" name="l00977"></a><span class="lineno">  977</span>    <span class="keywordflow">if</span> (!extOp)</div>
 <div class="line"><a id="l00978" name="l00978"></a><span class="lineno">  978</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00979" name="l00979"></a><span class="lineno">  979</span> </div>
@@ -3794,18 +3794,18 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l03540" name="l03540"></a><span class="lineno"> 3540</span>        <span class="keywordflow">if</span> (!concatOp)</div>
 <div class="line"><a id="l03541" name="l03541"></a><span class="lineno"> 3541</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
 <div class="line"><a id="l03542" name="l03542"></a><span class="lineno"> 3542</span> </div>
-<div class="line"><a id="l03543" name="l03543"></a><span class="lineno"> 3543</span>        vector::SplatOp srcSplat = <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l03543" name="l03543"></a><span class="lineno"> 3543</span>        vector::BroadcastOp srcBcast = <span class="keyword">nullptr</span>;</div>
 <div class="line"><a id="l03544" name="l03544"></a><span class="lineno"> 3544</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> *lhsOp = concatOp.getSources()[0].getDefiningOp())</div>
-<div class="line"><a id="l03545" name="l03545"></a><span class="lineno"> 3545</span>          srcSplat = dyn_cast&lt;vector::SplatOp&gt;(lhsOp);</div>
-<div class="line"><a id="l03546" name="l03546"></a><span class="lineno"> 3546</span>        <span class="keywordflow">if</span> (!srcSplat) {</div>
+<div class="line"><a id="l03545" name="l03545"></a><span class="lineno"> 3545</span>          srcBcast = dyn_cast&lt;vector::BroadcastOp&gt;(lhsOp);</div>
+<div class="line"><a id="l03546" name="l03546"></a><span class="lineno"> 3546</span>        <span class="keywordflow">if</span> (!srcBcast) {</div>
 <div class="line"><a id="l03547" name="l03547"></a><span class="lineno"> 3547</span>          <span class="keyword">auto</span> *rhsOp = op.getRhs().getDefiningOp();</div>
 <div class="line"><a id="l03548" name="l03548"></a><span class="lineno"> 3548</span>          <span class="keywordflow">if</span> (!rhsOp)</div>
 <div class="line"><a id="l03549" name="l03549"></a><span class="lineno"> 3549</span>            <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03550" name="l03550"></a><span class="lineno"> 3550</span>          srcSplat = dyn_cast&lt;vector::SplatOp&gt;(rhsOp);</div>
+<div class="line"><a id="l03550" name="l03550"></a><span class="lineno"> 3550</span>          srcBcast = dyn_cast&lt;vector::BroadcastOp&gt;(rhsOp);</div>
 <div class="line"><a id="l03551" name="l03551"></a><span class="lineno"> 3551</span>        }</div>
 <div class="line"><a id="l03552" name="l03552"></a><span class="lineno"> 3552</span> </div>
-<div class="line"><a id="l03553" name="l03553"></a><span class="lineno"> 3553</span>        <span class="keywordflow">if</span> (srcSplat)</div>
-<div class="line"><a id="l03554" name="l03554"></a><span class="lineno"> 3554</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> *srcOp = srcSplat.getInput().getDefiningOp())</div>
+<div class="line"><a id="l03553" name="l03553"></a><span class="lineno"> 3553</span>        <span class="keywordflow">if</span> (srcBcast)</div>
+<div class="line"><a id="l03554" name="l03554"></a><span class="lineno"> 3554</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> *srcOp = srcBcast.getSource().getDefiningOp())</div>
 <div class="line"><a id="l03555" name="l03555"></a><span class="lineno"> 3555</span>            <span class="keywordflow">return</span> !isa&lt;vector::ExtractOp&gt;(srcOp);</div>
 <div class="line"><a id="l03556" name="l03556"></a><span class="lineno"> 3556</span> </div>
 <div class="line"><a id="l03557" name="l03557"></a><span class="lineno"> 3557</span>        <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
@@ -4312,7 +4312,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructConvertMulIToAIEVecMulElemOpPattern_html_ac92c831cb745716b3c9cf445c40871f1"><div class="ttname"><a href="structConvertMulIToAIEVecMulElemOpPattern.html#ac92c831cb745716b3c9cf445c40871f1">ConvertMulIToAIEVecMulElemOpPattern::shiftParam</a></div><div class="ttdeci">unsigned shiftParam</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00949">VectorToAIEVecConversions.cpp:949</a></div></div>
 <div class="ttc" id="astructConvertMulIToAIEVecMulElemOpPattern_html_aed68540bcdc826d029b60f6b6cc93577"><div class="ttname"><a href="structConvertMulIToAIEVecMulElemOpPattern.html#aed68540bcdc826d029b60f6b6cc93577">ConvertMulIToAIEVecMulElemOpPattern::ConvertMulIToAIEVecMulElemOpPattern</a></div><div class="ttdeci">ConvertMulIToAIEVecMulElemOpPattern(MLIRContext *context, unsigned shiftParam=0)</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00854">VectorToAIEVecConversions.cpp:854</a></div></div>
 <div class="ttc" id="astructConvertSplatToAIEBroadcast_html"><div class="ttname"><a href="structConvertSplatToAIEBroadcast.html">ConvertSplatToAIEBroadcast</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00567">VectorToAIEVecConversions.cpp:567</a></div></div>
-<div class="ttc" id="astructConvertSplatToAIEBroadcast_html_a1d8ba7472894b814f2a165feb215e91a"><div class="ttname"><a href="structConvertSplatToAIEBroadcast.html#a1d8ba7472894b814f2a165feb215e91a">ConvertSplatToAIEBroadcast::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::SplatOp splatOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00571">VectorToAIEVecConversions.cpp:571</a></div></div>
+<div class="ttc" id="astructConvertSplatToAIEBroadcast_html_a8f2839ab3e1fa8a8cfed7bd7045d010b"><div class="ttname"><a href="structConvertSplatToAIEBroadcast.html#a8f2839ab3e1fa8a8cfed7bd7045d010b">ConvertSplatToAIEBroadcast::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00571">VectorToAIEVecConversions.cpp:571</a></div></div>
 <div class="ttc" id="astructConvertVectorFMAOpToAIEVecFMAElemOpPattern_html"><div class="ttname"><a href="structConvertVectorFMAOpToAIEVecFMAElemOpPattern.html">ConvertVectorFMAOpToAIEVecFMAElemOpPattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00684">VectorToAIEVecConversions.cpp:685</a></div></div>
 <div class="ttc" id="astructConvertVectorFMAOpToAIEVecFMAElemOpPattern_html_a20014254ba8330b33114597a4a7041e1"><div class="ttname"><a href="structConvertVectorFMAOpToAIEVecFMAElemOpPattern.html#a20014254ba8330b33114597a4a7041e1">ConvertVectorFMAOpToAIEVecFMAElemOpPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::FMAOp fmaOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00693">VectorToAIEVecConversions.cpp:693</a></div></div>
 <div class="ttc" id="astructConvertVectorFMAOpToAIEVecFMAElemOpPattern_html_adb9669da068993f18636267c19a959f9"><div class="ttname"><a href="structConvertVectorFMAOpToAIEVecFMAElemOpPattern.html#adb9669da068993f18636267c19a959f9">ConvertVectorFMAOpToAIEVecFMAElemOpPattern::shiftParam</a></div><div class="ttdeci">unsigned shiftParam</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00739">VectorToAIEVecConversions.cpp:739</a></div></div>
@@ -4325,7 +4325,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructFoldSplatToFMAOp_html"><div class="ttname"><a href="structFoldSplatToFMAOp.html">FoldSplatToFMAOp</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00954">VectorToAIEVecConversions.cpp:954</a></div></div>
 <div class="ttc" id="astructFoldSplatToFMAOp_html_a9a379edddc02eaaa70fa84669b2b596f"><div class="ttname"><a href="structFoldSplatToFMAOp.html#a9a379edddc02eaaa70fa84669b2b596f">FoldSplatToFMAOp::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::aie1::FMAOp fmaOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00958">VectorToAIEVecConversions.cpp:958</a></div></div>
 <div class="ttc" id="astructFoldVectorExtractAndSplatToAIEBroadcast_html"><div class="ttname"><a href="structFoldVectorExtractAndSplatToAIEBroadcast.html">FoldVectorExtractAndSplatToAIEBroadcast</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00499">VectorToAIEVecConversions.cpp:500</a></div></div>
-<div class="ttc" id="astructFoldVectorExtractAndSplatToAIEBroadcast_html_ad927128336e55119a9c4e507e307edad"><div class="ttname"><a href="structFoldVectorExtractAndSplatToAIEBroadcast.html#ad927128336e55119a9c4e507e307edad">FoldVectorExtractAndSplatToAIEBroadcast::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::SplatOp splatOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00504">VectorToAIEVecConversions.cpp:504</a></div></div>
+<div class="ttc" id="astructFoldVectorExtractAndSplatToAIEBroadcast_html_ab5a93b8bbdbe76ce25ec42191ef99909"><div class="ttname"><a href="structFoldVectorExtractAndSplatToAIEBroadcast.html#ab5a93b8bbdbe76ce25ec42191ef99909">FoldVectorExtractAndSplatToAIEBroadcast::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00504">VectorToAIEVecConversions.cpp:504</a></div></div>
 <div class="ttc" id="astructFuseExtIntoUPDPattern_html"><div class="ttname"><a href="structFuseExtIntoUPDPattern.html">FuseExtIntoUPDPattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01905">VectorToAIEVecConversions.cpp:1905</a></div></div>
 <div class="ttc" id="astructFuseExtIntoUPDPattern_html_a09cf97fbbf14983031fc8f0cc4301fb8"><div class="ttname"><a href="structFuseExtIntoUPDPattern.html#a09cf97fbbf14983031fc8f0cc4301fb8">FuseExtIntoUPDPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ExtOp extOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01911">VectorToAIEVecConversions.cpp:1911</a></div></div>
 <div class="ttc" id="astructFuseExtIntoUPDPattern_html_afe57ba935a2873604b6c8ad4e398cf0a"><div class="ttname"><a href="structFuseExtIntoUPDPattern.html#afe57ba935a2873604b6c8ad4e398cf0a">FuseExtIntoUPDPattern::FuseExtIntoUPDPattern</a></div><div class="ttdeci">FuseExtIntoUPDPattern(MLIRContext *context)</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01908">VectorToAIEVecConversions.cpp:1908</a></div></div>
@@ -4397,7 +4397,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Sep 5 2025 22:17:52 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Sep 5 2025 22:56:47 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
