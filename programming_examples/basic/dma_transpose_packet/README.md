@@ -25,7 +25,7 @@ This data movement transformation can be visualized as a map which shows the ord
 
 The implicit copy is performed using the `ObjectFifo.forward()` function that specifies how input data arriving via `of_in` should be sent further via `of_out` by specifically leveraging a compute tile's (`AnyComputeTile`'s) DMA.
 
-This design is set to be lowered using packet-switched flows for the underlying data movement. This is enabled in the [Makefile](./Makefile) using the `--packet-sw-objFifos` flag for the `aiecc` compiler utility.
+> This design is set to be lowered using packet-switched flows for the underlying data movement. This is enabled in the [Makefile](./Makefile) using the `--packet-sw-objFifos` flag for the `aiecc` compiler utility.
 
 ## Design Versions
 * [dma_transpose_placed.py](./dma_transpose_placed.py) shows a lower-level version of IRON, where constructors directly correspond to MLIR operations
