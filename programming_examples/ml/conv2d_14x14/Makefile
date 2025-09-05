@@ -10,6 +10,7 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
 CHESS ?= true
+#CHESS ?= false
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = conv2d14
@@ -38,10 +39,10 @@ endif
 
 ifeq ($(vectorized),true)
 # VECTORIZED_FLAGS = -DUINT8_ACT
-VECTORIZED_FLAGS = -DINT8_ACT
+VECTORIZED_FLAGS = -DUINT8_ACT
 else
 # VECTORIZED_FLAGS = -DSCALAR -DUINT8_ACT
-VECTORIZED_FLAGS = -DSCALAR -DINT8_ACT
+VECTORIZED_FLAGS = -DSCALAR -DUINT8_ACT
 endif
 
 aie_py_src = ${targetname}.py

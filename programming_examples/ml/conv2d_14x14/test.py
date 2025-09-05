@@ -53,7 +53,7 @@ def main(opts):
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
     # ------------------------------------------------------
-    dtype_in = np.dtype("int8")
+    dtype_in = np.dtype("uint8")
     dtype_wts = np.dtype("int8")
     dtype_out = np.dtype("int8")
 
@@ -65,6 +65,7 @@ def main(opts):
 
     shape_total_wts = (ci_co_ksz_ksz, 1)
     shape_in_act = (72, height, width, ci)  #'YX (rgba)
+    # shape_in_act = (height, width, ci)  #'YX (rgba)
     shape_in_wts1 = (co, ci, ksz, ksz)  # out,in,ky,kx
     shape_out = (co, height_out, width_out)
 
@@ -78,14 +79,30 @@ def main(opts):
     # ------------------------------------------------------
     # Initialize activation, weights, scaling factor for int8 model
     # ------------------------------------------------------
-    int_inp = torch.randint(1, 20, (1, ci, height, width)).type(torch.FloatTensor)
-    #    int_weight = torch.randint(50, 80, (co, ci, 1, 1)).type(torch.FloatTensor)
+    # int_inp = torch.randint(1, 20, (1, ci, height, width)).type(torch.FloatTensor)
+    # int_inp = torch.randint(0, 127, (1, ci, height, width)).type(torch.FloatTensor) # ch, height, width
+    int_inp = torch.randint(0, 255, (1, ci, height, width)).type(torch.FloatTensor) # ch, height, width
+
     # int_weight = torch.randint(50, 80, (co, ci, ksz, ksz)).type(torch.FloatTensor)
-    int_weight = torch.randint(5, 20, (co, ci, ksz, ksz)).type(torch.FloatTensor)
-    conv_scale = 7.6294e-06  # scale to convert int8 output to floating point
-    int8_scale = 0.0078  # scale to convert int8 output to floating point
+    int_weight = torch.randint(2, 20, (co, ci, ksz, ksz)).type(torch.FloatTensor) # co, ci, kh, kw
+    # int_weight = torch.randint(5, 10, (co, ci, ksz, ksz)).type(torch.FloatTensor)
+
+    # conv_scale = 7.6294e-06  # scale to convert int8 output to floating point 1/2^17
+    # int8_scale = 0.0078  # scale to convert int8 output to floating point, 1/2^7
+
+    # conv_scale = 9.5367e-07  # scale to convert int8 output to floating point 1/2^20
+    conv_scale = 1.9073e-06  # scale to convert int8 output to floating point 1/2^19
+    # conv_scale = 3.8146e-06  # scale to convert int8 output to floating point 1/2^18
+
+    # int8_scale = 0.0009765  # scale to convert int8 output to floating point, 1/2^10
+    # int8_scale = 0.001953  # scale to convert int8 output to floating point, 1/2^9
+    # int8_scale = 0.003906  # scale to convert int8 output to floating point, 1/2^8
+    # int8_scale = 0.015625  # scale to convert int8 output to floating point, 1/2^6
+    int8_scale = 0.03125  # scale to convert int8 output to floating point, 1/2^5
+
     min = -128
     max = 127
+
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
@@ -140,27 +157,38 @@ def main(opts):
     # Reorder input data-layout
     # ------------------------------------------------------
     ds = DataShaper()
-    before_input = int_inp.squeeze().data.numpy().astype(dtype_in)
-    before_input.tofile(
-        log_folder + "/before_ifm_mem_fmt_14x14.txt", sep=",", format="%d"
-    )
-    # ifm_mem_fmt = ds.reorder_mat(before_input, "YCXC8", "CYX")
-    ifm_mem_fmt = ds.reorder_mat(before_input, "YXC", "CYX")
-    ifm_mem_fmt.tofile(
-        log_folder + "/after_ifm_mem_fmt_14x14.txt", sep=",", format="%d"
-    )
+    int_inp_np = int_inp.squeeze().data.numpy().astype(dtype_in)
+    # before_input.tofile(log_folder + "/act_before_mem_fmt.txt", sep=",", format="%d")
+    act_before_mem_fmt = int_inp_np.reshape(3584,896)
+    np.savetxt(log_folder + "/act_before_mem_fmt_CYX.txt", act_before_mem_fmt, fmt="%d", delimiter=",")
+
+    # ifm_mem_fmt = ds.reorder_mat(act_before_mem_fmt, "YCXC8", "CYX")
+    ifm_mem_fmt = ds.reorder_mat(int_inp_np, "YXC", "CYX")
+    # ifm_mem_fmt.tofile(log_folder + "/act_after_mem_fmt.txt", sep=",", format="%d")
+    act_after_mem_fmt = ifm_mem_fmt.reshape(802816,4)
+    np.savetxt(log_folder + "/act_after_mem_fmt_YXC.txt", act_after_mem_fmt, fmt="%d", delimiter=",")
+
     print("ifm_mem_fmt:")
     print(type(ifm_mem_fmt))
     print(ifm_mem_fmt.shape)
-    print("ifm_mem_fmt_72:")
+
     ifm_mem_fmt_72 = np.tile(ifm_mem_fmt, 72)
+    print("ifm_mem_fmt_72:")
     print(ifm_mem_fmt_72.shape)
+
+    int_weight_np = int_weight.data.numpy().astype(dtype_wts)
+    # int_weight_np.tofile(log_folder + "/weights_before_mem_fmt.txt", sep=",", format="%d")
+    weights_before_mem_fmt = int_weight_np.reshape(64512, 14)
+    np.savetxt(log_folder + "/weights_before_mem_fmt_OIYX.txt", weights_before_mem_fmt, fmt="%d", delimiter=",")
 
     # wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX")
     # wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OYXX2IO8", "OIYX")
     wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OYXIO8", "OIYX")
     total_wts = np.concatenate((wts1), axis=None)
-    total_wts.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
+ 
+    # total_wts.tofile(log_folder + "/weights_after_mem_fmt.txt", sep=",", format="%d")
+    weights_after_mem_fmt = total_wts.reshape(112896, 8)
+    np.savetxt(log_folder + "/weights_after_mem_fmt_OYXIO8.txt", weights_after_mem_fmt, fmt="%d", delimiter=",")
 
     # ------------------------------------------------------
     # Main run loop
@@ -190,19 +218,28 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    # temp_out = data_buffer.reshape(height, co8, width, 8)
+    temp_out = data_buffer.reshape(72, 64, 64, 16)
     # temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
+    temp_out = ds.reorder_mat(temp_out, "CDYX", "CYXD")
     # ofm_mem_fmt = temp_out.reshape(co, height, width)
-    ofm_mem_fmt = data_buffer.reshape(co, height_out, width_out)
+    # ofm_mem_fmt = data_buffer.reshape(co, height_out, width_out)
+    ofm_mem_fmt = temp_out.reshape(co, height_out, width_out)
+
+    temp_out_int = entire_buffer.reshape(72, 64, 64, 16)
+    temp_out_int = ds.reorder_mat(temp_out_int, "CDYX", "CYXD")
+    ofm_int = temp_out_int.reshape(co*height_out*8, 8).astype(np.int8)
+    # ofm_int = entire_buffer.reshape(co*height_out*8, 8).astype(np.int8)
+    np.savetxt(log_folder + "/ofm_int_CYXX8.txt", ofm_int, fmt="%d", delimiter=",")
+
     if enable_trace:
-        ofm_log_filename = "/after_ofm_mem_fmt_final_trace.txt"
+        ofm_log_filename = "/ofm_after_mem_fmt_trace.txt"
     else:
-        ofm_log_filename = "/after_ofm_mem_fmt_final.txt"
-    ofm_mem_fmt.tofile(
-        log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%.4f"
-    )
-    ofm_mem_fmt_2d = ofm_mem_fmt.reshape(co, height_out * width_out)
-    np.savetxt("after_ofm_mem_fmt_2d.txt", ofm_mem_fmt_2d, fmt="%.2f", delimiter=",")
+        ofm_log_filename = "/ofm_after_mem_fmt.txt"
+
+    # ofm_mem_fmt.tofile(log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%.4f")
+    ofm_float = ofm_mem_fmt.reshape(co*height_out*8, 8) # still in float
+    np.savetxt(log_folder + "/ofm_float_CYXX8.txt", ofm_float, fmt="%.4f", delimiter=",")
+
     ofm_mem_fmt_out = torch.from_numpy(ofm_mem_fmt).unsqueeze(0)
 
     # ------------------------------------------------------
@@ -211,26 +248,75 @@ def main(opts):
 
     print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
 
-    print("ofm_mem_fmt_out:")
-    print(ofm_mem_fmt_out.shape)
-    print(ofm_mem_fmt_out)
+    print("Weight")
+    print(int_weight.size())
+    print(int_weight)
 
     print("golden_output:")
     print(golden_output.shape)
     print(golden_output)
 
+    print("ofm_mem_fmt_out:")
+    print(ofm_mem_fmt_out.shape)
+    print(ofm_mem_fmt_out)
+
     golden_output_2d = (
         golden_output.detach().numpy().reshape(co, height_out * width_out)
     )
-    np.savetxt("golden_output_2d.txt", golden_output_2d, fmt="%.2f", delimiter=",")
+    np.savetxt(log_folder + "/golden_output_2d.txt", golden_output_2d, fmt="%.4f", delimiter=",")
 
-    print("Weight")
-    print(int_weight.size())
-    print(int_weight)
+    golden_output_int = ((golden_output.detach().numpy().reshape(co*64*8,8))/int8_scale).astype(int)
+    np.savetxt(log_folder + "/golden_output_int.txt", golden_output_int, fmt="%d", delimiter=",")
+
+
+    output_numpy = ofm_mem_fmt_out.detach().numpy()
+    golden_numpy = golden_output.detach().numpy()
+
+    output_numpy_sub = output_numpy[0:,0:255,0:,0:]
+    golden_numpy_sub = golden_numpy[0:,0:255,0:,0:]
+
+    print("output_numpy_sub")
+    print(output_numpy_sub.shape)
+
+    print("golden_numpy_sub")
+    print(golden_numpy_sub.shape)
+
+    golden_numpy_sub_int = (golden_numpy_sub/int8_scale).astype(int)
+    output_numpy_sub_int = (output_numpy_sub/int8_scale).astype(int)
+
+    max_difference = np.max(
+        np.abs(golden_numpy_sub_int - output_numpy_sub_int)
+    )
+    print("max_abs_difference:", max_difference)
+
+    avg_difference = np.average(
+        np.abs(golden_numpy_sub_int - output_numpy_sub_int)
+    )
+    print("avg_abs_difference:", avg_difference)
+
+    print("max golden int value: ", np.max(golden_numpy_sub_int), ", min golden int value: ", np.min(golden_numpy_sub_int))
+
+    # Find the indices where the mismatch happens
+    mismatch_indices = np.where(golden_numpy_sub_int != output_numpy_sub_int)
+
+    # Extract mismatch values
+    mismatch_values_golden = golden_numpy_sub_int[mismatch_indices]
+    mismatch_values_ofm = output_numpy_sub_int[mismatch_indices]
+
+    # print("Mismatch indices and corresponding values:")
+    # for idx, (golden_value, ofm_value) in zip(
+    #     zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)
+    # ):
+    #     print(f"Index: {idx}, Golden value: {golden_value}, OFM value: {ofm_value}, diff: {golden_value-ofm_value}")
+
+
+
 
     if np.allclose(
-        ofm_mem_fmt_out.detach().numpy(),
-        golden_output.detach().numpy(),
+        # ofm_mem_fmt_out.detach().numpy(),
+        # golden_output.detach().numpy(),
+        output_numpy_sub,
+        golden_numpy_sub,
         rtol=0,
         atol=2 * int8_scale,
     ):
