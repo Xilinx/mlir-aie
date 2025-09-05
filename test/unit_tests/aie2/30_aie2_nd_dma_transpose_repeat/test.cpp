@@ -98,5 +98,5 @@ int main(int argc, char *argv[]) {
     printf("FAIL.\n");
   }
 
-  return errors + 42;
+  return errors;
 }

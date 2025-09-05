@@ -11,14 +11,14 @@
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
 // CHECK: XAie_DmaDesc [[bd0:.*]];
-// CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,4))
+// CHECK: XAie_DmaDescInit(ctx->XAieDevInst, &([[bd0]]), XAie_TileLoc(7,4))
 // CHECK: XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(3,-1),XAie_LockInit(4,1))
 // CHECK: XAie_DmaSetAddrLen(&([[bd0]]),  /* addrA */ 0x720,  /* len */ 1024)
 // CHECK: XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 1,  /* enableNextBd */ 1)
 // CHECK: XAie_DmaEnableBd(&([[bd0]]))
-// CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(7,4),  /* bd */ 0)
-// CHECK: XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,4), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 1, /* EnToken */ XAIE_DISABLE)
-// CHECK: XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(7,4), /* ChNum */ 0, /* dmaDir */ DMA_S2MM)
+// CHECK: XAie_DmaWriteBd(ctx->XAieDevInst, &([[bd0]]), XAie_TileLoc(7,4),  /* bd */ 0)
+// CHECK: XAie_DmaChannelSetStartQueue(ctx->XAieDevInst, XAie_TileLoc(7,4), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 1, /* EnToken */ XAIE_DISABLE)
+// CHECK: XAie_DmaChannelEnable(ctx->XAieDevInst, XAie_TileLoc(7,4), /* ChNum */ 0, /* dmaDir */ DMA_S2MM)
 
 module @aie_module  {
   aie.device(xcve2802) {
