@@ -141,7 +141,7 @@ def color_threshold(dev, width, height):
 
                 elemIn = inOOB_L2L1_1.acquire(ObjectFifoPort.Consume, 1)
                 elemOut = outOOB_L1L2_1.acquire(ObjectFifoPort.Produce, 1)
-            
+
                 thresholdLine(
                     elemIn,
                     elemOut,

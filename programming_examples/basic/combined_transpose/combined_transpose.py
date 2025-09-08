@@ -29,7 +29,13 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
 
     # Define tensor types
     matrix_ty = np.ndarray[(M, N), dtype]
-    tile_ty = np.ndarray[(m, n,), dtype]
+    tile_ty = np.ndarray[
+        (
+            m,
+            n,
+        ),
+        dtype,
+    ]
 
     # Define kernel function
     kernel_func = Kernel(f"transpose_{s}x{s}", "transpose.o", [tile_ty, tile_ty])
@@ -44,7 +50,7 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
         tensor_dims=(M, N),
         offset=0,
         sizes=[M // m, N // n, m, n],
-        strides=[m * N, n, N, 1]
+        strides=[m * N, n, N, 1],
     )
     tap_in_L2L1 = TensorAccessPattern(
         tensor_dims=(M, N),
@@ -56,7 +62,7 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
         tensor_dims=(N, M),
         offset=0,
         sizes=[M // m, N // n, n, m],
-        strides=[m, n * M, M, 1]
+        strides=[m, n * M, M, 1],
     )
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")

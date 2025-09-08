@@ -259,7 +259,8 @@ int main(int argc, const char *argv[]) {
             abs_tol, rel_tol, b_col_maj, c_col_maj);
       } else {
         errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol, b_col_maj, c_col_maj);
+            M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol, b_col_maj,
+            c_col_maj);
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =

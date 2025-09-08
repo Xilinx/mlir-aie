@@ -19,6 +19,7 @@ from aie.iron.placers import SequentialPlacer
 def ceildiv(a, b):
     return (a + b - 1) // b
 
+
 def main():
     argparser = argparse.ArgumentParser(
         prog="AIE Matrix Multiplication MLIR Design (Single Core) with bfp16ebs8 input/output",
@@ -32,6 +33,7 @@ def main():
     argparser.add_argument("-n", type=int, default=64)
     args = argparser.parse_args()
     print(my_matmul(args.M, args.K, args.N, args.m, args.k, args.n))
+
 
 def my_matmul(M, K, N, m, k, n):
     M_div_m = M // m
@@ -96,9 +98,7 @@ def my_matmul(M, K, N, m, k, n):
     )
     b_tap = TensorTiler2D.group_tiler((N, K // 8), (n, k // 8), (N_div_n, K_div_k))[0]
 
-    C_tiles = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (rows_per_block // 2, N_div_n)
-    )
+    C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
     c_index = 0
 
     rt = Runtime()
