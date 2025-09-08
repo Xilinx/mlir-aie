@@ -15,6 +15,21 @@
 
 #include <aie_api/aie.hpp>
 
+#if defined(__chess__)
+#define AIE_PREPARE_FOR_PIPELINING [[chess::prepare_for_pipelining]]
+#define AIE_LOOP_MIN_ITERATION_COUNT(x) [[chess::min_loop_count(x)]]
+#elif defined(__AIECC__)
+#ifndef __STRINGIFY
+#define __STRINGIFY(a) #a
+#endif
+#define AIE_LOOP_MIN_ITERATION_COUNT(x)                                        \
+  _Pragma(__STRINGIFY(clang loop min_iteration_count(x)))
+#define AIE_PREPARE_FOR_PIPELINING
+#else
+#define AIE_LOOP_MIN_ITERATION_COUNT(x)
+#define AIE_PREPARE_FOR_PIPELINING
+#endif
+
 template <typename T, typename V>
 void _reduce_max_vector(T *restrict in, T *restrict out,
                         const int32_t input_size) {
@@ -24,6 +39,8 @@ void _reduce_max_vector(T *restrict in, T *restrict out,
   V after_vector;
   V running_max = tiny;
 
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(8)
   for (int32_t i = 0; i < input_size; i += VECTOR_SIZE) {
     V next = aie::load_v(in + i);
     V test = max(running_max, next);

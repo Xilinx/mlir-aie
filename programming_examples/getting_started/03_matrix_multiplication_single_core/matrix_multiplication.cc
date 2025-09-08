@@ -1,5 +1,20 @@
 #include <aie_api/aie.hpp>
 
+#if defined(__chess__)
+#define AIE_PREPARE_FOR_PIPELINING [[chess::prepare_for_pipelining]]
+#define AIE_LOOP_MIN_ITERATION_COUNT(x) [[chess::min_loop_count(x)]]
+#elif defined(__AIECC__)
+#ifndef __STRINGIFY
+#define __STRINGIFY(a) #a
+#endif
+#define AIE_LOOP_MIN_ITERATION_COUNT(x)                                        \
+  _Pragma(__STRINGIFY(clang loop min_iteration_count(x)))
+#define AIE_PREPARE_FOR_PIPELINING
+#else
+#define AIE_LOOP_MIN_ITERATION_COUNT(x)
+#define AIE_PREPARE_FOR_PIPELINING
+#endif
+
 // Make sure the following tile and intrinsic sizes match the sizes in the
 // data layout transformations described in
 // matrix_multiplication_single_core.py.
@@ -21,6 +36,8 @@ extern "C" {
 // respectively (in our design, the DMA performs this tiling).
 void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict B,
                            int16 *__restrict C) {
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(4)
   for (unsigned row = 0; row < m / r; row += 2) {
     for (unsigned col = 0; col < n / t; col += 2) {
 
@@ -84,6 +101,8 @@ void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict B,
 void matrix_multiplication_scalar(const int16 *__restrict A,
                                   const int16 *__restrict B,
                                   int16 *__restrict C) {
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(4)
   for (unsigned tile_row = 0; tile_row < m / r; tile_row += 1) {
     for (unsigned tile_col = 0; tile_col < n / t; tile_col += 1) {
       for (unsigned tile_i = 0; tile_i < k / s; tile_i += 1) {
