@@ -47,7 +47,8 @@ struct DMAConfigureTaskForOpPattern
     DMAConfigureTaskOp new_op = rewriter.create<DMAConfigureTaskOp>(
         op.getLoc(), rewriter.getIndexType(), tile.getResult(),
         alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
-        op.getIssueToken(), op.getRepeatCount());
+        op.getIssueToken(), op.getRepeatCount(),
+        alloc_op.getPacket().value_or(nullptr));
     rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
     rewriter.inlineRegionBefore(op.getBody(), new_op.getBody(),
                                 new_op.getBody().begin());

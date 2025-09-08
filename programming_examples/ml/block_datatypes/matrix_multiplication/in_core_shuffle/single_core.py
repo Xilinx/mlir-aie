@@ -17,6 +17,7 @@ from aie.dialects.aiex import v8bfp16ebs8
 def ceildiv(a, b):
     return (a + b - 1) // b
 
+
 def main():
     argparser = argparse.ArgumentParser(
         prog="Example of shuffling using the scalar unit inside a core",
@@ -30,6 +31,7 @@ def main():
     argparser.add_argument("-n", type=int, default=64)
     args = argparser.parse_args()
     print(my_matmul(args.M, args.K, args.N, args.m, args.k, args.n))
+
 
 def my_matmul(M, K, N, m, k, n):
 
