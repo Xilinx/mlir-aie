@@ -26,7 +26,7 @@ from aie.utils.config import cxx_header_path
 def matrix_multiplication_single_core(input0, input1, output):
     # Problem size
     # - matrix0 shapes: (M, K)
-    # - matrix1 shapes (K, N)
+    # - matrix1 shapes: (K, N)
     M, K, N = input0.shape[0], input0.shape[1], input1.shape[1]
     m, k, n = 64, 64, 64  # Tile size moved to/from the compute cores via mem tiles
     r, s, t = 8, 2, 8  # AIE kernel intrinsic size
