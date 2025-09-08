@@ -29,19 +29,14 @@ from aie.utils.config import cxx_header_path
 def vector_reduce_max(input0, output):
     element_type = output.dtype
 
-    in_size = 524288
-    out_size = 4
+    in_tensor_size = input0.shape[0]  # Input tensor size
+    out_tensor_size = output.shape[0]  # Output tensor size
 
     n_cores = 4
     N = 2048
     elems_per_core = N // n_cores
 
-    in_tensor_size = in_size // element_type(0).nbytes
-    out_tensor_size = out_size // element_type(0).nbytes
-
     num_iter = in_tensor_size // N
-
-    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
 
     # --------------------------------------------------------------------------
     # In-Array Data Movement
@@ -183,6 +178,8 @@ def main():
     out_size = 4
     element_type = bfloat16
 
+    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
+
     in_tensor_size = in_size // element_type(0).nbytes
     out_tensor_size = out_size // element_type(0).nbytes
 
@@ -202,12 +199,6 @@ def main():
             ref_max = i
 
     errors = 0
-    # for index, (actual, ref) in enumerate(
-    #     zip(
-    #         output,
-    #         ref_max,
-    #     )
-    # ):
     if output[0] != ref_max:
         print(f"Error: {output} != {ref_max}")
         errors += 1

@@ -42,7 +42,7 @@ def my_memcpy(input0, output):
 
     # Transfer size must be a multiple of 1024 and divisible by the number of
     # columns and 2 channels per column
-    size = output.numel()
+    size = output.shape[0]
 
     # Number of columns on the device (4 for npu1 and 8 for npu2)
     device = iron.get_current_device()
