@@ -7,6 +7,7 @@
 import numpy as np
 import argparse
 import sys
+import os
 import time
 
 import aie.iron as iron
@@ -87,7 +88,7 @@ def my_memcpy(input0, output):
     # External, binary kernel definition
     passthrough_fn = ExternalFunction(
         "passThrough",
-        source_file="passThrough.cc",
+        source_file=os.path.join(os.path.dirname(__file__), "passThrough.cc"),
         arg_types=[line_type, line_type, np.int32],
         include_dirs=[cxx_header_path()],
     )

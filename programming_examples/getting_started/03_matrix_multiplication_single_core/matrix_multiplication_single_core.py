@@ -6,6 +6,7 @@
 
 import numpy as np
 import sys
+import os
 
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
@@ -78,7 +79,7 @@ def matrix_multiplication_single_core(input0, input1, output):
 
     matmul_kernel = ExternalFunction(
         "matrix_multiplication",
-        source_file="matrix_multiplication.cc",
+        source_file=os.path.join(os.path.dirname(__file__), "matrix_multiplication.cc"),
         arg_types=[a_ty, b_ty, c_ty],
         include_dirs=[cxx_header_path()],
     )
@@ -160,7 +161,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    matrix_multiplication_single_core(input0, input0, output)
+    matrix_multiplication_single_core(input0, input1, output)
 
     # Check the correctness of the result
     e = np.equal(ref_vec.flatten(), output.numpy())

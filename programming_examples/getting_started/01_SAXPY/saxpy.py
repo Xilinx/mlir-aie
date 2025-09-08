@@ -7,6 +7,7 @@
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
+import os
 
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
@@ -47,7 +48,7 @@ def saxpy(input0, input1, output):
 
     saxpy_kernel = ExternalFunction(
         "saxpy",
-        source_file="saxpy_scalar_baseline.cc",
+        source_file=os.path.join(os.path.dirname(__file__), "saxpy.cc"),
         arg_types=[in_ty, in_ty, out_ty],
         include_dirs=[cxx_header_path()],
     )

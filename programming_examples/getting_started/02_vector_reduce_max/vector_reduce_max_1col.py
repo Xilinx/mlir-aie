@@ -80,7 +80,7 @@ def vector_reduce_max(input0, output):
 
     reduce_max_vector = ExternalFunction(
         f"reduce_max_vector_bfloat16",
-        source_file="reduce_max_vector_bfloat16.cc",
+        source_file=os.path.join(os.path.dirname(__file__), "reduce_max_vector.cc"),
         arg_types=[op_ty, out_ty, np.int32],
         include_dirs=[cxx_header_path()],
     )
