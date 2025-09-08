@@ -54,7 +54,7 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
                          const int32_t kernel_width, const int scale) {
   event0();
 
-  int oc, oc8, nt, pix, nt8, p2;
+  int oc, oc8, nt, nt8, pix, p2;
 
   int in_indx = 0;
   int wts_indx = 0;
@@ -72,9 +72,8 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
           int sum_srs = 0;
           for (pix = 0; pix < pixels_div_2; pix++) { // 196 // 2 = 98
             for (p2 = 0; p2 < 2; p2++) {
-              in_indx = ((nt * (tiles_div_8) * 8 * 2) + (pix * 8 * 2) +
-                         (nt8 * 2) + p2) *
-                        4;
+              in_indx = ((nt * (pixels_div_2) * 8 * 2) + (pix * 8 * 2) +
+                         (nt8 * 2) + p2) * 4;
               wts_indx = ((oc * pixels_div_2 * 2 * 4 * 8) + (pix * 2 * 4 * 8) +
                           (p2 * 4 * 8) + oc8);
               sum += input[in_indx] * kernels[wts_indx] +

@@ -39,8 +39,8 @@ def conv2dk14(
         # bufOut = actOut * 2  # double buffer
         # bufOut = (64*64*out_channels)
 
-        groups = 16  # max - output_channels//16 = 72
-        # groups = 72 # max - output_channels//16 = 72
+        # groups = 16  # TODO consistently passes for scalar, 32 intermittently passes
+        groups = 72  # max - output_channels//16 = 72
 
         # we reload inputs 72 times (not big enough to keep in memtile)
         # tensorInSize = width * height * in_channels * (out_channels // 16)

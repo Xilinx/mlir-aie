@@ -309,8 +309,13 @@ def main(opts):
     output_numpy = ofm_mem_fmt_out.detach().numpy()
     golden_numpy = golden_output.detach().numpy()
 
-    output_numpy_sub = output_numpy[0:, 0:255, 0:, 0:]
-    golden_numpy_sub = golden_numpy[0:, 0:255, 0:, 0:]
+    # Full testbench for vector kernel
+    output_numpy_sub = output_numpy
+    golden_numpy_sub = golden_numpy
+
+    # Test passes only for submatrice in scalar example (group = 16)
+    # output_numpy_sub = output_numpy[0:, 0:255, 0:, 0:]
+    # golden_numpy_sub = golden_numpy[0:, 0:255, 0:, 0:]
 
     print("output_numpy_sub")
     print(output_numpy_sub.shape)
