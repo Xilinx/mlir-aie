@@ -24,7 +24,7 @@ from aie.utils.config import cxx_header_path
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit(is_placed=False)
 def saxpy(input0, input1, output):
-    N = 4096  # Tensor size
+    N = input0.shape[0]  # Tensor size
     element_type = output.dtype
 
     # --------------------------------------------------------------------------
