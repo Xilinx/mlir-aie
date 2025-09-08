@@ -73,7 +73,8 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
           for (pix = 0; pix < pixels_div_2; pix++) { // 196 // 2 = 98
             for (p2 = 0; p2 < 2; p2++) {
               in_indx = ((nt * (pixels_div_2) * 8 * 2) + (pix * 8 * 2) +
-                         (nt8 * 2) + p2) * 4;
+                         (nt8 * 2) + p2) *
+                        4;
               wts_indx = ((oc * pixels_div_2 * 2 * 4 * 8) + (pix * 2 * 4 * 8) +
                           (p2 * 4 * 8) + oc8);
               sum += input[in_indx] * kernels[wts_indx] +
