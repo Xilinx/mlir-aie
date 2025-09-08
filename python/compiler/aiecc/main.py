@@ -414,7 +414,6 @@ def run_passes_module(pass_pipeline, mlir_module, outputfile=None, verbose=False
                 g.write(mlir_module_str)
     return mlir_module
 
-
 def corefile(dirname, device, core, ext):
     col, row, _ = core
     return os.path.join(dirname, f"{device}_core_{col}_{row}.{ext}")
@@ -851,7 +850,7 @@ class FlowRunner:
 
         await self.do_call(None, args)
 
-    async def process_ctrlpkt(self, module_str, device_name):
+    async def process_ctrlpkt(self, module_str, device_op, device_name):
         file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
         file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
         file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
@@ -859,52 +858,45 @@ class FlowRunner:
         )
         # file_ctrlpkt_dma_seq_bin = opts.ctrlpkt_dma_seq_name.format(device_name)
         # file_ctrlpkt_elf = opts.ctrlpkt_elf_name.format(device_name)
-        run_passes(
-            f"builtin.module(aie.device(convert-aie-to-control-packets{{"
-            + f"device-name={device_name} elf-dir={self.tmpdirname}}}, "
-            + f"aie-txn-to-ctrl-packet, aie-legalize-ctrl-packet))",
+        ctrlpkt_mlir_str = run_passes(
+            "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
+            + self.tmpdirname
+            + "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))",
             module_str,
             file_ctrlpkt_mlir,
             self.opts.verbose,
         )
-        await self.do_call(
-            None,
-            [
-                "aie-translate",
-                "--aie-ctrlpkt-to-bin",
-                "--aie-device-name",
-                device_name,
-                file_ctrlpkt_mlir,
-                "-o",
-                file_ctrlpkt_bin,
-            ],
-        )
-        ctrlpkt_mlir_str = await read_file_async(file_ctrlpkt_mlir)
-        run_passes(
+
+        # aie-translate --aie-ctrlpkt-to-bin -o ctrlpkt.bin
+        with Context(), Location.unknown():
+            ctrlpkt_bin = aiedialect.generate_control_packets(
+                Module.parse(ctrlpkt_mlir_str).operation, device_name
+            )
+        with open(file_ctrlpkt_bin, "wb") as f:
+            f.write(struct.pack("I" * len(ctrlpkt_bin), *ctrlpkt_bin))
+
+        # aie-opt --aie-ctrl-packet-to-dma -aie-dma-to-npu
+        ctrl_seq_str = run_passes(
             "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
             ctrlpkt_mlir_str,
             file_ctrlpkt_dma_seq_mlir,
             self.opts.verbose,
         )
-        await self.do_call(
-            None,
-            [
-                "aie-translate",
-                "--aie-npu-to-binary",
-                "--aie-device-name",
-                device_name,
-                file_ctrlpkt_dma_seq_mlir,
-                "-o",
-                opts.insts_name.format(device_name, "seq"),
-            ],
-        )
-        ctrl_idx = 0
-        ctrl_seq_str = await read_file_async(file_ctrlpkt_dma_seq_mlir)
+
+        # aie-translate --aie-npu-to-binary -o npu_insts.bin
         with Context(), Location.unknown():
-            dma_seq_module = Module.parse(ctrl_seq_str)
-            # walk through the dma sequence module to find runtime sequence
+            insts_bin = aiedialect.translate_npu_to_binary(
+                Module.parse(ctrl_seq_str).operation, device_name, opts.sequence_name
+            )
+        with open(opts.insts_name.format(device_name, "seq"), "wb") as f:
+            f.write(struct.pack("I" * len(insts_bin), *insts_bin))
+
+        ctrl_idx = 0
+        with Context(), Location.unknown():
+            # dma_seq_module = Module.parse(ctrl_seq_str)
+            # walk through the device to find runtime sequence
             seqs = find_ops(
-                dma_seq_module.operation,
+                device_op.operation,
                 lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
             )
             if seqs:
@@ -1638,7 +1630,7 @@ class FlowRunner:
 
         if opts.ctrlpkt and opts.execute:
             processes.append(
-                self.process_ctrlpkt(input_physical_with_elfs_str, device_name)
+                self.process_ctrlpkt(input_physical_with_elfs_str, device_op, device_name)
             )
 
         if opts.elf and not opts.ctrlpkt and opts.execute:
