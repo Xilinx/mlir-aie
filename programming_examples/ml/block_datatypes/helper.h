@@ -30,7 +30,8 @@ inline std::string toBinaryString(int8_t n) {
 
 // Helper function to generate random floating point numbers with high exponent
 // variance (useful for blocked datatypes). Exponents are interpreted as base 2
-inline float generateRandomFloatingPoint(std::mt19937 &eng, double minExp, double maxExp) {
+inline float generateRandomFloatingPoint(std::mt19937 &eng, double minExp,
+                                         double maxExp) {
   std::uniform_real_distribution<float> distrExp(minExp, maxExp);
   float exponent = distrExp(eng);
 
@@ -50,7 +51,8 @@ inline float generateRandomFloatingPoint(std::mt19937 &eng, double minExp, doubl
 // The return array is structured as follows:
 // 1. The first byte is the shared exponent (max exponent of the block).
 // 2. The next *block* bytes are the quantized values.
-inline std::vector<uint8_t> floatToBfp16(int block, int size, float *array, int rounding = 0) {
+inline std::vector<uint8_t> floatToBfp16(int block, int size, float *array,
+                                         int rounding = 0) {
   std::vector<uint8_t> res(size * 1.125);
 
   int mbits = 7;
@@ -119,7 +121,8 @@ inline std::vector<uint8_t> floatToBfp16(int block, int size, float *array, int 
 
 // Convert a bfp16 array to a float.
 // Size should be the number of bytes in the input bfp16 array
-inline std::vector<float> bfp16ebs8ToFloat(int size, uint8_t *array, int verbose = 0) {
+inline std::vector<float> bfp16ebs8ToFloat(int size, uint8_t *array,
+                                           int verbose = 0) {
   std::vector<float> res(size / 1.125);
 
   int block = 8;
@@ -158,15 +161,16 @@ inline std::vector<float> bfp16ebs8ToFloat(int size, uint8_t *array, int verbose
 }
 
 // Shuffle tiles of 64x64 elements for the matrix
-// Width and height are expected to be the number of scalar elements in the matrix
-// This function rearranges the 8x8 subtiles into rows so that a single subtile is contiguous in
-// memory within each tile.
-inline std::vector<uint8_t> shuffleMatrixForBfp16ebs8(size_t matrixWidth, size_t matrixHeight,
-                                                      size_t tileWidth, size_t tileHeight,
-                                                      std::vector<uint8_t> bfpMatrix,
-                                                      bool unshuffle = false) {
-  assert(matrixWidth % tileWidth == 0 && "Matrix width must be divisible by tile width");
-  assert(matrixHeight % tileHeight == 0 && "Matrix height must be divisible by tile height");
+// Width and height are expected to be the number of scalar elements in the
+// matrix This function rearranges the 8x8 subtiles into rows so that a single
+// subtile is contiguous in memory within each tile.
+inline std::vector<uint8_t> shuffleMatrixForBfp16ebs8(
+    size_t matrixWidth, size_t matrixHeight, size_t tileWidth,
+    size_t tileHeight, std::vector<uint8_t> bfpMatrix, bool unshuffle = false) {
+  assert(matrixWidth % tileWidth == 0 &&
+         "Matrix width must be divisible by tile width");
+  assert(matrixHeight % tileHeight == 0 &&
+         "Matrix height must be divisible by tile height");
   assert(tileWidth % 64 == 0 && "Tile width must be a multiple of 64");
   assert(tileHeight % 8 == 0 && "Tile height must be a multiple of 8");
   assert(bfpMatrix.size() == (size_t)matrixWidth * matrixHeight * 1.125 &&
@@ -180,20 +184,25 @@ inline std::vector<uint8_t> shuffleMatrixForBfp16ebs8(size_t matrixWidth, size_t
   size_t subtileWidth = 8 * 1.125;
   size_t subtileHeight = 8;
 
-  // The main idea is that inputGlobal X and Y are traversing the input matrix in the order we want
-  // the elements to be accessed by the core, while outputGlobal X and Y are traversing the tiles in
-  // the way they are going to be sent to the accelerator. Essentially, outputGlobal X and Y are
-  // just traversing the tiles themselves as if they were contiguous and then going to the next
-  // tile.
+  // The main idea is that inputGlobal X and Y are traversing the input matrix
+  // in the order we want the elements to be accessed by the core, while
+  // outputGlobal X and Y are traversing the tiles in the way they are going to
+  // be sent to the accelerator. Essentially, outputGlobal X and Y are just
+  // traversing the tiles themselves as if they were contiguous and then going
+  // to the next tile.
 
   // Iterate over the tiles in the matrix
-  for (size_t tileStartY = 0; tileStartY < matrixHeight; tileStartY += tileHeight) {
-    for (size_t tileStartX = 0; tileStartX < matrixWidth; tileStartX += tileWidth) {
+  for (size_t tileStartY = 0; tileStartY < matrixHeight;
+       tileStartY += tileHeight) {
+    for (size_t tileStartX = 0; tileStartX < matrixWidth;
+         tileStartX += tileWidth) {
 
       size_t tileCountingIndex = 0;
       // Iterate over the subtiles in each tile
-      for (size_t subtileStartY = 0; subtileStartY < tileHeight; subtileStartY += subtileHeight) {
-        for (size_t subtileStartX = 0; subtileStartX < tileWidth; subtileStartX += subtileWidth) {
+      for (size_t subtileStartY = 0; subtileStartY < tileHeight;
+           subtileStartY += subtileHeight) {
+        for (size_t subtileStartX = 0; subtileStartX < tileWidth;
+             subtileStartX += subtileWidth) {
 
           // Iterate over the elements in each subtile
           for (size_t i = 0; i < subtileHeight; ++i) {
@@ -223,9 +232,12 @@ inline std::vector<uint8_t> shuffleMatrixForBfp16ebs8(size_t matrixWidth, size_t
 }
 
 // Pretty print to ostream a bfp16ebs8 array
-inline void printBfp16ebs8Array(int arraySize, std::vector<uint8_t> array, int blocksPerLine = 4,
-                                int blocksBeforeEmptyLine = 8, std::ostream &ostream = std::cout,
-                                int width = 3, const std::string &blockSeparatorStart = " | B",
+inline void printBfp16ebs8Array(int arraySize, std::vector<uint8_t> array,
+                                int blocksPerLine = 4,
+                                int blocksBeforeEmptyLine = 8,
+                                std::ostream &ostream = std::cout,
+                                int width = 3,
+                                const std::string &blockSeparatorStart = " | B",
                                 const std::string &blockSeparatorEnd = " - ") {
   for (int i = 0; i < arraySize; i++) {
     if (i % (blocksPerLine * 9) == 0) {

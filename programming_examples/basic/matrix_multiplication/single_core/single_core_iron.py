@@ -31,6 +31,7 @@ microkernel_mac_dim_map = {
     },
 }
 
+
 def main():
     argparser = argparse.ArgumentParser(
         prog="AIE Matrix Multiplication MLIR Design (Single Core)",
@@ -207,7 +208,9 @@ def my_matmul(
 
     # Create worker from task
     worker = Worker(
-        core_fn, [memA.cons(), memB.cons(), memC.prod(), zero_kernel, matmul_kernel], stack_size=0xD00
+        core_fn,
+        [memA.cons(), memB.cons(), memC.prod(), zero_kernel, matmul_kernel],
+        stack_size=0xD00,
     )
 
     # only do 4 tile rows at a time before synchronizing, so we can reuse BDs
