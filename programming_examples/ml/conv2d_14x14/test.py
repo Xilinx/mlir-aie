@@ -229,11 +229,12 @@ def main(opts):
                 entire_buffer, shape_out, dtype_out, trace_size
             )
             # Scale the data
-            data_buffer = data_buffer * int8_scale
+            scaled_data_buffer = data_buffer * int8_scale
             # Write out the trace
             write_out_trace(trace_buffer, trace_file)
         else:
-            data_buffer = entire_buffer * int8_scale
+            data_buffer = entire_buffer
+            scaled_data_buffer = entire_buffer * int8_scale
             trace_buffer = None
 
         npu_time = stop - start
@@ -242,17 +243,17 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    temp_out = data_buffer.reshape(72, 64, 64, 16)
+    temp_out = scaled_data_buffer.reshape(72, 64, 64, 16)
     # temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
     temp_out = ds.reorder_mat(temp_out, "CDYX", "CYXD")
     # ofm_mem_fmt = temp_out.reshape(co, height, width)
     # ofm_mem_fmt = data_buffer.reshape(co, height_out, width_out)
     ofm_mem_fmt = temp_out.reshape(co, height_out, width_out)
 
-    temp_out_int = entire_buffer.reshape(72, 64, 64, 16)
+    temp_out_int = data_buffer.reshape(72, 64, 64, 16)
     temp_out_int = ds.reorder_mat(temp_out_int, "CDYX", "CYXD")
     ofm_int = temp_out_int.reshape(co * height_out * 8, 8).astype(np.int8)
-    # ofm_int = entire_buffer.reshape(co*height_out*8, 8).astype(np.int8)
+    # ofm_int = data_buffer.reshape(co*height_out*8, 8).astype(np.int8)
     np.savetxt(log_folder + "/ofm_int_CYXX8.txt", ofm_int, fmt="%d", delimiter=",")
 
     if enable_trace:
