@@ -47,7 +47,7 @@ def saxpy(input0, input1, output):
 
     saxpy_kernel = ExternalFunction(
         "saxpy",
-        source_file="saxpy.cc",
+        source_file="saxpy_scalar_baseline.cc",
         arg_types=[in_ty, in_ty, out_ty],
         include_dirs=[cxx_header_path()],
     )
