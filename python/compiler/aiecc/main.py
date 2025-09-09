@@ -893,8 +893,7 @@ class FlowRunner:
 
         ctrl_idx = 0
         with Context(), Location.unknown():
-            # dma_seq_module = Module.parse(ctrl_seq_str)
-            # walk through the device to find runtime sequence
+            # walk the device to find runtime sequence
             seqs = find_ops(
                 device_op.operation,
                 lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
