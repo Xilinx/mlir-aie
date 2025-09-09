@@ -45,8 +45,11 @@ else()
                         ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/include)
 
     add_aiert_library(xaienginecdo ${XAIE_SOURCE_DIR})
-
-    target_compile_definitions(xaienginecdo PRIVATE __AIECDO__ __AIESIM__)
+    if (WIN32)
+        target_compile_definitions(xaienginecdo PRIVATE __AIECDO__ )
+    else()
+        target_compile_definitions(xaienginecdo PRIVATE __AIECDO__ __AIESIM__)
+    endif()
     target_include_directories(xaienginecdo SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR}/cdo-driver)
 endif()
 
