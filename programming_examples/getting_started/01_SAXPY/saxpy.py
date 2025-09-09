@@ -101,7 +101,7 @@ def main():
     saxpy(input0, input1, output)
 
     # Check the correctness of the result and print
-    ref_vec = [bfloat16(3.0) * input0[i] + input1[i] for i in range(data_size)]
+    ref_vec = [bfloat16(3) * input0[i] + input1[i] for i in range(data_size)]
 
     errors = 0
     for index, (actual, ref) in enumerate(

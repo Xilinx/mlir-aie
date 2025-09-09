@@ -12,7 +12,7 @@
 extern "C" {
 void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, bfloat16 *restrict z) {
   event0();
-  ::aie::vector<bfloat16, 64> a_v = ::aie::broadcast<bfloat16, 64>(3.f);
+  ::aie::vector<bfloat16, 64> a_v = ::aie::broadcast<bfloat16, 64>(3f);
 #pragma clang loop min_iteration_count(4)
   for (int i = 0; i < 4096; i += 64) {
     ::aie::vector<bfloat16, 64> x_v = ::aie::load_v<64>(x);
