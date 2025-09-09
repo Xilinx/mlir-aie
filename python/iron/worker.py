@@ -4,7 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc.
+
 import contextvars
 import sys
 from typing import Callable
@@ -19,6 +20,7 @@ from .dataflow.endpoint import ObjectFifoEndpoint
 from .kernel import Kernel, ExternalFunction
 from .globalbuffer import GlobalBuffer
 from .resolvable import Resolvable
+from . import trace
 
 
 class Worker(ObjectFifoEndpoint):
@@ -53,7 +55,7 @@ class Worker(ObjectFifoEndpoint):
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
                 Will override any allocation scheme set on the tile given as placement.
-            trace (int, optional): If >0, enable tracing for this worker.
+            trace (int, optional): If >0, enable tracing for this worker. If None and tracing is active, automatically set to 1.
 
         Raises:
             ValueError: Parameters are validated.
@@ -64,6 +66,12 @@ class Worker(ObjectFifoEndpoint):
         self.allocation_scheme = allocation_scheme
         if allocation_scheme:
             self._tile.allocation_scheme = allocation_scheme
+
+        # Auto-enable tracing if not explicitly set and tracing is active
+        if trace is None:
+            if trace._get_trace_active():
+                trace = 1
+
         self.trace = trace
         self.trace_events = trace_events
 

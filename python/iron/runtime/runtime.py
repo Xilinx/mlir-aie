@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
 from collections import defaultdict
@@ -35,6 +35,7 @@ from .task import (
     InlineOpRuntimeTask,
     FinishTaskGroupTask,
 )
+from .. import trace
 
 
 class Runtime(Resolvable):
@@ -73,6 +74,11 @@ class Runtime(Resolvable):
         """
         try:
             self._rt_data = list(map(RuntimeData, input_types))
+
+            # Auto-enable tracing if tracing is active
+            if trace._get_trace_active() and self._trace_size is None:
+                self.enable_trace(trace_size=trace.get_trace_size())
+
             if len(self._rt_data) == 1:
                 yield self._rt_data[0]
             else:
