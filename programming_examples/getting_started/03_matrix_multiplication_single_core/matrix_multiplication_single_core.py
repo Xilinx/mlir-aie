@@ -159,7 +159,6 @@ def main():
     output = iron.zeros(M * N, dtype=element_type, device="npu")
 
     # Generate reference pattern
-    # ref_vec = iron.zeros_like(output)
     ref_vec = np.matmul(input0.numpy(), input1.numpy())
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
