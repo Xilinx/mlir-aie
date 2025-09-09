@@ -36,7 +36,7 @@ if (${CMAKE_CROSSCOMPILING})
     endif()
     install(TARGETS xaienginecdo DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/xaiengine/lib)
 
-elseif(NOT WIN32)
+else()
 
     set(XAIE_SOURCE_DIR ../../../third_party/aie-rt/driver/src)
     set(BOOTGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/bootgen)

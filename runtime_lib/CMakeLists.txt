@@ -58,7 +58,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
 
   endif()
 
-  if (LibXAIE_FOUND)
+  if (NOT WIN32 AND LibXAIE_FOUND)
     set(testLibDependsOnXaiengine xaiengine_${target}-build)
     ExternalProject_Add(xaiengine_${target}
       PREFIX ${CMAKE_CURRENT_BINARY_DIR}/xaiengineTmp/${target}
