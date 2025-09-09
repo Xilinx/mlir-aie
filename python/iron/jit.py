@@ -20,6 +20,7 @@ from ..utils.xrt import read_insts_binary
 from .device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from .compile import compile_mlir_module
 from .config import get_current_device
+from .tensor import Tensor
 from aie.dialects.aie import AIEDevice
 
 
@@ -27,6 +28,57 @@ from aie.dialects.aie import AIEDevice
 # Kernels are cached based on their hash value of the MLIR module string. If during compilation,
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_DIR = os.path.expanduser("~/.iron/cache")
+
+
+class Promise:
+    """
+    Promise class for asynchronous execution.
+    This class is used to wait for the kernel to complete.
+    """
+    def __init__(self, kernel, opcode, insts_buffer_bo, n_insts, *kernel_args):
+        from .graph import is_graph_capture_enabled
+
+        # Store the kernel execution parameters
+        self.kernel = kernel
+        self.opcode = opcode
+        self.insts_buffer_bo = insts_buffer_bo
+        self.n_insts = n_insts
+        self.kernel_args = list(kernel_args)
+        self.kernel_handle = None
+        self.output_tensor = None
+
+        # If graph capture is enabled, don't execute immediately
+        # The Promise will be collected and executed during graph replay
+        if not is_graph_capture_enabled():
+            # Execute immediately if not in graph capture mode
+            self._execute_kernel()
+
+    def _execute_kernel(self):
+        """Execute the kernel and return the result."""
+        # Create a run object
+        run = xrt.run(self.kernel)
+        run.set_arg(0, self.opcode)
+        run.set_arg(1, self.insts_buffer_bo)
+        run.set_arg(2, self.n_insts)
+
+        # Set additional kernel arguments
+        for i, arg in enumerate(self.kernel_args):
+            run.set_arg(3 + i, arg)
+
+        # Start the run
+        run.start()
+        self.kernel_handle = run
+        return self
+
+    def done(self):
+        """
+        Wait for the kernel to complete.
+        """
+        if self.kernel_handle is not None:
+            result = self.kernel_handle.wait()
+            if result != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+                raise RuntimeError(f"Kernel returned {result}")
+
 
 
 class NPUKernel:
@@ -86,13 +138,13 @@ class NPUKernel:
         # Always sync to the device in the constructor
         self.__insts_buffer_bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
-    # Blocking call.
-    def __call__(self, *args):
+    def __call__(self, *args, async_mode: bool = False):
         """
         Allows the kernel to be called as a function with the provided arguments.
 
         Parameters:
             args (IRON Tensors): Arguments to pass to the kernel.
+            async_mode (bool): Whether to use asynchronous execution. Defaults to False.
         """
 
         opcode = 3
@@ -108,10 +160,13 @@ class NPUKernel:
                 )
             kernel_args.append(tensor.buffer_object())
 
-        h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
-        r = h.wait()
-        if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise NPUKernel_Error(f"Kernel returned {r}")
+        if async_mode:
+            return Promise(self.__kernel, opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
+        else:
+            h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
+            r = h.wait()
+            if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+                raise NPUKernel_Error(f"Kernel returned {r}")
 
     def __del__(self):
         """

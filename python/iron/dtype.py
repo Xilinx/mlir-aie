@@ -11,6 +11,7 @@ from ml_dtypes import bfloat16
 
 dtype_map = {
     "bf16": bfloat16,
+    "f16": np.float16,
     "i8": np.int8,
     "i16": np.int16,
     "f32": np.float32,

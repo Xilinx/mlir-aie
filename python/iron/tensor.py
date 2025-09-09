@@ -80,6 +80,11 @@ class Tensor:
             if self.device == "npu":
                 self.__sync_to_device()
 
+    @property
+    def ndim(self):
+        """Number of dimensions of the tensor."""
+        return len(self.shape)
+
     def __array__(self, dtype=None):
         """
         NumPy protocol method to convert the tensor to a NumPy array.
@@ -478,14 +483,54 @@ class Tensor:
 
         return t
 
+    def view(self, *shape):
+        """
+        Return a new tensor with the same data but different shape.
+
+        Parameters:
+            *shape: New shape for the tensor. Use -1 for one dimension to infer it.
+
+        Returns:
+            Tensor: A new tensor with the same data but different shape.
+        """
+        # Handle -1 in shape (infer dimension)
+        total_elements = np.prod(self.shape)
+        new_shape = list(shape)
+
+        # Find -1 and replace with inferred dimension
+        if -1 in new_shape:
+            if new_shape.count(-1) > 1:
+                raise ValueError("Only one dimension can be inferred")
+            inferred_dim = total_elements // np.prod([d for d in new_shape if d != -1])
+            new_shape = [int(inferred_dim) if d == -1 else int(d) for d in new_shape]
+        else:
+            new_shape = [int(d) for d in new_shape]
+
+        # Verify total elements match
+        if np.prod(new_shape) != total_elements:
+            raise ValueError(f"Shape {new_shape} is invalid for input of size {total_elements}")
+
+        # Create new tensor with same data but different shape
+        new_tensor = Tensor.__new__(Tensor)
+        new_tensor.device = self.device
+        new_tensor.shape = tuple(new_shape)
+        new_tensor.dtype = self.dtype
+        new_tensor.data = self.data.reshape(new_shape)
+        new_tensor.len_bytes = self.len_bytes
+        new_tensor.xrt_device = self.xrt_device
+        new_tensor.bo = getattr(self, 'bo', None)  # Share the same buffer object if it exists
+
+        return new_tensor
+
     def __del__(self):
         """
         Destructor for Tensor.
 
         Releases associated device memory (e.g., XRT buffer object).
         """
-        del self.bo
-        self.bo = None
+        if hasattr(self, 'bo') and self.bo is not None:
+            del self.bo
+            self.bo = None
 
 
 def tensor(data, dtype=np.float32, device="npu"):
