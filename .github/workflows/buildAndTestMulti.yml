@@ -127,12 +127,6 @@ jobs:
             LLVM_EXTERNAL_LIT="$(which lit)"
           fi
 
-          if [ x"${{ contains(matrix.OS, 'windows') }}" == x"true" ]; then
-            AIE_RUNTIME_TARGETS=
-          else
-            AIE_RUNTIME_TARGETS=x86_64
-          fi
-
           cmake .. \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -145,7 +139,6 @@ jobs:
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
-            -DAIE_RUNTIME_TARGETS=$AIE_RUNTIME_TARGETS \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=${{ matrix.ENABLE_ASSERTIONS }} \
             -DLLVM_ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
