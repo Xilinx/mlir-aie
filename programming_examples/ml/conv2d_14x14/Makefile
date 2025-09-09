@@ -47,7 +47,7 @@ endif
 
 aie_py_src = ${targetname}.py
 aie_py_placed_src = ${targetname}_placed.py
-#use_placed ?= 0
+# use_placed ?= 0
 use_placed ?= 1
 
 ifeq (${use_placed}, 1)
@@ -78,7 +78,7 @@ build/aie2.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${width} ${height} ${in_channels} ${out_channels} ${kernel_size} 0 > $@
 
-build/aie2_trace.mlir: ${srcdir}/${aie_py_placed_src}
+build/aie2_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
 	python3 $< ${devicename} ${width} ${height} ${in_channels} ${out_channels} ${kernel_size} ${trace_size} > $@
 
