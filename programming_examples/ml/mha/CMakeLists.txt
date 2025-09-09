@@ -4,31 +4,30 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.31)
+project(mha)
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 # Configuration variables
-set(num_KV_heads 2)
+set(num_KV_heads 4)
 
-set(heads 4)
-set(S_q 1024)
-set(S_kv 1024)
+set(S_q 512)
+set(heads 8) 
+set(S_kv 512)
 set(d 64)
 set(B_q 64)
 set(k 64)
 set(B_kv 64)
 set(dtype "bf16")
 
-set(verbose 1)
+set(verbose 0)
 set(trace_size 65536)
 set(device_name "npu2")
 set(design_name "mha")
 
-set(ProjectName ${design_name})
 set(currentDesignTarget ${design_name})
-
-project(${ProjectName})
 
 # Derived variables
 set(target_suffix "${heads}_${S_q}_${S_kv}_${d}_${B_q}x${d}x${B_kv}")
@@ -37,6 +36,8 @@ set(mm_kernel "mm_${B_q}x${d}x${B_kv}_${dtype}_${dtype}")
 set(softmax_kernel "softmax_${B_kv}_${dtype}_${dtype}")
 set(mha_kernel "mha_${heads}_${S_q}_${S_kv}_${d}_${B_q}x${d}x${B_kv}_${dtype}")
 set(passthrough_kernel "passthrough_${B_q}x${B_kv}_${dtype}")
+
+set(build_dir "${CMAKE_BINARY_DIR}")
 
 if(verbose STREQUAL "1")
     set(verbose_string "--verbose")
@@ -52,17 +53,17 @@ elseif(dtype STREQUAL "f32")
 endif()
 
 # Display configuration
-message(STATUS "Design Configuration:")
-message(STATUS "  Heads: ${heads}")
-message(STATUS "  Number of KV Heads: ${num_KV_heads}")
-message(STATUS "  Sequence Length Q: ${S_q}")
-message(STATUS "  Sequence Length KV: ${S_kv}")
-message(STATUS "  Embedding Dimension d: ${d}")
-message(STATUS "  Tile dimensions: ${B_q}x${d}x${B_kv}")
-message(STATUS "  Data type: ${dtype}")
-message(STATUS "  Device: ${device_name}")
-message(STATUS "  Design: ${design_name}")
-message(STATUS "  Verbose mode: ${verbose}")
+message(STATUS "Registering Executable: ${currentDesignTarget}")
+message(STATUS "    Heads: ${heads}")
+message(STATUS "    Number of KV Heads: ${num_KV_heads}")
+message(STATUS "    Sequence Length Q: ${S_q}")
+message(STATUS "    Sequence Length KV: ${S_kv}")
+message(STATUS "    Embedding Dimension d: ${d}")
+message(STATUS "    Tile dimensions: ${B_q}x${d}x${B_kv}")
+message(STATUS "    Data type: ${dtype}")
+message(STATUS "    Device: ${device_name}")
+message(STATUS "    Design: ${design_name}")
+message(STATUS "    Verbose mode: ${verbose}")
 
 # Platform detection
 find_program(WSL NAMES powershell.exe)
@@ -87,11 +88,11 @@ find_program(python_executable python REQUIRED)
 find_program(aiecc_executable aiecc.py REQUIRED)
 
 # Path configuration
-set(kernels_dir_aie2 "${CMAKE_SOURCE_DIR}/../../../../aie_kernels/aie2")
-set(kernels_dir "${CMAKE_SOURCE_DIR}/../../../../aie_kernels/aie2p")
-set(kernels_generic_dir "${CMAKE_SOURCE_DIR}/../../../../aie_kernels/generic")
-set(runtime_lib_dir "${CMAKE_SOURCE_DIR}/../../../../runtime_lib")
-set(test_lib_dir "${runtime_lib_dir}/test_lib")
+set(kernels_dir_aie2 "${CMAKE_SOURCE_DIR}/../../../aie_kernels/aie2")
+set(kernels_dir "${CMAKE_SOURCE_DIR}/../../../aie_kernels/aie2p")
+set(kernels_generic_dir "${CMAKE_SOURCE_DIR}/../../../aie_kernels/generic")
+set(runtime_lib_dir "${CMAKE_SOURCE_DIR}/../../../runtime_lib")
+set(test_lib_dir "${CMAKE_CURRENT_SOURCE_DIR}/test_lib")
 
 find_program(aieopt_dir aie-opt)
 
@@ -105,20 +106,18 @@ else()
 endif()
 
 # Build artifact paths
-set(golden_ref_header "${CMAKE_BINARY_DIR}/golden_reference.h")
-set(mlir_target "${CMAKE_BINARY_DIR}/aie_${target_suffix}.mlir")
-set(trace_mlir_target "${CMAKE_BINARY_DIR}/aie_trace_${target_suffix}.mlir")
-set(xclbin_target "${CMAKE_BINARY_DIR}/final_${target_suffix}.xclbin")
-set(trace_xclbin_target "${CMAKE_BINARY_DIR}/trace_${target_suffix}.xclbin")
-set(insts_target "${CMAKE_BINARY_DIR}/insts_${target_suffix}.txt")
+set(golden_ref_header "${build_dir}/golden_reference.h")
+set(mlir_target "${build_dir}/aie_${target_suffix}.mlir")
+set(xclbin_target "${build_dir}/final_${target_suffix}.xclbin")
+set(insts_target "${build_dir}/insts_${target_suffix}.txt")
 
-set(mm_kernel_obj "${CMAKE_BINARY_DIR}/${mm_kernel}.o")
-set(mm_kernel_obj_rowmaj "${CMAKE_BINARY_DIR}/${mm_kernel}_rowmaj.o")
-set(softmax_kernel_obj "${CMAKE_BINARY_DIR}/${softmax_kernel}.o")
-set(mha_kernel_obj "${CMAKE_BINARY_DIR}/${mha_kernel}.o")
-set(passthrough_kernel_obj "${CMAKE_BINARY_DIR}/${passthrough_kernel}.o")
+set(mm_kernel_obj "${build_dir}/${mm_kernel}.o")
+set(mm_kernel_obj_rowmaj "${build_dir}/${mm_kernel}_rowmaj.o")
+set(softmax_kernel_obj "${build_dir}/${softmax_kernel}.o")
+set(mha_kernel_obj "${build_dir}/${mha_kernel}.o")
+set(passthrough_kernel_obj "${build_dir}/${passthrough_kernel}.o")
 
-set(kernels_archive "${CMAKE_BINARY_DIR}/kernels.a")
+set(kernels_archive "${build_dir}/kernels.a")
 
 # Kernel compilation flags
 set(kernel_cc "$ENV{PEANO_INSTALL_DIR}/bin/clang++")
@@ -133,7 +132,7 @@ set(kernel_defines
     "-DDIM_M=${B_q}" 
     "-DDIM_K=${d}" 
     "-DDIM_N=${B_kv}"
-    # "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16"
+    "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16"
 )
 
 # list(APPEND kernel_defines "-DB_COL_MAJ")
@@ -166,12 +165,12 @@ set(aiecc_flags
 
 add_custom_command(
     OUTPUT ${golden_ref_header}
-    COMMAND ${python_executable} ${CMAKE_SOURCE_DIR}/generate_golden_reference.py
+    COMMAND ${python_executable} ${CMAKE_CURRENT_SOURCE_DIR}/mha_golden.py
         --heads ${heads} --S_q ${S_q} --S_kv ${S_kv} -d ${d}
         --num_KV_heads ${num_KV_heads}
         --dtype ${dtype}
         --output ${golden_ref_header} ${verbose_string}
-    DEPENDS ${CMAKE_SOURCE_DIR}/generate_golden_reference.py
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/mha_golden.py
     COMMENT "Generating PyTorch golden reference"
 )
 
@@ -218,7 +217,7 @@ add_custom_command(
 
 add_custom_command(
         OUTPUT ${kernels_archive}
-        COMMAND ar rvs ${kernels_archive} ${mm_kernel_obj} ${mm_kernel_obj_rowmaj}_renamed ${softmax_kernel_obj} ${passthrough_kernel_obj} ${mha_kernel_obj}
+        COMMAND ar rvs ${kernels_archive} ${mm_kernel_obj} ${mm_kernel_obj_rowmaj}_renamed ${softmax_kernel_obj} ${passthrough_kernel_obj} ${mha_kernel_obj} > /dev/null
         DEPENDS ${mm_kernel_obj} ${mm_kernel_obj_rowmaj}_renamed ${softmax_kernel_obj} ${passthrough_kernel_obj} ${mha_kernel_obj}
         COMMENT "Creating kernels archive for NPU2"
     )
@@ -238,29 +237,15 @@ add_custom_command(
 # MLIR generation
 add_custom_command(
     OUTPUT ${mlir_target}
-    COMMAND ${python_executable} ${CMAKE_SOURCE_DIR}/${design_name}.py
+    COMMAND ${python_executable} ${CMAKE_CURRENT_SOURCE_DIR}/${design_name}.py
         --heads ${heads}
         --S_q ${S_q} --S_kv ${S_kv} -d ${d}
         --B_q ${B_q} --B_kv ${B_kv}
         --num_KV_heads ${num_KV_heads}
         --trace_size 0 ${verbose_string} 
         --output_file_path ${mlir_target}
-    DEPENDS ${CMAKE_SOURCE_DIR}/${design_name}.py
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${design_name}.py
     COMMENT "Generating MLIR for ${target_suffix}"
-)
-
-# Trace MLIR generation
-add_custom_command(
-    OUTPUT ${trace_mlir_target}
-    COMMAND ${python_executable} ${CMAKE_SOURCE_DIR}/${design_name}.py
-        --heads ${heads}
-        --S_q ${S_q} --S_kv ${S_kv} -d ${d}
-        --B_q ${B_q} --B_kv ${B_kv}
-        --num_KV_heads ${num_KV_heads}
-        --trace_size ${trace_size} ${verbose_string} 
-        --output_file_path ${mlir_target}
-    DEPENDS ${CMAKE_SOURCE_DIR}/${design_name}.py
-    COMMENT "Generating trace MLIR for ${target_suffix}"
 )
 
 # XCLBIN generation
@@ -269,27 +254,17 @@ add_custom_command(
     COMMAND ${aiecc_executable} ${aiecc_flags}
         --xclbin-name=final_${target_suffix}.xclbin
         --npu-insts-name=insts_${target_suffix}.txt
+        -j 16
+        --progress
         ${mlir_target}
-    DEPENDS ${mlir_target} ${kernels_archive} #${mm_kernel_obj}
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    DEPENDS ${mlir_target} ${kernels_archive}
+    WORKING_DIRECTORY ${build_dir}
     COMMENT "Generating XCLBIN and instructions for ${target_suffix}"
-)
-
-# Trace XCLBIN generation
-add_custom_command(
-    OUTPUT ${trace_xclbin_target}
-    COMMAND ${aiecc_executable} ${aiecc_flags}
-        --xclbin-name=trace_${target_suffix}.xclbin
-        --npu-insts-name=insts_${target_suffix}.txt
-        ${trace_mlir_target}
-    DEPENDS ${trace_mlir_target} ${mm_kernel_obj}
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMENT "Generating trace XCLBIN for ${target_suffix}"
 )
 
 # Host executable
 add_executable(${currentDesignTarget}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib/test_lib/test_utils.cpp
+    ${test_lib_dir}/test_utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/test.cpp
 )
 
@@ -299,10 +274,11 @@ target_compile_definitions(${currentDesignTarget} PUBLIC
 
 target_include_directories (${currentDesignTarget} PUBLIC
     ${XRT_INC_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib/test_lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib
+    ${test_lib_dir}
+    ${runtime_lib_dir}
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_BINARY_DIR}
+    ${build_dir}
+    "$ENV{MLIR_AIE_INSTALL_DIR}/include"
 )
 
 target_link_directories(${currentDesignTarget} PUBLIC
@@ -317,57 +293,22 @@ target_compile_options(${currentDesignTarget} PRIVATE
     -ggdb
 )
 
-# Ensure golden reference is generated before compiling
-add_dependencies(${currentDesignTarget} golden_ref)
-
-# Custom targets
+add_dependencies(${currentDesignTarget} golden_ref xclbin)
 add_custom_target(golden_ref DEPENDS ${golden_ref_header})
-add_custom_target(xclbin DEPENDS ${xclbin_target} ${insts_target})
-add_custom_target(trace_xclbin DEPENDS ${trace_xclbin_target})
+add_custom_target(xclbin ALL DEPENDS ${xclbin_target} ${insts_target})
 
-# Run target
+# Custom target to run the executable
 add_custom_target(run
-    COMMAND ${CMAKE_COMMAND} -E env XRT_HACK_UNSECURE_LOADING_XCLBIN=1
-        $<TARGET_FILE:${currentDesignTarget}>
-        -x ${xclbin_target}
-        -i ${insts_target}
-        -k MLIR_AIE
-        --heads ${heads}
-        --S_q ${S_q} --S_kv ${S_kv} -d ${d}
-        -v 2 --warmup 1 --iters 1
-        --verbosity ${verbose}
-    DEPENDS ${currentDesignTarget} xclbin
-    COMMENT "Running ${currentDesignTarget} test"
+    COMMAND $<TARGET_FILE:${currentDesignTarget}> -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE --heads ${heads} --S_q ${S_q} --S_kv ${S_kv} -d ${d} -v 2 --warmup 1 --iters 1 --verbosity ${verbose}
+    DEPENDS ${currentDesignTarget} xclbin golden_ref
+    COMMENT "Running ${currentDesignTarget} with generated XCLBIN"
 )
 
-# Trace target
-add_custom_target(trace
-    COMMAND ${CMAKE_COMMAND} -E env XRT_HACK_UNSECURE_LOADING_XCLBIN=1
-        $<TARGET_FILE:${currentDesignTarget}>
-        -x ${trace_xclbin_target}
-        -i ${insts_target}
-        -k MLIR_AIE
-        --heads ${heads}
-        --S_q ${S_q} --S_kv ${S_kv} -d ${d}
-        -v 2 --warmup 1 --iters 1
-        -t ${trace_size}
-        --verbosity ${verbose}
-    DEPENDS ${currentDesignTarget} trace_xclbin
-    COMMENT "Running ${currentDesignTarget} test with tracing"
-)
-
-# Parse trace target
-add_custom_target(parse_trace
-    COMMAND ${python_executable} ${CMAKE_SOURCE_DIR}/../../utils/parse_trace.py
-        --input trace.txt
-        --mlir ${trace_mlir_target}
-        --output trace_mm.json
-    COMMENT "Parsing trace output"
-)
-
-# Clean targets
-add_custom_target(clean_all
-    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}
-    COMMENT "Cleaning all build artifacts"
-)
+# add_aie_ci_test(${currentDesignTarget}
+#                 RUN 
+#                     "$<TARGET_FILE:${currentDesignTarget}> -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE --heads ${heads} --S_q ${S_q} --S_kv ${S_kv} -d ${d} -v 2 --warmup 1 --iters 1 --verbosity ${verbose}"
+#                 CHECK
+#                     "PASS!"
+#                 METRICS 
+#                     "Latency" [=[Latency \(us\): (?P<metric>\d+)]=]
+#                     "Bandwidth" [=[Effective Bandwidth: (?P<metric>[\d\.e\+-]+) GB/s]=])

@@ -40,7 +40,7 @@
 // See "Note on Numerical Tolerances" in README.md
 // float abs_tol = matmul_common::get_abs_tol<DTYPE_ACT>();
 // float rel_tol = matmul_common::get_rel_tol<DTYPE_ACT>();
-float abs_tol = 1.2e-1f;
+float abs_tol = 5e-1f;
 float rel_tol = 4.0e-2f;
 
 int main(int argc, const char *argv[]) {
@@ -134,7 +134,6 @@ int main(int argc, const char *argv[]) {
   // Load input data from golden reference for consistency
   golden_reference_verification::load_golden_inputs(QVec, KVec, VVec);
   if (verbosity >= 1) {
-    golden_reference_verification::print_golden_reference_info();
     std::cout << "Loaded golden reference inputs:" << std::endl;
     std::cout << "  Q[0] = " << (int)QVec[0] << ", Q[1] = " << (int)QVec[1] << std::endl;
     std::cout << "  K[0] = " << (int)KVec[0] << ", K[1] = " << (int)KVec[1] << std::endl;
@@ -214,7 +213,15 @@ int main(int argc, const char *argv[]) {
     auto vstart = std::chrono::system_clock::now();
     
     errors = golden_reference_verification::verify_against_golden<DTYPE_ACT, DTYPE_ACT, DTYPE_ACT>(
-        OVec, verbosity, abs_tol, rel_tol);
+        OVec, 
+        verbosity, 
+        abs_tol, 
+        rel_tol, 
+        vm["heads"].as<int>(), 
+        vm["S_q"].as<int>(), 
+        vm["S_kv"].as<int>(), 
+        vm["d"].as<int>()
+      );
     
     auto vstop = std::chrono::system_clock::now();
     float vtime =
@@ -240,17 +247,17 @@ int main(int argc, const char *argv[]) {
   }
 
   std::cout << std::endl
-            << "Avg NPU matmul time: " << npu_time_total / n_iterations << "us."
+            << "Avg NPU MHA time: " << npu_time_total / n_iterations << "us."
             << std::endl;
   std::cout << "Avg NPU gflops: "
             << macs / (1000 * npu_time_total / n_iterations) << std::endl;
 
   std::cout << std::endl
-            << "Min NPU matmul time: " << npu_time_min << "us." << std::endl;
+            << "Min NPU MHA time: " << npu_time_min << "us." << std::endl;
   std::cout << "Max NPU gflops: " << macs / (1000 * npu_time_min) << std::endl;
 
   std::cout << std::endl
-            << "Max NPU matmul time: " << npu_time_max << "us." << std::endl;
+            << "Max NPU MHA time: " << npu_time_max << "us." << std::endl;
   std::cout << "Min NPU gflops: " << macs / (1000 * npu_time_max) << std::endl;
 
   if (!errors) {

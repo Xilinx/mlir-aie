@@ -32,30 +32,18 @@ namespace matmul_common {
 
 void add_default_options(cxxopts::Options &options) {
   options.add_options()("help,h", "produce help message")(
-      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
-      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
-      cxxopts::value<std::string>())("verbosity,v",
-                                     "the verbosity of the output",
-                                     cxxopts::value<int>()->default_value("0"))(
-      "instr,i",
-      "path of file containing userspace instructions sent to the NPU",
-      cxxopts::value<std::string>())(
-      "verify", "whether to verify the AIE computed output",
-      cxxopts::value<bool>()->default_value("true"))(
-      "heads", "Number of heads", cxxopts::value<int>()->default_value("1"))(
-      "S_q", "Sequence Length of Queries", cxxopts::value<int>()->default_value("512"))(
-      "d", "Embedding Dimension", cxxopts::value<int>()->default_value("512"))(
-      "S_kv", "Sequence Length of Keys and Values",
-      cxxopts::value<int>()->default_value("512"))(
-      "iters", "number of iterations",
-      cxxopts::value<int>()->default_value("1"))(
-      "warmup", "number of warmup iterations",
-      cxxopts::value<int>()->default_value("0"))(
-      "trace_sz,t", "trace size", cxxopts::value<int>()->default_value("0"))(
-      "trace_file", "where to store trace output",
-      cxxopts::value<std::string>()->default_value("trace.txt"))(
-      "b_col_maj", "Is B matrix in colum-major format?",
-      cxxopts::value<int>()->default_value("0"));
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())
+      ("kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)", cxxopts::value<std::string>())
+      ("verbosity,v", "the verbosity of the output", cxxopts::value<int>()->default_value("0"))
+      ("instr,i", "path of file containing userspace instructions sent to the NPU", cxxopts::value<std::string>())
+      ("heads", "Number of heads", cxxopts::value<int>()->default_value("1"))
+      ("S_q", "Sequence Length of Queries", cxxopts::value<int>()->default_value("512"))
+      ("d", "Embedding Dimension", cxxopts::value<int>()->default_value("512"))
+      ("S_kv", "Sequence Length of Keys and Values", cxxopts::value<int>()->default_value("512"))
+      ("iters", "number of iterations", cxxopts::value<int>()->default_value("1"))
+      ("warmup", "number of warmup iterations",cxxopts::value<int>()->default_value("0"))
+      ("trace_sz,t", "trace size", cxxopts::value<int>()->default_value("0"))
+      ("trace_file", "where to store trace output", cxxopts::value<std::string>()->default_value("trace.txt"));
 }
 
 void parse_options(int argc, const char *argv[], cxxopts::Options &options,
