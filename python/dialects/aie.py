@@ -515,11 +515,11 @@ class packetflow(PacketFlowOp):
         super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
-             PacketSourceOp(source, source_port, source_channel)
-             dests = [dests] if isinstance(dests, tuple) else dests
-             for dest, dest_port, dest_channel in dests:
-                 PacketDestOp(dest, dest_port, dest_channel)
-             EndOp()
+            PacketSourceOp(source, source_port, source_channel)
+            dests = [dests] if isinstance(dests, tuple) else dests
+            for dest, dest_port, dest_channel in dests:
+                PacketDestOp(dest, dest_port, dest_channel)
+            EndOp()
 
 
 core = region_op(Core, terminator=lambda *_: EndOp())
