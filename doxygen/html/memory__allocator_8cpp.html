@@ -56,7 +56,6 @@ $(function() {
 </div><!--header-->
 <div class="contents">
 <div class="textblock"><code>#include &quot;<a class="el" href="memory__allocator_8h_source.html">memory_allocator.h</a>&quot;</code><br />
-<code>#include &quot;xioutils.h&quot;</code><br />
 <code>#include &lt;assert.h&gt;</code><br />
 <code>#include &lt;iostream&gt;</code><br />
 </div><div class="textblock"><div id="dynsection-0" onclick="return toggleVisibility(this)" class="dynheader closed" style="cursor:pointer;">
@@ -66,15 +65,13 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="memory__allocator_8cpp__incl.png" border="0" usemap="#aruntime__lib_2test__lib_2memory__allocator_8cpp" alt=""/></div>
 <map name="aruntime__lib_2test__lib_2memory__allocator_8cpp" id="aruntime__lib_2test__lib_2memory__allocator_8cpp">
-<area shape="rect" title=" " alt="" coords="353,5,524,45"/>
+<area shape="rect" title=" " alt="" coords="299,5,469,45"/>
 <area shape="rect" href="memory__allocator_8h.html" title=" " alt="" coords="171,93,323,119"/>
-<area shape="poly" title=" " alt="" coords="394,48,288,91,286,86,392,43"/>
-<area shape="rect" title=" " alt="" coords="347,93,429,119"/>
-<area shape="poly" title=" " alt="" coords="429,47,405,83,401,80,424,44"/>
-<area shape="rect" title=" " alt="" coords="453,93,528,119"/>
-<area shape="poly" title=" " alt="" coords="453,44,478,80,473,83,449,47"/>
-<area shape="rect" title=" " alt="" coords="552,93,632,119"/>
-<area shape="poly" title=" " alt="" coords="477,43,559,85,556,89,474,48"/>
+<area shape="poly" title=" " alt="" coords="352,48,280,89,278,84,350,43"/>
+<area shape="rect" title=" " alt="" coords="347,93,421,119"/>
+<area shape="poly" title=" " alt="" coords="387,46,387,79,381,79,381,46"/>
+<area shape="rect" title=" " alt="" coords="445,93,525,119"/>
+<area shape="poly" title=" " alt="" coords="410,43,461,82,458,87,407,48"/>
 <area shape="rect" href="target_8h.html" title=" " alt="" coords="67,167,141,192"/>
 <area shape="poly" title=" " alt="" coords="225,121,141,163,138,158,223,116"/>
 <area shape="rect" title=" " alt="" coords="165,167,235,192"/>
@@ -96,6 +93,10 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:aaba3a75889ae7254d7d4d2af0f76dff6" id="r_aaba3a75889ae7254d7d4d2af0f76dff6"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#aaba3a75889ae7254d7d4d2af0f76dff6">ess_WriteGM</a> (uint64_t addr, const void *data, uint64_t size)</td></tr>
+<tr class="separator:aaba3a75889ae7254d7d4d2af0f76dff6"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1b16fd4871110f0baf6dbb018655fced" id="r_a1b16fd4871110f0baf6dbb018655fced"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#a1b16fd4871110f0baf6dbb018655fced">ess_ReadGM</a> (uint64_t addr, void *data, uint64_t size)</td></tr>
+<tr class="separator:a1b16fd4871110f0baf6dbb018655fced"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac1926460735d45ca543f54789389ca75" id="r_ac1926460735d45ca543f54789389ca75"><td class="memItemLeft" align="right" valign="top">int *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#ac1926460735d45ca543f54789389ca75">mlir_aie_mem_alloc</a> (<a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *_xaie, <a class="el" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle, int size)</td></tr>
 <tr class="memdesc:ac1926460735d45ca543f54789389ca75"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocate a buffer in device memory.  <br /></td></tr>
 <tr class="separator:ac1926460735d45ca543f54789389ca75"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -110,6 +111,78 @@ Functions</h2></td></tr>
 <tr class="separator:a03815492edc8a392f987bd27f856c20a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
+<a id="a1b16fd4871110f0baf6dbb018655fced" name="a1b16fd4871110f0baf6dbb018655fced"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1b16fd4871110f0baf6dbb018655fced">&#9670;&#160;</a></span>ess_ReadGM()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ess_ReadGM </td>
+          <td>(</td>
+          <td class="paramtype">uint64_t&#160;</td>
+          <td class="paramname"><em>addr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">void *&#160;</td>
+          <td class="paramname"><em>data</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint64_t&#160;</td>
+          <td class="paramname"><em>size</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="reference">Referenced by <a class="el" href="memory__allocator_8cpp_source.html#l00048">mlir_aie_sync_mem_cpu()</a>.</p>
+
+</div>
+</div>
+<a id="aaba3a75889ae7254d7d4d2af0f76dff6" name="aaba3a75889ae7254d7d4d2af0f76dff6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aaba3a75889ae7254d7d4d2af0f76dff6">&#9670;&#160;</a></span>ess_WriteGM()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void ess_WriteGM </td>
+          <td>(</td>
+          <td class="paramtype">uint64_t&#160;</td>
+          <td class="paramname"><em>addr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const void *&#160;</td>
+          <td class="paramname"><em>data</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">uint64_t&#160;</td>
+          <td class="paramname"><em>size</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="reference">Referenced by <a class="el" href="memory__allocator_8cpp_source.html#l00052">mlir_aie_sync_mem_dev()</a>.</p>
+
+</div>
+</div>
 <a id="a03815492edc8a392f987bd27f856c20a" name="a03815492edc8a392f987bd27f856c20a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a03815492edc8a392f987bd27f856c20a">&#9670;&#160;</a></span>mlir_aie_get_device_address()</h2>
 
@@ -144,7 +217,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00051">51</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00056">56</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00035">aie_libxaie_ctx_t::allocations</a>.</p>
 
@@ -193,7 +266,7 @@ Functions</h2></td></tr>
 <dl class="section return"><dt>Returns</dt><dd>A host-side pointer that can write into the given buffer. </dd></dl>
 <dl class="todo"><dt><b><a class="el" href="todo.html#_todo000001">Todo:</a></b></dt><dd>This is at best a quick hack and should be replaced </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00017">17</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00022">22</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00035">aie_libxaie_ctx_t::allocations</a>, <a class="el" href="target_8h_source.html#l00025">ext_mem_model_t::physicalAddr</a>, <a class="el" href="target_8h_source.html#l00026">ext_mem_model_t::size</a>, and <a class="el" href="target_8h_source.html#l00024">ext_mem_model_t::virtualAddr</a>.</p>
 
@@ -223,9 +296,9 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00043">43</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00048">48</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="target_8h_source.html#l00025">ext_mem_model_t::physicalAddr</a>, <a class="el" href="target_8h_source.html#l00026">ext_mem_model_t::size</a>, and <a class="el" href="target_8h_source.html#l00024">ext_mem_model_t::virtualAddr</a>.</p>
+<p class="reference">References <a class="el" href="memory__allocator_8cpp.html#a1b16fd4871110f0baf6dbb018655fced">ess_ReadGM()</a>, <a class="el" href="target_8h_source.html#l00025">ext_mem_model_t::physicalAddr</a>, <a class="el" href="target_8h_source.html#l00026">ext_mem_model_t::size</a>, and <a class="el" href="target_8h_source.html#l00024">ext_mem_model_t::virtualAddr</a>.</p>
 
 </div>
 </div>
@@ -253,16 +326,16 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00047">47</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00052">52</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="target_8h_source.html#l00025">ext_mem_model_t::physicalAddr</a>, <a class="el" href="target_8h_source.html#l00026">ext_mem_model_t::size</a>, and <a class="el" href="target_8h_source.html#l00024">ext_mem_model_t::virtualAddr</a>.</p>
+<p class="reference">References <a class="el" href="memory__allocator_8cpp.html#aaba3a75889ae7254d7d4d2af0f76dff6">ess_WriteGM()</a>, <a class="el" href="target_8h_source.html#l00025">ext_mem_model_t::physicalAddr</a>, <a class="el" href="target_8h_source.html#l00026">ext_mem_model_t::size</a>, and <a class="el" href="target_8h_source.html#l00024">ext_mem_model_t::virtualAddr</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Sep 10 2025 17:04:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Sep 10 2025 19:49:48 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
