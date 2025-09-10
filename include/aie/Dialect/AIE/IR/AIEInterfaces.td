@@ -112,9 +112,12 @@ def TileElement : OpInterface<"TileElement", [
       ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
       std::string nameWithoutDialect =
           op.getOperationName().str().substr(op.getOperationName().find('.') + 1);
-      setNameFn(op.getResult(), nameWithoutDialect + "_" +
-                                    std::to_string(getTileID().col) + "_" +
-                                    std::to_string(getTileID().row));
+      std::string col_str =
+        getTileID().col >= 0 ? std::to_string(getTileID().col) : "c";
+      std::string row_str =
+        getTileID().row >= 0 ? std::to_string(getTileID().row) : "r";
+      setNameFn(op.getResult(),
+                nameWithoutDialect + "_" + col_str + "_" + row_str);
     }
   }];
 }
