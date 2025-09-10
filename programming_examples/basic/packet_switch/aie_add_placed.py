@@ -111,9 +111,7 @@ def packet_switch_kernel(dev, in_out_size):
             source=ShimTile_0_0,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dest=MemTile_0_1,
-            dest_port=WireBundle.DMA,
-            dest_channel=0,
+            dests=(MemTile_0_1, WireBundle.DMA, 0),
             keep_pkt_header=True,
         )
         packetflow(
