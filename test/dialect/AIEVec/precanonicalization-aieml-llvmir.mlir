@@ -3,8 +3,8 @@
 // CHECK-LABEL: @scalar_extsi_to_broadcast_swap(
 // CHECK-SAME: %[[SIN:.*]]: i8
 func.func @scalar_extsi_to_broadcast_swap(%s: i8) -> vector<32xi32> {
-    // CHECK: %[[SPLAT:.*]] = vector.splat %[[SIN]] : vector<32xi8>
-    // CHECK: %[[EXT:.*]] = arith.extsi %[[SPLAT]] : vector<32xi8> to vector<32xi32>
+    // CHECK: %[[BCAST:.*]] = vector.broadcast %[[SIN]] : i8 to vector<32xi8>
+    // CHECK: %[[EXT:.*]] = arith.extsi %[[BCAST]] : vector<32xi8> to vector<32xi32>
     %0 = arith.extsi %s : i8 to i32
     %1 = vector.broadcast %0 : i32 to vector<32xi32>
     return %1 : vector<32xi32>

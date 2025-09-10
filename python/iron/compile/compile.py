@@ -15,9 +15,9 @@ def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
     output_path: str,
-    include_dirs=None,
-    compile_args=None,
-    cwd=None,
+    include_dirs: list[str] | None = None,
+    compile_args: list[str] | None = None,
+    cwd: str | None = None,
     verbose=False,
 ):
     """
@@ -32,7 +32,7 @@ def compile_cxx_core_function(
         include_dirs (list[str], optional): List of include directories to add with -I.
         compile_args (list[str], optional): Additional compile arguments to peano.
         cwd (str, optional): Overrides the current working directory.
-        verbose (bool): Enable verbose output.
+        verbose (bool): If True, enable verbose output.
     """
     cmd = [
         config.peano_cxx_path(),
@@ -61,7 +61,7 @@ def compile_cxx_core_function(
         cmd.extend(compile_args)
 
     if verbose:
-        print("Executing:", " ".join(cmd))
+        print("Compiling with:", " ".join(cmd))
     ret = subprocess.run(
         cmd,
         cwd=cwd,
@@ -73,17 +73,16 @@ def compile_cxx_core_function(
     if ret.returncode != 0:
         if ret.stderr:
             raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
-        else:
-            raise RuntimeError("[Peano] compilation failed")
+        raise RuntimeError("[Peano] compilation failed")
 
 
 def compile_mlir_module(
     mlir_module: str,
-    insts_path=None,
-    pdi_path=None,
-    xclbin_path=None,
+    insts_path: str | None = None,
+    pdi_path: str | None = None,
+    xclbin_path: str | None = None,
     verbose=False,
-    work_dir=None,
+    work_dir: str | None = None,
     options=None,
 ):
     """
@@ -96,7 +95,7 @@ def compile_mlir_module(
         insts_path (str): Path to the instructions binary file.
         pdi_path (str): Path to the PDI file.
         xclbin_path (str): Path to the xclbin file.
-        verbose (bool): Enable verbose output.
+        verbose (bool): If True, enable verbose output.
         work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
     """

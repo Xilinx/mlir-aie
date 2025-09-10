@@ -86,72 +86,72 @@ void matmul_vectorized_2x2_bfp16(const bfp16ebs8 *__restrict pA,
   AIE_PREPARE_FOR_PIPELINING
   AIE_LOOP_MIN_ITERATION_COUNT(4)
   for (unsigned z = 0; z < rowA; z += 2) {
-      aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pC1In(pC);
-      pC1In.seek(z * colB);
-      aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pC2In(pC);
-      pC2In.seek((z + 1) * colB);
-      aie::block_vector_output_buffer_stream<bfp16ebs8, 64> pC1Out(pC);
-      pC1Out.seek(z * colB);
-      aie::block_vector_output_buffer_stream<bfp16ebs8, 64> pC2Out(pC);
-      pC2Out.seek((z + 1) * colB);
+    aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pC1In(pC);
+    pC1In.seek(z * colB);
+    aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pC2In(pC);
+    pC2In.seek((z + 1) * colB);
+    aie::block_vector_output_buffer_stream<bfp16ebs8, 64> pC1Out(pC);
+    pC1Out.seek(z * colB);
+    aie::block_vector_output_buffer_stream<bfp16ebs8, 64> pC2Out(pC);
+    pC2Out.seek((z + 1) * colB);
 
-      for (unsigned j = 0; j < colB; j += 2)
+    for (unsigned j = 0; j < colB; j += 2)
 #ifdef OPT_PERF_ENABLED
       AIE_LOOP_FLATTEN
 #endif
-        {
-          aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pA1bfp16(pA);
-          aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pA2bfp16(pA);
-          pA1bfp16.seek(z * colA);
-          pA2bfp16.seek((z + 1) * colA);
+      {
+        aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pA1bfp16(pA);
+        aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pA2bfp16(pA);
+        pA1bfp16.seek(z * colA);
+        pA2bfp16.seek((z + 1) * colA);
 
-          aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pB1bfp16(pB);
-          aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pB2bfp16(pB);
-          // For non transposed matrix
-          // pB1bfp16.seek(j);
-          // pB2bfp16.seek(j + 1);
-          pB1bfp16.seek(j * colA);
-          pB2bfp16.seek((j + 1) * colA);
+        aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pB1bfp16(pB);
+        aie::block_vector_input_buffer_stream<bfp16ebs8, 64> pB2bfp16(pB);
+        // For non transposed matrix
+        // pB1bfp16.seek(j);
+        // pB2bfp16.seek(j + 1);
+        pB1bfp16.seek(j * colA);
+        pB2bfp16.seek((j + 1) * colA);
 
-          aie::block_vector<bfp16ebs8, sizeA> A0;
-          aie::block_vector<bfp16ebs8, sizeA> A1;
-          aie::block_vector<bfp16ebs8, sizeB> B0;
-          aie::block_vector<bfp16ebs8, sizeB> B1;
+        aie::block_vector<bfp16ebs8, sizeA> A0;
+        aie::block_vector<bfp16ebs8, sizeA> A1;
+        aie::block_vector<bfp16ebs8, sizeB> B0;
+        aie::block_vector<bfp16ebs8, sizeB> B1;
 
-          // Note that unlike the example mentioned above, we need
-          // to use a mac to take into account results from previous kernel
-          // calls but this is completely unrelated to the block datatype.
-          aie::accum<accfloat, sizeC> accC00(pC1In.pop());
-          aie::accum<accfloat, sizeC> accC01(pC1In.pop());
-          aie::accum<accfloat, sizeC> accC10(pC2In.pop());
-          aie::accum<accfloat, sizeC> accC11(pC2In.pop());
+        // Note that unlike the example mentioned above, we need
+        // to use a mac to take into account results from previous kernel
+        // calls but this is completely unrelated to the block datatype.
+        aie::accum<accfloat, sizeC> accC00(pC1In.pop());
+        aie::accum<accfloat, sizeC> accC01(pC1In.pop());
+        aie::accum<accfloat, sizeC> accC10(pC2In.pop());
+        aie::accum<accfloat, sizeC> accC11(pC2In.pop());
 
-          for (unsigned i = 0; i < colA; ++i)
+        for (unsigned i = 0; i < colA; ++i)
 #ifdef OPT_PERF_ENABLED
-      AIE_LOOP_FLATTEN
+          AIE_LOOP_FLATTEN
 #endif
-            {
-              A0 = pA1bfp16.pop();
-              A1 = pA2bfp16.pop();
+          {
+            A0 = pA1bfp16.pop();
+            A1 = pA2bfp16.pop();
 
-              // For non transposed matrix
-              // B0 = pB1bfp16.pop_seek(colB - 1);
-              // B1 = pB2bfp16.pop_seek(colB - 1);
-              B0 = pB1bfp16.pop();
-              B1 = pB2bfp16.pop();
+            // For non transposed matrix
+            // B0 = pB1bfp16.pop_seek(colB - 1);
+            // B1 = pB2bfp16.pop_seek(colB - 1);
+            B0 = pB1bfp16.pop();
+            B1 = pB2bfp16.pop();
 
-              accC00 = mac_8x8_8x8T(A0, B0, accC00);
-              accC01 = mac_8x8_8x8T(A0, B1, accC01);
-              accC10 = mac_8x8_8x8T(A1, B0, accC10);
-              accC11 = mac_8x8_8x8T(A1, B1, accC11);
-            }
+            accC00 = mac_8x8_8x8T(A0, B0, accC00);
+            accC01 = mac_8x8_8x8T(A0, B1, accC01);
+            accC10 = mac_8x8_8x8T(A1, B0, accC10);
+            accC11 = mac_8x8_8x8T(A1, B1, accC11);
+          }
 
-          pC1Out.push(accC00.template to_vector<bfp16ebs8>());
-          pC1Out.push(accC01.template to_vector<bfp16ebs8>());
-          pC2Out.push(accC10.template to_vector<bfp16ebs8>());
-          pC2Out.push(accC11.template to_vector<bfp16ebs8>());
-        }
-    }
+        pC1Out.push(accC00.template to_vector<bfp16ebs8>());
+        pC1Out.push(accC01.template to_vector<bfp16ebs8>());
+        pC2Out.push(accC10.template to_vector<bfp16ebs8>());
+        pC2Out.push(accC11.template to_vector<bfp16ebs8>());
+      }
+  }
 }
 
 extern "C" {

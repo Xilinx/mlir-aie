@@ -27,31 +27,35 @@ extern "C" {
 // #include "xaiengine/xaie_txn.h"
 // see aie-rt commit a6196eb, xaiengine/xaie_txn.h for source of this enum
 typedef enum {
-	XAIE_IO_WRITE,
-	XAIE_IO_BLOCKWRITE,
-	XAIE_IO_BLOCKSET,
-	XAIE_IO_MASKWRITE,
-	XAIE_IO_MASKPOLL,
-	XAIE_IO_NOOP,
-	XAIE_IO_PREEMPT,
-	XAIE_IO_MASKPOLL_BUSY,
-	XAIE_IO_LOADPDI,
-	XAIE_IO_LOAD_PM_START,
-	XAIE_IO_CREATE_SCRATCHPAD,
-	XAIE_IO_UPDATE_STATE_TABLE,
-	XAIE_IO_UPDATE_REG,
-	XAIE_IO_UPDATE_SCRATCH,
-	XAIE_CONFIG_SHIMDMA_BD,
-	XAIE_CONFIG_SHIMDMA_DMABUF_BD,
-	XAIE_IO_CUSTOM_OP_BEGIN = 1U<<7U,
-	XAIE_IO_CUSTOM_OP_TCT = XAIE_IO_CUSTOM_OP_BEGIN,
-	XAIE_IO_CUSTOM_OP_DDR_PATCH, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 1
-	XAIE_IO_CUSTOM_OP_READ_REGS, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 2
-	XAIE_IO_CUSTOM_OP_RECORD_TIMER, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 3
-	XAIE_IO_CUSTOM_OP_MERGE_SYNC, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 4
-	XAIE_IO_CUSTOM_OP_NEXT,
-	XAIE_IO_LOAD_PM_END_INTERNAL = 200,
-	XAIE_IO_CUSTOM_OP_MAX = UCHAR_MAX,
+  XAIE_IO_WRITE,
+  XAIE_IO_BLOCKWRITE,
+  XAIE_IO_BLOCKSET,
+  XAIE_IO_MASKWRITE,
+  XAIE_IO_MASKPOLL,
+  XAIE_IO_NOOP,
+  XAIE_IO_PREEMPT,
+  XAIE_IO_MASKPOLL_BUSY,
+  XAIE_IO_LOADPDI,
+  XAIE_IO_LOAD_PM_START,
+  XAIE_IO_CREATE_SCRATCHPAD,
+  XAIE_IO_UPDATE_STATE_TABLE,
+  XAIE_IO_UPDATE_REG,
+  XAIE_IO_UPDATE_SCRATCH,
+  XAIE_CONFIG_SHIMDMA_BD,
+  XAIE_CONFIG_SHIMDMA_DMABUF_BD,
+  XAIE_IO_CUSTOM_OP_BEGIN = 1U << 7U,
+  XAIE_IO_CUSTOM_OP_TCT = XAIE_IO_CUSTOM_OP_BEGIN,
+  XAIE_IO_CUSTOM_OP_DDR_PATCH, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
+                               // 1
+  XAIE_IO_CUSTOM_OP_READ_REGS, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
+                               // 2
+  XAIE_IO_CUSTOM_OP_RECORD_TIMER, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN
+                                  // + 3
+  XAIE_IO_CUSTOM_OP_MERGE_SYNC, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
+                                // 4
+  XAIE_IO_CUSTOM_OP_NEXT,
+  XAIE_IO_LOAD_PM_END_INTERNAL = 200,
+  XAIE_IO_CUSTOM_OP_MAX = UCHAR_MAX,
 } XAie_TxnOpcode;
 }
 
@@ -166,7 +170,8 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
 
   Value memref = op.getData();
   DataLayout dataLayout = DataLayout::closest(op);
-  int64_t width = dataLayout.getTypeSizeInBits(cast<MemRefType>(memref.getType()).getElementType());
+  int64_t width = dataLayout.getTypeSizeInBits(
+      cast<MemRefType>(memref.getType()).getElementType());
   if (width != 32) {
     op.emitWarning("Only 32-bit data type is supported for now");
     return;
@@ -218,8 +223,7 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
     words[i++] = d.getZExtValue();
 }
 
-void appendPreempt(std::vector<uint32_t> &instructions,
-                   NpuPreemptOp op) {
+void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
 
   auto words = reserveAndGetTail(instructions, 1);
   words[0] = XAIE_IO_PREEMPT | (op.getLevel() << 8);
@@ -240,9 +244,9 @@ xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
   // setup txn header
   uint8_t major = 0;
   uint8_t minor = 1;
-  uint8_t devGen = 3;                      // NPU (PHX HWK)
+  uint8_t devGen = 3; // NPU (PHX HWK)
   if (llvm::isa<AIE::BaseNPU2TargetModel>(tm))
-    devGen = 4;                            // NPU2 (STX KRK)
+    devGen = 4; // NPU2 (STX KRK)
   uint8_t numRows = tm.rows();
   uint8_t numCols = tm.columns();
   uint8_t numMemTileRows = tm.getNumMemTileRows();

@@ -148,12 +148,12 @@ jobs:
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@v1
+        uses: reviewdog/action-suggester@v1.22
         with:
           tool_name: clang-format
           level: error
           cleanup: true
-          fail_on_error: true
+          fail_level: any
 
       - name: Run black format
         if: success() || failure()
@@ -171,11 +171,11 @@ jobs:
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@v1
+        uses: reviewdog/action-suggester@v1.22
         with:
           tool_name: black
           level: error
-          fail_on_error: true
+          fail_level: any
 
   code-coverage:
 
