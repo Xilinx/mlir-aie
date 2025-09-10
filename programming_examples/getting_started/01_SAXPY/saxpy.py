@@ -96,14 +96,12 @@ def main():
     input1 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
-    scalar_a = iron.arange(start=3, end=4, dtype=element_type, device="npu")
-
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
     saxpy(input0, input1, output)
 
     # Check the correctness of the result and print
-    ref_vec = [scalar_a[0] * input0[i] + input1[i] for i in range(data_size)]
+    ref_vec = [3 * input0[i] + input1[i] for i in range(data_size)]
 
     errors = 0
     for index, (actual, ref) in enumerate(
