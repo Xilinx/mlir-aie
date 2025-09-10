@@ -111,9 +111,7 @@ def packet_switch_kernel(dev, in_out_size):
             source=ShimTile_0_0,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dest=MemTile_0_1,
-            dest_port=WireBundle.DMA,
-            dest_channel=0,
+            dest=(MemTile_0_1, WireBundle.DMA, 0),
             keep_pkt_header=True,
         )
         packetflow(
@@ -121,9 +119,7 @@ def packet_switch_kernel(dev, in_out_size):
             source=ShimTile_0_0,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dest=MemTile_0_1,
-            dest_port=WireBundle.DMA,
-            dest_channel=0,
+            dest=(MemTile_0_1, WireBundle.DMA, 0),
             keep_pkt_header=True,
         )
         packetflow(
@@ -131,45 +127,35 @@ def packet_switch_kernel(dev, in_out_size):
             source=MemTile_0_1,
             source_port=WireBundle.DMA,
             source_channel=2,
-            dest=ShimTile_0_0,
-            dest_port=WireBundle.DMA,
-            dest_channel=0,
+            dest=(ShimTile_0_0, WireBundle.DMA, 0),
         )
         packetflow(
             pkt_id=0,
             source=MemTile_0_1,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dest=CT_0_2,
-            dest_port=WireBundle.DMA,
-            dest_channel=0,
+            dest=(CT_0_2, WireBundle.DMA, 0),
         )
         packetflow(
             pkt_id=4,
             source=CT_0_2,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dest=MemTile_0_1,
-            dest_port=WireBundle.DMA,
-            dest_channel=2,
+            dest=(MemTile_0_1, WireBundle.DMA, 2),
         )
         packetflow(
             pkt_id=1,
             source=MemTile_0_1,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dest=CT_0_3,
-            dest_port=WireBundle.DMA,
-            dest_channel=0,
+            dest=(CT_0_3, WireBundle.DMA, 0),
         )
         packetflow(
             pkt_id=6,
             source=CT_0_3,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dest=MemTile_0_1,
-            dest_port=WireBundle.DMA,
-            dest_channel=2,
+            dest=(MemTile_0_1, WireBundle.DMA, 2),
         )
 
         # core_0_2 compute
