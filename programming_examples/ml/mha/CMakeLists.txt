@@ -94,16 +94,8 @@ set(kernels_generic_dir "${CMAKE_SOURCE_DIR}/../../../aie_kernels/generic")
 set(runtime_lib_dir "${CMAKE_SOURCE_DIR}/../../../runtime_lib")
 set(test_lib_dir "${CMAKE_CURRENT_SOURCE_DIR}/test_lib")
 
-find_program(aieopt_dir aie-opt)
 
-if(aieopt_dir)
-    # Get the parent directory of the binary
-    get_filename_component(mlir_aie_bin_dir ${aieopt_dir} DIRECTORY)
-    # Get the parent directory of the parent directory
-    get_filename_component(mlir_aie_dir ${mlir_aie_bin_dir} DIRECTORY)
-else()
-    message(FATAL_ERROR "aie-opt not found in PATH")
-endif()
+find_program(aieopt_dir aie-opt)
 
 # Build artifact paths
 set(golden_ref_header "${build_dir}/golden_reference.h")
@@ -135,18 +127,17 @@ set(kernel_defines
     "-DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16"
 )
 
-# list(APPEND kernel_defines "-DB_COL_MAJ")
 list(APPEND kernel_defines "-DBIT_WIDTH=16")
 
 if(device_name STREQUAL "npu")
     set(kernel_cflags_base 
         "-O2" "-std=c++20" "--target=aie2-none-unknown-elf"
-        ${warning_flags} "-DNDEBUG" "-I${mlir_aie_dir}/lib/python3.12/site-packages/mlir_aie/include"
+        ${warning_flags} "-DNDEBUG" "-I$ENV{MLIR_AIE_INSTALL_DIR}/include"
     )
 elseif(device_name STREQUAL "npu2")
     set(kernel_cflags_base 
         "-O2" "-std=c++20" "--target=aie2p-none-unknown-elf"
-        ${warning_flags} "-DNDEBUG" "-I${mlir_aie_dir}/lib/python3.12/site-packages/mlir_aie/include"
+        ${warning_flags} "-DNDEBUG" "-I$ENV{MLIR_AIE_INSTALL_DIR}/include"
     )
 endif()
 
