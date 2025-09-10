@@ -48,8 +48,8 @@ def main(opts):
     trace_size = opts.trace_size
     enable_trace = False if not trace_size else True
     print("Trace status: " + str(enable_trace))
-
     trace_file = "log/trace_" + design + ".txt"
+
     # ------------------------------------------------------
     # Configure this to match your design's buffer size
     # ------------------------------------------------------
@@ -58,14 +58,10 @@ def main(opts):
     dtype_out = np.dtype("int8")
 
     ci_co_ksz_ksz = ci * co * ksz * ksz
-    #    shape_total_wts = (ci_co, 1)
-    #    shape_in_act = (height, ci8, width, 8)  #'YCXC8' , 'CYX'
-    #    shape_in_wts1 = (co8, ci8, 1, 1, 8, 8)  # out,in,ky,kx,in8,out8
-    #    shape_out = (height, co8, width, 8)
+    co_group = co // 16  # 72
 
     shape_total_wts = (ci_co_ksz_ksz, 1)
-    shape_in_act = (72, height, width, ci)  #'YX (rgba)
-    # shape_in_act = (height, width, ci)  #'YX (rgba)
+    shape_in_act = (co_group, height, width, ci)  #'YX (rgba)
     shape_in_wts1 = (co, ci, ksz, ksz)  # out,in,ky,kx
     shape_out = (co, height_out, width_out)
 
@@ -162,7 +158,6 @@ def main(opts):
     # ------------------------------------------------------
     ds = DataShaper()
     int_inp_np = int_inp.squeeze().data.numpy().astype(dtype_in)
-    # before_input.tofile(log_folder + "/act_before_mem_fmt.txt", sep=",", format="%d")
     act_before_mem_fmt = int_inp_np.reshape(3584, 896)
     np.savetxt(
         log_folder + "/act_before_mem_fmt_CYX.txt",
@@ -171,9 +166,7 @@ def main(opts):
         delimiter=",",
     )
 
-    # ifm_mem_fmt = ds.reorder_mat(act_before_mem_fmt, "YCXC8", "CYX")
     ifm_mem_fmt = ds.reorder_mat(int_inp_np, "YXC", "CYX")
-    # ifm_mem_fmt.tofile(log_folder + "/act_after_mem_fmt.txt", sep=",", format="%d")
     act_after_mem_fmt = ifm_mem_fmt.reshape(802816, 4)
     np.savetxt(
         log_folder + "/act_after_mem_fmt_YXC.txt",
@@ -186,12 +179,11 @@ def main(opts):
     print(type(ifm_mem_fmt))
     print(ifm_mem_fmt.shape)
 
-    ifm_mem_fmt_72 = np.tile(ifm_mem_fmt, 72)
+    ifm_mem_fmt_72 = np.tile(ifm_mem_fmt, co_group)
     print("ifm_mem_fmt_72:")
     print(ifm_mem_fmt_72.shape)
 
     int_weight_np = int_weight.data.numpy().astype(dtype_wts)
-    # int_weight_np.tofile(log_folder + "/weights_before_mem_fmt.txt", sep=",", format="%d")
     weights_before_mem_fmt = int_weight_np.reshape(64512, 14)
     np.savetxt(
         log_folder + "/weights_before_mem_fmt_OIYX.txt",
@@ -200,12 +192,9 @@ def main(opts):
         delimiter=",",
     )
 
-    # wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OIYXI8O8", "OIYX")
-    # wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OYXX2IO8", "OIYX")
     wts1 = ds.reorder_mat(int_weight.data.numpy().astype(dtype_wts), "OYXIO8", "OIYX")
     total_wts = np.concatenate((wts1), axis=None)
 
-    # total_wts.tofile(log_folder + "/weights_after_mem_fmt.txt", sep=",", format="%d")
     weights_after_mem_fmt = total_wts.reshape(112896, 8)
     np.savetxt(
         log_folder + "/weights_after_mem_fmt_OYXIO8.txt",
@@ -243,17 +232,13 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    temp_out = scaled_data_buffer.reshape(72, 64, 64, 16)
-    # temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
+    temp_out = scaled_data_buffer.reshape(co_group, height_out, width_out, 16)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "CYXD")
-    # ofm_mem_fmt = temp_out.reshape(co, height, width)
-    # ofm_mem_fmt = data_buffer.reshape(co, height_out, width_out)
     ofm_mem_fmt = temp_out.reshape(co, height_out, width_out)
 
-    temp_out_int = data_buffer.reshape(72, 64, 64, 16)
+    temp_out_int = data_buffer.reshape(co_group, height_out, width_out, 16)
     temp_out_int = ds.reorder_mat(temp_out_int, "CDYX", "CYXD")
     ofm_int = temp_out_int.reshape(co * height_out * 8, 8).astype(np.int8)
-    # ofm_int = data_buffer.reshape(co*height_out*8, 8).astype(np.int8)
     np.savetxt(log_folder + "/ofm_int_CYXX8.txt", ofm_int, fmt="%d", delimiter=",")
 
     if enable_trace:
@@ -261,7 +246,6 @@ def main(opts):
     else:
         ofm_log_filename = "/ofm_after_mem_fmt.txt"
 
-    # ofm_mem_fmt.tofile(log_folder + "/after_ofm_mem_fmt_final.txt", sep=",", format="%.4f")
     ofm_float = ofm_mem_fmt.reshape(co * height_out * 8, 8)  # still in float
     np.savetxt(
         log_folder + "/ofm_float_CYXX8.txt", ofm_float, fmt="%.4f", delimiter=","
@@ -314,7 +298,7 @@ def main(opts):
     output_numpy_sub = output_numpy
     golden_numpy_sub = golden_numpy
 
-    # Test passes only for submatrice in scalar example (group = 16)
+    # Test passes only for submatrice in scalar example (co_group = 16)
     # output_numpy_sub = output_numpy[0:, 0:255, 0:, 0:]
     # golden_numpy_sub = golden_numpy[0:, 0:255, 0:, 0:]
 
@@ -347,6 +331,7 @@ def main(opts):
     mismatch_values_golden = golden_numpy_sub_int[mismatch_indices]
     mismatch_values_ofm = output_numpy_sub_int[mismatch_indices]
 
+    # UNCOMMENT BELOW TO PRINT MISMATCHES
     # print("Mismatch indices and corresponding values:")
     # for idx, (golden_value, ofm_value) in zip(
     #     zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)
@@ -354,8 +339,6 @@ def main(opts):
     #     print(f"Index: {idx}, Golden value: {golden_value}, OFM value: {ofm_value}, diff: {golden_value-ofm_value}")
 
     if np.allclose(
-        # ofm_mem_fmt_out.detach().numpy(),
-        # golden_output.detach().numpy(),
         output_numpy_sub,
         golden_numpy_sub,
         rtol=0,
@@ -365,10 +348,7 @@ def main(opts):
         exit(0)
     else:
         print("\nFailed.\n")
-        exit(0)  # disable so we can parse trace for now
-        # exit(-1)
-
-    exit(0)
+        exit(-1)
 
 
 if __name__ == "__main__":

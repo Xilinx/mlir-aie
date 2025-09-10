@@ -27,36 +27,22 @@ def conv2dk14(
 ):
     with mlir_mod_ctx() as ctx:
 
-        # Kernel transfer sizes
-        actIn = 16 * kernel_size * kernel_size * in_channels  # 16 tiles
-        # bufIn = actIn * 4 # 64 tiles (1 tile row)
-        # bufIn = width * kernel_size * in_channels # 64 tiles (1 tile row)
+        # Kernel processes 16 tiles and 16 output channels at a time
+        sub_out_channels = 16
+        sub_tiles = 16
 
-        weights = 16 * kernel_size * kernel_size * in_channels  # 16 output channels
-        # bufWeights = weights * (out_channels/ 16)
+        actIn = kernel_size * kernel_size * in_channels * sub_tiles
+        weights = kernel_size * kernel_size * in_channels * sub_out_channels
+        actOut = sub_tiles * sub_out_channels
 
-        actOut = 16 * 16
-        # bufOut = actOut * 2  # double buffer
-        # bufOut = (64*64*out_channels)
+        out_channels_group = out_channels // sub_out_channels  # 72
+        width_out = width // kernel_size
+        height_out = height // kernel_size
 
-        # groups = 16  # TODO consistently passes for scalar, 32 intermittently passes
-        groups = 72  # max - output_channels//16 = 72
-
-        # we reload inputs 72 times (not big enough to keep in memtile)
-        # tensorInSize = width * height * in_channels * (out_channels // 16)
-        tensorInSize = width * height * in_channels * groups
-
-        # tensorWeightsSize = weights * (out_channels // 16)
-        tensorWeightsSize = weights * groups
-
-        # # tensorOutSize = (width/kernel_size) * (height/kernel_size) * out_channels
-        # tensorOutSize = 64 * 64 * out_channels
-        tensorOutSize = 64 * 64 * 16 * groups
-
-        # tensorInSize = 231211008
-        # tensorInSize = 3211264
-        # tensorWeightsSize = 903168
-        # tensorOutSize = 4718592
+        # we reload inputs 72 times (out_channels // sub_out_channels)
+        tensorInSize = width * height * in_channels * out_channels_group
+        tensorWeightsSize = weights * out_channels_group
+        tensorOutSize = width_out * height_out * sub_out_channels * out_channels_group
 
         N_in_bytes = tensorOutSize  # Number of bytes of output data (1 byte/elem)
 
@@ -64,13 +50,8 @@ def conv2dk14(
         def device_body():
 
             actIn_ty = np.ndarray[(actIn,), np.dtype[np.uint8]]
-            # bufIn_ty = np.ndarray[(bufIn,), np.dtype[np.int8]]
-
             weights_ty = np.ndarray[(weights,), np.dtype[np.int8]]
-            # bufWeights_ty = np.ndarray[(bufWeights,), np.dtype[np.int8]]
-
             out_ty = np.ndarray[(actOut,), np.dtype[np.int8]]
-            # bufOut_ty = np.ndarray[(bufOut,), np.dtype[np.int8]]
 
             tensorIn_ty = np.ndarray[(tensorInSize,), np.dtype[np.uint8]]
             tensorWeights_ty = np.ndarray[(tensorWeightsSize,), np.dtype[np.int8]]
@@ -105,17 +86,15 @@ def conv2dk14(
                 ShimTile,
                 MemTile,
                 2,
-                # np.ndarray[(kernel_size, width*in_channels), np.dtype[np.int8]],
-                np.ndarray[(14, 3584), np.dtype[np.uint8]],
+                np.ndarray[
+                    (kernel_size, width * in_channels), np.dtype[np.uint8]
+                ],  # (14, 3584)
                 dimensionsToStream=None,
                 dimensionsFromStreamPerConsumer=[
                     [
-                        # (kernel_size,kernel_size*in_channels),
-                        # (64, kernel_size*kernel_size*in_channels),
-                        # (kernel_size*in_channels,1),
-                        (14, 56),
-                        (64, 784),
-                        (56, 1),
+                        (kernel_size, kernel_size * in_channels),  # (14, 56)
+                        (64, kernel_size * kernel_size * in_channels),  # (64, 784)
+                        (kernel_size * in_channels, 1),  # (56, 1)
                     ],
                 ],
             )
@@ -124,25 +103,12 @@ def conv2dk14(
                 MemTile,
                 ComputeTile2,
                 2,
-                # np.ndarray[(kernel_size, (width/4)*in_channels), np.dtype[np.int8]],
-                # np.ndarray[(14, 896), np.dtype[np.int8]],
                 np.ndarray[(actIn,), np.dtype[np.uint8]],
-                # [
-                #     (4,16*kernel_size*in_channels),
-                #     (16,kernel_size*in_channels),
-                #     (kernel_size,width*in_channels),
-                #     (kernel_size*in_channels,1),
-                # ],
                 dimensionsToStream=[
-                    # (2,kernel_size*kernel_size*in_channels*8),
-                    # # (kernel_size*kernel_size/2,2*in_channels),
-                    # (98,2*in_channels),
-                    # (8, kernel_size*kernel_size*in_channels),
-                    # (2*in_channels, 1),
-                    (2, 6272),
-                    (98, 8),
-                    (8, 784),
-                    (8, 1),
+                    (2, kernel_size * kernel_size * in_channels * 8),  # (2, 6272)
+                    (kernel_size * kernel_size // 2, 2 * in_channels),  # (98, 8)
+                    (8, kernel_size * kernel_size * in_channels),  # (8, 784)
+                    (2 * in_channels, 1),  # (8, 1)
                 ],
             )
             object_fifo_link(of_inOF_act_L3L2, of_act_L2_02)
@@ -158,16 +124,7 @@ def conv2dk14(
                 ComputeTile2,
                 [MemTile],
                 2,
-                # np.ndarray[(16, 16), np.dtype[np.int8]],
                 np.ndarray[(actOut,), np.dtype[np.int8]],
-                # dimensionsFromStreamPerConsumer=[
-                #     [
-                #         (2, 128),
-                #         (8, 1),
-                #         (16, 8),
-                #         (1, 1),
-                #     ],
-                # ],
                 # dimensionsFromStreamPerConsumer=[
                 #     [
                 #         (2, 8),
@@ -181,7 +138,9 @@ def conv2dk14(
                 MemTile,
                 [ShimTile],
                 2,
-                np.ndarray[(16, 4096), np.dtype[np.int8]],
+                np.ndarray[
+                    (sub_out_channels, width_out * height_out), np.dtype[np.int8]
+                ],
                 # dimensionsToStream=[(16, 16), (256, 256), (16, 1)],
                 dimensionsToStream=[(256, 256), (16, 8), (2, 128), (8, 1)],
             )
@@ -194,36 +153,26 @@ def conv2dk14(
 
             # Set up compute tiles
 
-            # rtp2 = buffer(
-            #     ComputeTile2,
-            #     np.ndarray[(16,), np.dtype[np.int32]],
-            #     "rtp2",
-            #     use_write_rtp=True,
-            # )
+            rtp2 = buffer(
+                ComputeTile2,
+                np.ndarray[(16,), np.dtype[np.int32]],
+                "rtp2",
+                use_write_rtp=True,
+            )
 
             # Compute tile 2
             @core(ComputeTile2, "conv2dk14.o", stack_size=0xC00)
             def core_body():
-                # y_dim = height // kernel_size
-                y_dim = 64
-                # x_dim = width
+                y_dim = height // kernel_size
                 x_blocks = 4
-                # x_dim = width * in_channels // x_blocks
-                # x_dim = 14 * 16
-                x_dim = 224  # num pixels for 1/4 of a row
+                x_dim = width // x_blocks  # num pixels for 1/4 of a row
                 ci = in_channels
-                co = 16
-                # co16 = out_channels // 16
-                # co16 = 72
-                co16 = 1
+                co = sub_out_channels
 
                 for _ in range_(0xFFFFFFFF):
-                    # use_lock(lock2, LockAction.Acquire, value=1)
-                    # scale = rtp2[0]
-                    # scale = 10
-                    scale = 14
+                    use_lock(lock2, LockAction.Acquire, value=1)
+                    scale = rtp2[0]
 
-                    # for _ in range_(co16):
                     elemWts = of_inOF_wts_0_L3L2.acquire(ObjectFifoPort.Consume, 1)
 
                     for _ in range_(y_dim):
@@ -269,7 +218,7 @@ def conv2dk14(
                         ],
                     )
 
-                # rtp2[0] = 10
+                rtp2[0] = 14
 
                 set_lock_value(lock2, 1)
 
@@ -278,15 +227,12 @@ def conv2dk14(
                     I,
                     sizes=[1, 1, 1, tensorInSize],
                     issue_token=True,
-                    # issue_token=False,
                 )
                 in_wts_task = shim_dma_single_bd_task(
                     of_inOF_wts_0_L3L2,
                     W,
-                    # sizes=[1, 1, 1, weights],
                     sizes=[1, 1, 1, tensorWeightsSize],
                     issue_token=True,
-                    # issue_token=False,
                 )
                 out_task = shim_dma_single_bd_task(
                     of_outOFL2L3,
@@ -296,33 +242,7 @@ def conv2dk14(
                 )
 
                 dma_start_task(in_act_task, in_wts_task, out_task)
-                # dma_await_task(in_act_task, in_wts_task, out_task)
-                dma_await_task(out_task)
-
-                # in_act_task1 = shim_dma_single_bd_task(
-                #     of_inOF_act_L3L2,
-                #     I,
-                #     sizes=[1, 1, 1, tensorInSize],
-                #     issue_token=True,
-                #     # issue_token=False,
-                # )
-                # in_wts_task1 = shim_dma_single_bd_task(
-                #     of_inOF_wts_0_L3L2,
-                #     W,
-                #     # sizes=[1, 1, 1, weights],
-                #     sizes=[1, 1, 1, tensorWeightsSize],
-                #     issue_token=True,
-                #     # issue_token=False,
-                # )
-                # out_task1 = shim_dma_single_bd_task(
-                #     of_outOFL2L3,
-                #     O,
-                #     sizes=[1, 1, 1, tensorOutSize],
-                #     issue_token=True,
-                # )
-
-                # dma_start_task(in_act_task1, in_wts_task1, out_task1)
-                # dma_await_task(in_act_task1, in_wts_task1, out_task1)
+                dma_await_task(in_act_task, in_wts_task, out_task)
 
                 trace_utils.gen_trace_done_aie2(ShimTile)
 
@@ -352,12 +272,8 @@ if __name__ == "__main__":
             print("Input channels size must be equal to 4")
             raise ValueError
         out_channels = int(sys.argv[5])
-        # if out_channels % 8 != 0 or out_channels < 8:
         if out_channels != 1152:
-            print(
-                # "Output channel size must be a multiple of 8 and greater than or equal to 8"
-                "Output channel size must be equal to 1152"
-            )
+            print("Output channel size must be equal to 1152")
             raise ValueError
         kernel_size = int(sys.argv[6])
         if kernel_size != 14:

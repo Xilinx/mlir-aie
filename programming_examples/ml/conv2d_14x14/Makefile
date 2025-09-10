@@ -9,27 +9,18 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-CHESS ?= true
-#CHESS ?= false
-
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-targetname = conv2d14
+targetname = conv2dk14
 mlirFileName = aie
 
-# Modify these params to configure design
-#width = 32
-#height = 32
-#in_channels = 64
-#out_channels = 64
 width = 896
 height = 896
 kernel_size = 14
 in_channels = 4
 out_channels = 1152
-vectorized ?= true
-# vectorized ?= false
-#trace_size = 16384
 trace_size = 32768
+CHESS ?= false
+vectorized ?= true
 
 ifeq ($(devicename),npu2)
 VPATH := ${srcdir}/../../../aie_kernels/aie2p
@@ -38,16 +29,13 @@ VPATH := ${srcdir}/../../../aie_kernels/aie2
 endif
 
 ifeq ($(vectorized),true)
-# VECTORIZED_FLAGS = -DUINT8_ACT
 VECTORIZED_FLAGS = -DUINT8_ACT
 else
-# VECTORIZED_FLAGS = -DSCALAR -DUINT8_ACT
 VECTORIZED_FLAGS = -DSCALAR -DUINT8_ACT
 endif
 
 aie_py_src = ${targetname}.py
 aie_py_placed_src = ${targetname}_placed.py
-# use_placed ?= 0
 use_placed ?= 1
 
 ifeq (${use_placed}, 1)
