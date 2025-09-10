@@ -12,30 +12,30 @@
 
 // CHECK: mlir_aie_configure_shimdma_20
 // CHECK: XAie_DmaDesc [[bd0:.*]];
-// CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,0)));
+// CHECK: __mlir_aie_try(XAie_DmaDescInit(ctx->XAieDevInst, &([[bd0]]), XAie_TileLoc(2,0)));
 // CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(0,0),XAie_LockInit(0,1)));
 // CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]), {{.*}} mlir_aie_external_get_addr_myBuffer_20_0(), {{.*}} 64));
 // CHECK: __mlir_aie_try(XAie_DmaSetAxi(&([[bd0]]), {{.*}} 0, {{.*}} 4, {{.*}} 0, {{.*}} 0, {{.*}} XAIE_ENABLE));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]), {{.*}} 0, {{.*}} 1));
 // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd0]])));
-// CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,0), {{.*}} 0));
+// CHECK: __mlir_aie_try(XAie_DmaWriteBd(ctx->XAieDevInst, &([[bd0]]), XAie_TileLoc(2,0), {{.*}} 0));
 // CHECK: XAie_DmaDesc [[bd1:.*]];
-// CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,0)));
+// CHECK: __mlir_aie_try(XAie_DmaDescInit(ctx->XAieDevInst, &([[bd1]]), XAie_TileLoc(2,0)));
 // CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd1]]), {{.*}} mlir_aie_external_get_addr_myBuffer_20_1(), {{.*}} 16));
 // CHECK: __mlir_aie_try(XAie_DmaSetAxi(&([[bd1]]), {{.*}} 0, {{.*}} 4, {{.*}} 0, {{.*}} 0, {{.*}} XAIE_ENABLE));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd1]]), {{.*}} 1, {{.*}} 1));
 // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd1]])));
-// CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,0), {{.*}} 1));
-// CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(&(ctx->DevInst), XAie_TileLoc(2,0), {{.*}}0, {{.*}} DMA_S2MM, {{.*}}0));
-// CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(2,0), {{.*}} 0, {{.*}} DMA_S2MM));
-// CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(&(ctx->DevInst), XAie_TileLoc(2,0), {{.*}}0, {{.*}} DMA_MM2S, {{.*}}1));
-// CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(2,0), {{.*}} 0, {{.*}} DMA_MM2S));
+// CHECK: __mlir_aie_try(XAie_DmaWriteBd(ctx->XAieDevInst, &([[bd1]]), XAie_TileLoc(2,0), {{.*}} 1));
+// CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(ctx->XAieDevInst, XAie_TileLoc(2,0), {{.*}}0, {{.*}} DMA_S2MM, {{.*}}0));
+// CHECK: __mlir_aie_try(XAie_DmaChannelEnable(ctx->XAieDevInst, XAie_TileLoc(2,0), {{.*}} 0, {{.*}} DMA_S2MM));
+// CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(ctx->XAieDevInst, XAie_TileLoc(2,0), {{.*}}0, {{.*}} DMA_MM2S, {{.*}}1));
+// CHECK: __mlir_aie_try(XAie_DmaChannelEnable(ctx->XAieDevInst, XAie_TileLoc(2,0), {{.*}} 0, {{.*}} DMA_MM2S));
 
 // CHECK: mlir_aie_configure_switchboxes
 // CHECK: x = 2;
 // CHECK: y = 0;
-// CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), NORTH, 0, SOUTH, 2));
-// CHECK: __mlir_aie_try(XAie_EnableAieToShimDmaStrmPort(&(ctx->DevInst), XAie_TileLoc(x,y), 2));
+// CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), NORTH, 0, SOUTH, 2));
+// CHECK: __mlir_aie_try(XAie_EnableAieToShimDmaStrmPort(ctx->XAieDevInst, XAie_TileLoc(x,y), 2));
 
 
 module {

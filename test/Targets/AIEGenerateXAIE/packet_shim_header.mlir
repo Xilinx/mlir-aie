@@ -17,17 +17,17 @@
 // CHECK: mlir_aie_configure_switchboxes
 // CHECK: x = 7;
 // CHECK: y = 0;
-// CHECK: __mlir_aie_try(XAie_StrmPktSwMstrPortEnable(&(ctx->DevInst), XAie_TileLoc(x,y), NORTH, 0, {{.*}} XAIE_SS_PKT_DONOT_DROP_HEADER, {{.*}} 0, {{.*}} 0x1));
-// CHECK: __mlir_aie_try(XAie_StrmPktSwSlavePortEnable(&(ctx->DevInst), XAie_TileLoc(x,y), SOUTH, 3));
-// CHECK: __mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable(&(ctx->DevInst), XAie_TileLoc(x,y), SOUTH, 3, {{.*}} 0, {{.*}} XAie_PacketInit(10,0), {{.*}} 0x1F, {{.*}} 0, {{.*}} 0));
+// CHECK: __mlir_aie_try(XAie_StrmPktSwMstrPortEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), NORTH, 0, {{.*}} XAIE_SS_PKT_DONOT_DROP_HEADER, {{.*}} 0, {{.*}} 0x1));
+// CHECK: __mlir_aie_try(XAie_StrmPktSwSlavePortEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), SOUTH, 3));
+// CHECK: __mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), SOUTH, 3, {{.*}} 0, {{.*}} XAie_PacketInit(10,0), {{.*}} 0x1F, {{.*}} 0, {{.*}} 0));
 // CHECK: x = 7;
 // CHECK: y = 1;
-// CHECK: __mlir_aie_try(XAie_StrmPktSwMstrPortEnable(&(ctx->DevInst), XAie_TileLoc(x,y), DMA, 0, {{.*}} XAIE_SS_PKT_DROP_HEADER, {{.*}} 0, {{.*}} 0x1));
-// CHECK: __mlir_aie_try(XAie_StrmPktSwSlavePortEnable(&(ctx->DevInst), XAie_TileLoc(x,y), SOUTH, 0));
-// CHECK: __mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable(&(ctx->DevInst), XAie_TileLoc(x,y), SOUTH, 0, {{.*}} 0, {{.*}} XAie_PacketInit(10,0), {{.*}} 0x1F, {{.*}} 0, {{.*}} 0));
+// CHECK: __mlir_aie_try(XAie_StrmPktSwMstrPortEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), DMA, 0, {{.*}} XAIE_SS_PKT_DROP_HEADER, {{.*}} 0, {{.*}} 0x1));
+// CHECK: __mlir_aie_try(XAie_StrmPktSwSlavePortEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), SOUTH, 0));
+// CHECK: __mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), SOUTH, 0, {{.*}} 0, {{.*}} XAie_PacketInit(10,0), {{.*}} 0x1F, {{.*}} 0, {{.*}} 0));
 // CHECK: x = 7;
 // CHECK: y = 0;
-// CHECK: __mlir_aie_try(XAie_EnableShimDmaToAieStrmPort(&(ctx->DevInst), XAie_TileLoc(x,y), 3));
+// CHECK: __mlir_aie_try(XAie_EnableShimDmaToAieStrmPort(ctx->XAieDevInst, XAie_TileLoc(x,y), 3));
 
 //
 // This tests the shim DMA BD configuration lowering for packet switched routing
