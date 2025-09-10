@@ -27,6 +27,8 @@ else()
 endif()
 
 set(TARGET_NAME test CACHE STRING "Target to be built")
+set(IN1_SIZE 65536 CACHE STRING "Input size")
+set(OUT_SIZE 131072 CACHE STRING "Output size")
 
 SET (ProjectName ${TARGET_NAME})
 SET (currentTarget ${TARGET_NAME})
@@ -42,7 +44,11 @@ add_executable(${currentTarget}
     test.cpp
 )
 
-target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
+target_compile_definitions(${currentTarget} PUBLIC 
+    DISABLE_ABI_CHECK=1
+    IN1_SIZE=${IN1_SIZE}
+    OUT_SIZE=${OUT_SIZE}
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils

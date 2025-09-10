@@ -9,14 +9,15 @@
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+VPATH := ${srcdir}/../../../aie_kernels/aie2
 
 include $(srcdir)/../../makefile-common
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = dequant
-in1_size = 2048 # in bytes (contains 4096 int4 elements)  
-out_size = 8192 # in bytes (4096 bfloat16 elements = 4x input size)
-trace_size = 8192
+in1_size = 65536
+out_size = 131072
+trace_size = 65536
 group_size ?= 32
 CHESS ?= false
 
@@ -27,7 +28,7 @@ aie_py_src=${targetname}.py
 
 all: build/final.xclbin
 
-build/expand.cc.o: $(srcdir)/../../../aie_kernels/aie2/expand.cc
+build/expand.cc.o: expand.cc
 	mkdir -p ${@D}
 ifeq ($(devicename),npu)
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -DGROUP_SIZE=$(group_size) -c $< -o ${@F}

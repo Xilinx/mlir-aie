@@ -36,7 +36,6 @@ void expand(T_in *in, T_out *out) {
   T_out *__restrict pO = out;
   const int F = groups_per_tile; // iterate over groups of size GROUP_SIZE
   event0();
-  event0();
   for (int i = 0; i < F; i++)
     chess_prepare_for_pipelining chess_loop_range(F, ) { // 16 -> F
       // Load one scale per group (scalar load)
@@ -68,7 +67,6 @@ void expand(T_in *in, T_out *out) {
       }
       event1();
     }
-  event1();
   event1();
 }
 
