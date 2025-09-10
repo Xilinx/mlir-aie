@@ -141,12 +141,12 @@ list(APPEND kernel_defines "-DBIT_WIDTH=16")
 if(device_name STREQUAL "npu")
     set(kernel_cflags_base 
         "-O2" "-std=c++20" "--target=aie2-none-unknown-elf"
-        ${warning_flags} "-DNDEBUG" "-I${mlir_aie_dir}/include"
+        ${warning_flags} "-DNDEBUG" "-I${mlir_aie_dir}/lib/python3.12/site-packages/mlir_aie/include"
     )
 elseif(device_name STREQUAL "npu2")
     set(kernel_cflags_base 
         "-O2" "-std=c++20" "--target=aie2p-none-unknown-elf"
-        ${warning_flags} "-DNDEBUG" "-I${mlir_aie_dir}/include"
+        ${warning_flags} "-DNDEBUG" "-I${mlir_aie_dir}/lib/python3.12/site-packages/mlir_aie/include"
     )
 endif()
 
