@@ -21,6 +21,10 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "xrt/experimental/xrt_elf.h"
+#include "xrt/experimental/xrt_ext.h"
+#include "xrt/experimental/xrt_module.h"
+
 #include "test_utils.h"
 
 // relu reference implementation
@@ -66,12 +70,7 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
-  std::vector<uint32_t> instr_v =
-      test_utils::load_instr_binary(vm["instr"].as<std::string>());
-
   int verbosity = vm["verbosity"].as<int>();
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
   int N = vm["length"].as<int>();
   if ((N % 1024)) {
@@ -116,17 +115,16 @@ int main(int argc, const char *argv[]) {
     std::cout << "Getting hardware context." << std::endl;
   xrt::hw_context context(device, xclbin.get_uuid());
 
+  xrt::elf elf(vm["instr"].as<std::string>());
+  xrt::module mod{elf};
+
   // get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << std::endl;
-  auto kernel = xrt::kernel(context, kernelName);
+  auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, N * sizeof(std::bfloat16_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, N * sizeof(std::bfloat16_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_inA = xrt::ext::bo{device, N * sizeof(std::bfloat16_t)};
+  auto bo_out = xrt::ext::bo{device, N * sizeof(std::bfloat16_t)};
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -137,21 +135,17 @@ int main(int argc, const char *argv[]) {
     srcVecA.push_back(std::bfloat16_t(i * 0.05f + -3.0f)); // Example data
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(std::bfloat16_t)));
 
-  void *bufInstr = bo_instr.map<void *>();
-  memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
-
-  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
   // Setup run to configure
-  auto cfg_run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
+  auto cfg_run = kernel(opcode, 0, 0, bo_inA, bo_out);
   cfg_run.wait();
   auto start = std::chrono::high_resolution_clock::now();
   // Test run
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
+  auto run = kernel(opcode, 0, 0, bo_inA, bo_out);
   run.wait();
   auto stop = std::chrono::high_resolution_clock::now();
   const float npu_time =
