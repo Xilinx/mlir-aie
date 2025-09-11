@@ -117,8 +117,8 @@ int main(int argc, const char *argv[]) {
     std::cout << "Getting handle to kernel:" << kernelName << std::endl;
   auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
-  auto bo_inA = xrt::ext::bo{device, N * sizeof(int32_t)};
-  auto bo_out = xrt::ext::bo{device, N * sizeof(int32_t)};
+  xrt::bo bo_inA = xrt::ext::bo{device, N * sizeof(int32_t)};
+  xrt::bo bo_out = xrt::ext::bo{device, N * sizeof(int32_t)};
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
