@@ -22,8 +22,8 @@
 #include "xrt/xrt_kernel.h"
 
 #include "xrt/experimental/xrt_elf.h"
-#include "xrt/experimental/xrt_module.h"
 #include "xrt/experimental/xrt_ext.h"
+#include "xrt/experimental/xrt_module.h"
 
 #include "test_utils.h"
 
