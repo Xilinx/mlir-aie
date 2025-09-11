@@ -21,6 +21,10 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "xrt/experimental/xrt_elf.h"
+#include "xrt/experimental/xrt_module.h"
+#include "xrt/experimental/xrt_ext.h"
+
 #include "test_utils.h"
 
 int main(int argc, const char *argv[]) {
@@ -60,18 +64,13 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
 
-  std::vector<uint32_t> instr_v =
-      test_utils::load_instr_binary(vm["instr"].as<std::string>());
-
-  int verbosity = vm["verbosity"].as<int>();
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
-
   int N = vm["length"].as<int>();
   if ((N % 1024)) {
     std::cerr << "Length must be a multiple of 1024." << std::endl;
     return 1;
   }
+
+  int verbosity = vm["verbosity"].as<int>();
 
   // Start the XRT test code
   // Get a device handle
@@ -105,6 +104,9 @@ int main(int argc, const char *argv[]) {
 
   device.register_xclbin(xclbin);
 
+  xrt::elf elf(vm["instr"].as<std::string>());
+  xrt::module mod{elf};
+
   // get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context." << std::endl;
@@ -113,14 +115,10 @@ int main(int argc, const char *argv[]) {
   // get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << std::endl;
-  auto kernel = xrt::kernel(context, kernelName);
+  auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(3));
-  auto bo_out = xrt::bo(device, N * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
+  auto bo_inA = xrt::ext::bo{device, N * sizeof(int32_t)};
+  auto bo_out = xrt::ext::bo{device, N * sizeof(int32_t)};
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -131,22 +129,18 @@ int main(int argc, const char *argv[]) {
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
-  void *bufInstr = bo_instr.map<void *>();
-  memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
-
-  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
   // Setup run to configure
-  auto cfg_run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
-  cfg_run.wait();
+  auto cfg_run = kernel(opcode, 0, 0, bo_inA, bo_out);
+  cfg_run.wait2();
   auto start = std::chrono::high_resolution_clock::now();
   // Test run
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
-  run.wait();
+  auto run = kernel(opcode, 0, 0, bo_inA, bo_out);
+  run.wait2();
   auto stop = std::chrono::high_resolution_clock::now();
   const float npu_time =
       std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
