@@ -1,0 +1,12 @@
+"instance" : [
+         {
+           "id" : 0,
+           "TXN_ctrl_code_file" : "./insts.bin"
+         }
+],
+"PDIs" : [
+        {
+          "id" : 0,
+          "PDI_file" : "./aie.pdi"
+        }
+]
