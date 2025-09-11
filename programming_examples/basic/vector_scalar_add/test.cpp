@@ -20,6 +20,10 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "xrt/experimental/xrt_elf.h"
+#include "xrt/experimental/xrt_ext.h"
+#include "xrt/experimental/xrt_module.h"
+
 #include "test_utils.h"
 
 int main(int argc, const char *argv[]) {
@@ -39,12 +43,6 @@ int main(int argc, const char *argv[]) {
 
   constexpr int IN_SIZE = 1024;
   constexpr int OUT_SIZE = 1024;
-
-  // Load instruction sequence
-  std::vector<uint32_t> instr_v =
-      test_utils::load_instr_binary(vm["instr"].as<std::string>());
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
   // ------------------------------------------------------
   // Get device, load the xclbin & kernel and register them
@@ -86,21 +84,21 @@ int main(int argc, const char *argv[]) {
     std::cout << "Getting hardware context.\n";
   xrt::hw_context context(device, xclbin.get_uuid());
 
+  // Load instr ELF
+  xrt::elf elf(vm["instr"].as<std::string>());
+  xrt::module mod{elf};
+
   // Get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << "\n";
-  auto kernel = xrt::kernel(context, kernelName);
+  auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
   // ------------------------------------------------------
 
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  xrt::bo bo_inA = xrt::ext::bo{device, IN_SIZE * sizeof(int32_t)};
+  xrt::bo bo_out = xrt::ext::bo{device, OUT_SIZE * sizeof(int32_t)};
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -111,16 +109,12 @@ int main(int argc, const char *argv[]) {
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
-  void *bufInstr = bo_instr.map<void *>();
-  memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
-
-  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
+  auto run = kernel(opcode, 0, 0, bo_inA, bo_out);
   run.wait();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
