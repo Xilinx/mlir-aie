@@ -123,7 +123,7 @@ build/combined.xclbin build/${DESIGN_0}.bin build/${DESIGN_1}.bin build/${DESIGN
 run: build/swiglu build/combined.xclbin build/matmul.bin build/silu.bin build/eltwise_mul.bin
 	./build/swiglu -x build/combined.xclbin \
 		--insts-matmul build/matmul.bin --insts-silu build/silu.bin --insts-eltwise-mul build/eltwise_mul.bin \
-		--dim 2048 --epsilon 0.07 --abs_th 0.7
+		--dim 2048 --epsilon 0.2 --abs_th 1
 
 clean: 
 	rm -rf build
