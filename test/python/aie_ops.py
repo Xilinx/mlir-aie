@@ -260,7 +260,7 @@ def packetFlowOp():
         source=t0,
         source_port=WireBundle.Core,
         source_channel=0,
-        dests=(t0, WireBundle.Core, 0),
+        dests={"dest": t0, "port": WireBundle.Core, "channel": 0},
         keep_pkt_header=True,
     )
 
@@ -282,7 +282,10 @@ def packetMultiFlowOp():
         source=t0,
         source_port=WireBundle.DMA,
         source_channel=0,
-        dests=[(t0, WireBundle.DMA, 1), (t1, WireBundle.DMA, 1)],
+        dests=[
+            {"dest": t0, "port": WireBundle.DMA, "channel": 1},
+            {"dest": t1, "port": WireBundle.DMA, "channel": 1},
+        ],
         keep_pkt_header=True,
     )
 

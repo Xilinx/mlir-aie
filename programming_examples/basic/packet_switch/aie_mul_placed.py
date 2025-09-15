@@ -111,7 +111,7 @@ def packet_switch_kernel(dev, in_out_size):
             source=ShimTile_0_0,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dests=(MemTile_0_1, WireBundle.DMA, 0),
+            dests={"dest": MemTile_0_1, "port": WireBundle.DMA, "channel": 0},
             keep_pkt_header=True,
         )
         packetflow(
@@ -119,7 +119,7 @@ def packet_switch_kernel(dev, in_out_size):
             source=ShimTile_0_0,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dests=(MemTile_0_1, WireBundle.DMA, 0),
+            dests={"dest": MemTile_0_1, "port": WireBundle.DMA, "channel": 0},
             keep_pkt_header=True,
         )
         packetflow(
@@ -127,35 +127,35 @@ def packet_switch_kernel(dev, in_out_size):
             source=MemTile_0_1,
             source_port=WireBundle.DMA,
             source_channel=2,
-            dests=(ShimTile_0_0, WireBundle.DMA, 0),
+            dests={"dest": ShimTile_0_0, "port": WireBundle.DMA, "channel": 0},
         )
         packetflow(
             pkt_id=0,
             source=MemTile_0_1,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dests=(CT_0_2, WireBundle.DMA, 0),
+            dests={"dest": CT_0_2, "port": WireBundle.DMA, "channel": 0},
         )
         packetflow(
             pkt_id=4,
             source=CT_0_2,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dests=(MemTile_0_1, WireBundle.DMA, 2),
+            dests={"dest": MemTile_0_1, "port": WireBundle.DMA, "channel": 2},
         )
         packetflow(
             pkt_id=1,
             source=MemTile_0_1,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dests=(CT_0_3, WireBundle.DMA, 0),
+            dests={"dest": CT_0_3, "port": WireBundle.DMA, "channel": 0},
         )
         packetflow(
             pkt_id=6,
             source=CT_0_3,
             source_port=WireBundle.DMA,
             source_channel=0,
-            dests=(MemTile_0_1, WireBundle.DMA, 2),
+            dests={"dest": MemTile_0_1, "port": WireBundle.DMA, "channel": 2},
         )
 
         # core_0_2 compute
