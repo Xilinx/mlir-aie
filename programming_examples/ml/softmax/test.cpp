@@ -83,7 +83,8 @@ int main(int argc, const char *argv[]) {
   cxxopts::ParseResult vm;
   test_utils::add_default_options(options);
 
-  options.add_options()("npu", "Select NPU", cxxopts::value<int>()->default_value("2"));
+  options.add_options()("npu", "Select NPU",
+                        cxxopts::value<int>()->default_value("2"));
 
   test_utils::parse_options(argc, argv, options, vm);
 
@@ -146,14 +147,14 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    if(dev == 1) {
+    if (dev == 1) {
       // NPU1: Use bfloat16 values in range [4.0, 4.0]
       AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
                                               (std::bfloat16_t)-4.0);
-    } else if(dev == 2) {
+    } else if (dev == 2) {
       // NPU2: Use bfloat16 values in range [-512.0, 512.0]
       AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1024.0,
-                                            (std::bfloat16_t)-512.0);
+                                              (std::bfloat16_t)-512.0);
     }
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));

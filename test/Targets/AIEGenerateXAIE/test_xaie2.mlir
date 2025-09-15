@@ -12,21 +12,21 @@
 
 // Test S2MM, BD chaining.
 // CHECK: XAie_DmaDesc [[bd0:.*]];
-// CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(3,3)));
+// CHECK: __mlir_aie_try(XAie_DmaDescInit(ctx->XAieDevInst, &([[bd0]]), XAie_TileLoc(3,3)));
 // CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(0,0),XAie_LockInit(0,1)));
 // CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd0]]), {{.*}}0x1000, {{.*}}1024));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd0]]), {{.*}}1, {{.*}}1));
 // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd0]])));
-// CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(3,3), {{.*}}0));
+// CHECK: __mlir_aie_try(XAie_DmaWriteBd(ctx->XAieDevInst, &([[bd0]]), XAie_TileLoc(3,3), {{.*}}0));
 // CHECK: XAie_DmaDesc [[bd1:.*]];
-// CHECK: __mlir_aie_try(XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(3,3)));
+// CHECK: __mlir_aie_try(XAie_DmaDescInit(ctx->XAieDevInst, &([[bd1]]), XAie_TileLoc(3,3)));
 // CHECK: __mlir_aie_try(XAie_DmaSetLock(&([[bd1]]), XAie_LockInit(0,0),XAie_LockInit(0,1)));
 // CHECK: __mlir_aie_try(XAie_DmaSetAddrLen(&([[bd1]]), {{.*}}0x1400, {{.*}}16));
 // CHECK: __mlir_aie_try(XAie_DmaSetNextBd(&([[bd1]]), {{.*}}0, {{.*}}1));
 // CHECK: __mlir_aie_try(XAie_DmaEnableBd(&([[bd1]])));
-// CHECK: __mlir_aie_try(XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(3,3), {{.*}}1));
-// CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(&(ctx->DevInst), XAie_TileLoc(3,3), {{.*}}0, {{.*}}DMA_S2MM, {{.*}}0));
-// CHECK: __mlir_aie_try(XAie_DmaChannelEnable(&(ctx->DevInst), XAie_TileLoc(3,3), {{.*}}0, {{.*}}DMA_S2MM));
+// CHECK: __mlir_aie_try(XAie_DmaWriteBd(ctx->XAieDevInst, &([[bd1]]), XAie_TileLoc(3,3), {{.*}}1));
+// CHECK: __mlir_aie_try(XAie_DmaChannelPushBdToQueue(ctx->XAieDevInst, XAie_TileLoc(3,3), {{.*}}0, {{.*}}DMA_S2MM, {{.*}}0));
+// CHECK: __mlir_aie_try(XAie_DmaChannelEnable(ctx->XAieDevInst, XAie_TileLoc(3,3), {{.*}}0, {{.*}}DMA_S2MM));
 
 module @test_xaie2 {
  aie.device(xcvc1902) {

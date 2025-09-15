@@ -20,8 +20,8 @@
 #include <unistd.h>
 #include <xaiengine.h>
 
-#include "memory_allocator.h"
 #include "aie_inc.cpp"
+#include "memory_allocator.h"
 
 int main(int argc, char *argv[]) {
   printf("Tutorial-5 test start.\n");

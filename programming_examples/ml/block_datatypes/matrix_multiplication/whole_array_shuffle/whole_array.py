@@ -121,9 +121,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                 of_offsets,
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-                placement=Tile(
-                    2 * i if n_aie_cols == 8 else i, 1
-                ),
+                placement=Tile(2 * i if n_aie_cols == 8 else i, 1),
             )
         )
 
@@ -259,9 +257,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                                 A,
                                 tap=A_tiles[tile_offset],
                                 task_group=tg,
-                                placement=Tile(
-                                    2 * col if n_aie_cols == 8 else col, 0
-                                ),
+                                placement=Tile(2 * col if n_aie_cols == 8 else col, 0),
                             )
 
                         rt.fill(

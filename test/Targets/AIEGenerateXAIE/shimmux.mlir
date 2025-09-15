@@ -13,7 +13,7 @@
 // CHECK: mlir_aie_configure_switchboxes
 // CHECK: x = 2;
 // CHECK: y = 0;
-// CHECK: __mlir_aie_try(XAie_EnableShimDmaToAieStrmPort(&(ctx->DevInst), XAie_TileLoc(x,y), 3));
+// CHECK: __mlir_aie_try(XAie_EnableShimDmaToAieStrmPort(ctx->XAieDevInst, XAie_TileLoc(x,y), 3));
 
 module {
  aie.device(xcvc1902) {

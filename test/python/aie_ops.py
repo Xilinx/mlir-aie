@@ -22,7 +22,7 @@ from aie.dialects.aie import (
     WireBundle,
     packetflow,
     get_target_model,
-    dma_bd
+    dma_bd,
 )
 from aie.ir import InsertionPoint, Block
 from aie.extras.context import mlir_mod_ctx
@@ -275,7 +275,7 @@ def packetFlowOp():
 def dmaBDOp():
     t0 = tile(col=1, row=3)
     b = buffer(t0, np.ndarray[(12,), np.dtype[np.int32]])
-    dma_bd(b,packet=(0,4))
+    dma_bd(b, packet=(0, 4))
 
 
 # CHECK-LABEL: test_module_context

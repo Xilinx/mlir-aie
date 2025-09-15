@@ -296,7 +296,7 @@ endif()
 add_subdirectory(programming_examples)
 add_subdirectory(programming_guide)
 add_subdirectory(test)
-add_subdirectory(mlir_tutorials)
+add_subdirectory(mlir_exercises)
 add_subdirectory(cmake/modules)
 
 get_filename_component(COMPILER_DIRECTORY ${CMAKE_CXX_COMPILER} DIRECTORY)

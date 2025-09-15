@@ -14,7 +14,7 @@
 
 // CHECK-LABEL:  aie.device(xcve2302) {
 // CHECK:     memref.global "public" @toMem : memref<65536xbf16>
-// CHECK:     memref.global "private" constant @blockwrite_data_0 : memref<8xi32> = dense<[8192, 0, 0, 33554432, -2080374657, 31, 0, 33554432]>
+// CHECK:     memref.global "private" constant @blockwrite_data_0 : memref<8xi32> = dense<[8192, 0, 0, 33554432, -2080374657, 33554463, 0, 33554432]>
 // CHECK:     aiex.runtime_sequence(%arg0: memref<65536xbf16>, %arg1: memref<65536xbf16>, %arg2: memref<65536xbf16>) {
 // CHECK:       %0 = memref.get_global @blockwrite_data_0 : memref<8xi32>
 // CHECK:       aiex.npu.blockwrite(%0) {address = 67227648 : ui32} : memref<8xi32>

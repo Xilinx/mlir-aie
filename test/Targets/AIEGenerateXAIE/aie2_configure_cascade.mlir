@@ -11,10 +11,10 @@
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
 // CHECK: int mlir_aie_configure_cascade(aie_libxaie_ctx_t* ctx) {
-// CHECK: XAie_CoreConfigAccumulatorControl(&(ctx->DevInst), XAie_TileLoc(1, 3), NORTH, EAST);
-// CHECK: XAie_CoreConfigAccumulatorControl(&(ctx->DevInst), XAie_TileLoc(2, 3), WEST, SOUTH);
-// CHECK: XAie_CoreConfigAccumulatorControl(&(ctx->DevInst), XAie_TileLoc(3, 4), NORTH, SOUTH);
-// CHECK: XAie_CoreConfigAccumulatorControl(&(ctx->DevInst), XAie_TileLoc(3, 3), NORTH, SOUTH);
+// CHECK: XAie_CoreConfigAccumulatorControl(ctx->XAieDevInst, XAie_TileLoc(1, 3), NORTH, EAST);
+// CHECK: XAie_CoreConfigAccumulatorControl(ctx->XAieDevInst, XAie_TileLoc(2, 3), WEST, SOUTH);
+// CHECK: XAie_CoreConfigAccumulatorControl(ctx->XAieDevInst, XAie_TileLoc(3, 4), NORTH, SOUTH);
+// CHECK: XAie_CoreConfigAccumulatorControl(ctx->XAieDevInst, XAie_TileLoc(3, 3), NORTH, SOUTH);
 // CHECK: return XAIE_OK;
 // CHECK: } // mlir_aie_configure_cascade
 
