@@ -20,9 +20,9 @@ void saxpy(bfloat16 *restrict x, bfloat16 *restrict y, bfloat16 *restrict z) {
     ::aie::vector<bfloat16, 64> y_v = ::aie::load_v<64>(y);
     y += 64;
     ::aie::accum<accfloat, 64> ax_v = ::aie::mul(x_v, a_v);
-    ::aie::vector<bfloat16, 64> ax_v_converted = ax_v.to_vector<bfloat16>();
-    ::aie::vector<bfloat16, 64> z_v = ::aie::add(ax_v_converted, y_v);
-    ::aie::store_v(z, z_v);
+    ::aie::accum<accfloat, 64> z_v = ::aie::add(ax_v, y_v);
+    ::aie::vector<bfloat16, 64> z_v_converted = z_v.to_vector<bfloat16>();
+    ::aie::store_v(z, z_v_converted);
     z += 64;
   }
   event1();
