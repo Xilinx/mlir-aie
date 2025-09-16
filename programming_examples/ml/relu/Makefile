@@ -50,10 +50,10 @@ build/${targetname}.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/${targetname}.mlir build/${targetname}.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host \
 	            --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=insts.bin $(<:%=../%)
+				--aie-generate-elf --elf-name=insts.elf $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -67,7 +67,7 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${length}
+	${powershell} ./$< -x build/final.xclbin -i build/insts.elf -k MLIR_AIE -l ${length}
 
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe
