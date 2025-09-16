@@ -38,7 +38,7 @@ using namespace mlir;
 using namespace xilinx;
 
 static cl::opt<std::string> fileName(cl::Positional, cl::desc("<input mlir>"),
-                              cl::Required);
+                                     cl::Required);
 
 const std::string bold("\033[0;1m");
 const std::string dim("\033[0;2m");

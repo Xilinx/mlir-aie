@@ -271,12 +271,16 @@ def my_matmul(
                 core_tiles[row][0:n_aie_cols],  # broadcast along one row
                 fifo_depth,
                 A_l1_ty,
-                [
-                    (m // r, r * k),
-                    (k // s, s),
-                    (r, k),
-                    (s, 1),
-                ] if not use_scalar else [],
+                (
+                    [
+                        (m // r, r * k),
+                        (k // s, s),
+                        (r, k),
+                        (s, 1),
+                    ]
+                    if not use_scalar
+                    else []
+                ),
             )
 
         # A_l3_l2 and A_l2_l1 object FIFO linking
@@ -318,19 +322,23 @@ def my_matmul(
                 fifo_depth,
                 B_l1_ty,
                 (
-                    ([
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                    if not b_col_maj
-                    else [
-                        (n // t, t * k),
-                        (k // s, s),
-                        (t, k),
-                        (s, 1),
-                    ]) if not use_scalar else []
+                    (
+                        [
+                            (k // s, s * n),
+                            (n // t, t),
+                            (s, n),
+                            (t, 1),
+                        ]
+                        if not b_col_maj
+                        else [
+                            (n // t, t * k),
+                            (k // s, s),
+                            (t, k),
+                            (s, 1),
+                        ]
+                    )
+                    if not use_scalar
+                    else []
                 ),
             )
             # B_l3_l2 and B_l2_l1 object FIFO linking
@@ -352,18 +360,20 @@ def my_matmul(
                 shim_tiles[col],
                 fifo_depth,
                 C_l2_ty,
-                ([
-                    (m // r, r * n),
-                    (r, t),
-                    (n // t, r * t),
-                    (t, 1),
-                ] if not c_col_maj else 
-                [
-                    (n // t, t * m),
-                    (t, r),
-                    (m // r, r * t), 
-                    (r, 1)
-                ]) if not use_scalar else [],
+                (
+                    (
+                        [
+                            (m // r, r * n),
+                            (r, t),
+                            (n // t, r * t),
+                            (t, 1),
+                        ]
+                        if not c_col_maj
+                        else [(n // t, t * m), (t, r), (m // r, r * t), (r, 1)]
+                    )
+                    if not use_scalar
+                    else []
+                ),
             )
             if n_aie_rows > 1:
                 of_offsets = [m * n * i for i in range(n_aie_rows)]
@@ -461,11 +471,16 @@ def my_matmul(
                             C_row_offset = row_base * m * n_aie_rows * N
                             C_col_offset = col * n
                             C_offset = C_col_offset + C_row_offset
-                            C_sizes = [tb_n_rows, N // n // n_aie_cols, m * n_aie_rows, n]
+                            C_sizes = [
+                                tb_n_rows,
+                                N // n // n_aie_cols,
+                                m * n_aie_rows,
+                                n,
+                            ]
                             C_strides = [m * n_aie_rows * N, n * n_aie_cols, N, 1]
                         else:
                             C_row_offset = row_base * m * n_aie_rows
-                            C_col_offset = col * n * M 
+                            C_col_offset = col * n * M
                             C_offset = C_col_offset + C_row_offset
                             C_sizes = [N // n // n_aie_cols, n_aie_rows, n, m]
                             C_strides = [M * n * n_aie_cols, m, M, 1]

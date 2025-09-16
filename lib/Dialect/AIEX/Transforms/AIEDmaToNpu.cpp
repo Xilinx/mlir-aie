@@ -527,8 +527,9 @@ public:
       words[4] |= op.getD1Stride() & 0xfffff;
 
       // DMA_BDX_5
-      // TODO: SIMID, AxCache, AXQoS
-      words[5] = op.getD2Stride() & 0xfffff;
+      // TODO: SIMID, AXQoS
+      words[5] |= (2 & 0xf) << 24; // AXCache = 2 to enable upsizing in NoC
+      words[5] |= op.getD2Stride() & 0xfffff;
 
       // DMA_BDX_6
       words[6] |= (op.getIterationCurrent() & 0x3f) << 26;

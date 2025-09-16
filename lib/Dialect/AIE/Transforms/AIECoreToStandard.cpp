@@ -319,7 +319,20 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    args.push_back(op.getCascadeValue());
+    Value cascadeValue = op.getCascadeValue();
+
+    // Check if we need a bitcast for the input value
+    Type expectedInputType = putMCDFunc.getFunctionType().getInput(0);
+    Type actualInputType = cascadeValue.getType();
+
+    if (expectedInputType != actualInputType) {
+      // Create a bitcast operation to convert from actual input type to
+      // expected type
+      cascadeValue = rewriter.create<vector::BitCastOp>(
+          op.getLoc(), expectedInputType, cascadeValue);
+    }
+
+    args.push_back(cascadeValue);
     if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
@@ -363,7 +376,20 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
 
     auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                     getSCDFunc, args);
-    rewriter.replaceOp(op, getSCDCall.getResult(0));
+    Value result = getSCDCall.getResult(0);
+
+    // Check if we need a bitcast
+    Type expectedType = op.getResult().getType();
+    Type intrinsicReturnType = result.getType();
+
+    if (expectedType != intrinsicReturnType) {
+      // Create a bitcast operation to convert from intrinsic return type to
+      // expected type
+      result =
+          rewriter.create<vector::BitCastOp>(op.getLoc(), expectedType, result);
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };

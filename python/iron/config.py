@@ -10,6 +10,7 @@ import subprocess
 
 from .device import NPU1, NPU2
 
+
 # Detect WSL
 def is_wsl() -> bool:
     try:
@@ -17,12 +18,14 @@ def is_wsl() -> bool:
             return "microsoft" in kernel.read().lower()
     except OSError:
         return False
-    
+
+
 # Prefer Windows xrt-smi when in WSL. Linux native otherwise.
 def xrt_smi_path() -> str:
     if is_wsl():
         return "/mnt/c/Windows/System32/AMD/xrt-smi.exe"
     return "/opt/xilinx/xrt/bin/xrt-smi"
+
 
 def detect_npu_device():
     """Detects the current device in the system.

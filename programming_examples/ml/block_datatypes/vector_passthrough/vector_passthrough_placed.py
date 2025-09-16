@@ -13,6 +13,7 @@ from aie.dialects.aiex import *
 from aie.helpers.dialects.ext.scf import _for as range_
 from aie.extras.context import mlir_mod_ctx
 
+
 def vector_passthrough():
     N = 32
     n = 16
@@ -27,9 +28,7 @@ def vector_passthrough():
         tensor_ty = np.ndarray[(N,), np.dtype[v8bfp16ebs8]]
         tile_ty = np.ndarray[(n,), np.dtype[v8bfp16ebs8]]
 
-        kernel_func = external_func(
-            "bfp16_passthrough_vectorized", [tile_ty, tile_ty]
-        )
+        kernel_func = external_func("bfp16_passthrough_vectorized", [tile_ty, tile_ty])
 
         # Tile declarations
         ShimTile = tile(int(sys.argv[1]), 0)

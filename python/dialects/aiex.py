@@ -72,7 +72,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
 
         npu_dma_memcpy_nd(of_in, 0, input_buffer, sizes=[1, 1, 1, 30])
 
-        The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the input_buffer in host memory into an object FIFO with matching 
+        The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the input_buffer in host memory into an object FIFO with matching
         metadata labeled "of_in".
         The size dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to 1.
     """
@@ -88,7 +88,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         strides: MixedValues | None = None,
         issue_token: bool | None = None,
         burst_length: int = 0,
-        packet: tuple[int]|None = None
+        packet: tuple[int] | None = None,
     ):
         if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
@@ -128,7 +128,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             bd_id,
             issue_token=issue_token,
             burst_length=burst_length,
-            packet=packet
+            packet=packet,
         )
 
 
@@ -136,6 +136,7 @@ npu_dma_memcpy_nd = NpuDmaMemcpyNd
 
 
 # Runtime sequence
+
 
 def runtime_sequence(*inputs: Type, sym_name=None, context=None):
     def decorator(f):
@@ -196,7 +197,7 @@ def shim_dma_bd(
     strides: MixedValues | None = None,
     transfer_len: int | None = None,
     burst_length: int = 0,
-    packet: tuple[int]|None = None
+    packet: tuple[int] | None = None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -227,7 +228,7 @@ def shim_dma_bd(
         len=transfer_len,
         dimensions=dimensions,
         burst_length=burst_length,
-        packet=packet
+        packet=packet,
     )
 
 
@@ -292,7 +293,7 @@ def shim_dma_single_bd_task(
                 strides=strides,
                 transfer_len=transfer_len,
                 burst_length=burst_length,
-                packet=packet
+                packet=packet,
             )
             EndOp()
     return task
@@ -332,6 +333,7 @@ def dma_start_task(*args: DMAConfigureTaskForOp):
         )
     for dma_task in args:
         _orig_dma_start_task(dma_task)
+
 
 def set_lock_value(lock: aie.LockOp, value: int):
     return set_lock(lock, value)

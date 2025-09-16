@@ -111,7 +111,8 @@ std::bfloat16_t get_random<std::bfloat16_t>() {
 
 template <typename Tin, typename Tout, typename Tacc>
 void matmul(int M, int N, int K, const std::vector<Tin> A,
-            const std::vector<Tin> B, std::vector<Tout> &C, int b_col_maj, int c_col_maj) {
+            const std::vector<Tin> B, std::vector<Tout> &C, int b_col_maj,
+            int c_col_maj) {
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
       Tacc running_sum = 0;
@@ -400,7 +401,8 @@ template <typename Tin, typename Tout, typename Tacc>
 int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
                       std::vector<Tin> B, std::vector<Tout> C, int n_samples,
                       int verbosity = 0, float abs_tol = 0.5,
-                      float rel_tol = 0.05, int b_col_maj = 0, int c_col_maj = 0) {
+                      float rel_tol = 0.05, int b_col_maj = 0,
+                      int c_col_maj = 0) {
   std::mt19937 rng;
   auto rows = std::views::iota(0, M);
   auto cols = std::views::iota(0, N);
@@ -432,8 +434,8 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
     } else {
       observed = C[row + col * M];
     }
-    std::optional<struct error<Tout>> error = verify_single(
-        std::cout, row, col, ref, observed, abs_tol, rel_tol);
+    std::optional<struct error<Tout>> error =
+        verify_single(std::cout, row, col, ref, observed, abs_tol, rel_tol);
     if (error.has_value()) {
       if (n_errors < max_printable_errors) {
         errors.push_back(*error);

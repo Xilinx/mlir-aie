@@ -22,7 +22,10 @@ def gen_cp_sequence():
         def device_body():
             params = []
             t = tile(0, 0)
-            t.attributes["controller_id"] = aiex.AttrBuilder.get("PacketInfoAttr")([2, 3])
+            t.attributes["controller_id"] = aiex.AttrBuilder.get("PacketInfoAttr")(
+                [2, 3]
+            )
+
             @aiex.runtime_sequence(*params)
             def sequence(*args):
                 # CHECK: 00002003

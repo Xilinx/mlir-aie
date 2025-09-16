@@ -164,6 +164,13 @@ def parse_args(args=None):
         help="Use dynamic object fifos for the for loops",
     )
     parser.add_argument(
+        "--packet-sw-objFifos",
+        dest="packet_sw_objFifos",
+        default=False,
+        action="store_true",
+        help="Use packet switched flows when lowering object fifos",
+    )
+    parser.add_argument(
         "--aie-generate-airbin",
         dest="airbin",
         default=False,

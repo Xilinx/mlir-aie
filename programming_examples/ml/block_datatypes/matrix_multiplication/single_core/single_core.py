@@ -59,7 +59,7 @@ def my_matmul(M, K, N, m, k, n):
     memA = inA.cons().forward(name="memA")
 
     inB = ObjectFifo(b_ty, name="inB")
-    b_dims=None
+    b_dims = None
     # This would be equivalent to a transposition of a 64x64 pre-shuffled tile
     # b_dims = [(8, 8), (8, 64), (8, 1)]
     memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)

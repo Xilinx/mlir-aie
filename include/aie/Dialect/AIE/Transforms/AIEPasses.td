@@ -204,7 +204,9 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 
   let options = [
     Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false", 
-    "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">
+           "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">,      
+    Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool", /*default=*/"false",
+           "Flag to enable aie.packetflow lowering from objectfifos.">, 
   ];
 }
 

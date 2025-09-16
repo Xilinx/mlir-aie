@@ -9,10 +9,6 @@
 // RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie2_arch.mlir
 // RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie1_arch.mlir
 // RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie2_arch.mlir
-// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie1_arch.mlir
-// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie2_arch.mlir
-// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie1_arch.mlir
-// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie2_arch.mlir
 // RUN: %python aiecc.py --xclbin-kernel-name=ADDONE --xclbin-kernel-id=0x901 --xclbin-instance-name=ADDONEINST --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=add_one.xclbin --npu-insts-name=insts.bin aie1_arch.mlir
 // RUN: %python aiecc.py --xclbin-kernel-name=ADDTWO --xclbin-kernel-id=0x902 --xclbin-instance-name=ADDTWOINST --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-input=add_one.xclbin --xclbin-name=add_two.xclbin --npu-insts-name=insts.bin aie2_arch.mlir
 // RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags

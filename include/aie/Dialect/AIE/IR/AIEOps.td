@@ -1611,18 +1611,29 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
         AIEI64Attr:$channel_index,
         AIEI64Attr:$col,
         // If this is set we are using the PLIO in this ShimTile
-        DefaultValuedAttr<BoolAttr, "false">:$plio
+        DefaultValuedAttr<BoolAttr, "false">:$plio,
+        OptionalAttr<PacketInfoAttr>:$packet
   );
 
   let results = (outs);
 
   let assemblyFormat = [{
-    $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
+    $sym_name `(` $channel_dir `,` $channel_index `,` $col (`,` $packet^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::StringRef":$sym_name, "DMAChannelDir":$dir, "int":$channel_index,
+               "int":$col, "bool":$plio), [{
+      build($_builder, $_state, ::mlir::SymbolRefAttr::get(odsBuilder.getContext(), sym_name), 
+            DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
+            $_builder.getI64IntegerAttr(channel_index), 
+            $_builder.getI64IntegerAttr(col), $_builder.getBoolAttr(plio), nullptr);
+    }]>
+  ];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {

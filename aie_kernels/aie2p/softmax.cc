@@ -25,18 +25,27 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   // VJUNG: We do 3 passes on the vector:
   // 1. Find the max value scaled by log2e in the vector
   // 2. Calculate the exponentials of the scaled values minus the maximum
-  // 3. Calculate the softmax by dividing each exponential by the sum of all exponentials
-  // Note: The multiplication by log2e is very sensitive, casting it to bf16 before exponentiation leads to wrong output.
-  
-  auto it_log_in = aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_log_out = aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_exp_in = aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
-  auto it_exp_out = aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
-  auto it_scale = aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
-  auto it_soft_out = aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
-  
-  aie::vector<bfloat16, SM_VEC_LEN> in_elems, exp_val, input_bf16, log2e_vec, max_val_vec;
-  aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, scaled_accum, exp_in_accum;
+  // 3. Calculate the softmax by dividing each exponential by the sum of all
+  // exponentials Note: The multiplication by log2e is very sensitive, casting
+  // it to bf16 before exponentiation leads to wrong output.
+
+  auto it_log_in =
+      aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
+  auto it_log_out =
+      aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
+  auto it_exp_in =
+      aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)input_vector);
+  auto it_exp_out =
+      aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
+  auto it_scale =
+      aie::cbegin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
+  auto it_soft_out =
+      aie::begin_restrict_vector<SM_VEC_LEN>((bfloat16 *)output_vector);
+
+  aie::vector<bfloat16, SM_VEC_LEN> in_elems, exp_val, input_bf16, log2e_vec,
+      max_val_vec;
+  aie::accum<accfloat, SM_VEC_LEN> out_vals, exp_val_accum, scaled_accum,
+      exp_in_accum;
 
   float max_val = 0;
   float accum_exp_val = 0;
@@ -45,7 +54,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
   const int elem_iters = vector_size / SM_VEC_LEN;
 
   exp_val_accum = aie::zeros<accfloat, SM_VEC_LEN>();
-  
+
   log2e_vec = aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e);
 
   // First pass
@@ -58,17 +67,17 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
     }
   }
   max_val_vec = aie::broadcast<bfloat16, SM_VEC_LEN>(max_val);
-    
+
   // Second pass
   for (int i = 0; i < elem_iters; i++) {
-    
+
     input_bf16 = *it_exp_in++;
 
     scaled_accum = aie::mul(input_bf16, log2e_vec);
     exp_in_accum = aie::sub(scaled_accum, max_val_vec);
     exp_val = aie::exp2<bfloat16>(exp_in_accum.to_vector<float>());
     exp_val_accum = add(exp_val_accum, exp_val);
-    
+
     *it_exp_out++ = exp_val;
   }
 
