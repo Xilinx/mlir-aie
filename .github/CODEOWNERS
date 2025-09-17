@@ -1,28 +1,28 @@
 .github             @stephenneuendorffer @fifield @erwei-xilinx
-aie_kernels/        @denolf @jgmelber @jackl-xilinx @andrej
-aie_runtime_lib/    @stephenneuendorffer @jackl-xilinx
-cmake/              @denolf @stephenneuendorffer
-docs/               @stephenneuendorffer @AndraBisca @jackl-xilinx @jgmelber   
-**/ADF/             @stephenneuendorffer
-**/AIEVec/          @jsetoain
-**/AIE/             @AndraBisca @stephenneuendorffer @fifield @erwei-xilinx
-**/AIEX/            @jgmelber @AndraBisca @fifield
+aie_kernels/**      @denolf @jgmelber @jackl-xilinx @andrej
+aie_runtime_lib/**  @stephenneuendorffer @jackl-xilinx
+cmake/**            @denolf @stephenneuendorffer
+docs/**             @stephenneuendorffer @AndraBisca @jackl-xilinx @jgmelber   
+**/ADF/**           @stephenneuendorffer
+**/AIEVec/**        @jsetoain
+**/AIE/**           @AndraBisca @stephenneuendorffer @fifield @erwei-xilinx
+**/AIEX/**          @jgmelber @AndraBisca @fifield
 **/XLLVM/           @jsetoain
 **/AIETargetModel.* @stephenneuendorffer
 include/Bindings/   @AndraBisca
 **/Conversion/      @erwei-xilinx @jsetoain
-lib/CAPI            @fifield @AndraBisca
+lib/CAPI/           @fifield @AndraBisca
 lib/Conversion/AIEVecToLLVM/  @jsetoain
-**/Target/          @jsetoain @fifield
-**/Targets/         @fifield @jgmelber @AndraBisca
-mlir_tutorials/     @denolf @jackl-xilinx @AndraBisca @fifield
-platforms/          @jackl-xilinx @eddierichter-amd
-programming_examples/ @denolf @jgmelber @fifield @jackl-xilinx @andrej @pvasireddy-amd
-programming_guide/  @denolf @jgmelber @AndraBisca @jackl-xilinx @andrej
-python/             @AndraBisca @jackl-xilinx @andrej @pvasireddy-amd @jgmelber
-runtime_lib/        @stephenneuendorffer @jackl-xilinx
-test/               @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @AndraBisca
+**/Target/**        @jsetoain @fifield
+**/Targets/**       @fifield @jgmelber @AndraBisca
+mlir_exercises/**   @denolf @jackl-xilinx @AndraBisca @fifield
+platforms/**        @jackl-xilinx @eddierichter-amd
+programming_examples/** @denolf @jgmelber @fifield @jackl-xilinx @andrej @pvasireddy-amd
+programming_guide/**  @denolf @jgmelber @AndraBisca @jackl-xilinx @andrej
+python/**           @AndraBisca @jackl-xilinx @andrej @pvasireddy-amd @jgmelber
+runtime_lib/**      @stephenneuendorffer @jackl-xilinx
+test/**             @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @AndraBisca
 test/aievec/        @jsetoain
-test/objectFifo*/   @AndraBisca @denolf
-utils/              @jackl-xilinx @jgmelber @andrej @AndraBisca @erwei-xilinx
+test/objectFifo*/** @AndraBisca @denolf
+utils/**            @jackl-xilinx @jgmelber @andrej @AndraBisca @erwei-xilinx
 **                  @AndraBisca @stephenneuendorffer @fifield
