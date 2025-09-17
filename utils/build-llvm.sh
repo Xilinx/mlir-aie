@@ -50,4 +50,4 @@ if [ -x "$(command -v ccache)" ]; then
 fi
 
 cmake $CMAKE_CONFIGS ../llvm 2>&1 | tee cmake.log
-cmake --build . --target install -- -j$(nproc)
+cmake --build . --target install -- -j4

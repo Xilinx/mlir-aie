@@ -465,13 +465,13 @@ class FlowRunner:
     def prepend_tmp(self, x):
         return os.path.join(self.tmpdirname, x)
 
-    async def do_call(self, task, command, force=False):
+    async def do_call(self, task_id, command, force=False):
         if self.stopall:
             return
 
         commandstr = " ".join(command)
-        if task:
-            self.progress_bar.update(task, advance=0, command=commandstr[0:30])
+        if task_id:
+            self.progress_bar.update(task_id, advance=0, command=commandstr[0:30])
         start = time.time()
         if self.opts.verbose:
             print(commandstr)
@@ -491,14 +491,14 @@ class FlowRunner:
         if self.opts.verbose:
             print(f"Done in {end - start:.3f} sec: {commandstr}")
         self.runtimes[commandstr] = end - start
-        if task:
-            self.progress_bar.update(task, advance=1, command="")
-            self.maxtasks = max(self.progress_bar._tasks[task].completed, self.maxtasks)
-            self.progress_bar._tasks[task].total = self.maxtasks
+        if task_id:
+            self.progress_bar.update(task_id, advance=1, command="")
+            self.maxtasks = max(self.progress_bar._tasks[task_id].completed, self.maxtasks)
+            self.progress_bar.update(task_id, total=self.maxtasks)
 
         if ret != 0:
-            if task:
-                self.progress_bar._tasks[task].description = "[red] Error"
+            if task_id:
+                self.progress_bar.update(task_id, description="[red] Error")
             print("Error encountered while running: " + commandstr, file=sys.stderr)
             sys.exit(ret)
 
@@ -559,8 +559,7 @@ class FlowRunner:
 
         return llvmir_peanohack
 
-    async def process_cores(self, device_op, device_name, file_with_addresses, aie_target, aie_peano_target):
-        pb = self.progress_bar
+    async def process_cores(self, device_op, device_name, file_with_addresses, aie_target, aie_peano_target, parent_task_id):
         # If unified compilation is on, we create a single object file that
         # contains the compiled code for all cores. If not, the equivalent
         # of the below is created for each core inside of process_core
@@ -569,20 +568,20 @@ class FlowRunner:
         # fmt: off
         if opts.unified:
             file_opt_with_addresses = self.prepend_tmp(f"{device_name}_input_opt_with_addresses.mlir")
-            await self.do_call(pb.task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name)}", file_with_addresses, "-o", file_opt_with_addresses])
+            await self.do_call(parent_task_id, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name)}", file_with_addresses, "-o", file_opt_with_addresses])
 
             file_llvmir = self.prepend_tmp(f"{device_name}_input.ll")
-            await self.do_call(pb.task, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])
+            await self.do_call(parent_task_id, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])
 
             unified_file_core_obj = self.prepend_tmp(f"{device_name}_input.o")
             if opts.compile and opts.xchesscc:
-                file_llvmir_hacked = await self.chesshack(pb.task, file_llvmir, aie_target)
-                await self.do_call(pb.task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", unified_file_core_obj])
+                file_llvmir_hacked = await self.chesshack(parent_task_id, file_llvmir, aie_target)
+                await self.do_call(parent_task_id, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", unified_file_core_obj])
             elif opts.compile:
                 file_llvmir_hacked = await self.peanohack(file_llvmir)
                 file_llvmir_opt = self.prepend_tmp(f"{device_name}_input.opt.ll")
-                await self.do_call(pb.task, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
-                await self.do_call(pb.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", unified_file_core_obj])
+                await self.do_call(parent_task_id, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
+                await self.do_call(parent_task_id, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", unified_file_core_obj])
         else:
             unified_file_core_obj = None
         # fmt: on
@@ -598,7 +597,8 @@ class FlowRunner:
                     aie_target,
                     aie_peano_target,
                     file_with_addresses,
-                    unified_file_core_obj
+                    unified_file_core_obj,
+                    parent_task_id
                 )
             )
         device_elf_paths = await asyncio.gather(*processes)
@@ -627,7 +627,8 @@ class FlowRunner:
         aie_target,
         aie_peano_target,
         file_with_addresses,
-        unified_file_core_obj
+        unified_file_core_obj,
+        parent_task_id
     ):
         async with self.limit:
             if self.stopall:
@@ -700,7 +701,7 @@ class FlowRunner:
                 elif opts.link:
                     await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
-            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+            self.progress_bar.update(parent_task_id, advance=1)
             self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
@@ -1369,10 +1370,11 @@ class FlowRunner:
 
             # 1.) MLIR transformations
 
-            progress_bar.task = progress_bar.add_task(
-                "[green] MLIR compilation:", total=1, command="1 Worker"
+            task1 = progress_bar.add_task(
+                "[green] MLIR compilation", total=3, command="1 Worker"
             )
 
+            self.progress_bar.update(task1, advance=1, command="Generating device list")
             devices = generate_devices_list(module)
             if len(devices) == 0:
                 print("error: input MLIR must contain at least one aie.device")
@@ -1397,6 +1399,7 @@ class FlowRunner:
                 aie_target
             ).materialize(module=True)
 
+            self.progress_bar.update(task1, advance=1, command=pass_pipeline[0:30])
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
             run_passes(
                 pass_pipeline,
@@ -1408,7 +1411,7 @@ class FlowRunner:
             input_physical = self.prepend_tmp("input_physical.mlir")
             processes = [
                 self.do_call(
-                    None,
+                    task1,
                     [
                         "aie-opt",
                         "--aie-create-pathfinder-flows",
@@ -1422,52 +1425,65 @@ class FlowRunner:
 
             await asyncio.gather(*processes)
 
+            self.progress_bar.update(task1, advance=1)
+
             # 2.) Generate code for each core
+            task2 = progress_bar.add_task(
+                "[green] Generating code for each core", total=3, command=""
+            )
 
             # create core ELF files for each device and core
             elf_paths = {}
             for i, (device_op, device_name) in enumerate(devices):
                 aie_target, aie_peano_target = aie_targets[i], aie_peano_targets[i]
-                elf_paths[device_name] = await self.process_cores(device_op, device_name, file_with_addresses, aie_target, aie_peano_target)
+                elf_paths[device_name] = await self.process_cores(device_op, device_name, file_with_addresses, aie_target, aie_peano_target, task2)
             input_physical_with_elfs = await self.write_elf_paths_to_mlir(input_physical, elf_paths)
 
-            # 2.5) Targets that require the cores to be lowered but apply across all devices
+            # 2.5.) Targets that require the cores to be lowered but apply across all devices
             if opts.txn and opts.execute:
                 input_physical_with_elfs_str = await read_file_async(input_physical_with_elfs)
                 input_physical_with_elfs = await self.process_txn(input_physical_with_elfs_str)
             
             npu_insts_module = None
             if opts.npu or opts.elf:
+                task3 = progress_bar.add_task(
+                    "[green] Lowering NPU instructions", total=2, command=""
+                )
                 with Context(), Location.unknown():
                     input_physical_with_elfs_module = Module.parse(
                         await read_file_async(input_physical_with_elfs)
                     )
                     pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
-                    npu_insts_file = (
-                        self.prepend_tmp(f"npu_insts.mlir")
-                    )
+                    npu_insts_file = self.prepend_tmp(f"npu_insts.mlir")
+                    self.progress_bar.update(task3, advance=1, command=pass_pipeline[0:30])
                     npu_insts_module = run_passes_module(
                         pass_pipeline,
                         input_physical_with_elfs_module,
                         npu_insts_file,
                         self.opts.verbose
                     )
+                    self.progress_bar.update(task3, advance=1)
 
             # 3.) Generate compilation artifacts for each device
 
             # create other artifacts for each device
+            task4 = progress_bar.add_task(
+                "[green] Generating device artifacts", total=len(devices), command=""
+            )
             for (device_op, device_name) in devices:
                 aie_target, aie_peano_target = await self.get_aie_target_for_device(input_physical, device_name)
-                await self.run_flow_for_device(input_physical, input_physical_with_elfs, npu_insts_module, device_op, device_name, aie_target, aie_peano_target)
+                await self.run_flow_for_device(input_physical, input_physical_with_elfs, npu_insts_module, device_op, device_name, aie_target, aie_peano_target, task4)
 
-    async def run_flow_for_device(self, input_physical, input_physical_with_elfs, npu_insts_module, device_op, device_name, aie_target, aie_peano_target):
+    async def run_flow_for_device(self, input_physical, input_physical_with_elfs, npu_insts_module, device_op, device_name, aie_target, aie_peano_target, parent_task_id):
         pb = self.progress_bar
+        nworkers = int(opts.nthreads)
 
         # Optionally generate insts.bin for NPU instruction stream
         if opts.npu:
             # write each runtime sequence binary into its own file
             runtime_sequences = generate_runtime_sequences_list(device_op)
             for seq_op, seq_name in runtime_sequences:
+                pb.update(parent_task_id, description=f"[green] Creating NPU instruction binary")
                 npu_insts = aiedialect.translate_npu_to_binary(
                     npu_insts_module.operation,
                     device_name,
@@ -1476,18 +1492,12 @@ class FlowRunner:
                 npu_insts_path = opts.insts_name.format(device_name, seq_name)
                 with open(npu_insts_path, "wb") as f:
                     f.write(struct.pack("I" * len(npu_insts), *npu_insts))
-
-        pb.update(pb.task, advance=0, visible=False)
-        pb.task_completed = pb.add_task(
-            "[green] AIE Compilation:",
-            total=self.maxtasks,
-            command="%d Workers" % nworkers,
-        )
+                pb.update(parent_task_id, advance=1)
 
         if opts.compile_host or opts.aiesim:
             file_inc_cpp = self.prepend_tmp("aie_inc.cpp")
             await self.do_call(
-                None,
+                parent_task_id,
                 [
                     "aie-translate",
                     "--aie-generate-xaie",
@@ -1505,7 +1515,7 @@ class FlowRunner:
         processes = []
         if opts.aiesim:
             processes.append(
-                self.gen_sim(pb.task, aie_target, input_physical, device_name)
+                self.gen_sim(parent_task_id, input_physical, device_name)
             )
 
         input_physical_with_elfs_str = await read_file_async(input_physical_with_elfs)
@@ -1513,7 +1523,6 @@ class FlowRunner:
         if (opts.cdo or opts.xcl or opts.pdi) and opts.execute:
             await self.process_cdo(input_physical_with_elfs_str, device_name)
 
-        processes = []
         if opts.xcl:
             processes.append(self.process_xclbin_gen(device_op, device_name))
         # self.process_pdi_gen is called in process_xclbin_gen,
