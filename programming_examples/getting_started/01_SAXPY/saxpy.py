@@ -87,7 +87,7 @@ def saxpy(input0, input1, output):
 
 def main():
     # Define tensor shapes and data types
-    data_size = 4096
+    data_size = 2048
     element_type = bfloat16
 
     # Construct an input tensor and an output zeroed tensor
