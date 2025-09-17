@@ -40,7 +40,10 @@ def conv2dk14(
         height_out = height // kernel_size
 
         # we reload inputs 72 times (out_channels // sub_out_channels)
-        tensorInSize = width * height * in_channels * out_channels_group
+        # tensorInSize = width * height * in_channels * out_channels_group
+        tensorInSize = (
+            width * height * in_channels * 2
+        )  # 72 channel groups / 36 repeats = 2
         tensorWeightsSize = weights * out_channels_group
         tensorOutSize = width_out * height_out * sub_out_channels * out_channels_group
 
@@ -225,14 +228,16 @@ def conv2dk14(
                 in_act_task = shim_dma_single_bd_task(
                     of_inOF_act_L3L2,
                     I,
-                    sizes=[1, 1, 1, tensorInSize],
+                    sizes=[36, 1, 1, tensorInSize],
+                    # issue_token=True,
                     issue_token=True,
                 )
                 in_wts_task = shim_dma_single_bd_task(
                     of_inOF_wts_0_L3L2,
                     W,
                     sizes=[1, 1, 1, tensorWeightsSize],
-                    issue_token=True,
+                    # issue_token=True,
+                    issue_token=False,
                 )
                 out_task = shim_dma_single_bd_task(
                     of_outOFL2L3,
@@ -242,7 +247,13 @@ def conv2dk14(
                 )
 
                 dma_start_task(in_act_task, in_wts_task, out_task)
-                dma_await_task(in_act_task, in_wts_task, out_task)
+                # for i in range(71):
+                #     dma_await_task(in_act_task)
+                #     dma_start_task(in_act_task)
+                dma_await_task(in_act_task)
+                dma_start_task(in_act_task)
+                # dma_await_task(in_act_task, in_wts_task, out_task)
+                dma_await_task(out_task)
 
                 trace_utils.gen_trace_done_aie2(ShimTile)
 
