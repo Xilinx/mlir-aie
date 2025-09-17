@@ -37,7 +37,7 @@ extern "C" {
 void matrix_multiplication(const int16 *__restrict A, const int16 *__restrict B,
                            int16 *__restrict C) {
   AIE_PREPARE_FOR_PIPELINING
-  AIE_LOOP_MIN_ITERATION_COUNT(8)
+  AIE_LOOP_MIN_ITERATION_COUNT(4)
   for (unsigned row = 0; row < m / r; row += 2) {
     for (unsigned col = 0; col < n / t; col += 2) {
 
