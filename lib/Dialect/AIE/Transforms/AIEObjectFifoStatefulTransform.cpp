@@ -1994,7 +1994,7 @@ struct AIEObjectFifoStatefulTransformPass
     //===------------------------------------------------------------------===//
     if (clDynamicObjectFifos) {
       if (failed(dynamicGlobalObjectFifos(device, builder, objectFifoTiles)))
-        signalPassFailure();
+        return signalPassFailure();
     } else {
       std::set<TileOp> dynamicTiles;
       std::set<TileOp> unrollTiles;
@@ -2012,9 +2012,9 @@ struct AIEObjectFifoStatefulTransformPass
         }
       }
       if (failed(dynamicGlobalObjectFifos(device, builder, dynamicTiles)))
-        signalPassFailure();
+        return signalPassFailure();
       if (failed(unrollForLoops(device, builder, unrollTiles)))
-        signalPassFailure();
+        return signalPassFailure();
     }
 
     //===------------------------------------------------------------------===//
@@ -2042,7 +2042,7 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------===//
       // Replace objectFifo.release ops
       //===----------------------------------------------------------------===//
-      coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
+      WalkResult res = coreOp.walk([&](ObjectFifoReleaseOp releaseOp) {
         builder.setInsertionPointAfter(releaseOp);
         ObjectFifoCreateOp op = releaseOp.getObjectFifo();
         auto port = releaseOp.getPort();
@@ -2053,7 +2053,8 @@ struct AIEObjectFifoStatefulTransformPass
           if (core.getTile() == *linkOp->getOptionalSharedTile()) {
             releaseOp->emitOpError("currently cannot access objectFifo used in "
                                    "ObjectFifoLinkOp");
-            return;
+            return WalkResult::interrupt();
+            ;
           }
         }
 
@@ -2075,12 +2076,15 @@ struct AIEObjectFifoStatefulTransformPass
           std::vector release = {releaseOp};
           releaseOps[{op, portNum}] = release;
         }
+        return WalkResult::advance();
       });
+      if (res.wasInterrupted())
+        return signalPassFailure();
 
       //===----------------------------------------------------------------===//
       // Replace objectFifo.acquire ops
       //===----------------------------------------------------------------===//
-      coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
+      res = coreOp.walk([&](ObjectFifoAcquireOp acquireOp) {
         ObjectFifoCreateOp op = acquireOp.getObjectFifo();
         builder.setInsertionPointAfter(acquireOp);
         auto port = acquireOp.getPort();
@@ -2092,7 +2096,8 @@ struct AIEObjectFifoStatefulTransformPass
           if (core.getTile() == *linkOp->getOptionalSharedTile()) {
             acquireOp->emitOpError("currently cannot access objectFifo used in "
                                    "ObjectFifoLinkOp");
-            return;
+            return WalkResult::interrupt();
+            ;
           }
         }
 
@@ -2141,7 +2146,7 @@ struct AIEObjectFifoStatefulTransformPass
           if (static_cast<size_t>(numRel) > acquiredIndices.size()) {
             acquireOp->emitOpError("cannot release more elements than are "
                                    "already acquired");
-            return;
+            return WalkResult::interrupt();
           }
           for (int i = 0; i < numRel; i++)
             acquiredIndices.erase(acquiredIndices.begin());
@@ -2188,12 +2193,16 @@ struct AIEObjectFifoStatefulTransformPass
 
         subviews[acquireOp] = subviewRefs;
         acquiresPerFifo[{op, portNum}] = acquiredIndices;
+
+        return WalkResult::advance();
       });
+      if (res.wasInterrupted())
+        return signalPassFailure();
 
       //===----------------------------------------------------------------===//
       // Replace subview.access ops
       //===----------------------------------------------------------------===//
-      coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
+      res = coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
         if (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {
           if (auto linkOp = getOptionalLinkOp(op); linkOp.has_value()) {
@@ -2204,21 +2213,28 @@ struct AIEObjectFifoStatefulTransformPass
                   int share_dir_value = 0;
                   bool sharing = isSharedMemory(
                       op.getProducerTileOp(), consumerTileOp, &share_dir_value);
-                  if (!sharing)
+                  if (!sharing) {
                     accessOp->emitOpError(
                         "currently cannot access objectFifo used in "
                         "ObjectFifoLinkOp if the tiles don't share memory");
+                    return WalkResult::interrupt();
+                  }
                 }
               }
-            } else
+            } else {
               accessOp->emitOpError(
                   "currently cannot access objectFifo used in "
                   "ObjectFifoLinkOp if it is a distribute or join link");
+              return WalkResult::interrupt();
+            }
           }
         }
         accessOp.getOutput().replaceAllUsesWith(
             subviews[acqOp][accessOp.getIndex()]->getBuffer());
+        return WalkResult::advance();
       });
+      if (res.wasInterrupted())
+        return signalPassFailure();
     }
     // make global symbols to replace the to be erased ObjectFifoCreateOps
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
