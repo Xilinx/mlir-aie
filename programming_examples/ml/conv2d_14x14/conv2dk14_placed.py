@@ -229,7 +229,6 @@ def conv2dk14(
                     of_inOF_act_L3L2,
                     I,
                     sizes=[36, 1, 1, tensorInSize],
-                    # issue_token=True,
                     issue_token=True,
                 )
                 in_wts_task = shim_dma_single_bd_task(
@@ -247,13 +246,7 @@ def conv2dk14(
                 )
 
                 dma_start_task(in_act_task, in_wts_task, out_task)
-                # for i in range(71):
-                #     dma_await_task(in_act_task)
-                #     dma_start_task(in_act_task)
-                dma_await_task(in_act_task)
-                dma_start_task(in_act_task)
-                # dma_await_task(in_act_task, in_wts_task, out_task)
-                dma_await_task(out_task)
+                dma_await_task(in_act_task, out_task)
 
                 trace_utils.gen_trace_done_aie2(ShimTile)
 
