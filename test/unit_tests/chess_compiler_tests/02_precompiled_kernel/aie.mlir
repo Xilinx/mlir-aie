@@ -18,6 +18,8 @@
 // CHECK: PASS!
 
 module @test_chess_02_deprecated_precompiled_kernel {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
@@ -28,4 +30,5 @@ module @test_chess_02_deprecated_precompiled_kernel {
 
   %core13 = aie.core(%tile13) { aie.end } { elf_file = "custom_1_3.elf" }
 
+}
 }

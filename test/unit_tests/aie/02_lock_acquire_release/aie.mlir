@@ -12,6 +12,8 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test02_lock_acquire_release {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
@@ -26,4 +28,5 @@ module @test02_lock_acquire_release {
     aie.end
   }
 
+}
 }

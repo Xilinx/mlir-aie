@@ -19,6 +19,8 @@
 // CHECK: PASS!
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
+aie.device(xcvc1902) {
+
   %t73 = aie.tile(7, 3)
   %t72 = aie.tile(7, 2)
   %t71 = aie.tile(7, 1)
@@ -124,5 +126,5 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       aie.end
   }
 
-
+}
 }
