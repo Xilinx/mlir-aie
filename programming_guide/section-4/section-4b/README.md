@@ -241,9 +241,9 @@ Once the packet trace text file is generated (`trace.txt`), we use a python-base
 ```Makefile
 	../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
 ```
-This leverages the python parse scripts under [programming_examples/utils](../../../programming_examples/utils/). See the [README.md](../../../programming_examples/utils/README.md) to get more details about how to use the python parse scripts.
+This leverages the python parse scripts under [python/utils](../../../python/utils/). See the [README.md](../../../python/utils/README.md) to get more details about how to use the python parse scripts.
 
-In our example [Makefile](./Makefile), we also run [get_trace_summary.py](../../../programming_examples/utils/get_trace_summary.py) to analyze the generated JSON trace file to count the number of invocations of the kernel and the cycle count of those invocations. This depends on the kernel having an `event0` and `event1` function call at the beginning and end of the kernel, which our example does. `event0` and `event1` are functions that generate an internal event and is helpful for us to mark the boundaries of a function call.
+In our example [Makefile](./Makefile), we also run [get_trace_summary.py](../../../python/utils/get_trace_summary.py) to analyze the generated JSON trace file to count the number of invocations of the kernel and the cycle count of those invocations. This depends on the kernel having an `event0` and `event1` function call at the beginning and end of the kernel, which our example does. `event0` and `event1` are functions that generate an internal event and is helpful for us to mark the boundaries of a function call.
 
 ## <u>4. Open json file in a visualization tool like Perfetto</u>
 Open https://ui.perfetto.dev in your browser and then open up the waveform json file generated in step 3. You can navigate the waveform viewer as you would a standard waveform viewer and can even zoom/pan the waveform with the a,s,w,d keyboard keys.

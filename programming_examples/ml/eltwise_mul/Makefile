@@ -65,7 +65,7 @@ run: ${targetname}.exe build/final.xclbin
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE 
 	${srcdir}/../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_eltwise_mul.json
-	${srcdir}/../../utils/get_trace_summary.py --input trace_eltwise_mul.json
+	${srcdir}/../../../python/utils/get_trace_summary.py --input trace_eltwise_mul.json
 
 clean:
 	rm -rf build _build ${targetname}.exe
