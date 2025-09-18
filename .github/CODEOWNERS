@@ -1,8 +1,9 @@
+**                  @AndraBisca @stephenneuendorffer @fifield @jgmelber
 .github             @stephenneuendorffer @fifield @erwei-xilinx
 aie_kernels/**      @denolf @jgmelber @jackl-xilinx @andrej
 aie_runtime_lib/**  @stephenneuendorffer @jackl-xilinx
 cmake/**            @denolf @stephenneuendorffer
-docs/**             @stephenneuendorffer @AndraBisca @jackl-xilinx @jgmelber   
+docs/**             @stephenneuendorffer @AndraBisca @jackl-xilinx @jgmelber
 **/ADF/**           @stephenneuendorffer
 **/AIEVec/**        @jsetoain
 **/AIE/**           @AndraBisca @stephenneuendorffer @fifield @erwei-xilinx
@@ -25,4 +26,3 @@ test/**             @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @Andra
 test/aievec/        @jsetoain
 test/objectFifo*/** @AndraBisca @denolf
 utils/**            @jackl-xilinx @jgmelber @andrej @AndraBisca @erwei-xilinx
-**                  @AndraBisca @stephenneuendorffer @fifield
