@@ -39,9 +39,6 @@ def conv2dk14(
         weights = kernel_size * kernel_size * in_channels * sub_out_channels
         actOut = sub_tiles * sub_out_channels
 
-        # wts_offsets = [weights*3*i for i in range(n_aie_rows)]
-        # out_offsets = [actOut*4*64*3*i for i in range(n_aie_rows)]
-        # out_offsets = [actOut*4*32*i for i in range(n_aie_rows)]
         out_offsets = [actOut * 4 * 16 * i for i in range(n_aie_rows)]
 
         act_repeat = 9
@@ -66,9 +63,6 @@ def conv2dk14(
             weights_ty = np.ndarray[(weights,), np.dtype[np.int8]]
             out_ty = np.ndarray[(actOut,), np.dtype[np.int8]]
 
-            # weights_mem_ty = np.ndarray[(weights*3*4,), np.dtype[np.int8]]
-            # out_mem_ty = np.ndarray[(tensorOutSize//(n_aie_cols*n_aie_rows),), np.dtype[np.int8]]
-            # out_mem_ty = np.ndarray[(actOut*4*32*n_aie_rows,), np.dtype[np.int8]]
             out_mem_ty = np.ndarray[(actOut * 4 * 16 * n_aie_rows,), np.dtype[np.int8]]
 
             tensorIn_ty = np.ndarray[(tensorInSize,), np.dtype[np.uint8]]
@@ -91,10 +85,6 @@ def conv2dk14(
             )
 
             # Tile declarations
-            # ShimTile = tile(0, 0)
-            # MemTile = tile(0, 1)
-            # ComputeTile2 = tile(0, 2)
-
             tiles = [
                 # [tile(col, row) for col in range(0, n_aie_cols)] for row in range(0, 6)
                 [tile(col, row) for col in range(0, n_aie_cols)]
@@ -105,15 +95,6 @@ def conv2dk14(
             core_tiles = tiles[2:]  # row major
 
             flattened_core_tiles = [i for row in core_tiles for i in row]
-
-            # flattened_core_rows = [None] * n_aie_rows
-            # for j in range(n_aie_rows):
-            #     adj_j = 5 - j
-            #     flattened_core_rows[j] = [tile(col, 5-j) for col in range(0, n_aie_cols)]
-
-            # flattened_core_cols = [None] * n_aie_cols
-            # for i in range(n_aie_cols):
-            #     flattened_core_cols[i] = [tile(i, 5-row) for row in range(0, n_aie_rows)]
 
             of_act_L3L2 = [None] * n_aie_rows
             of_act_L2L1 = [None] * n_aie_rows
@@ -164,11 +145,7 @@ def conv2dk14(
                 )
                 object_fifo_link(of_act_L3L2[j], of_act_L2L1[j], [], [])
 
-            # wts
-            # of_wts_L3L1 = object_fifo(
-            #     "inOF_wts_0_L3L2", ShimTile, [ComputeTile2], 2, weights_ty
-            # )
-
+            # Weights
             for i in range(n_aie_cols):
                 of_wts_L3L1[i] = object_fifo(
                     f"of_wts_L3L1_{i}",
@@ -178,33 +155,6 @@ def conv2dk14(
                     2,
                     weights_ty,
                 )
-
-            # for i in range(n_aie_cols):
-            #     of_wts_L3L2[i] = object_fifo(
-            #         f"of_wts_L3L2_{i}",
-            #         shim_tiles[i],
-            #         mem_tiles[i],
-            #         1,
-            #         weights_mem_ty
-            #     )
-
-            #     for j in range(n_aie_rows):
-            #         # of_wts_L2L1[(j*n_aie_cols)+i] = object_fifo(
-            #         of_wts_L2L1[j][i] = object_fifo(
-            #             f"of_wts_L2L1_{j}_{i}",
-            #             mem_tiles[i],
-            #             # core_tiles[(j*n_aie_cols)+i],
-            #             core_tiles[j][i],
-            #             2,
-            #             weights_ty
-            #         )
-
-            #     object_fifo_link(of_wts_L3L2[i],
-            #                     # (of_wts_L2L1[(j*n_aie_cols)+i] for j in range(n_aie_rows)),
-            #                     # [of_wts_L2L1[j][i] for j in range(n_aie_rows)],
-            #                     [of_wts_L2L1[0][i],of_wts_L2L1[1][i],of_wts_L2L1[2][i],of_wts_L2L1[3][i] ],
-            #                     [],
-            #                     wts_offsets)
 
             # Output
             for i in range(n_aie_cols):
@@ -269,7 +219,7 @@ def conv2dk14(
             # Compute tile
             for i in range(n_aie_cols):
                 for j in range(n_aie_rows):
-                    # @core(core_tiles[i], "conv2dk14.o", stack_size=0xC00)
+
                     @core(core_tiles[j][i], "conv2dk14.o", stack_size=0xC00)
                     def core_body():
                         y_dim = height // (kernel_size * 4)
@@ -283,8 +233,6 @@ def conv2dk14(
                             # scale = rtp2[0]
                             scale = 14
 
-                            # elemWts = of_wts_L2L1[i].acquire(ObjectFifoPort.Consume, 1)
-                            # elemWts = of_wts_L2L1[j][i].acquire(ObjectFifoPort.Consume, 1)
                             elemWts = of_wts_L3L1[i].acquire(ObjectFifoPort.Consume, 1)
 
                             for _ in range_(y_dim):
@@ -292,7 +240,6 @@ def conv2dk14(
                                     elemIn = of_act_L2L1[j].acquire(
                                         ObjectFifoPort.Consume, 1
                                     )
-                                    # elemOut0 = of_out_L1L2.acquire(ObjectFifoPort.Produce, 1)
                                     elemOut0 = of_out_L1L2[j][i].acquire(
                                         ObjectFifoPort.Produce, 1
                                     )
@@ -307,11 +254,8 @@ def conv2dk14(
                                         scale,
                                     )
                                     of_act_L2L1[j].release(ObjectFifoPort.Consume, 1)
-                                    # of_out_L1L2.release(ObjectFifoPort.Produce, 1)
                                     of_out_L1L2[j][i].release(ObjectFifoPort.Produce, 1)
 
-                            # of_wts_L2L1[i].release(ObjectFifoPort.Consume, 1)
-                            # of_wts_L2L1[j][i].release(ObjectFifoPort.Consume, 1)
                             of_wts_L3L1[i].release(ObjectFifoPort.Consume, 1)
 
             # To/from AIE-array data movement
@@ -352,22 +296,6 @@ def conv2dk14(
                     )
                     dma_start_task(in_act_task)
 
-                # tensors_dims = (8,8)
-                # tile_dims = (4,4)
-                # simple_tiler = TensorTiler2D.simple_tiler(tensor_dims, tile_dims)
-
-                # tensors_dims = (16,16)
-                # tile_dims = (4,4)
-                # tile_group_dims = (2,2)
-                # group_tiler = TensorTiler2D.group_tiler(tensors_dims, tile_dims, tile_group_dims)
-
-                # tensors_dims = (32,32)
-                # tile_dims = (4,4)
-                # tile_group_dims = (2,2) # tile_group_repeats
-                # tile_step_dims = (2,2) # tile_group_steps
-                # # tile_col_major
-                # # tile_group_col_major
-                # # iter_col_major
                 in_wts_task = []
                 out_task = []
 
@@ -381,22 +309,11 @@ def conv2dk14(
                         issue_token=False,
                     )
                     dma_start_task(in_wts_task_tmp)
-                    # in_wts_task.append(in_wts_task_tmp)
-
-                    # out_step_tiler = TensorTiler2D.step_tiler(
-                    #     (64*3*4*6,256*4), # tensor_dims
-                    #     (32,256*4), # tile_dims
-                    #     (4,1), # tile_group_dims
-                    #     (6,1), # tile_step_dims
-                    # )
 
                     out_task_tmp = shim_dma_single_bd_task(
                         of_out_L2L3[i],
                         O,
                         sizes=[1, 1, 1, (tensorOutSize // n_aie_cols)],
-                        # sizes=[1, 6, 4, 32*256*4],
-                        # strides=[0, 32*256*4, 32*256*4*6, 1],
-                        # tap = out_step_tiler,
                         offset=(tensorOutSize // n_aie_cols) * i,
                         issue_token=True,
                     )
