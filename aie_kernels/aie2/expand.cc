@@ -53,9 +53,9 @@ void expand(T_in *in, T_out *out) {
             aie::broadcast(sf_bf16);
 
         // Upsize these to 8 bits -> 16 -> bfloat16
-        aie::vector<int8, block_size> asInt8 =
+        aie::vector<uint8, block_size> asInt8 =
             aie::unpack(I0); // Unpack the 4 bit values to 8 bits
-        aie::vector<int16, block_size> asInt16 =
+        aie::vector<uint16, block_size> asInt16 =
             aie::unpack(asInt8); // Unpack the 8 bit values to 16 bits
         aie::vector<bfloat16, block_size> as_bf16 =
             aie::to_float<bfloat16>(asInt16, 0); // Convert to bfloat16
@@ -72,8 +72,8 @@ void expand(T_in *in, T_out *out) {
 
 extern "C" {
 
-void expand_int4_to_bfloat16(int4 *a_in, bfloat16 *c_out) {
-  expand<int4, bfloat16, bfloat16, 1024>(a_in, c_out);
+void expand_int4_to_bfloat16(uint4 *a_in, bfloat16 *c_out) {
+  expand<uint4, bfloat16, bfloat16, 1024>(a_in, c_out);
 }
 
 } // extern "C"
