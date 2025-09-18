@@ -219,6 +219,7 @@ def conv2dk14(
             # Compute tile
             for i in range(n_aie_cols):
                 for j in range(n_aie_rows):
+
                     @core(core_tiles[j][i], "conv2dk14.o", stack_size=0xC00)
                     def core_body():
                         y_dim = height // (kernel_size * 4)
