@@ -43,6 +43,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/config.py
     utils/parse_trace.py
     utils/parse_eventIR.py
+    utils/trace_utils.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Helpers
