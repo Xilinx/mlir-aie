@@ -242,7 +242,7 @@ public:
       // Float types
       if (lhsBitWidth == 32) {
         // FP32 add_elem
-        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, -1};
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
       }
     }
     return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
