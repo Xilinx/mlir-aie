@@ -205,6 +205,19 @@ void encodeConf(uint32_t conf[2], const BufferParams &x, const BufferParams &z,
   conf[1] |= sub << 17;
 }
 
+class AddOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::aie1::AddOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::aie1::AddOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::aie1::AddOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    op.emitWarning() << "aie.add conversion is not implemented\n";
+    return failure();
+  }
+};
+
 class AddElemOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::AddElemOp> {
 public:
@@ -2381,7 +2394,8 @@ void populateAIEVecToLLVMConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
     Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // clang-format off
-  patterns.add<AddElemOpConversion,
+  patterns.add<AddOpConversion,
+               AddElemOpConversion,
                SubOpConversion,
                FMAOpConversion,
                MulOpConversion,
