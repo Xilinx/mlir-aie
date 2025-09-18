@@ -138,10 +138,3 @@ add_lit_testsuite(check-reference-designs "Running the aie reference designs"
   ARGS "-sv --timeout 600"
 )
 set_target_properties(check-reference-designs PROPERTIES FOLDER "Tutorials")
-
-# Add programming_examples/utils to installed project.
-declare_mlir_python_sources(AIEPythonSources.ProgrammingExampleUtils
-  ADD_TO_PARENT AIEPythonSources
-  SOURCES
-    utils/parse_trace.py
-)

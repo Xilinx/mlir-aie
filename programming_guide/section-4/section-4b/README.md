@@ -237,9 +237,9 @@ These convenience python wrappers perform the `sync` steps under the hood when t
 Just like the C/C++ host code wrapper `setup_and_run_aie` found in [../../../runtime_lib/test_lib/xrt_test_wrapper_.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h), for python, we have a similar wrapper `setup_and_run_aie` in [../../../python/utils/xrt.py](../../../python/utils/xrt.py). This likewise simplifies the `test.py` and can be used as a template for design patterns.
 
 ## <u>3. Parse text file to generate a waveform json file</u>
-Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_trace.py](../../../programming_examples/utils/parse_trace.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
+Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_trace.py](../../../python/utils/parse_trace.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
 ```Makefile
-	../../../programming_examples/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
+	../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
 ```
 This leverages the python parse scripts under [programming_examples/utils](../../../programming_examples/utils/). See the [README.md](../../../programming_examples/utils/README.md) to get more details about how to use the python parse scripts.
 

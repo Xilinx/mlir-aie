@@ -74,7 +74,7 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir  > trace_eltwise_mul.json
+	${srcdir}/../../../python/utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir  > trace_eltwise_mul.json
 	${srcdir}/../../utils/get_trace_summary.py --filename trace_eltwise_mul.json
 
 clean:

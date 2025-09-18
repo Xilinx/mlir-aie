@@ -11,7 +11,7 @@
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 all:
-	${srcdir}/../../../programming_examples/utils/parse_trace.py --input ${srcdir}/trace_test2.txt --mlir ${srcdir}/aie_test2.mlir --output trace_test2.json
+	${srcdir}/../../../python/utils/parse_trace.py --input ${srcdir}/trace_test2.txt --mlir ${srcdir}/aie_test2.mlir --output trace_test2.json
 	${srcdir}/../../../programming_examples/utils/get_trace_summary.py --input trace_test2.json
 
 diff:
