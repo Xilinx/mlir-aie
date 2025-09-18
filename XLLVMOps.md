@@ -116,6 +116,24 @@ _Types and operations for external LLVM dialect_
 
 
 
+### `xllvm.intr.aie2.add.accfloat` (::xilinx::xllvm::AddAccFloatIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 64-bit signless integer values of length 8 |
+| `rhs` | vector of 64-bit signless integer values of length 8 |
+| `conf` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2.bf.mac16.conf` (::xilinx::xllvm::MacConfBF16IntrOp)
 
 #### Operands:
