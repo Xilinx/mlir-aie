@@ -77,32 +77,10 @@ int main(int argc, const char *argv[]) {
   unsigned int device_index = 0;
   auto device = xrt::device(device_index);
 
-  // Load the xclbin
-  if (verbosity >= 1)
-    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>()
-              << std::endl;
-  auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
-
   if (verbosity >= 1)
     std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>()
               << std::endl;
-  std::string Node = vm["kernel"].as<std::string>();
-
-  // Get the kernel from the xclbin
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
-                                 auto name = k.get_name();
-                                 std::cout << "Name: " << name << std::endl;
-                                 return name.rfind(Node, 0) == 0;
-                               });
-  auto kernelName = xkernel.get_name();
-
-  if (verbosity >= 1)
-    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
-              << "\n";
-
-  device.register_xclbin(xclbin);
+  std::string kernelName = vm["kernel"].as<std::string>();
 
   xrt::elf elf(vm["instr"].as<std::string>());
   xrt::module mod{elf};
@@ -110,12 +88,21 @@ int main(int argc, const char *argv[]) {
   // get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context." << std::endl;
-  xrt::hw_context context(device, xclbin.get_uuid());
+  xrt::hw_context context;
+  try {
+    context = xrt::hw_context(device, mod);
+  }
+  catch (std::exception& ex) {
+    std::cout << "caught exception creating hw ctx using elf - " << ex.what() << std::endl;
+    return 1;
+  }
+  if (verbosity >= 1)
+    std::cout << "Hardware context creation successful" << std::endl;
 
   // get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << std::endl;
-  auto kernel = xrt::ext::kernel(context, mod, kernelName);
+  auto kernel = xrt::ext::kernel(context, kernelName);
 
   xrt::bo bo_inA = xrt::ext::bo{device, N * sizeof(int32_t)};
   xrt::bo bo_out = xrt::ext::bo{device, N * sizeof(int32_t)};
