@@ -153,7 +153,7 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
   auto words = reserveAndGetTail(instructions, 4);
 
   // XAIE_IO_LOADPDI
-  words[0] = TXN_OPC_LOADPDI;
+  words[0] = XAIE_IO_LOADPDI;
   words[0] |= op.getId() << 16;
   std::optional<uint32_t> size = op.getSize();
   if (size)
