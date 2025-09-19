@@ -60,7 +60,7 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
                 lockIndexOffset.value() + lock.getLockIDValue();
 
             OpBuilder builder =
-                OpBuilder::atBlockBegin(&coreOp.getBody().front());
+                OpBuilder::atBlockBegin(user->getBlock());
 
             Value coreLockIDValue = builder.create<arith::ConstantIndexOp>(
                 builder.getUnknownLoc(), localLockIndex);

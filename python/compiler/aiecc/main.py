@@ -1515,7 +1515,7 @@ class FlowRunner:
         processes = []
         if opts.aiesim:
             processes.append(
-                self.gen_sim(parent_task_id, input_physical, device_name)
+                self.gen_sim(parent_task_id, aie_target, input_physical, device_name)
             )
 
         input_physical_with_elfs_str = await read_file_async(input_physical_with_elfs)
