@@ -105,7 +105,7 @@ module {
       }
       aie.use_lock(%lock_0_2_7, Release, 1)
       cf.br ^bb1
-    } {elf_file = "segment_0_core_0_2.elf"}
+    }
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_1_0, DMA : 0, %tile_1_1, DMA : 0)
     aie.flow(%tile_2_1, DMA : 0, %tile_2_0, DMA : 0)
@@ -190,6 +190,6 @@ module {
       aiex.npu.dma_memcpy_nd(%arg3[0, 0, 0, 0][1, 1, 1, 9][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<9xi32>
       aiex.npu.sync {channel = 0 : i32, column = 2 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     }
-  } {sym_name = "segment_0"}
+  }
 }
 

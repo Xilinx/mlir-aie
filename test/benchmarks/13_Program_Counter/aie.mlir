@@ -12,8 +12,9 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark13_program_counter {
+aie.device(xcvc1902) {
+  
   %t73 = aie.tile(7, 3)
-
 
   %buf73_0 = aie.buffer(%t73) { sym_name = "a" } : memref<256xi32>
 
@@ -26,4 +27,5 @@ module @benchmark13_program_counter {
     aie.end
   }
 
+}
 }

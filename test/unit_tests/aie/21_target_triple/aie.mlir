@@ -23,6 +23,8 @@
 // correctly.
 
 module attributes {llvm.target_triple = "x86_64-unknown-linux-gnu"}  {
+aie.device(xcvc1902) {
+
   %tile32 = aie.tile(1, 3)
 
   %buf_a = aie.buffer(%tile32) {sym_name = "a"} : memref<16xi32>
@@ -37,4 +39,5 @@ module attributes {llvm.target_triple = "x86_64-unknown-linux-gnu"}  {
     }
     aie.end
   }
+}
 }
