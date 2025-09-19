@@ -82,15 +82,14 @@ int main(int argc, const char *argv[]) {
               << std::endl;
   std::string kernelName = vm["kernel"].as<std::string>();
 
-  xrt::elf elf(vm["instr"].as<std::string>());
-  xrt::module mod{elf};
+  xrt::elf my_elf{vm["instr"].as<std::string>()};
 
   // get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context." << std::endl;
   xrt::hw_context context;
   try {
-    context = xrt::hw_context(device, mod);
+    context = xrt::hw_context(device, my_elf);
   }
   catch (std::exception& ex) {
     std::cout << "caught exception creating hw ctx using elf - " << ex.what() << std::endl;
