@@ -72,7 +72,7 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
           int sum_srs = 0;
           for (pix = 0; pix < pixels_div_2; pix++) { // 196 // 2 = 98
             for (p2 = 0; p2 < 2; p2++) {
-              in_indx = ((nt * (pixels_div_2) * 8 * 2) + (pix * 8 * 2) +
+              in_indx = ((nt * (pixels_div_2)*8 * 2) + (pix * 8 * 2) +
                          (nt8 * 2) + p2) *
                         4;
               wts_indx = ((oc * pixels_div_2 * 2 * 4 * 8) + (pix * 2 * 4 * 8) +
@@ -88,7 +88,7 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
                     : (sum_srs < -SMIN) ? -SMIN
                                         : sum_srs;
           out_indx =
-              (oc * (tiles_div_8) * 8 * 8) + (nt * 8 * 8) + (nt8 * 8) + oc8;
+              (oc * (tiles_div_8)*8 * 8) + (nt * 8 * 8) + (nt8 * 8) + oc8;
           output[out_indx] = sum_srs;
         }
       }
@@ -134,53 +134,55 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
   using MMUL8x8x8 = aie::mmul<8, 8, 8, uint8, int8>;
   ::aie::set_saturation(
       aie::saturation_mode::saturate); // Needed to saturate properly to uint8
-  // ::aie::set_rounding(
-  //     aie::rounding_mode::positive_inf); // Needed to saturate properly to
-  //     uint8
   ::aie::set_rounding(
       aie::rounding_mode::symmetric_inf); // Needed to saturate properly to int8
-
-  // constexpr unsigned VecFactor = 16;
 
   aie::vector<int8, 64> zero64 = aie::zeros<int8, 64>();
 
   MMUL8x8x8 acc1 = aie::zeros<acc32, 64>();
+  MMUL8x8x8 acc2 = aie::zeros<acc32, 64>();
   aie::vector<int8, 64> maxv = aie::broadcast<int8, 64>(127);
 
-  const int output_channels_div_8 = output_channels / 8;
-  // const int output_channels_div_8 = 2;
-  const int tiles_div_8 = input_width / kernel_width / 8;
-  // const int tiles_div_8 = 2;
-  const int pixels_div_2 = kernel_width * kernel_width / 2;
-  // const int pixels_div_2 = 98; // kernel_width * kernel_width / 2; // 14*14/2
-  // = 98
+  const int output_channels_div_8 = output_channels / 8;    // 2
+  const int tiles_div_8 = input_width / kernel_width / 8;   // 2
+  const int tiles_div_16 = input_width / kernel_width / 16; // 1
+  const int pixels_div_2 = kernel_width * kernel_width / 2; // 98
 
-  uint8_t *in_ptr = input;
-  int8_t *k_ptr = kernels;
-  int8_t *out_ptr = output;
+  uint8_t *__restrict in_ptr_1 = input;
+  uint8_t *__restrict in_ptr_2 = input + 98 * 64;
+  int8_t *__restrict k_ptr = kernels;
+  int8_t *__restrict out_ptr = output;
 
   for (int k = 0; k < output_channels_div_8; k++) { // 2
-    for (int j = 0; j < tiles_div_8; j++) {         // 2
+    for (int j = 0; j < tiles_div_16; j++) {        // 2
       AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_MIN_ITERATION_COUNT(98)
       // AIE_LOOP_UNROLL_FULL
-      for (int i = 0; i < pixels_div_2; i++) { // 98
-        auto tmp_a1 = aie::load_v<64>(in_ptr); // 8 tiles x 2 pixels
-        in_ptr += 64;
+      for (int i = 0; i < pixels_div_2; i++) {   // 98
+        auto tmp_a1 = aie::load_v<64>(in_ptr_1); // 8 tiles x 2 pixels
+        in_ptr_1 += 64;
         auto tmp_a2 = aie::load_v<64>(k_ptr); // 2 pixels x 8 channels
-        k_ptr += 64;
         acc1.mac(tmp_a1, tmp_a2); // 8 tiles x 8 channels (for 2 pixels)
+        auto tmp_b1 = aie::load_v<64>(in_ptr_2); // 8 tiles x 2 pixels
+        in_ptr_2 += 64;
+        acc2.mac(tmp_b1, tmp_a2); // 8 tiles x 8 channels (for 2 pixels)
+        k_ptr += 64;
       }
       aie::vector<int8, 64> o1 = acc1.to_vector<int8>(scale);
-      // aie::vector<int8, 64> o1 = acc1.to_vector<int8>(10);
+      aie::vector<int8, 64> o2 = acc2.to_vector<int8>(scale);
       aie::store_v(out_ptr, o1);
-      // aie::store_v(out_ptr, maxv);
+      out_ptr += 64;
+      aie::store_v(out_ptr, o2);
       out_ptr += 64;
       acc1 = aie::zeros<acc32, 64>();
+      acc2 = aie::zeros<acc32, 64>();
       k_ptr -= 64 * pixels_div_2;
+      in_ptr_1 += pixels_div_2 * 64;
+      in_ptr_2 += pixels_div_2 * 64;
     }
     k_ptr += 64 * pixels_div_2;
-    in_ptr -= tiles_div_8 * 64 * pixels_div_2;
+    in_ptr_1 -= 2 * tiles_div_16 * pixels_div_2 * 64;
+    in_ptr_2 -= 2 * tiles_div_16 * pixels_div_2 * 64;
   }
 
   event1();
