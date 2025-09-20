@@ -72,7 +72,7 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
           int sum_srs = 0;
           for (pix = 0; pix < pixels_div_2; pix++) { // 196 // 2 = 98
             for (p2 = 0; p2 < 2; p2++) {
-              in_indx = ((nt * (pixels_div_2)*8 * 2) + (pix * 8 * 2) +
+              in_indx = ((nt * (pixels_div_2) * 8 * 2) + (pix * 8 * 2) +
                          (nt8 * 2) + p2) *
                         4;
               wts_indx = ((oc * pixels_div_2 * 2 * 4 * 8) + (pix * 2 * 4 * 8) +
@@ -88,7 +88,7 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
                     : (sum_srs < -SMIN) ? -SMIN
                                         : sum_srs;
           out_indx =
-              (oc * (tiles_div_8)*8 * 8) + (nt * 8 * 8) + (nt8 * 8) + oc8;
+              (oc * (tiles_div_8) * 8 * 8) + (nt * 8 * 8) + (nt8 * 8) + oc8;
           output[out_indx] = sum_srs;
         }
       }
