@@ -414,6 +414,7 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
 
 def downgrade_ir_for_peano(llvmir):
     llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    llvmir = llvmir.replace("captures(none)", "nocapture")
     return llvmir
 
 
