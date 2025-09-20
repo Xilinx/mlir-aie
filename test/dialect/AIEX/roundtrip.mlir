@@ -64,3 +64,19 @@ aie.device(npu1) {
     aiex.control_packet {address = 0xABCD : ui32, length = 3 : i32, opcode = 1 : i32, stream_id = 4 : i32}
   }
 }
+
+// -----
+
+// CHECK: aie.device
+// CHECK: aiex.npu.load_pdi(%0) {id = 4 : i32} : memref<8xi32>
+// CHECK: aiex.npu.load_pdi(%arg0) {id = 7 : i32} : memref<?xi32>
+// CHECK: aiex.npu.load_pdi {address = 2 : ui64, id = 1 : i32, size = 3 : i32}
+aie.device(npu1) {
+  memref.global "private" constant @pdi_data : memref<8xi32> = dense<[-1, 1, 256, 1024, 41, 42, 43, 44]>
+  aiex.runtime_sequence @pdi_loader(%arg0 : memref<?xi32>) {
+    %0 = memref.get_global @pdi_data : memref<8xi32>
+    aiex.npu.load_pdi (%0) {id = 4 : i32} : memref<8xi32>
+    aiex.npu.load_pdi (%arg0) {id = 7 : i32} : memref<?xi32>
+    aiex.npu.load_pdi {id = 1 : i32, address = 2 : ui64, size = 3 : i32}
+  }
+}
