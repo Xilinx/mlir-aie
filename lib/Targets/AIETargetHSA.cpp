@@ -56,7 +56,8 @@ getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
   return std::nullopt;
 }
 
-mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output, llvm::StringRef deviceName) {
+mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
+                                      llvm::StringRef deviceName) {
 
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;

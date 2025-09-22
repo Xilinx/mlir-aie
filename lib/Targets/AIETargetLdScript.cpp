@@ -63,8 +63,7 @@ static void writeLDScriptMap(raw_ostream &output, BufferOp buf, int offset) {
 
 LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
                                                   raw_ostream &output,
-                                                  int tileCol, 
-                                                  int tileRow,
+                                                  int tileCol, int tileRow,
                                                   llvm::StringRef deviceName) {
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;

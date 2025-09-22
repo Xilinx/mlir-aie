@@ -153,8 +153,7 @@ using SwitchSetting = struct SwitchSetting {
                                  return ss.str();
                                }),
                ", ")
-       << " -> "
-       << "{"
+       << " -> " << "{"
        << join(llvm::map_range(setting.dsts,
                                [](const Port &port) {
                                  std::ostringstream ss;
@@ -245,9 +244,8 @@ public:
 
   DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
   DynamicTileAnalysis(std::shared_ptr<Router> p) : pathfinder(std::move(p)) {}
-  DynamicTileAnalysis(mlir::Operation *op) : 
-    pathfinder(std::make_shared<Pathfinder>()) {
-  }
+  DynamicTileAnalysis(mlir::Operation *op)
+      : pathfinder(std::make_shared<Pathfinder>()) {}
 
   mlir::LogicalResult runAnalysis(DeviceOp &device);
 

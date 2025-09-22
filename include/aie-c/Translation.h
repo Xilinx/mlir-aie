@@ -21,23 +21,23 @@ extern "C" {
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateAIEVecToCpp(MlirOperation op,
                                                          bool aie2);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation op);
-MLIR_CAPI_EXPORTED MlirStringRef aieTranslateNpuToBinary(MlirOperation op,
-                                                         MlirStringRef deviceName,
-                                                         MlirStringRef sequenceName);
+MLIR_CAPI_EXPORTED MlirStringRef aieTranslateNpuToBinary(
+    MlirOperation op, MlirStringRef deviceName, MlirStringRef sequenceName);
 MLIR_CAPI_EXPORTED MlirStringRef
 aieTranslateControlPacketsToUI32Vec(MlirOperation op, MlirStringRef deviceName);
-MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToXAIEV2(MlirOperation op, MlirStringRef deviceName);
-MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToHSA(MlirOperation op, MlirStringRef deviceName);
-MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToBCF(MlirOperation op, 
-                                                   int col, int row,
+MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToXAIEV2(MlirOperation op,
+                                                      MlirStringRef deviceName);
+MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToHSA(MlirOperation op,
+                                                   MlirStringRef deviceName);
+MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToBCF(MlirOperation op, int col,
+                                                   int row,
                                                    MlirStringRef deviceName);
 MLIR_CAPI_EXPORTED MlirStringRef aieLLVMLink(MlirStringRef *modules,
                                              int nModules);
-MLIR_CAPI_EXPORTED MlirLogicalResult
-aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath,
-                        MlirStringRef deviceName,
-                        bool bigEndian, bool emitUnified, bool cdoDebug,
-                        bool aieSim, bool xaieDebug, bool enableCores);
+MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCDODirect(
+    MlirOperation moduleOp, MlirStringRef workDirPath, MlirStringRef deviceName,
+    bool bigEndian, bool emitUnified, bool cdoDebug, bool aieSim,
+    bool xaieDebug, bool enableCores);
 MLIR_CAPI_EXPORTED MlirOperation aieTranslateBinaryToTxn(MlirContext ctx,
                                                          MlirStringRef binary);
 

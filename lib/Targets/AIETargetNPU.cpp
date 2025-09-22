@@ -108,7 +108,7 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   }
 
   // XAIE_IO_WRITE
-	words[0] = XAIE_IO_WRITE;
+  words[0] = XAIE_IO_WRITE;
   words[2] = *op.getAbsoluteAddress();
   words[3] = 0;                               // Extra bits for Reg Offset
   words[4] = op.getValue();                   // Value
@@ -184,13 +184,12 @@ void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
 
 } // namespace
 
-LogicalResult
-xilinx::AIE::AIETranslateNpuToBinary(mlir::ModuleOp moduleOp,
-                                     std::vector<uint32_t> &instructions,
-                                     StringRef deviceName,
-                                     StringRef sequenceName) {
+LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
+    mlir::ModuleOp moduleOp, std::vector<uint32_t> &instructions,
+    StringRef deviceName, StringRef sequenceName) {
 
-  DeviceOp deviceOp = DeviceOp::getForSymbolInModuleOrError(moduleOp, deviceName);
+  DeviceOp deviceOp =
+      DeviceOp::getForSymbolInModuleOrError(moduleOp, deviceName);
   if (!deviceOp) {
     return failure();
   }
@@ -212,7 +211,9 @@ xilinx::AIE::AIETranslateNpuToBinary(mlir::ModuleOp moduleOp,
   words[0] = (numRows << 24) | (devGen << 16) | (minor << 8) | major;
   words[1] = (numMemTileRows << 8) | numCols;
 
-  AIEX::RuntimeSequenceOp seq = AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp, sequenceName);
+  AIEX::RuntimeSequenceOp seq =
+      AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                           sequenceName);
   if (!seq) {
     return failure();
   }
@@ -253,14 +254,17 @@ xilinx::AIE::AIETranslateNpuToBinary(mlir::ModuleOp moduleOp,
 }
 
 LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-    ModuleOp module, std::vector<uint32_t> &instructions,
-    StringRef deviceName, StringRef sequenceName) {
-  DeviceOp deviceOp = AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+    ModuleOp module, std::vector<uint32_t> &instructions, StringRef deviceName,
+    StringRef sequenceName) {
+  DeviceOp deviceOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
   if (!deviceOp) {
     return failure();
   }
   OpBuilder builder = OpBuilder::atBlockBegin(deviceOp.getBody());
-  AIEX::RuntimeSequenceOp seq = AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp, sequenceName);
+  AIEX::RuntimeSequenceOp seq =
+      AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                           sequenceName);
   if (!seq) {
     return failure();
   }

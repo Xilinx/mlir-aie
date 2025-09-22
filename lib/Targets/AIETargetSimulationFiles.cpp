@@ -23,7 +23,8 @@ namespace AIE {
 mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
                                             llvm::raw_ostream &output,
                                             llvm::StringRef deviceName) {
-  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  DeviceOp targetOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
   if (!targetOp) {
     return mlir::failure();
   }
@@ -155,7 +156,8 @@ must be called first. So, a more practical invocation: aie-opt
 mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::raw_ostream &output,
                                              llvm::StringRef deviceName) {
-  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  DeviceOp targetOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
   if (!targetOp) {
     return mlir::failure();
   }
@@ -225,7 +227,8 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   ./Work/reports/graph.xpe
   */
 
-  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  DeviceOp targetOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
   if (!targetOp) {
     return mlir::failure();
   }
@@ -233,8 +236,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
 
   // Generate boilerplate header
   // TODO: date and version should probably not be hardcoded
-  output << "<?xml version=\"1.0\"?>"
-         << "\n";
+  output << "<?xml version=\"1.0\"?>" << "\n";
   output << "<POWERDATA data=\"AI-Engine Compiler\" dataVersion=\"2022.2\" "
             "design=\"graph\" date=\"2023\">\n";
   if ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {
@@ -325,8 +327,8 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
     for (auto coreOp : coreOps_in_tile) {
       (void)(coreOp); // get around unused variable warning for coreOp
       output << "        <KERNEL name=\"i" << std::to_string(kernel_count++)
-             << "\" "
-             << "int_core_load=\"" << std::to_string(1 / coreOps_in_tile.size())
+             << "\" " << "int_core_load=\""
+             << std::to_string(1 / coreOps_in_tile.size())
              << "\" fp_core_load=\"0\"></KERNEL>\n";
     }
     output << "      </TILE>\n";
@@ -348,8 +350,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
           // TODO: how to get num_aximm_connections from mlir?
           "num_aximm_connections=\"1\" coordinates=\""
              << std::to_string(shimOp.colIndex()) << ","
-             << std::to_string(shimOp.rowIndex()) << "\" "
-             << "></SHIM>\n";
+             << std::to_string(shimOp.rowIndex()) << "\" " << "></SHIM>\n";
     } else {
       output << "      <SHIM name=\"SHIM(" << std::to_string(shimOp.colIndex())
              << ", " << std::to_string(shimOp.rowIndex()) << ")\" " <<
@@ -358,8 +359,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
           // TODO: how to get num_aximm_connections from mlir?
           "num_aximm_connections=\"1\" coordinates=\""
              << std::to_string(shimOp.colIndex()) << ","
-             << std::to_string(shimOp.rowIndex()) << "\" "
-             << "></SHIM>\n";
+             << std::to_string(shimOp.rowIndex()) << "\" " << "></SHIM>\n";
     }
   }
 
@@ -380,8 +380,7 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                 // TODO: stream_util can be 0 for aiesim purposes?
                 "type=\"AIE_MEM\" mem_banks=\"0\" mme_rw_rate=\"0.1\" "
              << "stream_util=\"0.1\" coordinates=\"" << std::to_string(col)
-             << "," << std::to_string(row - 1) << "\" "
-             << "></MEM>\n";
+             << "," << std::to_string(row - 1) << "\" " << "></MEM>\n";
     }
   }
 

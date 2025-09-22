@@ -11,8 +11,8 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
-#include "mlir/Pass/Pass.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
 
 #define DEBUG_TYPE "aie-set-elf-for-core"
 
@@ -29,8 +29,9 @@ struct AIESetELFforCorePass : AIESetELFforCoreBase<AIESetELFforCorePass> {
     }
     MLIRContext *ctx = &getContext();
     IRRewriter rewriter(ctx);
-    for(CoreOp coreOp : deviceOp.getOps<CoreOp>()) {
-      if ((unsigned)coreOp.colIndex() != clTileCol || (unsigned)coreOp.rowIndex() != clTileRow) {
+    for (CoreOp coreOp : deviceOp.getOps<CoreOp>()) {
+      if ((unsigned)coreOp.colIndex() != clTileCol ||
+          (unsigned)coreOp.rowIndex() != clTileRow) {
         continue; // not the right tile
       }
       coreOp.setElfFile(clElfFile);

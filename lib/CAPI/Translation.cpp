@@ -71,8 +71,9 @@ MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp,
                                           bool xaieDebug, bool enableCores) {
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
   auto status = AIETranslateToCDODirect(
-      mod, llvm::StringRef(workDirPath.data, workDirPath.length), llvm::StringRef(deviceName.data, deviceName.length),
-      bigEndian, emitUnified, cdoDebug, aieSim, xaieDebug, enableCores);
+      mod, llvm::StringRef(workDirPath.data, workDirPath.length),
+      llvm::StringRef(deviceName.data, deviceName.length), bigEndian,
+      emitUnified, cdoDebug, aieSim, xaieDebug, enableCores);
   std::vector<std::string> diagnostics;
   ScopedDiagnosticHandler handler(mod.getContext(), [&](Diagnostic &d) {
     llvm::raw_string_ostream(diagnostics.emplace_back())
@@ -108,10 +109,12 @@ MlirStringRef aieTranslateNpuToBinary(MlirOperation moduleOp,
   return mlirStringRefCreate(cStr, insts_size);
 }
 
-MlirStringRef aieTranslateControlPacketsToUI32Vec(MlirOperation moduleOp, MlirStringRef deviceName) {
+MlirStringRef aieTranslateControlPacketsToUI32Vec(MlirOperation moduleOp,
+                                                  MlirStringRef deviceName) {
   std::vector<uint32_t> insts;
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateControlPacketsToUI32Vec(mod, insts, llvm::StringRef(deviceName.data, deviceName.length))))
+  if (failed(AIETranslateControlPacketsToUI32Vec(
+          mod, insts, llvm::StringRef(deviceName.data, deviceName.length))))
     return mlirStringRefCreate(nullptr, 0);
   size_t insts_size = insts.size() * sizeof(uint32_t);
   char *cStr = static_cast<char *>(malloc(insts_size));
@@ -119,33 +122,40 @@ MlirStringRef aieTranslateControlPacketsToUI32Vec(MlirOperation moduleOp, MlirSt
   return mlirStringRefCreate(cStr, insts_size);
 }
 
-MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp, MlirStringRef deviceName) {
+MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp,
+                                   MlirStringRef deviceName) {
   std::string xaie;
   llvm::raw_string_ostream os(xaie);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateToXAIEV2(mod, os, llvm::StringRef(deviceName.data, deviceName.length))))
+  if (failed(AIETranslateToXAIEV2(
+          mod, os, llvm::StringRef(deviceName.data, deviceName.length))))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(xaie.size()));
   xaie.copy(cStr, xaie.size());
   return mlirStringRefCreate(cStr, xaie.size());
 }
 
-MlirStringRef aieTranslateToHSA(MlirOperation moduleOp, MlirStringRef deviceName) {
+MlirStringRef aieTranslateToHSA(MlirOperation moduleOp,
+                                MlirStringRef deviceName) {
   std::string xaie;
   llvm::raw_string_ostream os(xaie);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateToHSA(mod, os, llvm::StringRef(deviceName.data, deviceName.length))))
+  if (failed(AIETranslateToHSA(
+          mod, os, llvm::StringRef(deviceName.data, deviceName.length))))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(xaie.size()));
   xaie.copy(cStr, xaie.size());
   return mlirStringRefCreate(cStr, xaie.size());
 }
 
-MlirStringRef aieTranslateToBCF(MlirOperation moduleOp, int col, int row, MlirStringRef deviceName) {
+MlirStringRef aieTranslateToBCF(MlirOperation moduleOp, int col, int row,
+                                MlirStringRef deviceName) {
   std::string bcf;
   llvm::raw_string_ostream os(bcf);
   ModuleOp mod = llvm::cast<ModuleOp>(unwrap(moduleOp));
-  if (failed(AIETranslateToBCF(mod, os, col, row, llvm::StringRef(deviceName.data, deviceName.length))))
+  if (failed(AIETranslateToBCF(
+          mod, os, col, row,
+          llvm::StringRef(deviceName.data, deviceName.length))))
     return mlirStringRefCreate(nullptr, 0);
   char *cStr = static_cast<char *>(malloc(bcf.size()));
   bcf.copy(cStr, bcf.size());

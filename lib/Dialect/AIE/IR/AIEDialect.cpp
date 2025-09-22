@@ -1088,16 +1088,18 @@ const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
 }
 
-xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol) {
+xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module,
+                                                     llvm::StringRef symbol) {
   DeviceOp deviceOp;
   if (!symbol.size()) {
     auto maybeDeviceOp = module.getOps<DeviceOp>().begin();
-    if(maybeDeviceOp == module.getOps<DeviceOp>().end()) {
+    if (maybeDeviceOp == module.getOps<DeviceOp>().end()) {
       return nullptr;
     }
     deviceOp = *maybeDeviceOp;
   } else {
-    Operation *maybeDeviceOp = mlir::SymbolTable::lookupSymbolIn(module, symbol);
+    Operation *maybeDeviceOp =
+        mlir::SymbolTable::lookupSymbolIn(module, symbol);
     if (!maybeDeviceOp) {
       return nullptr;
     }
@@ -1106,7 +1108,9 @@ xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module, llvm
   return deviceOp;
 }
 
-xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol) {
+xilinx::AIE::DeviceOp
+DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module,
+                                      llvm::StringRef symbol) {
   DeviceOp deviceOp = getForSymbolInModule(module, symbol);
   if (!deviceOp) {
     if (!symbol.empty()) {
@@ -1377,10 +1381,12 @@ LogicalResult CoreOp::verify() {
     return emitOpError("CoreOp cannot be created on mem tile");
   if (getElfFile()) {
     // If an ELF file is specified, no MLIR body is allowed (to remove
-    // ambiguity); the ELF file will fully dictate what runs on the 
+    // ambiguity); the ELF file will fully dictate what runs on the
     // core and any MLIR would be ignored.
     if (!isEmpty()) {
-      return emitOpError("When `elf_file` attribute is specified, core body must be empty (consist of exactly one `aie.end` op).");
+      return emitOpError(
+          "When `elf_file` attribute is specified, core body must be empty "
+          "(consist of exactly one `aie.end` op).");
     }
   }
   return success();
@@ -1395,11 +1401,9 @@ TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 bool CoreOp::isEmpty() {
   Region &body = getBody();
   // Return iff. core body contains exactly one block with exactly one AIE.EndOp
-  return (body.hasOneBlock()
-      && body.front().getOperations().size() == 1
-      && llvm::isa<AIE::EndOp>(body.front().front()));
+  return (body.hasOneBlock() && body.front().getOperations().size() == 1 &&
+          llvm::isa<AIE::EndOp>(body.front().front()));
 }
-
 
 //===----------------------------------------------------------------------===//
 // BufferOp

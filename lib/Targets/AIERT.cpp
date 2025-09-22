@@ -857,7 +857,9 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
         if (auto fileAttr = coreOp.getElfFile()) {
           fileName = fileAttr->str();
         } else {
-          coreOp.emitOpError() << "Expected lowered ELF file to be given as attribute `elf_file` for this core. Compile cores first.";
+          coreOp.emitOpError()
+              << "Expected lowered ELF file to be given as attribute "
+                 "`elf_file` for this core. Compile cores first.";
           return failure();
         }
         auto ps = std::filesystem::path::preferred_separator;

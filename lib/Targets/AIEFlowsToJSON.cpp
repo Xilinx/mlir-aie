@@ -422,7 +422,8 @@ void translatePacketFlows(DeviceOp targetOp, int &flowCount,
   }
 }
 
-mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output, llvm::StringRef deviceName) {
+mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output,
+                                   llvm::StringRef deviceName) {
   DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
   if (!targetOp) {
     module.emitOpError("expected AIE.device operation at toplevel");

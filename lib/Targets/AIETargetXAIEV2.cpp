@@ -192,9 +192,9 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
              << tileLocStr(col, row) << "));\n";
       if (hasAcq || hasRel) {
         output << "__mlir_aie_try(XAie_DmaSetLock("
-               << tileDMAInstRefStr(col, row, bdNum) << ", "
-               << "XAie_LockInit(" << acqLockID << "," << acqValue << "),"
-               << "XAie_LockInit(" << relLockID << "," << relValue << ")));\n";
+               << tileDMAInstRefStr(col, row, bdNum) << ", " << "XAie_LockInit("
+               << acqLockID << "," << acqValue << ")," << "XAie_LockInit("
+               << relLockID << "," << relValue << ")));\n";
         if (!hasAcq)
           output << tileDMAInstStr(col, row, bdNum)
                  << ".LockDesc.LockAcqEn = " << disable << ";\n";
@@ -208,15 +208,11 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
           output << "__mlir_aie_try(XAie_DmaSetAddrLen("
                  << tileDMAInstRefStr(col, row, bdNum) << ", /* addrA */ "
                  << "mlir_aie_external_get_addr_myBuffer_" << col << row << "_"
-                 << bdNum << "(), "
-                 << " /* len */ " << lenA << "));\n";
+                 << bdNum << "(), " << " /* len */ " << lenA << "));\n";
           output << "__mlir_aie_try(XAie_DmaSetAxi("
                  << tileDMAInstRefStr(col, row, bdNum) << ", "
-                 << "/* smid */ 0, "
-                 << "/* burstlen */ 4, "
-                 << "/* QoS */ 0, "
-                 << "/* Cache */ 0, "
-                 << "/* Secure */ " << enable << "));\n";
+                 << "/* smid */ 0, " << "/* burstlen */ 4, " << "/* QoS */ 0, "
+                 << "/* Cache */ 0, " << "/* Secure */ " << enable << "));\n";
         } else {
           if ((BaseAddrA + offsetA) % 4)
             return memOp.emitError("bd address must be 4B (32b) aligned");
@@ -240,9 +236,9 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 
         int nextBdNum = blockMap[nextBlock];
         output << "__mlir_aie_try(XAie_DmaSetNextBd("
-               << tileDMAInstRefStr(col, row, bdNum) << ", "
-               << " /* nextbd */ " << nextBdNum << ", "
-               << " /* enableNextBd */ " << enableNextBd << "));\n";
+               << tileDMAInstRefStr(col, row, bdNum) << ", " << " /* nextbd */ "
+               << nextBdNum << ", " << " /* enableNextBd */ " << enableNextBd
+               << "));\n";
       }
 
       if (foundBdPacket) {
@@ -254,8 +250,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
              << tileDMAInstRefStr(col, row, bdNum) << "));\n";
       output << "__mlir_aie_try(XAie_DmaWriteBd(" << deviceInstRef << ", "
              << tileDMAInstRefStr(col, row, bdNum) << ", "
-             << tileLocStr(col, row) << ", "
-             << " /* bd */ " << bdNum << "));\n";
+             << tileLocStr(col, row) << ", " << " /* bd */ " << bdNum
+             << "));\n";
     }
   }
 
@@ -271,8 +267,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << "/* ChNum */" << chNum
                << ", "
                // TODO hack until physical dialect changes
-               << "/* dmaDir */ DMA_" << dmaDir << ", "
-               << "/* BdNum */" << bdNum << "));\n";
+               << "/* dmaDir */ DMA_" << dmaDir << ", " << "/* BdNum */"
+               << bdNum << "));\n";
       } else {
         // in english repeat_count==0 means "do it once" and don't repeat but
         // libxaie treats repeat_count=1 as do it once.
@@ -282,16 +278,12 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << "/* ChNum */" << chNum
                << ", "
                // TODO hack until physical dialect changes
-               << "/* dmaDir */ DMA_" << dmaDir << ", "
-               << "/* BdNum */" << bdNum << ", "
-               << "/* Repeat */ " << repeatCount << ", "
-               << "/* EnToken */ "
-               << "XAIE_DISABLE"
-               << "));\n";
+               << "/* dmaDir */ DMA_" << dmaDir << ", " << "/* BdNum */"
+               << bdNum << ", " << "/* Repeat */ " << repeatCount << ", "
+               << "/* EnToken */ " << "XAIE_DISABLE" << "));\n";
       }
       output << "__mlir_aie_try(XAie_DmaChannelEnable(" << deviceInstRef << ", "
-             << tileLocStr(col, row) << ", "
-             << "/* ChNum */ " << chNum
+             << tileLocStr(col, row) << ", " << "/* ChNum */ " << chNum
              << ", "
              // TODO hack until physical dialect changes
              << "/* dmaDir */ DMA_" << dmaDir << "));\n";
@@ -300,9 +292,9 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   return success();
 }
 
-mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
-                                                      raw_ostream &output,
-                                                      llvm::StringRef deviceName) {
+mlir::LogicalResult
+xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
+                                  llvm::StringRef deviceName) {
   StringRef ctx_p = "aie_libxaie_ctx_t* ctx";
   StringRef deviceInstRef = "ctx->XAieDevInst";
 
@@ -411,8 +403,8 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
         }
         output << "{\n"
                << "AieRC RC = XAie_LoadElf(" << deviceInstRef << ", "
-               << tileLocStr(col, row) << ", "
-               << "(const char*)\"" << fileName << "\",0);\n";
+               << tileLocStr(col, row) << ", " << "(const char*)\"" << fileName
+               << "\",0);\n";
         output << "if (RC != XAIE_OK)\n"
                << "    __mlir_aie_verbose(fprintf(stderr, \"Failed to load elf "
                   "for Core[%d,%d], ret is %d\\n\", "
@@ -580,8 +572,8 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
     auto init = lock.getInit();
     if (init)
       output << "__mlir_aie_try(XAie_LockSetValue(" << deviceInstRef << ", "
-             << tileLocStr(col, row) << ", "
-             << "XAie_LockInit(" << lockID << ", " << *init << ")));\n";
+             << tileLocStr(col, row) << ", " << "XAie_LockInit(" << lockID
+             << ", " << *init << ")));\n";
   });
   output << "return XAIE_OK;\n";
   output << "} // mlir_aie_initialize_locks\n";
@@ -661,13 +653,10 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
       output << "__mlir_aie_try(XAie_StrmPktSwMstrPortEnable(" << deviceInstRef
              << ", " << tileLocStr("x", "y") << ", "
              << wireBundleToPortType(connectOp.getDestBundle()) << ", "
-             << connectOp.destIndex() << ", "
-             << "/* drop_header */ "
+             << connectOp.destIndex() << ", " << "/* drop_header */ "
              << (isdma ? "XAIE_SS_PKT_DROP_HEADER"
                        : "XAIE_SS_PKT_DONOT_DROP_HEADER")
-             << ", "
-             << "/* arbiter */ " << arbiter << ", "
-             << "/* MSelEn */ "
+             << ", " << "/* arbiter */ " << arbiter << ", " << "/* MSelEn */ "
              << "0x" << llvm::utohexstr(mask) << "));\n";
     }
 
@@ -687,14 +676,12 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
         output << "__mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable("
                << deviceInstRef << ", " << tileLocStr("x", "y") << ", "
                << wireBundleToPortType(connectOp.getSourceBundle()) << ", "
-               << connectOp.sourceIndex() << ", "
-               << "/* slot */ " << slot << ", "
-               << "/* packet */ " << packetStr(slotOp.valueInt(), /*type*/ 0)
-               << ", "
-               << "/* mask */ "
-               << "0x" << llvm::utohexstr(slotOp.maskInt()) << ", "
-               << "/* msel */ " << msel << ", "
-               << "/* arbiter */ " << arbiter << "));\n";
+               << connectOp.sourceIndex() << ", " << "/* slot */ " << slot
+               << ", " << "/* packet */ "
+               << packetStr(slotOp.valueInt(), /*type*/ 0) << ", "
+               << "/* mask */ " << "0x" << llvm::utohexstr(slotOp.maskInt())
+               << ", " << "/* msel */ " << msel << ", " << "/* arbiter */ "
+               << arbiter << "));\n";
         slot++;
       }
     }

@@ -644,7 +644,8 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                                tileToBuffers, /*benefit*/ 1,
                                                tileCol, tileRow);
-    if (failed(applyPartialConversion(deviceOp, target, std::move(outlinePatterns))))
+    if (failed(applyPartialConversion(deviceOp, target,
+                                      std::move(outlinePatterns))))
       return signalPassFailure();
 
     // Move all the func.func ops and memref.globals from the device to the

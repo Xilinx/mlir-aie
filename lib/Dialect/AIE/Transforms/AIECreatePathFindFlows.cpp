@@ -261,7 +261,8 @@ bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
   return false;
 }
 
-void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder, DynamicTileAnalysis &analyzer) {
+void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
+                                        DynamicTileAnalysis &analyzer) {
 
   ConversionTarget target(getContext());
 

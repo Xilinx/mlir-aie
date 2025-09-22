@@ -10,9 +10,9 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "aie/Dialect/AIEX/AIEUtils.h"
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -39,7 +39,7 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
       return failure();
 
     std::optional<uint32_t> address = op.getAbsoluteAddress();
-    if(!address.has_value()) {
+    if (!address.has_value()) {
       return failure();
     }
 
@@ -61,9 +61,9 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
 
     if (!op.getBuffer())
       return failure();
-    
+
     std::optional<uint32_t> address = op.getAbsoluteAddress();
-    if(!address.has_value()) {
+    if (!address.has_value()) {
       return failure();
     }
     rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(op, *address, op.getData(),
@@ -84,14 +84,15 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
 
     if (!op.getBuffer())
       return failure();
-    
+
     std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
     if (!absoluteAddress.has_value()) {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
-        op, *absoluteAddress, op.getValue(), op.getMask(), nullptr, nullptr, nullptr);
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(op, *absoluteAddress,
+                                                  op.getValue(), op.getMask(),
+                                                  nullptr, nullptr, nullptr);
     return success();
   }
 };
@@ -609,11 +610,12 @@ public:
     memref::GlobalOp global = nullptr;
     {
       OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPoint(op->getParentOfType<AIEX::RuntimeSequenceOp>());
+      rewriter.setInsertionPoint(
+          op->getParentOfType<AIEX::RuntimeSequenceOp>());
       global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words);
     }
-    auto memref = rewriter.create<memref::GetGlobalOp>(op.getLoc(), global.getType(),
-                                                       global.getName());
+    auto memref = rewriter.create<memref::GetGlobalOp>(
+        op.getLoc(), global.getType(), global.getName());
 
     (void)rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(
         op, rewriter.getUI32IntegerAttr(bd_addr), memref.getResult(), nullptr,

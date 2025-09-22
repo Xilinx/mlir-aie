@@ -354,7 +354,7 @@ def parse_args(args=None):
         "--sequence-name",
         dest="sequence_name",
         default="",
-        help="Symbol name of the runtime sequence to compile. If none supplied, all runtime sequences in the selected device(s) are compiled."
+        help="Symbol name of the runtime sequence to compile. If none supplied, all runtime sequences in the selected device(s) are compiled.",
     )
 
     opts = parser.parse_args(args)
