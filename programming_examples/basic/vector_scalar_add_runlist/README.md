@@ -10,6 +10,8 @@
 
 # Vector Scalar Addition Runlist:
 
+> NOTE: The `xrt::runlist` feature is not implemented on Phoenix (NPU1)
+
 This design takes the simple Vector Scalar Addition example and shows how you can use the XRT runlist feature to chain multiple commands together. 
 
 This design shows an extremely simple single AIE design, which is incrementing every value in an input vector.
