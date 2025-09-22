@@ -51,6 +51,14 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
         const auto &targetModel = getTargetModel(tile);
         for (auto user : tile.getResult().getUsers())
           if (auto lock = dyn_cast<LockOp>(user)) {
+            // At this point, we are iterating over all locks that are 
+            // accessible from within the current core coreOp. We only need to
+            // localize the current lock if it is used within the core. Note 
+            // that this pass is to be applied after the scf-to-cf lowering, so
+            // it suffices to check if the parent of a UseLockOp is coreOp. 
+            if (llvm::none_of(lock.getResult().getUsers(), [&](Operation *user) { return user->getParentOp() == coreOp; }))
+              continue;
+
             auto lockIndexOffset =
                 targetModel.getLockLocalBaseIndex(col, row, dstCol, dstRow);
             if (!lockIndexOffset)
@@ -60,7 +68,7 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
                 lockIndexOffset.value() + lock.getLockIDValue();
 
             OpBuilder builder =
-                OpBuilder::atBlockBegin(user->getBlock());
+                OpBuilder::atBlockBegin(&coreOp.getBody().front());
 
             Value coreLockIDValue = builder.create<arith::ConstantIndexOp>(
                 builder.getUnknownLoc(), localLockIndex);
