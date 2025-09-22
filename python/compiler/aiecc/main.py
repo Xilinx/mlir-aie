@@ -32,7 +32,7 @@ import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
 from aie.dialects import aie as aiedialect
 from aie.dialects import aiex as aiexdialect
-from aie.ir import Context, Location, Module
+from aie.ir import Context, Location, Module, InsertionPoint, IndexType, StringAttr
 from aie.passmanager import PassManager
 
 
@@ -316,6 +316,20 @@ def generate_runtime_sequences_list(device_op):
         )
         if not opts.sequence_name or s.sym_name.value == opts.sequence_name
     ]
+
+
+def set_elf_file_for_core(core, path):
+    with InsertionPoint.at_block_terminator(core.parent.regions[0].blocks[0]), Location.unknown():
+        result = IndexType.get()
+        new_core = aiedialect.CoreOp(result, core.tile)
+        for attr in core.attributes:
+            new_core.attributes[attr.name] = core.attributes[attr.name]
+        new_core.attributes['elf_file'] = StringAttr.get(path)
+        new_core_block = new_core.body.blocks.append()
+        with InsertionPoint(new_core_block):
+            aiedialect.EndOp()
+        new_core.move_before(core)
+    core.operation.erase()
 
 
 def emit_design_bif(
@@ -735,30 +749,28 @@ class FlowRunner:
             input_physical_with_elfs_module = Module.parse(
                 await read_file_async(input_physical)
             )
-            for device_name in elf_paths:
-                for col, row in elf_paths[device_name]:
-                    pass_pipeline = (
-                        Pipeline()
-                        .Nested(
-                            "aie.device",
-                            Pipeline().add_pass(
-                                "aie-set-elf-for-core",
-                                device=device_name,
-                                col=col,
-                                row=row,
-                                elf_file=elf_paths[device_name][(col, row)],
-                            ),
-                        )
-                        .materialize(module=True)
-                    )
-                    input_physical_with_elfs_module = run_passes_module(
-                        pass_pipeline,
-                        input_physical_with_elfs_module,
-                        None,
-                        self.opts.verbose,
-                    )
+            for device in find_ops(
+                input_physical_with_elfs_module.operation,
+                lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp)
+            ):
+                device_name = device.sym_name.value
+                if device_name not in elf_paths:
+                    continue
+
+                for core in find_ops(
+                    device,
+                    lambda o: isinstance(o.operation.opview, aiedialect.CoreOp)
+                ):
+                    col = core.tile.owner.opview.col.value
+                    row = core.tile.owner.opview.row.value
+                    if (col, row) not in elf_paths[device_name]:
+                        continue
+
+                    set_elf_file_for_core(core, elf_paths[device_name][(col, row)])
+
             input_physical_with_elfs_str = str(input_physical_with_elfs_module)
             input_physical_with_elfs = self.prepend_tmp("input_physical_with_elfs.mlir")
+
             with open(input_physical_with_elfs, "w") as f:
                 f.write(input_physical_with_elfs_str)
             return input_physical_with_elfs
