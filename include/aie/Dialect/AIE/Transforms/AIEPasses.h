@@ -70,7 +70,7 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
   void runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
   void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder, DynamicTileAnalysis &analyzer);
 
-  typedef std::pair<mlir::Operation *, Port> PhysPort;
+  typedef std::pair<TileID, Port> PhysPort;
 
   bool findPathToDest(SwitchSettings settings, TileID currTile,
                       WireBundle currDestBundle, int currDestChannel,

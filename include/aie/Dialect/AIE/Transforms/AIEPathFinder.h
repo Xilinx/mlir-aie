@@ -255,6 +255,7 @@ public:
   int getMaxRow() const { return maxRow; }
 
   TileOp getTile(mlir::OpBuilder &builder, int col, int row);
+  TileOp getTile(mlir::OpBuilder &builder, const TileID &tileId);
 
   SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
 
