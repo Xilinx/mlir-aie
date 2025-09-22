@@ -105,7 +105,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
       int row = tileId.row;
       SwitchboxOp swOp = analyzer.getSwitchbox(rewriter, col, row);
       int shimCh = srcChannel;
-      bool isShim = analyzer.getTile(rewriter, col, row).isShimNOCorPLTile();
+      bool isShim = analyzer.getTile(rewriter, tileId).isShimNOCorPLTile();
 
       // TODO: must reserve N3, N7, S2, S3 for DMA connections
       if (isShim && tileId == srcSbId) {
@@ -269,11 +269,11 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
   ConversionTarget target(getContext());
 
-  mlir::DenseMap<TileID, mlir::Operation *> tiles;
+  std::map<TileID, mlir::Operation *> tiles;
 
   // Map from a port and flowID to
-  DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
-  DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> ctrlPacketFlows;
+  std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
+  std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> ctrlPacketFlows;
   SmallVector<std::pair<PhysPort, int>, 4> slavePorts;
   DenseMap<std::pair<PhysPort, int>, int> slaveAMSels;
   // Flag to keep packet header at packet flow destination
@@ -288,7 +288,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   }
 
   // The logical model of all the switchboxes.
-  DenseMap<TileID, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
+  std::map<TileID, SmallVector<std::pair<Connect, int>, 8>> switchboxes;
   for (PacketFlowOp pktFlowOp : device.getOps<PacketFlowOp>()) {
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
@@ -308,7 +308,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         destCoords = {destTile.colIndex(), destTile.rowIndex()};
         // Assign "keep_pkt_header flag"
         auto keep = pktFlowOp.getKeepPktHeader();
-        keepPktHeaderAttr[{destTile, destPort}] =
+        keepPktHeaderAttr[{destTile.getTileID(), destPort}] =
             keep ? BoolAttr::get(Op.getContext(), *keep) : nullptr;
 
         TileID srcSB = {srcCoords.col, srcCoords.row};
@@ -337,9 +337,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
               // Assign "control packet flows" flag per switchbox, based on
               // packet flow op attribute
               auto ctrlPkt = pktFlowOp.getPriorityRoute();
-              ctrlPktFlows[{
-                  {analyzer.getTile(builder, curr.col, curr.row), dest},
-                  flowID}] = ctrlPkt ? *ctrlPkt : false;
+              ctrlPktFlows[{{currTile, dest}, flowID}] =
+                  ctrlPkt ? *ctrlPkt : false;
             }
           }
         }
@@ -350,20 +349,17 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   LLVM_DEBUG(llvm::dbgs() << "Check switchboxes\n");
 
   for (const auto &[tileId, connects] : switchboxes) {
-    int col = tileId.col;
-    int row = tileId.row;
-    auto tile = analyzer.getTile(builder, col, row);
-    Operation *tileOp = tile.getOperation();
-    LLVM_DEBUG(llvm::dbgs() << "***switchbox*** " << col << " " << row << '\n');
+    LLVM_DEBUG(llvm::dbgs() << "***switchbox*** " << tileId.col << " "
+                            << tileId.row << '\n');
     for (const auto &[conn, flowID] : connects) {
       Port sourcePort = conn.src;
       Port destPort = conn.dst;
       auto sourceFlow =
-          std::make_pair(std::make_pair(tileOp, sourcePort), flowID);
-      if (ctrlPktFlows[{{tileOp, destPort}, flowID}])
-        ctrlPacketFlows[sourceFlow].push_back({tileOp, destPort});
+          std::make_pair(std::make_pair(tileId, sourcePort), flowID);
+      if (ctrlPktFlows[{{tileId, destPort}, flowID}])
+        ctrlPacketFlows[sourceFlow].push_back({tileId, destPort});
       else
-        packetFlows[sourceFlow].push_back({tileOp, destPort});
+        packetFlows[sourceFlow].push_back({tileId, destPort});
       slavePorts.push_back(sourceFlow);
       LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':'
                               << stringifyWireBundle(sourcePort.bundle) << " "
@@ -384,7 +380,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
   // A map from Tile and master selectValue to the ports targetted by that
   // master select.
-  DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>> masterAMSels;
+  std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
 
   // Count of currently used logical arbiters for each tile.
   DenseMap<Operation *, int> amselValues;
@@ -401,90 +397,38 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   };
   // Get a new unique amsel from masterAMSels on tile op. Prioritize on
   // incrementing arbiter id, before incrementing msel
-  auto getNewUniqueAmsel = [&](DenseMap<std::pair<Operation *, int>,
-                                        SmallVector<Port, 4>>
-                                   masterAMSels,
-                               Operation *tileOp, bool isCtrlPkt) {
-    if (isCtrlPkt) { // Higher AMsel first
-      for (int i = numMsels - 1; i >= 0; i--)
-        for (int a = numArbiters - 1; a >= 0; a--)
-          if (!masterAMSels.count({tileOp, getAmselFromArbiterIDAndMsel(a, i)}))
-            return getAmselFromArbiterIDAndMsel(a, i);
-    } else { // Lower AMsel first
-      for (int i = 0; i < numMsels; i++)
-        for (int a = 0; a < numArbiters; a++)
-          if (!masterAMSels.count({tileOp, getAmselFromArbiterIDAndMsel(a, i)}))
-            return getAmselFromArbiterIDAndMsel(a, i);
-    }
-    tileOp->emitOpError("tile op has used up all arbiter-msel combinations");
-    return -1;
-  };
+  auto getNewUniqueAmsel =
+      [&](std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels,
+          TileOp tileOp, bool isCtrlPkt) {
+        if (isCtrlPkt) { // Higher AMsel first
+          for (int i = numMsels - 1; i >= 0; i--)
+            for (int a = numArbiters - 1; a >= 0; a--)
+              if (!masterAMSels.count(
+                      {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
+                return getAmselFromArbiterIDAndMsel(a, i);
+        } else { // Lower AMsel first
+          for (int i = 0; i < numMsels; i++)
+            for (int a = 0; a < numArbiters; a++)
+              if (!masterAMSels.count(
+                      {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
+                return getAmselFromArbiterIDAndMsel(a, i);
+        }
+        tileOp->emitOpError(
+            "tile op has used up all arbiter-msel combinations");
+        return -1;
+      };
   // Get a new unique amsel from masterAMSels on tile op with given arbiter id
   auto getNewUniqueAmselPerArbiterID =
-      [&](DenseMap<std::pair<Operation *, int>, SmallVector<Port, 4>>
-              masterAMSels,
-          Operation *tileOp, int arbiter) {
+      [&](std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels,
+          TileOp tileOp, int arbiter) {
         for (int i = 0; i < numMsels; i++)
-          if (!masterAMSels.count(
-                  {tileOp, getAmselFromArbiterIDAndMsel(arbiter, i)}))
+          if (!masterAMSels.count({tileOp.getTileID(),
+                                   getAmselFromArbiterIDAndMsel(arbiter, i)}))
             return getAmselFromArbiterIDAndMsel(arbiter, i);
         tileOp->emitOpError("tile op arbiter ")
             << std::to_string(arbiter) << "has used up all its msels";
         return -1;
       };
-
-  // Sorting the packet flows in order to get determinsitic amsel allocation;
-  // allocate amsels for control packet flows before others to ensure
-  // consistency in control packet flow overlay.
-  auto getUniqueIdPerFlowPerSB = [](int flowID, WireBundle srcBundle,
-                                    SmallVector<PhysPort, 4> dests) {
-    int totalNumOfWireBundles = AIE::getMaxEnumValForWireBundle();
-    int currMultiplier = totalNumOfWireBundles;
-    int uniqueId = flowID;
-    uniqueId += currMultiplier + getWireBundleAsInt(srcBundle);
-    currMultiplier += totalNumOfWireBundles;
-    for (auto dst : dests) {
-      uniqueId += currMultiplier;
-      uniqueId += getWireBundleAsInt(dst.second.bundle);
-      currMultiplier += totalNumOfWireBundles;
-    }
-    return uniqueId;
-  };
-  auto getSortedPacketFlows =
-      [&](DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> pktFlows,
-          DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>
-              ctrlPktFlows) {
-        std::vector<
-            std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
-            sortedpktFlows(pktFlows.begin(), pktFlows.end());
-        std::sort(
-            sortedpktFlows.begin(), sortedpktFlows.end(),
-            [getUniqueIdPerFlowPerSB](const auto &lhs, const auto &rhs) {
-              int lhsUniqueID = getUniqueIdPerFlowPerSB(
-                  lhs.first.second, lhs.first.first.second.bundle, lhs.second);
-              int rhsUniqueID = getUniqueIdPerFlowPerSB(
-                  rhs.first.second, rhs.first.first.second.bundle, rhs.second);
-              return lhsUniqueID < rhsUniqueID;
-            });
-        std::vector<
-            std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
-            sortedctrlpktFlows(ctrlPktFlows.begin(), ctrlPktFlows.end());
-        std::sort(
-            sortedctrlpktFlows.begin(), sortedctrlpktFlows.end(),
-            [getUniqueIdPerFlowPerSB](const auto &lhs, const auto &rhs) {
-              int lhsUniqueID = getUniqueIdPerFlowPerSB(
-                  lhs.first.second, lhs.first.first.second.bundle, lhs.second);
-              int rhsUniqueID = getUniqueIdPerFlowPerSB(
-                  rhs.first.second, rhs.first.first.second.bundle, rhs.second);
-              return lhsUniqueID < rhsUniqueID;
-            });
-        sortedctrlpktFlows.insert(sortedctrlpktFlows.end(),
-                                  sortedpktFlows.begin(), sortedpktFlows.end());
-        return sortedctrlpktFlows;
-      };
-
-  std::vector<std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
-      sortedPacketFlows = getSortedPacketFlows(packetFlows, ctrlPacketFlows);
 
   packetFlows.insert(ctrlPacketFlows.begin(), ctrlPacketFlows.end());
 
@@ -493,9 +437,10 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // destination ports at the same time For destination ports that appear in
   // different (multicast) flows, it should have a different <arbiterID, msel>
   // value pair for each flow
-  for (const auto &packetFlow : sortedPacketFlows) {
+  for (const auto &packetFlow : packetFlows) {
     // The Source Tile of the flow
-    Operation *tileOp = packetFlow.first.first.first;
+    TileID tileId = packetFlow.first.first.first;
+    TileOp tileOp = analyzer.getTile(builder, tileId);
     if (amselValues.count(tileOp) == 0)
       amselValues[tileOp] = 0;
 
@@ -520,13 +465,12 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         -1; // This switchbox's output channels match partially with an
             // existing amsel entry on this arbiter ID (-1 means null).
     for (const auto &map : masterAMSels) {
-      if (map.first.first != tileOp)
+      if (map.first.first != tileId)
         continue;
       amselValue = map.first.second;
 
       // check if same destinations
-      SmallVector<Port, 4> ports(masterAMSels[{tileOp, amselValue}]);
-
+      SmallVector<Port, 4> ports(masterAMSels[{tileId, amselValue}]);
       // check for complete/partial overlapping amsel -> port mapping with any
       // previous amsel assignments
       bool matched =
@@ -561,14 +505,14 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       bool ctrlPktAMsel =
           llvm::any_of(packetFlow.second, [&](PhysPort destPhysPort) {
             Port port = destPhysPort.second;
-            return ctrlPktFlows[{{tileOp, port}, packetFlow.first.second}];
+            return ctrlPktFlows[{{tileId, port}, packetFlow.first.second}];
           });
 
       amselValue = getNewUniqueAmsel(masterAMSels, tileOp, ctrlPktAMsel);
       // Update masterAMSels with new amsel
       for (auto dest : packetFlow.second) {
         Port port = dest.second;
-        masterAMSels[{tileOp, amselValue}].push_back(port);
+        masterAMSels[{tileId, amselValue}].push_back(port);
       }
     } else if (foundPartialMatchArbiter >= 0) {
       // This packet flow switchbox's output ports partially overlaps with
@@ -578,7 +522,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       // Update masterAMSels with new amsel
       for (auto dest : packetFlow.second) {
         Port port = dest.second;
-        masterAMSels[{tileOp, amselValue}].push_back(port);
+        masterAMSels[{tileId, amselValue}].push_back(port);
       }
     }
 
@@ -588,13 +532,12 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
   // Compute the master set IDs
   // A map from a switchbox output port to the number of that port.
-  DenseMap<PhysPort, SmallVector<int, 4>> mastersets;
+  std::map<PhysPort, SmallVector<int, 4>> mastersets;
   for (const auto &[physPort, ports] : masterAMSels) {
-    Operation *tileOp = physPort.first;
-    assert(tileOp);
+    TileID tileId = physPort.first;
     int amselValue = physPort.second;
     for (auto port : ports) {
-      PhysPort pp = {tileOp, port};
+      PhysPort pp = {tileId, port};
       mastersets[pp].push_back(amselValue);
     }
   }
@@ -602,13 +545,11 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   LLVM_DEBUG(llvm::dbgs() << "CHECK mastersets\n");
 #ifndef NDEBUG
   for (const auto &[physPort, values] : mastersets) {
-    Operation *tileOp = physPort.first;
+    TileID tileId = physPort.first;
     WireBundle bundle = physPort.second.bundle;
     int channel = physPort.second.channel;
-    assert(tileOp);
-    auto tile = dyn_cast<TileOp>(tileOp);
     LLVM_DEBUG(llvm::dbgs()
-               << "master " << tile << " " << stringifyWireBundle(bundle)
+               << "master " << tileId << " " << stringifyWireBundle(bundle)
                << " : " << channel << '\n');
     for (auto value : values)
       LLVM_DEBUG(llvm::dbgs() << "amsel: " << value << '\n');
@@ -657,7 +598,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
   }
 
-  DenseMap<std::pair<PhysPort, int>, int> slaveMasks;
+  std::map<std::pair<PhysPort, int>, int> slaveMasks;
   for (const auto &group : slaveGroups) {
     // Iterate over all the ID values in a group
     // If bit n-th (n <= 5) of an ID value differs from bit n-th of another ID
@@ -689,8 +630,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 #ifndef NDEBUG
   LLVM_DEBUG(llvm::dbgs() << "CHECK Slave Masks\n");
   for (auto map : slaveMasks) {
-    auto port = map.first.first;
-    auto tile = dyn_cast<TileOp>(port.first);
+    PhysPort port = map.first.first;
+    TileOp tile = analyzer.getTile(builder, port.first);
     WireBundle bundle = port.second.bundle;
     int channel = port.second.channel;
     int ID = map.first.second;
@@ -716,20 +657,21 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // Update tiles map if any new tile op declaration is needed for constructing
   // the flow.
   for (const auto &swMap : mastersets) {
-    if (llvm::none_of(
-            tiles,
-            [&swMap](
-                std::pair<xilinx::AIE::TileID, Operation *> &tileMapEntry) {
-              return tileMapEntry.second == swMap.first.first;
-            })) {
-      auto newTileOp = dyn_cast<TileOp>(swMap.first.first);
-      tiles[{newTileOp.colIndex(), newTileOp.rowIndex()}] = newTileOp;
+    TileID tileId = swMap.first.first;
+    TileOp tileOp = analyzer.getTile(builder, tileId);
+    if (std::none_of(tiles.begin(), tiles.end(),
+                     [&tileOp](const std::pair<const xilinx::AIE::TileID,
+                                               Operation *> &tileMapEntry) {
+                       return tileMapEntry.second == tileOp.getOperation();
+                     })) {
+      tiles[{tileOp.colIndex(), tileOp.rowIndex()}] = tileOp;
     }
   }
 
   for (auto map : tiles) {
     Operation *tileOp = map.second;
-    auto tile = dyn_cast<TileOp>(tileOp);
+    TileOp tile = cast<TileOp>(map.second);
+    TileID tileId = tile.getTileID();
 
     // Create a switchbox for the routes and insert inside it.
     builder.setInsertionPointAfter(tileOp);
@@ -742,7 +684,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
     std::vector<bool> amselOpNeededVector(numMsels * numArbiters);
     for (const auto &map : mastersets) {
-      if (tileOp != map.first.first)
+      if (tileId != map.first.first)
         continue;
 
       for (auto value : map.second) {
@@ -750,7 +692,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       }
     }
     // Create all the amsel Ops
-    DenseMap<int, AMSelOp> amselOps;
+    std::map<int, AMSelOp> amselOps;
     for (int i = 0; i < numMsels; i++) {
       for (int a = 0; a < numArbiters; a++) {
         auto amselValue = getAmselFromArbiterIDAndMsel(a, i);
@@ -767,7 +709,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     // First collect the master sets for this tile.
     SmallVector<Port, 4> tileMasters;
     for (const auto &map : mastersets) {
-      if (tileOp != map.first.first)
+      if (tileId != map.first.first)
         continue;
       tileMasters.push_back(map.first.second);
     }
@@ -776,7 +718,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     for (auto tileMaster : tileMasters) {
       WireBundle bundle = tileMaster.bundle;
       int channel = tileMaster.channel;
-      SmallVector<int, 4> msels = mastersets[{tileOp, tileMaster}];
+      SmallVector<int, 4> msels = mastersets[{tileId, tileMaster}];
       SmallVector<Value, 4> amsels;
       for (auto msel : msels) {
         assert(amselOps.count(msel) == 1);
@@ -785,7 +727,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
       builder.create<MasterSetOp>(
           builder.getUnknownLoc(), builder.getIndexType(), bundle, channel,
-          amsels, keepPktHeaderAttr[{tileOp, tileMaster}]);
+          amsels, keepPktHeaderAttr[{tileId, tileMaster}]);
     }
 
     // Generate the packet rules
@@ -794,7 +736,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       builder.setInsertionPoint(b.getTerminator());
 
       auto port = group.front().first;
-      if (tileOp != port.first)
+      if (tileId != port.first)
         continue;
 
       WireBundle bundle = port.second.bundle;

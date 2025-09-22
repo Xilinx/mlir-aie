@@ -144,6 +144,10 @@ TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
   return tileOp;
 }
 
+TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, const TileID &tileId) {
+  return getTile(builder, tileId.col, tileId.row);
+}
+
 SwitchboxOp DynamicTileAnalysis::getSwitchbox(OpBuilder &builder, int col,
                                               int row) {
   assert(col >= 0);
@@ -339,38 +343,17 @@ void Pathfinder::sortFlows(const int maxCol, const int maxRow) {
     else
       normalFlows.push_back(f);
   }
-  // Get unique int identifier from a vector if pairs of int properties and
-  // their maximums.
-  auto getUniqueIdFromVecOfProperties =
-      [](std::vector<std::pair<int, int>> propertiesAndLimits) {
-        int uniqueId = 0;
-        int multiplier = 1;
-        for (auto pair : propertiesAndLimits) {
-          uniqueId += pair.first * multiplier;
-          multiplier *= pair.second;
-        }
-        return uniqueId;
-      };
   std::sort(priorityFlows.begin(), priorityFlows.end(),
-            [maxCol, maxRow, getUniqueIdFromVecOfProperties](const auto &lhs,
-                                                             const auto &rhs) {
-              // List of properties used in sorting: src col, src row, src
-              // wirebundle and src channel.
-              std::vector<std::pair<int, int>> lhsProperties = {
-                  {lhs.src.coords.col, maxCol},
-                  {lhs.src.coords.row, maxRow},
-                  {getWireBundleAsInt(lhs.src.port.bundle),
-                   AIE::getMaxEnumValForWireBundle()},
-                  {lhs.src.port.channel, /*don't care*/ 0}};
-              int lhsUniqueID = getUniqueIdFromVecOfProperties(lhsProperties);
-              std::vector<std::pair<int, int>> rhsProperties = {
-                  {rhs.src.coords.col, maxCol},
-                  {rhs.src.coords.row, maxRow},
-                  {getWireBundleAsInt(rhs.src.port.bundle),
-                   AIE::getMaxEnumValForWireBundle()},
-                  {rhs.src.port.channel, /*don't care*/ 0}};
-              int rhsUniqueID = getUniqueIdFromVecOfProperties(rhsProperties);
-              return lhsUniqueID < rhsUniqueID;
+            [](const auto &lhs, const auto &rhs) {
+              // Compare tuple of properties in priority order:
+              // (col, row, bundle, channel)
+              auto lhsKey = std::make_tuple(lhs.src.coords.col, lhs.src.coords.row,
+                                            getWireBundleAsInt(lhs.src.port.bundle),
+                                            lhs.src.port.channel);
+              auto rhsKey = std::make_tuple(rhs.src.coords.col, rhs.src.coords.row,
+                                            getWireBundleAsInt(rhs.src.port.bundle),
+                                            rhs.src.port.channel);
+              return lhsKey < rhsKey;
             });
   flows = priorityFlows;
   flows.insert(flows.end(), normalFlows.begin(), normalFlows.end());
