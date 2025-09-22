@@ -59,9 +59,13 @@ def main(opts):
 
     ci_co_ksz_ksz = ci * co * ksz * ksz
     co_group = co // 16  # 72
+    # num_act = 2 # min needed for run in single core
+    # num_act = 8 # min needed for trace in single core
+    # num_act = 1 # min needed for run in 32 core
+    num_act = int(opts.num_act)
 
     shape_total_wts = (ci_co_ksz_ksz, 1)
-    shape_in_act = (co_group, height, width, ci)  #'YX (rgba)
+    shape_in_act = (num_act, height, width, ci)  #'YX (rgba)
     shape_in_wts1 = (co, ci, ksz, ksz)  # out,in,ky,kx
     shape_out = (co, height_out, width_out)
 
@@ -179,9 +183,9 @@ def main(opts):
     print(type(ifm_mem_fmt))
     print(ifm_mem_fmt.shape)
 
-    ifm_mem_fmt_72 = np.tile(ifm_mem_fmt, co_group)
-    print("ifm_mem_fmt_72:")
-    print(ifm_mem_fmt_72.shape)
+    ifm_mem_fmt_grp = np.tile(ifm_mem_fmt, num_act)
+    print("ifm_mem_fmt_grp:")
+    print(ifm_mem_fmt_grp.shape)
 
     int_weight_np = int_weight.data.numpy().astype(dtype_wts)
     weights_before_mem_fmt = int_weight_np.reshape(64512, 14)
@@ -209,7 +213,7 @@ def main(opts):
     for i in range(num_iter):
         start = time.time_ns()
         # entire_buffer = execute(app, ifm_mem_fmt, total_wts)
-        entire_buffer = execute(app, ifm_mem_fmt_72, total_wts)
+        entire_buffer = execute(app, ifm_mem_fmt_grp, total_wts)
         stop = time.time_ns()
 
         if enable_trace:
@@ -256,8 +260,6 @@ def main(opts):
     # ------------------------------------------------------
     # Compare the AIE output and the golden reference
     # ------------------------------------------------------
-
-    print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
 
     print("Weight")
     print(int_weight.size())
@@ -316,6 +318,8 @@ def main(opts):
 
     avg_difference = np.average(np.abs(golden_numpy_sub_int - output_numpy_sub_int))
     print("avg_abs_difference:", avg_difference)
+
+    print("\nAvg NPU time: {}us.".format(int((npu_time_total / num_iter) / 1000)))
 
     print(
         "max golden int value: ",
@@ -387,6 +391,13 @@ if __name__ == "__main__":
         dest="kernel_size",
         default=14,
         help="Size of kernel",
+    )
+    p.add_argument(
+        "-na",
+        "--num_act",
+        dest="num_act",
+        default=8,
+        help="Number of activation inputs sets in test",
     )
     opts = p.parse_args(sys.argv[1:])
     main(opts)
