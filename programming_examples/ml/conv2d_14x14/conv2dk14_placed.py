@@ -207,8 +207,6 @@ def conv2dk14(
                         tiles_to_trace=tiles_to_trace,
                         shim=ShimTile,
                         trace_size=trace_size,
-                        trace_offset=N_in_bytes,
-                        ddr_id=2,
                         coretile_events=[
                             CoreEvent.INSTR_EVENT_0,
                             CoreEvent.INSTR_EVENT_1,
