@@ -63,7 +63,10 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = flowOp.getOperation();
     DeviceOp d = flowOp->getParentOfType<DeviceOp>();
-    assert(d);
+    if(!d) {
+      flowOp->emitOpError("This operation must be contained within a device");
+      return failure();
+    }
     rewriter.setInsertionPoint(d.getBody()->getTerminator());
 
     auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());

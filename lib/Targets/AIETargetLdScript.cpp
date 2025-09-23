@@ -68,10 +68,10 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
 
-  if (module.getOps<DeviceOp>().empty()) {
-    module.emitOpError("expected AIE.device operation at toplevel");
+  if (!targetOp) {
+    return failure();
   }
 
   collectTiles(targetOp, tiles);
