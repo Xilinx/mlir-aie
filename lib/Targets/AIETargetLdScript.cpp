@@ -68,7 +68,8 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  DeviceOp targetOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
 
   if (!targetOp) {
     return failure();

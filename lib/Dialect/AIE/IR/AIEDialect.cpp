@@ -1095,8 +1095,7 @@ xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module,
     // If no device name is given, assume 'main'
     symbol = "main";
   }
-  Operation *maybeDeviceOp =
-      mlir::SymbolTable::lookupSymbolIn(module, symbol);
+  Operation *maybeDeviceOp = mlir::SymbolTable::lookupSymbolIn(module, symbol);
   if (!maybeDeviceOp) {
     return nullptr;
   }

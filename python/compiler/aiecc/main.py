@@ -319,12 +319,14 @@ def generate_runtime_sequences_list(device_op):
 
 
 def set_elf_file_for_core(core, path):
-    with InsertionPoint.at_block_terminator(core.parent.regions[0].blocks[0]), Location.unknown():
+    with InsertionPoint.at_block_terminator(
+        core.parent.regions[0].blocks[0]
+    ), Location.unknown():
         result = IndexType.get()
         new_core = aiedialect.CoreOp(result, core.tile)
         for attr in core.attributes:
             new_core.attributes[attr.name] = core.attributes[attr.name]
-        new_core.attributes['elf_file'] = StringAttr.get(path)
+        new_core.attributes["elf_file"] = StringAttr.get(path)
         new_core_block = new_core.body.blocks.append()
         with InsertionPoint(new_core_block):
             aiedialect.EndOp()
@@ -751,15 +753,14 @@ class FlowRunner:
             )
             for device in find_ops(
                 input_physical_with_elfs_module.operation,
-                lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp)
+                lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
             ):
                 device_name = device.sym_name.value
                 if device_name not in elf_paths:
                     continue
 
                 for core in find_ops(
-                    device,
-                    lambda o: isinstance(o.operation.opview, aiedialect.CoreOp)
+                    device, lambda o: isinstance(o.operation.opview, aiedialect.CoreOp)
                 ):
                     col = core.tile.owner.opview.col.value
                     row = core.tile.owner.opview.row.value
@@ -851,7 +852,9 @@ class FlowRunner:
         with Context(), Location.unknown():
             file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
             file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
-            file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt_dma_seq.mlir")
+            file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
+                f"{device_name}_ctrlpkt_dma_seq.mlir"
+            )
             file_ctrlpkt_dma_seq_bin = opts.ctrlpkt_dma_seq_name.format(device_name)
             file_ctrlpkt_elf = opts.ctrlpkt_elf_name.format(device_name)
             run_passes(
@@ -871,7 +874,7 @@ class FlowRunner:
                     "configure",
                     file_ctrlpkt_mlir,
                     "-o",
-                    file_ctrlpkt_bin
+                    file_ctrlpkt_bin,
                 ],
             )
             ctrlpkt_mlir_str = await read_file_async(file_ctrlpkt_mlir)
@@ -892,7 +895,7 @@ class FlowRunner:
                     "configure",
                     file_ctrlpkt_dma_seq_mlir,
                     "-o",
-                    file_ctrlpkt_dma_seq_bin
+                    file_ctrlpkt_dma_seq_bin,
                 ],
             )
             await self.aiebu_asm(
