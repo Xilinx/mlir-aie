@@ -230,7 +230,9 @@ def setup_aie(
 
     if enable_trace:
         if not trace_after_output:
-            trace_buf_shape = (trace_size,)
+            trace_buf_shape = (
+                trace_size * 4,
+            )  # 4x as workaround to avoid driver corruption
             trace_buf_dtype = np.uint8
             if verbosity >= 1:
                 print("register placeholder buffer (32b) to group_id 6")
