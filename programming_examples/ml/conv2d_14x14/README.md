@@ -65,13 +65,12 @@ To compile and run the design:
 make run_py
 ```
 
-
 To build and run the design while generating trace
 ```shell
 make clean; make trace_py
 ```
 
-To build and run the design with or without generating trace for the unplaced IRON version, we need to add an additional qualifier.
+To build and run the design for the unplaced IRON version (with or without generating trace), we need to add an additional qualifier.
 ```shell
 make clean; make use_placed=0 num_act=72 run_py
 make clean; make use_placed=0 num_act=72 trace_py
@@ -80,6 +79,10 @@ make clean; make use_placed=0 num_act=72 trace_py
 To build and run the 32-core design (trace not currently supported)
 ```shell
 make clean; make targetname=conv2dk14_32core num_act=1 run_py
+```
+To build an drun the 32-core design with the scalar kernel (trace not currently supported)
+```shell
+make clean; make vectorized=false targetname=conv2dk14_32core num_act=1 run_py
 ```
 
 ## Multi-core Design Example (32-cores)
@@ -92,7 +95,7 @@ While the design was designed to be somewhat configurable, this is mostly tested
 
 ## Limitation Notes
 At the moment, the following limtations exist:
-* The scalar kernel version of this design has some intermittent runtime issue (CMD_ABORT triggered) for the full output channel size. Reducing this to 256 channels from 1152 is a workaround at the moment but further investigation is needed to fully resolve this.
+* The scalar kernel version of this design does not run properly in single core mode for the full data size because the total compute time exceeds the execution time limit of the npu driver (~2 seconds). You can reduce the number of output channels (576 channels works) or you can run the scalar kernel with the 32-core design as noted above.
 * Unplaced IRON now works but needs an additional qualifier for the testbench. However, there is a bug if the trace_size is 32,768 bytes (rather than 16kB or 8kB) which causes the unplaced IRON trace to seg fault. Still under investiation but choosing a smaller size seems to be a good workaround.
 * Trace for the 32-core variant currently causes the compilation to hang. Under investigation but the non-trace run works without issue.
 * There is behavior bug where the number of input/activation sets sent from the host to the AIE array needs to be a certain value in order for correct functionality. For the single core design, `num_act=2` is sufficient for non-trace runs (`run_py`) but for trace runs (`trace_py`), we need this to be `num_act=8`. For the 32-core design, `num_act=1` is sufficient but any value for trace runs causes it to hang at the moment. This is under investigation.

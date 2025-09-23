@@ -554,11 +554,14 @@ class FlowRunner:
             # If there are orphaned input sections, then they'd likely end up outside of the normal program memory.
             clang_link_args = ["-Wl,--gc-sections", "-Wl,--orphan-handling=error"]
 
-            task = self.progress_bar.add_task(
-                "[yellow] Core (%d, %d)" % core[0:2],
-                total=self.maxtasks,
-                command="starting",
-            )
+            if opts.progress:
+                task = self.progress_bar.add_task(
+                    "[yellow] Core (%d, %d)" % core[0:2],
+                    total=self.maxtasks,
+                    command="starting",
+                )
+            else:
+                task = None
 
             # fmt: off
             corecol, corerow, elf_file = core
@@ -612,8 +615,10 @@ class FlowRunner:
                 elif opts.link:
                     await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
-            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
-            self.progress_bar.update(task, advance=0, visible=False)
+            if opts.progress:
+                self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+                if task:
+                    self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
     async def process_cdo(self, module_str):
@@ -782,9 +787,12 @@ class FlowRunner:
     # generate an xclbin. The inputs are self.mlir_module_str and the cdo
     # binaries from the process_cdo step.
     async def process_xclbin_gen(self):
-        task = self.progress_bar.add_task(
-            "[yellow] XCLBIN generation ", total=10, command="starting"
-        )
+        if opts.progress:
+            task = self.progress_bar.add_task(
+                "[yellow] XCLBIN generation ", total=10, command="starting"
+            )
+        else:
+            task = None
 
         # collect the tasks to generate the inputs to xclbinutil
         processes = []
@@ -875,9 +883,12 @@ class FlowRunner:
             if self.stopall:
                 return
 
-            task = self.progress_bar.add_task(
-                "[yellow] Host compilation ", total=10, command="starting"
-            )
+            if opts.progress:
+                task = self.progress_bar.add_task(
+                    "[yellow] Host compilation ", total=10, command="starting"
+                )
+            else:
+                task = None
 
             if opts.airbin:
                 file_airbin = self.prepend_tmp("air.bin")
@@ -999,8 +1010,10 @@ class FlowRunner:
             if len(opts.host_args) > 0:
                 await self.do_call(task, cmd + opts.host_args)
 
-            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
-            self.progress_bar.update(task, advance=0, visible=False)
+            if opts.progress:
+                self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+                if task:
+                    self.progress_bar.update(task, advance=0, visible=False)
 
     async def gen_sim(self, task, aie_target, file_physical):
         # For simulation, we need to additionally parse the 'remaining' options to avoid things
@@ -1209,12 +1222,14 @@ class FlowRunner:
             progress.TextColumn("{task.fields[command]}"),
             redirect_stdout=False,
             redirect_stderr=False,
-            disable=not opts.progress,
         ) as progress_bar:
             self.progress_bar = progress_bar
-            progress_bar.task = progress_bar.add_task(
-                "[green] MLIR compilation:", total=1, command="1 Worker"
-            )
+            if opts.progress:
+                progress_bar.task = progress_bar.add_task(
+                    "[green] MLIR compilation:", total=1, command="1 Worker"
+                )
+            else:
+                progress_bar.task = None
 
             t = do_run(
                 [
@@ -1294,12 +1309,13 @@ class FlowRunner:
                     await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
-            progress_bar.update(progress_bar.task, advance=0, visible=False)
-            progress_bar.task_completed = progress_bar.add_task(
-                "[green] AIE Compilation:",
-                total=len(cores) + 1,
-                command="%d Workers" % nworkers,
-            )
+            if opts.progress:
+                progress_bar.update(progress_bar.task, advance=0, visible=False)
+                progress_bar.task_completed = progress_bar.add_task(
+                    "[green] AIE Compilation:",
+                    total=len(cores) + 1,
+                    command="%d Workers" % nworkers,
+                )
 
             input_physical = self.prepend_tmp("input_physical.mlir")
             processes = [

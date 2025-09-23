@@ -20,3 +20,5 @@
 // RUN: env num_act=72 %run_on_npu2% make -f %S/Makefile use_placed=0 trace_py devicename=npu2
 // RUN: make -f %S/Makefile clean
 // RUN: env targetname=conv2dk14_32core num_act=1 %run_on_npu2% make -f %S/Makefile run_py devicename=npu2
+// RUN: make -f %S/Makefile clean
+// RUN: env targetname=conv2dk14_32core num_act=1 vectorized=false %run_on_npu2% make -f %S/Makefile run_py devicename=npu2
