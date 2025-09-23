@@ -964,7 +964,9 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
   let description = [{
-    load pdi operator
+    Load a PDI (Programmable Device Image) to configure the NPU.
+    The PDI is identified by `id`. `address` and `size` are typically written at
+    runtime by the driver or host program.
   }];
 }
 
