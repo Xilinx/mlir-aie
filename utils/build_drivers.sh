@@ -111,10 +111,10 @@ echo "Installing XDNA plugin..."
 cd "$XDNA_SRC_DIR/build/Release"
 case "$UBUNTU_VERSION" in
     "24.04")
-        plugin_suffix="ubuntu24.04-x86_64-amdxdna.deb"
+        plugin_suffix="24.04-amd64-amdxdna.deb"
         ;;
     "24.10")
-        plugin_suffix="ubuntu24.10-x86_64-amdxdna.deb"
+        plugin_suffix="24.10-amd64-amdxdna.deb"
         ;;
     *)
         echo "Error: Unsupported Ubuntu version ($UBUNTU_VERSION). Supported versions: 24.04, 24.10"
