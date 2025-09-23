@@ -958,12 +958,11 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
   let arguments = (
     ins I32Attr:$id,
-        Optional<AnyMemRef>:$data,
         OptionalAttr<I32Attr>:$size,
         OptionalAttr<UI64Attr>:$address
   );
   let results = (outs );
-  let assemblyFormat = [{ (`(` $data^ `)`)? attr-dict ( `:` type($data)^ )? }];
+  let assemblyFormat = [{ attr-dict }];
   let description = [{
     load pdi operator
   }];
