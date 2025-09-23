@@ -10,7 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
-#include <aie_kernel_utils.h>
+#include <aie_kernels/aie_kernel_utils.h>
 
 // Make sure the following tile and intrinsic sizes match the sizes in the
 // data layout transformations described in

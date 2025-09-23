@@ -15,7 +15,7 @@
 #include <type_traits>
 
 #include <aie_api/aie.hpp>
-#include <aie_kernel_utils.h>
+#include <aie_kernels/aie_kernel_utils.h>
 
 template <typename T, typename V>
 void _reduce_max_vector(T *restrict in, T *restrict out,

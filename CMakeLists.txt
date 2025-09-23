@@ -287,7 +287,7 @@ if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
 
   install(
     DIRECTORY aie_kernels/
-    DESTINATION include
+    DESTINATION include/aie_kernels
     COMPONENT aie-headers
     FILES_MATCHING
     PATTERN "*.def"
