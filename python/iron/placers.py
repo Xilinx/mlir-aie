@@ -39,9 +39,9 @@ class Placer(metaclass=ABCMeta):
         """
         ...
 
+
 class NullPlacer(Placer):
-    """NullPlacer is a simple implementation of a placer. The NullPlacer does not do any placement.
-    """
+    """NullPlacer is a simple implementation of a placer. The NullPlacer does not do any placement."""
 
     def __init__(self):
         super().__init__()
@@ -67,6 +67,7 @@ class NullPlacer(Placer):
                         ofe.place(Tile(-1, -1))
                     elif ofe.tile == AnyShimTile:
                         ofe.place(Tile(-1, 0))
+
 
 class SequentialPlacer(Placer):
     """SequentialPlacer is a simple implementation of a placer. The SequentialPlacer is so named
