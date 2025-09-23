@@ -861,6 +861,31 @@ has executed all of its tasks.
 
 
 
+### `aiex.npu.load_pdi` (::xilinx::AIEX::NpuLoadPdiOp)
+
+_Load pdi operator_
+
+Syntax:
+
+```
+operation ::= `aiex.npu.load_pdi` attr-dict
+```
+
+Load a PDI (Programmable Device Image) to configure the NPU.
+The PDI is identified by `id`. `address` and `size` are typically written at
+runtime by the driver or host program.
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>64-bit unsigned integer attribute</td></tr>
+</table>
+
+
+
 ### `aiex.npu.maskwrite32` (::xilinx::AIEX::NpuMaskWrite32Op)
 
 _Write a masked 32-bit value to the AIE array_
