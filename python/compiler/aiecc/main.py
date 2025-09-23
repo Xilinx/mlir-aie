@@ -782,20 +782,19 @@ class FlowRunner:
                 input_physical.operation, self.tmpdirname, device_name
             )
 
-    async def process_txn(self, module_str):
-        file_txn = self.prepend_tmp("input_physical_with_elfs_and_txn.mlir")
+    async def process_txn(self, module_str, device_name):
+        file_txn = self.prepend_tmp(f"{device_name}_txn.mlir")
         with Context(), Location.unknown():
             run_passes(
-                "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
-                + self.tmpdirname
-                + "}))",
+                f"builtin.module(aie.device(convert-aie-to-transaction{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
                 module_str,
                 file_txn,
                 self.opts.verbose,
             )
+            txn_dest = opts.txn_name.format(device_name)
             if opts.verbose:
-                print(f"copy {file_txn} to {opts.txn_name}")
-            shutil.copy(file_txn, opts.txn_name)
+                print(f"copy {file_txn} to {txn_dest}")
+            shutil.copy(file_txn, txn_dest)
         return file_txn
 
     async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
@@ -850,12 +849,15 @@ class FlowRunner:
 
     async def process_ctrlpkt(self, module_str, device_name):
         with Context(), Location.unknown():
+            file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
+            file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
+            file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt_dma_seq.mlir")
+            file_ctrlpkt_dma_seq_bin = opts.ctrlpkt_dma_seq_name.format(device_name)
+            file_ctrlpkt_elf = opts.ctrlpkt_elf_name.format(device_name)
             run_passes(
-                "builtin.module(aie.device(convert-aie-to-control-packets{elf-dir="
-                + self.tmpdirname
-                + "}))",
+                f"builtin.module(aie.device(convert-aie-to-control-packets{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
                 module_str,
-                self.prepend_tmp("ctrlpkt.mlir"),
+                file_ctrlpkt_mlir,
                 self.opts.verbose,
             )
             await self.do_call(
@@ -867,16 +869,16 @@ class FlowRunner:
                     device_name,
                     "--aie-sequence-name",
                     "configure",
-                    self.prepend_tmp("ctrlpkt.mlir"),
+                    file_ctrlpkt_mlir,
                     "-o",
-                    "ctrlpkt.bin",
+                    file_ctrlpkt_bin
                 ],
             )
-            ctrlpkt_mlir_str = await read_file_async(self.prepend_tmp("ctrlpkt.mlir"))
+            ctrlpkt_mlir_str = await read_file_async(file_ctrlpkt_mlir)
             run_passes(
                 "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
                 ctrlpkt_mlir_str,
-                self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+                file_ctrlpkt_dma_seq_mlir,
                 self.opts.verbose,
             )
             await self.do_call(
@@ -888,13 +890,13 @@ class FlowRunner:
                     device_name,
                     "--aie-sequence-name",
                     "configure",
-                    self.prepend_tmp("ctrlpkt_dma_seq.mlir"),
+                    file_ctrlpkt_dma_seq_mlir,
                     "-o",
-                    "ctrlpkt_dma_seq.bin",
+                    file_ctrlpkt_dma_seq_bin
                 ],
             )
             await self.aiebu_asm(
-                "ctrlpkt_dma_seq.bin", "ctrlpkt_dma_seq.elf", "ctrlpkt.bin"
+                file_ctrlpkt_dma_seq_bin, file_ctrlpkt_elf, file_ctrlpkt_bin
             )
 
     async def process_elf(self, npu_insts_module, device_name):
@@ -1494,14 +1496,7 @@ class FlowRunner:
                 input_physical, elf_paths
             )
 
-            # 2.5.) Targets that require the cores to be lowered but apply across all devices
-            if opts.txn and opts.execute:
-                input_physical_with_elfs_str = await read_file_async(
-                    input_physical_with_elfs
-                )
-                input_physical_with_elfs = await self.process_txn(
-                    input_physical_with_elfs_str
-                )
+            # 3.) Targets that require the cores to be lowered but apply across all devices
 
             npu_insts_module = None
             if opts.npu or opts.elf:
@@ -1525,7 +1520,7 @@ class FlowRunner:
                     )
                     self.progress_bar.update(task3, advance=1)
 
-            # 3.) Generate compilation artifacts for each device
+            # 4.) Generate compilation artifacts for each device
 
             # create other artifacts for each device
             task4 = progress_bar.add_task(
@@ -1617,6 +1612,11 @@ class FlowRunner:
                 self.process_pdi_gen(
                     device_name, self.prepend_tmp(f"{device_name}_design.pdi")
                 )
+            )
+
+        if opts.txn and opts.execute:
+            input_physical_with_elfs = await self.process_txn(
+                input_physical_with_elfs_str, device_name
             )
 
         if opts.ctrlpkt and opts.execute:

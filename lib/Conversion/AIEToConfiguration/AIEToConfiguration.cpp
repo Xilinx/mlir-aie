@@ -498,28 +498,38 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
 
 namespace {
 
-struct ConvertAIEToTransactionPass
-    : ConvertAIEToTransactionBase<ConvertAIEToTransactionPass> {
+template<typename BaseClass, OutputType MyOutputType>
+struct ConvertAIEToConfigurationPass : BaseClass {
+  std::string &ref_clElfDir;
+  std::string &ref_clDeviceName;
+  ConvertAIEToConfigurationPass(std::string &clElfDir, std::string &clDeviceName) : ref_clElfDir(clElfDir), ref_clDeviceName(clDeviceName) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
   }
+
   void runOnOperation() override {
-    if (failed(convertAIEToConfiguration(getOperation(), clElfDir,
-                                         OutputType::Transaction)))
-      return signalPassFailure();
+    AIE::DeviceOp deviceOp = BaseClass::getOperation();
+    if (!ref_clDeviceName.empty() && deviceOp.getSymName() != ref_clDeviceName) {
+      return;
+    }
+    if (failed(convertAIEToConfiguration(deviceOp, ref_clElfDir,
+                                         MyOutputType))) {
+      return BaseClass::signalPassFailure();
+    }
   }
+
 };
 
-struct ConvertAIEToControlPacketsPass
-    : public ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
-  }
-  void runOnOperation() override {
-    if (failed(convertAIEToConfiguration(getOperation(), clElfDir,
-                                         OutputType::ControlPacket)))
-      return signalPassFailure();
-  }
+struct ConvertAIEToTransactionPass : ConvertAIEToConfigurationPass<ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>, OutputType::Transaction>
+{ 
+    ConvertAIEToTransactionPass() : ConvertAIEToConfigurationPass<ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>, OutputType::Transaction>(clElfDir, clDeviceName) {}
+};
+
+
+struct ConvertAIEToControlPacketsPass : ConvertAIEToConfigurationPass<ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>, OutputType::ControlPacket>
+{ 
+    ConvertAIEToControlPacketsPass() : ConvertAIEToConfigurationPass<ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>, OutputType::ControlPacket>(clElfDir, clDeviceName) {}
 };
 
 } // end anonymous namespace

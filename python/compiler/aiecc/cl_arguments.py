@@ -259,8 +259,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--txn-name",
         dest="txn_name",
-        default="transaction.mlir",
-        help="Output filename for transaction binary mlir",
+        default="{0}_transaction.mlir",
+        help="Output filename for transaction binary mlir. `{0}` is replaced with device name.",
     )
     parser.add_argument(
         "--aie-generate-ctrlpkt",
@@ -269,6 +269,24 @@ def parse_args(args=None):
         action="store_const",
         const=True,
         help="Generate control packets for configuration",
+    )
+    parser.add_argument(
+        "--ctrlpkt-name",
+        dest="ctrlpkt_name",
+        default="{0}_ctrlpkt.bin",
+        help="Output filename for control packet binary data. `{0}` is replaced with the device name.",
+    )
+    parser.add_argument(
+        "--ctrlpkt-dma-seq-name",
+        dest="ctrlpkt_dma_seq_name",
+        default="{0}_ctrlpkt_dma_seq.bin",
+        help="Output filename for control packet DMA sequence. `{0}` is replaced with the device name.",
+    )
+    parser.add_argument(
+        "--ctrlpkt-elf-name",
+        dest="ctrlpkt_elf_name",
+        default="{0}_ctrlpkt.elf",
+        help="Output filename for control packet DMA sequence and control packet binary data in combined ELF file. `{0}` is replaced with the device name.",
     )
     parser.add_argument(
         "--aie-generate-xclbin",
