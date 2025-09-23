@@ -1092,19 +1092,15 @@ xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module,
                                                      llvm::StringRef symbol) {
   DeviceOp deviceOp;
   if (!symbol.size()) {
-    auto maybeDeviceOp = module.getOps<DeviceOp>().begin();
-    if (maybeDeviceOp == module.getOps<DeviceOp>().end()) {
-      return nullptr;
-    }
-    deviceOp = *maybeDeviceOp;
-  } else {
-    Operation *maybeDeviceOp =
-        mlir::SymbolTable::lookupSymbolIn(module, symbol);
-    if (!maybeDeviceOp) {
-      return nullptr;
-    }
-    deviceOp = llvm::dyn_cast<DeviceOp>(maybeDeviceOp);
+    // If no device name is given, assume 'main'
+    symbol = "main";
   }
+  Operation *maybeDeviceOp =
+      mlir::SymbolTable::lookupSymbolIn(module, symbol);
+  if (!maybeDeviceOp) {
+    return nullptr;
+  }
+  deviceOp = llvm::dyn_cast<DeviceOp>(maybeDeviceOp);
   return deviceOp;
 }
 
@@ -1116,7 +1112,7 @@ DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module,
     if (!symbol.empty()) {
       module.emitError("No such device: ") << symbol;
     } else {
-      module.emitError("No device in module");
+      module.emitError("No 'main' device in module");
     }
   }
   return deviceOp;
