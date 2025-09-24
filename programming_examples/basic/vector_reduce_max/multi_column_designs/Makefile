@@ -25,7 +25,7 @@ dtype?=i32
 use_placed?=0
 
 ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
+aie_py_src=row_wise_${targetname}_placed.py
 else
 aie_py_src=${targetname}.py
 endif
