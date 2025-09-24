@@ -218,6 +218,75 @@ public:
   }
 };
 
+class AddElemOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::AddElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::AddElemOp>::ConvertOpToLLVMPattern;
+
+  struct DecodedAddElemOp {
+    enum class Kind { FP32_FP32_FP32_16x1x1x1, UNSUPPORTED };
+    Kind kind;
+    int conf;
+  };
+
+  static DecodedAddElemOp decodeAddElemOp(OpAdaptor op) {
+    auto lhs = op.getLhs();
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto lhsScaTy = lhsVecTy.getElementType();
+    unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
+
+    // Integer types
+    if (llvm::isa<IntegerType>(lhsScaTy)) {
+      return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
+    } else {
+      // Float types
+      if (lhsBitWidth == 32) {
+        // FP32 add_elem
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
+      }
+    }
+    return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::AddElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto decodedAddElemOp = decodeAddElemOp(adaptor);
+
+    if (decodedAddElemOp.kind == DecodedAddElemOp::Kind::UNSUPPORTED) {
+      op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
+      return failure();
+    }
+
+    auto confCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(),
+        rewriter.getI32IntegerAttr(decodedAddElemOp.conf));
+    Value addElemOp = nullptr;
+    SmallVector<Value> operands({adaptor.getLhs(), adaptor.getRhs(), confCst});
+
+    // Handle the FP32 add_elem
+    if (decodedAddElemOp.kind ==
+        DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
+      addElemOp = rewriter.create<xllvm::AddAccFloatIntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({8}, rewriter.getI64Type()),
+               VectorType::get({8}, rewriter.getI64Type()),
+               rewriter.getI32Type()}));
+    } else {
+      op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
+      return failure();
+    }
+
+    // create bitcast for result
+    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
+                                                 addElemOp);
+    return success();
+  }
+};
+
 class SubOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::aie1::SubOp> {
 public:
@@ -2326,6 +2395,7 @@ void populateAIEVecToLLVMConversionPatterns(
     Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // clang-format off
   patterns.add<AddOpConversion,
+               AddElemOpConversion,
                SubOpConversion,
                FMAOpConversion,
                MulOpConversion,

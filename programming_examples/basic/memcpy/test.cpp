@@ -22,8 +22,8 @@
 #include "xrt/xrt_kernel.h"
 
 #include "xrt/experimental/xrt_elf.h"
-#include "xrt/experimental/xrt_module.h"
 #include "xrt/experimental/xrt_ext.h"
+#include "xrt/experimental/xrt_module.h"
 
 #include "test_utils.h"
 
@@ -84,6 +84,9 @@ int main(int argc, const char *argv[]) {
 
   xrt::elf my_elf{vm["instr"].as<std::string>()};
 
+  xrt::elf elf(vm["instr"].as<std::string>());
+  xrt::module mod{elf};
+
   // get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context." << std::endl;
@@ -101,7 +104,7 @@ int main(int argc, const char *argv[]) {
   // get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << std::endl;
-  auto kernel = xrt::ext::kernel(context, kernelName);
+  auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
   xrt::bo bo_inA = xrt::ext::bo{device, N * sizeof(int32_t)};
   xrt::bo bo_out = xrt::ext::bo{device, N * sizeof(int32_t)};
