@@ -85,21 +85,9 @@ def vector_vector_add(input0, input1, output):
 
 
 def main():
-    device_map = {
-        "npu": NPU1Col1(),
-        "npu2": NPU2Col1(),
-    }
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output"
-    )
-    parser.add_argument(
-        "-d",
-        "--device",
-        choices=["npu", "npu2"],
-        default="npu",
-        help="Target device",
     )
     parser.add_argument(
         "-n",
@@ -115,8 +103,6 @@ def main():
     input0 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
     input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input0)
-
-    iron.set_current_device(device_map[args.device])
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
