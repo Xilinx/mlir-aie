@@ -29,6 +29,10 @@ from aie.dialects.aie import AIEDevice
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_DIR = os.path.expanduser("~/.iron/cache")
 
+# Global cache for compiled kernels at the function level
+# Key: (function_name, args_signature) -> NPUKernel instance
+_compiled_kernels = {}
+
 
 class Promise:
     """
@@ -200,6 +204,12 @@ def jit(function=None, is_placed=True, use_cache=True):
     def decorator(*args, **kwargs):
         from .kernel import ExternalFunction
 
+        # Check if we already have a compiled kernel for this function signature
+        cache_key = _create_function_cache_key(function, args, kwargs)
+        if cache_key in _compiled_kernels:
+            cached_kernel = _compiled_kernels[cache_key]
+            return cached_kernel(*args, **kwargs)
+
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
         ExternalFunction.clear()
 
@@ -290,6 +300,10 @@ def jit(function=None, is_placed=True, use_cache=True):
         kernel_name = "MLIR_AIE"
         try:
             kernel = NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
+            
+            # Cache the kernel for this function signature
+            _compiled_kernels[cache_key] = kernel
+            
             result = kernel(*args, **kwargs)
             return result
         except Exception as e:
@@ -386,6 +400,38 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     except Exception as e:
         # Don't add to cache if compilation failed
         raise
+
+
+def _create_function_cache_key(function, args, kwargs):
+    """
+    Create a cache key for a function call based on function name and argument types/shapes.
+    This allows us to cache compiled kernels at the function level.
+    """
+    # Get function name
+    func_name = function.__name__
+
+    # Create signature from argument types and shapes
+    signature_parts = []
+
+    for arg in args:
+        if hasattr(arg, "shape") and hasattr(arg, "dtype"):
+            # Tensor argument - include shape and dtype
+            signature_parts.append(f"tensor_{arg.shape}_{arg.dtype}")
+        elif hasattr(arg, "__class__"):
+            # Other argument - include type name
+            signature_parts.append(f"{arg.__class__.__name__}")
+        else:
+            # Fallback
+            signature_parts.append(str(type(arg)))
+
+    for key, value in sorted(kwargs.items()):
+        if hasattr(value, "shape") and hasattr(value, "dtype"):
+            signature_parts.append(f"{key}_tensor_{value.shape}_{value.dtype}")
+        else:
+            signature_parts.append(f"{key}_{type(value).__name__}")
+
+    signature = "_".join(signature_parts)
+    return (func_name, signature)
 
 
 def hash_module(module, external_kernels=None, target_arch=None):
