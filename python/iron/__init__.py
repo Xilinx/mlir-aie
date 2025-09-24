@@ -24,6 +24,6 @@ try:
         arange,
         zeros_like,
     )
-    from .algorithms import matmul
+    from .algorithms import matmul, for_each, transform
 except ImportError:
     pass  # silently ignore if pyxrt or .jit can't be imported
