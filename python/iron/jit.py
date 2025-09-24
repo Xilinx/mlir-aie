@@ -28,6 +28,10 @@ from aie.dialects.aie import AIEDevice
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_DIR = os.path.expanduser("~/.iron/cache")
 
+# Global cache for compiled kernels at the function level
+# Key: (function_name, args_signature) -> NPUKernel instance
+_compiled_kernels = {}
+
 
 class NPUKernel:
     """
@@ -145,6 +149,12 @@ def jit(function=None, is_placed=True, use_cache=True):
     def decorator(*args, **kwargs):
         from .kernel import ExternalFunction
 
+        # Check if we already have a compiled kernel for this function signature
+        cache_key = _create_function_cache_key(function, args, kwargs)
+        if cache_key in _compiled_kernels:
+            cached_kernel = _compiled_kernels[cache_key]
+            return cached_kernel(*args, **kwargs)
+
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
         ExternalFunction._instances.clear()
 
@@ -238,6 +248,10 @@ def jit(function=None, is_placed=True, use_cache=True):
         kernel_name = "MLIR_AIE"
         try:
             kernel = NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
+
+            # Cache the kernel for this function signature
+            _compiled_kernels[cache_key] = kernel
+
             result = kernel(*args, **kwargs)
             return result
         except Exception as e:
@@ -313,15 +327,31 @@ def hash_module(module, external_kernels=None, target_arch=None):
     """
     mlir_str = str(module)
 
-    # Include ExternalFunction compiler options in the hash
+    # Include ExternalFunction compiler options and source code in the hash
     if external_kernels:
         compiler_options = []
+        source_contents = []
         for func in external_kernels:
             compiler_options.extend(func._include_dirs)
             compiler_options.extend(func._compile_flags)
 
+            # Include source content for uniqueness
+            if func._source_string:
+                source_contents.append(func._source_string)
+            elif func._source_file:
+                # Read the file content to include in hash
+                with open(func._source_file, "r") as f:
+                    file_content = f.read()
+                source_contents.append(file_content)
+
         # Create a combined string for hashing
-        combined_str = mlir_str + "|" + "|".join(compiler_options)
+        combined_str = (
+            mlir_str
+            + "|"
+            + "|".join(compiler_options)
+            + "|"
+            + "|".join(source_contents)
+        )
     else:
         combined_str = mlir_str
 
@@ -331,3 +361,52 @@ def hash_module(module, external_kernels=None, target_arch=None):
 
     hash_result = hashlib.sha256(combined_str.encode("utf-8")).hexdigest()[:16]
     return hash_result
+
+
+def _hash_argument(arg, prefix=""):
+    """
+    Helper function to hash supported argument types (tensors and callables).
+    Returns a string representation for cache key generation.
+    """
+    from aie.iron.tensor import Tensor
+    from aie.iron.kernel import ExternalFunction
+
+    if isinstance(arg, Tensor):
+        # Tensor argument - include shape and dtype
+        return f"{prefix}tensor_{arg.shape}_{arg.dtype}"
+    elif isinstance(arg, ExternalFunction):
+        # ExternalFunction argument - use its custom hash method
+        func_hash = hash(arg)
+        return f"{prefix}externalfunction_{func_hash}"
+    elif callable(arg):
+        # Function argument - use hash of function address for uniqueness
+        func_hash = hash(arg)
+        return f"{prefix}function_{func_hash}"
+    else:
+        # Unsupported type - use type name
+        return f"{prefix}{type(arg).__name__}"
+
+
+def _create_function_cache_key(function, args, kwargs):
+    """
+    Create a cache key for a function call based on function name and argument types/shapes.
+    This allows us to cache compiled kernels at the function level.
+    Note that it is not necessary that we cache the tensor shapes since the kernel may be agonstic
+    to the shape changes but we are doing here for safety.
+    """
+    # Get function name
+    func_name = function.__name__
+
+    # Create signature from argument types and shapes
+    signature_parts = []
+
+    for arg in args:
+        result = _hash_argument(arg)
+        signature_parts.append(result)
+
+    for key, value in sorted(kwargs.items()):
+        result = _hash_argument(value, f"{key}_")
+        signature_parts.append(result)
+
+    signature = "_".join(signature_parts)
+    return (func_name, signature)
