@@ -20,10 +20,10 @@
 // CHECK: mlir_aie_configure_switchboxes
 // CHECK: x = 2;
 // CHECK: y = 0;
-// CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), NORTH, 0, SOUTH, 2));
+// CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), NORTH, 0, SOUTH, 2));
 // CHECK: x = 2;
 // CHECK: y = 1;
-// CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(&(ctx->DevInst), XAie_TileLoc(x,y), NORTH, 0, SOUTH, 0));
+// CHECK: __mlir_aie_try(XAie_StrmConnCctEnable(ctx->XAieDevInst, XAie_TileLoc(x,y), NORTH, 0, SOUTH, 0));
 // CHECK: x = 2;
 // CHECK: y = 0;
 

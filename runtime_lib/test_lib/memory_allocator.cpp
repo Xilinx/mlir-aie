@@ -10,9 +10,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "memory_allocator.h"
-#include "xioutils.h"
 #include <assert.h>
 #include <iostream>
+
+extern "C" {
+
+void ess_WriteGM(uint64_t addr, const void *data, uint64_t size);
+void ess_ReadGM(uint64_t addr, void *data, uint64_t size);
+}
 
 int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *_xaie, ext_mem_model_t &handle,
                         int size) {
@@ -41,11 +46,11 @@ int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *_xaie, ext_mem_model_t &handle,
 }
 
 void mlir_aie_sync_mem_cpu(ext_mem_model_t &handle) {
-  aiesim_ReadGM(handle.physicalAddr, handle.virtualAddr, handle.size);
+  ess_ReadGM(handle.physicalAddr, handle.virtualAddr, handle.size);
 }
 
 void mlir_aie_sync_mem_dev(ext_mem_model_t &handle) {
-  aiesim_WriteGM(handle.physicalAddr, handle.virtualAddr, handle.size);
+  ess_WriteGM(handle.physicalAddr, handle.virtualAddr, handle.size);
 }
 
 u64 mlir_aie_get_device_address(aie_libxaie_ctx_t *_xaie, void *VA) {
