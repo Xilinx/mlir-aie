@@ -126,6 +126,10 @@ jobs:
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             $CMAKE_ARGS
 
+          # Remove the JIT compilation cache since between pushes and PRs we make breaking changes to 
+          # how the hash is computed and so we cannot rely on existing cached kernels from previous runs.
+          rm -rf ~/.iron/
+
           ninja install
           ninja check-aie
           popd
@@ -182,6 +186,11 @@ jobs:
           else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
+
+
+          # Remove the JIT compilation cache since between pushes and PRs we make breaking changes to 
+          # how the hash is computed and so we cannot rely on existing cached kernels from previous runs.
+          rm -rf ~/.iron/
 
           ninja install
           ninja check-reference-designs
