@@ -15,7 +15,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
-#include "../aie_kernel_utils.h"
+#include "aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
