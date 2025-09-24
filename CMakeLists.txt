@@ -285,15 +285,11 @@ if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     PATTERN "CMakeFiles" EXCLUDE
     PATTERN "config.h" EXCLUDE)
 
-  install(
-    DIRECTORY aie_kernels/
-    DESTINATION include/aie_kernels
-    COMPONENT aie-headers
-    FILES_MATCHING
-    PATTERN "*.def"
-    PATTERN "*.h"
-    PATTERN "*.inc"
-    PATTERN "*.td")
+  include("aie_kernels/aiekernels.cmake")
+  add_aie_kernels_headers(./aie_kernels
+          ${AIE_BINARY_DIR}/include
+          ${CMAKE_INSTALL_PREFIX}/include
+  )
 
   if(NOT LLVM_ENABLE_IDE)
     add_llvm_install_targets(install-aie-headers DEPENDS aie-headers COMPONENT
