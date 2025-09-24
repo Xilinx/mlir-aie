@@ -31,23 +31,27 @@ fi
 
 echo "Cloning the XDNA driver repository..."
 # Clone the XDNA driver repository and initialize submodules
-XDNA_SHA=e9d2788a884784e3531e95d65b923c2252a1132e
-git clone https://github.com/amd/xdna-driver.git
-export XDNA_SRC_DIR=$(realpath xdna-driver)
-cd xdna-driver
+XDNA_SHA=1efcf88257c2960ee4e82a732edb5799846dad03
+XDNA_DIR=xdna-driver
+#if [ -d "$XDNA_DIR" ]; then
+#    rm -rf $XDNA_DIR
+#fi
+#git clone https://github.com/amd/xdna-driver.git
+export XDNA_SRC_DIR=$(realpath $XDNA_DIR)
+cd $XDNA_DIR
 echo "Checking out commit $XDNA_SHA..."
-git checkout "$XDNA_SHA"
-git submodule update --init --recursive
+#git checkout "$XDNA_SHA"
+#git submodule update --init --recursive
 
 echo "Installing XRT dependencies..."
 # Install XRT dependencies
 cd "$XDNA_SRC_DIR"
-sudo ./tools/amdxdna_deps.sh
+#sudo ./tools/amdxdna_deps.sh
 
 echo "Building XRT..."
 # Build XRT
 cd "$XDNA_SRC_DIR/xrt/build"
-run_build ./build.sh -npu -opt
+#run_build ./build.sh -npu -opt -j 8
 
 echo "Detecting Ubuntu version..."
 # Detect Ubuntu version
@@ -70,14 +74,14 @@ echo "Installing new XRT packages..."
 cd "$XDNA_SRC_DIR/xrt/build/Release" 
 case "$UBUNTU_VERSION" in
     "24.04")
-        base_suffix="24.04-amd64-base.deb"
-        dev_suffix="24.04-amd64-base-dev.deb"
-        runtime_suffix="24.04-amd64-Runtime.deb"
+        base_pattern="*24.04-amd64-base.deb"
+        dev_pattern="*24.04-amd64-base-dev.deb"
+        runtime_pattern="*24.04-amd64-npu.deb"  # NPU package is the runtime
         ;;
     "24.10")
-        base_suffix="24.10-amd64-base.deb"
-        dev_suffix="24.10-amd64-base-dev.deb"
-        runtime_suffix="24.10-amd64-Runtime.deb"
+        base_pattern="*24.10-amd64-base.deb"
+        dev_pattern="*24.10-amd64-base-dev.deb"
+        runtime_pattern="*24.10-amd64-npu.deb"  # NPU package is the runtime
         ;;
     *)
         echo "Error: Unsupported Ubuntu version ($UBUNTU_VERSION). Supported versions: 24.04, 24.10"
@@ -86,19 +90,25 @@ case "$UBUNTU_VERSION" in
 esac
 
 # Find matching .deb files
-base_pkg=$(ls *"$base_suffix" 2>/dev/null | head -n 1)
-dev_pkg=$(ls *"$dev_suffix" 2>/dev/null | head -n 1)
-runtime_pkg=$(ls *"$runtime_suffix" 2>/dev/null | head -n 1)
+base_pkg=$(ls $base_pattern 2>/dev/null | head -n 1)
+dev_pkg=$(ls $dev_pattern 2>/dev/null | head -n 1)
+runtime_pkg=$(ls $runtime_pattern 2>/dev/null | head -n 1)
+
 if [[ -z "$base_pkg" || -z "$dev_pkg" || -z "$runtime_pkg" ]]; then
-    echo "Error: Could not find .deb packages matching one or more suffixes:"
-    echo " - $base_suffix"
-    echo " - $dev_suffix"
-    echo " - $runtime_suffix"
+    echo "Error: Could not find required .deb packages:"
+    echo " - base:   $base_pattern"
+    echo " - dev:    $dev_pattern"
+    echo " - runtime: $runtime_pattern"
     exit 1
 fi
-sudo apt reinstall "./$base_pkg"
-sudo apt reinstall "./$dev_pkg"
-sudo apt reinstall "./$runtime_pkg"
+
+echo "Installing XRT packages:"
+echo " - $base_pkg"
+echo " - $dev_pkg"
+echo " - $runtime_pkg (NPU runtime)"
+
+# Use dpkg for local .deb files, then fix dependencies if needed
+sudo dpkg -i "./$base_pkg" "./$dev_pkg" "./$runtime_pkg" || sudo apt-get -f install -y
 
 echo "Building XDNA Driver..."
 # Build XDNA Driver
@@ -111,10 +121,11 @@ echo "Installing XDNA plugin..."
 cd "$XDNA_SRC_DIR/build/Release"
 case "$UBUNTU_VERSION" in
     "24.04")
-        plugin_suffix="ubuntu24.04-x86_64-amdxdna.deb"
+        # Prefer the new xrt_plugin naming, but also try the older ubuntu*-amdxdna naming
+        plugin_patterns=("*24.04-amd64-amdxdna.deb" "ubuntu24.04-x86_64-amdxdna.deb")
         ;;
     "24.10")
-        plugin_suffix="ubuntu24.10-x86_64-amdxdna.deb"
+        plugin_patterns=("*24.10-amd64-amdxdna.deb" "ubuntu24.10-x86_64-amdxdna.deb")
         ;;
     *)
         echo "Error: Unsupported Ubuntu version ($UBUNTU_VERSION). Supported versions: 24.04, 24.10"
@@ -122,13 +133,24 @@ case "$UBUNTU_VERSION" in
         ;;
 esac
 
-# Find the plugin package file
-plugin_pkg=$(ls *"$plugin_suffix" 2>/dev/null | head -n 1)
+# Find the plugin package file by trying multiple patterns
+plugin_pkg=""
+for pat in "${plugin_patterns[@]}"; do
+    match=$(ls $pat 2>/dev/null | head -n 1 || true)
+    if [[ -n "$match" ]]; then
+        plugin_pkg="$match"
+        break
+    fi
+done
+
 if [[ -z "$plugin_pkg" ]]; then
-    echo "Error: Could not find plugin package matching suffix: $plugin_suffix"
+    echo "Error: Could not find plugin package. Tried patterns: ${plugin_patterns[*]}"
+    echo "Directory contents:"
+    ls -al
     exit 1
 fi
-sudo apt reinstall "./$plugin_pkg"
+echo "Installing plugin package: $plugin_pkg"
+sudo dpkg -i "./$plugin_pkg" || sudo apt-get -f install -y
 
 echo "xdna-driver and XRT built and installed successfully."
 echo "Please reboot to apply changes."
