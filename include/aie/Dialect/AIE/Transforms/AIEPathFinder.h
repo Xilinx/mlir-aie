@@ -153,7 +153,8 @@ using SwitchSetting = struct SwitchSetting {
                                  return ss.str();
                                }),
                ", ")
-       << " -> " << "{"
+       << " -> "
+       << "{"
        << join(llvm::map_range(setting.dsts,
                                [](const Port &port) {
                                  std::ostringstream ss;
