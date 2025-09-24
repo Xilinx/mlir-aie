@@ -315,6 +315,6 @@ if __name__ == "__main__":
     # test_graph_replay_multiple_operations()
     # test_graph_capture_without_context()
     # test_graph_metadata()
-    # test_graph_capture_matmul_negate_chain()
-    test_for_each_direct_operations()
+    test_graph_capture_matmul_negate_chain()
+    #test_for_each_direct_operations()
     # test_plus()
