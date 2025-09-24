@@ -176,6 +176,8 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
         builder.create<AIEX::NpuSyncOp>(loc, shimCol, shimRow, dir, chan,
                                         col_num, row_num);
         ++batchIt;
+        if (batchIt == batches.end())
+          break;
       }
 
       erased.push_back(f);
