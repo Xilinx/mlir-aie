@@ -89,7 +89,7 @@ ifeq ($(CHESS), true)
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--xclbin-name=${@F} --npu-insts-name=insts_trace.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --packet-sw-objFifos \
 		--no-xchesscc --no-xbridge --xclbin-name=${@F} --npu-insts-name=insts_trace.bin $(<:%=../%)
 endif
 
@@ -98,8 +98,8 @@ run_py: build/final.xclbin
 
 trace_py: build/final_trace.xclbin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts_trace.bin -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels} -ksz ${kernel_size} -na ${num_act} -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --input log/trace_conv2d.txt --mlir build/aie2_trace.mlir --output log/trace_conv2d_14x14.json
-	${srcdir}/../../utils/get_trace_summary.py --input log/trace_conv2d_14x14.json
+	${srcdir}/../../../python/utils/parse_trace.py --input log/trace_conv2d.txt --mlir build/aie2_trace.mlir --output log/trace_conv2d_14x14.json
+	${srcdir}/../../../python/utils/get_trace_summary.py --input log/trace_conv2d_14x14.json
 
 clean:
 	rm -rf build *.elf* *.lst *.bif aie2.mlir.prj log* *.xclbin sim \

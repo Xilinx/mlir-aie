@@ -108,6 +108,15 @@ def MulConfBF16IntrOp :
                    VectorOfLengthAndType<[32], [BF16]>:$rhs,
                    I32:$conf)>;
 
+// ----- ADD -----
+
+def AddAccFloatIntrOp :
+    AIEVec2_IntrOp<"add.accfloat",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$lhs,
+                   VectorOfLengthAndType<[8], [I64]>:$rhs,
+                   I32:$conf)>;
+
 // ----- SET ----- 
 
 def VectorSetI512I128IntrOp :
