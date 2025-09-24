@@ -32,8 +32,11 @@ def transform(input, output, func):
 
     dtype = input.dtype
 
-    tile_size = 16 if num_elements >= 16 else 1
-
+    if isinstance(func, iron.ExternalFunction):
+        tile_size = func.tile_size(0)
+    else:
+        tile_size = 16 if num_elements >= 16 else 1
+        
     if num_elements % tile_size != 0:
         raise ValueError(
             f"Number of elements ({num_elements}) must be a multiple of {tile_size}."
@@ -51,13 +54,14 @@ def transform(input, output, func):
     # Define a task that will run on a compute tile
 
     def core_body(of_in, of_out, func_to_apply):
-        if isinstance(func_to_apply, iron.ExternalFunction):
-            assert False, "ExternalFunction is not supported"
-        else:
+        for i in range_(num_tiles):
             elem_in = of_in.acquire(1)
             elem_out = of_out.acquire(1)
-            for i in range_(num_tiles):
-                elem_out[i] = func_to_apply(elem_in[i])
+            if isinstance(func_to_apply, iron.ExternalFunction):
+                func_to_apply(elem_in, elem_out, tile_size)
+            else:
+                for j in range_(tile_size):
+                    elem_out[j] = func_to_apply(elem_in[j])
             of_in.release(1)
             of_out.release(1)
 
