@@ -11,6 +11,7 @@ from .tensor import Tensor
 from .graph import is_graph_capture_enabled
 from .detail.matmul import matmul_impl, matmul_graph_capture_impl
 from .detail.for_each import for_each_impl, for_each_graph_capture_impl
+from .detail.transform import transform_impl, transform_graph_capture_impl
 
 def matmul(input: Tensor, other: Tensor, out: Optional[Tensor] = None, async_mode: bool = True) -> Tensor:
     """
@@ -54,3 +55,26 @@ def for_each(input: Tensor, func: Callable, async_mode: bool = True) -> Tensor:
         return for_each_graph_capture_impl(input, func, async_mode)
     else:
         return for_each_impl(input, func, async_mode)
+
+
+def transform(first: Tensor, second: Tensor, output: Tensor, binary_op: Callable, async_mode: bool = True) -> Tensor:
+    """
+    Apply a binary operation element-wise to two tensors.
+
+    This function applies a binary operation to corresponding elements of two input tensors
+    and stores the result in the output tensor. All tensors must have the same shape and dtype.
+
+    Args:
+        first: First input tensor
+        second: Second input tensor  
+        output: Output tensor to store results
+        binary_op: Binary function to apply (e.g., plus, minus, multiplies)
+        async_mode: Whether to use asynchronous execution
+
+    Returns:
+        Tensor: The output tensor containing the results
+    """
+    if is_graph_capture_enabled():
+        return transform_graph_capture_impl(first, second, output, binary_op, async_mode)
+    else:
+        return transform_impl(first, second, output, binary_op, async_mode)

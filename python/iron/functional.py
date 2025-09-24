@@ -58,6 +58,41 @@ class identity(UnaryFunction):
         return x
 
 
+# Create ReLU external function
+def _create_relu_external_function(dtype=None):
+    """Create the ReLU external function for a specific data type."""
+    import aie.iron as iron
+    from aie.iron import ExternalFunction
+    import numpy as np
+    from aie.utils.config import cxx_header_path
+    from ml_dtypes import bfloat16
+    import os
+    
+    # Default to bfloat16 if no dtype specified
+    if dtype is None:
+        dtype = bfloat16
+    
+    # Create the external function for ReLU
+    tile_size = 32  # Must match the TILE_SIZE in the C++ kernel
+    helpers_path = os.path.join(os.path.dirname(__file__), "../../../../aie_kernels/")
+    
+    return ExternalFunction(
+        "bf16_relu",  # Note: kernel name is still bf16_relu
+        source_file=os.path.join(os.path.dirname(__file__), "../../../../aie_kernels/aie2/relu.cc"),
+        arg_types=[
+            np.ndarray[(tile_size,), np.dtype[dtype]],
+            np.ndarray[(tile_size,), np.dtype[dtype]],
+            np.int32,
+        ],
+        include_dirs=[cxx_header_path(), helpers_path],
+    )
+
+# Create ReLU factory function
+def relu(dtype=None):
+    """Create a ReLU function for the specified data type."""
+    return _create_relu_external_function(dtype)
+
+
 # Binary function objects
 class plus(BinaryFunction):
     """Function object for addition."""
