@@ -57,7 +57,7 @@ jobs:
 
           - python_version: "3.11"
             ENABLE_RTTI: OFF
-            
+
           - python_version: "3.12"
             ENABLE_RTTI: ON
 
@@ -169,8 +169,8 @@ jobs:
         with:
           artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-2/no-rtti' }}
-          name: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-2/no-rtti' }}
+          tag: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
+          name: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true

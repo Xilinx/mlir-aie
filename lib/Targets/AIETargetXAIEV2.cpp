@@ -88,7 +88,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                                              DenseMap<Block *, int> blockMap) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
-  StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
+  StringRef deviceInstRef = "ctx->XAieDevInst";
 
   int col = memOp.colIndex();
   int row = memOp.rowIndex();
@@ -302,10 +302,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
 
 mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
                                                       raw_ostream &output) {
-  //  StringRef ctx   = "ctx";                     // TODO
-  StringRef ctx_p = "aie_libxaie_ctx_t* ctx"; // TODO
-  //  StringRef deviceInst = "ctx->DevInst";       // TODO
-  StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
+  StringRef ctx_p = "aie_libxaie_ctx_t* ctx";
+  StringRef deviceInstRef = "ctx->XAieDevInst";
 
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
@@ -326,6 +324,12 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
   output << "  aie_libxaie_ctx_t *ctx = new aie_libxaie_ctx_t;\n";
   output << "  if (!ctx)\n";
   output << "    return 0;\n";
+  output << "  ctx->XAieConfig = new XAie_Config;\n";
+  output << "  if (!ctx->XAieConfig)\n";
+  output << "    return 0;\n";
+  output << "  ctx->XAieDevInst = new XAie_DevInst;\n";
+  output << "  if (!ctx->XAieDevInst)\n";
+  output << "    return 0;\n";
   auto arch = targetModel.getTargetArch();
   std::string AIE1_device("XAIE_DEV_GEN_AIE");
   std::string AIE2_device("XAIE_DEV_GEN_AIEML");
@@ -344,28 +348,27 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
   default:
     return module.emitOpError("Unsupported aie.device");
   }
-  output << "  ctx->AieConfigPtr.AieGen = " << device << ";\n";
-  output << "  ctx->AieConfigPtr.BaseAddr = 0x20000000000;\n";
-  output << "  ctx->AieConfigPtr.ColShift = " << targetModel.getColumnShift()
+  output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
+  output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";
+  output << "  ctx->XAieConfig->ColShift = " << targetModel.getColumnShift()
          << ";\n";
-  output << "  ctx->AieConfigPtr.RowShift = " << targetModel.getRowShift()
+  output << "  ctx->XAieConfig->RowShift = " << targetModel.getRowShift()
          << ";\n";
-  output << "  ctx->AieConfigPtr.NumRows = " << targetModel.rows() << ";\n";
-  output << "  ctx->AieConfigPtr.NumCols = " << targetModel.columns() << ";\n";
-  output << "  ctx->AieConfigPtr.ShimRowNum = 0;\n";
-  output << "  ctx->AieConfigPtr.MemTileRowStart = 1;\n";
-  output << "  ctx->AieConfigPtr.MemTileNumRows = "
+  output << "  ctx->XAieConfig->NumRows = " << targetModel.rows() << ";\n";
+  output << "  ctx->XAieConfig->NumCols = " << targetModel.columns() << ";\n";
+  output << "  ctx->XAieConfig->ShimRowNum = 0;\n";
+  output << "  ctx->XAieConfig->MemTileRowStart = 1;\n";
+  output << "  ctx->XAieConfig->MemTileNumRows = "
          << targetModel.getNumMemTileRows() << ";\n";
-  output << "  //  ctx->AieConfigPtr.ReservedRowStart = "
+  output << "  //  ctx->XAieConfig->ReservedRowStart = "
             "XAIE_RES_TILE_ROW_START;\n";
   output
-      << "  //  ctx->AieConfigPtr.ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;\n";
-  output << "  ctx->AieConfigPtr.AieTileRowStart = "
+      << "  //  ctx->XAieConfig->ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;\n";
+  output << "  ctx->XAieConfig->AieTileRowStart = "
          << (1 + targetModel.getNumMemTileRows()) << ";\n";
-  output << "  ctx->AieConfigPtr.AieTileNumRows = "
+  output << "  ctx->XAieConfig->AieTileNumRows = "
          << (targetModel.rows() - 1 - targetModel.getNumMemTileRows()) << ";\n";
-  output << "  ctx->AieConfigPtr.PartProp = {0};\n";
-  output << "  ctx->DevInst = {0};\n";
+  output << "  memset(ctx->XAieDevInst, 0, sizeof(XAie_DevInst));\n";
   output << "  return ctx;\n";
   output << "}\n";
   output << "\n";
