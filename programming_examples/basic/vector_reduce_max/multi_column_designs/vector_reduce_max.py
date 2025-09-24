@@ -19,54 +19,43 @@ from aie.iron import (
     LocalBuffer,
     str_to_dtype,
 )
-from aie.iron.placers import SequentialPlacer
+from aie.iron.placers import ColumnLimitedPlacer
 from aie.iron.device import NPU1, NPU2
 from ml_dtypes import bfloat16
 from aie.iron.controlflow import range_
 from aie.helpers.taplib.tap import TensorAccessPattern
 
 
-def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
-    n_cores = 8
-    elems_per_core = 256
-    n_channels = n_cores
+def my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype_str, trace_size):
+    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
+    enable_trace = 1 if trace_size > 0 else None
 
     dtype = str_to_dtype(dtype_str)
+    in_num_elements = in1_size // dtype(0).nbytes
+    out_num_elements = out_size // dtype(0).nbytes
 
-    in_tensor_size = in1_size // dtype(0).nbytes
-    out_tensor_size = out_size // dtype(0).nbytes
-
-    N_per_channel = in_tensor_size // n_channels
-
-    num_iter = in_tensor_size // (elems_per_core * n_channels)
-
-    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
-
-    if n_cores > 8:
-        raise ValueError("This design does not support more than 8 cores.")
-
-    enable_trace = 1 if trace_size > 0 else 0
+    chunk = in_num_elements // num_columns // num_channels  # For offset calculation
+    tile_size = chunk if chunk < 4096 else 4096
+    n = tile_size * num_columns
+    N_div_n = in_num_elements // n // num_channels
 
     # Define tensor types
-    in_ty = np.ndarray[(in_tensor_size,), np.dtype[dtype]]
-    op_ty = np.ndarray[(elems_per_core,), np.dtype[dtype]]
-    out_ty = np.ndarray[(out_tensor_size,), np.dtype[dtype]]
+    in_tensor_ty = np.ndarray[(in_num_elements,), np.dtype[dtype]]
+    out_tensor_ty = np.ndarray[(out_num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
+    fifodepth = 2
 
     # AIE-array data movement with object fifos
-    in_fifos = []
-    out_fifos = []
-
-    for i in range(n_cores):
-        in_fifos.append(ObjectFifo(op_ty, name=f"memA{i}"))
-        out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
+    of_in1s = [ObjectFifo(tile_ty, name=f"in1_{i}_{j}", depth=fifodepth) for i in range(num_columns) for j in range(num_channels)]
+    of_outs = [ObjectFifo(out_tensor_ty, name=f"out_{i}_{j}", depth=fifodepth) for i in range(num_columns) for j in range(num_channels)]
 
     # AIE Core Function declarations
     suffix = "_bfloat16" if dtype_str == "bf16" else ""
     reduce_max_vector = Kernel(
-        f"reduce_max_vector{suffix}", "reduce_max.cc.o", [op_ty, out_ty, np.int32]
+        f"reduce_max_vector{suffix}", "reduce_max.cc.o", [tile_ty, out_tensor_ty, np.int32]
     )
     compute_max = Kernel(
-        f"compute_max{suffix}", "reduce_max.cc.o", [out_ty, out_ty, out_ty]
+        f"compute_max{suffix}", "reduce_max.cc.o", [out_tensor_ty, out_tensor_ty, out_tensor_ty]
     )
     min_val = (
         np.array([bfloat16(float("-inf"))], dtype=dtype)
@@ -74,23 +63,13 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         else np.array([np.iinfo(dtype).min], dtype=dtype)
     )
 
-    taps = [
-        TensorAccessPattern(
-            (1, in_tensor_size),
-            N_per_channel * i,
-            [1, 1, 1, N_per_channel],
-            [0, 0, 0, 1],
-        )
-        for i in range(n_channels)
-    ]
-
     def core_body(*args):
         nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
+            type=np.ndarray[(out_num_elements,), np.dtype[dtype]],
             initial_value=min_val,
         )
         tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
+            type=np.ndarray[(out_num_elements,), np.dtype[dtype]],
             initial_value=min_val,
         )
         # Extract fixed arguments from end of args list
@@ -98,88 +77,93 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         reduce_max_vector = args[-2]
 
         # Extract object fifos from start of args list
-        of_in = args[0]
+        of_in1 = args[0]
         of_out = args[1]
-        in_fifos = args[2:-2]  # Variable number of input fifos based on n_cores
+        neighbor_of_in1s = args[2:-2]  # Variable number of input fifos based on n_cores
 
-        for _ in range_(num_iter):
-            elem_in = of_in.acquire(1)
-            reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
+        for _ in range_(N_div_n):
+            elem_in1 = of_in1.acquire(1)
+            reduce_max_vector(elem_in1, tmp_buffer, tile_size)
             compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
-            of_in.release(1)
-        elem_out = of_out.acquire(1)
+            of_in1.release(1)
 
+        elem_out = of_out.acquire(1)
         # Acquire inputs from other cores
-        if in_fifos:
-            inputs = []
-            for fifo in in_fifos:
-                inputs.append(fifo.acquire(1))
+        if neighbor_of_in1s:
+            elem_in1s = []
+            for neighbor_of in neighbor_of_in1s:
+                elem_in1s.append(neighbor_of.acquire(1))
 
             # Compute max across all inputs
-            for elem in inputs[:-1]:
+            for elem in elem_in1s[:-1]:
                 compute_max(elem, nextC_buffer, nextC_buffer)
-            compute_max(inputs[-1], nextC_buffer, elem_out)
+            compute_max(elem_in1s[-1], nextC_buffer, elem_out)
 
             # Release all inputs
-            for fifo in in_fifos:
-                fifo.release(1)
+            for neighbor_of in neighbor_of_in1s:
+                neighbor_of.release(1)
         else:
             elem_out[0] = nextC_buffer[0]
-
         of_out.release(1)
 
     # Define a worker to run the task on a core
-    workers = []
-    for i in range(n_cores):
-        fifo_args = [in_fifos[i].cons(), out_fifos[i].prod()]
-        # Handle special reduction cases for certain cores
-        if (
-            (i == 1 and n_cores >= 2)
-            or (i == 4 and n_cores == 5)
-            or (i == 5 and n_cores > 5)
-        ):
-            # TODO: can be further simplified
-            if i == 1:
-                cores_per_col = min(4, n_cores)
-                fifo_args.append(out_fifos[0].cons())
-                for j in range(2, cores_per_col):
-                    fifo_args.append(out_fifos[j].cons())
-            else:
-                fifo_args.append(out_fifos[1].cons())
-                if i == 5:
-                    fifo_args.append(out_fifos[4].cons())
-                    fifo_args.extend(out_fifos[j].cons() for j in range(6, n_cores))
-
-        fifo_args.extend([reduce_max_vector, compute_max])
-        workers.append(
-            Worker(
-                core_body,
-                fn_args=fifo_args,
-                trace=enable_trace,
+    my_workers = []
+    for i in range(num_columns):
+        for j in range(num_channels):
+            idx_offset = j * num_columns
+            fifo_args = [of_in1s[idx_offset + i].cons(), of_outs[idx_offset + i].prod()]
+            if 0 < i < num_columns:
+                fifo_args.append(of_outs[idx_offset + i - 1].cons())
+                if i == num_columns - 1 and j < num_channels - 1:
+                    fifo_args.append(of_outs[(j + 1) * num_columns + i].cons())
+            
+            fifo_args.extend([reduce_max_vector, compute_max])
+            my_workers.append(
+                Worker(
+                    core_body,
+                    fn_args=fifo_args,
+                    trace=enable_trace,
+                )
             )
+
+    # Create a TensorAccessPattern for each column
+    # to describe the data movement
+    # The pattern chops the data in equal chunks
+    # and moves them in parallel across the columns
+    taps = [
+        TensorAccessPattern(
+            (1, in_num_elements),
+            chunk * i * num_channels + chunk * j,
+            [1, 1, 1, chunk],
+            [0, 0, 0, 1],
         )
+        for i in range(num_columns)
+        for j in range(num_channels)
+    ]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a_in, c_out):
-        rt.enable_trace(trace_size)
-        rt.start(*workers)
-        for i in range(n_channels):
-            rt.fill(
-                in_fifos[i].prod(),
-                a_in,
-                taps[i],
-            )
+    with rt.sequence(in_tensor_ty, out_tensor_ty) as (A, C):
+        if enable_trace:
+            rt.enable_trace(trace_size)
+        rt.start(*my_workers)
+        # Fill the input objectFIFOs with data
+        for i in range(num_columns):
+            for j in range(num_channels):
+                rt.fill(
+                    of_in1s[i * num_channels + j].prod(),
+                    A,
+                    taps[i * num_channels + j],
+                )
+        # Drain the output objectFIFOs corresponding to the last column of the first row with data
         rt.drain(
-            out_fifos[
-                0 if n_cores == 1 else 1 if n_cores < 5 else 4 if n_cores == 5 else 5
-            ].cons(),
-            c_out,
+            of_outs[num_columns - 1].cons(),
+            C,
             wait=True,
         )
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(ColumnLimitedPlacer(num_channels))
 
 
 p = argparse.ArgumentParser()
@@ -201,8 +185,10 @@ opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
     dev = NPU1()
+    num_columns = 4
 elif opts.device == "npu2":
     dev = NPU2()
+    num_columns = 8
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
@@ -218,4 +204,5 @@ out_size = int(opts.out_size)
 dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)
 
-print(my_reduce_max(dev, in1_size, out_size, dtype, trace_size))
+num_channels = 2
+print(my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype, trace_size))

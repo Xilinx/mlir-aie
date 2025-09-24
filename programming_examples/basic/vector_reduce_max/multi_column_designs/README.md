@@ -9,18 +9,20 @@
 //===----------------------------------------------------------------------===//-->
 ## Multi-Column Reduction Designs
 
-The designs in this folder are optimized to avoid the use of memory tiles and minimize data movement. Partial reductions are performed within each column using shared memory between neighboring tiles, followed by a final reduction step across the two columns. The number of cores (`n_cores`) can be configured from 1 to 8, and all shim tiles and shim DMAs are utilized. 
+Partial reductions are performed within each row using shared memory between neighboring tiles, followed by a final reduction step across the column. The number of columns (`num_columns`) can be configured from 1 to 8 and number of shim DMAs (`num_channels`) can be configured from 1 to 2. 
 
 Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_max.cc`.
 
 ## Source Files Overview
 
 ### Design Source Files
-1. `vector_reduce_max.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. `vector_reduce_max.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). The Column-Limited placer is used as the placement algorithm instead of the sequential placer. 
 
-2. `vector_reduce_max_placed.py`: An alternative version of the design in `vector_reduce_max.py`, that is expressed in a lower-level version of IRON.
+<br><img src="assets/Multi-col.png" alt="Multi-column Design" width="1250"/>
 
-<br><img src="assets/Multi-col.png" alt="Multi-column Design" width="500"/>
+2. `row_wise_vector_reduce_max_placed.py`: An alternative version of the design in `vector_reduce_max.py`, expressed in a lower-level version of IRON. The mapping here is how the Sequential placer would map the workers to the cores for 8 cores. 
+
+<br><img src="assets/Multi-col-row-wise.png" alt="Multi-column Design" width="500"/>
 
 ## Ryzen™ AI Usage
 
