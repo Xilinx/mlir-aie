@@ -129,7 +129,6 @@ jobs:
             $CMAKE_ARGS
 
           # Create runner-specific cache directory
-          echo "IRON_CACHE_HOME: $IRON_CACHE_HOME"
           mkdir -p $IRON_CACHE_HOME
 
           ninja install
@@ -192,7 +191,6 @@ jobs:
           fi
 
           # Create runner-specific cache directory
-          echo "IRON_CACHE_HOME: $IRON_CACHE_HOME"
           mkdir -p $IRON_CACHE_HOME
 
           ninja install
