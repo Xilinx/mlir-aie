@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['xrt_5fdevice_0',['xrt_device',['../classiron_1_1tensor_1_1Tensor.html#ad2c74cbf43dcfd794df71c41873cb905',1,'iron::tensor::Tensor']]]
+  ['worker_5flocks_0',['worker_locks',['../classiron_1_1worker_1_1WorkerRuntimeBarrier.html#aa2278632b0686a6336de4a34c0a2c353',1,'iron::worker::WorkerRuntimeBarrier']]]
 ];

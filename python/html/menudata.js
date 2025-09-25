@@ -28,6 +28,7 @@ var menudata={children:[
 {text:"Namespace List",url:"namespaces.html"},
 {text:"Namespace Members",url:"namespacemembers.html",children:[
 {text:"All",url:"namespacemembers.html",children:[
+{text:"_",url:"namespacemembers.html#index__5F"},
 {text:"a",url:"namespacemembers.html#index_a"},
 {text:"c",url:"namespacemembers.html#index_c"},
 {text:"d",url:"namespacemembers.html#index_d"},
@@ -63,6 +64,7 @@ var menudata={children:[
 {text:"h",url:"functions_h.html#index_h"},
 {text:"i",url:"functions_i.html#index_i"},
 {text:"j",url:"functions_j.html#index_j"},
+{text:"k",url:"functions_k.html#index_k"},
 {text:"l",url:"functions_l.html#index_l"},
 {text:"m",url:"functions_m.html#index_m"},
 {text:"n",url:"functions_n.html#index_n"},
@@ -105,6 +107,7 @@ var menudata={children:[
 {text:"d",url:"functions_vars.html#index_d"},
 {text:"f",url:"functions_vars.html#index_f"},
 {text:"i",url:"functions_vars.html#index_i"},
+{text:"k",url:"functions_vars.html#index_k"},
 {text:"l",url:"functions_vars.html#index_l"},
 {text:"m",url:"functions_vars.html#index_m"},
 {text:"n",url:"functions_vars.html#index_n"},

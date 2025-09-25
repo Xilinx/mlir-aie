@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['placementtile_0',['PlacementTile',['../namespaceiron_1_1device_1_1tile.html#ab9bfbc80972b99cb357c7b8c6469e1a9',1,'iron::device::tile']]]
+  ['ones_0',['ones',['../namespaceiron_1_1tensor.html#a7b461d9c0d7f0fd01bd64a144cf378f4',1,'iron::tensor']]]
 ];

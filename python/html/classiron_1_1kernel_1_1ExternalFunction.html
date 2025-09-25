@@ -127,6 +127,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a4f5fc776cd2b7e3f6719d40cfaeedc6e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8003eaae9914c1a681353d99ce767a0c" id="r_a8003eaae9914c1a681353d99ce767a0c"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a8003eaae9914c1a681353d99ce767a0c">resolve</a> (self, ir.Location|None loc=None, ir.InsertionPoint|None ip=None)</td></tr>
 <tr class="separator:a8003eaae9914c1a681353d99ce767a0c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4b4e53852a604ff3d95362ede4708cc4" id="r_a4b4e53852a604ff3d95362ede4708cc4"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a4b4e53852a604ff3d95362ede4708cc4">__hash__</a> (self)</td></tr>
+<tr class="separator:a4b4e53852a604ff3d95362ede4708cc4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a626dacbe657304d5cf7764fae7b6fbdb" id="r_a626dacbe657304d5cf7764fae7b6fbdb"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a626dacbe657304d5cf7764fae7b6fbdb">__call__</a> (self, *args, **kwargs)</td></tr>
 <tr class="separator:a626dacbe657304d5cf7764fae7b6fbdb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -151,6 +153,10 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:a669fcdd0fa1cdeb06e1108f9bb31506d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aec6e17b0a5fd4b27239ab85ce42771b0" id="r_aec6e17b0a5fd4b27239ab85ce42771b0"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#aec6e17b0a5fd4b27239ab85ce42771b0">_op</a></td></tr>
 <tr class="separator:aec6e17b0a5fd4b27239ab85ce42771b0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5888cfa2b7ebd1406a9e1430e474aa47" id="r_a5888cfa2b7ebd1406a9e1430e474aa47"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a5888cfa2b7ebd1406a9e1430e474aa47">_name</a></td></tr>
+<tr class="separator:a5888cfa2b7ebd1406a9e1430e474aa47"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7dc364ac42afb6f0637959c6ef74aae5" id="r_a7dc364ac42afb6f0637959c6ef74aae5"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a7dc364ac42afb6f0637959c6ef74aae5">_arg_types</a></td></tr>
+<tr class="separator:a7dc364ac42afb6f0637959c6ef74aae5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="inherit_header pro_attribs_classiron_1_1kernel_1_1BaseKernel"><td colspan="2" onclick="javascript:toggleInherit('pro_attribs_classiron_1_1kernel_1_1BaseKernel')"><img src="closed.png" alt="-"/>&#160;Protected Attributes inherited from <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html">iron.kernel.BaseKernel</a></td></tr>
 <tr class="memitem:ad4aa82f9e55fd081115632e3468ae435 inherit pro_attribs_classiron_1_1kernel_1_1BaseKernel" id="r_ad4aa82f9e55fd081115632e3468ae435"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#ad4aa82f9e55fd081115632e3468ae435">_name</a></td></tr>
 <tr class="separator:ad4aa82f9e55fd081115632e3468ae435 inherit pro_attribs_classiron_1_1kernel_1_1BaseKernel"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -337,6 +343,26 @@ Args:
 <pre class="fragment">Exit the context.</pre> 
 </div>
 </div>
+<a id="a4b4e53852a604ff3d95362ede4708cc4" name="a4b4e53852a604ff3d95362ede4708cc4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4b4e53852a604ff3d95362ede4708cc4">&#9670;&#160;</a></span>__hash__()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.kernel.ExternalFunction.__hash__ </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Compute a hash for the ExternalFunction based on its properties.
+This allows ExternalFunction instances to be used in cache keys.
+</pre> 
+</div>
+</div>
 <a id="ac45996acab0e9e8c2398413990f30f99" name="ac45996acab0e9e8c2398413990f30f99"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ac45996acab0e9e8c2398413990f30f99">&#9670;&#160;</a></span>_setup_source()</h2>
 
@@ -487,6 +513,28 @@ Returns:
 </div>
 </div>
 <h2 class="groupheader">Member Data Documentation</h2>
+<a id="a7dc364ac42afb6f0637959c6ef74aae5" name="a7dc364ac42afb6f0637959c6ef74aae5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7dc364ac42afb6f0637959c6ef74aae5">&#9670;&#160;</a></span>_arg_types</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.kernel.ExternalFunction._arg_types</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="afa9dce01f7ea46b98a83ae15f661048a" name="afa9dce01f7ea46b98a83ae15f661048a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#afa9dce01f7ea46b98a83ae15f661048a">&#9670;&#160;</a></span>_compile_flags</h2>
 
@@ -569,6 +617,28 @@ Returns:
   </td>
   <td class="mlabels-right">
 <span class="mlabels"><span class="mlabel">static</span><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a5888cfa2b7ebd1406a9e1430e474aa47" name="a5888cfa2b7ebd1406a9e1430e474aa47"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5888cfa2b7ebd1406a9e1430e474aa47">&#9670;&#160;</a></span>_name</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.kernel.ExternalFunction._name</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">

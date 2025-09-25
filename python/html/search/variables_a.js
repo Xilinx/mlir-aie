@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['ones_0',['ones',['../namespaceiron_1_1tensor.html#a7b461d9c0d7f0fd01bd64a144cf378f4',1,'iron::tensor']]]
+  ['name_0',['name',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a737a0a6fc7d916320bb88228ab55c8ae',1,'iron::dataflow::objectfifo::ObjectFifo']]]
 ];

@@ -83,7 +83,7 @@ $(function() {
 <li>__of_index&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#abcba213ef96369f1b67b6b7ba45ca69e">iron.dataflow.objectfifo.ObjectFifo</a></li>
 <li>__task_group_index&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a2da3cf7b0c71cfef57f2dfd0a9274356">iron.runtime.runtime.Runtime</a></li>
 <li>__xclbin&#160;:&#160;<a class="el" href="classiron_1_1jit_1_1NPUKernel.html#a52d05b74a95e5b7dd67d99022853ba63">iron.jit.NPUKernel</a></li>
-<li>_arg_types&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#a6224ff2fba314f084d50880cbab1b2c8">iron.kernel.BaseKernel</a></li>
+<li>_arg_types&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#a6224ff2fba314f084d50880cbab1b2c8">iron.kernel.BaseKernel</a>, <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a7dc364ac42afb6f0637959c6ef74aae5">iron.kernel.ExternalFunction</a></li>
 <li>_args&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html#ae207c6cad9521efff087529acb89777c">iron.runtime.task.InlineOpRuntimeTask</a></li>
 <li>_arr_type&#160;:&#160;<a class="el" href="classiron_1_1globalbuffer_1_1GlobalBuffer.html#a67e2a2d8377878adf5e941c00bcc7498">iron.globalbuffer.GlobalBuffer</a>, <a class="el" href="classiron_1_1runtime_1_1data_1_1RuntimeData.html#a6d8e212bb2036c48abebe54a34357cc3">iron.runtime.data.RuntimeData</a></li>
 <li>_array&#160;:&#160;<a class="el" href="classiron_1_1experimental_1_1array_1_1array.html#a82f961f6afc3c8f7d74ac2461030283d">iron.experimental.array.array</a></li>
@@ -118,7 +118,7 @@ $(function() {
 <li>_is_prod&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#acb0dd47cdceb21722998c3e8f197a9b4">iron.dataflow.objectfifo.ObjectFifoHandle</a></li>
 <li>_memtile_events&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ad81eead716385e1b3e82cd9841e58b0c">iron.runtime.runtime.Runtime</a></li>
 <li>_module&#160;:&#160;<a class="el" href="classiron_1_1experimental_1_1task__runner_1_1TaskRunner.html#aee48c1e0710dbbfc9a03dc7d9eb5dfc1">iron.experimental.task_runner.TaskRunner</a></li>
-<li>_name&#160;:&#160;<a class="el" href="classiron_1_1globalbuffer_1_1GlobalBuffer.html#a5561c3ece04c1ab7f9473bfc509d54ab">iron.globalbuffer.GlobalBuffer</a>, <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#ad4aa82f9e55fd081115632e3468ae435">iron.kernel.BaseKernel</a></li>
+<li>_name&#160;:&#160;<a class="el" href="classiron_1_1globalbuffer_1_1GlobalBuffer.html#a5561c3ece04c1ab7f9473bfc509d54ab">iron.globalbuffer.GlobalBuffer</a>, <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#ad4aa82f9e55fd081115632e3468ae435">iron.kernel.BaseKernel</a>, <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a5888cfa2b7ebd1406a9e1430e474aa47">iron.kernel.ExternalFunction</a></li>
 <li>_num_buffs&#160;:&#160;<a class="el" href="classiron_1_1experimental_1_1array_1_1array.html#a2c013d6f6ed8277febec060f19db5e32">iron.experimental.array.array</a></li>
 <li>_NUM_DIMS&#160;:&#160;<a class="el" href="classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html#a7a54f92c409c00cfe29ff5390060f79b">taplib.tensortiler2d.TensorTiler2D</a></li>
 <li>_obj_type&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a6d8cad4aa0881aec93b10d7f3a676fb4">iron.dataflow.objectfifo.ObjectFifo</a>, <a class="el" href="classiron_1_1globalbuffer_1_1GlobalBuffer.html#abb0307152c82391d3165d9708ef143bd">iron.globalbuffer.GlobalBuffer</a></li>
@@ -172,6 +172,7 @@ $(function() {
 
 
 <h3><a id="index_c" name="index_c"></a>- c -</h3><ul>
+<li>cache&#160;:&#160;<a class="el" href="classiron_1_1jit_1_1CircularCache.html#a79b89b58ffdd795700dec996a89f9d1d">iron.jit.CircularCache</a></li>
 <li>col&#160;:&#160;<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html#a8053059fbbf1a446c59254cf30cec64b">iron.device.tile.Tile</a></li>
 <li>cols&#160;:&#160;<a class="el" href="classiron_1_1device_1_1device_1_1NPUBase.html#a9715bd072b23ee616b1bc6846beed41c">iron.device.device.NPUBase</a></li>
 <li>core_fn&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476">iron.worker.Worker</a></li>
@@ -193,7 +194,13 @@ $(function() {
 
 
 <h3><a id="index_i" name="index_i"></a>- i -</h3><ul>
+<li>index&#160;:&#160;<a class="el" href="classiron_1_1jit_1_1CircularCache.html#aced159f4f704bd886bd4a1294f23f312">iron.jit.CircularCache</a></li>
 <li>initial_value&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html#a12e97eb033a09a86975721371dc2ab99">iron.worker.WorkerRuntimeBarrier</a></li>
+</ul>
+
+
+<h3><a id="index_k" name="index_k"></a>- k -</h3><ul>
+<li>keys&#160;:&#160;<a class="el" href="classiron_1_1jit_1_1CircularCache.html#a311d78087f700c1dd23ff3ad29c5e529">iron.jit.CircularCache</a></li>
 </ul>
 
 
@@ -204,6 +211,7 @@ $(function() {
 
 
 <h3><a id="index_m" name="index_m"></a>- m -</h3><ul>
+<li>max_size&#160;:&#160;<a class="el" href="classiron_1_1jit_1_1CircularCache.html#a3c7bedf76d264887b169673cc20b85a5">iron.jit.CircularCache</a></li>
 <li>message&#160;:&#160;<a class="el" href="classiron_1_1placeable_1_1AlreadyPlacedError.html#a467c56f54f73f8f3affc33157deb96ab">iron.placeable.AlreadyPlacedError</a>, <a class="el" href="classiron_1_1resolvable_1_1NotResolvedError.html#ad2d4e87bd0cb19836b84a08ee3c2512f">iron.resolvable.NotResolvedError</a></li>
 </ul>
 

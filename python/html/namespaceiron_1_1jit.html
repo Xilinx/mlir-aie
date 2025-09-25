@@ -83,6 +83,8 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="nested-classes" name="nested-classes"></a>
 Classes</h2></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1jit_1_1CircularCache.html">CircularCache</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1jit_1_1NPUKernel.html">NPUKernel</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1jit_1_1NPUKernel__Error.html">NPUKernel_Error</a></td></tr>
@@ -96,13 +98,103 @@ Functions</h2></td></tr>
 <tr class="separator:a6735e4cdaac7eed7879aa98e1cfa7142"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2966b6e90120f4528a95d5d366d34cbf" id="r_a2966b6e90120f4528a95d5d366d34cbf"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a2966b6e90120f4528a95d5d366d34cbf">hash_module</a> (module, external_kernels=None, target_arch=None)</td></tr>
 <tr class="separator:a2966b6e90120f4528a95d5d366d34cbf"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aebfc5fbed6fdcf0999dc8bcaa957c84a" id="r_aebfc5fbed6fdcf0999dc8bcaa957c84a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#aebfc5fbed6fdcf0999dc8bcaa957c84a">_hash_argument</a> (arg, prefix=&quot;&quot;)</td></tr>
+<tr class="separator:aebfc5fbed6fdcf0999dc8bcaa957c84a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2be40af94697cf00f64950ca30d32527" id="r_a2be40af94697cf00f64950ca30d32527"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a2be40af94697cf00f64950ca30d32527">_create_function_cache_key</a> (function, args, kwargs)</td></tr>
+<tr class="separator:a2be40af94697cf00f64950ca30d32527"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
 Variables</h2></td></tr>
-<tr class="memitem:ad4996a91797d3c476d40857dd3b3d113" id="r_ad4996a91797d3c476d40857dd3b3d113"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#ad4996a91797d3c476d40857dd3b3d113">IRON_CACHE_DIR</a> = os.path.expanduser(&quot;~/.iron/cache&quot;)</td></tr>
-<tr class="separator:ad4996a91797d3c476d40857dd3b3d113"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6a5f2a73bad3c66b6879742b072cb8f1" id="r_a6a5f2a73bad3c66b6879742b072cb8f1"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a6a5f2a73bad3c66b6879742b072cb8f1">IRON_CACHE_HOME</a> = os.environ.get(&quot;IRON_CACHE_HOME&quot;, os.path.expanduser(&quot;~/.iron/cache&quot;))</td></tr>
+<tr class="separator:a6a5f2a73bad3c66b6879742b072cb8f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a24e0a2fa0b6098d83d5bfca27909b5aa" id="r_a24e0a2fa0b6098d83d5bfca27909b5aa"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a24e0a2fa0b6098d83d5bfca27909b5aa">_compiled_kernels</a> = <a class="el" href="classiron_1_1jit_1_1CircularCache.html">CircularCache</a>(max_size=1)</td></tr>
+<tr class="separator:a24e0a2fa0b6098d83d5bfca27909b5aa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
+<a id="a2be40af94697cf00f64950ca30d32527" name="a2be40af94697cf00f64950ca30d32527"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2be40af94697cf00f64950ca30d32527">&#9670;&#160;</a></span>_create_function_cache_key()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.jit._create_function_cache_key </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>function</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>args</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>kwargs</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Create a cache key for a function call based on function name and argument types/shapes.
+This allows us to cache compiled kernels at the function level.
+Note that it is not necessary that we cache the tensor shapes since the kernel may be agonstic
+to the shape changes but we are doing here for safety.
+</pre> 
+</div>
+</div>
+<a id="aebfc5fbed6fdcf0999dc8bcaa957c84a" name="aebfc5fbed6fdcf0999dc8bcaa957c84a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aebfc5fbed6fdcf0999dc8bcaa957c84a">&#9670;&#160;</a></span>_hash_argument()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.jit._hash_argument </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>arg</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>prefix</em> = <code>&quot;&quot;</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Helper function to hash supported argument types (tensors and callables).
+Returns a string representation for cache key generation.
+</pre> 
+</div>
+</div>
 <a id="a6735e4cdaac7eed7879aa98e1cfa7142" name="a6735e4cdaac7eed7879aa98e1cfa7142"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6735e4cdaac7eed7879aa98e1cfa7142">&#9670;&#160;</a></span>compile_external_kernel()</h2>
 
@@ -218,14 +310,36 @@ Parameters:
 </div>
 </div>
 <h2 class="groupheader">Variable Documentation</h2>
-<a id="ad4996a91797d3c476d40857dd3b3d113" name="ad4996a91797d3c476d40857dd3b3d113"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ad4996a91797d3c476d40857dd3b3d113">&#9670;&#160;</a></span>IRON_CACHE_DIR</h2>
+<a id="a24e0a2fa0b6098d83d5bfca27909b5aa" name="a24e0a2fa0b6098d83d5bfca27909b5aa"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a24e0a2fa0b6098d83d5bfca27909b5aa">&#9670;&#160;</a></span>_compiled_kernels</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.jit._compiled_kernels = <a class="el" href="classiron_1_1jit_1_1CircularCache.html">CircularCache</a>(max_size=1)</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a6a5f2a73bad3c66b6879742b072cb8f1" name="a6a5f2a73bad3c66b6879742b072cb8f1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a6a5f2a73bad3c66b6879742b072cb8f1">&#9670;&#160;</a></span>IRON_CACHE_HOME</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">iron.jit.IRON_CACHE_DIR = os.path.expanduser(&quot;~/.iron/cache&quot;)</td>
+          <td class="memname">iron.jit.IRON_CACHE_HOME = os.environ.get(&quot;IRON_CACHE_HOME&quot;, os.path.expanduser(&quot;~/.iron/cache&quot;))</td>
         </tr>
       </table>
 </div><div class="memdoc">
