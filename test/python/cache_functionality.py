@@ -85,14 +85,14 @@ def test_cache_lambda_functions():
     """Test that caching works correctly with different lambda functions."""
     # Create input tensor
     input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor.data[:] = np.arange(1, 33, dtype=np.int32)  # [1, 2, 3, ..., 32]
+    input_tensor[:] = np.arange(1, 33, dtype=np.int32)  # [1, 2, 3, ..., 32]
 
     # Test 1: First execution with lambda function
     transform(input_tensor, input_tensor, lambda x: x + 1)
     result1 = input_tensor.numpy().copy()
 
     # Reset tensor
-    input_tensor.data[:] = np.arange(1, 33, dtype=np.int32)
+    input_tensor[:] = np.arange(1, 33, dtype=np.int32)
 
     # Test 2: Second execution with same lambda function (should use cache)
     transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -102,7 +102,7 @@ def test_cache_lambda_functions():
     np.testing.assert_array_equal(result1, result2)
 
     # Test 3: Different lambda function (should generate new cache entry)
-    input_tensor.data[:] = np.arange(1, 33, dtype=np.int32)
+    input_tensor[:] = np.arange(1, 33, dtype=np.int32)
     transform(input_tensor, input_tensor, lambda x: x * 2)
     result3 = input_tensor.numpy()
 
@@ -116,7 +116,7 @@ def test_cache_external_functions():
     """Test that ExternalFunction caching works correctly during execution."""
     # Create input tensor
     input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor.data[:] = np.arange(1, 33, dtype=np.int32)  # [1, 2, 3, ..., 32]
+    input_tensor[:] = np.arange(1, 33, dtype=np.int32)  # [1, 2, 3, ..., 32]
 
     # Test 1: First execution
     add_one_1 = ExternalFunction(
