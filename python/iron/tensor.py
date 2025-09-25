@@ -484,8 +484,9 @@ class Tensor:
 
         Releases associated device memory (e.g., XRT buffer object).
         """
-        del self.bo
-        self.bo = None
+        if hasattr(self, 'bo'):
+            del self.bo
+            self.bo = None
 
 
 def tensor(data, dtype=np.float32, device="npu"):

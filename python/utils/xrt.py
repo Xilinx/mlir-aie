@@ -74,8 +74,12 @@ class AIE_Application:
         return h
 
     def __del__(self):
-        del self.kernel
-        del self.device
+        if hasattr(self, 'kernel'):
+            del self.kernel
+            self.kernel = None
+        if hasattr(self, 'device'):
+            del self.device
+            self.device = None
 
 
 # This class wraps up access to the xrt.bo buffer object where sync calls are added
@@ -114,8 +118,9 @@ class AIE_Buffer:
         return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):
-        del self.bo
-        self.bo = None
+        if hasattr(self, 'bo'):
+            del self.bo
+            self.bo = None
 
 
 class AIE_Application_Error(Exception):

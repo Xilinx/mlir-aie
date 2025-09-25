@@ -121,8 +121,21 @@ class NPUKernel:
         """
         Destructor to clean up resources and delete the kernel and device objects.
         """
-        del self.__kernel
-        del self.__device
+        if hasattr(self, '_NPUKernel__insts_buffer_bo'):
+            del self.__insts_buffer_bo
+            self.__insts_buffer_bo = None
+        if hasattr(self, '_NPUKernel__kernel'):
+            del self.__kernel
+            self.__kernel = None
+        if hasattr(self, '_NPUKernel__context'):
+            del self.__context
+            self.__context = None
+        if hasattr(self, '_NPUKernel__xclbin'):
+            del self.__xclbin
+            self.__xclbin = None
+        if hasattr(self, '_NPUKernel__device'):
+            del self.__device
+            self.__device = None
 
 
 class NPUKernel_Error(Exception):
