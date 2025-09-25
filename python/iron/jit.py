@@ -23,10 +23,10 @@ from .config import get_current_device
 from aie.dialects.aie import AIEDevice
 
 
-# The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_DIR` directory.
+# The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_HOME` directory.
 # Kernels are cached based on their hash value of the MLIR module string. If during compilation,
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
-IRON_CACHE_DIR = os.path.expanduser("~/.iron/cache")
+IRON_CACHE_HOME = os.environ.get("IRON_CACHE_HOME", os.path.expanduser("~/.iron/cache"))
 
 # Global cache for compiled kernels at the function level
 # Key: (function_name, args_signature) -> NPUKernel instance
@@ -221,7 +221,7 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)
-        kernel_dir = os.path.join(IRON_CACHE_DIR, f"{module_hash}")
+        kernel_dir = os.path.join(IRON_CACHE_HOME, f"{module_hash}")
         mlir_path = os.path.join(kernel_dir, "aie.mlir")
 
         # Ensure cache directory exists

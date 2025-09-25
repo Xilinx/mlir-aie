@@ -39,6 +39,7 @@ env:
   DEBIAN_FRONTEND: noninteractive
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
   VITIS: /opt/ryzen_ai-1.3.0.1/vitis_aie_essentials
+  IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
   CMAKE_ARGS: |
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -126,9 +127,9 @@ jobs:
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             $CMAKE_ARGS
 
-          # Remove the JIT compilation cache since between pushes and PRs we make breaking changes to 
-          # how the hash is computed and so we cannot rely on existing cached kernels from previous runs.
-          rm -rf ~/.iron/
+          # Create runner-specific cache directory
+          echo "IRON_CACHE_HOME: $IRON_CACHE_HOME"
+          mkdir -p $IRON_CACHE_HOME
 
           ninja install
           ninja check-aie
@@ -187,13 +188,11 @@ jobs:
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
 
-
-          # Remove the JIT compilation cache since between pushes and PRs we make breaking changes to 
-          # how the hash is computed and so we cannot rely on existing cached kernels from previous runs.
-          rm -rf ~/.iron/
+          # Create runner-specific cache directory
+          echo "IRON_CACHE_HOME: $IRON_CACHE_HOME"
+          mkdir -p $IRON_CACHE_HOME
 
           ninja install
           ninja check-reference-designs
           ninja check-programming-guide
-
           popd
