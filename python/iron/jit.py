@@ -373,29 +373,12 @@ def hash_module(module, external_kernels=None, target_arch=None):
 
     # Include ExternalFunction compiler options and source code in the hash
     if external_kernels:
-        compiler_options = []
+        running_hash = ""
         source_contents = []
         for func in external_kernels:
-            compiler_options.extend(func._include_dirs)
-            compiler_options.extend(func._compile_flags)
+            running_hash += str(hash(func))
 
-            # Include source content for uniqueness
-            if func._source_string:
-                source_contents.append(func._source_string)
-            elif func._source_file:
-                # Read the file content to include in hash
-                with open(func._source_file, "r") as f:
-                    file_content = f.read()
-                source_contents.append(file_content)
-
-        # Create a combined string for hashing
-        combined_str = (
-            mlir_str
-            + "|"
-            + "|".join(compiler_options)
-            + "|"
-            + "|".join(source_contents)
-        )
+        combined_str = mlir_str + "|" + "|".join(running_hash)
     else:
         combined_str = mlir_str
 
