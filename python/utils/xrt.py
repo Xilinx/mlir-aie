@@ -74,10 +74,10 @@ class AIE_Application:
         return h
 
     def __del__(self):
-        if hasattr(self, 'kernel'):
+        if hasattr(self, "kernel"):
             del self.kernel
             self.kernel = None
-        if hasattr(self, 'device'):
+        if hasattr(self, "device"):
             del self.device
             self.device = None
 
@@ -118,7 +118,7 @@ class AIE_Buffer:
         return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):
-        if hasattr(self, 'bo'):
+        if hasattr(self, "bo"):
             del self.bo
             self.bo = None
 

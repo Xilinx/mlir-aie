@@ -484,7 +484,7 @@ class Tensor:
 
         Releases associated device memory (e.g., XRT buffer object).
         """
-        if hasattr(self, 'bo'):
+        if hasattr(self, "bo"):
             del self.bo
             self.bo = None
 
