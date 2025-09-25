@@ -28,9 +28,40 @@ from aie.dialects.aie import AIEDevice
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_HOME = os.environ.get("IRON_CACHE_HOME", os.path.expanduser("~/.iron/cache"))
 
+
+class CircularCache:
+    def __init__(self, max_size):
+        self.max_size = max_size
+        self.cache = [None] * max_size
+        self.keys = [None] * max_size
+        self.index = 0
+
+    def __contains__(self, key):
+        return key in self.keys
+
+    def __getitem__(self, key):
+        idx = self.keys.index(key)
+        return self.cache[idx]
+
+    def __setitem__(self, key, value):
+        self.cache[self.index] = value
+        self.keys[self.index] = key
+        self.index = (self.index + 1) % self.max_size
+
+    def __len__(self):
+        return sum(1 for k in self.keys if k is not None)
+
+    def clear(self):
+        self.cache = [None] * self.max_size
+        self.keys = [None] * self.max_size
+        self.index = 0
+
+
 # Global cache for compiled kernels at the function level
 # Key: (function_name, args_signature) -> NPUKernel instance
-_compiled_kernels = {}
+# There is a limit on the number of kernels we have in cache
+# The limit is 5 on Phoenix machine
+_compiled_kernels = CircularCache(max_size=5)
 
 
 class NPUKernel:
