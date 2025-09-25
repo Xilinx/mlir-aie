@@ -52,6 +52,7 @@ We use the memtile primarily to buffer DDR reads but also to leverage the layout
 ```
 .
 +-- conv2dk14_placed.py        # A Python script that defines the AIE array structural design using MLIR-AIE operations using a lower-level version of IRON
++-- conv2dk14_32core_placed.py # A 32-core implementation of the single-core example above
 +-- Makefile             # Contains instructions for building and compiling software projects.
 +-- README.md            # This file.
 +-- run_strix_makefile.lit # For LLVM Integrated Tester (LIT) of the placed design.
@@ -64,18 +65,39 @@ To compile and run the design:
 make run_py
 ```
 
-
 To build and run the design while generating trace
 ```shell
-make trace_py
+make clean; make trace_py
 ```
+
+To build and run the design for the unplaced IRON version (with or without generating trace), we need to add an additional qualifier.
+```shell
+make clean; make use_placed=0 num_act=72 run_py
+make clean; make use_placed=0 num_act=72 trace_py
+```
+
+To build and run the 32-core design (trace not currently supported)
+```shell
+make clean; make targetname=conv2dk14_32core num_act=1 run_py
+```
+To build an drun the 32-core design with the scalar kernel (trace not currently supported)
+```shell
+make clean; make vectorized=false targetname=conv2dk14_32core num_act=1 run_py
+```
+
+## Multi-core Design Example (32-cores)
+
+The multi-core implementation uses the same underlying convolution kernel ([conv2dk14.cc](../../../aie_kernels/aie2p/conv2dk14.cc)) but distributes the compute over the entire AIE tile array on a Strix device (4 x 8 = 32). Input/activations are broadcasted along the rows and Weights are broadcastd along the columns. The output layout is still organized as CYX{C16}. We distribute the compute such that all tiles are working in parallel. Output channels (1152) are divided by columns such that each column computes 1/8 of all output channels (1152/8 = 144). Since each kernel processes 16 output channels at a time, the columns need to be executed 9 times to compute the results for all the output channels (144/ 16 = 9). Within each column, we divide the compute of the output into quarters such that row 0 (row index 2) computes the first 1/4 of the ouput (16 x 64), row 1 (row index 3) computes the second 1/4, row 3 (row index 4) the third 1/4, and row 4 (row index 5) the last 1/4. As a result, within each core tile, we loop over our conv kernel first by 4 (to compute the entire input image row), and then by 16 to compute 1/4 of the output. The measured default host code wall clock time is then improved from ~20ms for the single-core variant to ~5ms in the 32-core variant. 
+
 
 ## Configure design
 While the design was designed to be somewhat configurable, this is mostly tested in the output channel dimension as long as it's a multiple of 16. To configure the parameters of the convolution such as data width, height and the number of input and output channels, you can edit the top of the `Makefile` but this is largely untested. Choosing the scalar or vectorized version of the kernel can likewise be selected in the `Makefile` by modifying the `vectorized` variable but see limitations below on this feature.
 
 ## Limitation Notes
 At the moment, the following limtations exist:
-* The scalar kernel version of this design has some intermittent runtime issue (CMD_ABORT triggered) for the full output channel size. Reducing this to 256 channels from 1152 is a workaround at the moment but further investigation is needed to fully resolve this.
-* Unplaced IRON version is in the works. At the moment, writing trace data to the 5th buffer which is the default for unplaced IRON seems to trigger a segfault. Further investgation needed.
+* The scalar kernel version of this design does not run properly in single core mode for the full data size because the total compute time exceeds the execution time limit of the npu driver (~2 seconds). You can reduce the number of output channels (576 channels works) or you can run the scalar kernel with the 32-core design as noted above.
+* Unplaced IRON now works but needs an additional qualifier for the testbench. However, there is a bug if the trace_size is 32,768 bytes (rather than 16kB or 8kB) which causes the unplaced IRON trace to seg fault. Still under investiation but choosing a smaller size seems to be a good workaround.
+* Trace for the 32-core variant currently causes the compilation to hang. Under investigation but the non-trace run works without issue.
+* There is behavior bug where the number of input/activation sets sent from the host to the AIE array needs to be a certain value in order for correct functionality. For the single core design, `num_act=2` is sufficient for non-trace runs (`run_py`) but for trace runs (`trace_py`), we need this to be `num_act=8`. For the 32-core design, `num_act=1` is sufficient but any value for trace runs causes it to hang at the moment. This is under investigation.
 
 

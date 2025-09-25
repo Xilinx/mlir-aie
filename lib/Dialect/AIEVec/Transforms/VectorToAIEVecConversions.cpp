@@ -3100,7 +3100,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
-      ComputeExpOpByLUTLLVMPattern
+      ComputeExpOpByLUTLLVMPattern, LowerVectorAddFOpToAIEVecAddElemOp
       >(patterns.getContext());
   }
   patterns.add<

@@ -1021,6 +1021,23 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
   }];
 }
 
+// NPU Load PDI operation
+def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
+  let summary = "load pdi operator";
+  let arguments = (
+    ins I32Attr:$id,
+        OptionalAttr<I32Attr>:$size,
+        OptionalAttr<UI64Attr>:$address
+  );
+  let results = (outs );
+  let assemblyFormat = [{ attr-dict }];
+  let description = [{
+    Load a PDI (Programmable Device Image) to configure the NPU.
+    The PDI is identified by `id`. `address` and `size` are typically written at
+    runtime by the driver or host program.
+  }];
+}
+
 def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{

@@ -75,8 +75,7 @@ def trace_to_json(trace_file: str, mlir_file: str, output_name: str = "trace.jso
         Path to output json file. You can analyze it using tools like https://ui.perfetto.dev
     """
     command = [
-        os.environ["MLIR_AIE_INSTALL_DIR"]
-        + "/../../programming_examples/utils/parse_trace.py",
+        os.environ["MLIR_AIE_INSTALL_DIR"] + "/../../python/utils/parse_trace.py",
         "--input",
         trace_file,
         "--mlir",

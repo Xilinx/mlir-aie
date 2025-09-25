@@ -134,6 +134,23 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions,
   words[6] = words.size() * sizeof(uint32_t); // Operation Size
 }
 
+void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
+
+  auto words = reserveAndGetTail(instructions, 4);
+
+  // XAIE_IO_LOADPDI
+  words[0] = XAIE_IO_LOADPDI;
+  words[0] |= op.getId() << 16;
+  std::optional<uint32_t> size = op.getSize();
+  if (size)
+    words[1] = *size;
+  std::optional<uint64_t> address = op.getAddress();
+  if (address) {
+    words[2] = *address;
+    words[3] = *address >> 32;
+  }
+}
+
 void appendAddressPatch(std::vector<uint32_t> &instructions,
                         NpuAddressPatchOp op) {
 
@@ -235,6 +252,10 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           .Case<NpuMaskWrite32Op>([&](auto op) {
             count++;
             appendMaskWrite32(instructions, op);
+          })
+          .Case<NpuLoadPdiOp>([&](auto op) {
+            count++;
+            appendLoadPdi(instructions, op);
           })
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
