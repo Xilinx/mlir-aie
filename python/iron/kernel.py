@@ -186,6 +186,34 @@ class ExternalFunction(BaseKernel):
             # Create the external function
             self._op = external_func(self._name, inputs=self._arg_types)
 
+    def __hash__(self):
+        """
+        Compute a hash for the ExternalFunction based on its properties.
+        This allows ExternalFunction instances to be used in cache keys.
+        """
+        import hashlib
+
+        # Create a string representation of the function's key properties
+        hash_parts = [
+            self._name,
+            str(self._arg_types),
+            str(sorted(self._include_dirs)),
+            str(sorted(self._compile_flags)),
+        ]
+
+        # Include source content for uniqueness
+        # TODO: This solution needs to be extended to handle headers. See https://github.com/Xilinx/mlir-aie/issues/2543
+        if self._source_string:
+            hash_parts.append(self._source_string)
+        elif self._source_file:
+            with open(self._source_file, "r") as f:
+                file_content = f.read()
+            hash_parts.append(file_content)
+
+        # Create hash from combined string
+        combined = "|".join(hash_parts)
+        return int(hashlib.sha256(combined.encode("utf-8")).hexdigest()[:8], 16)
+
     def __call__(self, *args, **kwargs):
         if not self._op:
             raise ValueError("Need to resolve ExternalFunction before it can be called")
