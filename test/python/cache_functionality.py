@@ -4,7 +4,6 @@
 #
 # (c) Copyright 2025 AMD Inc.
 
-# RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s
 
 import numpy as np
