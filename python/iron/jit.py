@@ -60,7 +60,7 @@ class CircularCache:
 # Global cache for compiled kernels at the function level
 # Key: (function_name, args_signature) -> NPUKernel instance
 # There is a limit on the number of kernels we have in cache
-_compiled_kernels = CircularCache(max_size=2)
+_compiled_kernels = CircularCache(max_size=1)
 
 
 class NPUKernel:
