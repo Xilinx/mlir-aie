@@ -7,7 +7,15 @@
 import numpy as np
 import sys
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
+from aie.iron import (
+    GlobalBuffer,
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    WorkerRuntimeBarrier,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_

@@ -34,36 +34,56 @@ from aie.dialects import aie as aiedialect
 from aie.ir import Context, Location, Module
 from aie.passmanager import PassManager
 
-INPUT_WITH_ADDRESSES_PIPELINE = lambda scheme, dynamic_objFifos, ctrl_pkt_overlay: (
-    Pipeline()
-    .lower_affine()
-    .add_pass("aie-canonicalize-device")
-    .Nested(
-        "aie.device",
-        Pipeline()
-        .add_pass("aie-assign-lock-ids")
-        .add_pass("aie-register-objectFifos")
-        .add_pass(
-            "aie-objectFifo-stateful-transform", dynamic_objFifos=dynamic_objFifos
+
+def _create_input_with_addresses_pipeline(
+    scheme, dynamic_objFifos, packet_sw_objFifos, ctrl_pkt_overlay, aie_target
+):
+    pipeline = Pipeline()
+
+    # Only add convert-vector-to-aievec for AIE2 and later targets
+    # AIE1 ("aie") does not support target_backend="llvmir"
+    if aie_target.lower() in ["aie2", "aieml", "aie2p"]:
+        pipeline.add_pass(
+            "convert-vector-to-aievec",
+            aie_target=aie_target.lower(),
+            target_backend="llvmir",
         )
-        .add_pass("aie-assign-bd-ids")
-        .add_pass("aie-lower-cascade-flows")
-        .add_pass("aie-lower-broadcast-packet")
-        .add_pass("aie-lower-multicast")
-        .add_pass("aie-assign-tile-controller-ids")
-        .add_pass(
-            "aie-generate-column-control-overlay",
-            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+
+    return (
+        pipeline.lower_affine()
+        .add_pass("aie-canonicalize-device")
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-assign-lock-ids")
+            .add_pass("aie-register-objectFifos")
+            .add_pass(
+                "aie-objectFifo-stateful-transform",
+                dynamic_objFifos=dynamic_objFifos,
+                packet_sw_objFifos=packet_sw_objFifos,
+            )
+            .add_pass("aie-assign-bd-ids")
+            .add_pass("aie-lower-cascade-flows")
+            .add_pass("aie-lower-broadcast-packet")
+            .add_pass("aie-lower-multicast")
+            .add_pass("aie-assign-tile-controller-ids")
+            .add_pass(
+                "aie-generate-column-control-overlay",
+                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+            )
+            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
         )
-        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
+        .convert_scf_to_cf()
     )
-    .convert_scf_to_cf()
-)
+
+
+INPUT_WITH_ADDRESSES_PIPELINE = _create_input_with_addresses_pipeline
 
 LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
     .canonicalize()
     .cse()
+    .convert_ub_to_llvm()
     .convert_vector_to_llvm()
     .expand_strided_metadata()
     .lower_affine()
@@ -90,6 +110,7 @@ AIE_LOWER_TO_LLVM = (
         )
         .add_pass("aie-standard-lowering", tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
+        .add_pass("convert-aievec-to-llvm")
     )
     + LOWER_TO_LLVM_PIPELINE
 )
@@ -397,6 +418,12 @@ def downgrade_ir_for_peano(llvmir):
     return llvmir
 
 
+def drop_alignment_for_peano(llvmir):
+    # Remove any ", align <integer>" attribute occurrences
+    llvmir = re.sub(r",\s*align\s+\d+", "", llvmir)
+    return llvmir
+
+
 class FlowRunner:
     def __init__(self, mlir_module_str, opts, tmpdirname):
         self.mlir_module_str = mlir_module_str
@@ -502,6 +529,7 @@ class FlowRunner:
 
         llvmir_ir = await read_file_async(llvmir)
         llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+        llvmir_hacked_ir = drop_alignment_for_peano(llvmir_hacked_ir)
         await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
 
         return llvmir_peanohack
@@ -527,14 +555,11 @@ class FlowRunner:
             # If there are orphaned input sections, then they'd likely end up outside of the normal program memory.
             clang_link_args = ["-Wl,--gc-sections", "-Wl,--orphan-handling=error"]
 
-            if opts.progress:
-                task = self.progress_bar.add_task(
-                    "[yellow] Core (%d, %d)" % core[0:2],
-                    total=self.maxtasks,
-                    command="starting",
-                )
-            else:
-                task = None
+            task = self.progress_bar.add_task(
+                "[yellow] Core (%d, %d)" % core[0:2],
+                total=self.maxtasks,
+                command="starting",
+            )
 
             # fmt: off
             corecol, corerow, elf_file = core
@@ -588,10 +613,8 @@ class FlowRunner:
                 elif opts.link:
                     await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
-            if opts.progress:
-                self.progress_bar.update(self.progress_bar.task_completed, advance=1)
-                if task:
-                    self.progress_bar.update(task, advance=0, visible=False)
+            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+            self.progress_bar.update(task, advance=0, visible=False)
             # fmt: on
 
     async def process_cdo(self, module_str):
@@ -760,12 +783,9 @@ class FlowRunner:
     # generate an xclbin. The inputs are self.mlir_module_str and the cdo
     # binaries from the process_cdo step.
     async def process_xclbin_gen(self):
-        if opts.progress:
-            task = self.progress_bar.add_task(
-                "[yellow] XCLBIN generation ", total=10, command="starting"
-            )
-        else:
-            task = None
+        task = self.progress_bar.add_task(
+            "[yellow] XCLBIN generation ", total=10, command="starting"
+        )
 
         # collect the tasks to generate the inputs to xclbinutil
         processes = []
@@ -856,12 +876,9 @@ class FlowRunner:
             if self.stopall:
                 return
 
-            if opts.progress:
-                task = self.progress_bar.add_task(
-                    "[yellow] Host compilation ", total=10, command="starting"
-                )
-            else:
-                task = None
+            task = self.progress_bar.add_task(
+                "[yellow] Host compilation ", total=10, command="starting"
+            )
 
             if opts.airbin:
                 file_airbin = self.prepend_tmp("air.bin")
@@ -966,12 +983,11 @@ class FlowRunner:
                 memory_allocator,
                 "-I" + xaiengine_include_path,
                 "-L" + xaiengine_lib_path,
-                "-L" + os.path.join(opts.aietools_path, "lib", "lnx64.o"),
                 "-Wl,-R" + xaiengine_lib_path,
                 "-I" + self.tmpdirname,
                 "-fuse-ld=lld",
                 "-lm",
-                "-lxaiengine",
+                "-lxaienginecdo",
             ]
             # Linking against HSA
             if opts.link_against_hsa:
@@ -984,10 +1000,8 @@ class FlowRunner:
             if len(opts.host_args) > 0:
                 await self.do_call(task, cmd + opts.host_args)
 
-            if opts.progress:
-                self.progress_bar.update(self.progress_bar.task_completed, advance=1)
-                if task:
-                    self.progress_bar.update(task, advance=0, visible=False)
+            self.progress_bar.update(self.progress_bar.task_completed, advance=1)
+            self.progress_bar.update(task, advance=0, visible=False)
 
     async def gen_sim(self, task, aie_target, file_physical):
         # For simulation, we need to additionally parse the 'remaining' options to avoid things
@@ -1039,7 +1053,12 @@ class FlowRunner:
         memory_allocator = os.path.join(
             runtime_testlib_path, "libmemory_allocator_sim_aie.a"
         )
-
+        # Getting a pointer to the libxaie include and library
+        runtime_xaiengine_path = os.path.join(
+            install_path, "runtime_lib", arch_name, "xaiengine"
+        )
+        xaiengine_include_path = os.path.join(runtime_xaiengine_path, "include")
+        xaiengine_lib_path = os.path.join(runtime_xaiengine_path, "lib")
         sim_cc_args = [
             "-fPIC",
             "-flto",
@@ -1055,7 +1074,7 @@ class FlowRunner:
             "-Dmain(...)=ps_main(...)",
             "-I" + self.tmpdirname,
             "-I" + opts.aietools_path + "/include",
-            "-I" + opts.aietools_path + "/include/drivers/aiengine",
+            "-I" + xaiengine_include_path,
             "-I" + opts.aietools_path + "/data/osci_systemc/include",
             "-I" + opts.aietools_path + "/include/xtlm/include",
             "-I" + opts.aietools_path + "/include/common_cpp/common_cpp_v1_0/include",
@@ -1063,17 +1082,14 @@ class FlowRunner:
             memory_allocator,
         ]  # clang is picky  # Pickup aie_inc.cpp
 
-        # Don't use shipped version of xaiengine?
         sim_link_args = [
+            "-L" + xaiengine_lib_path,
+            "-lxaienginecdo",
             "-L" + opts.aietools_path + "/lib/lnx64.o",
             "-L" + opts.aietools_path + "/data/osci_systemc/lib/lnx64",
             "-Wl,--as-needed",
-            "-lxioutils",
-            "-lxaiengine",
-            "-ladf_api",
             "-lsystemc",
             "-lxtlm",
-            "-flto",
         ]
 
         processes = []
@@ -1194,33 +1210,18 @@ class FlowRunner:
             progress.TextColumn("{task.fields[command]}"),
             redirect_stdout=False,
             redirect_stderr=False,
+            disable=not opts.progress,
         ) as progress_bar:
             self.progress_bar = progress_bar
-            if opts.progress:
-                progress_bar.task = progress_bar.add_task(
-                    "[green] MLIR compilation:", total=1, command="1 Worker"
-                )
-            else:
-                progress_bar.task = None
-
-            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
-                opts.alloc_scheme, opts.dynamic_objFifos, opts.ctrl_pkt_overlay
-            ).materialize(module=True)
-
-            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            run_passes(
-                pass_pipeline,
-                self.mlir_module_str,
-                file_with_addresses,
-                self.opts.verbose,
+            progress_bar.task = progress_bar.add_task(
+                "[green] MLIR compilation:", total=1, command="1 Worker"
             )
 
-            cores = generate_cores_list(await read_file_async(file_with_addresses))
             t = do_run(
                 [
                     "aie-translate",
                     "--aie-generate-target-arch",
-                    file_with_addresses,
+                    opts.filename,
                 ],
                 self.opts.verbose,
             )
@@ -1232,6 +1233,24 @@ class FlowRunner:
                 )
                 exit(-3)
             aie_peano_target = aie_target.lower() + "-none-unknown-elf"
+
+            pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
+                opts.alloc_scheme,
+                opts.dynamic_objFifos,
+                opts.packet_sw_objFifos,
+                opts.ctrl_pkt_overlay,
+                aie_target,
+            ).materialize(module=True)
+
+            file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
+            run_passes(
+                pass_pipeline,
+                self.mlir_module_str,
+                file_with_addresses,
+                self.opts.verbose,
+            )
+
+            cores = generate_cores_list(await read_file_async(file_with_addresses))
 
             # Optionally generate insts.txt for NPU instruction stream
             if opts.npu:
@@ -1276,13 +1295,12 @@ class FlowRunner:
                     await self.do_call(progress_bar.task, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", self.unified_file_core_obj])
             # fmt: on
 
-            if opts.progress:
-                progress_bar.update(progress_bar.task, advance=0, visible=False)
-                progress_bar.task_completed = progress_bar.add_task(
-                    "[green] AIE Compilation:",
-                    total=len(cores) + 1,
-                    command="%d Workers" % nworkers,
-                )
+            progress_bar.update(progress_bar.task, advance=0, visible=False)
+            progress_bar.task_completed = progress_bar.add_task(
+                "[green] AIE Compilation:",
+                total=len(cores) + 1,
+                command="%d Workers" % nworkers,
+            )
 
             input_physical = self.prepend_tmp("input_physical.mlir")
             processes = [
@@ -1445,6 +1463,13 @@ def run(mlir_module, args=None):
         pass
     if opts.verbose:
         print("created temporary directory", tmpdirname)
+
+    # Create a temporary file holding the input ir, if opts.filename is None.
+    if opts.filename == None:
+        tmpinput_path = os.path.join(tmpdirname, "tmpinput.mlir")
+        with open(tmpinput_path, "w") as f:
+            f.write(str(mlir_module))
+        opts.filename = tmpinput_path
 
     runner = FlowRunner(str(mlir_module), opts, tmpdirname)
     asyncio.run(runner.run_flow())

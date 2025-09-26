@@ -5,22 +5,14 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import argparse
-from ml_dtypes import bfloat16
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 
-dtype_map = {
-    "bf16": bfloat16,
-    "i8": np.int8,
-    "i16": np.int16,
-    "f32": np.float32,
-    "i32": np.int32,
-}
 
 microkernel_mac_dim_map = {
     "npu": {
@@ -38,6 +30,7 @@ microkernel_mac_dim_map = {
         "i16": (4, 4, 8),
     },
 }
+
 
 def main():
     argparser = argparse.ArgumentParser(
@@ -110,7 +103,7 @@ def my_matmul(
     dtype_out_str,
     b_col_maj,
     emulate_bf16_mmul_with_bfp16,
-    trace_size,   
+    trace_size,
     generate_taps=False,
 ):
 
@@ -132,8 +125,8 @@ def my_matmul(
     vectorized = True
     enable_tracing = True if trace_size > 0 else False
 
-    dtype_in = dtype_map[dtype_in_str]
-    dtype_out = dtype_map[dtype_out_str]
+    dtype_in = str_to_dtype(dtype_in_str)
+    dtype_out = str_to_dtype(dtype_out_str)
 
     assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
         dtype_out, np.integer
@@ -215,7 +208,9 @@ def my_matmul(
 
     # Create worker from task
     worker = Worker(
-        core_fn, [memA.cons(), memB.cons(), memC.prod(), zero_kernel, matmul_kernel], stack_size=0xD00
+        core_fn,
+        [memA.cons(), memB.cons(), memC.prod(), zero_kernel, matmul_kernel],
+        stack_size=0xD00,
     )
 
     # only do 4 tile rows at a time before synchronizing, so we can reuse BDs

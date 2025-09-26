@@ -21,7 +21,6 @@
 // CHECK:             %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_7_2, 0) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
 // CHECK:             %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_7_2, 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
 // CHECK:             %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_7_2, 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}
-// CHECK:             %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_7_0, 0) {init = 0 : i32, sym_name = "ext_of_lock_0"}
 // CHECK:             aie.flow(%{{.*}}tile_7_0, DMA : 0, %{{.*}}tile_7_2, DMA : 0)
 // CHECK:             aie.shim_dma_allocation @ext_of(MM2S, 0, 7)
 // CHECK:             %mem_7_2 = aie.mem(%{{.*}}tile_7_2) {

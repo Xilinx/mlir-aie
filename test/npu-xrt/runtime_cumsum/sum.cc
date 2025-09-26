@@ -18,8 +18,8 @@
 
 template <typename T>
 void zero_vectorized(T *__restrict c) {
-    const aie::vector<T, 16> zeros = aie::zeros<T, 16>();
-    aie::store_v(c, zeros);
+  const aie::vector<T, 16> zeros = aie::zeros<T, 16>();
+  aie::store_v(c, zeros);
 }
 
 void sum_kernel(int32_t *a, int32_t *c) {
@@ -34,12 +34,8 @@ void sum_kernel(int32_t *a, int32_t *c) {
 }
 extern "C" {
 
-void sum(int32_t *a, int32_t *c) {
-    sum_kernel(a, c);
-}
+void sum(int32_t *a, int32_t *c) { sum_kernel(a, c); }
 
-void zero(int32_t *restrict c) {
-    zero_vectorized<int32_t>(c);
-}
+void zero(int32_t *restrict c) { zero_vectorized<int32_t>(c); }
 
 } // extern "C"

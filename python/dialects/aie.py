@@ -116,15 +116,16 @@ def bd_pad_layout(const_pad_before, const_pad_after):
     return Attribute.parse(
         f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>"
     )
-    
-    
+
+
 @register_attribute_builder("PacketInfoAttr")
-def bd_dim_layout_array_attr_builder(tups: Tuple[int] | List[int], context=None):
+def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
     assert (isinstance(tups, list) or isinstance(tups, Tuple)) and len(tups) == 2
     return Attribute.parse(
-        f'#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>', context=context
+        f"#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>", context=context
     )
-          
+
+
 @register_attribute_builder("BDDimLayoutArrayAttr")
 def bd_dim_layout_array_attr_builder(tups: List[Attribute | Tuple[int]], context=None):
     if isinstance(tups, list) and all(isinstance(t, tuple) for t in tups):
@@ -472,14 +473,8 @@ class object_fifo(ObjectFifoCreateOp):
     def release(self, port, num_elem):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
-    def set_via_shared_mem(self, port):
-        num = 0
-        if port == ObjectFifoPort.Produce:
-            num = 0
-        elif port == ObjectFifoPort.Consume:
-            num = 1
-        int_num = IntegerAttr.get(T.i32(), num)
-        self.attributes["via_shared_mem"] = int_num
+    def allocate(self, tile):
+        return objectfifo_allocate(self.sym_name.value, tile)
 
     def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
@@ -518,17 +513,17 @@ class packetflow(PacketFlowOp):
         source,
         source_port,
         source_channel,
-        dest,
-        dest_port,
-        dest_channel,
+        dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
     ):
         super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
-            src = PacketSourceOp(source, source_port, source_channel)
-            dest = PacketDestOp(dest, dest_port, dest_channel)
-            end = EndOp()
+            PacketSourceOp(source, source_port, source_channel)
+            dests = [dests] if isinstance(dests, dict) else dests
+            for dest in dests:
+                PacketDestOp(dest["dest"], dest["port"], dest["channel"])
+            EndOp()
 
 
 core = region_op(Core, terminator=lambda *_: EndOp())

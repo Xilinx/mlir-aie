@@ -2,8 +2,8 @@
 
 //CHECK-LABEL: func.func @conv2d(%arg0: memref<128xi32>, %arg1: memref<8xi32>, %arg2: memref<126xi32>) {
 func.func @conv2d (%A: memref<128xi32>, %B: memref<8xi32>, %C: memref<126xi32>) {
-    //CHECK-NEXT: %c0 = arith.constant 0 : index
     //CHECK-NEXT: %c0_i32 = arith.constant 0 : i32
+    //CHECK-NEXT: %c0 = arith.constant 0 : index
     //CHECK-NEXT: %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<8xi32>, vector<8xi32>
     //CHECK-NEXT: %c0_0 = arith.constant 0 : index
     //CHECK-NEXT: %c126 = arith.constant 126 : index

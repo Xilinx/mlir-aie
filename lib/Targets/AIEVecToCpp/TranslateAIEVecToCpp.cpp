@@ -2165,7 +2165,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 // Generate the transfer write op
 static LogicalResult printOperation(CppEmitter &emitter,
                                     vector::TransferWriteOp writeOp) {
-  Value source = writeOp.getSource();
+  Value source = writeOp.getBase();
   Value vector = writeOp.getVector();
 
   // If the aray, or the vector being outputted is not already emitted,

@@ -43,7 +43,7 @@ class ObjectFifo(Resolvable):
         depth: int | None = 2,
         name: str | None = None,
         dims_to_stream: list[Sequence[int]] | None = None,
-        default_dims_from_stream_per_cons: list[Sequence[int]] | None = None,
+        dims_from_stream_per_cons: list[Sequence[int]] | None = None,
         plio: bool = False,
     ):
         """Construct an ObjectFifo.
@@ -53,7 +53,7 @@ class ObjectFifo(Resolvable):
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated.. Defaults to None.
             dims_to_stream (list[Sequence[int]] | None, optional): _description_. Defaults to None.
-            default_dims_from_stream_per_cons (list[Sequence[int]] | None, optional): _description_. Defaults to None.
+            dims_from_stream_per_cons (list[Sequence[int]] | None, optional): _description_. Defaults to None.
             plio (bool, optional): _description_. Defaults to False.
 
         Raises:
@@ -66,7 +66,7 @@ class ObjectFifo(Resolvable):
             )
         self._obj_type = obj_type
         self._dims_to_stream = dims_to_stream
-        self._default_dims_from_stream_per_cons = default_dims_from_stream_per_cons
+        self._dims_from_stream_per_cons = dims_from_stream_per_cons
         self._plio = plio
         self._runtime_dmas = None
         if name is None:
@@ -94,9 +94,9 @@ class ObjectFifo(Resolvable):
         return self._depth
 
     @property
-    def default_dims_from_stream_per_cons(self) -> list[Sequence[int]]:
+    def dims_from_stream_per_cons(self) -> list[Sequence[int]]:
         """The default dimensions from stream per consumer value. This may be overriden by an ObjectFifoHandle of type consumer."""
-        return self._default_dims_from_stream_per_cons
+        return self._dims_from_stream_per_cons
 
     @property
     def dims_to_stream(self) -> list[Sequence[int]]:
@@ -185,7 +185,7 @@ class ObjectFifo(Resolvable):
                 depth = self._depth
 
         if dims_from_stream is None:
-            dims_from_stream = self._default_dims_from_stream_per_cons
+            dims_from_stream = self._dims_from_stream_per_cons
         self._cons.append(
             ObjectFifoHandle(
                 self, is_prod=False, depth=depth, dims_from_stream=dims_from_stream
@@ -332,7 +332,7 @@ class ObjectFifoHandle(Resolvable):
         if is_prod and dims_from_stream:
             raise ValueError("Can only specify dims_from_stream for cons handles")
         elif not is_prod and not dims_from_stream:
-            dims_from_stream = of.default_dims_from_stream_per_cons
+            dims_from_stream = of.dims_from_stream_per_cons
 
         self._is_prod = is_prod
         self._object_fifo = of
@@ -608,7 +608,7 @@ class ObjectFifoHandle(Resolvable):
                     name=names[i],
                     depth=depths[i],
                     dims_to_stream=dims_to_stream[i],
-                    default_dims_from_stream_per_cons=dims_from_stream[i],
+                    dims_from_stream_per_cons=dims_from_stream[i],
                     plio=plio,
                 )
             )

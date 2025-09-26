@@ -10,8 +10,7 @@
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
-
+cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -53,8 +52,7 @@ target_compile_definitions(${currentTarget} PUBLIC
     IN1_SIZE=${IN1_SIZE}
     OUT_SIZE=${OUT_SIZE}
     DTYPE=${DTYPE}
-    DISABLE_ABI_CHECK=1
-        )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils

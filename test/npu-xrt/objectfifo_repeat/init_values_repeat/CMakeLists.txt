@@ -10,8 +10,7 @@
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
-
+cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -42,8 +41,6 @@ add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
-
-target_compile_definitions(${currentTarget} PUBLIC DISABLE_ABI_CHECK=1)
 
 target_include_directories (${currentTarget} PUBLIC
     ${XRT_INC_DIR}

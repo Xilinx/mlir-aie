@@ -26,8 +26,6 @@ This design implements a `bfloat16` based ReLU on a vector, performed in paralle
 
 1. `relu.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
-1. `relu_placed.py`: An alternative version of the design in `relu.py`, that is expressed in a lower-level version of IRON.
-
 1. `relu.cc`: A C++ implementation of a vectorized ReLU operation for AIE cores, which is a 1:1 implementation of the inherent function using low-level intrinsics.  The AIE2 allows an element-wise max of 32 `bfloat16` numbers against a second vector register containing all zeros, implementing the $ReLU(x) = max(0,x)$ function directly.   The source can be found [here](../../../aie_kernels/aie2/relu.cc).
 
 1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
@@ -42,18 +40,7 @@ To compile the design and C++ testbench:
 make
 ```
 
-To compile for the placed design:
-
-```shell
-env use_placed=1 make
-```
-
 To run the design:
 ```shell
 make run
-```
-
-To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
-```shell
-env use_placed=1 make trace
 ```

@@ -59,6 +59,6 @@ bool aieTypeIsBlockFloatType(MlirType type) {
   return llvm::isa<xilinx::AIEX::BlockFloatType>(unwrap(type));
 }
 
-MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string& blockType) {
+MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string &blockType) {
   return wrap(xilinx::AIEX::BlockFloatType::get(unwrap(ctx), blockType));
 }

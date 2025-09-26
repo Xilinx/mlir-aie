@@ -1182,7 +1182,7 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
 }
 
 def AIE_LockOp: AIE_Op<"lock", [
-    TileElement, Pure,
+    TileElement,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let summary = "Declare a physical lock";
@@ -1543,7 +1543,7 @@ def AIE_ConfigureCascadeOp: AIE_Op<"configure_cascade", [HasParent<"DeviceOp">]>
   let assemblyFormat = [{ `(` $tile `,` $inputDir `,` $outputDir `)` attr-dict }];
 }
 
-def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(outs AnyType:$cascade_value)> {
+def AIE_GetCascadeOp: AIE_Op<"get_cascade", []>, Results<(outs AnyType:$cascade_value)> {
   let summary = "An op to read from a cascading stream from a neighboring core";
   let description = [{
     An op to read from a cascading stream from a neighboring core.
@@ -1554,7 +1554,7 @@ def AIE_GetCascadeOp: AIE_Op<"get_cascade", [HasParent<"CoreOp">]>, Results<(out
   let assemblyFormat = [{ `(` `)` attr-dict `:` type($cascade_value) }];
 }
 
-def AIE_PutCascadeOp: AIE_Op<"put_cascade", [HasParent<"CoreOp">]> {
+def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
   let summary = "An op to write to a cascading stream from a neighboring core";
   let description = [{
     An op to write to a cascading stream from a neighboring core.
@@ -1596,18 +1596,29 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
         AIEI64Attr:$channel_index,
         AIEI64Attr:$col,
         // If this is set we are using the PLIO in this ShimTile
-        DefaultValuedAttr<BoolAttr, "false">:$plio
+        DefaultValuedAttr<BoolAttr, "false">:$plio,
+        OptionalAttr<PacketInfoAttr>:$packet
   );
 
   let results = (outs);
 
   let assemblyFormat = [{
-    $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
+    $sym_name `(` $channel_dir `,` $channel_index `,` $col (`,` $packet^)? `)` attr-dict
   }];
 
   let extraClassDeclaration = [{
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
+
+  let builders = [
+    OpBuilder<(ins "mlir::StringRef":$sym_name, "DMAChannelDir":$dir, "int":$channel_index,
+               "int":$col, "bool":$plio), [{
+      build($_builder, $_state, ::mlir::SymbolRefAttr::get(odsBuilder.getContext(), sym_name), 
+            DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
+            $_builder.getI64IntegerAttr(channel_index), 
+            $_builder.getI64IntegerAttr(col), $_builder.getBoolAttr(plio), nullptr);
+    }]>
+  ];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
@@ -1701,9 +1712,6 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // disable_synchronization==true will skip lock generation for
         // objectfifo synchronous accesses
         DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
-        // via_shared_mem==0 means use producer tile's memory module
-        // via_shared_mem==1 means use consumer tile's memory module
-        OptionalAttr<AIEI32Attr>:$via_shared_mem,
         // repeat_count==1 means "do it once"
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
         OptionalAttr<BoolAttr>:$runtimeDmas,
@@ -1763,10 +1771,43 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
   ];
 }
 
+def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp">]> {
+  let summary = "Sets a tile's memory module as the target for an objectfifo's memory allocation";
+  let description = [{
+    Specify a tile's memory module to be used as the allocation target for this objectfifo.
+    Only works if all the objectfifo's tiles, producer and consumers, have shared memory access to
+    the specified tile's memory module.
+
+    In the following example the objects of @of4 will be allocated on %tile14:
+    ```
+      aie.objectfifo @of4 (%tile13, {%tile14}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+      aie.objectfifo.allocate @of4 (%tile14)
+    ```
+  }];
+
+  let arguments = (
+    ins FlatSymbolRefAttr:$objFifo_name,
+        Index:$delegateTile
+  );
+
+  let hasCustomAssemblyFormat = 1;
+
+  let assemblyFormat = [{
+    $objFifo_name `(` $delegateTile `)` attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    ObjectFifoCreateOp getObjectFifo();
+    TileOp getDelegateTileOp();
+  }];
+}
+
 def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
   let summary = "Links two objectFifos through an intermediary tile's DMA";
   let description = [{
-    The `aie.objectFifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
+    The `aie.objectfifo.link` operation marks two or more `objectFifos` as linked. This implies that the `objectFifos` form
     one dataflow movement which is split accross multiple `objectFifos`. Specifically, during the `objectFifo` lowering there will
     be less memory elements generated at the link point (i.e., the shared tile of all `objectFifos` in the link) as the `objectFifos` can share.
 
@@ -1959,11 +2000,6 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let assemblyFormat = [{
     $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
   }];
-
-  // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
-  let builders = [
-    OpBuilder<(ins "mlir::Value":$subview, "size_t":$index)>
-  ];
 }
 
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {

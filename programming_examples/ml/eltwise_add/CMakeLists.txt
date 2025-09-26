@@ -10,8 +10,7 @@
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
-
+cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -27,9 +26,6 @@ else()
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
 endif()
 
-set(IN1_SIZE 131072 CACHE STRING "in1 buffer size")
-set(IN2_SIZE 131072 CACHE STRING "in2 buffer size")
-set(OUT_SIZE 131072 CACHE STRING "out buffer size")
 set(TARGET_NAME test CACHE STRING "Target to be built")
 
 SET (ProjectName ${TARGET_NAME})
@@ -42,18 +38,10 @@ endif ()
 
 project(${ProjectName})
 
-
 add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
-
-target_compile_definitions(${currentTarget} PUBLIC
-    IN1_SIZE=${IN1_SIZE}
-    IN2_SIZE=${IN2_SIZE}
-    OUT_SIZE=${OUT_SIZE}
-    DISABLE_ABI_CHECK=1
-    )
 
 target_include_directories (${currentTarget} PUBLIC
     ${XRT_INC_DIR}

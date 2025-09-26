@@ -18,6 +18,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
@@ -520,6 +521,7 @@ void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
   LongestConvMACChainAnalysis::am = &am;
   target.addLegalDialect<AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
+  target.addLegalDialect<ub::UBDialect>();
   target.addDynamicallyLegalOp<arith::AddIOp>([&am](arith::AddIOp op) {
     auto &convAnalysis = am.getChildAnalysis<LongestConvMACChainAnalysis>(op);
     return !convAnalysis.canChainBeReplacedWithConvOps();

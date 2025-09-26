@@ -63,7 +63,8 @@ public:
     TK_AIE2_NPU1_1Col,
     TK_AIE2_NPU1_2Col,
     TK_AIE2_NPU1_3Col,
-    TK_AIE2_NPU1_4Col, // whole array must be last because of how we cast/initialize the VirtualizedNPU1TargetModel class
+    TK_AIE2_NPU1_4Col, // whole array must be last because of how we
+                       // cast/initialize the VirtualizedNPU1TargetModel class
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2_1Col,
@@ -270,6 +271,10 @@ public:
   virtual uint32_t getMemTileSize() const = 0;
   /// Return the number of memory banks of a given tile.
   virtual uint32_t getNumBanks(int col, int row) const = 0;
+
+  virtual uint32_t getMaxChannelNumForAdjacentMemTile(int col,
+                                                      int row) const = 0;
+
   /// Return the number of destinations of connections inside a switchbox. These
   /// are the targets of connect operations in the switchbox.
   virtual uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -382,6 +387,10 @@ public:
   uint32_t getMemTileSize() const override { return 0; }
   uint32_t getNumBanks(int col, int row) const override { return 4; }
 
+  uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
+    return 0;
+  }
+
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
   uint32_t getNumSourceSwitchboxConnections(int col, int row,
@@ -482,6 +491,10 @@ public:
 
   uint32_t getNumBanks(int col, int row) const override {
     return isMemTile(col, row) ? 8 : 4;
+  }
+
+  uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
+    return 4;
   }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -647,7 +660,8 @@ class VirtualizedNPU1TargetModel : public BaseNPU1TargetModel {
 public:
   VirtualizedNPU1TargetModel(int _cols)
       : BaseNPU1TargetModel(static_cast<TargetModelKind>(
-            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1_1Col) +
+            static_cast<std::underlying_type_t<TargetModelKind>>(
+                TK_AIE2_NPU1_1Col) +
             _cols - 1)),
         cols(_cols) {
     // Device properties initialization

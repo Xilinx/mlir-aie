@@ -23,7 +23,12 @@ class Tensor:
     def __repr__(self):
         """
         Return a string representation of the tensor.
+
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
+        to ensure the string representation reflects the current device state.
         """
+        if self.device == "npu":
+            self.__sync_from_device()
         array_str = np.array2string(self.data, separator=",")
         return f"tensor({array_str}, device='{self.device}')"
 
@@ -72,7 +77,8 @@ class Tensor:
 
         if not isinstance(shape_or_data, tuple):
             np.copyto(self.data, np_data)
-            self.__sync_to_device()
+            if self.device == "npu":
+                self.__sync_to_device()
 
     def __array__(self, dtype=None):
         """
@@ -86,8 +92,12 @@ class Tensor:
 
         Returns:
             np.ndarray: A NumPy array containing the tensor's data.
+
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
+        to ensure the returned array reflects the current device state.
         """
-        self.__sync_from_device()
+        if self.device == "npu":
+            self.__sync_from_device()
         if dtype:
             return self.data.astype(dtype)
         return self.data
@@ -101,7 +111,12 @@ class Tensor:
 
         Returns:
             The value at the specified index.
+
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
+        to ensure the retrieved value reflects the current device state.
         """
+        if self.device == "npu":
+            self.__sync_from_device()
         return self.data[index]
 
     def __setitem__(self, index, value):
@@ -111,8 +126,16 @@ class Tensor:
         Parameters:
             index (int): The index of the value to set.
             value: The new value to assign.
+
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
+        before modification and back to device after modification to ensure
+        data consistency across device and host memory.
         """
+        if self.device == "npu":
+            self.__sync_from_device()
         self.data[index] = value
+        if self.device == "npu":
+            self.__sync_to_device()
 
     def to(self, target_device: str):
         """
@@ -124,12 +147,13 @@ class Tensor:
         Returns:
            The tensor object on the target device.
         """
-
         if target_device == "npu":
             self.__sync_to_device()
+            self.device = "npu"
             return self
         elif target_device == "cpu":
             self.__sync_from_device()
+            self.device = "cpu"
             return self
         else:
             raise ValueError(f"Unknown device '{target_device}'")
@@ -164,9 +188,26 @@ class Tensor:
 
         Returns:
             np.ndarray: The tensor's data as a NumPy array.
+
+        Note: For NPU tensors, this method causes implicit data synchronization from device to host
+        to ensure the returned array reflects the current device state.
         """
-        self.__sync_from_device()
+        if self.device == "npu":
+            self.__sync_from_device()
         return self.data
+
+    def fill_(self, value):
+        """
+        Fills the tensor with a scalar value (in-place operation).
+
+        Parameters:
+            value: The scalar value to fill the tensor with.
+
+        Note: For NPU tensors, this method syncs the filled data to device after modification.
+        """
+        self.data.fill(value)
+        if self.device == "npu":
+            self.__sync_to_device()
 
     @staticmethod
     def _ctype_from_dtype(dtype):
@@ -443,8 +484,9 @@ class Tensor:
 
         Releases associated device memory (e.g., XRT buffer object).
         """
-        del self.bo
-        self.bo = None
+        if hasattr(self, "bo"):
+            del self.bo
+            self.bo = None
 
 
 def tensor(data, dtype=np.float32, device="npu"):

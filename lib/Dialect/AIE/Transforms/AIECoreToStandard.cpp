@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
@@ -18,6 +19,7 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
@@ -317,7 +319,20 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    args.push_back(op.getCascadeValue());
+    Value cascadeValue = op.getCascadeValue();
+
+    // Check if we need a bitcast for the input value
+    Type expectedInputType = putMCDFunc.getFunctionType().getInput(0);
+    Type actualInputType = cascadeValue.getType();
+
+    if (expectedInputType != actualInputType) {
+      // Create a bitcast operation to convert from actual input type to
+      // expected type
+      cascadeValue = rewriter.create<vector::BitCastOp>(
+          op.getLoc(), expectedInputType, cascadeValue);
+    }
+
+    args.push_back(cascadeValue);
     if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
@@ -361,7 +376,20 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
 
     auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                     getSCDFunc, args);
-    rewriter.replaceOp(op, getSCDCall.getResult(0));
+    Value result = getSCDCall.getResult(0);
+
+    // Check if we need a bitcast
+    Type expectedType = op.getResult().getType();
+    Type intrinsicReturnType = result.getType();
+
+    if (expectedType != intrinsicReturnType) {
+      // Create a bitcast operation to convert from intrinsic return type to
+      // expected type
+      result =
+          rewriter.create<vector::BitCastOp>(op.getLoc(), expectedType, result);
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
@@ -595,7 +623,9 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     target.addLegalDialect<cf::ControlFlowDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
     target.addLegalDialect<VectorDialect>();
+    target.addLegalDialect<aievec::AIEVecDialect>();
     target.addLegalDialect<arith::ArithDialect>();
+    target.addLegalDialect<ub::UBDialect>();
     target.addLegalDialect<math::MathDialect>();
     target.addLegalDialect<index::IndexDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();

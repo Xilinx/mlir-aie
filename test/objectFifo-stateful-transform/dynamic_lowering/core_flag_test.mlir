@@ -10,8 +10,6 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK:     %[[VAL_0:.*]] = aie.lock(%{{.*}}tile_0_0, 6) {init = 1 : i32, sym_name = "output_fifo2_cons_prod_lock_0"}
-// CHECK:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_0, 7) {init = 0 : i32, sym_name = "output_fifo2_cons_cons_lock_0"}
 // CHECK:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_0_4) {sym_name = "output_fifo2_buff_0"} : memref<10xi32> 
 // CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_0_4) {sym_name = "output_fifo2_buff_1"} : memref<10xi32> 
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_0_4, 2) {init = 2 : i32, sym_name = "output_fifo2_prod_lock_0"}
@@ -20,10 +18,6 @@
 // CHECK:     %[[VAL_7:.*]] = aie.buffer(%{{.*}}tile_0_4) {sym_name = "input_fifo2_cons_buff_1"} : memref<10xi32> 
 // CHECK:     %[[VAL_8:.*]] = aie.lock(%{{.*}}tile_0_4, 0) {init = 2 : i32, sym_name = "input_fifo2_cons_prod_lock_0"}
 // CHECK:     %[[VAL_9:.*]] = aie.lock(%{{.*}}tile_0_4, 1) {init = 0 : i32, sym_name = "input_fifo2_cons_cons_lock_0"}
-// CHECK:     %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_0_0, 4) {init = 1 : i32, sym_name = "input_fifo2_prod_lock_0"}
-// CHECK:     %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_0_0, 5) {init = 0 : i32, sym_name = "input_fifo2_cons_lock_0"}
-// CHECK:     %[[VAL_12:.*]] = aie.lock(%{{.*}}tile_0_0, 2) {init = 1 : i32, sym_name = "output_fifo_cons_prod_lock_0"}
-// CHECK:     %[[VAL_13:.*]] = aie.lock(%{{.*}}tile_0_0, 3) {init = 0 : i32, sym_name = "output_fifo_cons_cons_lock_0"}
 // CHECK:     %[[VAL_14:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "output_fifo_buff_0"} : memref<10xi32> 
 // CHECK:     %[[VAL_15:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "output_fifo_buff_1"} : memref<10xi32> 
 // CHECK:     %[[VAL_16:.*]] = aie.lock(%{{.*}}tile_0_2, 2) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
@@ -32,8 +26,6 @@
 // CHECK:     %[[VAL_19:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "input_fifo_cons_buff_1"} : memref<10xi32> 
 // CHECK:     %[[VAL_20:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 2 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
 // CHECK:     %[[VAL_21:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
-// CHECK:     %[[VAL_22:.*]] = aie.lock(%{{.*}}tile_0_0, 0) {init = 1 : i32, sym_name = "input_fifo_prod_lock_0"}
-// CHECK:     %[[VAL_23:.*]] = aie.lock(%{{.*}}tile_0_0, 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock_0"}
 // CHECK:     aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}tile_0_0, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_0_0, DMA : 1, %{{.*}}tile_0_4, DMA : 0)

@@ -16,14 +16,8 @@ all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = eltwise_mul
-trace_size = 8192
 
 aie_py_src=${targetname}.py
-use_placed?=0
-
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
 
 VPATH := ${srcdir}/../../../aie_kernels/aie2
 
@@ -39,11 +33,7 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} 0 > $@
-
-build/aie_trace.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} ${trace_size} > $@
+	python3 $< ${devicename} > $@
 
 build/final.xclbin: build/aie.mlir build/mul.o
 	mkdir -p ${@D}
@@ -73,9 +63,9 @@ run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 trace: ${targetname}.exe build/final_trace.xclbin
-	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_eltwise_mul.json
-	${srcdir}/../../utils/get_trace_summary.py --input trace_eltwise_mul.json
+	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE 
+	${srcdir}/../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_eltwise_mul.json
+	${srcdir}/../../../python/utils/get_trace_summary.py --input trace_eltwise_mul.json
 
 clean:
 	rm -rf build _build ${targetname}.exe

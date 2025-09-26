@@ -142,10 +142,7 @@ if config.xrt_lib_dir:
         config.xrt_include_dir, config.xrt_lib_dir
     )
     try:
-        # xbutil is deprecated/renamed to xrt-smi, leaving it xbutil for now for
-        # compatibility with older versions of XRT
-        # xrtsmi = os.path.join(config.xrt_bin_dir, "xrt-smi")
-        xrtsmi = os.path.join(config.xrt_bin_dir, "xbutil")
+        xrtsmi = os.path.join(config.xrt_bin_dir, "xrt-smi")
         result = subprocess.run(
             [xrtsmi, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
@@ -257,6 +254,8 @@ try:
     if re.search("Xilinx AI Engine", result.stdout.decode("utf-8")) is not None:
         config.available_features.add("peano")
         config.substitutions.append(("%PEANO_INSTALL_DIR", config.peano_install_dir))
+        # Also set the environment variable for tests that need it
+        llvm_config.with_environment("PEANO_INSTALL_DIR", config.peano_install_dir)
         print("Peano found: " + os.path.join(peano_tools_dir, "llc"))
         tool_dirs.append(os.path.join(peano_tools_dir, "bin"))
     else:

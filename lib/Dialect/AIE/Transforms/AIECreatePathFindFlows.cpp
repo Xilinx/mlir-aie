@@ -157,8 +157,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         }
       }
 
-      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | "
-                              << "\n");
+      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | " << "\n");
     }
 
     LLVM_DEBUG(llvm::dbgs()
@@ -691,14 +690,14 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
     LLVM_DEBUG(llvm::dbgs()
                << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
                << channel << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "Mask "
-                            << "0x" << llvm::Twine::utohexstr(mask) << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "ID "
-                            << "0x" << llvm::Twine::utohexstr(ID) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "Mask " << "0x" << llvm::Twine::utohexstr(mask) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "ID " << "0x" << llvm::Twine::utohexstr(ID) << '\n');
     for (int i = 0; i < 31; i++) {
       if ((i & mask) == (ID & mask))
-        LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
-                                << "0x" << llvm::Twine::utohexstr(i) << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "matches flow ID " << "0x"
+                                << llvm::Twine::utohexstr(i) << '\n');
     }
   }
 #endif

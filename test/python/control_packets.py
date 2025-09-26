@@ -21,12 +21,18 @@ def gen_cp_sequence():
         @device(AIEDevice.npu1)
         def device_body():
             params = []
+            t = tile(0, 0)
+            t.attributes["controller_id"] = aiex.AttrBuilder.get("PacketInfoAttr")(
+                [2, 3]
+            )
 
             @aiex.runtime_sequence(*params)
             def sequence(*args):
+                # CHECK: 00002003
                 # CHECK: 0001F000
                 # CHECK: 00000002
                 aiex.control_packet(address=0x0001F000, opcode=0, stream_id=0, data=[2])
+                # CHECK: 00002003
                 # CHECK: 09B1F020
                 # CHECK: 00000003
                 # CHECK: 00000004
@@ -35,6 +41,7 @@ def gen_cp_sequence():
                 aiex.control_packet(
                     address=0x0001F020, opcode=2, stream_id=9, data=[3, 4, 5, 6]
                 )
+                # CHECK: 00002003
                 # CHECK: 02700400
                 aiex.control_packet(address=0x00000400, opcode=1, stream_id=2, length=4)
 
@@ -42,6 +49,6 @@ def gen_cp_sequence():
 
 
 aie_module = gen_cp_sequence()
-print(aie_module)
+
 for i in generate_control_packets(aie_module.operation):
     print(f"{i:08X}")

@@ -53,26 +53,3 @@ aie.device(xcve2302) {
    aie.objectfifo @of0 (%tile12, {%tile23}, 2 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[[4, 5], [6, 7]]> : memref<2x2xi32>, 
                                                                                           dense<[[0, 1, 2], [3, 4, 5]]> : memref<2x2xi32>]
 }
-
-// -----
-
-// CHECK: `via_shared_mem` can only be used in 1-to-1 object FIFOs
-
-aie.device(xcve2302) {
-   %tile20 = aie.tile(2, 0)
-   %tile13 = aie.tile(1, 3)
-   %tile23 = aie.tile(2, 3)
-
-   aie.objectfifo @of_0 (%tile20, {%tile13, %tile23}, 2 : i32) {via_shared_mem = 1 : i32} : !aie.objectfifo<memref<16xi32>>
-}
-
-// -----
-
-// CHECK: `via_shared_mem` and `via_DMA` cannot occur together
-
-aie.device(xcve2302) {
-   %tile12 = aie.tile(1, 2)
-   %tile13 = aie.tile(1, 3)
-
-   aie.objectfifo @of_0 (%tile12, {%tile13}, 2 : i32) {via_shared_mem = 1 : i32, via_DMA = true} : !aie.objectfifo<memref<16xi32>>
-}

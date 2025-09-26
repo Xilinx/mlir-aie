@@ -196,7 +196,7 @@ public:
         AIE::PacketInfoAttr controller_id_attr =
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
         uint32_t data = controller_id_attr.getPktId() << 8;
-        uint32_t mask = 0x00000F00;
+        uint32_t mask = 0x00001F00;
         rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset, data, mask,
                                           nullptr, nullptr, nullptr);
       }
@@ -569,8 +569,9 @@ public:
       words[4] |= op.getD1Stride() & 0xfffff;
 
       // DMA_BDX_5
-      // TODO: SIMID, AxCache, AXQoS
-      words[5] = op.getD2Stride() & 0xfffff;
+      // TODO: SIMID, AXQoS
+      words[5] |= (2 & 0xf) << 24; // AXCache = 2 to enable upsizing in NoC
+      words[5] |= op.getD2Stride() & 0xfffff;
 
       // DMA_BDX_6
       words[6] |= (op.getIterationCurrent() & 0x3f) << 26;

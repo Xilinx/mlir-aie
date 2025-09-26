@@ -15,8 +15,9 @@ def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
     output_path: str,
-    compile_args=None,
-    cwd=None,
+    include_dirs: list[str] | None = None,
+    compile_args: list[str] | None = None,
+    cwd: str | None = None,
     verbose=False,
 ):
     """
@@ -28,9 +29,10 @@ def compile_cxx_core_function(
         source_path (str): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
         output_path (str): Output object file path.
-        compile_args (list[str]): Compile arguments to peano.
-        cwd (str): Overrides the current working directory.
-        verbose (bool): Enable verbose output.
+        include_dirs (list[str], optional): List of include directories to add with -I.
+        compile_args (list[str], optional): Additional compile arguments to peano.
+        cwd (str, optional): Overrides the current working directory.
+        verbose (bool): If True, enable verbose output.
     """
     cmd = [
         config.peano_cxx_path(),
@@ -48,10 +50,18 @@ def compile_cxx_core_function(
         "-DNDEBUG",
         f"--target={target_arch}-none-unknown-elf",
     ]
+
+    # Add include directories
+    if include_dirs:
+        for include_dir in include_dirs:
+            cmd.extend(["-I", include_dir])
+
+    # Add additional compile arguments
     if compile_args:
-        cmd = cmd + compile_args
+        cmd.extend(compile_args)
+
     if verbose:
-        print("Executing:", " ".join(cmd))
+        print("Compiling with:", " ".join(cmd))
     ret = subprocess.run(
         cmd,
         cwd=cwd,
@@ -63,40 +73,51 @@ def compile_cxx_core_function(
     if ret.returncode != 0:
         if ret.stderr:
             raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
-        else:
-            raise RuntimeError("[Peano] compilation failed")
+        raise RuntimeError("[Peano] compilation failed")
 
 
-def compile_mlir_module_to_pdi(
-    mlir_module: str, insts_path: str, pdi_path: str, options=None, verbose=False
+def compile_mlir_module(
+    mlir_module: str,
+    insts_path: str | None = None,
+    pdi_path: str | None = None,
+    xclbin_path: str | None = None,
+    verbose=False,
+    work_dir: str | None = None,
+    options=None,
 ):
     """
-    Compile an MLIR module to instruction and PDI files using the aiecc module.
+    Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module.
 
     This function supports only the Peano compiler.
 
     Parameters:
         mlir_module (str): MLIR module to compile.
-        insts_path (str): Path to the instruction binary file.
+        insts_path (str): Path to the instructions binary file.
         pdi_path (str): Path to the PDI file.
+        xclbin_path (str): Path to the xclbin file.
+        verbose (bool): If True, enable verbose output.
+        work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
-        verbose (bool): Enable verbose output.
     """
 
     args = [
-        "--aie-generate-pdi",
-        "--aie-generate-npu-insts",
         "--no-compile-host",
         "--no-xchesscc",
         "--no-xbridge",
         f"--peano={config.peano_install_dir()}",
-        f"--pdi-name={pdi_path}",
-        f"--npu-insts-name={insts_path}",
     ]
+    if insts_path:
+        args.extend(["--aie-generate-npu-insts", f"--npu-insts-name={insts_path}"])
+    if pdi_path:
+        args.extend(["--aie-generate-pdi", f"--pdi-name={pdi_path}"])
+    if xclbin_path:
+        args.extend(["--aie-generate-xclbin", f"--xclbin-name={xclbin_path}"])
+    if work_dir:
+        args.append(f"--tmpdir={work_dir}")
     if verbose:
-        args = args + ["--verbose"]
+        args.append("--verbose")
     if options:
-        args = args + options
+        args.extend(options)
     try:
         aiecc.run(mlir_module, args)
     except Exception as e:

@@ -10,3 +10,5 @@
 // RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 // RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.elf
 // RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.elf
+// RUN: %run_on_npu1% %python %S/test.py -x aie.xclbin -k MLIR_AIE -i insts.elf
+// RUN: %run_on_npu2% %python %S/test.py -x aie.xclbin -k MLIR_AIE -i insts.elf

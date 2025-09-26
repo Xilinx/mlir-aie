@@ -3,24 +3,16 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc. or its affiliates
 import argparse
-from ml_dtypes import bfloat16
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU1Col2, NPU1, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
 
-dtype_map = {
-    "bf16": bfloat16,
-    "i8": np.int8,
-    "i16": np.int16,
-    "f32": np.float32,
-    "i32": np.int32,
-}
 
 microkernel_mac_dim_map = {
     "npu": {
@@ -117,8 +109,8 @@ def my_matmul(
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols
 
-    dtype_in = dtype_map[dtype_in_str]
-    dtype_out = dtype_map[dtype_out_str]
+    dtype_in = str_to_dtype(dtype_in_str)
+    dtype_out = str_to_dtype(dtype_out_str)
 
     assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
         dtype_out, np.integer
@@ -468,9 +460,9 @@ def my_matmul(
                         #     |                |
                         #     |                |
                         #      ----------------
-                        tile_offset = ((row_base + tile_row) * n_shim_mem_A + col) % len(
-                            A_tiles
-                        )
+                        tile_offset = (
+                            (row_base + tile_row) * n_shim_mem_A + col
+                        ) % len(A_tiles)
 
                         # always equal to n_aie_rows since we have n_aie_rows row tiles for matrix A
                         if col < n_aie_rows:

@@ -140,6 +140,9 @@ aieTargetModelGetMemTileSize(AieTargetModel targetModel);
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetNumBanks(AieTargetModel targetModel, int col, int row);
 
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetMaxChannelNumForAdjacentTile(
+    AieTargetModel targetModel, int col, int row);
+
 MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumDestSwitchboxConnections(
     AieTargetModel targetModel, int col, int row, uint32_t bundle);
 

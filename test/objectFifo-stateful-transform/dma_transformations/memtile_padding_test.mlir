@@ -12,8 +12,6 @@
     // CHECK: %{{.*}}tile_0_0 = aie.tile(0, 0)
     // CHECK: %{{.*}}tile_0_1 = aie.tile(0, 1)
     // CHECK: %{{.*}}tile_0_2 = aie.tile(0, 2)
-    // CHECK: %[[VAL_0:.*]] = aie.lock(%{{.*}}tile_0_0, 2) {init = 1 : i32, sym_name = "objFifo_out0_cons_prod_lock_0"}
-    // CHECK: %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_0, 3) {init = 0 : i32, sym_name = "objFifo_out0_cons_cons_lock_0"}
     // CHECK: %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "objFifo_out1_cons_buff_0"} : memref<64x64xi8>
     // CHECK: %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "objFifo_out1_cons_buff_1"} : memref<64x64xi8>
     // CHECK: %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_0_1, 2) {init = 2 : i32, sym_name = "objFifo_out1_cons_prod_lock_0"}
@@ -30,8 +28,6 @@
     // CHECK: %[[VAL_15:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "objFifo_in1_buff_1"} : memref<64x64xi8>
     // CHECK: %[[VAL_16:.*]] = aie.lock(%{{.*}}tile_0_1, 0) {init = 2 : i32, sym_name = "objFifo_in1_prod_lock_0"}
     // CHECK: %[[VAL_17:.*]] = aie.lock(%{{.*}}tile_0_1, 1) {init = 0 : i32, sym_name = "objFifo_in1_cons_lock_0"}
-    // CHECK: %[[VAL_18:.*]] = aie.lock(%{{.*}}tile_0_0, 0) {init = 1 : i32, sym_name = "objFifo_in0_prod_lock_0"}
-    // CHECK: %[[VAL_19:.*]] = aie.lock(%{{.*}}tile_0_0, 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_lock_0"}
     // CHECK: aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_1, DMA : 0)
     // CHECK: aie.flow(%{{.*}}tile_0_1, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
     // CHECK: aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}tile_0_1, DMA : 1)

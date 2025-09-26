@@ -10,8 +10,7 @@
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
-
+cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -51,8 +50,7 @@ target_compile_definitions(${currentTarget} PUBLIC
     IN1_SIZE=${IN1_SIZE}
     IN2_SIZE=${IN2_SIZE}
     OUT_SIZE=${OUT_SIZE}
-    DISABLE_ABI_CHECK=1
-    )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${XRT_INC_DIR}

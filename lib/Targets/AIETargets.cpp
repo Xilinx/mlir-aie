@@ -12,8 +12,10 @@
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
@@ -22,6 +24,7 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -74,11 +77,14 @@ namespace xilinx::AIE {
 static void registerDialects(DialectRegistry &registry) {
   registry.insert<xilinx::AIE::AIEDialect>();
   registry.insert<xilinx::AIEX::AIEXDialect>();
+  registry.insert<xilinx::aievec::AIEVecDialect>();
   registry.insert<func::FuncDialect>();
   registry.insert<scf::SCFDialect>();
   registry.insert<cf::ControlFlowDialect>();
   registry.insert<DLTIDialect>();
   registry.insert<arith::ArithDialect>();
+  registry.insert<affine::AffineDialect>();
+  registry.insert<ub::UBDialect>();
   registry.insert<math::MathDialect>();
   registry.insert<memref::MemRefDialect>();
   registry.insert<VectorDialect>();

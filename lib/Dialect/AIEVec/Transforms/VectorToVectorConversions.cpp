@@ -19,8 +19,10 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -51,7 +53,7 @@ static TargetBackend decodeTargetBackend(const std::string &backend) {
 
 static AIEArch decodeAIETarget(const std::string &target) {
   if (!target.empty()) {
-    if (target == "aieml" || target == "aie2")
+    if (target == "aieml" || target == "aie2" || target == "aie2p")
       return AIEArch::AIE2;
     if (target != "aie")
       return AIEArch::UNKNOWN;
@@ -248,7 +250,7 @@ struct ConvertSplatTransferReadToBroadcastPattern
         adaptor.getPadding());
     auto extractOp = rewriter.create<vector::ExtractOp>(
         readOp.getLoc(), newReadOp.getResult(), ArrayRef<int64_t>{offset});
-    rewriter.replaceOpWithNewOp<vector::SplatOp>(
+    rewriter.replaceOpWithNewOp<vector::BroadcastOp>(
         readOp, newReadOp.getVector().getType(), extractOp.getResult());
     return success();
   }
@@ -274,7 +276,7 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
       return failure();
 
     // At the moment, we only accept ops we know we can swap with cast.
-    if (!isa<vector::BroadcastOp, vector::ExtractOp, vector::SplatOp,
+    if (!isa<vector::BroadcastOp, vector::ExtractOp,
              vector::ExtractStridedSliceOp>(defOp))
       return failure();
 
@@ -449,7 +451,10 @@ struct FlattenMultDimTransferReadPattern
     auto newSource = collapseInnerMostShapeDims(
         rewriter, readOp.getLoc(), vecShape.size(), adaptor.getBase());
     auto newVector = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, newSource, newIndices);
+        readOp.getLoc(), newVectorTy, newSource, newIndices,
+        /*padding*/
+        arith::getZeroConstant(rewriter, readOp.getLoc(),
+                               newVectorTy.getElementType()));
 
     auto inBoundsArrayAttrOpt = adaptor.getInBounds();
     if (inBoundsArrayAttrOpt) {
@@ -628,6 +633,131 @@ struct ExtractTransposeFromContractionOp
   }
 };
 
+/// Utility function to check if all provided indices are constant zero values.
+/// @return success() if all indices are constant zeros, failure() otherwise
+static LogicalResult isAllZeroOffsetAccess(mlir::OperandRange indices) {
+  if (!llvm::all_of(indices, [](Value val) {
+        IntegerAttr attr;
+        if (!matchPattern(val, m_Constant(&attr)))
+          return false;
+        return attr.getInt() == 0;
+      })) {
+    return failure();
+  }
+  return success();
+}
+
+/// Utility function to convert OpFoldResult offsets from a SubView operation
+/// into a vector of Values.
+static SmallVector<Value> opFoldResultsToValues(PatternRewriter &rewriter,
+                                                Location loc,
+                                                memref::SubViewOp subViewOp) {
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(subViewOp);
+  SmallVector<Value> newIndices;
+  for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
+    Value indexVal;
+    if (auto attr = dyn_cast<Attribute>(offset)) {
+      indexVal = rewriter.create<arith::ConstantIndexOp>(
+          loc, cast<IntegerAttr>(attr).getInt());
+    } else {
+      indexVal = cast<Value>(offset);
+    }
+    newIndices.push_back(indexVal);
+  }
+  return newIndices;
+}
+
+/// Pattern to canonicalize trivial vector.transfer_read operations on subviews.
+///
+/// This pattern eliminates unnecessary memref.subview operations when the
+/// transfer_read accesses the subview with all-zero indices. It transforms:
+///
+/// INPUT:
+///   %subview = memref.subview %memref [offset0, offset1, ...]
+///   %result = vector.transfer_read %subview[0, 0, ...]
+///
+/// OUTPUT:
+///   %result = vector.transfer_read %memref[offset0, offset1, ...]
+///
+/// The pattern only matches when:
+/// - The base of transfer_read is defined by a memref.subview operation
+/// - All indices in the transfer_read are constant zeros
+struct CanonicalizeTrivialReadAccessSubviewOpPattern
+    : public OpRewritePattern<vector::TransferReadOp> {
+  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
+                                PatternRewriter &rewriter) const override {
+    // Check if the base memref comes from a subview operation
+    auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
+        readOp.getBase().getDefiningOp());
+    if (!subViewOp)
+      return failure();
+
+    // Verify that all access indices are zero
+    if (failed(isAllZeroOffsetAccess(readOp.getIndices())))
+      return failure();
+
+    // Convert subview offsets to explicit index values
+    SmallVector<Value> newIndices =
+        opFoldResultsToValues(rewriter, readOp.getLoc(), subViewOp);
+
+    // Replace with direct access to the original memref using subview offsets
+    rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
+        readOp, readOp.getType(), subViewOp.getSource(), newIndices,
+        readOp.getPadding(), readOp.getInBoundsValues());
+    return success();
+  }
+};
+
+/// Pattern to canonicalize trivial vector.transfer_write operations on
+/// subviews.
+///
+/// This pattern eliminates unnecessary memref.subview operations when the
+/// transfer_write accesses the subview with all-zero indices. It transforms:
+///
+/// INPUT:
+///   %subview = memref.subview %memref [offset0, offset1, ...]
+///   vector.transfer_write %value, %subview[0, 0, ...]
+///
+/// OUTPUT:
+///   vector.transfer_write %value, %memref[offset0, offset1, ...]
+///
+/// The pattern only matches when:
+/// - The base of transfer_write is defined by a memref.subview operation
+/// - All indices in the transfer_write are constant zeros
+struct CanonicalizeTrivialWriteAccessSubviewOpPattern
+    : public OpRewritePattern<vector::TransferWriteOp> {
+  using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
+                                PatternRewriter &rewriter) const override {
+    // Check if the base memref comes from a subview operation
+    auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
+        writeOp.getBase().getDefiningOp());
+    if (!subViewOp)
+      return failure();
+
+    // Verify that all access indices are zero
+    if (failed(isAllZeroOffsetAccess(writeOp.getIndices())))
+      return failure();
+
+    // Convert subview offsets to explicit index values
+    SmallVector<Value> newIndices =
+        opFoldResultsToValues(rewriter, writeOp.getLoc(), subViewOp);
+
+    // Create new transfer_write with direct access to original memref
+    rewriter.create<vector::TransferWriteOp>(
+        writeOp.getLoc(), writeOp.getVector(), subViewOp.getSource(),
+        newIndices, writeOp.getInBoundsValues());
+
+    // Remove the original transfer_write operation
+    rewriter.eraseOp(writeOp);
+    return success();
+  }
+};
+
 //============================================================================//
 //============ AIE2 canonicalization conversion patterns ===============//
 //============================================================================//
@@ -680,7 +810,8 @@ static void
 configureCommonAIECanonicalizeLegalizations(ConversionTarget &target,
                                             TargetBackend backend) {
   target.addLegalDialect<arith::ArithDialect, affine::AffineDialect,
-                         memref::MemRefDialect, vector::VectorDialect>();
+                         memref::MemRefDialect, vector::VectorDialect,
+                         ub::UBDialect>();
 }
 
 static void
@@ -800,14 +931,16 @@ struct CanonicalizeVectorForAIEVecPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<arith::ArithDialect, memref::MemRefDialect,
-                    vector::VectorDialect, affine::AffineDialect>();
+    registry
+        .insert<arith::ArithDialect, memref::MemRefDialect,
+                vector::VectorDialect, affine::AffineDialect, ub::UBDialect>();
   }
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
   Option<std::string> targetBackend{
@@ -850,6 +983,13 @@ struct CanonicalizeVectorForAIEVecPass
     } else {
       populateAIE2CanonicalizeConversionPatterns(patterns, backend);
       configureAIE2CanonicalizeLegalizations(target, backend);
+    }
+
+    {
+      RewritePatternSet patterns(context);
+      patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
+                   CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
+      (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
