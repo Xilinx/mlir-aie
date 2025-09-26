@@ -76,6 +76,8 @@ def _create_relu_external_function(dtype=None):
     tile_size = 32  # Must match the TILE_SIZE in the C++ kernel
     helpers_path = os.path.join(os.path.dirname(__file__), "../../../../aie_kernels/")
     
+    assert dtype == bfloat16, "ReLU only supports bfloat16"
+    
     return ExternalFunction(
         "bf16_relu",  # Note: kernel name is still bf16_relu
         source_file=os.path.join(os.path.dirname(__file__), "../../../../aie_kernels/aie2/relu.cc"),

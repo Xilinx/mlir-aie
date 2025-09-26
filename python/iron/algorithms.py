@@ -35,7 +35,7 @@ def matmul(input: Tensor, other: Tensor, out: Optional[Tensor] = None, async_mod
         return matmul_impl(input, other, out, async_mode)
 
 
-def for_each(input: Tensor, func: Callable, async_mode: bool = True) -> Tensor:
+def for_each(input: Tensor, func: Callable, out = None) -> Tensor:
     """
     Apply a function to each element of a tensor in-place.
 
@@ -52,12 +52,12 @@ def for_each(input: Tensor, func: Callable, async_mode: bool = True) -> Tensor:
         Tensor: The same input tensor (modified in-place)
     """
     if is_graph_capture_enabled():
-        return for_each_graph_capture_impl(input, func, async_mode)
+        return for_each_graph_capture_impl(input, func, out)
     else:
-        return for_each_impl(input, func, async_mode)
+        return for_each_impl(input, func, out)
 
 
-def transform(first: Tensor, second: Tensor, output: Tensor, binary_op: Callable, async_mode: bool = True) -> Tensor:
+def transform(first: Tensor, second: Tensor, output: Tensor, binary_op: Callable) -> Tensor:
     """
     Apply a binary operation element-wise to two tensors.
 
@@ -75,6 +75,6 @@ def transform(first: Tensor, second: Tensor, output: Tensor, binary_op: Callable
         Tensor: The output tensor containing the results
     """
     if is_graph_capture_enabled():
-        return transform_graph_capture_impl(first, second, output, binary_op, async_mode)
+        return transform_graph_capture_impl(first, second, output, binary_op)
     else:
-        return transform_impl(first, second, output, binary_op, async_mode)
+        return transform_impl(first, second, output, binary_op)
