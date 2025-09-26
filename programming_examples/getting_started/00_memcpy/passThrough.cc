@@ -14,21 +14,7 @@
 #include <stdlib.h>
 
 #include <aie_api/aie.hpp>
-
-#if defined(__chess__)
-#define AIE_PREPARE_FOR_PIPELINING [[chess::prepare_for_pipelining]]
-#define AIE_LOOP_MIN_ITERATION_COUNT(x) [[chess::min_loop_count(x)]]
-#elif defined(__AIECC__)
-#ifndef __STRINGIFY
-#define __STRINGIFY(a) #a
-#endif
-#define AIE_LOOP_MIN_ITERATION_COUNT(x)                                        \
-  _Pragma(__STRINGIFY(clang loop min_iteration_count(x)))
-#define AIE_PREPARE_FOR_PIPELINING
-#else
-#define AIE_LOOP_MIN_ITERATION_COUNT(x)
-#define AIE_PREPARE_FOR_PIPELINING
-#endif
+#include <aie_kernels/aie_kernel_utils.h>
 
 template <typename T, int N>
 __attribute__((noinline)) void passThrough_aie(T *restrict in, T *restrict out,
