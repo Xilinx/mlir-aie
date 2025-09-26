@@ -97,14 +97,14 @@ def transform(first, second, output, binary_op):
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
-def transform_impl(first: Tensor, second: Tensor, output: Tensor, binary_op: Callable, async_mode: bool = True) -> Promise:
+def transform_impl(first: Tensor, second: Tensor, output: Tensor, binary_op: Callable) -> Promise:
     """
     Implementation of transform, applies binary operation element-wise to two tensors.
     """
     return transform(first, second, output, binary_op)
 
 
-def transform_graph_capture_impl(first: Tensor, second: Tensor, output: Tensor, binary_op: Callable, async_mode: bool = True):
+def transform_graph_capture_impl(first: Tensor, second: Tensor, output: Tensor, binary_op: Callable):
     """
     Graph capture implementation of transform.
 
@@ -123,9 +123,12 @@ def transform_graph_capture_impl(first: Tensor, second: Tensor, output: Tensor, 
     # Force async_mode=True for graph capture to ensure proper batching
     async_mode = True
 
-    # Capture the operation in the graph
+    # Call the actual implementation to get the Promise
+    # The Promise class will automatically handle graph capture mode
+    promise = transform_impl(first, second, output, binary_op)
+    
+    # Add the operation to the graph with the Promise
     from ..graph import add_to_graph
-
     add_to_graph(
         operation="transform",
         func=transform_impl,

@@ -288,7 +288,7 @@ def matmul(A, B, C):
     return module
 
 
-def matmul_impl(input: Tensor, other: Tensor, out: Optional[Tensor] = None, async_mode: bool = True) -> Promise:
+def matmul_impl(input: Tensor, other: Tensor, out: Optional[Tensor] = None) -> Promise:
     """
     Implementation of matrix product of two tensors, similar to torch.matmul.
 
@@ -296,7 +296,6 @@ def matmul_impl(input: Tensor, other: Tensor, out: Optional[Tensor] = None, asyn
         input: First input tensor
         other: Second input tensor
         out: Optional output tensor
-        async_mode: Whether to use asynchronous execution
 
     Returns:
         Promise: Promise object for asynchronous execution
@@ -335,7 +334,7 @@ def matmul_impl(input: Tensor, other: Tensor, out: Optional[Tensor] = None, asyn
 
 
 def matmul_graph_capture_impl(
-    input: Tensor, other: Tensor, out: Optional[Tensor] = None, async_mode: bool = True
+    input: Tensor, other: Tensor, out: Optional[Tensor] = None
 ):
     """
     Graph capture implementation of matrix product.
@@ -347,7 +346,6 @@ def matmul_graph_capture_impl(
         input: First input tensor
         other: Second input tensor
         out: Optional output tensor
-        async_mode: Whether to use asynchronous execution
 
     """
     # Validate inputs (same as regular implementation)
