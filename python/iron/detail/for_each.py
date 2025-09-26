@@ -44,12 +44,12 @@ def transform(input, output, func):
     num_tiles = num_elements // tile_size
 
     # Define tensor types
-    input_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
-    output_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
+    input_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
 
     # AIE-array data movement with object fifos
-    of_in = ObjectFifo(input_ty, name="in")
-    of_out = ObjectFifo(output_ty, name="out")
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_out = ObjectFifo(tile_ty, name="out")
 
     # Define a task that will run on a compute tile
 
@@ -70,7 +70,7 @@ def transform(input, output, func):
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(input_ty, output_ty) as (A, B):
+    with rt.sequence(input_ty, input_ty) as (A, B):
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)
@@ -79,12 +79,12 @@ def transform(input, output, func):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-def for_each_impl(input: Tensor, func: Callable, async_mode: bool = True) -> Promise:
+def for_each_impl(input: Tensor, func: Callable, out: Tensor) -> Promise:
     """
     Implementation of for_each, similar to torch.map.
     This is an in-place operation that modifies the input tensor.
     """
-    return transform(input, input, func)
+    return transform(input, out, func)
 
 
 # def map(a..., func: Callable, async_mode: bool = True) -> Tensor:
@@ -95,7 +95,7 @@ def for_each_impl(input: Tensor, func: Callable, async_mode: bool = True) -> Pro
 #    return transform(a..., func, output)
 
 
-def for_each_graph_capture_impl(input: Tensor, func: Callable, async_mode: bool = True):
+def for_each_graph_capture_impl(input: Tensor, func: Callable, out: Tensor):
     """
     Graph capture implementation of for_each, similar to torch.map.
 
@@ -108,9 +108,6 @@ def for_each_graph_capture_impl(input: Tensor, func: Callable, async_mode: bool 
     if not callable(func):
         raise TypeError(f"Expected callable for func, got {type(func)}")
 
-    # Force async_mode=True for graph capture to ensure proper batching
-    async_mode = True
-
     # Capture the operation in the graph (in-place)
     from ..graph import add_to_graph
 
@@ -120,8 +117,7 @@ def for_each_graph_capture_impl(input: Tensor, func: Callable, async_mode: bool 
         inputs=[
             input,
             func,
-            async_mode,
-        ],  # Store all inputs including func and async_mode
+        ],  # Store all inputs including func and out
         output=input,  # Same tensor as input (in-place operation)
         input_shapes=(input.shape,),
         output_shape=input.shape,  # Same shape as input
