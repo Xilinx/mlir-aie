@@ -89,7 +89,7 @@ class SingleLayerMNIST:
         
         # Apply ReLU activation to each element
         relu_func = relu(self.dtype)
-        for_each(logits.view(-1), relu_func)
+        for_each(logits.view(-1), relu_func, out=logits.view(-1))
         
         return logits
     

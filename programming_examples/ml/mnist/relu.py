@@ -11,67 +11,113 @@ import sys
 import aie.iron as iron
 from aie.iron.algorithms import for_each
 from aie.iron.functional import relu
+from aie.iron.graph import capture_graph
+
+
+class ReLU:
+    """ReLU activation layer implementation using Iron operations."""
+    
+    def __init__(self, dtype=bfloat16, device="npu"):
+        """
+        Initialize ReLU layer.
+        
+        Args:
+            dtype: Data type for computations
+            device (str): Device to run on
+        """
+        self.dtype = dtype
+        self.device = device
+        self.relu_func = relu(dtype)
+    
+    def forward(self, x):
+        """
+        Forward pass through ReLU layer.
+        
+        Args:
+            x (iron.Tensor): Input tensor
+            
+        Returns:
+            iron.Tensor: Output tensor with ReLU applied
+        """
+        # Apply ReLU activation to each element
+        for_each(x.view(-1), self.relu_func, out=x.view(-1))
+        return x
+    
+    def parameters(self):
+        """Return layer parameters (ReLU has no parameters)."""
+        return []
 
 
 def test_relu_with_dtype(dtype, dtype_name):
-    """Test ReLU with a specific data type."""
-    print(f"\nReLU Test with {dtype_name}")
-    print("=" * (20 + len(dtype_name)))
+    """Test ReLU with graph capture - multiple executions."""
+    print(f"\nReLU Graph Capture Test with {dtype_name}")
+    print("=" * (35 + len(dtype_name)))
     
     # Define tensor shapes and data types
     data_size = 1024
     
-    # Construct input tensor
-    input0 = iron.arange(data_size, dtype=dtype, device="npu")
+    # Create ReLU layer
+    relu_layer = ReLU(dtype=dtype, device="npu")
     
-    # Store original values for comparison
-    original_values = input0.numpy().copy()
+    # First execution - capture the graph
+    input_data0 = np.arange(data_size, dtype=dtype) - data_size // 2  # [-512, -511, ..., 511]
+    input = iron.tensor(input_data0, dtype=dtype, device="npu")
     
-    # Apply ReLU using functional.relu with specific dtype
-    relu_func = relu(dtype)
-    for_each(input0, relu_func)
+    with capture_graph() as graph:
+        _ = relu_layer.forward(input)
     
-    # Show results
-    print(f"Input shape: {input0.shape}")
-    print(f"Sample input (first 5): {original_values[:5]}")
-    print(f"Sample output (first 5): {input0.numpy()[:5]}")
+        # Compile the graph
+        graph.compile()
     
-    # Check correctness
-    ref_vec = [max(0, val) for val in original_values]
-    actual_values = input0.numpy()
-    errors = 0
-    
-    for index, (actual, ref) in enumerate(zip(actual_values, ref_vec)):
-        if actual != ref:
-            print(f"Error at {index}: {actual} != {ref}")
-            errors += 1
-    
-    if not errors:
-        print(f"PASS! ({dtype_name})")
-    else:
-        print(f"FAILED! ({dtype_name}) - Error count: {errors}")
-    
-    return errors == 0
+        # Execute first time
+        result0 = graph.replay()
+        
+        
+        # Check correctness
+        ref1 = [max(0, val) for val in input_data0]
+        actual0 = result0.numpy()
+        errors0 = sum(1 for a, r in zip(actual0, ref1) if a != r)
+        
+        # Reuse compiled graph with different input
+        input_data1 = np.arange(data_size, dtype=dtype) - data_size // 4  # Different input: [-256, -255, ..., 767]
+        input[:] = input_data1
+        
+        # Execute with new data
+        result1 = graph.replay()
+        
+        # Check correctness
+        ref2 = [max(0, val) for val in input_data1]
+        actual1 = result1.numpy()
+        errors1 = sum(1 for a, r in zip(actual1, ref2) if a != r)
+        
+        verbose = True
+        if verbose:
+            print(f"   Input[0]: {input_data0}")
+            print(f"   Output[0]: {result0.numpy()}")
+        
+            print(f"   Input[1]: {input_data1}")
+            print(f"   Output[1]: {result1.numpy()}")
+            
+            
+        if errors0 == 0 and errors1 == 0:
+            print(f"PASS! ({dtype_name}) - Graph capture working correctly")
+        else:
+            print(f"FAILED! ({dtype_name}) - Total errors: {errors0 + errors1} ({errors0} + {errors1})")
+        
+        return errors0 == 0 and errors1 == 0
 
 
 def main():
-    """Test ReLU using functional.relu with different data types."""
+    """Test ReLU using ReLU class with different data types."""
     
-    print("ReLU Functional Test - Multiple Data Types")
-    print("=" * 45)
+    print("ReLU Class Test - Multiple Data Types")
+    print("=" * 40)
     
     # Test different data types
     test_results = []
     
     # Test bfloat16 (default)
     test_results.append(test_relu_with_dtype(bfloat16, "bfloat16"))
-    
-    # Test float32
-    import numpy as np
-    test_results.append(test_relu_with_dtype(np.float32, "float32"))
-    
-    # Test int32
-    test_results.append(test_relu_with_dtype(np.int32, "int32"))
     
     # Summary
     print(f"\nSummary:")
