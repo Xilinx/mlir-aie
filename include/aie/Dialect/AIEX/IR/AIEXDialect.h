@@ -15,10 +15,6 @@
 
 #include "mlir/IR/BuiltinAttributes.h"
 
-namespace xilinx::AIEX {
-const char defaultRuntimeSequenceName[] = "sequence";
-}
-
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h.inc"
 #include "mlir/IR/Operation.h"

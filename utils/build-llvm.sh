@@ -34,7 +34,7 @@ CMAKE_CONFIGS="\
   -DLLVM_ENABLE_RTTI=$LLVM_ENABLE_RTTI \
   -DLLVM_INSTALL_UTILS=ON \
   -DMLIR_ENABLE_BINDINGS_PYTHON=ON \
-  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON \
   -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
   -DCMAKE_C_VISIBILITY_PRESET=hidden \
@@ -50,4 +50,4 @@ if [ -x "$(command -v ccache)" ]; then
 fi
 
 cmake $CMAKE_CONFIGS ../llvm 2>&1 | tee cmake.log
-cmake --build . --target install -- -j4
+cmake --build . --target install -- -j$(nproc)

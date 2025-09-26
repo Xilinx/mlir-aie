@@ -555,7 +555,7 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 //===----------------------------------------------------------------------===//
 
 template <typename T>
-std::optional<uint32_t> getAbsoluteAddress(T *op) {
+static std::optional<uint32_t> getAbsoluteAddress(T *op) {
   AIE::DeviceOp device =
       op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
@@ -707,7 +707,7 @@ void AIEX::RuntimeSequenceOp::print(OpAsmPrinter &printer) {
   auto nameAttr = (*this)->getAttrOfType<StringAttr>(
       mlir::SymbolTable::getSymbolAttrName());
   if (nameAttr && nameAttr != ::mlir::OpBuilder((*this)->getContext())
-                                  .getStringAttr(defaultRuntimeSequenceName)) {
+                                  .getStringAttr(getDefaultRuntimeSequenceName())) {
     printer << ' ';
     printer.printSymbolName(nameAttr);
   }

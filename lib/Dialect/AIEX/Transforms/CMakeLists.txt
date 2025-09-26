@@ -32,9 +32,9 @@ add_mlir_dialect_library(AIEXTransforms
 
   LINK_LIBS PUBLIC
   AIE
+  AIEXUtils
   MLIRIR
   MLIRPass
   MLIRSupport
   MLIRTransformUtils
-  AIEXUtils
   )

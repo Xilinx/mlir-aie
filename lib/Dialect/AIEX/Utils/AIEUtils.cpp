@@ -12,16 +12,12 @@
 
 using namespace mlir;
 using namespace xilinx;
-using namespace xilinx::AIEX;
 
 static unsigned cachedId = 0;
 
-namespace xilinx {
-namespace AIEX {
-
-memref::GlobalOp getOrCreateDataMemref(OpBuilder &builder, AIE::DeviceOp dev,
-                                       mlir::Location loc,
-                                       ArrayRef<uint32_t> words) {
+memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder, AIE::DeviceOp dev,
+                                             mlir::Location loc,
+                                             ArrayRef<uint32_t> words) {
   uint32_t num_words = words.size();
   MemRefType memrefType = MemRefType::get({num_words}, builder.getI32Type());
   TensorType tensorType =
@@ -51,6 +47,3 @@ memref::GlobalOp getOrCreateDataMemref(OpBuilder &builder, AIE::DeviceOp dev,
   }
   return global;
 }
-
-} // namespace AIEX
-} // namespace xilinx

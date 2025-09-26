@@ -61,7 +61,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
 
   let arguments = (
     ins AIEDevice:$device,
-        DefaultValuedAttr<SymbolNameAttr, "\"main\"">:$sym_name
+        DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name
   );
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
@@ -71,6 +71,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
     const xilinx::AIE::AIETargetModel &getTargetModel();
     static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
+    static llvm::StringRef getDefaultDeviceName() { return "main"; }
   }];
 }
 
