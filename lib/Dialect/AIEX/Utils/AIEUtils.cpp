@@ -15,7 +15,8 @@ using namespace xilinx;
 
 static unsigned cachedId = 0;
 
-memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder, AIE::DeviceOp dev,
+memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
+                                             AIE::DeviceOp dev,
                                              mlir::Location loc,
                                              ArrayRef<uint32_t> words) {
   uint32_t num_words = words.size();

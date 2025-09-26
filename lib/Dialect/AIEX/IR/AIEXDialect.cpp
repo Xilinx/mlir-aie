@@ -706,8 +706,9 @@ void AIEX::RuntimeSequenceOp::print(OpAsmPrinter &printer) {
 
   auto nameAttr = (*this)->getAttrOfType<StringAttr>(
       mlir::SymbolTable::getSymbolAttrName());
-  if (nameAttr && nameAttr != ::mlir::OpBuilder((*this)->getContext())
-                                  .getStringAttr(getDefaultRuntimeSequenceName())) {
+  if (nameAttr &&
+      nameAttr != ::mlir::OpBuilder((*this)->getContext())
+                      .getStringAttr(getDefaultRuntimeSequenceName())) {
     printer << ' ';
     printer.printSymbolName(nameAttr);
   }
