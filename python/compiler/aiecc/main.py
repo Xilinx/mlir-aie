@@ -83,6 +83,7 @@ LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
     .canonicalize()
     .cse()
+    .convert_ub_to_llvm()
     .convert_vector_to_llvm()
     .expand_strided_metadata()
     .lower_affine()
