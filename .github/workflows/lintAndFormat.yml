@@ -56,7 +56,7 @@ jobs:
       - name: Prepare compile_commands.json
         run: |
 
-          mkdir build
+          mkdir -p build/install
           pushd build
 
           cmake .. \
@@ -68,6 +68,7 @@ jobs:
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
@@ -246,7 +247,7 @@ jobs:
         if: steps.changed-files.outputs.changed-files != ''
         run: |
 
-          mkdir build_release
+          mkdir -p build_release/install
           cd build_release
 
           cmake .. \
@@ -256,6 +257,7 @@ jobs:
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
