@@ -349,6 +349,7 @@ def reconfigure_dma(
     dir: DMAChannelDir,
     length: int,
     offset: int,
+    repeat: int,
     sizes: list[int],
     strides: list[int],
     pad_before: list[int],
@@ -400,8 +401,11 @@ def reconfigure_dma(
         bd_id = start_bd_id + i
         if i == num_bds - 1:
             next_bd = start_bd_id
+            # If repeat > 0, don't use next_bd for the last BD to avoid looping back
+            use_next_bd = 0 if repeat > 0 else 1
         else:
             next_bd = bd_id + 1
+            use_next_bd = 1
         results.append(
             npu_writebd(
                 column = column,
@@ -423,7 +427,7 @@ def reconfigure_dma(
                 packet_type = 0,
                 iteration_current = 0,
                 next_bd = next_bd,
-                use_next_bd = 1,
+                use_next_bd = use_next_bd,
                 valid_bd = 1,
                 lock_rel_val = lock_rel_val,
                 lock_rel_id = lock_rel_id,
@@ -439,12 +443,17 @@ def reconfigure_dma(
             )
         )
         current_offset += length_int
+        # Encode repeat count in bits 23:16 and start_bd_id in bits 5:0
+        if repeat > 0:
+            encoded_value = (repeat << 16) | (start_bd_id & 0x3F) 
+        else:
+            encoded_value = bd_id
         results.append(
             npu_write32(
                 address = bd_queue_addr,
                 column = column,
                 row = row,
-                value = bd_id
+                value = encoded_value
             )
         )
     return results

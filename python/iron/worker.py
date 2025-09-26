@@ -256,6 +256,7 @@ class ConfigureDMATask(Resolvable):
         obj: ObjectFifoHandle,
         length: int = None,
         offset: int = 0,
+        repeat: int = 0,
         sizes: list[int] = None,
         strides: list[int] = None,
         pad_before: list[int] = None,
@@ -264,6 +265,7 @@ class ConfigureDMATask(Resolvable):
         self.obj: ObjectFifoHandle = obj
         self.length = length
         self.offset = offset
+        self.repeat = repeat
         self.sizes = sizes
         self.strides = strides
         self.pad_before = pad_before
@@ -332,4 +334,4 @@ class ConfigureDMATask(Resolvable):
         pad_before = self.pad_before if self.pad_before is not None else [0, 0, 0]
         pad_after = self.pad_after if self.pad_after is not None else [0, 0, 0]
 
-        reconfigure_dma(self.obj, tile, direction, length, offset, sizes, strides, pad_before, pad_after)
+        reconfigure_dma(self.obj, tile, direction, length, offset, repeat, sizes, strides, pad_before, pad_after)
