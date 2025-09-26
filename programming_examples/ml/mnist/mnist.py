@@ -5,6 +5,10 @@ from aie.iron.functional import relu
 from aie.iron.algorithms import for_each
 from aie.iron.graph import capture_graph
 from utilities import do_bench
+import argparse
+import os
+
+
 
 class Linear:
     """Linear layer implementation using Iron operations."""
@@ -24,18 +28,38 @@ class Linear:
         self.dtype = dtype
         self.device = device
         
-        # Initialize weights and bias
+        # Initialize weights with random values
         self.weight = iron.tensor(
             np.random.randn(in_features, out_features).astype(dtype) * 0.1,
             dtype=dtype,
             device=device
         )
         
-        self.bias = iron.tensor(
-            np.zeros(out_features, dtype=dtype),
-            dtype=dtype,
-            device=device
-        )
+        # No bias (as per your requirement)
+        self.bias = None
+    
+    def load_state_dict(self, state_dict):
+        """Load weights from state dictionary (PyTorch-style)."""
+        if 'weight' in state_dict:
+            weight_data = state_dict['weight']
+            
+            # PyTorch stores weights as (out_features, in_features)
+            # Iron expects (in_features, out_features)
+            if weight_data.shape == (self.out_features, self.in_features):
+                # Transpose to match Iron format
+                weight_data = weight_data.T
+            elif weight_data.shape != (self.in_features, self.out_features):
+                raise ValueError(f"Weight shape {weight_data.shape} doesn't match expected ({self.in_features}, {self.out_features}) or ({self.out_features}, {self.in_features})")
+            
+            self.weight = iron.tensor(
+                weight_data.astype(self.dtype),
+                dtype=self.dtype,
+                device=self.device
+            )
+    
+    def state_dict(self):
+        """Return state dictionary (PyTorch-style)."""
+        return {'weight': self.weight.numpy()}
     
     def forward(self, x):
         """
@@ -59,16 +83,13 @@ class Linear:
         # Matrix multiplication: x @ weight
         iron.matmul(x, self.weight, out=output)
         
-        # Add bias to each row
-        # TODO: Use iron.add with broadcasting
-        #for i in range(batch_size):
-        #    output[i] = output[i] + self.bias
+        # No bias addition (as per your requirement)
         
         return output
     
     def parameters(self):
         """Return layer parameters."""
-        return [self.weight, self.bias]
+        return [self.weight] if self.bias is None else [self.weight, self.bias]
 
 class ReLU:
     """ReLU activation layer implementation using Iron operations."""
@@ -125,10 +146,56 @@ class MNISTModel:
         self.relu2 = ReLU(dtype=dtype, device=device)                 # ReLU activation after fc2
         self.fc3 = Linear(64, 32, dtype=dtype, device=device)        # Output layer: 64 -> 32 (64%64=0, 32%32=0)
         
-        print(f"MNISTModel initialized:")
+        print("MNISTModel initialized:")
         print(f"  Data type: {self.dtype}")
         print(f"  Device: {self.device}")
         print(f"  Total parameters: {sum(p.numel() for p in self.parameters()):,}")
+    
+    def load_state_dict(self, state_dict):
+        """Load weights from state dictionary (PyTorch-style)."""
+        self.fc1.load_state_dict(state_dict['fc1'])
+        self.fc2.load_state_dict(state_dict['fc2'])
+        self.fc3.load_state_dict(state_dict['fc3'])
+        print("✅ Model weights loaded successfully!")
+    
+    def state_dict(self):
+        """Return state dictionary (PyTorch-style)."""
+        return {
+            'fc1': self.fc1.state_dict(),
+            'fc2': self.fc2.state_dict(),
+            'fc3': self.fc3.state_dict()
+        }
+    
+    def load_weights_from_dir(self, weights_dir):
+        """Load weights from directory (convenience method)."""
+        import os
+        import pickle
+        
+        # Load weight files
+        fc1_path = os.path.join(weights_dir, "fc1_weight.npy")
+        fc2_path = os.path.join(weights_dir, "fc2_weight.npy")
+        fc3_path = os.path.join(weights_dir, "fc3_weight.npy")
+        
+        if not all(os.path.exists(p) for p in [fc1_path, fc2_path, fc3_path]):
+            raise FileNotFoundError(f"Weight files not found in {weights_dir}")
+        
+        # Load weights
+        fc1_weight = np.load(fc1_path)
+        fc2_weight = np.load(fc2_path)
+        fc3_weight = np.load(fc3_path)
+        
+        # Create state dict and load
+        state_dict = {
+            'fc1': {'weight': fc1_weight},
+            'fc2': {'weight': fc2_weight},
+            'fc3': {'weight': fc3_weight}
+        }
+        
+        self.load_state_dict(state_dict)
+        print(f"✅ Loaded weights from: {weights_dir}")
+        print(f"  fc1: {fc1_weight.shape}")
+        print(f"  fc2: {fc2_weight.shape}")
+        print(f"  fc3: {fc3_weight.shape}")
     
     def parameters(self):
         """Return all model parameters."""
@@ -220,55 +287,108 @@ def benchmark_model(model, input_data, use_graph=False):
     
     return results
 
-def inference_example():
-    """Example inference with random input using Iron."""
+def inference_example(weights_dir=None, test_image_file=None):
+    """Example inference with test image using Iron."""
     # Create model
     model = MNISTModel(dtype=bfloat16, device="npu")
+    
+    # Load weights if provided (PyTorch-style)
+    if weights_dir:
+        model.load_weights_from_dir(weights_dir)
+    
     model.eval()  # Set to evaluation mode
     
     print("\nModel Architecture:")
-    print(f"  Layer 1: Linear(768 -> 128) with ReLU")
-    print(f"  Layer 2: Linear(128 -> 64) with ReLU")
-    print(f"  Layer 3: Linear(64 -> 32)")
-    print(f"  Note: Input must be (batch_size, 768) where batch_size % 128 = 0")
+    print("  Layer 1: Linear(768 -> 128) with ReLU")
+    print("  Layer 2: Linear(128 -> 64) with ReLU")
+    print("  Layer 3: Linear(64 -> 32)")
+    print("  Note: Input must be (batch_size, 768) where batch_size % 128 = 0")
     
     # Print model parameters
     total_params = sum(p.numel() for p in model.parameters())
     print(f"\nTotal parameters: {total_params:,}")
     
-    # Example inference with random input
-    # Create random input (batch_size=256, features=768) - batch must be divisible by 128
-    random_input = iron.tensor(
-        np.random.randn(256, 768).astype(bfloat16),
-        dtype=bfloat16,
-        device="npu"
-    )
-    
-    # Run inference and show results
-    output = model.forward(random_input)
-    
-    # TBD:
-    # iron.export(output, "mnist_model")
-    # iron.import("mnist_model")
-    
-    # Get predicted class for first sample
-    output_np = output.numpy()
-    predicted_class = np.argmax(output_np[0])
-    confidence = np.max(output_np[0])
-    
-    print(f"\nInference Results:")
-    print(f"Random input shape: {random_input.shape}")
-    print(f"Output shape: {output.shape}")
-    print(f"Output logits (first sample): {output_np[0]}")
-    print(f"Predicted class (first sample): {predicted_class}")
-    print(f"Max logit value (first sample): {float(confidence):.4f}")
-    
-    # Run benchmarks
-    print("\n" + "="*60)
-    benchmark_model(model, random_input, use_graph=False)
-    
-    #print("\n" + "="*60)
-    #benchmark_model(model, random_input, use_graph=True)
+    # Load test image if provided
+    if test_image_file and os.path.exists(test_image_file):
+        print(f"\nLoading test image from: {test_image_file}")
+        
+        # Load the test image (should be 768 dimensions already)
+        test_image = np.load(test_image_file)
+        print(f"Loaded image shape: {test_image.shape}")
+        
+        # Ensure it's the right shape for batch processing
+        if test_image.ndim == 1:
+            # Single image, pad batch dimension to 128 (Iron matmul requirement)
+            test_input = test_image.reshape(1, 768)
+            # Pad batch dimension to 128
+            batch_padded = np.zeros((128, 768), dtype=bfloat16)
+            batch_padded[0] = test_input[0]  # Put the actual image in first position
+            test_input = batch_padded
+        else:
+            test_input = test_image
+        
+        # Convert to Iron tensor
+        input_tensor = iron.tensor(
+            test_input.astype(bfloat16),
+            dtype=bfloat16,
+            device="npu"
+        )
+        
+        print(f"Input tensor shape: {input_tensor.shape}")
+        
+        # Run inference
+        print("\nRunning inference...")
+        total_time = 0
+        num_runs = 100
+        import time
+        with capture_graph() as graph:
+            _ = model.forward(input_tensor)
+            graph.compile()
+
+            for i in range(num_runs):
+                start_time = time.time()
+                output = graph.replay()
+                end_time = time.time()
+                total_time += end_time - start_time
+        total_time /= num_runs
+        print(f"Average time taken: {total_time*1000:.2f} ms")
+        # Get prediction (no softmax - just raw logits)
+        output_np = output.numpy()
+        # Only use the first result since we padded the batch
+        predicted_class = np.argmax(output_np[0])
+        max_logit = float(np.max(output_np[0]))
+        
+        print("\n" + "="*50)
+        print("INFERENCE RESULTS:")
+        print("="*50)
+        print(f"Input shape: {input_tensor.shape} (padded to batch size 128)")
+        print(f"Output shape: {output.shape}")
+        print(f"Raw logits (first sample): {output_np[0]}")
+        print(f"Predicted class: {predicted_class}")
+        print(f"Max logit value: {max_logit:.4f}")
+        print("="*50)
+        
+    else:
+        print(f"\nNo test image file provided or file not found: {test_image_file}")
+        print("Usage: python mnist.py [weights_dir] [test_image_file]")
+        print("Example: python mnist.py mnist_weights test_image.npy")
 
 if __name__ == "__main__":
-    inference_example()
+    import sys
+    
+    # Check command line arguments
+    weights_dir = None
+    test_image_file = None
+    
+    args = argparse.ArgumentParser()
+    args.add_argument("-w", "--weights_dir", type=str, default="mnist_weights")
+    args.add_argument("-t", "--test_image_file", type=str, default="data/test_image_5.npy")
+    args = args.parse_args()
+    
+    weights_dir = args.weights_dir
+    test_image_file = args.test_image_file
+    
+    print(f"Loading pre-trained weights from: {weights_dir}")
+    print(f"Test image file: {test_image_file}")
+    
+    inference_example(weights_dir=weights_dir, test_image_file=test_image_file)
