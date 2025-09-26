@@ -23,11 +23,20 @@ trace_size = 524288
 dtype?=i32
 
 use_placed?=0
+use_row_wise?=0
 
-ifeq (${use_placed}, 1)
-aie_py_src=row_wise_${targetname}_placed.py
-else
-aie_py_src=${targetname}.py
+# There's 3 designs available:
+# 1. Row-wise unplaced design
+# 2. Row-wise placed design
+# 3. Column-wise unplaced design (default)
+ifeq (${use_row_wise}, 0)
+	aie_py_src=col_wise_${targetname}.py
+else 
+	ifeq (${use_placed}, 1)
+		aie_py_src=row_wise_${targetname}_placed.py
+	else
+		aie_py_src=row_wise_${targetname}.py
+	endif
 endif
 
 ifeq ($(dtype),bf16)
