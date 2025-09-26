@@ -12,7 +12,7 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark03_Flood_DDR {
-
+aie.device(xcvc1902) {
 
   %t20 = aie.tile(2, 0)
   %t21 = aie.tile(2, 1)
@@ -712,4 +712,6 @@ module @benchmark03_Flood_DDR {
     ^end:
       aie.end
   }
+  
+}
 }

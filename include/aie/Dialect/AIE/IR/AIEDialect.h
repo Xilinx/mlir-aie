@@ -22,6 +22,8 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
+#include "llvm/ADT/StringRef.h"
+
 namespace xilinx::AIE {
 
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)

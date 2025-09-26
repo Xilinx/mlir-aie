@@ -105,23 +105,24 @@ NB_MODULE(_aie, m) {
 
   m.def(
       "generate_cdo",
-      [](MlirOperation op, const std::string &workDirPath, bool bigendian,
-         bool emitUnified, bool cdoDebug, bool aieSim, bool xaieDebug,
-         bool enableCores) {
+      [](MlirOperation op, const std::string &workDirPath,
+         const std::string &deviceName, bool bigendian, bool emitUnified,
+         bool cdoDebug, bool aieSim, bool xaieDebug, bool enableCores) {
         mlir::python::CollectDiagnosticsToStringScope scope(
             mlirOperationGetContext(op));
         if (mlirLogicalResultIsFailure(aieTranslateToCDODirect(
-                op, {workDirPath.data(), workDirPath.size()}, bigendian,
-                emitUnified, cdoDebug, aieSim, xaieDebug, enableCores)))
+                op, {workDirPath.data(), workDirPath.size()},
+                {deviceName.data(), deviceName.size()}, bigendian, emitUnified,
+                cdoDebug, aieSim, xaieDebug, enableCores)))
           throw nb::value_error(
               (llvm::Twine("Failed to generate cdo because: ") +
                llvm::Twine(scope.takeMessage()))
                   .str()
                   .c_str());
       },
-      "module"_a, "work_dir_path"_a, "bigendian"_a = false,
-      "emit_unified"_a = false, "cdo_debug"_a = false, "aiesim"_a = false,
-      "xaie_debug"_a = false, "enable_cores"_a = true);
+      "module"_a, "work_dir_path"_a, "device_name"_a = "",
+      "bigendian"_a = false, "emit_unified"_a = false, "cdo_debug"_a = false,
+      "aiesim"_a = false, "xaie_debug"_a = false, "enable_cores"_a = true);
 
   m.def(
       "transaction_binary_to_mlir",
@@ -134,9 +135,11 @@ NB_MODULE(_aie, m) {
 
   m.def(
       "translate_npu_to_binary",
-      [](MlirOperation op, const std::string &sequence_name) {
+      [](MlirOperation op, const std::string &device_name,
+         const std::string &sequence_name) {
         MlirStringRef instStr = aieTranslateNpuToBinary(
-            op, {sequence_name.data(), sequence_name.size()});
+            op, {device_name.data(), device_name.size()},
+            {sequence_name.data(), sequence_name.size()});
         size_t num_insts = instStr.length / sizeof(uint32_t);
         std::vector<uint32_t> vec(
             reinterpret_cast<const uint32_t *>(instStr.data),
@@ -144,12 +147,13 @@ NB_MODULE(_aie, m) {
         free((void *)instStr.data);
         return vec;
       },
-      "module"_a, "sequence_name"_a = "");
+      "module"_a, "device_name"_a = "", "sequence_name"_a = "");
 
   m.def(
       "generate_control_packets",
-      [](MlirOperation op) {
-        MlirStringRef instStr = aieTranslateControlPacketsToUI32Vec(op);
+      [](MlirOperation op, const std::string &deviceName) {
+        MlirStringRef instStr = aieTranslateControlPacketsToUI32Vec(
+            op, {deviceName.data(), deviceName.size()});
         size_t num_insts = instStr.length / sizeof(uint32_t);
         std::vector<uint32_t> vec(
             reinterpret_cast<const uint32_t *>(instStr.data),
@@ -157,21 +161,24 @@ NB_MODULE(_aie, m) {
         free((void *)instStr.data);
         return vec;
       },
-      "module"_a);
+      "module"_a, "device_name"_a = "");
 
   m.def(
       "generate_xaie",
-      [&stealCStr](MlirOperation op) {
-        return stealCStr(aieTranslateToXAIEV2(op));
+      [&stealCStr](MlirOperation op, const std::string &deviceName) {
+        return stealCStr(
+            aieTranslateToXAIEV2(op, {deviceName.data(), deviceName.size()}));
       },
-      "module"_a);
+      "module"_a, "device_name"_a = "");
 
   m.def(
       "generate_bcf",
-      [&stealCStr](MlirOperation op, int col, int row) {
-        return stealCStr(aieTranslateToBCF(op, col, row));
+      [&stealCStr](MlirOperation op, int col, int row,
+                   const std::string &deviceName) {
+        return stealCStr(aieTranslateToBCF(
+            op, col, row, {deviceName.data(), deviceName.size()}));
       },
-      "module"_a, "col"_a, "row"_a);
+      "module"_a, "col"_a, "row"_a, "device_name"_a = "");
 
   m.def(
       "aie_llvm_link",

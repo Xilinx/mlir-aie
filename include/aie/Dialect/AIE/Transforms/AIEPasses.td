@@ -66,6 +66,7 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
 
   }];
   let options = [
+    Option<"deviceName", "device", "std::string", /*default=*/"\"\"", "Device to generate code for">,
     Option<"tileCol", "tilecol", "unsigned",
            /*default=*/"-1", "X coordinate of tile to generate code for">,
     Option<"tileRow", "tilerow", "unsigned",

@@ -12,6 +12,8 @@
 // RUN: %run_on_board ./test.elf
 
 module @test04_tile_tiledma {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
   %tile14 = aie.tile(1, 4)
  
@@ -53,4 +55,5 @@ module @test04_tile_tiledma {
   }
 
 
+}
 }

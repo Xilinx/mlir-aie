@@ -12,6 +12,8 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark_02_LM2DDR {
+aie.device(xcvc1902) {
+
   %t70 = aie.tile(7, 0)
   %t71 = aie.tile(7, 1)
  
@@ -59,4 +61,5 @@ module @benchmark_02_LM2DDR {
     aie.connect<"North" : 2, "DMA" : 0>
   }
 
+}
 }

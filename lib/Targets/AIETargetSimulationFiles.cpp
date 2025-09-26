@@ -21,14 +21,14 @@ namespace xilinx {
 namespace AIE {
 
 mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
-                                            llvm::raw_ostream &output) {
-  DeviceOp targetOp;
-  AIEArch arch = AIEArch::AIE1;
-  for (auto tOp : module.getOps<DeviceOp>()) {
-    targetOp = tOp;
-    arch = targetOp.getTargetModel().getTargetArch();
-    break; // Should only have 1 object in iterator
+                                            llvm::raw_ostream &output,
+                                            llvm::StringRef deviceName) {
+  DeviceOp targetOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  if (!targetOp) {
+    return mlir::failure();
   }
+  AIEArch arch = targetOp.getTargetModel().getTargetArch();
 
   if (arch == AIEArch::AIE2p) {
     output << "{\n"
@@ -154,11 +154,12 @@ must be called first. So, a more practical invocation: aie-opt
 ./Work/arch/aieshim_solution.aiesol
 */
 mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
-                                             llvm::raw_ostream &output) {
-  DeviceOp targetOp;
-  for (auto tOp : module.getOps<DeviceOp>()) {
-    targetOp = tOp;
-    break; // Should only have 1 object in iterator
+                                             llvm::raw_ostream &output,
+                                             llvm::StringRef deviceName) {
+  DeviceOp targetOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  if (!targetOp) {
+    return mlir::failure();
   }
 
   // Generate boilerplate header
@@ -213,7 +214,8 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
 }
 
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output) {
+                                         llvm::raw_ostream &output,
+                                         llvm::StringRef deviceName) {
   /* Generates a .xpe file which is necessary to run aiesim.
   .xpe is a power report file, but has information on which AIE tiles are used.
   Sample invocation:
@@ -225,15 +227,12 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
   ./Work/reports/graph.xpe
   */
 
-  DeviceOp targetOp;
-  for (auto tOp : module.getOps<DeviceOp>()) {
-    targetOp = tOp;
-    break; // Should only have 1 object in iterator
+  DeviceOp targetOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  if (!targetOp) {
+    return mlir::failure();
   }
-  AIEArch arch = AIEArch::AIE1;
-  if (targetOp) {
-    arch = targetOp.getTargetModel().getTargetArch();
-  }
+  AIEArch arch = targetOp.getTargetModel().getTargetArch();
 
   // Generate boilerplate header
   // TODO: date and version should probably not be hardcoded

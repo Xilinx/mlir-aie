@@ -12,6 +12,8 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test15_prime_sieve {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
   %tile14 = aie.tile(1, 4)
   %tile15 = aie.tile(1, 5)
@@ -112,4 +114,6 @@ module @test15_prime_sieve {
     aie.use_lock(%lock16_0, "Release", 1)
     aie.end
   }
+  
+}
 }

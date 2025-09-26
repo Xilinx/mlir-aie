@@ -245,6 +245,8 @@ public:
 
   DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
   DynamicTileAnalysis(std::shared_ptr<Router> p) : pathfinder(std::move(p)) {}
+  DynamicTileAnalysis(mlir::Operation *op)
+      : pathfinder(std::make_shared<Pathfinder>()) {}
 
   mlir::LogicalResult runAnalysis(DeviceOp &device);
 

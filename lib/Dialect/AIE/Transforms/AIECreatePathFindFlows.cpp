@@ -62,6 +62,12 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
   matchAndRewrite(FlowOp flowOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Operation *Op = flowOp.getOperation();
+    DeviceOp d = flowOp->getParentOfType<DeviceOp>();
+    if (!d) {
+      flowOp->emitOpError("This operation must be contained within a device");
+      return failure();
+    }
+    rewriter.setInsertionPoint(d.getBody()->getTerminator());
 
     auto srcTile = cast<TileOp>(flowOp.getSource().getDefiningOp());
     TileID srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
@@ -173,7 +179,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
 namespace xilinx::AIE {
 
-void AIEPathfinderPass::runOnFlow(DeviceOp d) {
+void AIEPathfinderPass::runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer) {
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
   // operation inside
   ConversionTarget target(getContext());
@@ -258,9 +264,12 @@ bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
   return false;
 }
 
-void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder) {
+void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
+                                        DynamicTileAnalysis &analyzer) {
 
   ConversionTarget target(getContext());
+
+  mlir::DenseMap<TileID, mlir::Operation *> tiles;
 
   // Map from a port and flowID to
   DenseMap<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> packetFlows;
@@ -940,14 +949,15 @@ void AIEPathfinderPass::runOnOperation() {
   LLVM_DEBUG(llvm::dbgs() << "---Begin AIEPathfinderPass---\n");
 
   DeviceOp d = getOperation();
+  DynamicTileAnalysis &analyzer = getAnalysis<DynamicTileAnalysis>();
   if (failed(analyzer.runAnalysis(d)))
     return signalPassFailure();
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
 
   if (clRouteCircuit)
-    runOnFlow(d);
+    runOnFlow(d, analyzer);
   if (clRoutePacket)
-    runOnPacketFlow(d, builder);
+    runOnPacketFlow(d, builder, analyzer);
 
   // Populate wires between switchboxes and tiles.
   builder.setInsertionPoint(d.getBody()->getTerminator());
