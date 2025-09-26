@@ -14,6 +14,7 @@ import pyxrt as xrt
 import shutil
 import sys
 import traceback
+import shutil
 
 from aie.extras.context import mlir_mod_ctx
 from ..utils.xrt import read_insts_binary
@@ -39,7 +40,7 @@ class Promise:
     Promise class for asynchronous execution.
     This class is used to wait for the kernel to complete.
     """
-    def __init__(self, kernel, opcode, insts_buffer_bo, n_insts, *kernel_args):
+    def __init__(self, kernel, opcode, insts_buffer_bo, n_insts, hw_context, *kernel_args):
         from .graph import is_graph_capture_enabled
 
         # Store the kernel execution parameters
@@ -47,6 +48,7 @@ class Promise:
         self.opcode = opcode
         self.insts_buffer_bo = insts_buffer_bo
         self.n_insts = n_insts
+        self.hw_context = hw_context
         self.kernel_args = list(kernel_args)
         self.kernel_handle = None
         self.output_tensor = None
@@ -74,6 +76,12 @@ class Promise:
         self.kernel_handle = run
         return self
 
+    def get_hw_context(self):
+        """
+        Get the hardware context of the kernel.
+        """
+        return self.hw_context
+
     def done(self):
         """
         Wait for the kernel to complete.
@@ -84,6 +92,194 @@ class Promise:
                 raise RuntimeError(f"Kernel returned {result}")
 
 
+class KernelObject:
+    """
+    KernelObject class wrapper for NPU kernels.
+    """
+    def __init__(self, mlir_module, external_kernels, target_arch, kernel_name, *kernel_args):
+        self.mlir_module = mlir_module
+        self.external_kernels = external_kernels
+        self.target_arch = target_arch
+        self.kernel_name = kernel_name
+        self.opcode = 3
+
+        self.kernel_args = []
+        for tensor in kernel_args:
+            # Skip callable arguments since these are inlined in the kernel
+            if callable(tensor):
+                continue
+            if not hasattr(tensor, "buffer_object"):
+                raise TypeError(
+                    f"Expected Tensor with .buffer_object(), got {type(tensor)}"
+                )
+            self.kernel_args.append(tensor.buffer_object())        
+
+
+
+class UberKernel:
+    """
+    UberKernel class wrapper for NPU kernels.
+    """
+    def __init__(self, xclbin_path, inst_files, kernel_objects, device_index=0):
+        self.xclbin_path = xclbin_path
+        self.kernel_objects = kernel_objects
+        self.inst_files = inst_files
+
+        self.__device = xrt.device(device_index)
+
+        # Find kernel by name in the xclbin
+        self.__xclbin = xrt.xclbin(xclbin_path)
+
+        self.__device.register_xclbin(self.__xclbin)
+        self.__context = xrt.hw_context(self.__device, self.__xclbin.get_uuid())
+        
+
+        self.__kernels = {}
+        for kernel_object in kernel_objects:
+            name = kernel_object.kernel_name
+            self.__kernels[name] = {"kernel": xrt.kernel(self.__context, name), "args": kernel_object.kernel_args}
+
+        self.__insts = {}
+        
+        # Set up instruction stream
+        for kernel_name, insts_path in self.inst_files.items():
+            insts = read_insts_binary(insts_path)
+            
+            n_insts = len(insts)
+            insts_buffers_bytes = n_insts * np.dtype(insts.dtype).itemsize
+
+            # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
+            # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621
+            group_id = 1
+
+            buffer_bo = xrt.bo(
+                self.__device,
+                insts_buffers_bytes,
+                xrt.bo.cacheable,
+                group_id,
+            )
+
+            # Copy into a temporary numpy buffer
+            insts_buffer_bo_np = np.frombuffer(
+                buffer_bo.map(), dtype=insts.dtype
+            ).reshape(insts.shape)
+            insts_buffer_bo_np[:] = insts
+
+            # Always sync to the device in the constructor
+            buffer_bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)    
+
+            self.__insts[kernel_name] = {"insts": insts_path, "n_insts": n_insts, "buffer_bo": buffer_bo}
+            
+    def get_kernel(self, kernel_name):
+        """
+        Get the kernel by name.
+        """
+        if kernel_name not in self.__kernels:
+            raise ValueError(f"Kernel {kernel_name} not found")
+        return self.__kernels[kernel_name]
+    
+    def get_insts(self, kernel_name):
+        """
+        Get the instruction file of the kernel.
+        """
+        if kernel_name not in self.__insts:
+            raise ValueError(f"Kernel {kernel_name} not found")
+        return self.__insts[kernel_name]
+    
+    def get_hw_context(self):
+        """
+        Get the hardware context of the kernel.
+        """
+        return self.__context
+    def get_insts_buffer_bo(self):
+        """
+        Get the instruction buffer object of the kernel.
+        """
+        return self.__insts_buffer_bo
+    
+    
+def compile_kernel_objects(kernel_objects: list[KernelObject]):
+    """
+    Compile multiple kernel objects into a single combined xclbin.
+    Following the pattern from the example where kernels are combined sequentially.
+    """
+    if not kernel_objects:
+        raise ValueError("No kernel objects provided")
+    
+    # Calculate total hash for all kernels
+    total_hash = ""
+    for kernel_object in kernel_objects:
+        total_hash = hash_module(kernel_object.mlir_module, kernel_object.external_kernels, kernel_object.target_arch, total_hash)
+    
+    # Create combined kernel directory
+    combined_kernel_dir = os.path.join(IRON_CACHE_DIR, f"{total_hash}")
+    os.makedirs(combined_kernel_dir, exist_ok=True)
+    
+    # Check if already compiled
+    combined_xclbin_path = os.path.join(combined_kernel_dir, "combined.xclbin")
+    
+    inst_files = {}
+    for kernel_object in kernel_objects:
+        inst_files[kernel_object.kernel_name] = os.path.join(combined_kernel_dir, f"{kernel_object.kernel_name}.bin")
+    
+    if os.path.exists(combined_xclbin_path) and all(os.path.exists(inst_file) for inst_file in inst_files.values()):
+        # Return the combined NPUKernel
+        return UberKernel(combined_xclbin_path, inst_files, kernel_objects)
+    
+    # Compile kernels sequentially, combining them into a single xclbin
+    current_xclbin_path = None
+    
+    for i, kernel_object in enumerate(kernel_objects):
+        # Write MLIR to file in the combined directory
+        mlir_path = os.path.join(combined_kernel_dir, f"{kernel_object.kernel_name}.mlir")
+        with open(mlir_path, "w", encoding="utf-8") as f:
+            print(kernel_object.mlir_module, file=f)
+        
+        # Compile ExternalFunctions in the combined directory
+        for func in kernel_object.external_kernels:
+            compile_external_kernel(func, combined_kernel_dir, kernel_object.target_arch)
+        
+        # Determine output paths - all in the same directory
+        xclbin_path = os.path.join(combined_kernel_dir, f"{kernel_object.kernel_name}.xclbin")
+        insts_path = os.path.join(combined_kernel_dir, f"{kernel_object.kernel_name}.bin")
+            
+        xclbin_input = None if i == 0 else current_xclbin_path
+        
+        # Compile options for aiecc
+        options = [
+            f"--xclbin-kernel-name={kernel_object.kernel_name}",
+            f"--xclbin-kernel-id={hex(0x900 + i)}",  # Start from 0x900 like in example
+            f"--xclbin-instance-name={kernel_object.kernel_name}_INST",
+        ]
+        
+        
+        if xclbin_input:
+            options.append(f"--xclbin-input={xclbin_input}")
+        inst_files[kernel_object.kernel_name] = insts_path   
+        # Compile the kernel
+        try:
+            compile_mlir_module(
+                mlir_module=kernel_object.mlir_module,
+                insts_path=insts_path,
+                xclbin_path=xclbin_path,
+                work_dir=combined_kernel_dir,
+                options=options,
+            )
+        except Exception as e:
+            # Clean up on failure
+            if os.path.exists(combined_kernel_dir):
+                shutil.rmtree(combined_kernel_dir)
+            raise e
+        
+        # Update current xclbin path for next iteration
+        current_xclbin_path = xclbin_path
+    
+    # Copy final xclbin and insts to combined location
+    shutil.copy2(current_xclbin_path, combined_xclbin_path)
+    
+    # Return the combined NPUKernel
+    return UberKernel(combined_xclbin_path, inst_files, kernel_objects)
+    
 
 class NPUKernel:
     """
@@ -142,13 +338,12 @@ class NPUKernel:
         # Always sync to the device in the constructor
         self.__insts_buffer_bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
-    def __call__(self, *args, async_mode: bool = False):
+    def __call__(self, *args):
         """
         Allows the kernel to be called as a function with the provided arguments.
 
         Parameters:
             args (IRON Tensors): Arguments to pass to the kernel.
-            async_mode (bool): Whether to use asynchronous execution. Defaults to False.
         """
 
         opcode = 3
@@ -164,13 +359,12 @@ class NPUKernel:
                 )
             kernel_args.append(tensor.buffer_object())
 
-        if async_mode:
-            return Promise(self.__kernel, opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
-        else:
-            h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
-            r = h.wait()
-            if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-                raise NPUKernel_Error(f"Kernel returned {r}")
+
+
+        h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
+        r = h.wait()
+        if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise NPUKernel_Error(f"Kernel returned {r}")
 
     def __del__(self):
         """
@@ -239,7 +433,7 @@ def jit(function=None, is_placed=True, use_cache=True):
         # Compile all ExternalFunction instances that were created during this JIT compilation
         for func in ExternalFunction._instances:
             external_kernels.append(func)
-
+        
         # Determine target architecture based on device type
         try:
             current_device = get_current_device()
@@ -257,6 +451,11 @@ def jit(function=None, is_placed=True, use_cache=True):
                 raise RuntimeError(f"Unsupported device type: {type(current_device)}")
         except Exception as e:
             raise
+        
+        from .graph import is_graph_capture_enabled
+        if is_graph_capture_enabled():
+            kernel_name = function.__name__
+            return KernelObject(mlir_module, external_kernels, target_arch, kernel_name, *args)        
 
         # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)
@@ -434,7 +633,7 @@ def _create_function_cache_key(function, args, kwargs):
     return (func_name, signature)
 
 
-def hash_module(module, external_kernels=None, target_arch=None):
+def hash_module(module, external_kernels=None, target_arch=None, starting_hash=None):
     """
     Hash the MLIR module and ExternalFunction compiler options to create a unique identifier.
     """
@@ -456,5 +655,8 @@ def hash_module(module, external_kernels=None, target_arch=None):
     if target_arch:
         combined_str += f"|target_arch={target_arch}"
 
+    if starting_hash:
+        combined_str += f"|{starting_hash}"
+        
     hash_result = hashlib.sha256(combined_str.encode("utf-8")).hexdigest()[:16]
     return hash_result

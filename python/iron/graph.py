@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from typing import Generator, List, Dict, Any, Optional, Callable
 from dataclasses import dataclass
 from .tensor import Tensor
+from .jit import compile_kernel_objects
 
 
 # Global graph capture state
@@ -35,22 +36,19 @@ class Graph:
     def __init__(self, nodes: List[GraphNode]):
         self.nodes = nodes
 
-    def replay(self) -> List[Tensor]:
+    def compile(self):
         """
-        Replay the graph operations using the current data in input tensors.
-        Uses runlist to batch all kernel executions for better performance.
-
-        Returns:
-            List of output tensors from the graph execution
+        Compile the graph operations into kernel objects.
+        This prepares the graph for execution but doesn't run it yet.
         """
-        import pyxrt as xrt
-
         # Create a mapping from captured tensors to their computed results
         tensor_map = {}
-        promises = []  # Collect all Promise objects
+        kernel_objects = []  # Collect all kernel objects
 
-        # Execute all operations and collect Promise objects
-        for node in self.nodes:
+        # Execute all operations and collect kernel objects
+        kernel_name_counts = {}  # Track counts for each kernel name
+        
+        for i, node in enumerate(self.nodes):
             # Map inputs to their computed results
             mapped_inputs = []
             for inp in node.inputs:
@@ -59,60 +57,79 @@ class Graph:
                 else:
                     mapped_inputs.append(inp)
 
-            # Execute the operation - this returns a Promise object
-            promise = node.func(*mapped_inputs)
+            # Execute the operation - this returns a kernel object
+            # Pass the output tensor as the last argument to the function
+            kernel_object = node.func(*mapped_inputs, out=node.output)
+            
+            # Make kernel name unique by appending index
+            original_name = kernel_object.kernel_name
+            if original_name in kernel_name_counts:
+                kernel_name_counts[original_name] += 1
+                kernel_object.kernel_name = f"{original_name}_{kernel_name_counts[original_name]}"
+            else:
+                kernel_name_counts[original_name] = 0
+                kernel_object.kernel_name = f"{original_name}_{kernel_name_counts[original_name]}"
 
-            # Store the Promise object
-            promises.append(promise)
-
+            # Store the kernel object
+            kernel_objects.append(kernel_object)
+            
             # Store the output tensor for mapping
             tensor_map[node.output] = node.output
 
-        # Execute all Promise objects using runlist if there are any
-        if promises:
-            # Create a runlist for batch execution
-            runlist = xrt.runlist()
+        print(f"Compiling {len(kernel_objects)} kernel objects")
+        print(f"Kernel objects names: {[kernel_object.kernel_name for kernel_object in kernel_objects] if kernel_objects else []}")
+        # Compile all kernel objects into a single UberKernel
+        if kernel_objects:
+            import pyxrt as xrt
+            
+            self.uber_kernel = compile_kernel_objects(kernel_objects)
+            self.kernel_objects = kernel_objects
+            
+            # Create runlist for batch execution
+            self.runlist = xrt.runlist(self.uber_kernel.get_hw_context())
 
-            # Create runs for all Promise objects
-            for promise in promises:
-                # Create run object using Promise's stored parameters
-                run = xrt.run(promise.kernel)
-                run.set_arg(0, promise.opcode)
-                run.set_arg(1, promise.insts_buffer_bo)
-                run.set_arg(2, promise.n_insts)
+            # Create runs for all kernel objects
+            for kernel_object in kernel_objects:
+                # Create run object using kernel object's stored parameters
+                name = kernel_object.kernel_name
+                kernel = self.uber_kernel.get_kernel(name)
+                run = xrt.run(kernel["kernel"])
+                run.set_arg(0, kernel_object.opcode)
+                run.set_arg(1, self.uber_kernel.get_insts(name)["buffer_bo"])
+                run.set_arg(2, self.uber_kernel.get_insts(name)["n_insts"])
 
-                # Set additional kernel arguments from Promise
-                for i, arg in enumerate(promise.kernel_args):
+                # Set additional kernel arguments from kernel object
+                for i, arg in enumerate(kernel_object.kernel_args):
                     run.set_arg(3 + i, arg)
 
                 # Add run to runlist
-                runlist.add(run)
+                self.runlist.add(run)
+        else:
+            self.uber_kernel = None
+            self.kernel_objects = []
+            self.runlist = None
+        
+        # Store tensor map for replay
+        self.tensor_map = tensor_map
 
-            # Execute all kernels in the runlist
-            runlist.execute()
+    def replay(self) -> Tensor:
+        """
+        Execute the compiled graph operations.
+        Must call compile() first.
 
-            # Wait for completion and process results
-            runlist.wait()
+        Returns:
+            Output tensor from the graph execution
+        """
+        if not hasattr(self, 'runlist') or self.runlist is None:
+            raise RuntimeError("Graph must be compiled before replay. Call compile() first.")
 
-            # Check state
-            state = runlist.state()
-            if state != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-                raise RuntimeError(f"Kernel batch returned {state}")
+        # Execute and wait
+        self.runlist.execute()
+        self.runlist.wait()
+        
+        # Return the output tensor from the last node
+        return self.tensor_map[self.nodes[-1].output]
 
-            # Mark all Promise objects as completed
-            for promise in promises:
-                promise.kernel_handle = runlist  # Store reference for done() method
-
-        # Collect all outputs in order
-        outputs = []
-        for node in self.nodes:
-            if node.output in tensor_map:
-                outputs.append(tensor_map[node.output])
-            else:
-                # This shouldn't happen, but handle gracefully
-                outputs.append(node.output)
-
-        return outputs
 
     def __len__(self) -> int:
         """Return the number of operations in the graph."""
