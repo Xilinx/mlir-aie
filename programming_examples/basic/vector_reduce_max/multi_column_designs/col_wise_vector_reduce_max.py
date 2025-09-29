@@ -26,18 +26,18 @@ from aie.iron.controlflow import range_
 from aie.helpers.taplib.tap import TensorAccessPattern
 
 
-def my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype_str, trace_size):
+def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
     enable_trace = 1 if trace_size > 0 else None
+    cores_per_col = 2
 
     dtype = str_to_dtype(dtype_str)
     in_num_elements = in1_size // dtype(0).nbytes
     out_num_elements = out_size // dtype(0).nbytes
 
-    chunk = in_num_elements // num_columns // num_channels  # For offset calculation
+    chunk = in_num_elements // num_cores  # For offset calculation
     tile_size = chunk if chunk < 4096 else 4096
-    n = tile_size * num_columns
-    N_div_n = in_num_elements // n // num_channels
+    N_div_n = in_num_elements // (tile_size * num_cores)
 
     # Define tensor types
     in_tensor_ty = np.ndarray[(in_num_elements,), np.dtype[dtype]]
@@ -46,8 +46,8 @@ def my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype_str,
     fifodepth = 2
 
     # AIE-array data movement with object fifos
-    of_in1s = [ObjectFifo(tile_ty, name=f"in1_{i}_{j}", depth=fifodepth) for i in range(num_columns) for j in range(num_channels)]
-    of_outs = [ObjectFifo(out_tensor_ty, name=f"out_{i}_{j}", depth=fifodepth) for i in range(num_columns) for j in range(num_channels)]
+    of_in1s = [ObjectFifo(tile_ty, name=f"in1_{i}", depth=fifodepth) for i in range(num_cores)]
+    of_outs = [ObjectFifo(out_tensor_ty, name=f"out_{i}", depth=fifodepth) for i in range(num_cores)]
 
     # AIE Core Function declarations
     suffix = "_bfloat16" if dtype_str == "bf16" else ""
@@ -79,7 +79,7 @@ def my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype_str,
         # Extract object fifos from start of args list
         of_in1 = args[0]
         of_out = args[1]
-        neighbor_of_in1s = args[2:-2]  # Variable number of input fifos based on n_cores
+        neighbor_of_in1s = args[2:-2]  # Variable number of input fifos based on num_cores
 
         for _ in range_(N_div_n):
             elem_in1 = of_in1.acquire(1)
@@ -108,23 +108,21 @@ def my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype_str,
 
     # Define a worker to run the task on a core
     my_workers = []
-    for i in range(num_columns):
-        for j in range(num_channels):
-            idx_offset = j * num_columns
-            fifo_args = [of_in1s[idx_offset + i].cons(), of_outs[idx_offset + i].prod()]
-            if 0 < i < num_columns:
-                fifo_args.append(of_outs[idx_offset + i - 1].cons())
-                if i == num_columns - 1 and j < num_channels - 1:
-                    fifo_args.append(of_outs[(j + 1) * num_columns + i].cons())
-            
-            fifo_args.extend([reduce_max_vector, compute_max])
-            my_workers.append(
-                Worker(
-                    core_body,
-                    fn_args=fifo_args,
-                    trace=enable_trace,
-                )
+    for i in range(num_cores):
+        fifo_args = [of_in1s[i].cons(), of_outs[i].prod()]
+        if cores_per_col - 1 < i:
+            fifo_args.append(of_outs[i - cores_per_col].cons())
+            if num_cores - cores_per_col < i:
+                fifo_args.append(of_outs[i - 1].cons())
+        
+        fifo_args.extend([reduce_max_vector, compute_max])
+        my_workers.append(
+            Worker(
+                core_body,
+                fn_args=fifo_args,
+                trace=enable_trace,
             )
+        )
 
     # Create a TensorAccessPattern for each column
     # to describe the data movement
@@ -133,12 +131,11 @@ def my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype_str,
     taps = [
         TensorAccessPattern(
             (1, in_num_elements),
-            chunk * i * num_channels + chunk * j,
+            chunk * i,
             [1, 1, 1, chunk],
             [0, 0, 0, 1],
         )
-        for i in range(num_columns)
-        for j in range(num_channels)
+        for i in range(num_cores)
     ]
 
     # Runtime operations to move data to/from the AIE-array
@@ -148,61 +145,49 @@ def my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype_str,
             rt.enable_trace(trace_size)
         rt.start(*my_workers)
         # Fill the input objectFIFOs with data
-        for i in range(num_columns):
-            for j in range(num_channels):
-                rt.fill(
-                    of_in1s[i * num_channels + j].prod(),
-                    A,
-                    taps[i * num_channels + j],
-                )
+        for i in range(num_cores):
+            rt.fill(
+                of_in1s[i].prod(),
+                A,
+                taps[i],
+            )
         # Drain the output objectFIFOs corresponding to the last column of the first row with data
         rt.drain(
-            of_outs[num_columns - 1].cons(),
+            of_outs[num_cores - 1].cons(),
             C,
             wait=True,
         )
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(ColumnLimitedPlacer(num_channels))
+    return Program(dev, rt).resolve_program(ColumnLimitedPlacer(cores_per_col))
 
 
 p = argparse.ArgumentParser()
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument(
-    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
-)
+p.add_argument("-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size")
 p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
 p.add_argument("-dt", "--dtype", required=True, dest="dtype", help="Datatype")
-p.add_argument(
-    "-t",
-    "--trace_size",
-    required=False,
-    dest="trace_size",
-    default=0,
-    help="Trace buffer size",
-)
+p.add_argument("-nc", "--num_cores", required=False, dest="num_cores", default=8, help="Number of cores to use")
+p.add_argument("-t", "--trace_size", required=False, dest="trace_size", default=0, help="Trace buffer size")
 opts = p.parse_args(sys.argv[1:])
 
+num_cores = int(opts.num_cores)
 if opts.device == "npu":
     dev = NPU1()
-    num_columns = 4
+    if num_cores > 8:
+        raise ValueError(f"This design can use at most 8 cores for device {opts.device}")
 elif opts.device == "npu2":
     dev = NPU2()
-    num_columns = 8
+    if num_cores > 16:
+        raise ValueError(f"This design can use at most 16 cores for device {opts.device}")
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
 in1_size = int(opts.in1_size)
-if in1_size % 64 != 0 or in1_size < 512:
-    print(
-        "In1 buffer size ("
-        + str(in1_size)
-        + ") must be a multiple of 64 and greater than or equal to 512"
-    )
-    raise ValueError
+if in1_size % 64 != 0 or in1_size < 64 * num_cores:
+    raise ValueError(f"In1 buffer size ({in1_size}) must be a multiple of 64 and greater than or equal to {64 * num_cores}")
 out_size = int(opts.out_size)
 dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)
 
-num_channels = 2
-print(my_reduce_max(dev, in1_size, out_size, num_columns, num_channels, dtype, trace_size))
+print(my_reduce_max(dev, in1_size, out_size, num_cores, dtype, trace_size))
