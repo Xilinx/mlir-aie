@@ -3626,7 +3626,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
       return true;
 
     unsigned laneSize = getVectorLaneSize(resultType);
-    return laneSize != 16;
+    return laneSize == 16;
   });
 
   target.addDynamicallyLegalOp<arith::MulIOp>([](arith::MulIOp op) {
