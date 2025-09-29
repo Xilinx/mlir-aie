@@ -36,15 +36,14 @@ line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 # Data movement with ObjectFifos
 of_in = ObjectFifo(line_ty, name="in", depth =2)
 of_out = of_in.cons().forward()
-of_in.use_runtime_dmas(1)
+of_in.use_runtime_dmas(0, repeatTask = 3)
 of_out.use_runtime_dmas(1)
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
 with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
     rt.fill(of_in.prod(), a_in)
-    rt.configure_dma(of_in.cons(), repeat = 3)
-    # rt.configure_dma(of_in.cons(), offset= 0)
+    # rt.configure_dma(of_in.cons(), repeat = 3)
     rt.configure_dma(of_out.prod())
     rt.drain(of_out.cons(), c_out, wait = True)
 

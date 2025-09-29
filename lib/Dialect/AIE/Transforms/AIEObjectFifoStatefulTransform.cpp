@@ -827,13 +827,19 @@ struct AIEObjectFifoStatefulTransformPass
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims, bdPacket);
     } else if (op.getProducerTileOp().isMemTile()) {
+      std::cout<<"From Mem"<<std::endl;
       BDPadLayoutArrayAttr padDims = nullptr;
       if (channelDir == DMAChannelDir::MM2S && pad_dims)
         padDims = pad_dims;
-      auto runtimeDMAs = op.getRuntimeDmas();
-      if (runtimeDMAs.has_value() && runtimeDMAs == false)
+      int taskCount = 0;
+      if (op.getRuntimeDmaRepeat().has_value()) {
+        taskCount = op.getRuntimeDmaRepeat().value();
+      }
+      std::cout << "TaskCount: "<< taskCount <<std::endl;
+      if (op.getRuntimeDmas().has_value() && !op.getRuntimeDmas().value()) {
         createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                        dims, padDims, {});
+            dims, padDims, bdPacket, taskCount);
+      }
     } else {
       createAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, bdPacket);
@@ -1021,7 +1027,8 @@ struct AIEObjectFifoStatefulTransformPass
                         int channelIndex, int lockMode,
                         BDDimLayoutArrayAttr dims,
                         BDPadLayoutArrayAttr padDimensions,
-                        std::optional<PacketInfoAttr> bdPacket) {
+                        std::optional<PacketInfoAttr> bdPacket,
+                        int taskCount = 0) {
     size_t numBlocks = op.size();
     if (numBlocks == 0)
       return;
@@ -1139,7 +1146,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCout*/ 0, bdBlock,
+                               channelIndex, taskCount, bdBlock,
                                endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
@@ -1793,12 +1800,15 @@ struct AIEObjectFifoStatefulTransformPass
             BDDimLayoutArrayArrayAttr::get(builder.getContext(),
                                            singletonFromStreamDims);
 
-        // Propagate runtimeDMAs attribute from the original createOp to the new consumerFifo
+        // Propagate runtimeDMAs and runtimeDmaRepeat attributes from the original createOp to the new consumerFifo
         ObjectFifoCreateOp consumerFifo = createObjectFifo(
             builder, datatype, consumerFifoName, consumerTile, consumerTile,
             consumerObjFifoSize, emptyDims, fromStreamDims);
         if (auto runtimeDMAs = createOp.getRuntimeDmas()) {
           consumerFifo.setRuntimeDmasAttr(builder.getBoolAttr(*runtimeDMAs));
+        }
+        if (auto runtimeDmaRepeat = createOp.getRuntimeDmaRepeat()) {
+          consumerFifo.setRuntimeDmaRepeatAttr(builder.getI32IntegerAttr(*runtimeDmaRepeat));
         }
         if (createOp.getDisableSynchronization())
           consumerFifo.setDisableSynchronization(true);

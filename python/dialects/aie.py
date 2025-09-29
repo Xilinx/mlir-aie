@@ -418,6 +418,7 @@ class object_fifo(ObjectFifoCreateOp):
         via_DMA=None,
         plio=None,
         runtimeDMAs=None,
+        runtimeDMARepeat=None,
         padDimensions=None,
         disable_synchronization=None,
     ):
@@ -438,7 +439,10 @@ class object_fifo(ObjectFifoCreateOp):
                 values.append(DenseElementsAttr.get(init_val, type=self.datatype))
             initValues = _arrayAttr(values, None)
         if runtimeDMAs is not None and not isinstance(runtimeDMAs, BoolAttr):
+            # Convert integer to boolean (0 = False, >0 = True)
             runtimeDMAs = BoolAttr.get(bool(runtimeDMAs))
+        if runtimeDMARepeat is not None and not isinstance(runtimeDMARepeat, IntegerAttr):
+            runtimeDMARepeat = IntegerAttr.get(IntegerType.get_signless(32), runtimeDMARepeat)
         super().__init__(
             sym_name=name,
             producerTile=producerTile,
@@ -453,6 +457,7 @@ class object_fifo(ObjectFifoCreateOp):
             disable_synchronization=disable_synchronization,
             initValues=initValues,
             runtimeDmas=runtimeDMAs,
+            runtimeDmaRepeat=runtimeDMARepeat,
         )
 
     def acquire(self, port, num_elem):

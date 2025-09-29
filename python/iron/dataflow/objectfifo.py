@@ -78,9 +78,10 @@ class ObjectFifo(Resolvable):
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
 
-    def use_runtime_dmas(self, num: int = 0):
+    def use_runtime_dmas(self, num: int = 0, repeatTask: int = None):
         """Set the number of runtime DMAs to use for this ObjectFifo."""
         self._runtime_dmas = num
+        self._runtime_dmas_repeatTask = repeatTask
 
     @classmethod
     def __get_index(cls) -> int:
@@ -268,7 +269,8 @@ class ObjectFifo(Resolvable):
                 dimensionsToStream=self._dims_to_stream,
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
-                runtimeDMAs=self._runtime_dmas,
+                runtimeDMAs=bool(self._runtime_dmas) if self._runtime_dmas is not None else None,
+                runtimeDMARepeat=self._runtime_dmas_repeatTask,
             )
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
@@ -340,9 +342,9 @@ class ObjectFifoHandle(Resolvable):
         self._endpoint = None
         self._dims_from_stream = dims_from_stream
 
-    def use_runtime_dmas(self, num: int = 0):
+    def use_runtime_dmas(self, num: int = 0, repeatTask: int = None):
         """Set the number of runtime DMAs to use for this ObjectFifo via its parent ObjectFifo."""
-        self._object_fifo.use_runtime_dmas(num)
+        self._object_fifo.use_runtime_dmas(num, repeatTask)
 
     def acquire(
         self,

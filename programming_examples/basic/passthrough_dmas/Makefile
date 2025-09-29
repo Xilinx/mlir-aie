@@ -25,9 +25,9 @@ ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 endif
 
-build/aie.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${LENGTH} ${devicename} ${col} > $@
+# build/aie.mlir: ${srcdir}/${aie_py_src}
+# 	mkdir -p ${@D}
+# 	python3 $< ${LENGTH} ${devicename} ${col} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
@@ -65,4 +65,4 @@ run_vck5000:
 	test.elf
 
 clean:
-	rm -rf _build build/final.xclbin build/insts.bin  build/aie.mlir.prj build/aie.mlir core_* test.elf ${targetname}.exe
+	rm -rf _build build/final.xclbin build/insts.bin  build/aie.mlir.prj core_* test.elf ${targetname}.exe
