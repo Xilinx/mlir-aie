@@ -16,7 +16,7 @@ all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_dmas
-LENGTH ?= 4096
+LENGTH ?= 8192
 
 aie_py_src=${targetname}.py
 use_placed?=0

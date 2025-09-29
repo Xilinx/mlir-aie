@@ -282,6 +282,7 @@ class Runtime(Resolvable):
         obj: ObjectFifoHandle,
         length: int = None,
         offset: int = 0,
+        repeat: int = 0,
         sizes: list[int] = None,
         strides: list[int] = None,
         pad_before: list[int] = None,
@@ -290,7 +291,7 @@ class Runtime(Resolvable):
         """Configure/reconfigure the DMA length, transfer sizes and strides for an ObjectFifoHandle.
         This should be called within a Runtime.sequence() context.
         """
-        self._tasks.append(ConfigureDMATask(obj, length, offset, sizes, strides, pad_before, pad_after))
+        self._tasks.append(ConfigureDMATask(obj, length, offset, repeat, sizes, strides, pad_before, pad_after))
         
     def resolve(
         self,

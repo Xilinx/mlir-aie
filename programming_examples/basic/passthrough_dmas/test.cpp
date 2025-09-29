@@ -38,7 +38,7 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the LX6",
       cxxopts::value<std::string>())(
       "length,l", "the length of the transfer in int32_t",
-      cxxopts::value<int>()->default_value("4096"));
+      cxxopts::value<int>()->default_value("8192"));
 
   try {
     vm = options.parse(argc, argv);

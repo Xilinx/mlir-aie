@@ -446,19 +446,21 @@ def reconfigure_dma(
             )
         )
         current_offset += length_int
-        # Encode repeat count in bits 23:16 and start_bd_id in bits 5:0
-        if repeat > 0:
-            encoded_value = (repeat << 16) | (start_bd_id & 0x3F) 
-        else:
-            encoded_value = bd_id
-        results.append(
-            npu_write32(
-                address = bd_queue_addr,
-                column = column,
-                row = row,
-                value = encoded_value
-            )
+    
+    # After all BDs are configured, write to the queue once
+    # Encode repeat count in bits 23:16 and start_bd_id in bits 5:0
+    if repeat > 0:
+        encoded_value = (repeat << 16) | (start_bd_id & 0x3F) 
+    else:
+        encoded_value = start_bd_id
+    results.append(
+        npu_write32(
+            address = bd_queue_addr,
+            column = column,
+            row = row,
+            value = encoded_value
         )
+    )
     return results
         # if dir == DMAChannelDir.MM2S:
         #     results.append(

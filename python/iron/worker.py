@@ -312,6 +312,7 @@ class ConfigureDMATask(Resolvable):
                 else:
                     raise RuntimeError("Failed to get length from objectFifo: obj_type.shape is empty or not a sequence.")
         offset = self.offset if self.offset is not None else getattr(self.obj, "offset", 0)
+        repeat = self.repeat if self.repeat is not None else getattr(self.obj, "repeat", 0)
         if self.sizes is not None and self.strides is not None:
             sizes = self.sizes
             strides = self.strides

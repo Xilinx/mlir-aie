@@ -833,7 +833,7 @@ struct AIEObjectFifoStatefulTransformPass
       auto runtimeDMAs = op.getRuntimeDmas();
       if (runtimeDMAs.has_value() && runtimeDMAs == false)
         createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
-                        dims, padDims);
+                        dims, padDims, {});
     } else {
       createAIETileDMA(device, builder, op, channelDir, channelIndex, lockMode,
                        dims, bdPacket);
