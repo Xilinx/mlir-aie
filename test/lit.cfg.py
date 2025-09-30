@@ -29,6 +29,9 @@ config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 config.environment["PYTHONPATH"] = "{}".format(
     os.path.join(config.aie_obj_root, "python")
 )
+config.environment["LD_LIBRARY_PATH"] = "{}".format(
+    os.path.join(config.aie_obj_root, "runtime_lib", "x86_64", "xaiengine", "lib")
+)
 
 # suffixes: A list of file extensions to treat as test files.
 config.suffixes = [".mlir", ".py", ".test"]
