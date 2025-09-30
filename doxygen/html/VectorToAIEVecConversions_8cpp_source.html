@@ -3914,368 +3914,361 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l03660" name="l03660"></a><span class="lineno"> 3660</span>    <span class="keywordflow">return</span> laneSize != 16;</div>
 <div class="line"><a id="l03661" name="l03661"></a><span class="lineno"> 3661</span>  });</div>
 <div class="line"><a id="l03662" name="l03662"></a><span class="lineno"> 3662</span> </div>
-<div class="line"><a id="l03663" name="l03663"></a><span class="lineno"> 3663</span>  target.addDynamicallyLegalOp&lt;arith::SubFOp&gt;([](arith::SubFOp op) {</div>
-<div class="line"><a id="l03664" name="l03664"></a><span class="lineno"> 3664</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03665" name="l03665"></a><span class="lineno"> 3665</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03666" name="l03666"></a><span class="lineno"> 3666</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03667" name="l03667"></a><span class="lineno"> 3667</span> </div>
-<div class="line"><a id="l03668" name="l03668"></a><span class="lineno"> 3668</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03669" name="l03669"></a><span class="lineno"> 3669</span>    <span class="keywordflow">return</span> laneSize != 16;</div>
-<div class="line"><a id="l03670" name="l03670"></a><span class="lineno"> 3670</span>  });</div>
-<div class="line"><a id="l03671" name="l03671"></a><span class="lineno"> 3671</span> </div>
-<div class="line"><a id="l03672" name="l03672"></a><span class="lineno"> 3672</span>  target.addDynamicallyLegalOp&lt;arith::MulIOp&gt;([](arith::MulIOp op) {</div>
-<div class="line"><a id="l03673" name="l03673"></a><span class="lineno"> 3673</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03674" name="l03674"></a><span class="lineno"> 3674</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03675" name="l03675"></a><span class="lineno"> 3675</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03676" name="l03676"></a><span class="lineno"> 3676</span>    <span class="keyword">auto</span> isAddOp = [&amp;](Operation *op) { <span class="keywordflow">return</span> isa&lt;arith::AddIOp&gt;(op); };</div>
-<div class="line"><a id="l03677" name="l03677"></a><span class="lineno"> 3677</span>    <span class="comment">// Verify it is not a part of MAC</span></div>
-<div class="line"><a id="l03678" name="l03678"></a><span class="lineno"> 3678</span>    <span class="keywordflow">if</span> (op-&gt;hasOneUse() &amp;&amp; llvm::any_of(op-&gt;getUsers(), isAddOp))</div>
-<div class="line"><a id="l03679" name="l03679"></a><span class="lineno"> 3679</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03663" name="l03663"></a><span class="lineno"> 3663</span>  target.addLegalOp&lt;arith::SubFOp&gt;();</div>
+<div class="line"><a id="l03664" name="l03664"></a><span class="lineno"> 3664</span> </div>
+<div class="line"><a id="l03665" name="l03665"></a><span class="lineno"> 3665</span>  target.addDynamicallyLegalOp&lt;arith::MulIOp&gt;([](arith::MulIOp op) {</div>
+<div class="line"><a id="l03666" name="l03666"></a><span class="lineno"> 3666</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
+<div class="line"><a id="l03667" name="l03667"></a><span class="lineno"> 3667</span>    <span class="keywordflow">if</span> (!resultType)</div>
+<div class="line"><a id="l03668" name="l03668"></a><span class="lineno"> 3668</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03669" name="l03669"></a><span class="lineno"> 3669</span>    <span class="keyword">auto</span> isAddOp = [&amp;](Operation *op) { <span class="keywordflow">return</span> isa&lt;arith::AddIOp&gt;(op); };</div>
+<div class="line"><a id="l03670" name="l03670"></a><span class="lineno"> 3670</span>    <span class="comment">// Verify it is not a part of MAC</span></div>
+<div class="line"><a id="l03671" name="l03671"></a><span class="lineno"> 3671</span>    <span class="keywordflow">if</span> (op-&gt;hasOneUse() &amp;&amp; llvm::any_of(op-&gt;getUsers(), isAddOp))</div>
+<div class="line"><a id="l03672" name="l03672"></a><span class="lineno"> 3672</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03673" name="l03673"></a><span class="lineno"> 3673</span> </div>
+<div class="line"><a id="l03674" name="l03674"></a><span class="lineno"> 3674</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03675" name="l03675"></a><span class="lineno"> 3675</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
+<div class="line"><a id="l03676" name="l03676"></a><span class="lineno"> 3676</span> </div>
+<div class="line"><a id="l03677" name="l03677"></a><span class="lineno"> 3677</span>    <span class="keywordflow">return</span> (laneSize != 32 || (resultElWidth != 16 &amp;&amp; resultElWidth != 8)) &amp;&amp;</div>
+<div class="line"><a id="l03678" name="l03678"></a><span class="lineno"> 3678</span>           ((laneSize != 16 &amp;&amp; laneSize != 32) || resultElWidth != 32);</div>
+<div class="line"><a id="l03679" name="l03679"></a><span class="lineno"> 3679</span>  });</div>
 <div class="line"><a id="l03680" name="l03680"></a><span class="lineno"> 3680</span> </div>
-<div class="line"><a id="l03681" name="l03681"></a><span class="lineno"> 3681</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03682" name="l03682"></a><span class="lineno"> 3682</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03683" name="l03683"></a><span class="lineno"> 3683</span> </div>
-<div class="line"><a id="l03684" name="l03684"></a><span class="lineno"> 3684</span>    <span class="keywordflow">return</span> (laneSize != 32 || (resultElWidth != 16 &amp;&amp; resultElWidth != 8)) &amp;&amp;</div>
-<div class="line"><a id="l03685" name="l03685"></a><span class="lineno"> 3685</span>           ((laneSize != 16 &amp;&amp; laneSize != 32) || resultElWidth != 32);</div>
-<div class="line"><a id="l03686" name="l03686"></a><span class="lineno"> 3686</span>  });</div>
-<div class="line"><a id="l03687" name="l03687"></a><span class="lineno"> 3687</span> </div>
-<div class="line"><a id="l03688" name="l03688"></a><span class="lineno"> 3688</span>  target.addDynamicallyLegalOp&lt;arith::MulFOp&gt;([](arith::MulFOp op) {</div>
-<div class="line"><a id="l03689" name="l03689"></a><span class="lineno"> 3689</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03690" name="l03690"></a><span class="lineno"> 3690</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03691" name="l03691"></a><span class="lineno"> 3691</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03692" name="l03692"></a><span class="lineno"> 3692</span> </div>
-<div class="line"><a id="l03693" name="l03693"></a><span class="lineno"> 3693</span>    <span class="keyword">auto</span> isAddOp = [&amp;](Operation *op) { <span class="keywordflow">return</span> isa&lt;arith::AddFOp&gt;(op); };</div>
-<div class="line"><a id="l03694" name="l03694"></a><span class="lineno"> 3694</span>    <span class="comment">// Verify it is not a part of FMA</span></div>
-<div class="line"><a id="l03695" name="l03695"></a><span class="lineno"> 3695</span>    <span class="keywordflow">if</span> (op-&gt;hasOneUse() &amp;&amp; llvm::any_of(op-&gt;getUsers(), isAddOp))</div>
-<div class="line"><a id="l03696" name="l03696"></a><span class="lineno"> 3696</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03697" name="l03697"></a><span class="lineno"> 3697</span> </div>
-<div class="line"><a id="l03698" name="l03698"></a><span class="lineno"> 3698</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03699" name="l03699"></a><span class="lineno"> 3699</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03700" name="l03700"></a><span class="lineno"> 3700</span> </div>
-<div class="line"><a id="l03701" name="l03701"></a><span class="lineno"> 3701</span>    <span class="keywordflow">return</span> laneSize != 16 || (resultElWidth != 16 &amp;&amp; resultElWidth != 32);</div>
-<div class="line"><a id="l03702" name="l03702"></a><span class="lineno"> 3702</span>  });</div>
-<div class="line"><a id="l03703" name="l03703"></a><span class="lineno"> 3703</span> </div>
-<div class="line"><a id="l03704" name="l03704"></a><span class="lineno"> 3704</span>  target.addDynamicallyLegalOp&lt;arith::MinSIOp&gt;([=](arith::MinSIOp op) {</div>
-<div class="line"><a id="l03705" name="l03705"></a><span class="lineno"> 3705</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03706" name="l03706"></a><span class="lineno"> 3706</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03707" name="l03707"></a><span class="lineno"> 3707</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03708" name="l03708"></a><span class="lineno"> 3708</span> </div>
-<div class="line"><a id="l03709" name="l03709"></a><span class="lineno"> 3709</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03710" name="l03710"></a><span class="lineno"> 3710</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03711" name="l03711"></a><span class="lineno"> 3711</span> </div>
-<div class="line"><a id="l03712" name="l03712"></a><span class="lineno"> 3712</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
-<div class="line"><a id="l03713" name="l03713"></a><span class="lineno"> 3713</span>  });</div>
-<div class="line"><a id="l03714" name="l03714"></a><span class="lineno"> 3714</span> </div>
-<div class="line"><a id="l03715" name="l03715"></a><span class="lineno"> 3715</span>  target.addDynamicallyLegalOp&lt;arith::MaxSIOp&gt;([=](arith::MaxSIOp op) {</div>
-<div class="line"><a id="l03716" name="l03716"></a><span class="lineno"> 3716</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03717" name="l03717"></a><span class="lineno"> 3717</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03718" name="l03718"></a><span class="lineno"> 3718</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03719" name="l03719"></a><span class="lineno"> 3719</span> </div>
-<div class="line"><a id="l03720" name="l03720"></a><span class="lineno"> 3720</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03721" name="l03721"></a><span class="lineno"> 3721</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03722" name="l03722"></a><span class="lineno"> 3722</span> </div>
-<div class="line"><a id="l03723" name="l03723"></a><span class="lineno"> 3723</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
-<div class="line"><a id="l03724" name="l03724"></a><span class="lineno"> 3724</span>  });</div>
-<div class="line"><a id="l03725" name="l03725"></a><span class="lineno"> 3725</span> </div>
-<div class="line"><a id="l03726" name="l03726"></a><span class="lineno"> 3726</span>  target.addDynamicallyLegalOp&lt;arith::MinimumFOp&gt;([=](arith::MinimumFOp op) {</div>
-<div class="line"><a id="l03727" name="l03727"></a><span class="lineno"> 3727</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03728" name="l03728"></a><span class="lineno"> 3728</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03729" name="l03729"></a><span class="lineno"> 3729</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03730" name="l03730"></a><span class="lineno"> 3730</span> </div>
-<div class="line"><a id="l03731" name="l03731"></a><span class="lineno"> 3731</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03732" name="l03732"></a><span class="lineno"> 3732</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03733" name="l03733"></a><span class="lineno"> 3733</span> </div>
-<div class="line"><a id="l03734" name="l03734"></a><span class="lineno"> 3734</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
-<div class="line"><a id="l03735" name="l03735"></a><span class="lineno"> 3735</span>  });</div>
-<div class="line"><a id="l03736" name="l03736"></a><span class="lineno"> 3736</span> </div>
-<div class="line"><a id="l03737" name="l03737"></a><span class="lineno"> 3737</span>  target.addDynamicallyLegalOp&lt;arith::MaximumFOp&gt;([=](arith::MaximumFOp op) {</div>
-<div class="line"><a id="l03738" name="l03738"></a><span class="lineno"> 3738</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03739" name="l03739"></a><span class="lineno"> 3739</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03740" name="l03740"></a><span class="lineno"> 3740</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03741" name="l03741"></a><span class="lineno"> 3741</span> </div>
-<div class="line"><a id="l03742" name="l03742"></a><span class="lineno"> 3742</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03743" name="l03743"></a><span class="lineno"> 3743</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03744" name="l03744"></a><span class="lineno"> 3744</span> </div>
-<div class="line"><a id="l03745" name="l03745"></a><span class="lineno"> 3745</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
-<div class="line"><a id="l03746" name="l03746"></a><span class="lineno"> 3746</span>  });</div>
-<div class="line"><a id="l03747" name="l03747"></a><span class="lineno"> 3747</span> </div>
-<div class="line"><a id="l03748" name="l03748"></a><span class="lineno"> 3748</span>  target.addDynamicallyLegalOp&lt;arith::MaxNumFOp&gt;([=](arith::MaxNumFOp op) {</div>
-<div class="line"><a id="l03749" name="l03749"></a><span class="lineno"> 3749</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03750" name="l03750"></a><span class="lineno"> 3750</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03751" name="l03751"></a><span class="lineno"> 3751</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03752" name="l03752"></a><span class="lineno"> 3752</span> </div>
-<div class="line"><a id="l03753" name="l03753"></a><span class="lineno"> 3753</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03754" name="l03754"></a><span class="lineno"> 3754</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03755" name="l03755"></a><span class="lineno"> 3755</span> </div>
-<div class="line"><a id="l03756" name="l03756"></a><span class="lineno"> 3756</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
-<div class="line"><a id="l03757" name="l03757"></a><span class="lineno"> 3757</span>  });</div>
-<div class="line"><a id="l03758" name="l03758"></a><span class="lineno"> 3758</span> </div>
-<div class="line"><a id="l03759" name="l03759"></a><span class="lineno"> 3759</span>  target.addDynamicallyLegalOp&lt;arith::CmpIOp&gt;([=](arith::CmpIOp op) {</div>
-<div class="line"><a id="l03760" name="l03760"></a><span class="lineno"> 3760</span>    <span class="keyword">auto</span> lhsType = dyn_cast&lt;VectorType&gt;(op.getLhs().getType());</div>
-<div class="line"><a id="l03761" name="l03761"></a><span class="lineno"> 3761</span>    <span class="keywordflow">if</span> (!lhsType)</div>
-<div class="line"><a id="l03762" name="l03762"></a><span class="lineno"> 3762</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03763" name="l03763"></a><span class="lineno"> 3763</span> </div>
-<div class="line"><a id="l03764" name="l03764"></a><span class="lineno"> 3764</span>    <span class="keyword">auto</span> lhsElWidth = lhsType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03765" name="l03765"></a><span class="lineno"> 3765</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(lhsType);</div>
-<div class="line"><a id="l03766" name="l03766"></a><span class="lineno"> 3766</span> </div>
-<div class="line"><a id="l03767" name="l03767"></a><span class="lineno"> 3767</span>    <span class="keywordflow">return</span> !elWidthSet.count(lhsElWidth) || laneSize * lhsElWidth != 512;</div>
-<div class="line"><a id="l03768" name="l03768"></a><span class="lineno"> 3768</span>  });</div>
-<div class="line"><a id="l03769" name="l03769"></a><span class="lineno"> 3769</span> </div>
-<div class="line"><a id="l03770" name="l03770"></a><span class="lineno"> 3770</span>  target.addDynamicallyLegalOp&lt;arith::CmpFOp&gt;([=](arith::CmpFOp op) {</div>
-<div class="line"><a id="l03771" name="l03771"></a><span class="lineno"> 3771</span>    <span class="keyword">auto</span> lhsType = dyn_cast&lt;VectorType&gt;(op.getLhs().getType());</div>
-<div class="line"><a id="l03772" name="l03772"></a><span class="lineno"> 3772</span>    <span class="keywordflow">if</span> (!lhsType)</div>
-<div class="line"><a id="l03773" name="l03773"></a><span class="lineno"> 3773</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03774" name="l03774"></a><span class="lineno"> 3774</span> </div>
-<div class="line"><a id="l03775" name="l03775"></a><span class="lineno"> 3775</span>    <span class="keyword">auto</span> lhsElWidth = lhsType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03776" name="l03776"></a><span class="lineno"> 3776</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(lhsType);</div>
-<div class="line"><a id="l03777" name="l03777"></a><span class="lineno"> 3777</span> </div>
-<div class="line"><a id="l03778" name="l03778"></a><span class="lineno"> 3778</span>    <span class="keywordflow">return</span> !elWidthSet.count(lhsElWidth) || laneSize * lhsElWidth != 512;</div>
-<div class="line"><a id="l03779" name="l03779"></a><span class="lineno"> 3779</span>  });</div>
-<div class="line"><a id="l03780" name="l03780"></a><span class="lineno"> 3780</span> </div>
-<div class="line"><a id="l03781" name="l03781"></a><span class="lineno"> 3781</span>  target.addDynamicallyLegalOp&lt;arith::SelectOp&gt;([=](arith::SelectOp op) {</div>
-<div class="line"><a id="l03782" name="l03782"></a><span class="lineno"> 3782</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
-<div class="line"><a id="l03783" name="l03783"></a><span class="lineno"> 3783</span>    <span class="keywordflow">if</span> (!resultType)</div>
-<div class="line"><a id="l03784" name="l03784"></a><span class="lineno"> 3784</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03785" name="l03785"></a><span class="lineno"> 3785</span> </div>
-<div class="line"><a id="l03786" name="l03786"></a><span class="lineno"> 3786</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03787" name="l03787"></a><span class="lineno"> 3787</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
-<div class="line"><a id="l03788" name="l03788"></a><span class="lineno"> 3788</span> </div>
-<div class="line"><a id="l03789" name="l03789"></a><span class="lineno"> 3789</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
-<div class="line"><a id="l03790" name="l03790"></a><span class="lineno"> 3790</span>  });</div>
-<div class="line"><a id="l03791" name="l03791"></a><span class="lineno"> 3791</span> </div>
-<div class="line"><a id="l03792" name="l03792"></a><span class="lineno"> 3792</span>  target.addDynamicallyLegalOp&lt;vector::ReductionOp&gt;(</div>
-<div class="line"><a id="l03793" name="l03793"></a><span class="lineno"> 3793</span>      [=](vector::ReductionOp op) {</div>
-<div class="line"><a id="l03794" name="l03794"></a><span class="lineno"> 3794</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> kind = op.getKind(); kind != vector::CombiningKind::ADD &amp;&amp;</div>
-<div class="line"><a id="l03795" name="l03795"></a><span class="lineno"> 3795</span>                                      kind != vector::CombiningKind::MINSI &amp;&amp;</div>
-<div class="line"><a id="l03796" name="l03796"></a><span class="lineno"> 3796</span>                                      kind != vector::CombiningKind::MINUI &amp;&amp;</div>
-<div class="line"><a id="l03797" name="l03797"></a><span class="lineno"> 3797</span>                                      kind != vector::CombiningKind::MINIMUMF &amp;&amp;</div>
-<div class="line"><a id="l03798" name="l03798"></a><span class="lineno"> 3798</span>                                      kind != vector::CombiningKind::MAXSI &amp;&amp;</div>
-<div class="line"><a id="l03799" name="l03799"></a><span class="lineno"> 3799</span>                                      kind != vector::CombiningKind::MAXUI &amp;&amp;</div>
-<div class="line"><a id="l03800" name="l03800"></a><span class="lineno"> 3800</span>                                      kind != vector::CombiningKind::MAXIMUMF &amp;&amp;</div>
-<div class="line"><a id="l03801" name="l03801"></a><span class="lineno"> 3801</span>                                      kind != vector::CombiningKind::MAXNUMF)</div>
-<div class="line"><a id="l03802" name="l03802"></a><span class="lineno"> 3802</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03803" name="l03803"></a><span class="lineno"> 3803</span> </div>
-<div class="line"><a id="l03804" name="l03804"></a><span class="lineno"> 3804</span>        <span class="keyword">auto</span> vType = dyn_cast&lt;VectorType&gt;(op.getVector().getType());</div>
-<div class="line"><a id="l03805" name="l03805"></a><span class="lineno"> 3805</span>        <span class="keywordflow">if</span> (!vType)</div>
-<div class="line"><a id="l03806" name="l03806"></a><span class="lineno"> 3806</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03807" name="l03807"></a><span class="lineno"> 3807</span> </div>
-<div class="line"><a id="l03808" name="l03808"></a><span class="lineno"> 3808</span>        llvm::SmallSet&lt;std::pair&lt;unsigned, signed&gt;, 16&gt; laneSizeElWidthPairSet;</div>
-<div class="line"><a id="l03809" name="l03809"></a><span class="lineno"> 3809</span>        laneSizeElWidthPairSet.insert({64, 8});</div>
-<div class="line"><a id="l03810" name="l03810"></a><span class="lineno"> 3810</span>        laneSizeElWidthPairSet.insert({32, 16});</div>
-<div class="line"><a id="l03811" name="l03811"></a><span class="lineno"> 3811</span>        laneSizeElWidthPairSet.insert({32, 32});</div>
-<div class="line"><a id="l03812" name="l03812"></a><span class="lineno"> 3812</span>        laneSizeElWidthPairSet.insert({16, 32});</div>
-<div class="line"><a id="l03813" name="l03813"></a><span class="lineno"> 3813</span> </div>
-<div class="line"><a id="l03814" name="l03814"></a><span class="lineno"> 3814</span>        Type scalarType = vType.getElementType();</div>
-<div class="line"><a id="l03815" name="l03815"></a><span class="lineno"> 3815</span>        <span class="keywordtype">unsigned</span> elWidth = scalarType.getIntOrFloatBitWidth();</div>
-<div class="line"><a id="l03816" name="l03816"></a><span class="lineno"> 3816</span>        <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(vType);</div>
+<div class="line"><a id="l03681" name="l03681"></a><span class="lineno"> 3681</span>  target.addDynamicallyLegalOp&lt;arith::MulFOp&gt;([](arith::MulFOp op) {</div>
+<div class="line"><a id="l03682" name="l03682"></a><span class="lineno"> 3682</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
+<div class="line"><a id="l03683" name="l03683"></a><span class="lineno"> 3683</span>    <span class="keywordflow">if</span> (!resultType)</div>
+<div class="line"><a id="l03684" name="l03684"></a><span class="lineno"> 3684</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03685" name="l03685"></a><span class="lineno"> 3685</span> </div>
+<div class="line"><a id="l03686" name="l03686"></a><span class="lineno"> 3686</span>    <span class="keyword">auto</span> isAddOp = [&amp;](Operation *op) { <span class="keywordflow">return</span> isa&lt;arith::AddFOp&gt;(op); };</div>
+<div class="line"><a id="l03687" name="l03687"></a><span class="lineno"> 3687</span>    <span class="comment">// Verify it is not a part of FMA</span></div>
+<div class="line"><a id="l03688" name="l03688"></a><span class="lineno"> 3688</span>    <span class="keywordflow">if</span> (op-&gt;hasOneUse() &amp;&amp; llvm::any_of(op-&gt;getUsers(), isAddOp))</div>
+<div class="line"><a id="l03689" name="l03689"></a><span class="lineno"> 3689</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03690" name="l03690"></a><span class="lineno"> 3690</span> </div>
+<div class="line"><a id="l03691" name="l03691"></a><span class="lineno"> 3691</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03692" name="l03692"></a><span class="lineno"> 3692</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
+<div class="line"><a id="l03693" name="l03693"></a><span class="lineno"> 3693</span> </div>
+<div class="line"><a id="l03694" name="l03694"></a><span class="lineno"> 3694</span>    <span class="keywordflow">return</span> laneSize != 16 || (resultElWidth != 16 &amp;&amp; resultElWidth != 32);</div>
+<div class="line"><a id="l03695" name="l03695"></a><span class="lineno"> 3695</span>  });</div>
+<div class="line"><a id="l03696" name="l03696"></a><span class="lineno"> 3696</span> </div>
+<div class="line"><a id="l03697" name="l03697"></a><span class="lineno"> 3697</span>  target.addDynamicallyLegalOp&lt;arith::MinSIOp&gt;([=](arith::MinSIOp op) {</div>
+<div class="line"><a id="l03698" name="l03698"></a><span class="lineno"> 3698</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
+<div class="line"><a id="l03699" name="l03699"></a><span class="lineno"> 3699</span>    <span class="keywordflow">if</span> (!resultType)</div>
+<div class="line"><a id="l03700" name="l03700"></a><span class="lineno"> 3700</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03701" name="l03701"></a><span class="lineno"> 3701</span> </div>
+<div class="line"><a id="l03702" name="l03702"></a><span class="lineno"> 3702</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03703" name="l03703"></a><span class="lineno"> 3703</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
+<div class="line"><a id="l03704" name="l03704"></a><span class="lineno"> 3704</span> </div>
+<div class="line"><a id="l03705" name="l03705"></a><span class="lineno"> 3705</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
+<div class="line"><a id="l03706" name="l03706"></a><span class="lineno"> 3706</span>  });</div>
+<div class="line"><a id="l03707" name="l03707"></a><span class="lineno"> 3707</span> </div>
+<div class="line"><a id="l03708" name="l03708"></a><span class="lineno"> 3708</span>  target.addDynamicallyLegalOp&lt;arith::MaxSIOp&gt;([=](arith::MaxSIOp op) {</div>
+<div class="line"><a id="l03709" name="l03709"></a><span class="lineno"> 3709</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
+<div class="line"><a id="l03710" name="l03710"></a><span class="lineno"> 3710</span>    <span class="keywordflow">if</span> (!resultType)</div>
+<div class="line"><a id="l03711" name="l03711"></a><span class="lineno"> 3711</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03712" name="l03712"></a><span class="lineno"> 3712</span> </div>
+<div class="line"><a id="l03713" name="l03713"></a><span class="lineno"> 3713</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03714" name="l03714"></a><span class="lineno"> 3714</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
+<div class="line"><a id="l03715" name="l03715"></a><span class="lineno"> 3715</span> </div>
+<div class="line"><a id="l03716" name="l03716"></a><span class="lineno"> 3716</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
+<div class="line"><a id="l03717" name="l03717"></a><span class="lineno"> 3717</span>  });</div>
+<div class="line"><a id="l03718" name="l03718"></a><span class="lineno"> 3718</span> </div>
+<div class="line"><a id="l03719" name="l03719"></a><span class="lineno"> 3719</span>  target.addDynamicallyLegalOp&lt;arith::MinimumFOp&gt;([=](arith::MinimumFOp op) {</div>
+<div class="line"><a id="l03720" name="l03720"></a><span class="lineno"> 3720</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
+<div class="line"><a id="l03721" name="l03721"></a><span class="lineno"> 3721</span>    <span class="keywordflow">if</span> (!resultType)</div>
+<div class="line"><a id="l03722" name="l03722"></a><span class="lineno"> 3722</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03723" name="l03723"></a><span class="lineno"> 3723</span> </div>
+<div class="line"><a id="l03724" name="l03724"></a><span class="lineno"> 3724</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03725" name="l03725"></a><span class="lineno"> 3725</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
+<div class="line"><a id="l03726" name="l03726"></a><span class="lineno"> 3726</span> </div>
+<div class="line"><a id="l03727" name="l03727"></a><span class="lineno"> 3727</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
+<div class="line"><a id="l03728" name="l03728"></a><span class="lineno"> 3728</span>  });</div>
+<div class="line"><a id="l03729" name="l03729"></a><span class="lineno"> 3729</span> </div>
+<div class="line"><a id="l03730" name="l03730"></a><span class="lineno"> 3730</span>  target.addDynamicallyLegalOp&lt;arith::MaximumFOp&gt;([=](arith::MaximumFOp op) {</div>
+<div class="line"><a id="l03731" name="l03731"></a><span class="lineno"> 3731</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
+<div class="line"><a id="l03732" name="l03732"></a><span class="lineno"> 3732</span>    <span class="keywordflow">if</span> (!resultType)</div>
+<div class="line"><a id="l03733" name="l03733"></a><span class="lineno"> 3733</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03734" name="l03734"></a><span class="lineno"> 3734</span> </div>
+<div class="line"><a id="l03735" name="l03735"></a><span class="lineno"> 3735</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03736" name="l03736"></a><span class="lineno"> 3736</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
+<div class="line"><a id="l03737" name="l03737"></a><span class="lineno"> 3737</span> </div>
+<div class="line"><a id="l03738" name="l03738"></a><span class="lineno"> 3738</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
+<div class="line"><a id="l03739" name="l03739"></a><span class="lineno"> 3739</span>  });</div>
+<div class="line"><a id="l03740" name="l03740"></a><span class="lineno"> 3740</span> </div>
+<div class="line"><a id="l03741" name="l03741"></a><span class="lineno"> 3741</span>  target.addDynamicallyLegalOp&lt;arith::MaxNumFOp&gt;([=](arith::MaxNumFOp op) {</div>
+<div class="line"><a id="l03742" name="l03742"></a><span class="lineno"> 3742</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
+<div class="line"><a id="l03743" name="l03743"></a><span class="lineno"> 3743</span>    <span class="keywordflow">if</span> (!resultType)</div>
+<div class="line"><a id="l03744" name="l03744"></a><span class="lineno"> 3744</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03745" name="l03745"></a><span class="lineno"> 3745</span> </div>
+<div class="line"><a id="l03746" name="l03746"></a><span class="lineno"> 3746</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03747" name="l03747"></a><span class="lineno"> 3747</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
+<div class="line"><a id="l03748" name="l03748"></a><span class="lineno"> 3748</span> </div>
+<div class="line"><a id="l03749" name="l03749"></a><span class="lineno"> 3749</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
+<div class="line"><a id="l03750" name="l03750"></a><span class="lineno"> 3750</span>  });</div>
+<div class="line"><a id="l03751" name="l03751"></a><span class="lineno"> 3751</span> </div>
+<div class="line"><a id="l03752" name="l03752"></a><span class="lineno"> 3752</span>  target.addDynamicallyLegalOp&lt;arith::CmpIOp&gt;([=](arith::CmpIOp op) {</div>
+<div class="line"><a id="l03753" name="l03753"></a><span class="lineno"> 3753</span>    <span class="keyword">auto</span> lhsType = dyn_cast&lt;VectorType&gt;(op.getLhs().getType());</div>
+<div class="line"><a id="l03754" name="l03754"></a><span class="lineno"> 3754</span>    <span class="keywordflow">if</span> (!lhsType)</div>
+<div class="line"><a id="l03755" name="l03755"></a><span class="lineno"> 3755</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03756" name="l03756"></a><span class="lineno"> 3756</span> </div>
+<div class="line"><a id="l03757" name="l03757"></a><span class="lineno"> 3757</span>    <span class="keyword">auto</span> lhsElWidth = lhsType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03758" name="l03758"></a><span class="lineno"> 3758</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(lhsType);</div>
+<div class="line"><a id="l03759" name="l03759"></a><span class="lineno"> 3759</span> </div>
+<div class="line"><a id="l03760" name="l03760"></a><span class="lineno"> 3760</span>    <span class="keywordflow">return</span> !elWidthSet.count(lhsElWidth) || laneSize * lhsElWidth != 512;</div>
+<div class="line"><a id="l03761" name="l03761"></a><span class="lineno"> 3761</span>  });</div>
+<div class="line"><a id="l03762" name="l03762"></a><span class="lineno"> 3762</span> </div>
+<div class="line"><a id="l03763" name="l03763"></a><span class="lineno"> 3763</span>  target.addDynamicallyLegalOp&lt;arith::CmpFOp&gt;([=](arith::CmpFOp op) {</div>
+<div class="line"><a id="l03764" name="l03764"></a><span class="lineno"> 3764</span>    <span class="keyword">auto</span> lhsType = dyn_cast&lt;VectorType&gt;(op.getLhs().getType());</div>
+<div class="line"><a id="l03765" name="l03765"></a><span class="lineno"> 3765</span>    <span class="keywordflow">if</span> (!lhsType)</div>
+<div class="line"><a id="l03766" name="l03766"></a><span class="lineno"> 3766</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03767" name="l03767"></a><span class="lineno"> 3767</span> </div>
+<div class="line"><a id="l03768" name="l03768"></a><span class="lineno"> 3768</span>    <span class="keyword">auto</span> lhsElWidth = lhsType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03769" name="l03769"></a><span class="lineno"> 3769</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(lhsType);</div>
+<div class="line"><a id="l03770" name="l03770"></a><span class="lineno"> 3770</span> </div>
+<div class="line"><a id="l03771" name="l03771"></a><span class="lineno"> 3771</span>    <span class="keywordflow">return</span> !elWidthSet.count(lhsElWidth) || laneSize * lhsElWidth != 512;</div>
+<div class="line"><a id="l03772" name="l03772"></a><span class="lineno"> 3772</span>  });</div>
+<div class="line"><a id="l03773" name="l03773"></a><span class="lineno"> 3773</span> </div>
+<div class="line"><a id="l03774" name="l03774"></a><span class="lineno"> 3774</span>  target.addDynamicallyLegalOp&lt;arith::SelectOp&gt;([=](arith::SelectOp op) {</div>
+<div class="line"><a id="l03775" name="l03775"></a><span class="lineno"> 3775</span>    <span class="keyword">auto</span> resultType = dyn_cast&lt;VectorType&gt;(op.getType());</div>
+<div class="line"><a id="l03776" name="l03776"></a><span class="lineno"> 3776</span>    <span class="keywordflow">if</span> (!resultType)</div>
+<div class="line"><a id="l03777" name="l03777"></a><span class="lineno"> 3777</span>      <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03778" name="l03778"></a><span class="lineno"> 3778</span> </div>
+<div class="line"><a id="l03779" name="l03779"></a><span class="lineno"> 3779</span>    <span class="keyword">auto</span> resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03780" name="l03780"></a><span class="lineno"> 3780</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(resultType);</div>
+<div class="line"><a id="l03781" name="l03781"></a><span class="lineno"> 3781</span> </div>
+<div class="line"><a id="l03782" name="l03782"></a><span class="lineno"> 3782</span>    <span class="keywordflow">return</span> !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;</div>
+<div class="line"><a id="l03783" name="l03783"></a><span class="lineno"> 3783</span>  });</div>
+<div class="line"><a id="l03784" name="l03784"></a><span class="lineno"> 3784</span> </div>
+<div class="line"><a id="l03785" name="l03785"></a><span class="lineno"> 3785</span>  target.addDynamicallyLegalOp&lt;vector::ReductionOp&gt;(</div>
+<div class="line"><a id="l03786" name="l03786"></a><span class="lineno"> 3786</span>      [=](vector::ReductionOp op) {</div>
+<div class="line"><a id="l03787" name="l03787"></a><span class="lineno"> 3787</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> kind = op.getKind(); kind != vector::CombiningKind::ADD &amp;&amp;</div>
+<div class="line"><a id="l03788" name="l03788"></a><span class="lineno"> 3788</span>                                      kind != vector::CombiningKind::MINSI &amp;&amp;</div>
+<div class="line"><a id="l03789" name="l03789"></a><span class="lineno"> 3789</span>                                      kind != vector::CombiningKind::MINUI &amp;&amp;</div>
+<div class="line"><a id="l03790" name="l03790"></a><span class="lineno"> 3790</span>                                      kind != vector::CombiningKind::MINIMUMF &amp;&amp;</div>
+<div class="line"><a id="l03791" name="l03791"></a><span class="lineno"> 3791</span>                                      kind != vector::CombiningKind::MAXSI &amp;&amp;</div>
+<div class="line"><a id="l03792" name="l03792"></a><span class="lineno"> 3792</span>                                      kind != vector::CombiningKind::MAXUI &amp;&amp;</div>
+<div class="line"><a id="l03793" name="l03793"></a><span class="lineno"> 3793</span>                                      kind != vector::CombiningKind::MAXIMUMF &amp;&amp;</div>
+<div class="line"><a id="l03794" name="l03794"></a><span class="lineno"> 3794</span>                                      kind != vector::CombiningKind::MAXNUMF)</div>
+<div class="line"><a id="l03795" name="l03795"></a><span class="lineno"> 3795</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03796" name="l03796"></a><span class="lineno"> 3796</span> </div>
+<div class="line"><a id="l03797" name="l03797"></a><span class="lineno"> 3797</span>        <span class="keyword">auto</span> vType = dyn_cast&lt;VectorType&gt;(op.getVector().getType());</div>
+<div class="line"><a id="l03798" name="l03798"></a><span class="lineno"> 3798</span>        <span class="keywordflow">if</span> (!vType)</div>
+<div class="line"><a id="l03799" name="l03799"></a><span class="lineno"> 3799</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03800" name="l03800"></a><span class="lineno"> 3800</span> </div>
+<div class="line"><a id="l03801" name="l03801"></a><span class="lineno"> 3801</span>        llvm::SmallSet&lt;std::pair&lt;unsigned, signed&gt;, 16&gt; laneSizeElWidthPairSet;</div>
+<div class="line"><a id="l03802" name="l03802"></a><span class="lineno"> 3802</span>        laneSizeElWidthPairSet.insert({64, 8});</div>
+<div class="line"><a id="l03803" name="l03803"></a><span class="lineno"> 3803</span>        laneSizeElWidthPairSet.insert({32, 16});</div>
+<div class="line"><a id="l03804" name="l03804"></a><span class="lineno"> 3804</span>        laneSizeElWidthPairSet.insert({32, 32});</div>
+<div class="line"><a id="l03805" name="l03805"></a><span class="lineno"> 3805</span>        laneSizeElWidthPairSet.insert({16, 32});</div>
+<div class="line"><a id="l03806" name="l03806"></a><span class="lineno"> 3806</span> </div>
+<div class="line"><a id="l03807" name="l03807"></a><span class="lineno"> 3807</span>        Type scalarType = vType.getElementType();</div>
+<div class="line"><a id="l03808" name="l03808"></a><span class="lineno"> 3808</span>        <span class="keywordtype">unsigned</span> elWidth = scalarType.getIntOrFloatBitWidth();</div>
+<div class="line"><a id="l03809" name="l03809"></a><span class="lineno"> 3809</span>        <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(vType);</div>
+<div class="line"><a id="l03810" name="l03810"></a><span class="lineno"> 3810</span> </div>
+<div class="line"><a id="l03811" name="l03811"></a><span class="lineno"> 3811</span>        <span class="keywordflow">if</span> (isa&lt;IntegerType&gt;(scalarType) &amp;&amp;</div>
+<div class="line"><a id="l03812" name="l03812"></a><span class="lineno"> 3812</span>            !laneSizeElWidthPairSet.count(std::make_pair(laneSize, elWidth)))</div>
+<div class="line"><a id="l03813" name="l03813"></a><span class="lineno"> 3813</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03814" name="l03814"></a><span class="lineno"> 3814</span> </div>
+<div class="line"><a id="l03815" name="l03815"></a><span class="lineno"> 3815</span>        <span class="keywordflow">if</span> (isa&lt;FloatType&gt;(scalarType) &amp;&amp; laneSize != 16 &amp;&amp; laneSize != 32)</div>
+<div class="line"><a id="l03816" name="l03816"></a><span class="lineno"> 3816</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
 <div class="line"><a id="l03817" name="l03817"></a><span class="lineno"> 3817</span> </div>
-<div class="line"><a id="l03818" name="l03818"></a><span class="lineno"> 3818</span>        <span class="keywordflow">if</span> (isa&lt;IntegerType&gt;(scalarType) &amp;&amp;</div>
-<div class="line"><a id="l03819" name="l03819"></a><span class="lineno"> 3819</span>            !laneSizeElWidthPairSet.count(std::make_pair(laneSize, elWidth)))</div>
-<div class="line"><a id="l03820" name="l03820"></a><span class="lineno"> 3820</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
-<div class="line"><a id="l03821" name="l03821"></a><span class="lineno"> 3821</span> </div>
-<div class="line"><a id="l03822" name="l03822"></a><span class="lineno"> 3822</span>        <span class="keywordflow">if</span> (isa&lt;FloatType&gt;(scalarType) &amp;&amp; laneSize != 16 &amp;&amp; laneSize != 32)</div>
-<div class="line"><a id="l03823" name="l03823"></a><span class="lineno"> 3823</span>          <span class="keywordflow">return</span> <span class="keyword">true</span>;</div>
+<div class="line"><a id="l03818" name="l03818"></a><span class="lineno"> 3818</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a id="l03819" name="l03819"></a><span class="lineno"> 3819</span>      });</div>
+<div class="line"><a id="l03820" name="l03820"></a><span class="lineno"> 3820</span> </div>
+<div class="line"><a id="l03821" name="l03821"></a><span class="lineno"> 3821</span>  target.addIllegalOp&lt;vector::ContractionOp, vector::TransposeOp,</div>
+<div class="line"><a id="l03822" name="l03822"></a><span class="lineno"> 3822</span>                      vector::FMAOp&gt;();</div>
+<div class="line"><a id="l03823" name="l03823"></a><span class="lineno"> 3823</span>}</div>
 <div class="line"><a id="l03824" name="l03824"></a><span class="lineno"> 3824</span> </div>
-<div class="line"><a id="l03825" name="l03825"></a><span class="lineno"> 3825</span>        <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
-<div class="line"><a id="l03826" name="l03826"></a><span class="lineno"> 3826</span>      });</div>
-<div class="line"><a id="l03827" name="l03827"></a><span class="lineno"> 3827</span> </div>
-<div class="line"><a id="l03828" name="l03828"></a><span class="lineno"> 3828</span>  target.addIllegalOp&lt;vector::ContractionOp, vector::TransposeOp,</div>
-<div class="line"><a id="l03829" name="l03829"></a><span class="lineno"> 3829</span>                      vector::FMAOp&gt;();</div>
-<div class="line"><a id="l03830" name="l03830"></a><span class="lineno"> 3830</span>}</div>
-<div class="line"><a id="l03831" name="l03831"></a><span class="lineno"> 3831</span> </div>
-<div class="line"><a id="l03832" name="l03832"></a><span class="lineno"> 3832</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l03833" name="l03833"></a><span class="lineno"> 3833</span><span class="comment">// Lowering passes</span></div>
-<div class="line"><a id="l03834" name="l03834"></a><span class="lineno"> 3834</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l03835" name="l03835"></a><span class="lineno"> 3835</span><span class="comment"></span> </div>
-<div class="line"><a id="l03836" name="l03836"></a><span class="lineno"> 3836</span><span class="comment">/// Lower incoming vector operations into their corresponding AIE vector</span></div>
-<div class="line"><a id="l03837" name="l03837"></a><span class="lineno"> 3837</span><span class="comment">/// intrinsics.</span></div>
-<div class="foldopen" id="foldopen03838" data-start="{" data-end="};">
-<div class="line"><a id="l03838" name="l03838"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html"> 3838</a></span><span class="comment"></span><span class="keyword">struct </span><a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a> : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;LowerVectorToAIEVec, OperationPass&lt;&gt;&gt; {</div>
-<div class="line"><a id="l03839" name="l03839"></a><span class="lineno"> 3839</span>  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(<a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a>)</div>
-<div class="line"><a id="l03840" name="l03840"></a><span class="lineno"> 3840</span> </div>
-<div class="line"><a id="l03841" name="l03841"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a92aacabbf2d99bbebadf10aebdf2e3f8"> 3841</a></span>  <a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a>() = default;</div>
-<div class="line"><a id="l03842" name="l03842"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a2d41919df0ba585070b8a4af8ac26be7"> 3842</a></span>  <a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a>(const <a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a> &amp;pass) : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>(pass) {}</div>
-<div class="line"><a id="l03843" name="l03843"></a><span class="lineno"> 3843</span> </div>
-<div class="foldopen" id="foldopen03844" data-start="{" data-end="}">
-<div class="line"><a id="l03844" name="l03844"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a16a6c1bbf9d8d4832c5aed554850f4b7"> 3844</a></span>  <a class="code hl_function" href="structLowerVectorToAIEVec.html#a16a6c1bbf9d8d4832c5aed554850f4b7">LowerVectorToAIEVec</a>(<span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html">LowerVectorToAIEVecOptions</a> &amp;options)</div>
-<div class="line"><a id="l03845" name="l03845"></a><span class="lineno"> 3845</span>      : <a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a>() {</div>
-<div class="line"><a id="l03846" name="l03846"></a><span class="lineno"> 3846</span>    <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a> = options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html#a1bf588e471c9aa6409a427d3fcca14b1">aieTarget</a>;</div>
-<div class="line"><a id="l03847" name="l03847"></a><span class="lineno"> 3847</span>    <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a> = options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html#aa757baf5eb043a57637f4d329b56c586">targetBackend</a>;</div>
+<div class="line"><a id="l03825" name="l03825"></a><span class="lineno"> 3825</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l03826" name="l03826"></a><span class="lineno"> 3826</span><span class="comment">// Lowering passes</span></div>
+<div class="line"><a id="l03827" name="l03827"></a><span class="lineno"> 3827</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l03828" name="l03828"></a><span class="lineno"> 3828</span><span class="comment"></span> </div>
+<div class="line"><a id="l03829" name="l03829"></a><span class="lineno"> 3829</span><span class="comment">/// Lower incoming vector operations into their corresponding AIE vector</span></div>
+<div class="line"><a id="l03830" name="l03830"></a><span class="lineno"> 3830</span><span class="comment">/// intrinsics.</span></div>
+<div class="foldopen" id="foldopen03831" data-start="{" data-end="};">
+<div class="line"><a id="l03831" name="l03831"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html"> 3831</a></span><span class="comment"></span><span class="keyword">struct </span><a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a> : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;LowerVectorToAIEVec, OperationPass&lt;&gt;&gt; {</div>
+<div class="line"><a id="l03832" name="l03832"></a><span class="lineno"> 3832</span>  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(<a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a>)</div>
+<div class="line"><a id="l03833" name="l03833"></a><span class="lineno"> 3833</span> </div>
+<div class="line"><a id="l03834" name="l03834"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a92aacabbf2d99bbebadf10aebdf2e3f8"> 3834</a></span>  <a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a>() = default;</div>
+<div class="line"><a id="l03835" name="l03835"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a2d41919df0ba585070b8a4af8ac26be7"> 3835</a></span>  <a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a>(const <a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a> &amp;pass) : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>(pass) {}</div>
+<div class="line"><a id="l03836" name="l03836"></a><span class="lineno"> 3836</span> </div>
+<div class="foldopen" id="foldopen03837" data-start="{" data-end="}">
+<div class="line"><a id="l03837" name="l03837"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a16a6c1bbf9d8d4832c5aed554850f4b7"> 3837</a></span>  <a class="code hl_function" href="structLowerVectorToAIEVec.html#a16a6c1bbf9d8d4832c5aed554850f4b7">LowerVectorToAIEVec</a>(<span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html">LowerVectorToAIEVecOptions</a> &amp;options)</div>
+<div class="line"><a id="l03838" name="l03838"></a><span class="lineno"> 3838</span>      : <a class="code hl_struct" href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a>() {</div>
+<div class="line"><a id="l03839" name="l03839"></a><span class="lineno"> 3839</span>    <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a> = options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html#a1bf588e471c9aa6409a427d3fcca14b1">aieTarget</a>;</div>
+<div class="line"><a id="l03840" name="l03840"></a><span class="lineno"> 3840</span>    <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a> = options.<a class="code hl_variable" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html#aa757baf5eb043a57637f4d329b56c586">targetBackend</a>;</div>
+<div class="line"><a id="l03841" name="l03841"></a><span class="lineno"> 3841</span>  }</div>
+</div>
+<div class="line"><a id="l03842" name="l03842"></a><span class="lineno"> 3842</span> </div>
+<div class="line"><a id="l03843" name="l03843"></a><span class="lineno"> 3843</span>  <span class="comment">// In case we want to register this pass as a standalone pass for test</span></div>
+<div class="line"><a id="l03844" name="l03844"></a><span class="lineno"> 3844</span>  <span class="comment">// purposes.</span></div>
+<div class="line"><a id="l03845" name="l03845"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#aa3e9a4e0f9b59a423a7ed8bb0e023fe9"> 3845</a></span>  StringRef <a class="code hl_function" href="structLowerVectorToAIEVec.html#aa3e9a4e0f9b59a423a7ed8bb0e023fe9">getArgument</a>() const final { <span class="keywordflow">return</span> <span class="stringliteral">&quot;test-lower-vector-to-aievec&quot;</span>; }</div>
+<div class="foldopen" id="foldopen03846" data-start="{" data-end="}">
+<div class="line"><a id="l03846" name="l03846"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a2ecc0ade945fc3e8f3119676875a7d43"> 3846</a></span>  StringRef <a class="code hl_function" href="structLowerVectorToAIEVec.html#a2ecc0ade945fc3e8f3119676875a7d43">getDescription</a>() const final {</div>
+<div class="line"><a id="l03847" name="l03847"></a><span class="lineno"> 3847</span>    <span class="keywordflow">return</span> <span class="stringliteral">&quot;Lower vector operations to AIE vector intrinsics&quot;</span>;</div>
 <div class="line"><a id="l03848" name="l03848"></a><span class="lineno"> 3848</span>  }</div>
 </div>
-<div class="line"><a id="l03849" name="l03849"></a><span class="lineno"> 3849</span> </div>
-<div class="line"><a id="l03850" name="l03850"></a><span class="lineno"> 3850</span>  <span class="comment">// In case we want to register this pass as a standalone pass for test</span></div>
-<div class="line"><a id="l03851" name="l03851"></a><span class="lineno"> 3851</span>  <span class="comment">// purposes.</span></div>
-<div class="line"><a id="l03852" name="l03852"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#aa3e9a4e0f9b59a423a7ed8bb0e023fe9"> 3852</a></span>  StringRef <a class="code hl_function" href="structLowerVectorToAIEVec.html#aa3e9a4e0f9b59a423a7ed8bb0e023fe9">getArgument</a>() const final { <span class="keywordflow">return</span> <span class="stringliteral">&quot;test-lower-vector-to-aievec&quot;</span>; }</div>
-<div class="foldopen" id="foldopen03853" data-start="{" data-end="}">
-<div class="line"><a id="l03853" name="l03853"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a2ecc0ade945fc3e8f3119676875a7d43"> 3853</a></span>  StringRef <a class="code hl_function" href="structLowerVectorToAIEVec.html#a2ecc0ade945fc3e8f3119676875a7d43">getDescription</a>() const final {</div>
-<div class="line"><a id="l03854" name="l03854"></a><span class="lineno"> 3854</span>    <span class="keywordflow">return</span> <span class="stringliteral">&quot;Lower vector operations to AIE vector intrinsics&quot;</span>;</div>
+<div class="foldopen" id="foldopen03849" data-start="{" data-end="}">
+<div class="line"><a id="l03849" name="l03849"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a03b8dfdb4713878e6f796673d4ece5c3"> 3849</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structLowerVectorToAIEVec.html#a03b8dfdb4713878e6f796673d4ece5c3">getDependentDialects</a>(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l03850" name="l03850"></a><span class="lineno"> 3850</span>    registry</div>
+<div class="line"><a id="l03851" name="l03851"></a><span class="lineno"> 3851</span>        .insert&lt;affine::AffineDialect, xilinx::aievec::aie1::AIEVecAIE1Dialect,</div>
+<div class="line"><a id="l03852" name="l03852"></a><span class="lineno"> 3852</span>                xilinx::aievec::AIEVecDialect, arith::ArithDialect,</div>
+<div class="line"><a id="l03853" name="l03853"></a><span class="lineno"> 3853</span>                memref::MemRefDialect, scf::SCFDialect, vector::VectorDialect,</div>
+<div class="line"><a id="l03854" name="l03854"></a><span class="lineno"> 3854</span>                emitc::EmitCDialect&gt;();</div>
 <div class="line"><a id="l03855" name="l03855"></a><span class="lineno"> 3855</span>  }</div>
 </div>
-<div class="foldopen" id="foldopen03856" data-start="{" data-end="}">
-<div class="line"><a id="l03856" name="l03856"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a03b8dfdb4713878e6f796673d4ece5c3"> 3856</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structLowerVectorToAIEVec.html#a03b8dfdb4713878e6f796673d4ece5c3">getDependentDialects</a>(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l03857" name="l03857"></a><span class="lineno"> 3857</span>    registry</div>
-<div class="line"><a id="l03858" name="l03858"></a><span class="lineno"> 3858</span>        .insert&lt;affine::AffineDialect, xilinx::aievec::aie1::AIEVecAIE1Dialect,</div>
-<div class="line"><a id="l03859" name="l03859"></a><span class="lineno"> 3859</span>                xilinx::aievec::AIEVecDialect, arith::ArithDialect,</div>
-<div class="line"><a id="l03860" name="l03860"></a><span class="lineno"> 3860</span>                memref::MemRefDialect, scf::SCFDialect, vector::VectorDialect,</div>
-<div class="line"><a id="l03861" name="l03861"></a><span class="lineno"> 3861</span>                emitc::EmitCDialect&gt;();</div>
-<div class="line"><a id="l03862" name="l03862"></a><span class="lineno"> 3862</span>  }</div>
+<div class="line"><a id="l03856" name="l03856"></a><span class="lineno"> 3856</span> </div>
+<div class="foldopen" id="foldopen03857" data-start="{" data-end="};">
+<div class="line"><a id="l03857" name="l03857"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f"> 3857</a></span>  Option&lt;std::string&gt; <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a>{</div>
+<div class="line"><a id="l03858" name="l03858"></a><span class="lineno"> 3858</span>      *<span class="keyword">this</span>, <span class="stringliteral">&quot;aie-target&quot;</span>,</div>
+<div class="line"><a id="l03859" name="l03859"></a><span class="lineno"> 3859</span>      llvm::cl::desc(</div>
+<div class="line"><a id="l03860" name="l03860"></a><span class="lineno"> 3860</span>          <span class="stringliteral">&quot;Select AIE version: \&quot;aie\&quot;, \&quot;aie2\&quot;, or \&quot;aie2p\&quot;. This will &quot;</span></div>
+<div class="line"><a id="l03861" name="l03861"></a><span class="lineno"> 3861</span>          <span class="stringliteral">&quot;determine the vector size and available operations.&quot;</span>),</div>
+<div class="line"><a id="l03862" name="l03862"></a><span class="lineno"> 3862</span>      llvm::cl::init(<span class="stringliteral">&quot;aie&quot;</span>)};</div>
 </div>
 <div class="line"><a id="l03863" name="l03863"></a><span class="lineno"> 3863</span> </div>
 <div class="foldopen" id="foldopen03864" data-start="{" data-end="};">
-<div class="line"><a id="l03864" name="l03864"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f"> 3864</a></span>  Option&lt;std::string&gt; <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a>{</div>
-<div class="line"><a id="l03865" name="l03865"></a><span class="lineno"> 3865</span>      *<span class="keyword">this</span>, <span class="stringliteral">&quot;aie-target&quot;</span>,</div>
-<div class="line"><a id="l03866" name="l03866"></a><span class="lineno"> 3866</span>      llvm::cl::desc(</div>
-<div class="line"><a id="l03867" name="l03867"></a><span class="lineno"> 3867</span>          <span class="stringliteral">&quot;Select AIE version: \&quot;aie\&quot;, \&quot;aie2\&quot;, or \&quot;aie2p\&quot;. This will &quot;</span></div>
-<div class="line"><a id="l03868" name="l03868"></a><span class="lineno"> 3868</span>          <span class="stringliteral">&quot;determine the vector size and available operations.&quot;</span>),</div>
-<div class="line"><a id="l03869" name="l03869"></a><span class="lineno"> 3869</span>      llvm::cl::init(<span class="stringliteral">&quot;aie&quot;</span>)};</div>
+<div class="line"><a id="l03864" name="l03864"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6"> 3864</a></span>  Option&lt;std::string&gt; <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a>{</div>
+<div class="line"><a id="l03865" name="l03865"></a><span class="lineno"> 3865</span>      *<span class="keyword">this</span>, <span class="stringliteral">&quot;target-backend&quot;</span>,</div>
+<div class="line"><a id="l03866" name="l03866"></a><span class="lineno"> 3866</span>      llvm::cl::desc(<span class="stringliteral">&quot;Select translation backend: \&quot;cpp\&quot; or \&quot;llvmir\&quot;. This &quot;</span></div>
+<div class="line"><a id="l03867" name="l03867"></a><span class="lineno"> 3867</span>                     <span class="stringliteral">&quot;will determine the aievec operations used to convert &quot;</span></div>
+<div class="line"><a id="l03868" name="l03868"></a><span class="lineno"> 3868</span>                     <span class="stringliteral">&quot;from vector dialect.&quot;</span>),</div>
+<div class="line"><a id="l03869" name="l03869"></a><span class="lineno"> 3869</span>      llvm::cl::init(<span class="stringliteral">&quot;cpp&quot;</span>)};</div>
 </div>
 <div class="line"><a id="l03870" name="l03870"></a><span class="lineno"> 3870</span> </div>
-<div class="foldopen" id="foldopen03871" data-start="{" data-end="};">
-<div class="line"><a id="l03871" name="l03871"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6"> 3871</a></span>  Option&lt;std::string&gt; <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a>{</div>
-<div class="line"><a id="l03872" name="l03872"></a><span class="lineno"> 3872</span>      *<span class="keyword">this</span>, <span class="stringliteral">&quot;target-backend&quot;</span>,</div>
-<div class="line"><a id="l03873" name="l03873"></a><span class="lineno"> 3873</span>      llvm::cl::desc(<span class="stringliteral">&quot;Select translation backend: \&quot;cpp\&quot; or \&quot;llvmir\&quot;. This &quot;</span></div>
-<div class="line"><a id="l03874" name="l03874"></a><span class="lineno"> 3874</span>                     <span class="stringliteral">&quot;will determine the aievec operations used to convert &quot;</span></div>
-<div class="line"><a id="l03875" name="l03875"></a><span class="lineno"> 3875</span>                     <span class="stringliteral">&quot;from vector dialect.&quot;</span>),</div>
-<div class="line"><a id="l03876" name="l03876"></a><span class="lineno"> 3876</span>      llvm::cl::init(<span class="stringliteral">&quot;cpp&quot;</span>)};</div>
+<div class="foldopen" id="foldopen03871" data-start="{" data-end="}">
+<div class="line"><a id="l03871" name="l03871"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a282c4a3c446f858356210b2d2dc66b42"> 3871</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structLowerVectorToAIEVec.html#a282c4a3c446f858356210b2d2dc66b42">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l03872" name="l03872"></a><span class="lineno"> 3872</span>    <span class="keyword">auto</span> *op = getOperation();</div>
+<div class="line"><a id="l03873" name="l03873"></a><span class="lineno"> 3873</span>    MLIRContext *context = &amp;getContext();</div>
+<div class="line"><a id="l03874" name="l03874"></a><span class="lineno"> 3874</span>    RewritePatternSet patterns(context);</div>
+<div class="line"><a id="l03875" name="l03875"></a><span class="lineno"> 3875</span>    ConversionTarget target(*context);</div>
+<div class="line"><a id="l03876" name="l03876"></a><span class="lineno"> 3876</span>    <span class="keyword">auto</span> aieVersion = AIEArch::AIE;</div>
+<div class="line"><a id="l03877" name="l03877"></a><span class="lineno"> 3877</span>    <span class="keywordflow">if</span> (!<a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a>.empty()) {</div>
+<div class="line"><a id="l03878" name="l03878"></a><span class="lineno"> 3878</span>      std::string targetStr = <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a>;</div>
+<div class="line"><a id="l03879" name="l03879"></a><span class="lineno"> 3879</span>      <span class="keywordflow">if</span> (targetStr == <span class="stringliteral">&quot;aieml&quot;</span> || targetStr == <span class="stringliteral">&quot;aie2&quot;</span> || targetStr == <span class="stringliteral">&quot;aie2p&quot;</span>)</div>
+<div class="line"><a id="l03880" name="l03880"></a><span class="lineno"> 3880</span>        aieVersion = AIEArch::AIE2;</div>
+<div class="line"><a id="l03881" name="l03881"></a><span class="lineno"> 3881</span>      <span class="keywordflow">else</span> <span class="keywordflow">if</span> (targetStr != <span class="stringliteral">&quot;aie&quot;</span>) {</div>
+<div class="line"><a id="l03882" name="l03882"></a><span class="lineno"> 3882</span>        op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;unknown AIE target &#39;&quot;</span> &lt;&lt; <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a> &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
+<div class="line"><a id="l03883" name="l03883"></a><span class="lineno"> 3883</span>        <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l03884" name="l03884"></a><span class="lineno"> 3884</span>      }</div>
+<div class="line"><a id="l03885" name="l03885"></a><span class="lineno"> 3885</span>    }</div>
+<div class="line"><a id="l03886" name="l03886"></a><span class="lineno"> 3886</span> </div>
+<div class="line"><a id="l03887" name="l03887"></a><span class="lineno"> 3887</span>    <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend = TargetBackend::CPP;</div>
+<div class="line"><a id="l03888" name="l03888"></a><span class="lineno"> 3888</span>    <span class="keywordflow">if</span> (!<a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a>.empty()) {</div>
+<div class="line"><a id="l03889" name="l03889"></a><span class="lineno"> 3889</span>      std::string backendStr = <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a>;</div>
+<div class="line"><a id="l03890" name="l03890"></a><span class="lineno"> 3890</span>      <span class="keywordflow">if</span> (backendStr == <span class="stringliteral">&quot;llvmir&quot;</span>) {</div>
+<div class="line"><a id="l03891" name="l03891"></a><span class="lineno"> 3891</span>        backend = TargetBackend::LLVMIR;</div>
+<div class="line"><a id="l03892" name="l03892"></a><span class="lineno"> 3892</span>        <span class="keywordflow">if</span> (aieVersion == AIEArch::AIE) {</div>
+<div class="line"><a id="l03893" name="l03893"></a><span class="lineno"> 3893</span>          op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;targetting LLVM IR is not supported for AIEv1&quot;</span>;</div>
+<div class="line"><a id="l03894" name="l03894"></a><span class="lineno"> 3894</span>          signalPassFailure();</div>
+<div class="line"><a id="l03895" name="l03895"></a><span class="lineno"> 3895</span>          <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l03896" name="l03896"></a><span class="lineno"> 3896</span>        }</div>
+<div class="line"><a id="l03897" name="l03897"></a><span class="lineno"> 3897</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (backendStr != <span class="stringliteral">&quot;cpp&quot;</span>) {</div>
+<div class="line"><a id="l03898" name="l03898"></a><span class="lineno"> 3898</span>        op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;unknown target backend&#39;&quot;</span> &lt;&lt; <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a> &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
+<div class="line"><a id="l03899" name="l03899"></a><span class="lineno"> 3899</span>        signalPassFailure();</div>
+<div class="line"><a id="l03900" name="l03900"></a><span class="lineno"> 3900</span>        <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l03901" name="l03901"></a><span class="lineno"> 3901</span>      }</div>
+<div class="line"><a id="l03902" name="l03902"></a><span class="lineno"> 3902</span>    }</div>
+<div class="line"><a id="l03903" name="l03903"></a><span class="lineno"> 3903</span> </div>
+<div class="line"><a id="l03904" name="l03904"></a><span class="lineno"> 3904</span>    populateAIEVecCommonConversionPatterns(patterns, backend);</div>
+<div class="line"><a id="l03905" name="l03905"></a><span class="lineno"> 3905</span>    configureAIEVecCommonLegalizations(target, backend);</div>
+<div class="line"><a id="l03906" name="l03906"></a><span class="lineno"> 3906</span>    <span class="keywordflow">if</span> (aieVersion == AIEArch::AIE) {</div>
+<div class="line"><a id="l03907" name="l03907"></a><span class="lineno"> 3907</span>      populateAIEVecV1ConversionPatterns(patterns, backend);</div>
+<div class="line"><a id="l03908" name="l03908"></a><span class="lineno"> 3908</span>      configureAIEVecV1Legalizations(target, backend);</div>
+<div class="line"><a id="l03909" name="l03909"></a><span class="lineno"> 3909</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l03910" name="l03910"></a><span class="lineno"> 3910</span>      populateAIEVecV2ConversionPatterns(patterns, backend);</div>
+<div class="line"><a id="l03911" name="l03911"></a><span class="lineno"> 3911</span>      configureAIEVecV2Legalizations(target, backend);</div>
+<div class="line"><a id="l03912" name="l03912"></a><span class="lineno"> 3912</span>    }</div>
+<div class="line"><a id="l03913" name="l03913"></a><span class="lineno"> 3913</span> </div>
+<div class="line"><a id="l03914" name="l03914"></a><span class="lineno"> 3914</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(op, target, std::move(patterns))))</div>
+<div class="line"><a id="l03915" name="l03915"></a><span class="lineno"> 3915</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l03916" name="l03916"></a><span class="lineno"> 3916</span>  }</div>
 </div>
-<div class="line"><a id="l03877" name="l03877"></a><span class="lineno"> 3877</span> </div>
-<div class="foldopen" id="foldopen03878" data-start="{" data-end="}">
-<div class="line"><a id="l03878" name="l03878"></a><span class="lineno"><a class="line" href="structLowerVectorToAIEVec.html#a282c4a3c446f858356210b2d2dc66b42"> 3878</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structLowerVectorToAIEVec.html#a282c4a3c446f858356210b2d2dc66b42">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l03879" name="l03879"></a><span class="lineno"> 3879</span>    <span class="keyword">auto</span> *op = getOperation();</div>
-<div class="line"><a id="l03880" name="l03880"></a><span class="lineno"> 3880</span>    MLIRContext *context = &amp;getContext();</div>
-<div class="line"><a id="l03881" name="l03881"></a><span class="lineno"> 3881</span>    RewritePatternSet patterns(context);</div>
-<div class="line"><a id="l03882" name="l03882"></a><span class="lineno"> 3882</span>    ConversionTarget target(*context);</div>
-<div class="line"><a id="l03883" name="l03883"></a><span class="lineno"> 3883</span>    <span class="keyword">auto</span> aieVersion = AIEArch::AIE;</div>
-<div class="line"><a id="l03884" name="l03884"></a><span class="lineno"> 3884</span>    <span class="keywordflow">if</span> (!<a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a>.empty()) {</div>
-<div class="line"><a id="l03885" name="l03885"></a><span class="lineno"> 3885</span>      std::string targetStr = <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a>;</div>
-<div class="line"><a id="l03886" name="l03886"></a><span class="lineno"> 3886</span>      <span class="keywordflow">if</span> (targetStr == <span class="stringliteral">&quot;aieml&quot;</span> || targetStr == <span class="stringliteral">&quot;aie2&quot;</span> || targetStr == <span class="stringliteral">&quot;aie2p&quot;</span>)</div>
-<div class="line"><a id="l03887" name="l03887"></a><span class="lineno"> 3887</span>        aieVersion = AIEArch::AIE2;</div>
-<div class="line"><a id="l03888" name="l03888"></a><span class="lineno"> 3888</span>      <span class="keywordflow">else</span> <span class="keywordflow">if</span> (targetStr != <span class="stringliteral">&quot;aie&quot;</span>) {</div>
-<div class="line"><a id="l03889" name="l03889"></a><span class="lineno"> 3889</span>        op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;unknown AIE target &#39;&quot;</span> &lt;&lt; <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">aieTarget</a> &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
-<div class="line"><a id="l03890" name="l03890"></a><span class="lineno"> 3890</span>        <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l03891" name="l03891"></a><span class="lineno"> 3891</span>      }</div>
-<div class="line"><a id="l03892" name="l03892"></a><span class="lineno"> 3892</span>    }</div>
-<div class="line"><a id="l03893" name="l03893"></a><span class="lineno"> 3893</span> </div>
-<div class="line"><a id="l03894" name="l03894"></a><span class="lineno"> 3894</span>    <a class="code hl_enumeration" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend = TargetBackend::CPP;</div>
-<div class="line"><a id="l03895" name="l03895"></a><span class="lineno"> 3895</span>    <span class="keywordflow">if</span> (!<a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a>.empty()) {</div>
-<div class="line"><a id="l03896" name="l03896"></a><span class="lineno"> 3896</span>      std::string backendStr = <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a>;</div>
-<div class="line"><a id="l03897" name="l03897"></a><span class="lineno"> 3897</span>      <span class="keywordflow">if</span> (backendStr == <span class="stringliteral">&quot;llvmir&quot;</span>) {</div>
-<div class="line"><a id="l03898" name="l03898"></a><span class="lineno"> 3898</span>        backend = TargetBackend::LLVMIR;</div>
-<div class="line"><a id="l03899" name="l03899"></a><span class="lineno"> 3899</span>        <span class="keywordflow">if</span> (aieVersion == AIEArch::AIE) {</div>
-<div class="line"><a id="l03900" name="l03900"></a><span class="lineno"> 3900</span>          op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;targetting LLVM IR is not supported for AIEv1&quot;</span>;</div>
-<div class="line"><a id="l03901" name="l03901"></a><span class="lineno"> 3901</span>          signalPassFailure();</div>
-<div class="line"><a id="l03902" name="l03902"></a><span class="lineno"> 3902</span>          <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l03903" name="l03903"></a><span class="lineno"> 3903</span>        }</div>
-<div class="line"><a id="l03904" name="l03904"></a><span class="lineno"> 3904</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (backendStr != <span class="stringliteral">&quot;cpp&quot;</span>) {</div>
-<div class="line"><a id="l03905" name="l03905"></a><span class="lineno"> 3905</span>        op-&gt;emitError() &lt;&lt; <span class="stringliteral">&quot;unknown target backend&#39;&quot;</span> &lt;&lt; <a class="code hl_variable" href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">targetBackend</a> &lt;&lt; <span class="stringliteral">&quot;&#39;&quot;</span>;</div>
-<div class="line"><a id="l03906" name="l03906"></a><span class="lineno"> 3906</span>        signalPassFailure();</div>
-<div class="line"><a id="l03907" name="l03907"></a><span class="lineno"> 3907</span>        <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l03908" name="l03908"></a><span class="lineno"> 3908</span>      }</div>
-<div class="line"><a id="l03909" name="l03909"></a><span class="lineno"> 3909</span>    }</div>
-<div class="line"><a id="l03910" name="l03910"></a><span class="lineno"> 3910</span> </div>
-<div class="line"><a id="l03911" name="l03911"></a><span class="lineno"> 3911</span>    populateAIEVecCommonConversionPatterns(patterns, backend);</div>
-<div class="line"><a id="l03912" name="l03912"></a><span class="lineno"> 3912</span>    configureAIEVecCommonLegalizations(target, backend);</div>
-<div class="line"><a id="l03913" name="l03913"></a><span class="lineno"> 3913</span>    <span class="keywordflow">if</span> (aieVersion == AIEArch::AIE) {</div>
-<div class="line"><a id="l03914" name="l03914"></a><span class="lineno"> 3914</span>      populateAIEVecV1ConversionPatterns(patterns, backend);</div>
-<div class="line"><a id="l03915" name="l03915"></a><span class="lineno"> 3915</span>      configureAIEVecV1Legalizations(target, backend);</div>
-<div class="line"><a id="l03916" name="l03916"></a><span class="lineno"> 3916</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l03917" name="l03917"></a><span class="lineno"> 3917</span>      populateAIEVecV2ConversionPatterns(patterns, backend);</div>
-<div class="line"><a id="l03918" name="l03918"></a><span class="lineno"> 3918</span>      configureAIEVecV2Legalizations(target, backend);</div>
-<div class="line"><a id="l03919" name="l03919"></a><span class="lineno"> 3919</span>    }</div>
-<div class="line"><a id="l03920" name="l03920"></a><span class="lineno"> 3920</span> </div>
-<div class="line"><a id="l03921" name="l03921"></a><span class="lineno"> 3921</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(op, target, std::move(patterns))))</div>
-<div class="line"><a id="l03922" name="l03922"></a><span class="lineno"> 3922</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l03923" name="l03923"></a><span class="lineno"> 3923</span>  }</div>
+<div class="line"><a id="l03917" name="l03917"></a><span class="lineno"> 3917</span>};</div>
 </div>
-<div class="line"><a id="l03924" name="l03924"></a><span class="lineno"> 3924</span>};</div>
+<div class="line"><a id="l03918" name="l03918"></a><span class="lineno"> 3918</span> </div>
+<div class="line"><a id="l03919" name="l03919"></a><span class="lineno"> 3919</span><span class="keyword">static</span> std::unique_ptr&lt;Pass&gt;</div>
+<div class="line"><a id="l03920" name="l03920"></a><span class="lineno"> 3920</span>createLowerVectorToAIEVec(<span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html">LowerVectorToAIEVecOptions</a> &amp;options) {</div>
+<div class="line"><a id="l03921" name="l03921"></a><span class="lineno"> 3921</span>  <span class="keywordflow">return</span> std::make_unique&lt;LowerVectorToAIEVec&gt;(options);</div>
+<div class="line"><a id="l03922" name="l03922"></a><span class="lineno"> 3922</span>}</div>
+<div class="line"><a id="l03923" name="l03923"></a><span class="lineno"> 3923</span> </div>
+<div class="line"><a id="l03924" name="l03924"></a><span class="lineno"> 3924</span><span class="comment">//===---------------------------------------------------------------------------</span></div>
+<div class="line"><a id="l03925" name="l03925"></a><span class="lineno"> 3925</span><span class="comment">// Custom canonicalization passes</span></div>
+<div class="line"><a id="l03926" name="l03926"></a><span class="lineno"> 3926</span><span class="comment">//===---------------------------------------------------------------------------</span></div>
+<div class="line"><a id="l03927" name="l03927"></a><span class="lineno"> 3927</span> </div>
+<div class="line"><a id="l03928" name="l03928"></a><span class="lineno"> 3928</span><span class="comment">// This pass widens UPD ops to twice the width followed by an ext op of the</span></div>
+<div class="line"><a id="l03929" name="l03929"></a><span class="lineno"> 3929</span><span class="comment">// bottom half. This can be used together with SimplifyUPDOpsPass to find</span></div>
+<div class="line"><a id="l03930" name="l03930"></a><span class="lineno"> 3930</span><span class="comment">// additional common subexpressions with UPDs generated from unaligned</span></div>
+<div class="line"><a id="l03931" name="l03931"></a><span class="lineno"> 3931</span><span class="comment">// `transfer_read` ops.</span></div>
+<div class="foldopen" id="foldopen03932" data-start="{" data-end="};">
+<div class="line"><a id="l03932" name="l03932"></a><span class="lineno"><a class="line" href="structExtendUPDOpsPass.html"> 3932</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structExtendUPDOpsPass.html">ExtendUPDOpsPass</a> : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;ExtendUPDOpsPass, OperationPass&lt;&gt;&gt; {</div>
+<div class="line"><a id="l03933" name="l03933"></a><span class="lineno"> 3933</span> </div>
+<div class="foldopen" id="foldopen03934" data-start="{" data-end="}">
+<div class="line"><a id="l03934" name="l03934"></a><span class="lineno"><a class="line" href="structExtendUPDOpsPass.html#a5dbb10c8e4859e614dbddc9598069344"> 3934</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structExtendUPDOpsPass.html#a5dbb10c8e4859e614dbddc9598069344">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l03935" name="l03935"></a><span class="lineno"> 3935</span>    MLIRContext *context = &amp;getContext();</div>
+<div class="line"><a id="l03936" name="l03936"></a><span class="lineno"> 3936</span>    RewritePatternSet patterns(context);</div>
+<div class="line"><a id="l03937" name="l03937"></a><span class="lineno"> 3937</span>    ConversionTarget target(*context);</div>
+<div class="line"><a id="l03938" name="l03938"></a><span class="lineno"> 3938</span>    patterns.add&lt;<a class="code hl_struct" href="structExpandUPDToUPDAndExtPattern.html">ExpandUPDToUPDAndExtPattern</a>&gt;(patterns.getContext());</div>
+<div class="line"><a id="l03939" name="l03939"></a><span class="lineno"> 3939</span>    target.addLegalDialect&lt;aievec::AIEVecDialect&gt;();</div>
+<div class="line"><a id="l03940" name="l03940"></a><span class="lineno"> 3940</span>    target.addDynamicallyLegalOp&lt;aievec::UPDOp&gt;([](aievec::UPDOp op) {</div>
+<div class="line"><a id="l03941" name="l03941"></a><span class="lineno"> 3941</span>      <span class="keywordflow">return</span> op.getVector() ||</div>
+<div class="line"><a id="l03942" name="l03942"></a><span class="lineno"> 3942</span>             (op-&gt;hasOneUse() &amp;&amp; isa&lt;aievec::UPDOp&gt;(*op-&gt;getUsers().begin())) ||</div>
+<div class="line"><a id="l03943" name="l03943"></a><span class="lineno"> 3943</span>             llvm::all_of(op-&gt;getUsers(),</div>
+<div class="line"><a id="l03944" name="l03944"></a><span class="lineno"> 3944</span>                          [](Operation *op) { <span class="keywordflow">return</span> isa&lt;aievec::ExtOp&gt;(op); });</div>
+<div class="line"><a id="l03945" name="l03945"></a><span class="lineno"> 3945</span>    });</div>
+<div class="line"><a id="l03946" name="l03946"></a><span class="lineno"> 3946</span> </div>
+<div class="line"><a id="l03947" name="l03947"></a><span class="lineno"> 3947</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> *op = getOperation();</div>
+<div class="line"><a id="l03948" name="l03948"></a><span class="lineno"> 3948</span>        failed(applyPartialConversion(op, target, std::move(patterns)))) {</div>
+<div class="line"><a id="l03949" name="l03949"></a><span class="lineno"> 3949</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l03950" name="l03950"></a><span class="lineno"> 3950</span>    }</div>
+<div class="line"><a id="l03951" name="l03951"></a><span class="lineno"> 3951</span>  }</div>
 </div>
-<div class="line"><a id="l03925" name="l03925"></a><span class="lineno"> 3925</span> </div>
-<div class="line"><a id="l03926" name="l03926"></a><span class="lineno"> 3926</span><span class="keyword">static</span> std::unique_ptr&lt;Pass&gt;</div>
-<div class="line"><a id="l03927" name="l03927"></a><span class="lineno"> 3927</span>createLowerVectorToAIEVec(<span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html">LowerVectorToAIEVecOptions</a> &amp;options) {</div>
-<div class="line"><a id="l03928" name="l03928"></a><span class="lineno"> 3928</span>  <span class="keywordflow">return</span> std::make_unique&lt;LowerVectorToAIEVec&gt;(options);</div>
-<div class="line"><a id="l03929" name="l03929"></a><span class="lineno"> 3929</span>}</div>
-<div class="line"><a id="l03930" name="l03930"></a><span class="lineno"> 3930</span> </div>
-<div class="line"><a id="l03931" name="l03931"></a><span class="lineno"> 3931</span><span class="comment">//===---------------------------------------------------------------------------</span></div>
-<div class="line"><a id="l03932" name="l03932"></a><span class="lineno"> 3932</span><span class="comment">// Custom canonicalization passes</span></div>
-<div class="line"><a id="l03933" name="l03933"></a><span class="lineno"> 3933</span><span class="comment">//===---------------------------------------------------------------------------</span></div>
-<div class="line"><a id="l03934" name="l03934"></a><span class="lineno"> 3934</span> </div>
-<div class="line"><a id="l03935" name="l03935"></a><span class="lineno"> 3935</span><span class="comment">// This pass widens UPD ops to twice the width followed by an ext op of the</span></div>
-<div class="line"><a id="l03936" name="l03936"></a><span class="lineno"> 3936</span><span class="comment">// bottom half. This can be used together with SimplifyUPDOpsPass to find</span></div>
-<div class="line"><a id="l03937" name="l03937"></a><span class="lineno"> 3937</span><span class="comment">// additional common subexpressions with UPDs generated from unaligned</span></div>
-<div class="line"><a id="l03938" name="l03938"></a><span class="lineno"> 3938</span><span class="comment">// `transfer_read` ops.</span></div>
-<div class="foldopen" id="foldopen03939" data-start="{" data-end="};">
-<div class="line"><a id="l03939" name="l03939"></a><span class="lineno"><a class="line" href="structExtendUPDOpsPass.html"> 3939</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structExtendUPDOpsPass.html">ExtendUPDOpsPass</a> : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;ExtendUPDOpsPass, OperationPass&lt;&gt;&gt; {</div>
-<div class="line"><a id="l03940" name="l03940"></a><span class="lineno"> 3940</span> </div>
-<div class="foldopen" id="foldopen03941" data-start="{" data-end="}">
-<div class="line"><a id="l03941" name="l03941"></a><span class="lineno"><a class="line" href="structExtendUPDOpsPass.html#a5dbb10c8e4859e614dbddc9598069344"> 3941</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structExtendUPDOpsPass.html#a5dbb10c8e4859e614dbddc9598069344">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l03942" name="l03942"></a><span class="lineno"> 3942</span>    MLIRContext *context = &amp;getContext();</div>
-<div class="line"><a id="l03943" name="l03943"></a><span class="lineno"> 3943</span>    RewritePatternSet patterns(context);</div>
-<div class="line"><a id="l03944" name="l03944"></a><span class="lineno"> 3944</span>    ConversionTarget target(*context);</div>
-<div class="line"><a id="l03945" name="l03945"></a><span class="lineno"> 3945</span>    patterns.add&lt;<a class="code hl_struct" href="structExpandUPDToUPDAndExtPattern.html">ExpandUPDToUPDAndExtPattern</a>&gt;(patterns.getContext());</div>
-<div class="line"><a id="l03946" name="l03946"></a><span class="lineno"> 3946</span>    target.addLegalDialect&lt;aievec::AIEVecDialect&gt;();</div>
-<div class="line"><a id="l03947" name="l03947"></a><span class="lineno"> 3947</span>    target.addDynamicallyLegalOp&lt;aievec::UPDOp&gt;([](aievec::UPDOp op) {</div>
-<div class="line"><a id="l03948" name="l03948"></a><span class="lineno"> 3948</span>      <span class="keywordflow">return</span> op.getVector() ||</div>
-<div class="line"><a id="l03949" name="l03949"></a><span class="lineno"> 3949</span>             (op-&gt;hasOneUse() &amp;&amp; isa&lt;aievec::UPDOp&gt;(*op-&gt;getUsers().begin())) ||</div>
-<div class="line"><a id="l03950" name="l03950"></a><span class="lineno"> 3950</span>             llvm::all_of(op-&gt;getUsers(),</div>
-<div class="line"><a id="l03951" name="l03951"></a><span class="lineno"> 3951</span>                          [](Operation *op) { <span class="keywordflow">return</span> isa&lt;aievec::ExtOp&gt;(op); });</div>
-<div class="line"><a id="l03952" name="l03952"></a><span class="lineno"> 3952</span>    });</div>
+<div class="line"><a id="l03952" name="l03952"></a><span class="lineno"> 3952</span>};</div>
+</div>
 <div class="line"><a id="l03953" name="l03953"></a><span class="lineno"> 3953</span> </div>
-<div class="line"><a id="l03954" name="l03954"></a><span class="lineno"> 3954</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> *op = getOperation();</div>
-<div class="line"><a id="l03955" name="l03955"></a><span class="lineno"> 3955</span>        failed(applyPartialConversion(op, target, std::move(patterns)))) {</div>
-<div class="line"><a id="l03956" name="l03956"></a><span class="lineno"> 3956</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l03957" name="l03957"></a><span class="lineno"> 3957</span>    }</div>
-<div class="line"><a id="l03958" name="l03958"></a><span class="lineno"> 3958</span>  }</div>
-</div>
-<div class="line"><a id="l03959" name="l03959"></a><span class="lineno"> 3959</span>};</div>
-</div>
+<div class="line"><a id="l03954" name="l03954"></a><span class="lineno"> 3954</span><span class="comment">// This pass replaces wide UPD ops that are only used by a single ext op of the</span></div>
+<div class="line"><a id="l03955" name="l03955"></a><span class="lineno"> 3955</span><span class="comment">// bottom half. This pass undos the work of ExtendUPDOpsPass.</span></div>
+<div class="line"><a id="l03956" name="l03956"></a><span class="lineno"> 3956</span><span class="comment">// TODO: This pass can be extended to work with wide UPD ops that are used by</span></div>
+<div class="line"><a id="l03957" name="l03957"></a><span class="lineno"> 3957</span><span class="comment">// TODO: a single ext op of the top half, which might be a good opportunity to</span></div>
+<div class="line"><a id="l03958" name="l03958"></a><span class="lineno"> 3958</span><span class="comment">// TODO: further optimize wide UPDs.</span></div>
+<div class="foldopen" id="foldopen03959" data-start="{" data-end="};">
+<div class="line"><a id="l03959" name="l03959"></a><span class="lineno"><a class="line" href="structSimplifyUPDOpsPass.html"> 3959</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structSimplifyUPDOpsPass.html">SimplifyUPDOpsPass</a> : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;SimplifyUPDOpsPass, OperationPass&lt;&gt;&gt; {</div>
 <div class="line"><a id="l03960" name="l03960"></a><span class="lineno"> 3960</span> </div>
-<div class="line"><a id="l03961" name="l03961"></a><span class="lineno"> 3961</span><span class="comment">// This pass replaces wide UPD ops that are only used by a single ext op of the</span></div>
-<div class="line"><a id="l03962" name="l03962"></a><span class="lineno"> 3962</span><span class="comment">// bottom half. This pass undos the work of ExtendUPDOpsPass.</span></div>
-<div class="line"><a id="l03963" name="l03963"></a><span class="lineno"> 3963</span><span class="comment">// TODO: This pass can be extended to work with wide UPD ops that are used by</span></div>
-<div class="line"><a id="l03964" name="l03964"></a><span class="lineno"> 3964</span><span class="comment">// TODO: a single ext op of the top half, which might be a good opportunity to</span></div>
-<div class="line"><a id="l03965" name="l03965"></a><span class="lineno"> 3965</span><span class="comment">// TODO: further optimize wide UPDs.</span></div>
-<div class="foldopen" id="foldopen03966" data-start="{" data-end="};">
-<div class="line"><a id="l03966" name="l03966"></a><span class="lineno"><a class="line" href="structSimplifyUPDOpsPass.html"> 3966</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structSimplifyUPDOpsPass.html">SimplifyUPDOpsPass</a> : <a class="code hl_class" href="classPassWrapper.html">PassWrapper</a>&lt;SimplifyUPDOpsPass, OperationPass&lt;&gt;&gt; {</div>
-<div class="line"><a id="l03967" name="l03967"></a><span class="lineno"> 3967</span> </div>
-<div class="foldopen" id="foldopen03968" data-start="{" data-end="}">
-<div class="line"><a id="l03968" name="l03968"></a><span class="lineno"><a class="line" href="structSimplifyUPDOpsPass.html#a32c3bf0f9e366069eea7330a16f6949c"> 3968</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structSimplifyUPDOpsPass.html#a32c3bf0f9e366069eea7330a16f6949c">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l03969" name="l03969"></a><span class="lineno"> 3969</span>    MLIRContext *context = &amp;getContext();</div>
-<div class="line"><a id="l03970" name="l03970"></a><span class="lineno"> 3970</span>    RewritePatternSet patterns(context);</div>
-<div class="line"><a id="l03971" name="l03971"></a><span class="lineno"> 3971</span>    ConversionTarget target(*context);</div>
-<div class="line"><a id="l03972" name="l03972"></a><span class="lineno"> 3972</span>    patterns.add&lt;<a class="code hl_struct" href="structFuseExtIntoUPDPattern.html">FuseExtIntoUPDPattern</a>&gt;(patterns.getContext());</div>
-<div class="line"><a id="l03973" name="l03973"></a><span class="lineno"> 3973</span>    target.addLegalDialect&lt;aievec::AIEVecDialect&gt;();</div>
-<div class="line"><a id="l03974" name="l03974"></a><span class="lineno"> 3974</span>    target.addDynamicallyLegalOp&lt;aievec::ExtOp&gt;([](aievec::ExtOp op) {</div>
-<div class="line"><a id="l03975" name="l03975"></a><span class="lineno"> 3975</span>      <span class="keyword">auto</span> *defOp = op.getSource().getDefiningOp();</div>
-<div class="line"><a id="l03976" name="l03976"></a><span class="lineno"> 3976</span>      <span class="keywordflow">return</span> !defOp || !isa&lt;aievec::UPDOp&gt;(defOp) || !defOp-&gt;hasOneUse() ||</div>
-<div class="line"><a id="l03977" name="l03977"></a><span class="lineno"> 3977</span>             op.getIndex() != 0;</div>
-<div class="line"><a id="l03978" name="l03978"></a><span class="lineno"> 3978</span>    });</div>
+<div class="foldopen" id="foldopen03961" data-start="{" data-end="}">
+<div class="line"><a id="l03961" name="l03961"></a><span class="lineno"><a class="line" href="structSimplifyUPDOpsPass.html#a32c3bf0f9e366069eea7330a16f6949c"> 3961</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structSimplifyUPDOpsPass.html#a32c3bf0f9e366069eea7330a16f6949c">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l03962" name="l03962"></a><span class="lineno"> 3962</span>    MLIRContext *context = &amp;getContext();</div>
+<div class="line"><a id="l03963" name="l03963"></a><span class="lineno"> 3963</span>    RewritePatternSet patterns(context);</div>
+<div class="line"><a id="l03964" name="l03964"></a><span class="lineno"> 3964</span>    ConversionTarget target(*context);</div>
+<div class="line"><a id="l03965" name="l03965"></a><span class="lineno"> 3965</span>    patterns.add&lt;<a class="code hl_struct" href="structFuseExtIntoUPDPattern.html">FuseExtIntoUPDPattern</a>&gt;(patterns.getContext());</div>
+<div class="line"><a id="l03966" name="l03966"></a><span class="lineno"> 3966</span>    target.addLegalDialect&lt;aievec::AIEVecDialect&gt;();</div>
+<div class="line"><a id="l03967" name="l03967"></a><span class="lineno"> 3967</span>    target.addDynamicallyLegalOp&lt;aievec::ExtOp&gt;([](aievec::ExtOp op) {</div>
+<div class="line"><a id="l03968" name="l03968"></a><span class="lineno"> 3968</span>      <span class="keyword">auto</span> *defOp = op.getSource().getDefiningOp();</div>
+<div class="line"><a id="l03969" name="l03969"></a><span class="lineno"> 3969</span>      <span class="keywordflow">return</span> !defOp || !isa&lt;aievec::UPDOp&gt;(defOp) || !defOp-&gt;hasOneUse() ||</div>
+<div class="line"><a id="l03970" name="l03970"></a><span class="lineno"> 3970</span>             op.getIndex() != 0;</div>
+<div class="line"><a id="l03971" name="l03971"></a><span class="lineno"> 3971</span>    });</div>
+<div class="line"><a id="l03972" name="l03972"></a><span class="lineno"> 3972</span> </div>
+<div class="line"><a id="l03973" name="l03973"></a><span class="lineno"> 3973</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> *op = getOperation();</div>
+<div class="line"><a id="l03974" name="l03974"></a><span class="lineno"> 3974</span>        failed(applyPartialConversion(op, target, std::move(patterns)))) {</div>
+<div class="line"><a id="l03975" name="l03975"></a><span class="lineno"> 3975</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l03976" name="l03976"></a><span class="lineno"> 3976</span>    }</div>
+<div class="line"><a id="l03977" name="l03977"></a><span class="lineno"> 3977</span>  }</div>
+</div>
+<div class="line"><a id="l03978" name="l03978"></a><span class="lineno"> 3978</span>};</div>
+</div>
 <div class="line"><a id="l03979" name="l03979"></a><span class="lineno"> 3979</span> </div>
-<div class="line"><a id="l03980" name="l03980"></a><span class="lineno"> 3980</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> *op = getOperation();</div>
-<div class="line"><a id="l03981" name="l03981"></a><span class="lineno"> 3981</span>        failed(applyPartialConversion(op, target, std::move(patterns)))) {</div>
-<div class="line"><a id="l03982" name="l03982"></a><span class="lineno"> 3982</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l03983" name="l03983"></a><span class="lineno"> 3983</span>    }</div>
-<div class="line"><a id="l03984" name="l03984"></a><span class="lineno"> 3984</span>  }</div>
-</div>
-<div class="line"><a id="l03985" name="l03985"></a><span class="lineno"> 3985</span>};</div>
-</div>
-<div class="line"><a id="l03986" name="l03986"></a><span class="lineno"> 3986</span> </div>
-<div class="line"><a id="l03987" name="l03987"></a><span class="lineno"> 3987</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l03988" name="l03988"></a><span class="lineno"> 3988</span><span class="comment">//=============== Main Vector2AIEVec Pipeline Configuration ==================//</span></div>
-<div class="line"><a id="l03989" name="l03989"></a><span class="lineno"> 3989</span><span class="comment">//============================================================================//</span></div>
-<div class="line"><a id="l03990" name="l03990"></a><span class="lineno"> 3990</span> </div>
-<div class="line"><a id="l03991" name="l03991"></a><span class="lineno"> 3991</span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a61b0f68c7f7c71a7e07f4dca2d292149">xilinx::aievec::buildLowerVectorToAIEVec</a>(</div>
-<div class="line"><a id="l03992" name="l03992"></a><span class="lineno"> 3992</span>    OpPassManager &amp;pm, <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html">LowerVectorToAIEVecOptions</a> &amp;options) {</div>
-<div class="line"><a id="l03993" name="l03993"></a><span class="lineno"> 3993</span>  <span class="comment">// Add lowering from `Vector` to `AIEVec`</span></div>
-<div class="line"><a id="l03994" name="l03994"></a><span class="lineno"> 3994</span>  pm.addPass(createLowerVectorToAIEVec(options));</div>
-<div class="line"><a id="l03995" name="l03995"></a><span class="lineno"> 3995</span>  pm.addPass(createCanonicalizerPass());</div>
-<div class="line"><a id="l03996" name="l03996"></a><span class="lineno"> 3996</span> </div>
-<div class="line"><a id="l03997" name="l03997"></a><span class="lineno"> 3997</span>  <span class="comment">// Simplify UPD ops</span></div>
-<div class="line"><a id="l03998" name="l03998"></a><span class="lineno"> 3998</span>  pm.addPass(std::make_unique&lt;ExtendUPDOpsPass&gt;());</div>
-<div class="line"><a id="l03999" name="l03999"></a><span class="lineno"> 3999</span>  pm.addPass(createCSEPass());</div>
-<div class="line"><a id="l04000" name="l04000"></a><span class="lineno"> 4000</span>  pm.addPass(std::make_unique&lt;SimplifyUPDOpsPass&gt;());</div>
-<div class="line"><a id="l04001" name="l04001"></a><span class="lineno"> 4001</span>  pm.addPass(createCanonicalizerPass());</div>
-<div class="line"><a id="l04002" name="l04002"></a><span class="lineno"> 4002</span>}</div>
+<div class="line"><a id="l03980" name="l03980"></a><span class="lineno"> 3980</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l03981" name="l03981"></a><span class="lineno"> 3981</span><span class="comment">//=============== Main Vector2AIEVec Pipeline Configuration ==================//</span></div>
+<div class="line"><a id="l03982" name="l03982"></a><span class="lineno"> 3982</span><span class="comment">//============================================================================//</span></div>
+<div class="line"><a id="l03983" name="l03983"></a><span class="lineno"> 3983</span> </div>
+<div class="line"><a id="l03984" name="l03984"></a><span class="lineno"> 3984</span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a61b0f68c7f7c71a7e07f4dca2d292149">xilinx::aievec::buildLowerVectorToAIEVec</a>(</div>
+<div class="line"><a id="l03985" name="l03985"></a><span class="lineno"> 3985</span>    OpPassManager &amp;pm, <span class="keyword">const</span> <a class="code hl_struct" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html">LowerVectorToAIEVecOptions</a> &amp;options) {</div>
+<div class="line"><a id="l03986" name="l03986"></a><span class="lineno"> 3986</span>  <span class="comment">// Add lowering from `Vector` to `AIEVec`</span></div>
+<div class="line"><a id="l03987" name="l03987"></a><span class="lineno"> 3987</span>  pm.addPass(createLowerVectorToAIEVec(options));</div>
+<div class="line"><a id="l03988" name="l03988"></a><span class="lineno"> 3988</span>  pm.addPass(createCanonicalizerPass());</div>
+<div class="line"><a id="l03989" name="l03989"></a><span class="lineno"> 3989</span> </div>
+<div class="line"><a id="l03990" name="l03990"></a><span class="lineno"> 3990</span>  <span class="comment">// Simplify UPD ops</span></div>
+<div class="line"><a id="l03991" name="l03991"></a><span class="lineno"> 3991</span>  pm.addPass(std::make_unique&lt;ExtendUPDOpsPass&gt;());</div>
+<div class="line"><a id="l03992" name="l03992"></a><span class="lineno"> 3992</span>  pm.addPass(createCSEPass());</div>
+<div class="line"><a id="l03993" name="l03993"></a><span class="lineno"> 3993</span>  pm.addPass(std::make_unique&lt;SimplifyUPDOpsPass&gt;());</div>
+<div class="line"><a id="l03994" name="l03994"></a><span class="lineno"> 3994</span>  pm.addPass(createCanonicalizerPass());</div>
+<div class="line"><a id="l03995" name="l03995"></a><span class="lineno"> 3995</span>}</div>
 <div class="ttc" id="aAIEVecAIE1Ops_8h_html"><div class="ttname"><a href="AIEVecAIE1Ops_8h.html">AIEVecAIE1Ops.h</a></div></div>
 <div class="ttc" id="aAIEVecOps_8h_html"><div class="ttname"><a href="AIEVecOps_8h.html">AIEVecOps.h</a></div></div>
 <div class="ttc" id="aAIEVecUtils_8h_html"><div class="ttname"><a href="AIEVecUtils_8h.html">AIEVecUtils.h</a></div></div>
@@ -4373,8 +4366,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructExpandUPDToUPDAndExtPattern_html"><div class="ttname"><a href="structExpandUPDToUPDAndExtPattern.html">ExpandUPDToUPDAndExtPattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01914">VectorToAIEVecConversions.cpp:1914</a></div></div>
 <div class="ttc" id="astructExpandUPDToUPDAndExtPattern_html_a2a30b1f589c80d7dd0868bffb9801cd4"><div class="ttname"><a href="structExpandUPDToUPDAndExtPattern.html#a2a30b1f589c80d7dd0868bffb9801cd4">ExpandUPDToUPDAndExtPattern::ExpandUPDToUPDAndExtPattern</a></div><div class="ttdeci">ExpandUPDToUPDAndExtPattern(MLIRContext *context)</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01917">VectorToAIEVecConversions.cpp:1917</a></div></div>
 <div class="ttc" id="astructExpandUPDToUPDAndExtPattern_html_ae4f8504c9eccc32e10b534c9dd948e41"><div class="ttname"><a href="structExpandUPDToUPDAndExtPattern.html#ae4f8504c9eccc32e10b534c9dd948e41">ExpandUPDToUPDAndExtPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::UPDOp updOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01921">VectorToAIEVecConversions.cpp:1921</a></div></div>
-<div class="ttc" id="astructExtendUPDOpsPass_html"><div class="ttname"><a href="structExtendUPDOpsPass.html">ExtendUPDOpsPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03939">VectorToAIEVecConversions.cpp:3939</a></div></div>
-<div class="ttc" id="astructExtendUPDOpsPass_html_a5dbb10c8e4859e614dbddc9598069344"><div class="ttname"><a href="structExtendUPDOpsPass.html#a5dbb10c8e4859e614dbddc9598069344">ExtendUPDOpsPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03941">VectorToAIEVecConversions.cpp:3941</a></div></div>
+<div class="ttc" id="astructExtendUPDOpsPass_html"><div class="ttname"><a href="structExtendUPDOpsPass.html">ExtendUPDOpsPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03932">VectorToAIEVecConversions.cpp:3932</a></div></div>
+<div class="ttc" id="astructExtendUPDOpsPass_html_a5dbb10c8e4859e614dbddc9598069344"><div class="ttname"><a href="structExtendUPDOpsPass.html#a5dbb10c8e4859e614dbddc9598069344">ExtendUPDOpsPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03934">VectorToAIEVecConversions.cpp:3934</a></div></div>
 <div class="ttc" id="astructFoldSplatToFMAOp_html"><div class="ttname"><a href="structFoldSplatToFMAOp.html">FoldSplatToFMAOp</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00955">VectorToAIEVecConversions.cpp:955</a></div></div>
 <div class="ttc" id="astructFoldSplatToFMAOp_html_a9a379edddc02eaaa70fa84669b2b596f"><div class="ttname"><a href="structFoldSplatToFMAOp.html#a9a379edddc02eaaa70fa84669b2b596f">FoldSplatToFMAOp::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::aie1::FMAOp fmaOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00959">VectorToAIEVecConversions.cpp:959</a></div></div>
 <div class="ttc" id="astructFoldVectorExtractAndSplatToAIEBroadcast_html"><div class="ttname"><a href="structFoldVectorExtractAndSplatToAIEBroadcast.html">FoldVectorExtractAndSplatToAIEBroadcast</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l00500">VectorToAIEVecConversions.cpp:501</a></div></div>
@@ -4422,14 +4415,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructLowerVectorReductionMinOp_html_a48cd407734e0e4c8a92f35347f489e61"><div class="ttname"><a href="structLowerVectorReductionMinOp.html#a48cd407734e0e4c8a92f35347f489e61">LowerVectorReductionMinOp::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::ReductionOp srcOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01581">VectorToAIEVecConversions.cpp:1581</a></div></div>
 <div class="ttc" id="astructLowerVectorSelectOpToAIEVecSelOp_html"><div class="ttname"><a href="structLowerVectorSelectOpToAIEVecSelOp.html">LowerVectorSelectOpToAIEVecSelOp</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01540">VectorToAIEVecConversions.cpp:1540</a></div></div>
 <div class="ttc" id="astructLowerVectorSelectOpToAIEVecSelOp_html_a710db432b738496e82d4320f98afd11e"><div class="ttname"><a href="structLowerVectorSelectOpToAIEVecSelOp.html#a710db432b738496e82d4320f98afd11e">LowerVectorSelectOpToAIEVecSelOp::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(arith::SelectOp srcOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01544">VectorToAIEVecConversions.cpp:1544</a></div></div>
-<div class="ttc" id="astructLowerVectorToAIEVec_html"><div class="ttname"><a href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a></div><div class="ttdoc">Lower incoming vector operations into their corresponding AIE vector intrinsics.</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03838">VectorToAIEVecConversions.cpp:3838</a></div></div>
-<div class="ttc" id="astructLowerVectorToAIEVec_html_a03b8dfdb4713878e6f796673d4ece5c3"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a03b8dfdb4713878e6f796673d4ece5c3">LowerVectorToAIEVec::getDependentDialects</a></div><div class="ttdeci">void getDependentDialects(DialectRegistry &amp;registry) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03856">VectorToAIEVecConversions.cpp:3856</a></div></div>
-<div class="ttc" id="astructLowerVectorToAIEVec_html_a16a6c1bbf9d8d4832c5aed554850f4b7"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a16a6c1bbf9d8d4832c5aed554850f4b7">LowerVectorToAIEVec::LowerVectorToAIEVec</a></div><div class="ttdeci">LowerVectorToAIEVec(const LowerVectorToAIEVecOptions &amp;options)</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03844">VectorToAIEVecConversions.cpp:3844</a></div></div>
-<div class="ttc" id="astructLowerVectorToAIEVec_html_a282c4a3c446f858356210b2d2dc66b42"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a282c4a3c446f858356210b2d2dc66b42">LowerVectorToAIEVec::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03878">VectorToAIEVecConversions.cpp:3878</a></div></div>
-<div class="ttc" id="astructLowerVectorToAIEVec_html_a2ecc0ade945fc3e8f3119676875a7d43"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a2ecc0ade945fc3e8f3119676875a7d43">LowerVectorToAIEVec::getDescription</a></div><div class="ttdeci">StringRef getDescription() const final</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03853">VectorToAIEVecConversions.cpp:3853</a></div></div>
-<div class="ttc" id="astructLowerVectorToAIEVec_html_a394dec733316fd4970ccd2adc14e744f"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">LowerVectorToAIEVec::aieTarget</a></div><div class="ttdeci">Option&lt; std::string &gt; aieTarget</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03864">VectorToAIEVecConversions.cpp:3864</a></div></div>
-<div class="ttc" id="astructLowerVectorToAIEVec_html_a9a6e929d4d0f6c489d896912dc90c0a6"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">LowerVectorToAIEVec::targetBackend</a></div><div class="ttdeci">Option&lt; std::string &gt; targetBackend</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03871">VectorToAIEVecConversions.cpp:3871</a></div></div>
-<div class="ttc" id="astructLowerVectorToAIEVec_html_aa3e9a4e0f9b59a423a7ed8bb0e023fe9"><div class="ttname"><a href="structLowerVectorToAIEVec.html#aa3e9a4e0f9b59a423a7ed8bb0e023fe9">LowerVectorToAIEVec::getArgument</a></div><div class="ttdeci">StringRef getArgument() const final</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03852">VectorToAIEVecConversions.cpp:3852</a></div></div>
+<div class="ttc" id="astructLowerVectorToAIEVec_html"><div class="ttname"><a href="structLowerVectorToAIEVec.html">LowerVectorToAIEVec</a></div><div class="ttdoc">Lower incoming vector operations into their corresponding AIE vector intrinsics.</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03831">VectorToAIEVecConversions.cpp:3831</a></div></div>
+<div class="ttc" id="astructLowerVectorToAIEVec_html_a03b8dfdb4713878e6f796673d4ece5c3"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a03b8dfdb4713878e6f796673d4ece5c3">LowerVectorToAIEVec::getDependentDialects</a></div><div class="ttdeci">void getDependentDialects(DialectRegistry &amp;registry) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03849">VectorToAIEVecConversions.cpp:3849</a></div></div>
+<div class="ttc" id="astructLowerVectorToAIEVec_html_a16a6c1bbf9d8d4832c5aed554850f4b7"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a16a6c1bbf9d8d4832c5aed554850f4b7">LowerVectorToAIEVec::LowerVectorToAIEVec</a></div><div class="ttdeci">LowerVectorToAIEVec(const LowerVectorToAIEVecOptions &amp;options)</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03837">VectorToAIEVecConversions.cpp:3837</a></div></div>
+<div class="ttc" id="astructLowerVectorToAIEVec_html_a282c4a3c446f858356210b2d2dc66b42"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a282c4a3c446f858356210b2d2dc66b42">LowerVectorToAIEVec::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03871">VectorToAIEVecConversions.cpp:3871</a></div></div>
+<div class="ttc" id="astructLowerVectorToAIEVec_html_a2ecc0ade945fc3e8f3119676875a7d43"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a2ecc0ade945fc3e8f3119676875a7d43">LowerVectorToAIEVec::getDescription</a></div><div class="ttdeci">StringRef getDescription() const final</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03846">VectorToAIEVecConversions.cpp:3846</a></div></div>
+<div class="ttc" id="astructLowerVectorToAIEVec_html_a394dec733316fd4970ccd2adc14e744f"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a394dec733316fd4970ccd2adc14e744f">LowerVectorToAIEVec::aieTarget</a></div><div class="ttdeci">Option&lt; std::string &gt; aieTarget</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03857">VectorToAIEVecConversions.cpp:3857</a></div></div>
+<div class="ttc" id="astructLowerVectorToAIEVec_html_a9a6e929d4d0f6c489d896912dc90c0a6"><div class="ttname"><a href="structLowerVectorToAIEVec.html#a9a6e929d4d0f6c489d896912dc90c0a6">LowerVectorToAIEVec::targetBackend</a></div><div class="ttdeci">Option&lt; std::string &gt; targetBackend</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03864">VectorToAIEVecConversions.cpp:3864</a></div></div>
+<div class="ttc" id="astructLowerVectorToAIEVec_html_aa3e9a4e0f9b59a423a7ed8bb0e023fe9"><div class="ttname"><a href="structLowerVectorToAIEVec.html#aa3e9a4e0f9b59a423a7ed8bb0e023fe9">LowerVectorToAIEVec::getArgument</a></div><div class="ttdeci">StringRef getArgument() const final</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03845">VectorToAIEVecConversions.cpp:3845</a></div></div>
 <div class="ttc" id="astructLowerVectorTransferReadToAIEUPD_html"><div class="ttname"><a href="structLowerVectorTransferReadToAIEUPD.html">LowerVectorTransferReadToAIEUPD</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01045">VectorToAIEVecConversions.cpp:1046</a></div></div>
 <div class="ttc" id="astructLowerVectorTransferReadToAIEUPD_html_a06262f853c07b74723c731bb7dd8c10d"><div class="ttname"><a href="structLowerVectorTransferReadToAIEUPD.html#a06262f853c07b74723c731bb7dd8c10d">LowerVectorTransferReadToAIEUPD::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(vector::TransferReadOp readOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01057">VectorToAIEVecConversions.cpp:1057</a></div></div>
 <div class="ttc" id="astructLowerVectorTransferReadToAIEUPD_html_a096d91d25a583f6db27bb12c0101b7da"><div class="ttname"><a href="structLowerVectorTransferReadToAIEUPD.html#a096d91d25a583f6db27bb12c0101b7da">LowerVectorTransferReadToAIEUPD::maxLoadSize</a></div><div class="ttdeci">int64_t maxLoadSize</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01108">VectorToAIEVecConversions.cpp:1108</a></div></div>
@@ -4442,15 +4435,15 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructOneToOneVectorOpToAIEVecOpPattern_html"><div class="ttname"><a href="structOneToOneVectorOpToAIEVecOpPattern.html">OneToOneVectorOpToAIEVecOpPattern</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01114">VectorToAIEVecConversions.cpp:1114</a></div></div>
 <div class="ttc" id="astructOneToOneVectorOpToAIEVecOpPattern_html_a530b2126c9ed22dc288bf3c0ca645acc"><div class="ttname"><a href="structOneToOneVectorOpToAIEVecOpPattern.html#a530b2126c9ed22dc288bf3c0ca645acc">OneToOneVectorOpToAIEVecOpPattern::OpAdaptor</a></div><div class="ttdeci">typename SrcOpTy::Adaptor OpAdaptor</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01116">VectorToAIEVecConversions.cpp:1116</a></div></div>
 <div class="ttc" id="astructOneToOneVectorOpToAIEVecOpPattern_html_a6efef8d25e002f7ccbefb56b47e84fa7"><div class="ttname"><a href="structOneToOneVectorOpToAIEVecOpPattern.html#a6efef8d25e002f7ccbefb56b47e84fa7">OneToOneVectorOpToAIEVecOpPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l01119">VectorToAIEVecConversions.cpp:1119</a></div></div>
-<div class="ttc" id="astructSimplifyUPDOpsPass_html"><div class="ttname"><a href="structSimplifyUPDOpsPass.html">SimplifyUPDOpsPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03966">VectorToAIEVecConversions.cpp:3966</a></div></div>
-<div class="ttc" id="astructSimplifyUPDOpsPass_html_a32c3bf0f9e366069eea7330a16f6949c"><div class="ttname"><a href="structSimplifyUPDOpsPass.html#a32c3bf0f9e366069eea7330a16f6949c">SimplifyUPDOpsPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03968">VectorToAIEVecConversions.cpp:3968</a></div></div>
+<div class="ttc" id="astructSimplifyUPDOpsPass_html"><div class="ttname"><a href="structSimplifyUPDOpsPass.html">SimplifyUPDOpsPass</a></div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03959">VectorToAIEVecConversions.cpp:3959</a></div></div>
+<div class="ttc" id="astructSimplifyUPDOpsPass_html_a32c3bf0f9e366069eea7330a16f6949c"><div class="ttname"><a href="structSimplifyUPDOpsPass.html#a32c3bf0f9e366069eea7330a16f6949c">SimplifyUPDOpsPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="VectorToAIEVecConversions_8cpp_source.html#l03961">VectorToAIEVecConversions.cpp:3961</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions_html"><div class="ttname"><a href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html">xilinx::aievec::LowerVectorToAIEVecOptions</a></div><div class="ttdoc">Options for the &quot;lower-vector-to-aievec&quot; pipeline.</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00056">Passes.h:57</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions_html_a1bf588e471c9aa6409a427d3fcca14b1"><div class="ttname"><a href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html#a1bf588e471c9aa6409a427d3fcca14b1">xilinx::aievec::LowerVectorToAIEVecOptions::aieTarget</a></div><div class="ttdeci">PassOptions::Option&lt; std::string &gt; aieTarget</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00058">Passes.h:58</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions_html_aa757baf5eb043a57637f4d329b56c586"><div class="ttname"><a href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html#aa757baf5eb043a57637f4d329b56c586">xilinx::aievec::LowerVectorToAIEVecOptions::targetBackend</a></div><div class="ttdeci">PassOptions::Option&lt; std::string &gt; targetBackend</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00063">Passes.h:63</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Sep 30 2025 20:47:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Sep 30 2025 21:41:24 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
