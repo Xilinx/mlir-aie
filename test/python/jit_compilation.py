@@ -190,7 +190,7 @@ except Exception as e:
 
         # Write the test script to a temporary file
         script_path = os.path.join(temp_cache_dir, "test_compilation.py")
-        with open(script_path, 'w') as f:
+        with open(script_path, "w") as f:
             f.write(test_script)
 
         # Run multiple subprocesses concurrently
