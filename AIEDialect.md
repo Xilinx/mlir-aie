@@ -257,6 +257,11 @@ typically be outlined into the LLVM dialect, eventually resulting in a binary fi
 for each core.  The name of this file can be be specified using the `elf_file`
 attribute.
 
+If the `elf_file` attribute is present, no MLIR besides a terminator may be
+present in the core; in that case, the binary file linked dictates what 
+will run in the core. The path specified should is relative to the MLIR
+file.
+
 This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
 reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
 are always stored in the local core memory, to avoid conflicts with static data allocations
@@ -335,7 +340,7 @@ _Define an AIE design targetting a complete device_
 Syntax:
 
 ```
-operation ::= `aie.device` `(` $device `)` regions attr-dict
+operation ::= `aie.device` `(` $device `)` ($sym_name^)? regions attr-dict
 ```
 
 This operation describes a design that executes on a particular AIEngine device.
@@ -362,13 +367,14 @@ aie.device(xcvc1902) {
 
 Traits: `HasParent<mlir::ModuleOp>`, `IsolatedFromAbove`, `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`, `SymbolTable`
 
-Interfaces: `AIETarget`
+Interfaces: `AIETarget`, `Symbol`
 
 #### Attributes:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>device</code></td><td>xilinx::AIE::AIEDeviceAttr</td><td>AIE Device</td></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 </table>
 
 

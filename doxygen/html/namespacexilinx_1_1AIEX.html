@@ -64,6 +64,8 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:afa4b7d3cc349d42315b2c37bfd175cb8" id="r_afa4b7d3cc349d42315b2c37bfd175cb8"><td class="memItemLeft" align="right" valign="top">memref::GlobalOp&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">getOrCreateDataMemref</a> (OpBuilder &amp;builder, AIE::DeviceOp dev, mlir::Location loc, ArrayRef&lt; uint32_t &gt; words)</td></tr>
+<tr class="separator:afa4b7d3cc349d42315b2c37bfd175cb8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa8da22224cb11f459ecc40327807bb57" id="r_aa8da22224cb11f459ecc40327807bb57"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#aa8da22224cb11f459ecc40327807bb57">getHardwareStridesWraps</a> (const <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIE::AIETargetModel</a> &amp;targetModel, mlir::Operation *op, mlir::BaseMemRefType referencedBufType, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;sizes, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;strides)</td></tr>
 <tr class="separator:aa8da22224cb11f459ecc40327807bb57"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acd8bb70bd4615d3c251a2ab8176e4973" id="r_acd8bb70bd4615d3c251a2ab8176e4973"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">verifyStridesWraps</a> (mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareSizes, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareStrides, <a class="el" href="classbool.html">bool</a> skipTransformationChecks=false)</td></tr>
@@ -250,7 +252,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDmaToNpu_8cpp_source.html#l00741">741</a> of file <a class="el" href="AIEDmaToNpu_8cpp_source.html">AIEDmaToNpu.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDmaToNpu_8cpp_source.html#l00675">675</a> of file <a class="el" href="AIEDmaToNpu_8cpp_source.html">AIEDmaToNpu.cpp</a>.</p>
 
 </div>
 </div>
@@ -462,11 +464,53 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEXDialect_8cpp_source.html#l00087">87</a> of file <a class="el" href="AIEXDialect_8cpp_source.html">AIEXDialect.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEXDialect_8cpp_source.html#l00088">88</a> of file <a class="el" href="AIEXDialect_8cpp_source.html">AIEXDialect.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#afdfb265758bbfe09f19dd1f07f525ca1">xilinx::AIE::AIETargetModel::getAddressGenGranularity()</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00220">AIEDMATasksToNPUPass::rewriteSingleBD()</a>.</p>
+
+</div>
+</div>
+<a id="afa4b7d3cc349d42315b2c37bfd175cb8" name="afa4b7d3cc349d42315b2c37bfd175cb8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afa4b7d3cc349d42315b2c37bfd175cb8">&#9670;&#160;</a></span>getOrCreateDataMemref()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">memref::GlobalOp xilinx::AIEX::getOrCreateDataMemref </td>
+          <td>(</td>
+          <td class="paramtype">OpBuilder &amp;&#160;</td>
+          <td class="paramname"><em>builder</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">AIE::DeviceOp&#160;</td>
+          <td class="paramname"><em>dev</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">mlir::Location&#160;</td>
+          <td class="paramname"><em>loc</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">ArrayRef&lt; uint32_t &gt;&#160;</td>
+          <td class="paramname"><em>words</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEUtils_8cpp_source.html#l00018">18</a> of file <a class="el" href="AIEUtils_8cpp_source.html">AIEUtils.cpp</a>.</p>
 
 </div>
 </div>
@@ -538,7 +582,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEXDialect_8cpp_source.html#l00171">171</a> of file <a class="el" href="AIEXDialect_8cpp_source.html">AIEXDialect.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEXDialect_8cpp_source.html#l00172">172</a> of file <a class="el" href="AIEXDialect_8cpp_source.html">AIEXDialect.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel()</a>.</p>
 
@@ -549,7 +593,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Sep 30 2025 10:27:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Sep 30 2025 20:47:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

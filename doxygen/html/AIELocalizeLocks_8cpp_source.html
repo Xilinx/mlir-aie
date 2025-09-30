@@ -115,35 +115,46 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(tile);</div>
 <div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> user : tile.getResult().getUsers())</div>
 <div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> lock = dyn_cast&lt;LockOp&gt;(user)) {</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>            <span class="keyword">auto</span> lockIndexOffset =</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>                targetModel.getLockLocalBaseIndex(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, dstCol, dstRow);</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>            <span class="keywordflow">if</span> (!lockIndexOffset)</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>              llvm_unreachable(<span class="stringliteral">&quot;Found illegal lock user!&quot;</span>);</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>            <span class="keywordtype">int</span> localLockIndex =</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>                lockIndexOffset.value() + lock.getLockIDValue();</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>            OpBuilder builder =</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>                OpBuilder::atBlockBegin(&amp;coreOp.getBody().front());</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>            <span class="comment">// At this point, we are iterating over all locks that are</span></div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>            <span class="comment">// accessible from within the current core coreOp. We only need to</span></div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>            <span class="comment">// localize the current lock if it is used within the core. Note</span></div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>            <span class="comment">// that this pass is to be applied after the scf-to-cf lowering, so</span></div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>            <span class="comment">// it suffices to check if the parent of a UseLockOp is coreOp.</span></div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>            <span class="keywordflow">if</span> (llvm::none_of(lock.getResult().getUsers(),</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>                              [&amp;](Operation *user) {</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>                                return user-&gt;getParentOp() == coreOp;</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>                              }))</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>              <span class="keywordflow">continue</span>;</div>
 <div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span> </div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>            Value coreLockIDValue = builder.create&lt;arith::ConstantIndexOp&gt;(</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>                builder.getUnknownLoc(), localLockIndex);</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>            lock.getResult().replaceUsesWithIf(</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>                coreLockIDValue, [&amp;](OpOperand &amp;opOperand) {</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>                  <span class="keywordflow">return</span> opOperand.getOwner()-&gt;getParentOp() == coreOp;</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>                });</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>          }</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>      }</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    }</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>  }</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>            <span class="keyword">auto</span> lockIndexOffset =</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>                targetModel.getLockLocalBaseIndex(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, dstCol, dstRow);</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>            <span class="keywordflow">if</span> (!lockIndexOffset)</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>              llvm_unreachable(<span class="stringliteral">&quot;Found illegal lock user!&quot;</span>);</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>            <span class="keywordtype">int</span> localLockIndex =</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>                lockIndexOffset.value() + lock.getLockIDValue();</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span> </div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>            OpBuilder builder =</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>                OpBuilder::atBlockBegin(&amp;coreOp.getBody().front());</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span> </div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>            Value coreLockIDValue = builder.create&lt;arith::ConstantIndexOp&gt;(</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>                builder.getUnknownLoc(), localLockIndex);</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>            lock.getResult().replaceUsesWithIf(</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>                coreLockIDValue, [&amp;](OpOperand &amp;opOperand) {</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>                  <span class="keywordflow">return</span> opOperand.getOwner()-&gt;getParentOp() == coreOp;</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>                });</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>          }</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>      }</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>    }</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>  }</div>
 </div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>};</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>};</div>
 </div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span> </div>
-<div class="foldopen" id="foldopen00077" data-start="{" data-end="}">
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#abc7dbd01bf01668e2dde85edfe95e65f">   77</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#abc7dbd01bf01668e2dde85edfe95e65f">AIE::createAIELocalizeLocksPass</a>() {</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIELocalizeLocksPass&gt;();</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>}</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
+<div class="foldopen" id="foldopen00088" data-start="{" data-end="}">
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#abc7dbd01bf01668e2dde85edfe95e65f">   88</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#abc7dbd01bf01668e2dde85edfe95e65f">AIE::createAIELocalizeLocksPass</a>() {</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIELocalizeLocksPass&gt;();</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
@@ -153,7 +164,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a1e6006c1b4fccd997eba880457892eec"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">xilinx::AIE::row</a></div><div class="ttdeci">int row</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2e68be9ae4fa95fd84120dc8154599e6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">xilinx::AIE::col</a></div><div class="ttdeci">int col</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a98d14c817daebc58ad822d608bc73313"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel</a></div><div class="ttdeci">const AIETargetModel &amp; getTargetModel(mlir::Operation *op)</div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_abc7dbd01bf01668e2dde85edfe95e65f"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#abc7dbd01bf01668e2dde85edfe95e65f">xilinx::AIE::createAIELocalizeLocksPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIELocalizeLocksPass()</div><div class="ttdef"><b>Definition</b> <a href="AIELocalizeLocks_8cpp_source.html#l00077">AIELocalizeLocks.cpp:77</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_abc7dbd01bf01668e2dde85edfe95e65f"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#abc7dbd01bf01668e2dde85edfe95e65f">xilinx::AIE::createAIELocalizeLocksPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIELocalizeLocksPass()</div><div class="ttdef"><b>Definition</b> <a href="AIELocalizeLocks_8cpp_source.html#l00088">AIELocalizeLocks.cpp:88</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructAIELocalizeLocksPass_html"><div class="ttname"><a href="structAIELocalizeLocksPass.html">AIELocalizeLocksPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIELocalizeLocks_8cpp_source.html#l00024">AIELocalizeLocks.cpp:24</a></div></div>
 <div class="ttc" id="astructAIELocalizeLocksPass_html_a620be6ae930a9e6f85316e30a39d216f"><div class="ttname"><a href="structAIELocalizeLocksPass.html#a620be6ae930a9e6f85316e30a39d216f">AIELocalizeLocksPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIELocalizeLocks_8cpp_source.html#l00028">AIELocalizeLocks.cpp:28</a></div></div>
@@ -161,7 +172,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Sep 30 2025 10:27:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Sep 30 2025 20:47:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

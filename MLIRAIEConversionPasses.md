@@ -12,7 +12,8 @@ device. A new `aiex.runtime_sequence` operation is inserted into the
 #### Options
 
 ```
--elf-dir : Where to find ELF files
+-elf-dir     : Where to find ELF files
+-device-name : Which device to generate code for; if none specified, process all devices
 ```
 
 ### `-convert-aie-to-transaction`
@@ -29,7 +30,8 @@ contain the new transaction operations sequence.
 #### Options
 
 ```
--elf-dir : Where to find ELF files
+-elf-dir     : Where to find ELF files
+-device-name : Which device to generate code for; if none specified, process all devices
 ```
 
 ### `-convert-aievec-to-llvm`

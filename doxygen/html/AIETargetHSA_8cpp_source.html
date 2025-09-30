@@ -119,173 +119,174 @@ $(document).ready(function() { init_codefold(0); });
 </div>
 <div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
 <div class="foldopen" id="foldopen00059" data-start="{" data-end="}">
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a3237bdaefde52bfcae82375a1fe332fd">   59</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a50302800b3a0c807899831515c014853">AIETranslateToHSA</a>(ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span> </div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>  DenseMap&lt;TileID, Operation *&gt; tiles;</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>  DenseMap&lt;Operation *, SmallVector&lt;BufferOp, 4&gt;&gt; buffers;</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span> </div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>  <span class="keywordflow">if</span> (module.getOps&lt;DeviceOp&gt;().empty())</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    <span class="keywordflow">return</span> <span class="keyword">module</span>.emitOpError(&quot;expected AIE.device operation at toplevel&quot;);</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>  DeviceOp targetOp = *(<span class="keyword">module</span>.getOps&lt;DeviceOp&gt;().begin());</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span> </div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>  <span class="comment">// Putting the standard header</span></div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>  output &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#aeac74c4261ceaa6b4f2f336f21037fc5">hsa_cpp_file_header</a>;</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span> </div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>  <span class="comment">// Getting the sequence function op which contains the instructions</span></div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>  <span class="keyword">auto</span> sequenceOps = targetOp.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>  <span class="keywordflow">if</span> (sequenceOps.empty()) {</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>    <span class="comment">// If no sequenceOp then just return</span></div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>  } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (std::distance(sequenceOps.begin(), sequenceOps.end()) &gt; 1) {</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>    <span class="keywordflow">return</span> <span class="keyword">module</span>.emitOpError(&quot;expected at most one sequence operation&quot;);</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>  }</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>  AIEX::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();</div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span> </div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>  collectTiles(targetOp, tiles);</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>  collectBuffers(targetOp, buffers);</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span> </div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>  <span class="comment">// Generate dynamic data movement</span></div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>  output &lt;&lt; <span class="stringliteral">&quot;void invoke_data_movement(hsa_queue_t *q, hsa_agent_t *a&quot;</span>;</div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span> </div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>  <span class="comment">// Looping over every Memcpy operation so we take the correct number of</span></div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>  <span class="comment">// buffers</span></div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>  <span class="keywordtype">int</span> num_ops = 0;</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : sequenceOp.getOps&lt;NpuDmaMemcpyNdOp&gt;()) {</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    <span class="comment">// Getting the IDs of the buffers</span></div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>    <span class="keyword">auto</span> memref = op.getMemref();</div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>    Block &amp;entryBB =</div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>        op-&gt;getParentOfType&lt;AIEX::RuntimeSequenceOp&gt;().getBody().front();</div>
-<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>    <span class="keywordtype">int</span> arg_idx = -1;</div>
-<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0, e = entryBB.getNumArguments(); i &lt; e; i++) {</div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>      <span class="keywordflow">if</span> (entryBB.getArgument(i) == memref) {</div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>        arg_idx = i;</div>
-<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>        <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>      }</div>
-<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>    }</div>
-<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>    num_ops++;</div>
-<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span> </div>
-<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>    output &lt;&lt; <span class="stringliteral">&quot;, void *buf&quot;</span> &lt;&lt; arg_idx;</div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>  }</div>
-<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span> </div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>  output &lt;&lt; <span class="stringliteral">&quot;) {\n&quot;</span>;</div>
-<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span> </div>
-<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>  output &lt;&lt; <span class="stringliteral">&quot;\tuint64_t wr_idx = 0;\n&quot;</span>;</div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>  output &lt;&lt; <span class="stringliteral">&quot;\tuint64_t packet_id = 0;\n&quot;</span>;</div>
-<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span> </div>
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>  <span class="keywordtype">int</span> op_count = 0;</div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : sequenceOp.getOps&lt;NpuDmaMemcpyNdOp&gt;()) {</div>
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>    <span class="keyword">auto</span> dev = sequenceOp-&gt;getParentOfType&lt;AIE::DeviceOp&gt;();</div>
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>    <span class="keywordflow">if</span> (!dev) {</div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>      op.emitOpError(<span class="stringliteral">&quot;couldn&#39;t get DeviceOp&quot;</span>);</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>    }</div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span> </div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>    <span class="keyword">auto</span> infoOp = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a1bca0ec9bb02858a76b674b20a3cc05d">getAllocOpForSymbol</a>(dev, op.getMetadata());</div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    <span class="keywordflow">if</span> (!infoOp) {</div>
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>      op.emitOpError(<span class="stringliteral">&quot;couldn&#39;t find shim_dma_allocation op&quot;</span>);</div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>    }</div>
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span> </div>
-<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>    <span class="keyword">auto</span> channelDir = infoOp-&gt;getChannelDir();</div>
-<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>    uint32_t ChannelId = infoOp-&gt;getChannelIndex();</div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    <span class="keywordtype">bool</span> isMM2S = channelDir == AIE::DMAChannelDir::MM2S;</div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = infoOp-&gt;getCol();</div>
-<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>    <span class="keywordtype">bool</span> isPlio = infoOp-&gt;getPlio();</div>
-<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span> </div>
-<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>    llvm::SmallVector&lt;int64_t, 4&gt; strides = llvm::map_to_vector(</div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>        llvm::reverse(op.getMixedStrides()),</div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>        [](OpFoldResult s) { return getConstantIntValue(s).value(); });</div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>    ::SmallVector&lt;int64_t, 4&gt; sizes = llvm::map_to_vector(</div>
-<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>        llvm::reverse(op.getMixedSizes()),</div>
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>        [](OpFoldResult s) { return getConstantIntValue(s).value(); });</div>
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>    ::SmallVector&lt;int64_t, 4&gt; offsets = llvm::map_to_vector(</div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>        llvm::reverse(op.getMixedOffsets()),</div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>        [](OpFoldResult s) { return getConstantIntValue(s).value(); });</div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span> </div>
-<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>    <span class="comment">// buffer_offset</span></div>
-<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>    <span class="keywordtype">size_t</span> stride = 1;</div>
-<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>    <span class="keywordtype">size_t</span> offset = 0;</div>
-<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    BaseMemRefType my_memref = op.getMemref().getType();</div>
-<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>    <span class="keyword">auto</span> shape = my_memref.getShape();</div>
-<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>    <span class="keywordtype">size_t</span> R = shape.size();</div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>    <span class="keywordtype">size_t</span> el_bit_width = op.getElementTypeBitwidth();</div>
-<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>    assert(el_bit_width % 8 == 0 &amp;&amp;</div>
-<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>           <span class="stringliteral">&quot;Expected Memref element bitwidth to be multiple of 8.&quot;</span>);</div>
-<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>    <span class="keywordtype">size_t</span> S = el_bit_width / 8;</div>
-<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; R; i++) {</div>
-<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>      offset += offsets[i] * stride * S;</div>
-<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>      stride *= shape[R - i - 1];</div>
-<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>    }</div>
-<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span> </div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>    <span class="comment">// Getting the ID of the buffer that we are using</span></div>
-<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>    <span class="keyword">auto</span> memref = op.getMemref();</div>
-<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>    Block &amp;entryBB =</div>
-<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>        op-&gt;getParentOfType&lt;AIEX::RuntimeSequenceOp&gt;().getBody().front();</div>
-<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>    <span class="keywordtype">int</span> arg_idx = -1;</div>
-<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0, e = entryBB.getNumArguments(); i &lt; e; i++) {</div>
-<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span>      <span class="keywordflow">if</span> (entryBB.getArgument(i) == memref) {</div>
-<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>        arg_idx = i;</div>
-<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>        <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>      }</div>
-<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>    }</div>
-<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span> </div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>    <span class="keywordflow">if</span> (strides[0] != 1)</div>
-<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>      <span class="keywordflow">return</span> <span class="keyword">module</span>.emitOpError(&quot;nd_memcpy inner-dimension stride != 1 is &quot;</div>
-<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>                                &quot;unsupported by HSA target&quot;);</div>
-<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span> </div>
-<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>    <span class="comment">// Writing the packet information to perform the DMA</span></div>
-<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>    output &lt;&lt; <span class="stringliteral">&quot;\thsa_agent_dispatch_packet_t pkt&quot;</span> &lt;&lt; op_count &lt;&lt; <span class="stringliteral">&quot; ;\n&quot;</span>;</div>
-<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>    output &lt;&lt; <span class="stringliteral">&quot;\twr_idx  = hsa_queue_add_write_index_relaxed(q, 1);\n&quot;</span>;</div>
-<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>    output &lt;&lt; <span class="stringliteral">&quot;\tpacket_id  = wr_idx % q-&gt;size;\n&quot;</span>;</div>
-<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>    output &lt;&lt; <span class="stringliteral">&quot;\tmlir_aie_packet_nd_memcpy(&amp;pkt&quot;</span> &lt;&lt; op_count</div>
-<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>           &lt;&lt; <span class="stringliteral">&quot;, 0 /* herd_id */, &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot; /* col */, &quot;</span> &lt;&lt; isMM2S</div>
-<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>           &lt;&lt; <span class="stringliteral">&quot; /* dir */, &quot;</span> &lt;&lt; ChannelId</div>
-<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>           &lt;&lt; <span class="stringliteral">&quot;/* channel */, 4 /* Burst length */, &quot;</span> &lt;&lt; (isPlio ? 1 : 2)</div>
-<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>           &lt;&lt; <span class="stringliteral">&quot; /* Memory space */, &quot;</span></div>
-<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>              <span class="stringliteral">&quot;(uint64_t)buf&quot;</span></div>
-<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>           &lt;&lt; arg_idx &lt;&lt; <span class="stringliteral">&quot; + &quot;</span> &lt;&lt; offset &lt;&lt; <span class="stringliteral">&quot; /* Address */, &quot;</span> &lt;&lt; sizes[0] * 4</div>
-<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>           &lt;&lt; <span class="stringliteral">&quot; /* 1d_length */, &quot;</span> &lt;&lt; (strides[1] ? sizes[1] : 1)</div>
-<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>           &lt;&lt; <span class="stringliteral">&quot; /* 2d_length */, &quot;</span> &lt;&lt; (strides[1] ? strides[1] * 4 : 0)</div>
-<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>           &lt;&lt; <span class="stringliteral">&quot; /* 2d_stride */, &quot;</span> &lt;&lt; (strides[2] ? sizes[2] : 1)</div>
-<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>           &lt;&lt; <span class="stringliteral">&quot; /* 3d_length */, &quot;</span> &lt;&lt; (strides[2] ? strides[2] * 4 : 0)</div>
-<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>           &lt;&lt; <span class="stringliteral">&quot; /* 3d_stride */ , 1 /* 4d_length */, 0 /* 4d_stride */);\n&quot;</span>;</div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span> </div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>    <span class="keywordtype">bool</span> last_op = op_count == (num_ops - 1);</div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>    <span class="comment">// Only ring the doorbell on the last packet</span></div>
-<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>    <span class="keywordflow">if</span> (last_op) {</div>
-<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>      output</div>
-<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>          &lt;&lt; <span class="stringliteral">&quot;\tmlir_aie_queue_dispatch_and_wait(a, q, packet_id, wr_idx, &amp;pkt&quot;</span></div>
-<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>          &lt;&lt; op_count &lt;&lt; <span class="stringliteral">&quot;, false);\n\n&quot;</span>;</div>
-<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>      output &lt;&lt; <span class="stringliteral">&quot;\thsa_amd_signal_create_on_agent(1, 0, nullptr, a, 0, &amp;pkt&quot;</span></div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>             &lt;&lt; op_count &lt;&lt; <span class="stringliteral">&quot;.completion_signal);\n&quot;</span>;</div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>      output &lt;&lt; <span class="stringliteral">&quot;\tmlir_aie_write_pkt&lt;hsa_agent_dispatch_packet_t&gt;(q, &quot;</span></div>
-<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>                <span class="stringliteral">&quot;packet_id, &amp;pkt&quot;</span></div>
-<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>             &lt;&lt; op_count &lt;&lt; <span class="stringliteral">&quot;);\n\n&quot;</span>;</div>
-<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>    }</div>
-<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span> </div>
-<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>    op_count++;</div>
-<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>  }</div>
-<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span> </div>
-<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>  <span class="comment">// Waiting to make sure each DMA is complete</span></div>
-<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; op_count; i++) {</div>
-<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>    output &lt;&lt; <span class="stringliteral">&quot;\twhile (hsa_signal_wait_scacquire(pkt&quot;</span> &lt;&lt; i</div>
-<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>           &lt;&lt; <span class="stringliteral">&quot;.completion_signal,\n&quot;</span>;</div>
-<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>    output &lt;&lt; <span class="stringliteral">&quot;\tHSA_SIGNAL_CONDITION_EQ, 0, 0x80000,\n&quot;</span>;</div>
-<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>    output &lt;&lt; <span class="stringliteral">&quot;\tHSA_WAIT_STATE_ACTIVE) != 0);\n&quot;</span>;</div>
-<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>  }</div>
-<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span> </div>
-<div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span>  <span class="comment">// Destroying every signal that we created</span></div>
-<div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; op_count; i++) {</div>
-<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>    output &lt;&lt; <span class="stringliteral">&quot;\thsa_signal_destroy(pkt&quot;</span> &lt;&lt; i &lt;&lt; <span class="stringliteral">&quot;.completion_signal);\n&quot;</span>;</div>
-<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span>  }</div>
-<div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span> </div>
-<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>  output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span> </div>
-<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span>}</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#ab9844187088da38ffc73ffde33c0c858">   59</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ad56dfd32b584e548f1971501d3440a5f">AIETranslateToHSA</a>(ModuleOp module, raw_ostream &amp;output,</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>                                      llvm::StringRef deviceName) {</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>  DenseMap&lt;TileID, Operation *&gt; tiles;</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>  DenseMap&lt;Operation *, SmallVector&lt;BufferOp, 4&gt;&gt; buffers;</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span> </div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>  <span class="keywordflow">if</span> (!targetOp)</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    <span class="keywordflow">return</span> <span class="keyword">module</span>.emitOpError(&quot;expected AIE.device operation at toplevel&quot;);</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span> </div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>  <span class="comment">// Putting the standard header</span></div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>  output &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#aeac74c4261ceaa6b4f2f336f21037fc5">hsa_cpp_file_header</a>;</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span> </div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>  <span class="comment">// Getting the sequence function op which contains the instructions</span></div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>  <span class="keyword">auto</span> sequenceOps = targetOp.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>  <span class="keywordflow">if</span> (sequenceOps.empty()) {</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    <span class="comment">// If no sequenceOp then just return</span></div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>  } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (std::distance(sequenceOps.begin(), sequenceOps.end()) &gt; 1) {</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>    <span class="keywordflow">return</span> <span class="keyword">module</span>.emitOpError(&quot;expected at most one sequence operation&quot;);</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>  }</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>  AIEX::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>  collectTiles(targetOp, tiles);</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>  collectBuffers(targetOp, buffers);</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span> </div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>  <span class="comment">// Generate dynamic data movement</span></div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>  output &lt;&lt; <span class="stringliteral">&quot;void invoke_data_movement(hsa_queue_t *q, hsa_agent_t *a&quot;</span>;</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>  <span class="comment">// Looping over every Memcpy operation so we take the correct number of</span></div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>  <span class="comment">// buffers</span></div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>  <span class="keywordtype">int</span> num_ops = 0;</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : sequenceOp.getOps&lt;NpuDmaMemcpyNdOp&gt;()) {</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>    <span class="comment">// Getting the IDs of the buffers</span></div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>    <span class="keyword">auto</span> memref = op.getMemref();</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    Block &amp;entryBB =</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>        op-&gt;getParentOfType&lt;AIEX::RuntimeSequenceOp&gt;().getBody().front();</div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>    <span class="keywordtype">int</span> arg_idx = -1;</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0, e = entryBB.getNumArguments(); i &lt; e; i++) {</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>      <span class="keywordflow">if</span> (entryBB.getArgument(i) == memref) {</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>        arg_idx = i;</div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>        <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>      }</div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>    }</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>    num_ops++;</div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span> </div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    output &lt;&lt; <span class="stringliteral">&quot;, void *buf&quot;</span> &lt;&lt; arg_idx;</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>  }</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span> </div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>  output &lt;&lt; <span class="stringliteral">&quot;) {\n&quot;</span>;</div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span> </div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>  output &lt;&lt; <span class="stringliteral">&quot;\tuint64_t wr_idx = 0;\n&quot;</span>;</div>
+<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>  output &lt;&lt; <span class="stringliteral">&quot;\tuint64_t packet_id = 0;\n&quot;</span>;</div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span> </div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>  <span class="keywordtype">int</span> op_count = 0;</div>
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : sequenceOp.getOps&lt;NpuDmaMemcpyNdOp&gt;()) {</div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>    <span class="keyword">auto</span> dev = sequenceOp-&gt;getParentOfType&lt;AIE::DeviceOp&gt;();</div>
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>    <span class="keywordflow">if</span> (!dev) {</div>
+<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>      op.emitOpError(<span class="stringliteral">&quot;couldn&#39;t get DeviceOp&quot;</span>);</div>
+<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>    }</div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span> </div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    <span class="keyword">auto</span> infoOp = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a1bca0ec9bb02858a76b674b20a3cc05d">getAllocOpForSymbol</a>(dev, op.getMetadata());</div>
+<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>    <span class="keywordflow">if</span> (!infoOp) {</div>
+<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>      op.emitOpError(<span class="stringliteral">&quot;couldn&#39;t find shim_dma_allocation op&quot;</span>);</div>
+<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>    }</div>
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span> </div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>    <span class="keyword">auto</span> channelDir = infoOp-&gt;getChannelDir();</div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    uint32_t ChannelId = infoOp-&gt;getChannelIndex();</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    <span class="keywordtype">bool</span> isMM2S = channelDir == AIE::DMAChannelDir::MM2S;</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = infoOp-&gt;getCol();</div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>    <span class="keywordtype">bool</span> isPlio = infoOp-&gt;getPlio();</div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span> </div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>    llvm::SmallVector&lt;int64_t, 4&gt; strides = llvm::map_to_vector(</div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>        llvm::reverse(op.getMixedStrides()),</div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>        [](OpFoldResult s) { return getConstantIntValue(s).value(); });</div>
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>    ::SmallVector&lt;int64_t, 4&gt; sizes = llvm::map_to_vector(</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>        llvm::reverse(op.getMixedSizes()),</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>        [](OpFoldResult s) { return getConstantIntValue(s).value(); });</div>
+<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>    ::SmallVector&lt;int64_t, 4&gt; offsets = llvm::map_to_vector(</div>
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>        llvm::reverse(op.getMixedOffsets()),</div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>        [](OpFoldResult s) { return getConstantIntValue(s).value(); });</div>
+<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span> </div>
+<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>    <span class="comment">// buffer_offset</span></div>
+<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>    <span class="keywordtype">size_t</span> stride = 1;</div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    <span class="keywordtype">size_t</span> offset = 0;</div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>    BaseMemRefType my_memref = op.getMemref().getType();</div>
+<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>    <span class="keyword">auto</span> shape = my_memref.getShape();</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>    <span class="keywordtype">size_t</span> R = shape.size();</div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>    <span class="keywordtype">size_t</span> el_bit_width = op.getElementTypeBitwidth();</div>
+<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>    assert(el_bit_width % 8 == 0 &amp;&amp;</div>
+<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>           <span class="stringliteral">&quot;Expected Memref element bitwidth to be multiple of 8.&quot;</span>);</div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>    <span class="keywordtype">size_t</span> S = el_bit_width / 8;</div>
+<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>    <span class="keywordflow">for</span> (<span class="keywordtype">size_t</span> i = 0; i &lt; R; i++) {</div>
+<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>      offset += offsets[i] * stride * S;</div>
+<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>      stride *= shape[R - i - 1];</div>
+<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>    }</div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span> </div>
+<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>    <span class="comment">// Getting the ID of the buffer that we are using</span></div>
+<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>    <span class="keyword">auto</span> memref = op.getMemref();</div>
+<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>    Block &amp;entryBB =</div>
+<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>        op-&gt;getParentOfType&lt;AIEX::RuntimeSequenceOp&gt;().getBody().front();</div>
+<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>    <span class="keywordtype">int</span> arg_idx = -1;</div>
+<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0, e = entryBB.getNumArguments(); i &lt; e; i++) {</div>
+<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>      <span class="keywordflow">if</span> (entryBB.getArgument(i) == memref) {</div>
+<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>        arg_idx = i;</div>
+<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>        <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>      }</div>
+<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>    }</div>
+<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span> </div>
+<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>    <span class="keywordflow">if</span> (strides[0] != 1)</div>
+<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>      <span class="keywordflow">return</span> <span class="keyword">module</span>.emitOpError(&quot;nd_memcpy inner-dimension stride != 1 is &quot;</div>
+<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>                                &quot;unsupported by HSA target&quot;);</div>
+<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span> </div>
+<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>    <span class="comment">// Writing the packet information to perform the DMA</span></div>
+<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>    output &lt;&lt; <span class="stringliteral">&quot;\thsa_agent_dispatch_packet_t pkt&quot;</span> &lt;&lt; op_count &lt;&lt; <span class="stringliteral">&quot; ;\n&quot;</span>;</div>
+<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>    output &lt;&lt; <span class="stringliteral">&quot;\twr_idx  = hsa_queue_add_write_index_relaxed(q, 1);\n&quot;</span>;</div>
+<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>    output &lt;&lt; <span class="stringliteral">&quot;\tpacket_id  = wr_idx % q-&gt;size;\n&quot;</span>;</div>
+<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>    output &lt;&lt; <span class="stringliteral">&quot;\tmlir_aie_packet_nd_memcpy(&amp;pkt&quot;</span> &lt;&lt; op_count</div>
+<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>           &lt;&lt; <span class="stringliteral">&quot;, 0 /* herd_id */, &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot; /* col */, &quot;</span> &lt;&lt; isMM2S</div>
+<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>           &lt;&lt; <span class="stringliteral">&quot; /* dir */, &quot;</span> &lt;&lt; ChannelId</div>
+<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>           &lt;&lt; <span class="stringliteral">&quot;/* channel */, 4 /* Burst length */, &quot;</span> &lt;&lt; (isPlio ? 1 : 2)</div>
+<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>           &lt;&lt; <span class="stringliteral">&quot; /* Memory space */, &quot;</span></div>
+<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>              <span class="stringliteral">&quot;(uint64_t)buf&quot;</span></div>
+<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>           &lt;&lt; arg_idx &lt;&lt; <span class="stringliteral">&quot; + &quot;</span> &lt;&lt; offset &lt;&lt; <span class="stringliteral">&quot; /* Address */, &quot;</span> &lt;&lt; sizes[0] * 4</div>
+<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>           &lt;&lt; <span class="stringliteral">&quot; /* 1d_length */, &quot;</span> &lt;&lt; (strides[1] ? sizes[1] : 1)</div>
+<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>           &lt;&lt; <span class="stringliteral">&quot; /* 2d_length */, &quot;</span> &lt;&lt; (strides[1] ? strides[1] * 4 : 0)</div>
+<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>           &lt;&lt; <span class="stringliteral">&quot; /* 2d_stride */, &quot;</span> &lt;&lt; (strides[2] ? sizes[2] : 1)</div>
+<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>           &lt;&lt; <span class="stringliteral">&quot; /* 3d_length */, &quot;</span> &lt;&lt; (strides[2] ? strides[2] * 4 : 0)</div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>           &lt;&lt; <span class="stringliteral">&quot; /* 3d_stride */ , 1 /* 4d_length */, 0 /* 4d_stride */);\n&quot;</span>;</div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span> </div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>    <span class="keywordtype">bool</span> last_op = op_count == (num_ops - 1);</div>
+<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>    <span class="comment">// Only ring the doorbell on the last packet</span></div>
+<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>    <span class="keywordflow">if</span> (last_op) {</div>
+<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>      output</div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>          &lt;&lt; <span class="stringliteral">&quot;\tmlir_aie_queue_dispatch_and_wait(a, q, packet_id, wr_idx, &amp;pkt&quot;</span></div>
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>          &lt;&lt; op_count &lt;&lt; <span class="stringliteral">&quot;, false);\n\n&quot;</span>;</div>
+<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>      output &lt;&lt; <span class="stringliteral">&quot;\thsa_amd_signal_create_on_agent(1, 0, nullptr, a, 0, &amp;pkt&quot;</span></div>
+<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>             &lt;&lt; op_count &lt;&lt; <span class="stringliteral">&quot;.completion_signal);\n&quot;</span>;</div>
+<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>      output &lt;&lt; <span class="stringliteral">&quot;\tmlir_aie_write_pkt&lt;hsa_agent_dispatch_packet_t&gt;(q, &quot;</span></div>
+<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>                <span class="stringliteral">&quot;packet_id, &amp;pkt&quot;</span></div>
+<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>             &lt;&lt; op_count &lt;&lt; <span class="stringliteral">&quot;);\n\n&quot;</span>;</div>
+<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span>    }</div>
+<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span> </div>
+<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>    op_count++;</div>
+<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>  }</div>
+<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span> </div>
+<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>  <span class="comment">// Waiting to make sure each DMA is complete</span></div>
+<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; op_count; i++) {</div>
+<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>    output &lt;&lt; <span class="stringliteral">&quot;\twhile (hsa_signal_wait_scacquire(pkt&quot;</span> &lt;&lt; i</div>
+<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>           &lt;&lt; <span class="stringliteral">&quot;.completion_signal,\n&quot;</span>;</div>
+<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>    output &lt;&lt; <span class="stringliteral">&quot;\tHSA_SIGNAL_CONDITION_EQ, 0, 0x80000,\n&quot;</span>;</div>
+<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>    output &lt;&lt; <span class="stringliteral">&quot;\tHSA_WAIT_STATE_ACTIVE) != 0);\n&quot;</span>;</div>
+<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span>  }</div>
+<div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span> </div>
+<div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>  <span class="comment">// Destroying every signal that we created</span></div>
+<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; op_count; i++) {</div>
+<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span>    output &lt;&lt; <span class="stringliteral">&quot;\thsa_signal_destroy(pkt&quot;</span> &lt;&lt; i &lt;&lt; <span class="stringliteral">&quot;.completion_signal);\n&quot;</span>;</div>
+<div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span>  }</div>
+<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span> </div>
+<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span>  output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
+<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span> </div>
+<div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>}</div>
 </div>
-<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>} <span class="comment">// namespace xilinx::AIE</span></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetShared_8h_html"><div class="ttname"><a href="AIETargetShared_8h.html">AIETargetShared.h</a></div></div>
 <div class="ttc" id="aAIETargets_8h_html"><div class="ttname"><a href="AIETargets_8h.html">AIETargets.h</a></div></div>
@@ -295,13 +296,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a1bca0ec9bb02858a76b674b20a3cc05d"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1bca0ec9bb02858a76b674b20a3cc05d">xilinx::AIE::getAllocOpForSymbol</a></div><div class="ttdeci">std::optional&lt; AIE::ShimDMAAllocationOp &gt; getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name)</div><div class="ttdef"><b>Definition</b> <a href="AIETargetHSA_8cpp_source.html#l00046">AIETargetHSA.cpp:46</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2e68be9ae4fa95fd84120dc8154599e6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">xilinx::AIE::col</a></div><div class="ttdeci">int col</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a50302800b3a0c807899831515c014853"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a50302800b3a0c807899831515c014853">xilinx::AIE::AIETranslateToHSA</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateToHSA(mlir::ModuleOp module, llvm::raw_ostream &amp;output)</div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_ad56dfd32b584e548f1971501d3440a5f"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ad56dfd32b584e548f1971501d3440a5f">xilinx::AIE::AIETranslateToHSA</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateToHSA(mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef deviceName=&quot;&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_aeac74c4261ceaa6b4f2f336f21037fc5"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aeac74c4261ceaa6b4f2f336f21037fc5">xilinx::AIE::hsa_cpp_file_header</a></div><div class="ttdeci">const char * hsa_cpp_file_header</div><div class="ttdef"><b>Definition</b> <a href="AIETargetHSA_8cpp_source.html#l00034">AIETargetHSA.cpp:34</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Sep 30 2025 10:27:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Sep 30 2025 20:47:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

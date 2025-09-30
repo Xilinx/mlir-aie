@@ -719,63 +719,63 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span>    ModuleOp m = getOperation();</div>
 <div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>    OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());</div>
 <div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span> </div>
-<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>    <span class="keywordflow">if</span> (m.getOps&lt;DeviceOp&gt;().empty()) {</div>
-<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>      m.emitOpError(<span class="stringliteral">&quot;expected AIE.device operation at toplevel&quot;</span>);</div>
+<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>    DeviceOp deviceOp = DeviceOp::getForSymbolInModuleOrError(m, deviceName);</div>
+<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>    <span class="keywordflow">if</span> (!deviceOp) {</div>
 <div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
 <div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>    }</div>
-<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>    DeviceOp device = *m.getOps&lt;DeviceOp&gt;().begin();</div>
-<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>    <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = device.getTargetModel();</div>
-<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span> </div>
-<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>    <span class="comment">// Ensure that we don&#39;t have an incorrect target triple.  This may override</span></div>
-<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>    <span class="comment">// some bogus target triple in the original mlir.</span></div>
-<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>    m-&gt;setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),</div>
-<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>               builder.getStringAttr(</div>
-<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>                   getArchIntrinsicString(targetModel.getTargetArch())));</div>
-<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span> </div>
-<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span>    DenseMap&lt;Operation *, SmallVector&lt;BufferOp, 4&gt;&gt; tileToBuffers;</div>
-<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span> </div>
-<div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>    <span class="comment">// Populate intrinsic functions</span></div>
-<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>    <span class="comment">// Intrinsic information:</span></div>
-<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>    <span class="comment">// peano/llvm-project/llvm/lib/Target/AIE/AIEInstrInfo.td Also take a look</span></div>
-<div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>    <span class="comment">// at the tests: peano/llvm-project/llvm/test/CodeGen/AIE</span></div>
-<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>    builder.setInsertionPointToStart(m.getBody());</div>
-<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span>    declareAIEIntrinsics(targetModel.getTargetArch(), builder);</div>
-<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span> </div>
-<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>    IRMapping mapper;</div>
-<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>    ConversionTarget target(getContext());</div>
-<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span>    target.addLegalDialect&lt;func::FuncDialect&gt;();</div>
-<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>    target.addLegalDialect&lt;cf::ControlFlowDialect&gt;();</div>
-<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>    target.addLegalDialect&lt;memref::MemRefDialect&gt;();</div>
-<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>    target.addLegalDialect&lt;VectorDialect&gt;();</div>
-<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>    target.addLegalDialect&lt;aievec::AIEVecDialect&gt;();</div>
-<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>    target.addLegalDialect&lt;arith::ArithDialect&gt;();</div>
-<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>    target.addLegalDialect&lt;ub::UBDialect&gt;();</div>
-<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>    target.addLegalDialect&lt;math::MathDialect&gt;();</div>
-<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>    target.addLegalDialect&lt;index::IndexDialect&gt;();</div>
-<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>    target.addLegalOp&lt;func::FuncOp, ModuleOp&gt;();</div>
-<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span> </div>
-<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>    RewritePatternSet patterns(&amp;getContext());</div>
-<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>    patterns.add&lt;<a class="code hl_struct" href="structAIEPutStreamToStdLowering.html">AIEPutStreamToStdLowering</a>, <a class="code hl_struct" href="structAIEGetStreamToStdLowering.html">AIEGetStreamToStdLowering</a>,</div>
-<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>                 <a class="code hl_struct" href="structAIEPutCascadeToStdLowering.html">AIEPutCascadeToStdLowering</a>, <a class="code hl_struct" href="structAIEGetCascadeToStdLowering.html">AIEGetCascadeToStdLowering</a>,</div>
-<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>                 <a class="code hl_struct" href="structAIEDebugOpToStdLowering.html">AIEDebugOpToStdLowering</a>, <a class="code hl_struct" href="structAIEUseLockToStdLowering.html">AIEUseLockToStdLowering</a>,</div>
-<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>                 <a class="code hl_struct" href="structAIEEventOpToStdLowering.html">AIEEventOpToStdLowering</a>&gt;(m.getContext(), m);</div>
-<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span> </div>
-<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>    patterns.add&lt;<a class="code hl_struct" href="structAIEBufferToStandard.html">AIEBufferToStandard</a>&gt;(m.getContext(), m, <span class="comment">/*benefit*/</span> 1, tileCol,</div>
-<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>                                      tileRow);</div>
-<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(m, target, std::move(patterns))))</div>
-<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span> </div>
-<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>    RewritePatternSet outlinePatterns(&amp;getContext());</div>
-<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>    outlinePatterns.add&lt;<a class="code hl_struct" href="structAIECoreToStandardFunc.html">AIECoreToStandardFunc</a>&gt;(m.getContext(), m, mapper,</div>
-<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>                                               tileToBuffers, <span class="comment">/*benefit*/</span> 1,</div>
-<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>                                               tileCol, tileRow);</div>
-<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))</div>
+<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>    <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = deviceOp.getTargetModel();</div>
+<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span> </div>
+<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>    <span class="comment">// Ensure that we don&#39;t have an incorrect target triple.  This may override</span></div>
+<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>    <span class="comment">// some bogus target triple in the original mlir.</span></div>
+<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>    m-&gt;setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),</div>
+<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>               builder.getStringAttr(</div>
+<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>                   getArchIntrinsicString(targetModel.getTargetArch())));</div>
+<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span> </div>
+<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span>    DenseMap&lt;Operation *, SmallVector&lt;BufferOp, 4&gt;&gt; tileToBuffers;</div>
+<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span> </div>
+<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>    <span class="comment">// Populate intrinsic functions</span></div>
+<div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>    <span class="comment">// Intrinsic information:</span></div>
+<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>    <span class="comment">// peano/llvm-project/llvm/lib/Target/AIE/AIEInstrInfo.td Also take a look</span></div>
+<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>    <span class="comment">// at the tests: peano/llvm-project/llvm/test/CodeGen/AIE</span></div>
+<div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>    builder.setInsertionPointToStart(m.getBody());</div>
+<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>    declareAIEIntrinsics(targetModel.getTargetArch(), builder);</div>
+<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span> </div>
+<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span>    IRMapping mapper;</div>
+<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>    ConversionTarget target(getContext());</div>
+<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>    target.addLegalDialect&lt;func::FuncDialect&gt;();</div>
+<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span>    target.addLegalDialect&lt;cf::ControlFlowDialect&gt;();</div>
+<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>    target.addLegalDialect&lt;memref::MemRefDialect&gt;();</div>
+<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>    target.addLegalDialect&lt;VectorDialect&gt;();</div>
+<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>    target.addLegalDialect&lt;aievec::AIEVecDialect&gt;();</div>
+<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>    target.addLegalDialect&lt;arith::ArithDialect&gt;();</div>
+<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>    target.addLegalDialect&lt;ub::UBDialect&gt;();</div>
+<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>    target.addLegalDialect&lt;math::MathDialect&gt;();</div>
+<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>    target.addLegalDialect&lt;index::IndexDialect&gt;();</div>
+<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>    target.addLegalOp&lt;func::FuncOp, ModuleOp&gt;();</div>
+<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span> </div>
+<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span>    RewritePatternSet patterns(&amp;getContext());</div>
+<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>    patterns.add&lt;<a class="code hl_struct" href="structAIEPutStreamToStdLowering.html">AIEPutStreamToStdLowering</a>, <a class="code hl_struct" href="structAIEGetStreamToStdLowering.html">AIEGetStreamToStdLowering</a>,</div>
+<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>                 <a class="code hl_struct" href="structAIEPutCascadeToStdLowering.html">AIEPutCascadeToStdLowering</a>, <a class="code hl_struct" href="structAIEGetCascadeToStdLowering.html">AIEGetCascadeToStdLowering</a>,</div>
+<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>                 <a class="code hl_struct" href="structAIEDebugOpToStdLowering.html">AIEDebugOpToStdLowering</a>, <a class="code hl_struct" href="structAIEUseLockToStdLowering.html">AIEUseLockToStdLowering</a>,</div>
+<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>                 <a class="code hl_struct" href="structAIEEventOpToStdLowering.html">AIEEventOpToStdLowering</a>&gt;(m.getContext(), m);</div>
+<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span> </div>
+<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>    patterns.add&lt;<a class="code hl_struct" href="structAIEBufferToStandard.html">AIEBufferToStandard</a>&gt;(m.getContext(), m, <span class="comment">/*benefit*/</span> 1, tileCol,</div>
+<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>                                      tileRow);</div>
+<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(deviceOp, target, std::move(patterns))))</div>
+<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span> </div>
+<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>    RewritePatternSet outlinePatterns(&amp;getContext());</div>
+<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>    outlinePatterns.add&lt;<a class="code hl_struct" href="structAIECoreToStandardFunc.html">AIECoreToStandardFunc</a>&gt;(m.getContext(), m, mapper,</div>
+<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>                                               tileToBuffers, <span class="comment">/*benefit*/</span> 1,</div>
+<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>                                               tileCol, tileRow);</div>
+<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(deviceOp, target,</div>
+<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>                                      std::move(outlinePatterns))))</div>
 <div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>      <span class="keywordflow">return</span> signalPassFailure();</div>
 <div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span> </div>
 <div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>    <span class="comment">// Move all the func.func ops and memref.globals from the device to the</span></div>
 <div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>    <span class="comment">// module</span></div>
-<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>    outlineOps&lt;memref::GlobalOp&gt;(device);</div>
-<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>    outlineOps&lt;func::FuncOp&gt;(device);</div>
+<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>    outlineOps&lt;memref::GlobalOp&gt;(deviceOp);</div>
+<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>    outlineOps&lt;func::FuncOp&gt;(deviceOp);</div>
 <div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span> </div>
 <div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>    RewritePatternSet removepatterns(&amp;getContext());</div>
 <div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span>    removepatterns.add&lt;</div>
@@ -853,11 +853,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructAIEUseLockToStdLowering_html_a5af78d15c062a17115d08e755b9f31cd"><div class="ttname"><a href="structAIEUseLockToStdLowering.html#a5af78d15c062a17115d08e755b9f31cd">AIEUseLockToStdLowering::AIEUseLockToStdLowering</a></div><div class="ttdeci">ModuleOp &amp; AIEUseLockToStdLowering(MLIRContext *context, ModuleOp &amp;m, PatternBenefit benefit=1)</div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00401">AIECoreToStandard.cpp:401</a></div></div>
 <div class="ttc" id="astructAIEUseLockToStdLowering_html_aa98076be68a1bf035116f1fcf64de259"><div class="ttname"><a href="structAIEUseLockToStdLowering.html#aa98076be68a1bf035116f1fcf64de259">AIEUseLockToStdLowering::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(UseLockOp useLock, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00405">AIECoreToStandard.cpp:405</a></div></div>
 <div class="ttc" id="astructargs_html"><div class="ttname"><a href="structargs.html">args</a></div><div class="ttdef"><b>Definition</b> <a href="xrt__test__wrapper_8h_source.html#l00008">xrt_test_wrapper.h:8</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">xilinx::AIE::AIEOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00193">AIECreatePathFindFlows.cpp:193</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">xilinx::AIE::AIEOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00199">AIECreatePathFindFlows.cpp:199</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Sep 30 2025 10:27:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Sep 30 2025 20:47:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

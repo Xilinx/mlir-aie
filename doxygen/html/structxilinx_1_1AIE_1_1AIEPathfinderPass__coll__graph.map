@@ -1,25 +1,5 @@
 <map id="xilinx::AIE::AIEPathfinderPass" name="xilinx::AIE::AIEPathfinderPass">
-<area shape="rect" id="Node000001" title="Overall Flow: rewrite switchboxes to assign unassigned connections, ensure this can be done concurren..." alt="" coords="752,220,963,245"/>
-<area shape="rect" id="Node000002" href="$classAIERoutePathfinderFlowsBase.html" title=" " alt="" coords="427,149,643,189"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="650,189,793,217,792,223,649,194"/>
-<area shape="rect" id="Node000003" href="$classxilinx_1_1AIE_1_1DynamicTileAnalysis.html" title=" " alt="" coords="446,213,623,253"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="637,230,752,230,752,235,637,235"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="112,5,151,31"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="165,21,258,41,302,49,338,54,371,65,405,92,414,106,418,121,417,148,416,174,420,186,429,199,448,213,444,218,425,203,415,189,411,174,412,148,413,121,409,109,401,96,369,69,337,59,301,54,257,46,164,26"/>
-<area shape="rect" id="Node000005" title=" " alt="" coords="60,55,203,95"/>
-<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="217,94,258,105,301,113,336,116,369,125,404,148,414,161,417,175,420,187,429,199,447,211,444,215,425,203,415,189,412,176,409,164,401,152,366,130,335,122,300,118,257,110,215,99"/>
-<area shape="rect" id="Node000006" title=" " alt="" coords="54,119,209,159"/>
-<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="223,154,403,193,467,210,466,215,402,198,222,159"/>
-<area shape="rect" id="Node000007" title=" " alt="" coords="54,183,209,223"/>
-<area shape="poly" id="edge6_Node000003_Node000007" title=" " alt="" coords="223,207,446,224,446,229,222,213"/>
-<area shape="rect" id="Node000008" title=" " alt="" coords="27,248,236,273"/>
-<area shape="poly" id="edge7_Node000003_Node000008" title=" " alt="" coords="250,254,402,245,446,241,446,246,403,250,251,259"/>
-<area shape="rect" id="Node000009" title=" " alt="" coords="5,297,257,323"/>
-<area shape="poly" id="edge8_Node000003_Node000009" title=" " alt="" coords="271,297,337,288,402,273,426,262,461,250,463,255,428,267,404,278,338,293,272,303"/>
-<area shape="rect" id="Node000010" title=" " alt="" coords="8,347,255,372"/>
-<area shape="poly" id="edge9_Node000003_Node000010" title=" " alt="" coords="268,361,303,356,338,348,371,334,401,316,410,304,412,291,415,277,425,263,444,250,447,254,429,267,420,279,418,292,415,307,404,320,373,339,340,353,304,362,269,367"/>
-<area shape="rect" id="Node000011" title=" " alt="" coords="35,396,228,421"/>
-<area shape="poly" id="edge10_Node000003_Node000011" title=" " alt="" coords="210,420,258,423,309,419,358,405,381,394,401,379,411,366,415,353,413,324,411,294,415,278,425,263,444,248,447,252,429,266,419,280,416,294,419,324,421,353,416,368,405,383,383,398,360,410,310,424,258,428,210,426"/>
-<area shape="rect" id="Node000012" title=" " alt="" coords="445,277,624,317"/>
-<area shape="poly" id="edge11_Node000001_Node000012" title=" " alt="" coords="637,274,792,243,793,248,638,279"/>
+<area shape="rect" id="Node000001" title="Overall Flow: rewrite switchboxes to assign unassigned connections, ensure this can be done concurren..." alt="" coords="8,93,219,119"/>
+<area shape="rect" id="Node000002" href="$classAIERoutePathfinderFlowsBase.html" title=" " alt="" coords="5,5,221,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="116,59,116,93,111,93,111,59"/>
 </map>
