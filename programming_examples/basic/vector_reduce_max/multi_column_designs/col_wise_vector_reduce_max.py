@@ -184,8 +184,8 @@ else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
 in1_size = int(opts.in1_size)
-if in1_size % 64 != 0 or in1_size < 64 * num_cores:
-    raise ValueError(f"In1 buffer size ({in1_size}) must be a multiple of 64 and greater than or equal to {64 * num_cores}")
+if in1_size % 64 != 0 or in1_size < 64 * num_cores or in1_size % num_cores != 0:
+    raise ValueError(f"In1 buffer size ({in1_size}) must be a multiple of 64 and {num_cores}, and greater than or equal to {64 * num_cores}")
 out_size = int(opts.out_size)
 dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)
