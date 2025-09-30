@@ -38,6 +38,8 @@
 // CHECK: PASS!
 
 module @test_chess_08_tile_locks {
+aie.device(xcvc1902) {
+
     %t63 = aie.tile(6, 3)
     %t73 = aie.tile(7, 3)
     %t72 = aie.tile(7, 2)
@@ -83,4 +85,6 @@ module @test_chess_08_tile_locks {
       ^end:
         aie.end
     }
+    
+}
 }

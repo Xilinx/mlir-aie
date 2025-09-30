@@ -595,12 +595,11 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
-    if (m.getOps<DeviceOp>().empty()) {
-      m.emitOpError("expected AIE.device operation at toplevel");
+    DeviceOp deviceOp = DeviceOp::getForSymbolInModuleOrError(m, deviceName);
+    if (!deviceOp) {
       return signalPassFailure();
     }
-    DeviceOp device = *m.getOps<DeviceOp>().begin();
-    const auto &targetModel = device.getTargetModel();
+    const auto &targetModel = deviceOp.getTargetModel();
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
@@ -638,20 +637,21 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
 
     patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
                                       tileRow);
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(deviceOp, target, std::move(patterns))))
       return signalPassFailure();
 
     RewritePatternSet outlinePatterns(&getContext());
     outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                                tileToBuffers, /*benefit*/ 1,
                                                tileCol, tileRow);
-    if (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))
+    if (failed(applyPartialConversion(deviceOp, target,
+                                      std::move(outlinePatterns))))
       return signalPassFailure();
 
     // Move all the func.func ops and memref.globals from the device to the
     // module
-    outlineOps<memref::GlobalOp>(device);
-    outlineOps<func::FuncOp>(device);
+    outlineOps<memref::GlobalOp>(deviceOp);
+    outlineOps<func::FuncOp>(deviceOp);
 
     RewritePatternSet removepatterns(&getContext());
     removepatterns.add<

@@ -437,7 +437,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   // create aie.device
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
                                  AIEDevice::npu1_3col, AIEDevice::npu1};
-  auto device = builder.create<DeviceOp>(loc, devices[columns - 1]);
+  auto device = builder.create<DeviceOp>(loc, devices[columns - 1],
+                                         StringAttr::get(builder.getContext()));
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
   builder.setInsertionPointToStart(device.getBody());
@@ -497,28 +498,49 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
 
 namespace {
 
-struct ConvertAIEToTransactionPass
-    : ConvertAIEToTransactionBase<ConvertAIEToTransactionPass> {
+template <typename BaseClass, OutputType MyOutputType>
+struct ConvertAIEToConfigurationPass : BaseClass {
+  std::string &ref_clElfDir;
+  std::string &ref_clDeviceName;
+  ConvertAIEToConfigurationPass(std::string &clElfDir,
+                                std::string &clDeviceName)
+      : ref_clElfDir(clElfDir), ref_clDeviceName(clDeviceName) {}
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
   }
+
   void runOnOperation() override {
-    if (failed(convertAIEToConfiguration(getOperation(), clElfDir,
-                                         OutputType::Transaction)))
-      return signalPassFailure();
+    AIE::DeviceOp deviceOp = BaseClass::getOperation();
+    if (!ref_clDeviceName.empty() &&
+        deviceOp.getSymName() != ref_clDeviceName) {
+      return;
+    }
+    if (failed(
+            convertAIEToConfiguration(deviceOp, ref_clElfDir, MyOutputType))) {
+      return BaseClass::signalPassFailure();
+    }
   }
 };
 
+struct ConvertAIEToTransactionPass
+    : ConvertAIEToConfigurationPass<
+          ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
+          OutputType::Transaction> {
+  ConvertAIEToTransactionPass()
+      : ConvertAIEToConfigurationPass<
+            ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
+            OutputType::Transaction>(clElfDir, clDeviceName) {}
+};
+
 struct ConvertAIEToControlPacketsPass
-    : public ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
-  }
-  void runOnOperation() override {
-    if (failed(convertAIEToConfiguration(getOperation(), clElfDir,
-                                         OutputType::ControlPacket)))
-      return signalPassFailure();
-  }
+    : ConvertAIEToConfigurationPass<
+          ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
+          OutputType::ControlPacket> {
+  ConvertAIEToControlPacketsPass()
+      : ConvertAIEToConfigurationPass<
+            ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
+            OutputType::ControlPacket>(clElfDir, clDeviceName) {}
 };
 
 } // end anonymous namespace
