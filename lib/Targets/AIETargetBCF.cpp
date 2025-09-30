@@ -14,6 +14,7 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Module.h"
 
 using namespace mlir;
@@ -27,13 +28,14 @@ namespace xilinx {
 namespace AIE {
 
 LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
-                                int tileCol, int tileRow) {
+                                int tileCol, int tileRow,
+                                llvm::StringRef deviceName) {
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  if (module.getOps<DeviceOp>().empty())
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  if (!targetOp)
     module.emitOpError("expected aie.device operation at toplevel");
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
