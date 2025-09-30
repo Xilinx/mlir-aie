@@ -30,6 +30,21 @@ from aie.dialects.aie import AIEDevice
 IRON_CACHE_HOME = os.environ.get("IRON_CACHE_HOME", os.path.expanduser("~/.iron/cache"))
 
 
+def _cleanup_failed_compilation(cache_dir):
+    """Clean up cache directory after failed compilation, preserving the lock file."""
+    if not os.path.exists(cache_dir):
+        return
+
+    for item in os.listdir(cache_dir):
+        if item == ".lock":
+            continue
+        item_path = os.path.join(cache_dir, item)
+        if os.path.isfile(item_path):
+            os.remove(item_path)
+        elif os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+
+
 @contextlib.contextmanager
 def file_lock(lock_file_path, timeout_seconds=60):
     """
@@ -328,8 +343,7 @@ def jit(function=None, is_placed=True, use_cache=True):
                     )
                 except Exception as e:
                     # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
-                    if os.path.exists(kernel_dir):
-                        shutil.rmtree(kernel_dir)
+                    _cleanup_failed_compilation(kernel_dir)
                     raise e
 
         kernel_name = "MLIR_AIE"
