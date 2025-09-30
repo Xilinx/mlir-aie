@@ -3660,8 +3660,6 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     return laneSize != 16;
   });
 
-  target.addLegalOp<arith::SubFOp>();
-
   target.addDynamicallyLegalOp<arith::MulIOp>([](arith::MulIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType)
