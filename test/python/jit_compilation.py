@@ -224,4 +224,6 @@ except Exception as e:
 
         # Check if any concurrent compilation failed
         if successful_processes < num_processes:
-            pytest.fail(f"Only {successful_processes}/{num_processes} processes succeeded")
+            pytest.fail(
+                f"Only {successful_processes}/{num_processes} processes succeeded"
+            )
