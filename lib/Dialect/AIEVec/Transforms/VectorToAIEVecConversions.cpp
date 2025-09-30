@@ -419,9 +419,10 @@ static aievec::CmpOp createCmpOpAIE2(ConversionPatternRewriter &rewriter,
 }
 
 template <typename DstOpTy>
-static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
-                                            vector::ReductionOp srcOp,
-                                            int shiftIndex, Value curValue) {
+static aievec::ExtElemOp
+generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
+                                vector::ReductionOp srcOp, int shiftIndex,
+                                Value curValue) {
   assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
          "shiftIndex must be power of 2");
 
@@ -447,8 +448,8 @@ static void generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
 
   auto zeroConstOp =
       rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
-  rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
-                                                 zeroConstOp.getResult());
+  return rewriter.create<aievec::ExtElemOp>(loc, scalarType, curOp,
+                                            zeroConstOp.getResult());
 }
 
 static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
@@ -1476,6 +1477,8 @@ using LowerVectorMinimumFOpToAIEVecMinOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinimumFOp, aievec::MinOp>;
 using LowerVectorMaximumFOpToAIEVecMaxOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaximumFOp, aievec::MaxOp>;
+using LowerVectorMaxNumFFOpToAIEVecMaxOp =
+    LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxNumFOp, aievec::MaxOp>;
 
 template <typename SrcOpTy, typename CmpTy>
 struct LowerVectorCmpOpToAIEVecCmpOp : OpConversionPattern<SrcOpTy> {
@@ -1591,8 +1594,14 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
       return failure();
 
     int shiftIndex = laneSize / 2;
-    generateAIEVecOpsForReductionOp<aievec::MinOp>(rewriter, srcOp, shiftIndex,
-                                                   srcOp.getVector());
+    auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MinOp>(
+        rewriter, srcOp, shiftIndex, srcOp.getVector());
+
+    if (srcOp.getAcc())
+      rewriter.replaceOpWithNewOp<arith::MinimumFOp>(
+          srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+    else
+      rewriter.replaceOp(srcOp, reduceResultOp);
     return success();
   }
 };
@@ -1605,7 +1614,8 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (auto kind = srcOp.getKind(); kind != vector::CombiningKind::MAXSI &&
                                      kind != vector::CombiningKind::MAXUI &&
-                                     kind != vector::CombiningKind::MAXIMUMF)
+                                     kind != vector::CombiningKind::MAXIMUMF &&
+                                     kind != vector::CombiningKind::MAXNUMF)
       return failure();
 
     auto vType = cast<VectorType>(srcOp.getVector().getType());
@@ -1617,8 +1627,14 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
       return failure();
 
     int shiftIndex = laneSize / 2;
-    generateAIEVecOpsForReductionOp<aievec::MaxOp>(rewriter, srcOp, shiftIndex,
-                                                   srcOp.getVector());
+    auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MaxOp>(
+        rewriter, srcOp, shiftIndex, srcOp.getVector());
+
+    if (srcOp.getAcc())
+      rewriter.replaceOpWithNewOp<arith::MaximumFOp>(
+          srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+    else
+      rewriter.replaceOp(srcOp, reduceResultOp);
     return success();
   }
 };
@@ -1659,11 +1675,22 @@ struct LowerVectorReductionAddIntOp : OpConversionPattern<vector::ReductionOp> {
           loc, lExtOp.getResult().getType(), lExtOp.getResult(),
           rExtOp.getResult());
       shiftIndex /= 2;
-      generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+      auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
           rewriter, srcOp, shiftIndex, addElemOp.getResult());
-    } else
-      generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+      if (srcOp.getAcc())
+        rewriter.replaceOpWithNewOp<arith::AddIOp>(
+            srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+      else
+        rewriter.replaceOp(srcOp, reduceResultOp);
+    } else {
+      auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
           rewriter, srcOp, shiftIndex, srcOp.getVector());
+      if (srcOp.getAcc())
+        rewriter.replaceOpWithNewOp<arith::AddIOp>(
+            srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+      else
+        rewriter.replaceOp(srcOp, reduceResultOp);
+    }
 
     return success();
   }
@@ -1717,8 +1744,14 @@ struct LowerVectorReductionAddFloatOp
 
     auto zeroConstOp =
         rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
-    rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, curOp,
-                                                   zeroConstOp.getResult());
+    auto reduceResultOp = rewriter.create<aievec::ExtElemOp>(
+        srcOp.getLoc(), scalarType, curOp, zeroConstOp.getResult());
+
+    if (srcOp.getAcc())
+      rewriter.replaceOpWithNewOp<arith::AddFOp>(
+          srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+    else
+      rewriter.replaceOp(srcOp, reduceResultOp);
     return success();
   }
 };
@@ -1779,8 +1812,14 @@ struct LowerVectorReductionAddBfloat16Op
 
     auto zeroConstOp =
         rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
-    rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(srcOp, scalarType, concatOp,
-                                                   zeroConstOp.getResult());
+    auto reduceResultOp = rewriter.create<aievec::ExtElemOp>(
+        srcOp.getLoc(), scalarType, concatOp, zeroConstOp.getResult());
+
+    if (srcOp.getAcc())
+      rewriter.replaceOpWithNewOp<arith::AddFOp>(
+          srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+    else
+      rewriter.replaceOp(srcOp, reduceResultOp);
     return success();
   }
 };
@@ -3125,6 +3164,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorMinimumFOpToAIEVecMinOp,
       LowerVectorMaxSIOpToAIEVecMaxOp,
       LowerVectorMaximumFOpToAIEVecMaxOp,
+      LowerVectorMaxNumFFOpToAIEVecMaxOp,
       LowerVectorCmpIOpToAIEVecCmpOp,
       LowerVectorCmpFOpToAIEVecCmpOp,
       LowerVectorSelectOpToAIEVecSelOp,
@@ -3705,6 +3745,17 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
   });
 
+  target.addDynamicallyLegalOp<arith::MaxNumFOp>([=](arith::MaxNumFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+  });
+
   target.addDynamicallyLegalOp<arith::CmpIOp>([=](arith::CmpIOp op) {
     auto lhsType = dyn_cast<VectorType>(op.getLhs().getType());
     if (!lhsType)
@@ -3746,7 +3797,8 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                       kind != vector::CombiningKind::MINIMUMF &&
                                       kind != vector::CombiningKind::MAXSI &&
                                       kind != vector::CombiningKind::MAXUI &&
-                                      kind != vector::CombiningKind::MAXIMUMF)
+                                      kind != vector::CombiningKind::MAXIMUMF &&
+                                      kind != vector::CombiningKind::MAXNUMF)
           return true;
 
         auto vType = dyn_cast<VectorType>(op.getVector().getType());
