@@ -54,7 +54,9 @@ def file_lock(lock_file_path, timeout_seconds=60):
             except OSError:
                 # Lock is held by another process
                 if time.time() - start_time > timeout_seconds:
-                    raise TimeoutError(f"Could not acquire lock on {lock_file_path} within {timeout_seconds} seconds")
+                    raise TimeoutError(
+                        f"Could not acquire lock on {lock_file_path} within {timeout_seconds} seconds"
+                    )
                 time.sleep(0.1)
 
         yield lock_file
