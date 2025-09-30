@@ -205,7 +205,7 @@ except Exception as e:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                env=env
+                env=env,
             )
             processes.append(process)
 
