@@ -3,7 +3,7 @@
 
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
+from aie.iron.placers import SequentialPlacer, ColumnLimitedPlacer
 from aie.iron.device import NPU2, AnyComputeTile, Tile
 from aie.helpers.util import np_ndarray_type_get_shape
 from util import construct_and_print_module
@@ -255,4 +255,43 @@ def mem_eight_in_three_out(module):
         rt.drain(of_out_C.cons(), C, wait=True)
 
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
+
+
+# CHECK-LABEL: TEST: compute_one_in_two_links_col_lim
+# CHECK: %[[tile_0_2:.+]] = aie.tile
+# CHECK: %[[tile_0_3:.+]] = aie.tile
+# CHECK: %[[tile_1_2:.+]] = aie.tile
+@construct_and_print_module
+def compute_one_in_two_links_col_lim(module):
+    n = 1024
+    cores_per_col = 2
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_in1 = ObjectFifo(n_ty, name="in1")
+    of_in2 = ObjectFifo(n_ty, name="in2")
+    of_out1 = of_in1.cons().forward(
+        obj_type=n_ty, name="out1", placement=AnyComputeTile
+    )
+    of_out2 = of_in2.cons().forward(
+        obj_type=n_ty, name="out_2", placement=AnyComputeTile
+    )
+
+    def core_fn(of_in0):
+        pass
+
+    worker = Worker(core_fn, [of_0.cons()])
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty, n_ty, n_ty) as (A, B, C, D, E):
+        rt.start(worker)
+        rt.fill(of_0.prod(), A)
+        rt.fill(of_in1.prod(), B)
+        rt.fill(of_in2.prod(), C)
+        rt.drain(of_out1.cons(), D, wait=True)
+        rt.drain(of_out2.cons(), E, wait=True)
+
+    module = Program(NPU2(), rt).resolve_program(ColumnLimitedPlacer(cores_per_col))
     return module
