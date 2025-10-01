@@ -347,12 +347,14 @@ void Pathfinder::sortFlows(const int maxCol, const int maxRow) {
             [](const auto &lhs, const auto &rhs) {
               // Compare tuple of properties in priority order:
               // (col, row, bundle, channel)
-              auto lhsKey = std::make_tuple(lhs.src.coords.col, lhs.src.coords.row,
-                                            getWireBundleAsInt(lhs.src.port.bundle),
-                                            lhs.src.port.channel);
-              auto rhsKey = std::make_tuple(rhs.src.coords.col, rhs.src.coords.row,
-                                            getWireBundleAsInt(rhs.src.port.bundle),
-                                            rhs.src.port.channel);
+              auto lhsKey =
+                  std::make_tuple(lhs.src.coords.col, lhs.src.coords.row,
+                                  getWireBundleAsInt(lhs.src.port.bundle),
+                                  lhs.src.port.channel);
+              auto rhsKey =
+                  std::make_tuple(rhs.src.coords.col, rhs.src.coords.row,
+                                  getWireBundleAsInt(rhs.src.port.bundle),
+                                  rhs.src.port.channel);
               return lhsKey < rhsKey;
             });
   flows = priorityFlows;
