@@ -853,14 +853,15 @@ class FlowRunner:
 
     async def process_ctrlpkt(self, module_str, device_name):
         file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
-            file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
-            file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
-                f"{device_name}_ctrlpkt_dma_seq.mlir"
-            )
-            file_ctrlpkt_dma_seq_bin = opts.ctrlpkt_dma_seq_name.format(device_name)
-            file_ctrlpkt_elf = opts.ctrlpkt_elf_name.format(device_name)
+        file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
+        file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
+            f"{device_name}_ctrlpkt_dma_seq.mlir"
+        )
+        # file_ctrlpkt_dma_seq_bin = opts.ctrlpkt_dma_seq_name.format(device_name)
+        # file_ctrlpkt_elf = opts.ctrlpkt_elf_name.format(device_name)
         run_passes(
-            f"builtin.module(aie.device(convert-aie-to-control-packets{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
+            f"builtin.module(aie.device(convert-aie-to-control-packets{{"
+            + f"device-name={device_name} elf-dir={self.tmpdirname}}}))",
             module_str,
             file_ctrlpkt_mlir,
             self.opts.verbose,
@@ -881,7 +882,7 @@ class FlowRunner:
         run_passes(
             "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
             ctrlpkt_mlir_str,
-            file_ctrlpkt_dma_seq_mlir
+            file_ctrlpkt_dma_seq_mlir,
             self.opts.verbose,
         )
         await self.do_call(
@@ -893,7 +894,7 @@ class FlowRunner:
                 device_name,
                 file_ctrlpkt_dma_seq_mlir,
                 "-o",
-                file_ctrlpkt_dma_seq_bin,
+                opts.insts_name.format(device_name, "seq"),
             ],
         )
         ctrl_idx = 0
@@ -907,7 +908,12 @@ class FlowRunner:
             )
             if seqs:
                 ctrl_idx = len(seqs[0].regions[0].blocks[0].arguments.types) - 1
-        await self.aiebu_asm(opts.insts_name, opts.elf_name.format(device_name), file_ctrlpkt_bin, ctrl_idx)
+        await self.aiebu_asm(
+            opts.insts_name.format(device_name, "seq"),
+            opts.elf_name.format(device_name),
+            file_ctrlpkt_bin,
+            ctrl_idx,
+        )
 
     async def process_elf(self, npu_insts_module, device_name):
         # translate npu instructions to binary and write to file

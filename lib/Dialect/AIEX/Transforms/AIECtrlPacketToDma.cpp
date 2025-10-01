@@ -111,8 +111,10 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
 
       // First pass: collect and batch control packet operations
       bool new_batch = true;
-      for (auto &o : entry) {
+      for (Operation &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
+
+        // A non-control_packet op ends the current batch
         if (!ctrlPktOp) {
           new_batch = true;
           continue;
@@ -156,21 +158,21 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
       // Second pass: emit batched operations in original order
       auto batchIt = batches.begin();
 
-      for (auto &o : entry) {
+      for (Operation &o : entry) {
         auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
         if (!ctrlPktOp) {
           builder.clone(o, mapping);
           continue;
         }
 
-        assert(batchIt != batches.end() &&
-               "Expected control packet to be in a batch");
+        // There are no more control packet batches to emit
+        if (batchIt == batches.end())
+          continue;
 
         int col = ctrlPktOp.getColumnFromAddr();
         int row = ctrlPktOp.getRowFromAddr();
 
-        // Check if this is the first packet of a new batch,
-        // otherwise skip it.
+        // Check if this is the first packet of a new batch, otherwise skip it.
         if (batchIt->tileId != TileID{col, row})
           continue;
 
@@ -196,8 +198,6 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
         builder.create<AIEX::NpuSyncOp>(loc, shimCol, shimRow, dir, chan,
                                         col_num, row_num);
         ++batchIt;
-        if (batchIt == batches.end())
-          break;
       }
 
       erased.push_back(f);
