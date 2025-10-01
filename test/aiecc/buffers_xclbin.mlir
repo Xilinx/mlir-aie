@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s
-// RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/kernels.json
+// RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/main_kernels.json
 
 // CHECK: {
 // CHECK:   "ps-kernels": {

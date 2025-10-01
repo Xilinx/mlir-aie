@@ -109,14 +109,7 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
   // XAIE_IO_WRITE
   words[0] = XAIE_IO_WRITE;
-  words[2] = op.getAddress();
-  auto col = op.getColumn();
-  auto row = op.getRow();
-  if (col && row) {
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
-  }
+  words[2] = *op.getAbsoluteAddress();
   words[3] = 0;                               // Extra bits for Reg Offset
   words[4] = op.getValue();                   // Value
   words[5] = words.size() * sizeof(uint32_t); // Operation Size
@@ -134,14 +127,7 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions,
 
   // XAIE_IO_MASKWRITE
   words[0] = XAIE_IO_MASKWRITE;
-  words[2] = op.getAddress();
-  auto col = op.getColumn();
-  auto row = op.getRow();
-  if (col && row) {
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
-  }
+  words[2] = *op.getAbsoluteAddress();
   words[3] = 0;
   words[4] = op.getValue();                   // Value
   words[5] = op.getMask();                    // Mask
@@ -184,42 +170,11 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
 }
 
 void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
-
-  Value memref = op.getData();
-  DataLayout dataLayout = DataLayout::closest(op);
-  int64_t width = dataLayout.getTypeSizeInBits(
-      cast<MemRefType>(memref.getType()).getElementType());
-  if (width != 32) {
-    op.emitWarning("Only 32-bit data type is supported for now");
-    return;
-  }
-
-  memref::GetGlobalOp getGlobal = memref.getDefiningOp<memref::GetGlobalOp>();
-  if (!getGlobal) {
-    op.emitError("Only MemRefs from memref.get_global are supported");
-    return;
-  }
-
-  auto global = dyn_cast_if_present<memref::GlobalOp>(
-      op->getParentOfType<AIE::DeviceOp>().lookupSymbol(getGlobal.getName()));
-  if (!global) {
-    op.emitError("Global symbol not found");
-    return;
-  }
-
-  auto initVal = global.getInitialValue();
-  if (!initVal) {
-    op.emitError("Global symbol has no initial value");
-    return;
-  }
-
-  auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
-  if (!data) {
-    op.emitError("Global symbol initial value is not a dense int array");
-    return;
-  }
-
   unsigned payload_start = 4;
+
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  DenseIntElementsAttr data = op.getDataWords();
+
   auto words = reserveAndGetTail(instructions, data.size() + payload_start);
 
   // XAIE_IO_BLOCKWRITE
@@ -229,10 +184,8 @@ void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
   auto row = op.getRow();
   if (col && row) {
     words[1] = (*col & 0xff) | ((*row & 0xff) << 8);
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[2] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[2] & 0xFFFFF);
   }
+  words[2] = *address;
   words[3] = words.size() * sizeof(uint32_t); // Operation Size
 
   unsigned i = payload_start;
@@ -248,14 +201,18 @@ void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
 
 } // namespace
 
-LogicalResult
-xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
-                                     std::vector<uint32_t> &instructions,
-                                     StringRef sequenceName) {
+LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
+    mlir::ModuleOp moduleOp, std::vector<uint32_t> &instructions,
+    StringRef deviceName, StringRef sequenceName) {
+
+  DeviceOp deviceOp =
+      DeviceOp::getForSymbolInModuleOrError(moduleOp, deviceName);
+  if (!deviceOp) {
+    return failure();
+  }
 
   auto words = reserveAndGetTail(instructions, 4);
 
-  DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
   const AIETargetModel &tm = deviceOp.getTargetModel();
 
   // setup txn header
@@ -271,12 +228,14 @@ xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
   words[0] = (numRows << 24) | (devGen << 16) | (minor << 8) | major;
   words[1] = (numMemTileRows << 8) | numCols;
 
-  auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
-  for (auto seq : sequenceOps) {
-    if (sequenceName.size() && sequenceName != seq.getSymName())
-      continue;
-    Block &entry = seq.getBody().front();
-    for (auto &o : entry) {
+  AIEX::RuntimeSequenceOp seq =
+      AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                           sequenceName);
+  if (!seq) {
+    return failure();
+  }
+  for (Block &block : seq.getBody()) {
+    for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuSyncOp>([&](auto op) {
             count++;
@@ -316,63 +275,68 @@ xilinx::AIE::AIETranslateNpuToBinary(ModuleOp module,
 }
 
 LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-    ModuleOp module, std::vector<uint32_t> &instructions,
+    ModuleOp module, std::vector<uint32_t> &instructions, StringRef deviceName,
     StringRef sequenceName) {
-  DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
+  DeviceOp deviceOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  if (!deviceOp) {
+    return failure();
+  }
   OpBuilder builder = OpBuilder::atBlockBegin(deviceOp.getBody());
+  AIEX::RuntimeSequenceOp seq =
+      AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                           sequenceName);
+  if (!seq) {
+    return failure();
+  }
 
-  auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
-  for (auto seq : sequenceOps) {
-    if (sequenceName.size() && sequenceName != seq.getSymName())
+  Block &entry = seq.getBody().front();
+  for (auto &o : entry) {
+    auto packetOp = dyn_cast<AIEX::NpuControlPacketOp>(o);
+    if (!packetOp)
       continue;
-    Block &entry = seq.getBody().front();
-    for (auto &o : entry) {
-      auto packetOp = dyn_cast<AIEX::NpuControlPacketOp>(o);
-      if (!packetOp)
-        continue;
 
-      uint32_t size = 0;
-      auto data = packetOp.getData();
-      if (data)
-        size = data->size();
+    uint32_t size = 0;
+    auto data = packetOp.getData();
+    if (data)
+      size = data->size();
 
-      auto words = reserveAndGetTail(instructions, 2 + size);
+    auto words = reserveAndGetTail(instructions, 2 + size);
 
-      if (!data && packetOp.getLength())
-        size = *packetOp.getLength();
+    if (!data && packetOp.getLength())
+      size = *packetOp.getLength();
 
-      auto parity = [](uint32_t n) {
-        uint32_t p = 0;
-        while (n) {
-          p += n & 1;
-          n >>= 1;
-        }
-        return (p % 2) == 0;
-      };
+    auto parity = [](uint32_t n) {
+      uint32_t p = 0;
+      while (n) {
+        p += n & 1;
+        n >>= 1;
+      }
+      return (p % 2) == 0;
+    };
 
-      // stream header is attached here instead of by shim dma
-      int col = packetOp.getColumnFromAddr();
-      int row = packetOp.getRowFromAddr();
-      auto destTile = TileOp::getOrCreate(builder, deviceOp, col, row);
-      auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-      if (!info)
-        return destTile->emitError("Expected controller_id attribute");
-      uint32_t hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
-      words[0] = hdr | (0x1 & parity(hdr)) << 31;
+    // stream header is attached here instead of by shim dma
+    int col = packetOp.getColumnFromAddr();
+    int row = packetOp.getRowFromAddr();
+    auto destTile = TileOp::getOrCreate(builder, deviceOp, col, row);
+    auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+    if (!info)
+      return destTile->emitError("Expected controller_id attribute");
+    uint32_t hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+    words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
-      // control packet header
-      uint32_t addr = packetOp.getAddress() & 0xFFFFF;
-      uint32_t beats = size - 1;
-      uint32_t opc = packetOp.getOpcode();
-      uint32_t id = packetOp.getStreamId();
-      hdr = id << 24 | opc << 22 | beats << 20 | addr;
-      words[1] = hdr | (0x1 & parity(hdr)) << 31;
+    // control packet header
+    uint32_t addr = packetOp.getAddress() & 0xFFFFF;
+    uint32_t beats = size - 1;
+    uint32_t opc = packetOp.getOpcode();
+    uint32_t id = packetOp.getStreamId();
+    hdr = id << 24 | opc << 22 | beats << 20 | addr;
+    words[1] = hdr | (0x1 & parity(hdr)) << 31;
 
-      // configuration data
-      if (opc == 0x0 || opc == 0x2)
-        for (unsigned i = 0; i < size; i++)
-          words[i + 2] = data.value()[i];
-    }
+    // configuration data
+    if (opc == 0x0 || opc == 0x2)
+      for (unsigned i = 0; i < size; i++)
+        words[i + 2] = data.value()[i];
   }
   return success();
 }
