@@ -41,8 +41,7 @@ class Placer(metaclass=ABCMeta):
 
 
 class _PlacerUtils:
-    """_PlacerUtils provides static methods for tile placement and channel management. 
-    """
+    """_PlacerUtils provides static methods for tile placement and channel management."""
 
     @staticmethod
     def get_common_col(tiles: list[Tile]) -> int:
@@ -356,15 +355,15 @@ class SequentialPlacer(Placer):
 
 
 class ColumnLimitedPlacer(Placer):
-    """ColumnLimitedPlacer is a placer that sequentially allocates workers to Compute Tiles, 
-    adhering to a defined limit on the number of cores per column. After workers are placed, 
+    """ColumnLimitedPlacer is a placer that sequentially allocates workers to Compute Tiles,
+    adhering to a defined limit on the number of cores per column. After workers are placed,
     Memory Tiles and Shim Tiles are placed as close to the column of the given compute tile
     as possible.
 
-    ColumnLimitedPlacer uses the Sequential Placer as a starting point, modified to limit 
+    ColumnLimitedPlacer uses the Sequential Placer as a starting point, modified to limit
     the number of cores per column. In this way, designs with column-wise placements
-    can be generated. However, if the allowed cores per column is set to the maximum of 
-    the NPU array, this placer will generate the same placement as the Sequential Placer. 
+    can be generated. However, if the allowed cores per column is set to the maximum of
+    the NPU array, this placer will generate the same placement as the Sequential Placer.
     """
 
     def __init__(self, cores_per_col: int):
@@ -379,7 +378,7 @@ class ColumnLimitedPlacer(Placer):
         object_fifos: list[ObjectFifoHandle],
     ):
         # Keep track of the number of columns available
-        # and check whether there's space for the 
+        # and check whether there's space for the
         # required number of columns
         computes = device.get_compute_tiles()
         columns = sorted(set(tile.col for tile in computes))
@@ -429,7 +428,7 @@ class ColumnLimitedPlacer(Placer):
 
         computes_in = device.get_compute_tiles()
         computes_out = device.get_compute_tiles()
-        
+
         # For each tile keep track of how many input and output endpoints there are
         # Note: defaultdict(list) automatically assigns an empty list as the default value for
         # keys that don’t exist

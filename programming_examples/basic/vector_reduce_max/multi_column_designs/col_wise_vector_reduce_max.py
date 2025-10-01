@@ -46,16 +46,25 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
     fifodepth = 2
 
     # AIE-array data movement with object fifos
-    of_in1s = [ObjectFifo(tile_ty, name=f"in1_{i}", depth=fifodepth) for i in range(num_cores)]
-    of_outs = [ObjectFifo(out_tensor_ty, name=f"out_{i}", depth=fifodepth) for i in range(num_cores)]
+    of_in1s = [
+        ObjectFifo(tile_ty, name=f"in1_{i}", depth=fifodepth) for i in range(num_cores)
+    ]
+    of_outs = [
+        ObjectFifo(out_tensor_ty, name=f"out_{i}", depth=fifodepth)
+        for i in range(num_cores)
+    ]
 
     # AIE Core Function declarations
     suffix = "_bfloat16" if dtype_str == "bf16" else ""
     reduce_max_vector = Kernel(
-        f"reduce_max_vector{suffix}", "reduce_max.cc.o", [tile_ty, out_tensor_ty, np.int32]
+        f"reduce_max_vector{suffix}",
+        "reduce_max.cc.o",
+        [tile_ty, out_tensor_ty, np.int32],
     )
     compute_max = Kernel(
-        f"compute_max{suffix}", "reduce_max.cc.o", [out_tensor_ty, out_tensor_ty, out_tensor_ty]
+        f"compute_max{suffix}",
+        "reduce_max.cc.o",
+        [out_tensor_ty, out_tensor_ty, out_tensor_ty],
     )
     min_val = (
         np.array([bfloat16(float("-inf"))], dtype=dtype)
@@ -79,7 +88,9 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
         # Extract object fifos from start of args list
         of_in1 = args[0]
         of_out = args[1]
-        neighbor_of_in1s = args[2:-2]  # Variable number of input fifos based on num_cores
+        neighbor_of_in1s = args[
+            2:-2
+        ]  # Variable number of input fifos based on num_cores
 
         for _ in range_(N_div_n):
             elem_in1 = of_in1.acquire(1)
@@ -114,7 +125,7 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
             fifo_args.append(of_outs[i - cores_per_col].cons())
             if num_cores - cores_per_col < i:
                 fifo_args.append(of_outs[i - 1].cons())
-        
+
         fifo_args.extend([reduce_max_vector, compute_max])
         my_workers.append(
             Worker(
@@ -164,28 +175,50 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
 
 p = argparse.ArgumentParser()
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument("-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size")
+p.add_argument(
+    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
+)
 p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
 p.add_argument("-dt", "--dtype", required=True, dest="dtype", help="Datatype")
-p.add_argument("-nc", "--num_cores", required=False, dest="num_cores", default=8, help="Number of cores to use")
-p.add_argument("-t", "--trace_size", required=False, dest="trace_size", default=0, help="Trace buffer size")
+p.add_argument(
+    "-nc",
+    "--num_cores",
+    required=False,
+    dest="num_cores",
+    default=8,
+    help="Number of cores to use",
+)
+p.add_argument(
+    "-t",
+    "--trace_size",
+    required=False,
+    dest="trace_size",
+    default=0,
+    help="Trace buffer size",
+)
 opts = p.parse_args(sys.argv[1:])
 
 num_cores = int(opts.num_cores)
 if opts.device == "npu":
     dev = NPU1()
     if num_cores > 8:
-        raise ValueError(f"This design can use at most 8 cores for device {opts.device}")
+        raise ValueError(
+            f"This design can use at most 8 cores for device {opts.device}"
+        )
 elif opts.device == "npu2":
     dev = NPU2()
     if num_cores > 16:
-        raise ValueError(f"This design can use at most 16 cores for device {opts.device}")
+        raise ValueError(
+            f"This design can use at most 16 cores for device {opts.device}"
+        )
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
 in1_size = int(opts.in1_size)
 if in1_size % 64 != 0 or in1_size < 64 * num_cores or in1_size % num_cores != 0:
-    raise ValueError(f"In1 buffer size ({in1_size}) must be a multiple of 64 and {num_cores}, and greater than or equal to {64 * num_cores}")
+    raise ValueError(
+        f"In1 buffer size ({in1_size}) must be a multiple of 64 and {num_cores}, and greater than or equal to {64 * num_cores}"
+    )
 out_size = int(opts.out_size)
 dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)

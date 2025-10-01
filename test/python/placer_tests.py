@@ -276,9 +276,11 @@ def compute_three_in_col_lim(module):
     def core_fn(of):
         pass
 
-    workers = [Worker(core_fn, [of_0.cons()]),
-            Worker(core_fn, [of_1.cons()]),
-            Worker(core_fn, [of_2.cons()])]
+    workers = [
+        Worker(core_fn, [of_0.cons()]),
+        Worker(core_fn, [of_1.cons()]),
+        Worker(core_fn, [of_2.cons()]),
+    ]
 
     rt = Runtime()
     with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
