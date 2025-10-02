@@ -18,6 +18,7 @@
 // on a single DMA.
 
 module @kernel_gemm  {
+aie.device(xcvc1902) {
   %3 = aie.tile(27, 0)
   %4 = aie.switchbox(%3)  {
     %43 = aie.amsel<0> (0)
@@ -191,4 +192,5 @@ module @kernel_gemm  {
     aie.connect<DMA : 0, North : 3>
     aie.connect<North : 2, DMA : 0>
   }
+}
 }

@@ -12,6 +12,7 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark09_shim_broadcast {
+aie.device(xcvc1902) {
 
   %t70 = aie.tile(7, 0)
   %t72 = aie.tile(7, 2)
@@ -20,4 +21,5 @@ module @benchmark09_shim_broadcast {
   aie.lock(%t72, 1) { sym_name = "lock1" }
   aie.lock(%t72, 2) { sym_name = "lock2" }
   
+}
 }

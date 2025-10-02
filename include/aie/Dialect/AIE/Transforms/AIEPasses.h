@@ -63,18 +63,14 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
 /// 5. rewrite stream-switches (within a bounding box) back to flows
 struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 
-  DynamicTileAnalysis analyzer;
-  mlir::DenseMap<TileID, mlir::Operation *> tiles;
-
   AIEPathfinderPass() = default;
-  AIEPathfinderPass(DynamicTileAnalysis analyzer)
-      : analyzer(std::move(analyzer)) {}
 
   void runOnOperation() override;
-  void runOnFlow(DeviceOp d);
-  void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder);
+  void runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
+  void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder,
+                       DynamicTileAnalysis &analyzer);
 
-  typedef std::pair<mlir::Operation *, Port> PhysPort;
+  typedef std::pair<TileID, Port> PhysPort;
 
   bool findPathToDest(SwitchSettings settings, TileID currTile,
                       WireBundle currDestBundle, int currDestChannel,
