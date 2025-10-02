@@ -430,6 +430,27 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         return -1;
       };
 
+  // Order the packet flows in order to get determinsitic amsel allocation;
+  // allocate amsels for control packet flows before others to ensure
+  // consistency in control packet flow overlay.
+  auto getSortedPacketFlows =
+      [&](std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>> pktFlows,
+          std::map<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>
+              ctrlPktFlows) {
+        std::vector<
+            std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
+            sortedpktFlows(pktFlows.begin(), pktFlows.end());
+        std::vector<
+            std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
+            sortedctrlpktFlows(ctrlPktFlows.begin(), ctrlPktFlows.end());
+        sortedctrlpktFlows.insert(sortedctrlpktFlows.end(),
+                                  sortedpktFlows.begin(), sortedpktFlows.end());
+        return sortedctrlpktFlows;
+      };
+
+  std::vector<std::pair<std::pair<PhysPort, int>, SmallVector<PhysPort, 4>>>
+      sortedPacketFlows = getSortedPacketFlows(packetFlows, ctrlPacketFlows);
+
   packetFlows.insert(ctrlPacketFlows.begin(), ctrlPacketFlows.end());
 
   // Check all multi-cast flows (same source, same ID). They should be
@@ -437,7 +458,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // destination ports at the same time For destination ports that appear in
   // different (multicast) flows, it should have a different <arbiterID, msel>
   // value pair for each flow
-  for (const auto &packetFlow : packetFlows) {
+  for (const auto &packetFlow : sortedPacketFlows) {
     // The Source Tile of the flow
     TileID tileId = packetFlow.first.first.first;
     TileOp tileOp = analyzer.getTile(builder, tileId);
