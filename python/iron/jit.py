@@ -58,7 +58,12 @@ def file_lock(lock_file_path, timeout_seconds=60):
     try:
         # Create lock file if it doesn't exist
         os.makedirs(os.path.dirname(lock_file_path), exist_ok=True)
-        lock_file = open(lock_file_path, "w")
+        try:
+            f = os.open(lock_file_path, os.O_CREAT | os.O_EXCL)
+            os.close(f)
+        except FileExistsError:
+            pass  # File already exists
+        lock_file = open(lock_file_path, "a")
 
         # Try to acquire exclusive lock with timeout
         start_time = time.time()
