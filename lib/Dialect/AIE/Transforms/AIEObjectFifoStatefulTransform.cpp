@@ -1242,7 +1242,7 @@ struct AIEObjectFifoStatefulTransformPass
               int64_t tripCount = 0;
               if (remLoop.getSingleLowerBound() &&
                   remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
-                tripCount = *remLoop.getStaticTripCount();
+                tripCount = remLoop.getStaticTripCount()->getSExtValue();
               }
               int unrollFactor =
                   computeLCM(objFifoSizes); // also counts original loop body
