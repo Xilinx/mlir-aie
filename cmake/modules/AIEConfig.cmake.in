@@ -41,10 +41,6 @@ if(NOT TARGET runtime-libs)
   add_custom_target(runtime-libs)
 endif()
 
-if(NOT TARGET aie-copy-runtime-libs)
-  add_custom_target(aie-copy-runtime-libs)
-endif()
-
 if(NOT TARGET AIEPythonModules)
   add_custom_target(AIEPythonModules)
 endif()

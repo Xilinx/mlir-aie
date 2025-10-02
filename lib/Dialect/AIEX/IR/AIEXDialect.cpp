@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
@@ -550,12 +551,126 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuWrite32Op
+//===----------------------------------------------------------------------===//
+
+template <typename T>
+static std::optional<uint32_t> getAbsoluteAddress(T *op) {
+  AIE::DeviceOp device =
+      op->getOperation()->template getParentOfType<AIE::DeviceOp>();
+  if (!device) {
+    op->emitError("Must be inside a device.");
+    return std::nullopt;
+  }
+  const AIE::AIETargetModel &tm = device.getTargetModel();
+
+  uint32_t address = 0;
+
+  // If blockwrite references a buffer, the given address is understood to be
+  // relative to the buffer's start address.
+  if (op->getBuffer()) {
+    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*op->getBuffer());
+    if (!buffer) {
+      op->emitError() << "buffer '" << *op->getBuffer()
+                      << "' not found in device";
+      return std::nullopt;
+    }
+
+    if (!buffer.getAddress()) {
+      mlir::InFlightDiagnostic err =
+          op->emitError("referenced buffer must have address assigned");
+      err.attachNote(buffer.getLoc()) << "This buffer must have an address.";
+      return std::nullopt;
+    }
+
+    uint32_t col = buffer.getTileOp().getCol();
+    uint32_t row = buffer.getTileOp().getRow();
+    address = static_cast<uint32_t>(*buffer.getAddress()) +
+              op->getAddress() * sizeof(uint32_t);
+    address = ((col & 0xff) << tm.getColumnShift()) |
+              ((row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
+  } else { // otherwise, the given address is absolute
+    address = op->getAddress();
+    std::optional<uint32_t> col = op->getColumn();
+    std::optional<uint32_t> row = op->getRow();
+    if (col && row) {
+      // If col and row are set, only the lower 20 bits of the address are
+      // used, and col and row dictate the upper bits (ignored)
+      address = ((*col & 0xff) << tm.getColumnShift()) |
+                ((*row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
+    }
+  }
+
+  return address;
+}
+
+std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuMaskWrite32Op
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuBlockWriteOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
+  Value memref = this->getData();
+  DataLayout dataLayout = DataLayout::closest(*this);
+  int64_t width = dataLayout.getTypeSizeInBits(
+      cast<MemRefType>(memref.getType()).getElementType());
+  if (width != 32) {
+    emitWarning("Only 32-bit data type is supported for now");
+    return nullptr;
+  }
+
+  memref::GetGlobalOp getGlobal = memref.getDefiningOp<memref::GetGlobalOp>();
+  if (!getGlobal) {
+    emitError("Only MemRefs from memref.get_global are supported");
+    return nullptr;
+  }
+
+  auto global = dyn_cast_if_present<memref::GlobalOp>(
+      (*this)->getParentOfType<AIE::DeviceOp>().lookupSymbol(
+          getGlobal.getName()));
+  if (!global) {
+    emitError("Global symbol not found");
+    return nullptr;
+  }
+
+  auto initVal = global.getInitialValue();
+  if (!initVal) {
+    emitError("Global symbol has no initial value");
+    return nullptr;
+  }
+
+  auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
+  if (!data) {
+    emitError("Global symbol initial value is not a dense int array");
+    return nullptr;
+  }
+
+  return data;
+}
+
+//===----------------------------------------------------------------------===//
 // RuntimeSequenceOp
 //===----------------------------------------------------------------------===//
 
 ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
                                            OperationState &result) {
 
+  // Name of this runtime sequence
   StringAttr nameAttr;
   (void)parser.parseOptionalSymbolName(
       nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
@@ -591,7 +706,9 @@ void AIEX::RuntimeSequenceOp::print(OpAsmPrinter &printer) {
 
   auto nameAttr = (*this)->getAttrOfType<StringAttr>(
       mlir::SymbolTable::getSymbolAttrName());
-  if (nameAttr) {
+  if (nameAttr &&
+      nameAttr != ::mlir::OpBuilder((*this)->getContext())
+                      .getStringAttr(getDefaultRuntimeSequenceName())) {
     printer << ' ';
     printer.printSymbolName(nameAttr);
   }
@@ -617,6 +734,39 @@ LogicalResult AIEX::RuntimeSequenceOp::verify() {
     return failure();
   }
   return success();
+}
+
+AIEX::RuntimeSequenceOp
+AIEX::RuntimeSequenceOp::getForSymbolInDevice(AIE::DeviceOp deviceOp,
+                                              llvm::StringRef symbol) {
+  AIEX::RuntimeSequenceOp runtimeSequenceOp;
+  if (!symbol.size()) {
+    runtimeSequenceOp = *deviceOp.getOps<AIEX::RuntimeSequenceOp>().begin();
+  } else {
+    Operation *maybeRuntimeSequenceOp =
+        mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);
+    if (!maybeRuntimeSequenceOp) {
+      return nullptr;
+    }
+    runtimeSequenceOp =
+        llvm::dyn_cast<AIEX::RuntimeSequenceOp>(maybeRuntimeSequenceOp);
+  }
+  return runtimeSequenceOp;
+}
+
+AIEX::RuntimeSequenceOp
+AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(AIE::DeviceOp deviceOp,
+                                                     llvm::StringRef symbol) {
+  AIEX::RuntimeSequenceOp runtimeSequenceOp =
+      getForSymbolInDevice(deviceOp, symbol);
+  if (!runtimeSequenceOp) {
+    if (!symbol.empty()) {
+      deviceOp.emitError("No such runtime sequence: ") << symbol;
+    } else {
+      deviceOp.emitError("No runtime sequence in device");
+    }
+  }
+  return runtimeSequenceOp;
 }
 
 //===----------------------------------------------------------------------===//
@@ -840,4 +990,99 @@ AIEX::BlockFloatType::verify(function_ref<InFlightDiagnostic()> emitError,
                        << ". Known types are: v8bfp16ebs8, v16bfp16ebs16.";
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ConfigureOp
+//===----------------------------------------------------------------------===//
+
+AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
+  ModuleOp moduleOp = this->getOperation()->getParentOfType<ModuleOp>();
+  if (!moduleOp) {
+    emitError("aiex.configure must be inside of a module");
+    return nullptr;
+  }
+  Operation *maybeReferencedDevice =
+      SymbolTable::lookupSymbolIn(moduleOp.getOperation(), getSymbolAttr());
+  if (!maybeReferencedDevice) {
+    emitError("No such device: '") << getSymbolAttr() << "'";
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice =
+      llvm::dyn_cast<AIE::DeviceOp>(maybeReferencedDevice);
+  if (!referencedDevice) {
+    emitError("Not a device: '") << getSymbolAttr() << "'";
+    return nullptr;
+  }
+  return referencedDevice;
+}
+
+LogicalResult AIEX::ConfigureOp::verify() {
+  AIE::DeviceOp parentDev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  AIE::DeviceOp referencedDev = getReferencedDeviceOp();
+  if (!referencedDev) {
+    return failure();
+  }
+  if (parentDev.getDevice() != referencedDev.getDevice()) {
+    emitError("Device types do not match: '")
+        << AIE::stringifyAIEDevice(parentDev.getDevice()) << "' vs. '"
+        << AIE::stringifyAIEDevice(referencedDev.getDevice()) << "'";
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RunOp
+//===----------------------------------------------------------------------===//
+
+AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
+  AIEX::ConfigureOp configureOp =
+      getOperation()->getParentOfType<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  return referencedDevice;
+}
+
+AIEX::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
+  AIEX::ConfigureOp configureOp =
+      getOperation()->getParentOfType<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  if (!referencedDevice) {
+    return nullptr;
+  }
+
+  Operation *maybeRuntimeSequence =
+      SymbolTable::lookupSymbolIn(referencedDevice, getRuntimeSequenceSymbol());
+
+  if (!maybeRuntimeSequence) {
+    auto err = emitError() << "No such runtime sequence for device '"
+                           << referencedDevice.getSymName() << "': '"
+                           << getRuntimeSequenceSymbol() << "'";
+    err.attachNote(referencedDevice.getLoc())
+        << "This device does not have a '" << getRuntimeSequenceSymbol()
+        << "' runtime sequence";
+    return nullptr;
+  }
+  AIEX::RuntimeSequenceOp runtimeSequence =
+      llvm::dyn_cast<AIEX::RuntimeSequenceOp>(maybeRuntimeSequence);
+  if (!runtimeSequence) {
+    emitError() << "Not a runtime sequence: '" << getRuntimeSequenceSymbol()
+                << "'";
+    return nullptr;
+  }
+
+  return runtimeSequence;
+}
+
+LogicalResult AIEX::RunOp::verify() {
+  if (getCalleeDeviceOp() && getCalleeRuntimeSequenceOp()) {
+    return success();
+  }
+  return failure();
 }

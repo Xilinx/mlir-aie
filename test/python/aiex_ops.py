@@ -36,7 +36,7 @@ def runtimeSeq():
 
 
 # CHECK-LABEL: NpuDmaMemcpyNdOp
-# CHECK: aiex.runtime_sequence @sequence(%arg0: memref<100xi8>)
+# CHECK: aiex.runtime_sequence(%arg0: memref<100xi8>)
 @construct_and_print_module
 def NpuDmaMemcpyNdOp():
     @device(AIEDevice.npu1)
@@ -65,7 +65,9 @@ def v8bfp16ebs8Binding():
         P = tile(0, 0)
         C = tile(1, 2)
 
-        object_fifo("dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[v8bfp16ebs8]])
+        object_fifo(
+            "dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[v8bfp16ebs8]]
+        )
 
 
 # CHECK-LABEL: v16bfp16ebs16Binding
@@ -77,4 +79,6 @@ def v16bfp16ebs16Binding():
         P = tile(0, 0)
         C = tile(1, 2)
 
-        object_fifo("dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[v16bfp16ebs16]])
+        object_fifo(
+            "dummy", P, C, 1, datatype=np.ndarray[(256,), np.dtype[v16bfp16ebs16]]
+        )

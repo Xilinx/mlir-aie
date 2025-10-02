@@ -19,6 +19,8 @@
 // CHECK: PASS!
 
 module @test4_row_shared_memory {
+aie.device(xcvc1902) {
+
   %tile23 = aie.tile(2, 3)
   %tile33 = aie.tile(3, 3)
 
@@ -63,4 +65,5 @@ module @test4_row_shared_memory {
     aie.end
   }
 
+}
 }

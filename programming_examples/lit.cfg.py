@@ -39,6 +39,10 @@ config.substitutions.append(
     )
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
+
+# make sure JIT stores compiled designs in different subdirectory for each test run
+llvm_config.with_system_environment("IRON_CACHE_HOME")
+
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 
@@ -121,10 +125,7 @@ if config.xrt_lib_dir:
         config.xrt_include_dir, config.xrt_lib_dir
     )
     try:
-        # xbutil is deprecated/renamed to xrt-smi, leaving it xbutil for now for
-        # compatibility with older versions of XRT
-        # xrtsmi = os.path.join(config.xrt_bin_dir, "xrt-smi")
-        xrtsmi = os.path.join(config.xrt_bin_dir, "xbutil")
+        xrtsmi = os.path.join(config.xrt_bin_dir, "xrt-smi")
         result = subprocess.run(
             [xrtsmi, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )

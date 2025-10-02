@@ -4,14 +4,15 @@
 //
 // (c) Copyright 2025 AMD Inc.
 
-// This file is adapted from programming_examples/basic/shuffle_transpose/test.cpp;
-// see that file for commit history and original authors.
+// This file is adapted from
+// programming_examples/basic/shuffle_transpose/test.cpp; see that file for
+// commit history and original authors.
 
 #include <cassert>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <stdfloat>
-#include <chrono>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -37,7 +38,7 @@
 /* This example performs a 16x16 INT8 transpose.
    M and N are passed in as 16 in Makefile run cmd.
    kernel.cc includes an AIE kernel that is specific to 16x16 */
-template<typename T>
+template <typename T>
 void print_matrix(T *buf, int n_rows, int n_cols) {
   for (int row = 0; row < n_rows; row++) {
     for (int col = 0; col < n_cols; col++) {
@@ -53,14 +54,19 @@ int main(int argc, const char *argv[]) {
   cxxopts::Options options("Shuffle Transpose Test",
                            "Test the Shuffle transpose kernel");
 
-  options.add_options()
-    ("help,h", "produce help message")
-    ("xclbin,x", "the input xclbin path", cxxopts::value<std::string>())
-    ("kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)", cxxopts::value<std::string>())
-    ("verbosity,v", "the verbosity of the output", cxxopts::value<int>()->default_value("0"))
-    ("instr,i", "path of file containing userspace instructions to be sent to the LX6", cxxopts::value<std::string>())
-    ("rows,M", "M, number of rows in the input matrix", cxxopts::value<int>()->default_value("64"))
-    ("cols,N", "N, number of columns in the input matrix", cxxopts::value<int>()->default_value("64"));
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i",
+      "path of file containing userspace instructions to be sent to the LX6",
+      cxxopts::value<std::string>())(
+      "rows,M", "M, number of rows in the input matrix",
+      cxxopts::value<int>()->default_value("64"))(
+      "cols,N", "N, number of columns in the input matrix",
+      cxxopts::value<int>()->default_value("64"));
 
   auto vm = options.parse(argc, argv);
 
@@ -111,8 +117,10 @@ int main(int argc, const char *argv[]) {
 
   size_t total_size = M * N * sizeof(DTYPE);
 
-  auto bo_in = xrt::bo(device, total_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, total_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  auto bo_in =
+      xrt::bo(device, total_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
+  auto bo_out =
+      xrt::bo(device, total_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   DTYPE *buf_in = bo_in.map<DTYPE *>();
   for (uint32_t i = 0; i < total_size / sizeof(buf_in[0]); i++) {
@@ -139,18 +147,20 @@ int main(int argc, const char *argv[]) {
     return 1;
   }
   auto t_stop = std::chrono::system_clock::now();
-  float t_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t_stop - t_start).count();
+  float t_elapsed =
+      std::chrono::duration_cast<std::chrono::microseconds>(t_stop - t_start)
+          .count();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  DTYPE *ref = (DTYPE *)calloc(M*N, sizeof(DTYPE));
+  DTYPE *ref = (DTYPE *)calloc(M * N, sizeof(DTYPE));
   for (int i = 0; i < M; i++) {
     for (int j = 0; j < N; j++) {
       ref[j * M + i] = buf_in[i * N + j];
     }
   }
 
-  if (M*N <= 4096) {
+  if (M * N <= 4096) {
     std::cout << "Input:" << std::endl;
     print_matrix(buf_in, M, N);
     std::cout << "Expected:" << std::endl;

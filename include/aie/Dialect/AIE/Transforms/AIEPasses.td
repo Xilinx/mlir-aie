@@ -66,6 +66,7 @@ def AIECoreToStandard : Pass<"aie-standard-lowering", "mlir::ModuleOp"> {
 
   }];
   let options = [
+    Option<"deviceName", "device", "std::string", /*default=*/"\"\"", "Device to generate code for">,
     Option<"tileCol", "tilecol", "unsigned",
            /*default=*/"-1", "X coordinate of tile to generate code for">,
     Option<"tileRow", "tilerow", "unsigned",
@@ -203,7 +204,9 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 
   let options = [
     Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false", 
-    "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">
+           "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">,      
+    Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool", /*default=*/"false",
+           "Flag to enable aie.packetflow lowering from objectfifos.">, 
   ];
 }
 
