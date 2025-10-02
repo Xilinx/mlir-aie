@@ -8,7 +8,7 @@
 
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 
-#include "mlir/Interfaces/CopyOpInterface.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 
@@ -55,7 +55,7 @@ public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CopyRemovalPass)
 
   void runOnOperation() override {
-    getOperation()->walk([&](CopyOpInterface copyOp) {
+    getOperation()->walk([&](memref::CopyOp copyOp) {
       reuseCopySourceAsTarget(copyOp);
       reuseCopyTargetAsSource(copyOp);
     });
@@ -159,7 +159,7 @@ private:
   /// TODO: Alias analysis is not available at the moment. Currently, we check
   /// if there are any operations with memory effects between copy and
   /// deallocation operations.
-  void reuseCopySourceAsTarget(CopyOpInterface copyOp) {
+  void reuseCopySourceAsTarget(memref::CopyOp copyOp) {
     if (eraseList.count(copyOp))
       return;
 
@@ -210,7 +210,7 @@ private:
   /// TODO: Alias analysis is not available at the moment. Currently, we check
   /// if there are any operations with memory effects between copy and
   /// deallocation operations.
-  void reuseCopyTargetAsSource(CopyOpInterface copyOp) {
+  void reuseCopyTargetAsSource(memref::CopyOp copyOp) {
     if (eraseList.count(copyOp))
       return;
 
