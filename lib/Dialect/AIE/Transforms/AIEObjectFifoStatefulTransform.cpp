@@ -827,7 +827,6 @@ struct AIEObjectFifoStatefulTransformPass
       createShimDMA(device, builder, op, channelDir, channelIndex, lockMode,
                     dims, bdPacket);
     } else if (op.getProducerTileOp().isMemTile()) {
-      std::cout<<"From Mem"<<std::endl;
       BDPadLayoutArrayAttr padDims = nullptr;
       if (channelDir == DMAChannelDir::MM2S && pad_dims)
         padDims = pad_dims;
@@ -835,7 +834,6 @@ struct AIEObjectFifoStatefulTransformPass
       if (op.getRuntimeDmaRepeat().has_value()) {
         taskCount = op.getRuntimeDmaRepeat().value();
       }
-      std::cout << "TaskCount: "<< taskCount <<std::endl;
       if (op.getRuntimeDmas().has_value() && !op.getRuntimeDmas().value()) {
         createMemTileDMA(device, builder, op, channelDir, channelIndex, lockMode,
             dims, padDims, bdPacket, taskCount);
@@ -1163,7 +1161,15 @@ struct AIEObjectFifoStatefulTransformPass
         break;
       for (int r = 0; r < repeatCount * joinDistribFactor; r++) {
         if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1) {
-          succ = bdBlock;
+          // If taskCount is explicitly set (non-zero), create a dedicated terminating block
+          if (taskCount != 0) {
+            succ = builder.createBlock(endBlock);
+            // Create a separate terminating block with aie.end for this specific DMA channel
+            builder.setInsertionPointToStart(succ);
+            builder.create<EndOp>(builder.getUnknownLoc());
+          } else {
+            succ = bdBlock;
+          }
         } else {
           succ = builder.createBlock(endBlock);
         }

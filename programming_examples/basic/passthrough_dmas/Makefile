@@ -16,7 +16,7 @@ all: build/final.xclbin
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_dmas
-LENGTH ?= 8192
+LENGTH ?= 16384
 
 aie_py_src=${targetname}.py
 use_placed?=0
@@ -25,9 +25,9 @@ ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 endif
 
-# build/aie.mlir: ${srcdir}/${aie_py_src}
-# 	mkdir -p ${@D}
-# 	python3 $< ${LENGTH} ${devicename} ${col} > $@
+build/aie.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< ${LENGTH} ${devicename} ${col} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
