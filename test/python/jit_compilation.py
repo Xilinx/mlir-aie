@@ -211,10 +211,18 @@ except Exception as e:
 
         # Wait for all processes to complete and collect return codes
         return_codes = []
+        process_outputs = []
 
         for i, process in enumerate(processes):
             stdout, stderr = process.communicate()
             return_codes.append(process.returncode)
+            process_outputs.append((stdout, stderr))
+            
+            # Print output for each process for debugging
+            print(f"\n=== Process {i} (return code: {process.returncode}) ===")
+            print(f"STDOUT:\n{stdout}")
+            print(f"STDERR:\n{stderr}")
+            print("=" * 50)
 
         # Count successful processes (return code 0)
         successful_processes = sum(1 for code in return_codes if code == 0)
@@ -224,6 +232,16 @@ except Exception as e:
 
         # Check if any concurrent compilation failed
         if successful_processes < num_processes:
-            pytest.fail(
-                f"Only {successful_processes}/{num_processes} processes succeeded"
-            )
+            # Create detailed error message with all process outputs
+            error_msg = f"Only {successful_processes}/{num_processes} processes succeeded\n\n"
+            error_msg += "Process details:\n"
+            
+            for i, (return_code, (stdout, stderr)) in enumerate(zip(return_codes, process_outputs)):
+                status = "SUCCESS" if return_code == 0 else "FAILED"
+                error_msg += f"\nProcess {i}: {status} (return code: {return_code})\n"
+                if stdout:
+                    error_msg += f"  STDOUT: {stdout.strip()}\n"
+                if stderr:
+                    error_msg += f"  STDERR: {stderr.strip()}\n"
+            
+            pytest.fail(error_msg)
