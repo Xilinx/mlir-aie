@@ -68,7 +68,6 @@ class SequentialPlacer(Placer):
     ):
         # Keep track of tiles available for placement based
         # on number of available input / output DMA channels
-
         shims_in = device.get_shim_tiles()
         shims_out = device.get_shim_tiles()
 
@@ -83,8 +82,8 @@ class SequentialPlacer(Placer):
         # For each tile keep track of how many input and output endpoints there are
         # Note: defaultdict(list) automatically assigns an empty list as the default value for
         # keys that don’t exist
-        channels_in: dict[Tile, list[tuple[ObjectFifoEndpoint, int]]] = {}
-        channels_out: dict[Tile, list[tuple[ObjectFifoEndpoint, int]]] = {}
+        channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
+        channels_out: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
