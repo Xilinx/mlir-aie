@@ -3,7 +3,7 @@
 
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer, ColumnLimitedPlacer
+from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, AnyComputeTile, Tile
 from aie.helpers.util import np_ndarray_type_get_shape
 from util import construct_and_print_module
@@ -289,5 +289,5 @@ def compute_three_in_col_lim(module):
         rt.fill(of_1.prod(), B)
         rt.fill(of_2.prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(ColumnLimitedPlacer(cores_per_col))
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
     return module
