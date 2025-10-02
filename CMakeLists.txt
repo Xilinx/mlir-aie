@@ -286,7 +286,7 @@ if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     PATTERN "config.h" EXCLUDE)
 
   include("aie_kernels/aiekernels.cmake")
-  add_aie_kernels_headers(./aie_kernels
+  add_aie_kernels_headers(${CMAKE_CURRENT_SOURCE_DIR}/aie_kernels
           ${AIE_BINARY_DIR}/include
           ${CMAKE_INSTALL_PREFIX}/include
   )
