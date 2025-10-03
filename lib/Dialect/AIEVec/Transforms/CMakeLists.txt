@@ -28,5 +28,4 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRPass
-  MLIRAIEVecUtils
-  MLIRCopyOpInterface)
+  MLIRAIEVecUtils)

@@ -510,7 +510,7 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
     if (!extOp)
       return failure();
 
-    auto src = extOp.getVector();
+    auto src = extOp.getSource();
     auto pos = extOp.getStaticPosition();
     int64_t posVal = pos[0];
     auto srcVecType = cast<VectorType>(src.getType());
@@ -978,7 +978,7 @@ struct FoldSplatToFMAOp : OpConversionPattern<aievec::aie1::FMAOp> {
     if (!extOp)
       return failure();
 
-    auto rhs = extOp.getVector();
+    auto rhs = extOp.getSource();
     auto concatVecType = cast<VectorType>(concatOp.getResult().getType());
     auto zvec = rewriter.create<arith::ConstantOp>(
         concatOp.getLoc(), lhs.getType(), rewriter.getZeroAttr(lhs.getType()));
@@ -1854,7 +1854,7 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
 
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
     auto selectOp = rewriter.create<aievec::aie1::SelectOp>(
-        extractOp.getLoc(), vType, adaptor.getVector(),
+        extractOp.getLoc(), vType, adaptor.getSource(),
         buildAttributeListForRotationSelectOp(rewriter, vType, offset));
     rewriter.replaceOpWithNewOp<aievec::aie1::ExtOp>(
         extractOp, extractOp.getType(), selectOp.getResult(),
@@ -1872,7 +1872,7 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
   LogicalResult
   matchAndRewrite(vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto vType = cast<VectorType>(adaptor.getVector().getType());
+    auto vType = cast<VectorType>(adaptor.getSource().getType());
     if (vType.getRank() != 1)
       return failure();
 
@@ -1890,11 +1890,11 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
     auto bottomHalf = rewriter
                           .create<aievec::ExtOp>(
                               extractOp.getLoc(), shortVecType,
-                              adaptor.getVector(), rewriter.getI8IntegerAttr(0))
+                              adaptor.getSource(), rewriter.getI8IntegerAttr(0))
                           .getResult();
     auto topHalf = rewriter
                        .create<aievec::ExtOp>(extractOp.getLoc(), shortVecType,
-                                              adaptor.getVector(),
+                                              adaptor.getSource(),
                                               rewriter.getI8IntegerAttr(1))
                        .getResult();
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
