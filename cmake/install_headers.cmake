@@ -6,7 +6,7 @@
 # (c) Copyright 2025 Advanced Micro Devices Inc.
 
 function(install_headers SRCPATH BUILDPATH INSTALLPATH HEADERS_NAME)
-  message("Installing ${HEADERS_NAME} includes from ${SRCPATH} in ${INSTALLPATH}")
+  message("Installing ${HEADERS_NAME} includes from ${SRCPATH} in ${INSTALLPATH}/${HEADERS_NAME}")
 
   # copy header files into install area
   install(DIRECTORY ${SRCPATH}/ DESTINATION ${INSTALLPATH}/${HEADERS_NAME})
@@ -14,7 +14,7 @@ function(install_headers SRCPATH BUILDPATH INSTALLPATH HEADERS_NAME)
   message("Copying ${HEADERS_NAME} includes from ${SRCPATH} to ${BUILDPATH}/${HEADERS_NAME}")
   
   # copy header files into build area
-  file(GLOB_RECURSE headers_to_copy "${SRCPATH}/*.hpp")
+  file(GLOB_RECURSE headers_to_copy ${SRCPATH}/*.h ${SRCPATH}/*.hpp)
   foreach(header ${headers_to_copy})
       file(RELATIVE_PATH rel_path ${SRCPATH} ${header})
 
