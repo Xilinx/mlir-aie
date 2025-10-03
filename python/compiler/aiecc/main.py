@@ -414,6 +414,7 @@ def run_passes_module(pass_pipeline, mlir_module, outputfile=None, verbose=False
                 g.write(mlir_module_str)
     return mlir_module
 
+
 def corefile(dirname, device, core, ext):
     col, row, _ = core
     return os.path.join(dirname, f"{device}_core_{col}_{row}.{ext}")
@@ -1629,7 +1630,9 @@ class FlowRunner:
 
         if opts.ctrlpkt and opts.execute:
             processes.append(
-                self.process_ctrlpkt(input_physical_with_elfs_str, device_op, device_name)
+                self.process_ctrlpkt(
+                    input_physical_with_elfs_str, device_op, device_name
+                )
             )
 
         if opts.elf and not opts.ctrlpkt and opts.execute:
