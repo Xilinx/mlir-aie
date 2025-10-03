@@ -12,8 +12,9 @@ import hashlib
 import numpy as np
 import pyxrt as xrt
 import shutil
-import sys
-import traceback
+import fcntl
+import contextlib
+import time
 
 from aie.extras.context import mlir_mod_ctx
 from ..utils.xrt import read_insts_binary
@@ -27,6 +28,66 @@ from aie.dialects.aie import AIEDevice
 # Kernels are cached based on their hash value of the MLIR module string. If during compilation,
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_HOME = os.environ.get("IRON_CACHE_HOME", os.path.expanduser("~/.iron/cache"))
+
+
+def _cleanup_failed_compilation(cache_dir):
+    """Clean up cache directory after failed compilation, preserving the lock file."""
+    if not os.path.exists(cache_dir):
+        return
+
+    for item in os.listdir(cache_dir):
+        if item == ".lock":
+            continue
+        item_path = os.path.join(cache_dir, item)
+        if os.path.isfile(item_path):
+            os.remove(item_path)
+        elif os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+
+
+@contextlib.contextmanager
+def file_lock(lock_file_path, timeout_seconds=60):
+    """
+    Context manager for file locking using flock to prevent race conditions.
+
+    Args:
+        lock_file_path (str): Path to the lock file
+        timeout_seconds (int): Maximum time to wait for lock acquisition in seconds
+    """
+    lock_file = None
+    try:
+        # Create lock file if it doesn't exist
+        os.makedirs(os.path.dirname(lock_file_path), exist_ok=True)
+        try:
+            f = os.open(lock_file_path, os.O_CREAT | os.O_EXCL)
+            os.close(f)
+        except FileExistsError:
+            pass  # File already exists
+        lock_file = open(lock_file_path, "a")
+
+        # Try to acquire exclusive lock with timeout
+        start_time = time.time()
+        while True:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                # Lock is held by another process
+                if time.time() - start_time > timeout_seconds:
+                    raise TimeoutError(
+                        f"Could not acquire lock on {lock_file_path} within {timeout_seconds} seconds"
+                    )
+                time.sleep(0.1)
+
+        yield lock_file
+
+    finally:
+        if lock_file is not None:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass  # Ignore errors when releasing lock
+            lock_file.close()
 
 
 class CircularCache:
@@ -252,41 +313,43 @@ def jit(function=None, is_placed=True, use_cache=True):
         # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)
         kernel_dir = os.path.join(IRON_CACHE_HOME, f"{module_hash}")
+        lock_file_path = os.path.join(kernel_dir, ".lock")
         mlir_path = os.path.join(kernel_dir, "aie.mlir")
 
-        # Ensure cache directory exists
-        os.makedirs(kernel_dir, exist_ok=True)
+        # Use file locking to prevent race conditions when accessing cache directory
+        with file_lock(lock_file_path):
+            # Ensure cache directory exists
+            os.makedirs(kernel_dir, exist_ok=True)
 
-        # Write MLIR to file if not already cached
-        inst_filename = "insts.bin"
-        xclbin_filename = "final.xclbin"
-        xclbin_path = os.path.join(kernel_dir, xclbin_filename)
-        inst_path = os.path.join(kernel_dir, inst_filename)
+            # Write MLIR to file if not already cached
+            inst_filename = "insts.bin"
+            xclbin_filename = "final.xclbin"
+            xclbin_path = os.path.join(kernel_dir, xclbin_filename)
+            inst_path = os.path.join(kernel_dir, inst_filename)
 
-        xclbin_exists = os.path.exists(xclbin_path)
-        inst_exists = os.path.exists(inst_path)
+            xclbin_exists = os.path.exists(xclbin_path)
+            inst_exists = os.path.exists(inst_path)
 
-        if not use_cache or not xclbin_exists or not inst_exists:
-            try:
-                with open(mlir_path, "w", encoding="utf-8") as f:
-                    print(mlir_module, file=f)
+            if not use_cache or not xclbin_exists or not inst_exists:
+                try:
+                    with open(mlir_path, "w", encoding="utf-8") as f:
+                        print(mlir_module, file=f)
 
-                # Compile ExternalFunctions from inside the JIT compilation directory
-                for func in external_kernels:
-                    compile_external_kernel(func, kernel_dir, target_arch)
+                    # Compile ExternalFunctions from inside the JIT compilation directory
+                    for func in external_kernels:
+                        compile_external_kernel(func, kernel_dir, target_arch)
 
-                # Compile the MLIR module
-                compile_mlir_module(
-                    mlir_module=mlir_module,
-                    insts_path=inst_path,
-                    xclbin_path=xclbin_path,
-                    work_dir=kernel_dir,
-                )
-            except Exception as e:
-                # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
-                if os.path.exists(kernel_dir):
-                    shutil.rmtree(kernel_dir)
-                raise e
+                    # Compile the MLIR module
+                    compile_mlir_module(
+                        mlir_module=mlir_module,
+                        insts_path=inst_path,
+                        xclbin_path=xclbin_path,
+                        work_dir=kernel_dir,
+                    )
+                except Exception as e:
+                    # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
+                    _cleanup_failed_compilation(kernel_dir)
+                    raise e
 
         kernel_name = "MLIR_AIE"
         try:
