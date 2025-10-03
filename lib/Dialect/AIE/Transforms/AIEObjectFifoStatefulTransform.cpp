@@ -1035,6 +1035,9 @@ struct AIEObjectFifoStatefulTransformPass
     if (op.getRepeatCount().has_value())
       repeatCount = op.getRepeatCount().value();
 
+    // check for BD chain repeat count
+    auto bdChainRepeatCount = op.getBdChainRepeatCount();
+
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
     ObjectFifoCreateOp target = op;
@@ -1136,9 +1139,16 @@ struct AIEObjectFifoStatefulTransformPass
 
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
+
+    // Use bd_chain_repeat_count if available, otherwise default to 0
+    int taskCount = 0;
+    bool isBdChainMode = false;
+    if (bdChainRepeatCount.has_value()) {
+      taskCount = bdChainRepeatCount.value();
+      isBdChainMode = true;
+    }
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
-                               channelIndex, /*repeatCout*/ 0, bdBlock,
-                               endBlock);
+                               channelIndex, taskCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1149,12 +1159,23 @@ struct AIEObjectFifoStatefulTransformPass
     size_t lockIndex = 0;
     size_t totalBlocks = 0;
     bool distribOrJoin = false;
+
     for (size_t i = 0; i < numBlocks; i++) {
       if (elemIndex >= buffersPerFifo[target].size())
         break;
       for (int r = 0; r < repeatCount * joinDistribFactor; r++) {
         if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1) {
-          succ = bdBlock;
+          // If bd_chain_repeat_count attribute is set (BD chain mode), create a
+          // dedicated terminating block
+          if (isBdChainMode) {
+            succ = builder.createBlock(endBlock);
+            // Create a separate terminating block with aie.end for this
+            // specific DMA channel
+            builder.setInsertionPointToStart(succ);
+            builder.create<EndOp>(builder.getUnknownLoc());
+          } else {
+            succ = bdBlock;
+          }
         } else {
           succ = builder.createBlock(endBlock);
         }
@@ -1793,6 +1814,12 @@ struct AIEObjectFifoStatefulTransformPass
             consumerObjFifoSize, emptyDims, fromStreamDims);
         if (createOp.getDisableSynchronization())
           consumerFifo.setDisableSynchronization(true);
+        // Propagate bd_chain_repeat_count attribute from the original createOp
+        // to the new consumerFifo
+        if (auto bdChainRepeatCount = createOp.getBdChainRepeatCount()) {
+          consumerFifo.setBdChainRepeatCountAttr(
+              builder.getI32IntegerAttr(*bdChainRepeatCount));
+        }
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
         // identify external buffers that were registered to the consumer fifo
