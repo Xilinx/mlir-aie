@@ -18,6 +18,8 @@
 // CHECK: PASS!
 
 module @test_chesss_01_precompiled_core_function {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
@@ -38,5 +40,4 @@ module @test_chesss_01_precompiled_core_function {
   } { link_with="kernel.o" }
 
 }
-
-
+}

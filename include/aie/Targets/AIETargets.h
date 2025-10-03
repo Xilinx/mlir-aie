@@ -21,52 +21,62 @@ namespace xilinx {
 namespace AIE {
 
 mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output);
+                                         llvm::raw_ostream &output,
+                                         llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateToHSA(mlir::ModuleOp module,
-                                      llvm::raw_ostream &output);
+                                      llvm::raw_ostream &output,
+                                      llvm::StringRef deviceName = "");
 mlir::LogicalResult AIEFlowsToJSON(mlir::ModuleOp module,
-                                   llvm::raw_ostream &output);
+                                   llvm::raw_ostream &output,
+                                   llvm::StringRef deviceName = "");
 mlir::LogicalResult ADFGenerateCPPGraph(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
-                                            llvm::raw_ostream &output);
+                                            llvm::raw_ostream &output,
+                                            llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
-                                             llvm::raw_ostream &);
+                                             llvm::raw_ostream &,
+                                             llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
-                                         llvm::raw_ostream &);
+                                         llvm::raw_ostream &, llvm::StringRef);
 mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp,
                                             std::vector<uint32_t> &,
+                                            llvm::StringRef deviceName = "",
                                             llvm::StringRef sequenceName = "");
 mlir::LogicalResult
 AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
+                                    llvm::StringRef deviceName = "",
                                     llvm::StringRef sequenceName = "");
 mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module,
                                            llvm::raw_ostream &output,
-                                           int tileCol, int tileRow);
+                                           int tileCol, int tileRow,
+                                           llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateToBCF(mlir::ModuleOp module,
                                       llvm::raw_ostream &output, int tileCol,
-                                      int tileRow);
+                                      int tileRow,
+                                      llvm::StringRef deviceName = "");
 mlir::LogicalResult
 AIELLVMLink(llvm::raw_ostream &output, std::vector<std::string> Files,
             bool DisableDITypeMap = false, bool NoVerify = false,
             bool Internalize = false, bool OnlyNeeded = false,
             bool PreserveAssemblyUseListOrder = false, bool Verbose = false);
 
-mlir::LogicalResult
-AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath,
-                        bool bigEndian = false, bool emitUnified = false,
-                        bool cdoDebug = false, bool aieSim = false,
-                        bool xaieDebug = false, bool enableCores = true);
+mlir::LogicalResult AIETranslateToCDODirect(
+    mlir::ModuleOp m, llvm::StringRef workDirPath, llvm::StringRef deviceName,
+    bool bigEndian = false, bool emitUnified = false, bool cdoDebug = false,
+    bool aieSim = false, bool xaieDebug = false, bool enableCores = true);
 
 #ifdef AIE_ENABLE_AIRBIN
 mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
                                          const std::string &outputFilename,
                                          const std::string &coreFilesDir,
+                                         llvm::StringRef deviceName,
                                          bool testAirBin = false);
 #endif
 
 mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
-                                             llvm::raw_ostream &output);
+                                             llvm::raw_ostream &output,
+                                             llvm::StringRef deviceName);
 
 } // namespace AIE
 

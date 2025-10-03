@@ -63,6 +63,8 @@ jobs:
       fail-fast: false
       matrix:
         runner_type: [ amd7940hs, amdhx370 ]
+    env:
+      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -129,6 +131,9 @@ jobs:
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             $CMAKE_ARGS
 
+          # Create runner-specific cache directory
+          mkdir -p $IRON_CACHE_HOME
+
           ninja install
           ninja check-aie
           popd
@@ -140,6 +145,8 @@ jobs:
       fail-fast: false
       matrix:
         runner_type: [ amd7940hs, amdhx370 ]
+    env:
+      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -186,8 +193,10 @@ jobs:
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
 
+          # Create runner-specific cache directory
+          mkdir -p $IRON_CACHE_HOME
+
           ninja install
           ninja check-reference-designs
           ninja check-programming-guide
-
           popd
