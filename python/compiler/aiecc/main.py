@@ -899,7 +899,7 @@ class FlowRunner:
                 lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
             )
             if seqs:
-                ctrl_idx = len(seqs[0].regions[0].blocks[0].arguments.types) - 1
+                ctrl_idx = len(seqs[0].regions[0].blocks[0].arguments.types)
         await self.aiebu_asm(
             opts.insts_name.format(device_name, "seq"),
             opts.elf_name.format(device_name),
