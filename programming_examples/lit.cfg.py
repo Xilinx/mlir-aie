@@ -39,6 +39,10 @@ config.substitutions.append(
     )
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
+
+# make sure JIT stores compiled designs in different subdirectory for each test run
+llvm_config.with_system_environment("IRON_CACHE_HOME")
+
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 

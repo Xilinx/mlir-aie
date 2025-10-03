@@ -12,6 +12,8 @@
 // RUN: %PYTHON aiecc.py --no-unified %s
 
 module @test00_itsalive {
+aie.device(xcvc1902) {
+
   %tile12 = aie.tile(1, 2)
 
   %buf12_0 = aie.buffer(%tile12) { sym_name = "a" } : memref<256xi32>
@@ -22,4 +24,6 @@ module @test00_itsalive {
     %2 = arith.addi %val1, %val1 : i32
     aie.end
   }
+  
+}
 }

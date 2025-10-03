@@ -72,6 +72,8 @@ def ConvertAIEToTransaction : Pass<"convert-aie-to-transaction",
   let options = [
       Option<"clElfDir", "elf-dir", "std::string", /*default=*/"",
              "Where to find ELF files">,
+      Option<"clDeviceName", "device-name", "std::string", /*default=*/"",
+             "Which device to generate code for; if none specified, process all devices">,
   ];
 }
 
@@ -94,6 +96,8 @@ def ConvertAIEToControlPackets : Pass<"convert-aie-to-control-packets",
   let options = [
       Option<"clElfDir", "elf-dir", "std::string", /*default=*/"",
              "Where to find ELF files">,
+      Option<"clDeviceName", "device-name", "std::string", /*default=*/"",
+             "Which device to generate code for; if none specified, process all devices">,
   ];
 }
 
