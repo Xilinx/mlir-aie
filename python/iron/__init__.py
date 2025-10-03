@@ -24,5 +24,7 @@ try:
         arange,
         zeros_like,
     )
+
+    from . import trace
 except ImportError:
     pass  # silently ignore if pyxrt or .jit can't be imported

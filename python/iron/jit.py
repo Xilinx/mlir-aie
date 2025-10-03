@@ -21,6 +21,13 @@ from .device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from .compile import compile_mlir_module
 from .config import get_current_device
 from aie.dialects.aie import AIEDevice
+from .tensor import zeros
+from .trace import (
+    _get_trace_active,
+    _get_trace_tensor,
+    _get_dummy_tensor,
+    set_mlir_module,
+)
 
 
 # The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_HOME` directory.
@@ -141,6 +148,26 @@ class NPUKernel:
                     f"Expected Tensor with .buffer_object(), got {type(tensor)}"
                 )
             kernel_args.append(tensor.buffer_object())
+
+        if _get_trace_active():
+            # We always put the trace tensor at the 5th argument to match backend tracing logic
+            # So we only enable tracing if we have at most 4 user arguments
+            trace_tensor = _get_trace_tensor()
+            if trace_tensor is None:
+                raise RuntimeError("Tracing active but no trace tensor found")
+
+            if len(kernel_args) >= 5:
+                raise ValueError(
+                    f"Tracing can only be done for kernels with 4 or fewer arguments. Got {len(kernel_args)} arguments."
+                )
+
+            # Pad with dummy tensors if needed and add them to kernel_args
+            while len(kernel_args) < 4:
+                dummy_tensor = _get_dummy_tensor()
+                kernel_args.append(dummy_tensor.buffer_object())
+
+            # Add trace tensor as the 5th argument
+            kernel_args.append(trace_tensor.buffer_object())
 
         h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
         r = h.wait()
@@ -282,11 +309,15 @@ def jit(function=None, is_placed=True, use_cache=True):
                     xclbin_path=xclbin_path,
                     work_dir=kernel_dir,
                 )
+
             except Exception as e:
                 # Clean up cache directory on any compilation failure to avoid any corrupted objects in the cache
                 if os.path.exists(kernel_dir):
                     shutil.rmtree(kernel_dir)
                 raise e
+
+        # Set the MLIR module globally for tracing to use
+        set_mlir_module(str(mlir_module))
 
         kernel_name = "MLIR_AIE"
         try:
