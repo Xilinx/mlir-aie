@@ -45,6 +45,8 @@ aie.device(npu1_1col) {
 
 // -----
 
+// Check that control packets writes are not combined on npu1
+
 // CHECK-LABEL: aie.device(npu1) {
 // CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1])
 // CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 3][1, 1, 1, 3][0, 0, 0, 1])
@@ -63,12 +65,35 @@ aie.device(npu1) {
 
 // -----
 
+// Check that control packets writes are combined on npu2
+
 // CHECK-LABEL: aie.device(npu2) {
 // CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 15][0, 0, 0, 1])
 aie.device(npu2) {
   aiex.runtime_sequence() {
     aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 4 : ui32, data = array<i32: 200>, opcode = 0 : i32, stream_id = 0 : i32}
+    aiex.control_packet {address = 8 : ui32, data = array<i32: 300>, opcode = 0 : i32, stream_id = 0 : i32}
+    aiex.control_packet {address = 12 : ui32, data = array<i32: 400>, opcode = 0 : i32, stream_id = 0 : i32}
+    aiex.control_packet {address = 16 : ui32, data = array<i32: 500>, opcode = 0 : i32, stream_id = 0 : i32}
+  }
+}
+
+// -----
+
+// Check that control packets writes are not combined across other operations
+
+// CHECK-LABEL: aie.device(npu2) {
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 0][1, 1, 1, 6][0, 0, 0, 1])
+// CHECK: aiex.npu.sync
+// CHECK: aiex.npu.maskwrite32
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 6][1, 1, 1, 9][0, 0, 0, 1])
+// CHECK: aiex.npu.sync
+aie.device(npu2) {
+  aiex.runtime_sequence() {
+    aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
+    aiex.control_packet {address = 4 : ui32, data = array<i32: 200>, opcode = 0 : i32, stream_id = 0 : i32}
+    aiex.npu.maskwrite32 {address = 1024 : ui32, value = 42 : ui32, mask = 255 : ui32}
     aiex.control_packet {address = 8 : ui32, data = array<i32: 300>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 12 : ui32, data = array<i32: 400>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 16 : ui32, data = array<i32: 500>, opcode = 0 : i32, stream_id = 0 : i32}

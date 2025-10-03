@@ -103,6 +103,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
         int64_t totalSize;
         std::string shimDmaAllocName;
         int shimChan;
+        Operation *first;
       };
       std::vector<BatchInfo> batches;
 
@@ -149,7 +150,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
           shimDmaAllocName += "_chan" + std::to_string(shimChan);
 
           batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
-                             shimDmaAllocName, shimChan});
+                             shimDmaAllocName, shimChan, &o});
           new_batch = false;
         }
         ddrOffset += ctrlPktSize;
@@ -169,12 +170,11 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
         if (batchIt == batches.end())
           continue;
 
-        int col = ctrlPktOp.getColumnFromAddr();
-        int row = ctrlPktOp.getRowFromAddr();
-
         // Check if this is the first packet of a new batch, otherwise skip it.
-        if (batchIt->tileId != TileID{col, row})
+        if (batchIt->first != &o)
           continue;
+
+        int col = ctrlPktOp.getColumnFromAddr();
 
         // Emit the batched DMA operation for this (col, row) pair
         const std::vector<int64_t> staticOffsets = {0, 0, 0,
