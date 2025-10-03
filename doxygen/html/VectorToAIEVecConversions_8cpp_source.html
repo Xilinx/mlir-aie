@@ -574,7 +574,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00510" name="l00510"></a><span class="lineno">  510</span>    <span class="keywordflow">if</span> (!extOp)</div>
 <div class="line"><a id="l00511" name="l00511"></a><span class="lineno">  511</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00512" name="l00512"></a><span class="lineno">  512</span> </div>
-<div class="line"><a id="l00513" name="l00513"></a><span class="lineno">  513</span>    <span class="keyword">auto</span> src = extOp.getVector();</div>
+<div class="line"><a id="l00513" name="l00513"></a><span class="lineno">  513</span>    <span class="keyword">auto</span> src = extOp.getSource();</div>
 <div class="line"><a id="l00514" name="l00514"></a><span class="lineno">  514</span>    <span class="keyword">auto</span> pos = extOp.getStaticPosition();</div>
 <div class="line"><a id="l00515" name="l00515"></a><span class="lineno">  515</span>    int64_t posVal = pos[0];</div>
 <div class="line"><a id="l00516" name="l00516"></a><span class="lineno">  516</span>    <span class="keyword">auto</span> srcVecType = cast&lt;VectorType&gt;(src.getType());</div>
@@ -1074,7 +1074,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00978" name="l00978"></a><span class="lineno">  978</span>    <span class="keywordflow">if</span> (!extOp)</div>
 <div class="line"><a id="l00979" name="l00979"></a><span class="lineno">  979</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00980" name="l00980"></a><span class="lineno">  980</span> </div>
-<div class="line"><a id="l00981" name="l00981"></a><span class="lineno">  981</span>    <span class="keyword">auto</span> rhs = extOp.getVector();</div>
+<div class="line"><a id="l00981" name="l00981"></a><span class="lineno">  981</span>    <span class="keyword">auto</span> rhs = extOp.getSource();</div>
 <div class="line"><a id="l00982" name="l00982"></a><span class="lineno">  982</span>    <span class="keyword">auto</span> concatVecType = cast&lt;VectorType&gt;(concatOp.getResult().getType());</div>
 <div class="line"><a id="l00983" name="l00983"></a><span class="lineno">  983</span>    <span class="keyword">auto</span> zvec = rewriter.create&lt;arith::ConstantOp&gt;(</div>
 <div class="line"><a id="l00984" name="l00984"></a><span class="lineno">  984</span>        concatOp.getLoc(), lhs.getType(), rewriter.getZeroAttr(lhs.getType()));</div>
@@ -2012,7 +2012,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01854" name="l01854"></a><span class="lineno"> 1854</span> </div>
 <div class="line"><a id="l01855" name="l01855"></a><span class="lineno"> 1855</span>    int64_t offset = cast&lt;IntegerAttr&gt;(adaptor.getOffsets()[0]).getInt();</div>
 <div class="line"><a id="l01856" name="l01856"></a><span class="lineno"> 1856</span>    <span class="keyword">auto</span> selectOp = rewriter.create&lt;aievec::aie1::SelectOp&gt;(</div>
-<div class="line"><a id="l01857" name="l01857"></a><span class="lineno"> 1857</span>        extractOp.getLoc(), vType, adaptor.getVector(),</div>
+<div class="line"><a id="l01857" name="l01857"></a><span class="lineno"> 1857</span>        extractOp.getLoc(), vType, adaptor.getSource(),</div>
 <div class="line"><a id="l01858" name="l01858"></a><span class="lineno"> 1858</span>        buildAttributeListForRotationSelectOp(rewriter, vType, offset));</div>
 <div class="line"><a id="l01859" name="l01859"></a><span class="lineno"> 1859</span>    rewriter.replaceOpWithNewOp&lt;aievec::aie1::ExtOp&gt;(</div>
 <div class="line"><a id="l01860" name="l01860"></a><span class="lineno"> 1860</span>        extractOp, extractOp.getType(), selectOp.getResult(),</div>
@@ -2034,7 +2034,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="foldopen" id="foldopen01873" data-start="{" data-end="}">
 <div class="line"><a id="l01873" name="l01873"></a><span class="lineno"><a class="line" href="structLowerVectorExtractStridedSliceOpAIE2Pattern.html#a9794d04c750556cd9fb64b24a2eb40fb"> 1873</a></span>  <a class="code hl_function" href="structLowerVectorExtractStridedSliceOpAIE2Pattern.html#a9794d04c750556cd9fb64b24a2eb40fb">matchAndRewrite</a>(vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,</div>
 <div class="line"><a id="l01874" name="l01874"></a><span class="lineno"> 1874</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l01875" name="l01875"></a><span class="lineno"> 1875</span>    <span class="keyword">auto</span> vType = cast&lt;VectorType&gt;(adaptor.getVector().getType());</div>
+<div class="line"><a id="l01875" name="l01875"></a><span class="lineno"> 1875</span>    <span class="keyword">auto</span> vType = cast&lt;VectorType&gt;(adaptor.getSource().getType());</div>
 <div class="line"><a id="l01876" name="l01876"></a><span class="lineno"> 1876</span>    <span class="keywordflow">if</span> (vType.getRank() != 1)</div>
 <div class="line"><a id="l01877" name="l01877"></a><span class="lineno"> 1877</span>      <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l01878" name="l01878"></a><span class="lineno"> 1878</span> </div>
@@ -2052,11 +2052,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01890" name="l01890"></a><span class="lineno"> 1890</span>    <span class="keyword">auto</span> bottomHalf = rewriter</div>
 <div class="line"><a id="l01891" name="l01891"></a><span class="lineno"> 1891</span>                          .create&lt;aievec::ExtOp&gt;(</div>
 <div class="line"><a id="l01892" name="l01892"></a><span class="lineno"> 1892</span>                              extractOp.getLoc(), shortVecType,</div>
-<div class="line"><a id="l01893" name="l01893"></a><span class="lineno"> 1893</span>                              adaptor.getVector(), rewriter.getI8IntegerAttr(0))</div>
+<div class="line"><a id="l01893" name="l01893"></a><span class="lineno"> 1893</span>                              adaptor.getSource(), rewriter.getI8IntegerAttr(0))</div>
 <div class="line"><a id="l01894" name="l01894"></a><span class="lineno"> 1894</span>                          .getResult();</div>
 <div class="line"><a id="l01895" name="l01895"></a><span class="lineno"> 1895</span>    <span class="keyword">auto</span> topHalf = rewriter</div>
 <div class="line"><a id="l01896" name="l01896"></a><span class="lineno"> 1896</span>                       .create&lt;aievec::ExtOp&gt;(extractOp.getLoc(), shortVecType,</div>
-<div class="line"><a id="l01897" name="l01897"></a><span class="lineno"> 1897</span>                                              adaptor.getVector(),</div>
+<div class="line"><a id="l01897" name="l01897"></a><span class="lineno"> 1897</span>                                              adaptor.getSource(),</div>
 <div class="line"><a id="l01898" name="l01898"></a><span class="lineno"> 1898</span>                                              rewriter.getI8IntegerAttr(1))</div>
 <div class="line"><a id="l01899" name="l01899"></a><span class="lineno"> 1899</span>                       .getResult();</div>
 <div class="line"><a id="l01900" name="l01900"></a><span class="lineno"> 1900</span>    int64_t offset = cast&lt;IntegerAttr&gt;(adaptor.getOffsets()[0]).getInt();</div>
@@ -4443,7 +4443,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Oct 2 2025 20:40:40 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Oct 3 2025 00:18:42 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
