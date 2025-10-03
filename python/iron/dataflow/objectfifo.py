@@ -76,6 +76,7 @@ class ObjectFifo(Resolvable):
         self._prod: ObjectFifoHandle | None = None
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
+        self._bd_chain_repeat_count: int | None = None
 
     @classmethod
     def __get_index(cls) -> int:
@@ -118,6 +119,23 @@ class ObjectFifo(Resolvable):
     def obj_type(self) -> type[np.ndarray]:
         """The tensor type of each buffer belonging to the ObjectFifo"""
         return self._obj_type
+
+    def use_bd_chain(self, repeat_count: int | None = None):
+        """Configure BD (Buffer Descriptor) chaining for the ObjectFifo.
+
+        Args:
+            repeat_count (int | None, optional): Number of forward chain repeats.
+                - If None: Forward chain with single iteration and no repeat (default behavior)
+                - If 1-256: Forward chain with specified number of repeats
+
+        Raises:
+            ValueError: If repeat_count is outside the valid range [1, 256]
+        """
+        if repeat_count is not None:
+            if repeat_count < 1 or repeat_count > 256:
+                raise ValueError("Repeat count must be in [1, 256] range.")
+
+        self._bd_chain_repeat_count = 0 if repeat_count is None else repeat_count
 
     def __str__(self) -> str:
         prod_endpoint = None
@@ -254,16 +272,31 @@ class ObjectFifo(Resolvable):
                 con.dims_from_stream if con.dims_from_stream else []
                 for con in self._cons
             ]
-            self._op = object_fifo(
-                self.name,
-                self._prod_tile_op(),
-                self._cons_tiles_ops(),
-                self._get_depths(),
-                np_ndarray_type_to_memref_type(self._obj_type),
-                dimensionsToStream=self._dims_to_stream,
-                dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
-                plio=self._plio,
-            )
+
+            # Only pass bd_chain_repeat_count if use_bd_chain() was explicitly called
+            if self._bd_chain_repeat_count is not None:
+                self._op = object_fifo(
+                    self.name,
+                    self._prod_tile_op(),
+                    self._cons_tiles_ops(),
+                    self._get_depths(),
+                    np_ndarray_type_to_memref_type(self._obj_type),
+                    dimensionsToStream=self._dims_to_stream,
+                    dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
+                    plio=self._plio,
+                    bd_chain_repeat_count=self._bd_chain_repeat_count,
+                )
+            else:
+                self._op = object_fifo(
+                    self.name,
+                    self._prod_tile_op(),
+                    self._cons_tiles_ops(),
+                    self._get_depths(),
+                    np_ndarray_type_to_memref_type(self._obj_type),
+                    dimensionsToStream=self._dims_to_stream,
+                    dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
+                    plio=self._plio,
+                )
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
                 self._prod.endpoint.resolve()
