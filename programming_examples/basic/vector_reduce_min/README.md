@@ -12,7 +12,7 @@
 
 This example showcases both **JIT** and **non-JIT** approaches for running IRON designs. A single tile performs a very simple reduction operation where the kernel loads data from local memory, performs the `min` reduction and stores the resulting value back.
 
-Input data is brought to the local memory of the Compute tile from a Shim tile. The size of the input data `N` from the Shim tile is configurable (default: `1024xi32` for the non-JIT version, customizable via command-line arguments for the JIT version). The data is copied to the AIE tile, where the reduction is performed. The single output data value is copied from the AIE tile to the Shim tile. Both approaches achieve similar performance, differing primarily in compilation workflow.
+Input data is brought to the local memory of the Compute tile from a Shim tile. The size of the input data `N` from the Shim tile is configurable (default: `1024xi32` for the non-JIT version, customizable via command-line arguments for the JIT version). The data is copied to the AIE tile, where the reduction is performed. The single output data value is copied from the AIE tile to the Shim tile. Both approaches offer different compilation workflows with the JIT version adding microseconds runtime overhead.
 
 ## Source Files Overview
 
@@ -90,7 +90,7 @@ make run
 | **Compilation** | Ahead-of-time via `aiecc.py` | Runtime compilation |
 | **Development Speed** | Slower (manual make/compilation) | Faster (compilation integrated) |
 | **Host Code** | C++ testbench (`test.cpp`) | Python script |
-| **Performance** | Consistent execution time | Same performance on cache hit (after first run) |
+| **Performance** | Baseline execution time | Microseconds overhead from JIT runtime |
 | **Flexibility** | Fixed at compile time | Runtime parameterization |
 | **Use Case** | Explicit XCLBIN management | Dynamic compilation |
 | **Binary Output** | Generates XCLBIN/inst.bin | Cached binaries in `IRON_CACHE_HOME` (defaults to `~/.iron/`) |
