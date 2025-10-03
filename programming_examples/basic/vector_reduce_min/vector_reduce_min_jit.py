@@ -1,4 +1,4 @@
-# vector_reduce_min/vector_reduce_min.py -*- Python -*-
+# vector_reduce_min/vector_reduce_min_jit.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -9,6 +9,7 @@ import numpy as np
 import sys
 import os
 import argparse
+import time
 
 import aie.iron as iron
 from aie.iron import ObjectFifo, Program, Runtime, Worker
@@ -70,26 +71,69 @@ def main():
         "-n",
         "--num-elements",
         type=int,
-        default=1024,
-        help="Number of elements (default: 1024)",
+        default=2048,
+        help="Number of elements (default: 2048)",
+    )
+    parser.add_argument(
+        "-w",
+        "--warmup",
+        type=int,
+        default=10,
+        help="Number of warmup iterations (default: 10)",
+    )
+    parser.add_argument(
+        "-i",
+        "--iters",
+        type=int,
+        default=20,
+        help="Number of measurement iterations (default: 20)",
     )
 
     args = parser.parse_args()
     num_elements = args.num_elements
+    n_warmup_iterations = args.warmup
+    n_iterations = args.iters
     data_type = np.int32
 
     # Construct input and output tensors that are accessible to the NPU
     input_tensor = iron.randint(10, 100, (num_elements,), dtype=data_type, device="npu")
     output_tensor = iron.tensor((1,), dtype=data_type, device="npu")
 
-    # Launch the kernel
-    my_reduce_min(input_tensor, output_tensor)
+    # Initialize timing variables
+    npu_time_total = 0.0
+    npu_time_min = float("inf")
+    npu_time_max = 0.0
+
+    # Main run loop with warmup and measurement iterations
+    total_iterations = n_warmup_iterations + n_iterations
+    for iter_num in range(total_iterations):
+        # Launch the kernel and measure execution time
+        start_time = time.perf_counter()
+        my_reduce_min(input_tensor, output_tensor)
+        end_time = time.perf_counter()
+
+        # Calculate execution time in microseconds
+        execution_time_us = (end_time - start_time) * 1_000_000
+
+        # Skip warmup iterations for timing statistics
+        if iter_num >= n_warmup_iterations:
+            npu_time_total += execution_time_us
+            npu_time_min = min(npu_time_min, execution_time_us)
+            npu_time_max = max(npu_time_max, execution_time_us)
 
     # Check the correctness of the result
-    expected = input_tensor.numpy().min()
     computed = output_tensor.numpy()[0]
+    expected = input_tensor.numpy().min()
 
     if expected == computed:
+        # Print timing results
+        if n_iterations > 1:
+            avg_time = npu_time_total / n_iterations
+            print(f"\nAvg NPU time: {avg_time:.1f}us.")
+            print(f"Min NPU time: {npu_time_min:.1f}us.")
+            print(f"Max NPU time: {npu_time_max:.1f}us.")
+        else:
+            print(f"\nNPU time: {npu_time_total:.1f}us.")
         print("PASS!")
         sys.exit(0)
     else:
