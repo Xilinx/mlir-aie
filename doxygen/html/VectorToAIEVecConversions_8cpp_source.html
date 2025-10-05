@@ -515,14 +515,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00453" name="l00453"></a><span class="lineno">  453</span>}</div>
 <div class="line"><a id="l00454" name="l00454"></a><span class="lineno">  454</span> </div>
 <div class="line"><a id="l00455" name="l00455"></a><span class="lineno">  455</span><span class="keyword">static</span> func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &amp;rewriter,</div>
-<div class="line"><a id="l00456" name="l00456"></a><span class="lineno">  456</span>                                        mlir::ModuleOp parentModuleOp,</div>
+<div class="line"><a id="l00456" name="l00456"></a><span class="lineno">  456</span>                                        Operation *parentSymbolTableOp,</div>
 <div class="line"><a id="l00457" name="l00457"></a><span class="lineno">  457</span>                                        StringRef funcName, TypeRange inTypes,</div>
 <div class="line"><a id="l00458" name="l00458"></a><span class="lineno">  458</span>                                        TypeRange outTypes) {</div>
 <div class="line"><a id="l00459" name="l00459"></a><span class="lineno">  459</span> </div>
 <div class="line"><a id="l00460" name="l00460"></a><span class="lineno">  460</span>  mlir::OpBuilder::InsertionGuard insertGuard(rewriter);</div>
 <div class="line"><a id="l00461" name="l00461"></a><span class="lineno">  461</span>  rewriter.setInsertionPointToStart(</div>
-<div class="line"><a id="l00462" name="l00462"></a><span class="lineno">  462</span>      &amp;parentModuleOp.getRegion().getBlocks().front());</div>
-<div class="line"><a id="l00463" name="l00463"></a><span class="lineno">  463</span>  SymbolTable st = SymbolTable(parentModuleOp);</div>
+<div class="line"><a id="l00462" name="l00462"></a><span class="lineno">  462</span>      &amp;parentSymbolTableOp-&gt;getRegions().front().getBlocks().front());</div>
+<div class="line"><a id="l00463" name="l00463"></a><span class="lineno">  463</span>  SymbolTable st = SymbolTable(parentSymbolTableOp);</div>
 <div class="line"><a id="l00464" name="l00464"></a><span class="lineno">  464</span>  func::FuncOp fnOpLookup = st.lookup&lt;func::FuncOp&gt;(funcName);</div>
 <div class="line"><a id="l00465" name="l00465"></a><span class="lineno">  465</span>  func::FuncOp fnOp;</div>
 <div class="line"><a id="l00466" name="l00466"></a><span class="lineno">  466</span>  <span class="comment">// if the function is already declared, use the existing function, don&#39;t</span></div>
@@ -535,8 +535,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00473" name="l00473"></a><span class="lineno">  473</span>    NamedAttribute funcAccess = NamedAttribute(t1, t2);</div>
 <div class="line"><a id="l00474" name="l00474"></a><span class="lineno">  474</span>    FunctionType fnType =</div>
 <div class="line"><a id="l00475" name="l00475"></a><span class="lineno">  475</span>        mlir::FunctionType::get(rewriter.getContext(), inTypes, outTypes);</div>
-<div class="line"><a id="l00476" name="l00476"></a><span class="lineno">  476</span>    fnOp = rewriter.create&lt;func::FuncOp&gt;(parentModuleOp.getLoc(), funcName,</div>
-<div class="line"><a id="l00477" name="l00477"></a><span class="lineno">  477</span>                                         fnType, funcAccess);</div>
+<div class="line"><a id="l00476" name="l00476"></a><span class="lineno">  476</span>    fnOp = rewriter.create&lt;func::FuncOp&gt;(parentSymbolTableOp-&gt;getLoc(),</div>
+<div class="line"><a id="l00477" name="l00477"></a><span class="lineno">  477</span>                                         funcName, fnType, funcAccess);</div>
 <div class="line"><a id="l00478" name="l00478"></a><span class="lineno">  478</span>  }</div>
 <div class="line"><a id="l00479" name="l00479"></a><span class="lineno">  479</span>  <span class="keywordflow">return</span> fnOp;</div>
 <div class="line"><a id="l00480" name="l00480"></a><span class="lineno">  480</span>}</div>
@@ -2157,12 +2157,12 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01981" name="l01981"></a><span class="lineno"> 1981</span> </div>
 <div class="line"><a id="l01982" name="l01982"></a><span class="lineno"> 1982</span>    <span class="keyword">auto</span> srcType = dyn_cast&lt;VectorType&gt;(adaptor.getOperand().getType());</div>
 <div class="line"><a id="l01983" name="l01983"></a><span class="lineno"> 1983</span>    StringRef funcName = <span class="stringliteral">&quot;getExpBf16&quot;</span>;</div>
-<div class="line"><a id="l01984" name="l01984"></a><span class="lineno"> 1984</span>    <span class="keyword">auto</span> moduleOp = expOp-&gt;getParentOfType&lt;mlir::ModuleOp&gt;();</div>
-<div class="line"><a id="l01985" name="l01985"></a><span class="lineno"> 1985</span> </div>
-<div class="line"><a id="l01986" name="l01986"></a><span class="lineno"> 1986</span>    VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());</div>
-<div class="line"><a id="l01987" name="l01987"></a><span class="lineno"> 1987</span>    VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());</div>
-<div class="line"><a id="l01988" name="l01988"></a><span class="lineno"> 1988</span>    func::FuncOp fnOp = getOrInsertFuncDecl(</div>
-<div class="line"><a id="l01989" name="l01989"></a><span class="lineno"> 1989</span>        rewriter, moduleOp, funcName, TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});</div>
+<div class="line"><a id="l01984" name="l01984"></a><span class="lineno"> 1984</span> </div>
+<div class="line"><a id="l01985" name="l01985"></a><span class="lineno"> 1985</span>    VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());</div>
+<div class="line"><a id="l01986" name="l01986"></a><span class="lineno"> 1986</span>    VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());</div>
+<div class="line"><a id="l01987" name="l01987"></a><span class="lineno"> 1987</span>    func::FuncOp fnOp = getOrInsertFuncDecl(</div>
+<div class="line"><a id="l01988" name="l01988"></a><span class="lineno"> 1988</span>        rewriter, expOp-&gt;getParentWithTrait&lt;OpTrait::SymbolTable&gt;(), funcName,</div>
+<div class="line"><a id="l01989" name="l01989"></a><span class="lineno"> 1989</span>        TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});</div>
 <div class="line"><a id="l01990" name="l01990"></a><span class="lineno"> 1990</span> </div>
 <div class="line"><a id="l01991" name="l01991"></a><span class="lineno"> 1991</span>    SmallVector&lt;Value&gt; expOperands = {adaptor.getOperand()};</div>
 <div class="line"><a id="l01992" name="l01992"></a><span class="lineno"> 1992</span> </div>
@@ -4443,7 +4443,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Oct 3 2025 00:18:42 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sun Oct 5 2025 22:38:37 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
