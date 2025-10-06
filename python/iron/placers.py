@@ -50,7 +50,7 @@ class SequentialPlacer(Placer):
     However, it can yield invalid placements that exceed other resource limits, such as memory, For complex or
     resource sensitive designs, a more complex placer or manual placement is required.
 
-    The user may define limit on the number of cores per column, which could help with issues in using packet-
+    The user may define a limited number of cores per column, which could help with issues in using packet-
     switched tracing. By limiting the number of cores per column, the placer will assign workers to compute
     tiles in a row-wise direction up to the defined limit then move to the next column for subsequent placement.
     """
