@@ -25,7 +25,7 @@ def test_parallel_compilation_subprocess():
     # Create a temporary cache directory for this test
     with tempfile.TemporaryDirectory() as temp_cache_dir:
         # Create a simple test script that does JIT compilation
-        test_script = f"""
+        test_script = """
 import sys
 import numpy as np
 import aie.iron as iron
@@ -36,21 +36,21 @@ from aie.iron.controlflow import range_
 @iron.jit(is_placed=False)
 def simple_add(input0, input1, output):
     if input0.shape != input1.shape:
-        raise ValueError(f"Input shapes are not equal ({{input0.shape}} != {{input1.shape}}).")
+        raise ValueError(f"Input shapes are not equal ({input0.shape} != {input1.shape}).")
     if input0.shape != output.shape:
-        raise ValueError(f"Input and output shapes are not equal ({{input0.shape}} != {{output.shape}}).")
+        raise ValueError(f"Input and output shapes are not equal ({input0.shape} != {output.shape}).")
     if len(np.shape(input0)) != 1:
         raise ValueError("Function only supports vectors.")
     num_elements = np.size(input0)
     n = 16
     if num_elements % n != 0:
-        raise ValueError(f"Number of elements ({{num_elements}}) must be a multiple of {{n}}.")
+        raise ValueError(f"Number of elements ({num_elements}) must be a multiple of {n}.")
     N_div_n = num_elements // n
 
     if input0.dtype != input1.dtype:
-        raise ValueError(f"Input data types are not the same ({{input0.dtype}} != {{input1.dtype}}).")
+        raise ValueError(f"Input data types are not the same ({input0.dtype} != {input1.dtype}).")
     if input0.dtype != output.dtype:
-        raise ValueError(f"Input and output data types are not the same ({{input0.dtype}} != {{output.dtype}}).")
+        raise ValueError(f"Input and output data types are not the same ({input0.dtype} != {output.dtype}).")
     dtype = input0.dtype
 
     # Define tensor types
@@ -101,7 +101,7 @@ try:
     simple_add(input0, input1, output)
     print("SUCCESS")
 except Exception as e:
-    print(f"ERROR: {{type(e).__name__}}: {{str(e)}}")
+    print(f"ERROR: {type(e).__name__}: {str(e)}")
     sys.exit(1)
 """
 
