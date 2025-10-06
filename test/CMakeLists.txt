@@ -114,8 +114,7 @@ set(TEST_DEPENDS
 add_lit_testsuite(check-aie "Running the aie regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${TEST_DEPENDS}
-  ARGS "-sv --timeout 600"
-  EXCLUDE python-concurrency
+  ARGS "-sv --timeout 600 --filter-out python-concurrency"
 )
 set_target_properties(check-aie PROPERTIES FOLDER "Tests")
 
