@@ -111,11 +111,8 @@ jobs:
 
           # -j here to reduce the number of parallel chess jobs.
           # -j4 for 32GB RAM, -j12 for 64GB RAM
-          # On Phoenix, we can support 6 concurrent contexts          
           if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
             LIT_OPTS="-j4 $LIT_OPTS"
-          elif [ x"${{ matrix.runner_type }}" == x"amd7940hs" ]; then
-            LIT_OPTS="-j6 $LIT_OPTS"
           else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
@@ -136,6 +133,7 @@ jobs:
 
           ninja install
           ninja check-aie
+          ninja check-aie-concurrency
           popd
 
   build-quick-setup:
@@ -187,11 +185,8 @@ jobs:
 
           # -j here to reduce the number of parallel chess jobs.
           # -j4 for 32GB RAM, -j12 for 64GB RAM
-          # On Phoenix, we can support 6 concurrent contexts
           if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
             LIT_OPTS="-j4 $LIT_OPTS"
-          elif [ x"${{ matrix.runner_type }}" == x"amd7940hs" ]; then
-            LIT_OPTS="-j6 $LIT_OPTS"
           else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
