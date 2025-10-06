@@ -154,6 +154,12 @@ using Connect = struct Connect {
   bool operator==(const Connect &rhs) const {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
   }
+
+  bool operator!=(const Connect &rhs) const { return !(*this == rhs); }
+
+  bool operator<(const Connect &rhs) const {
+    return std::tie(src, dst) < std::tie(rhs.src, rhs.dst);
+  }
 };
 
 using DMAChannel = struct DMAChannel {
