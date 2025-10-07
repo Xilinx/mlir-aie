@@ -272,7 +272,6 @@ def jit(function=None, is_placed=True, use_cache=True):
             try:
                 # Change to kernel_dir to ensure any generated files go there
                 os.chdir(kernel_dir)
-                
                 with open(mlir_path, "w", encoding="utf-8") as f:
                     print(mlir_module, file=f)
 
