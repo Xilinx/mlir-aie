@@ -267,7 +267,12 @@ def jit(function=None, is_placed=True, use_cache=True):
         inst_exists = os.path.exists(inst_path)
 
         if not use_cache or not xclbin_exists or not inst_exists:
+            # Save the current working directory
+            original_cwd = os.getcwd()
             try:
+                # Change to kernel_dir to ensure any generated files go there
+                os.chdir(kernel_dir)
+                
                 with open(mlir_path, "w", encoding="utf-8") as f:
                     print(mlir_module, file=f)
 
@@ -287,6 +292,9 @@ def jit(function=None, is_placed=True, use_cache=True):
                 if os.path.exists(kernel_dir):
                     shutil.rmtree(kernel_dir)
                 raise e
+            finally:
+                # Always restore the original working directory
+                os.chdir(original_cwd)
 
         kernel_name = "MLIR_AIE"
         try:

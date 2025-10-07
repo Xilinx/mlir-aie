@@ -705,7 +705,7 @@ class FlowRunner:
                 await self.do_call(task, ["aie-translate", "--mlir-to-llvmir", file_opt_core, "-o", file_core_llvmir])
                 file_core_obj = corefile(self.tmpdirname, device_name, core, "o")
 
-            file_core_elf = elf_file if elf_file else corefile(self.tmpdirname, device_name, core, "elf")
+            file_core_elf = elf_file if elf_file else corefile(".", device_name, core, "elf")
 
             if opts.compile and opts.xchesscc:
                 if not opts.unified:
