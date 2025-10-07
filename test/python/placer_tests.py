@@ -256,3 +256,38 @@ def mem_eight_in_three_out(module):
 
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module
+
+
+# CHECK-LABEL: TEST: compute_three_in_col_lim
+# CHECK: %[[tile_0_2:.+]] = aie.tile
+# CHECK: %[[tile_0_3:.+]] = aie.tile
+# CHECK: %[[tile_1_2:.+]] = aie.tile
+@construct_and_print_module
+def compute_three_in_col_lim(module):
+    n = 1024
+    cores_per_col = 2
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+    of_2 = ObjectFifo(n_ty, name="iof2")
+
+    def core_fn(of):
+        pass
+
+    workers = [
+        Worker(core_fn, [of_0.cons()]),
+        Worker(core_fn, [of_1.cons()]),
+        Worker(core_fn, [of_2.cons()]),
+    ]
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+        rt.start(*workers)
+        rt.fill(of_0.prod(), A)
+        rt.fill(of_1.prod(), B)
+        rt.fill(of_2.prod(), C)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
+    return module
