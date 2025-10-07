@@ -869,7 +869,8 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
           fullPath = fileName;
         } else {
           auto ps = std::filesystem::path::preferred_separator;
-          fullPath = (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();
+          fullPath =
+              (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();
         }
         if (failed(addAieElf(col, row, fullPath, aieSim)))
           return failure();
