@@ -453,14 +453,14 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
 }
 
 static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
-                                        mlir::ModuleOp parentModuleOp,
+                                        Operation *parentSymbolTableOp,
                                         StringRef funcName, TypeRange inTypes,
                                         TypeRange outTypes) {
 
   mlir::OpBuilder::InsertionGuard insertGuard(rewriter);
   rewriter.setInsertionPointToStart(
-      &parentModuleOp.getRegion().getBlocks().front());
-  SymbolTable st = SymbolTable(parentModuleOp);
+      &parentSymbolTableOp->getRegions().front().getBlocks().front());
+  SymbolTable st = SymbolTable(parentSymbolTableOp);
   func::FuncOp fnOpLookup = st.lookup<func::FuncOp>(funcName);
   func::FuncOp fnOp;
   // if the function is already declared, use the existing function, don't
@@ -473,8 +473,8 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
     NamedAttribute funcAccess = NamedAttribute(t1, t2);
     FunctionType fnType =
         mlir::FunctionType::get(rewriter.getContext(), inTypes, outTypes);
-    fnOp = rewriter.create<func::FuncOp>(parentModuleOp.getLoc(), funcName,
-                                         fnType, funcAccess);
+    fnOp = rewriter.create<func::FuncOp>(parentSymbolTableOp->getLoc(),
+                                         funcName, fnType, funcAccess);
   }
   return fnOp;
 }
@@ -510,7 +510,7 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
     if (!extOp)
       return failure();
 
-    auto src = extOp.getVector();
+    auto src = extOp.getSource();
     auto pos = extOp.getStaticPosition();
     int64_t posVal = pos[0];
     auto srcVecType = cast<VectorType>(src.getType());
@@ -978,7 +978,7 @@ struct FoldSplatToFMAOp : OpConversionPattern<aievec::aie1::FMAOp> {
     if (!extOp)
       return failure();
 
-    auto rhs = extOp.getVector();
+    auto rhs = extOp.getSource();
     auto concatVecType = cast<VectorType>(concatOp.getResult().getType());
     auto zvec = rewriter.create<arith::ConstantOp>(
         concatOp.getLoc(), lhs.getType(), rewriter.getZeroAttr(lhs.getType()));
@@ -1854,7 +1854,7 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
 
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
     auto selectOp = rewriter.create<aievec::aie1::SelectOp>(
-        extractOp.getLoc(), vType, adaptor.getVector(),
+        extractOp.getLoc(), vType, adaptor.getSource(),
         buildAttributeListForRotationSelectOp(rewriter, vType, offset));
     rewriter.replaceOpWithNewOp<aievec::aie1::ExtOp>(
         extractOp, extractOp.getType(), selectOp.getResult(),
@@ -1872,7 +1872,7 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
   LogicalResult
   matchAndRewrite(vector::ExtractStridedSliceOp extractOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    auto vType = cast<VectorType>(adaptor.getVector().getType());
+    auto vType = cast<VectorType>(adaptor.getSource().getType());
     if (vType.getRank() != 1)
       return failure();
 
@@ -1890,11 +1890,11 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
     auto bottomHalf = rewriter
                           .create<aievec::ExtOp>(
                               extractOp.getLoc(), shortVecType,
-                              adaptor.getVector(), rewriter.getI8IntegerAttr(0))
+                              adaptor.getSource(), rewriter.getI8IntegerAttr(0))
                           .getResult();
     auto topHalf = rewriter
                        .create<aievec::ExtOp>(extractOp.getLoc(), shortVecType,
-                                              adaptor.getVector(),
+                                              adaptor.getSource(),
                                               rewriter.getI8IntegerAttr(1))
                        .getResult();
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
@@ -1981,12 +1981,12 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
 
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
     StringRef funcName = "getExpBf16";
-    auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
 
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
     VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
     func::FuncOp fnOp = getOrInsertFuncDecl(
-        rewriter, moduleOp, funcName, TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
+        rewriter, expOp->getParentWithTrait<OpTrait::SymbolTable>(), funcName,
+        TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
 
     SmallVector<Value> expOperands = {adaptor.getOperand()};
 
