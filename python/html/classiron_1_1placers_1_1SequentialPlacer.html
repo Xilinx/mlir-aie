@@ -75,6 +75,7 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="#pro-methods">Protected Member Functions</a> &#124;
 <a href="classiron_1_1placers_1_1SequentialPlacer-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">iron.placers.SequentialPlacer Class Reference</div></div>
@@ -111,10 +112,15 @@ Collaboration diagram for iron.placers.SequentialPlacer:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a6762c80d7edaa86853004ac57d64c20c" id="r_a6762c80d7edaa86853004ac57d64c20c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#a6762c80d7edaa86853004ac57d64c20c">__init__</a> (self)</td></tr>
-<tr class="separator:a6762c80d7edaa86853004ac57d64c20c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3bbf29ca29a9a4d5f2693eb811db94b5" id="r_a3bbf29ca29a9a4d5f2693eb811db94b5"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#a3bbf29ca29a9a4d5f2693eb811db94b5">__init__</a> (self, Optional[int] <a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#afe604e6c30ecbe2d594f4c644fd8034c">cores_per_col</a>=None)</td></tr>
+<tr class="separator:a3bbf29ca29a9a4d5f2693eb811db94b5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a374be4ff1ab87d66ec57285c3720c9ac" id="r_a374be4ff1ab87d66ec57285c3720c9ac"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#a374be4ff1ab87d66ec57285c3720c9ac">make_placement</a> (self, <a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a> device, <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html">Runtime</a> rt, list[<a class="el" href="classiron_1_1worker_1_1Worker.html">Worker</a>] workers, list[<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>] object_fifos)</td></tr>
 <tr class="separator:a374be4ff1ab87d66ec57285c3720c9ac"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
+Public Attributes</h2></td></tr>
+<tr class="memitem:afe604e6c30ecbe2d594f4c644fd8034c" id="r_afe604e6c30ecbe2d594f4c644fd8034c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1placers_1_1SequentialPlacer.html#afe604e6c30ecbe2d594f4c644fd8034c">cores_per_col</a></td></tr>
+<tr class="separator:afe604e6c30ecbe2d594f4c644fd8034c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-methods" name="pro-methods"></a>
 Protected Member Functions</h2></td></tr>
@@ -135,9 +141,13 @@ Shim Tiles are placed as close to the column of the given compute tile as possib
 The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles.
 However, it can yield invalid placements that exceed other resource limits, such as memory, For complex or
 resource sensitive designs, a more complex placer or manual placement is required.
+
+The user may define a limited number of cores per column, which could help with issues in using packet-
+switched tracing. By limiting the number of cores per column, the placer will assign workers to compute
+tiles in a row-wise direction up to the defined limit then move to the next column for subsequent placement.
 </pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a6762c80d7edaa86853004ac57d64c20c" name="a6762c80d7edaa86853004ac57d64c20c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a6762c80d7edaa86853004ac57d64c20c">&#9670;&#160;</a></span>__init__()</h2>
+<a id="a3bbf29ca29a9a4d5f2693eb811db94b5" name="a3bbf29ca29a9a4d5f2693eb811db94b5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3bbf29ca29a9a4d5f2693eb811db94b5">&#9670;&#160;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -146,8 +156,18 @@ resource sensitive designs, a more complex placer or manual placement is require
           <td class="memname">iron.placers.SequentialPlacer.__init__ </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>self</em></td><td>)</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">Optional[int] &#160;</td>
+          <td class="paramname"><em>cores_per_col</em> = <code>None</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
 </div><div class="memdoc">
@@ -452,6 +472,21 @@ Args:
     object_fifos (list[ObjectFifoHandle]): The object fifos used by the program.
 </pre> 
 <p>Reimplemented from <a class="el" href="classiron_1_1placers_1_1Placer.html#a6ee4358d46516f995c3374e64a450724">iron.placers.Placer</a>.</p>
+
+</div>
+</div>
+<h2 class="groupheader">Member Data Documentation</h2>
+<a id="afe604e6c30ecbe2d594f4c644fd8034c" name="afe604e6c30ecbe2d594f4c644fd8034c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afe604e6c30ecbe2d594f4c644fd8034c">&#9670;&#160;</a></span>cores_per_col</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.placers.SequentialPlacer.cores_per_col</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
 
 </div>
 </div>

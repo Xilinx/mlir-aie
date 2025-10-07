@@ -17,8 +17,9 @@ var searchData=
   ['cons_14',['cons',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9074a9e04b32080262f3755b0f24b36a',1,'iron::dataflow::objectfifo::ObjectFifo']]],
   ['controlflow_2epy_15',['controlflow.py',['../controlflow_8py.html',1,'']]],
   ['core_5ffn_16',['core_fn',['../classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476',1,'iron::worker::Worker']]],
-  ['create_5fclass_17',['create_class',['../namespaceiron_1_1device_1_1device.html#a75a6d3df1229a191db361283e9b81b6d',1,'iron::device::device']]],
-  ['current_5fcore_5fplacement_18',['current_core_placement',['../classiron_1_1worker_1_1Worker.html#a24408a7c343cbbbd8d599f6a0ea94492',1,'iron::worker::Worker']]],
-  ['currentdeviceop_19',['CurrentDeviceOp',['../namespaceiron_1_1program.html#ae7872e81e58e65d63ef3115cdf65bd33',1,'iron::program']]],
-  ['currentmodule_20',['CurrentModule',['../namespaceiron_1_1program.html#a74c11afbd168bb728406b196b97fe8e7',1,'iron::program']]]
+  ['cores_5fper_5fcol_17',['cores_per_col',['../classiron_1_1placers_1_1SequentialPlacer.html#afe604e6c30ecbe2d594f4c644fd8034c',1,'iron::placers::SequentialPlacer']]],
+  ['create_5fclass_18',['create_class',['../namespaceiron_1_1device_1_1device.html#a75a6d3df1229a191db361283e9b81b6d',1,'iron::device::device']]],
+  ['current_5fcore_5fplacement_19',['current_core_placement',['../classiron_1_1worker_1_1Worker.html#a24408a7c343cbbbd8d599f6a0ea94492',1,'iron::worker::Worker']]],
+  ['currentdeviceop_20',['CurrentDeviceOp',['../namespaceiron_1_1program.html#ae7872e81e58e65d63ef3115cdf65bd33',1,'iron::program']]],
+  ['currentmodule_21',['CurrentModule',['../namespaceiron_1_1program.html#a74c11afbd168bb728406b196b97fe8e7',1,'iron::program']]]
 ];
