@@ -133,6 +133,7 @@ jobs:
 
           ninja install
           ninja check-aie
+          ninja check-aie-concurrency
           popd
 
   build-quick-setup:

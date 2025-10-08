@@ -339,6 +339,9 @@ if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
 
+# Concurrency tests control their own parallelism, so run them serially
+lit_config.parallelism_groups["concurrency"] = 1
+
 if "LIT_AVAILABLE_FEATURES" in os.environ:
     for feature in os.environ["LIT_AVAILABLE_FEATURES"].split():
         config.available_features.add(feature)
