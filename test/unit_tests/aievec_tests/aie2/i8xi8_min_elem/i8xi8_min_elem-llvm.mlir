@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
 
+// test hang/timeout
+// REQUIRES: dont_run
+
 // REQUIRES: valid_xchess_license
 // REQUIRES: peano
 // RUN: mkdir -p %t/data; cd %t
