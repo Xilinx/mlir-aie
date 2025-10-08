@@ -509,17 +509,17 @@ class packetflow(PacketFlowOp):
         source,
         source_port,
         source_channel,
-        dest,
-        dest_port,
-        dest_channel,
+        dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
     ):
         super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
-            src = PacketSourceOp(source, source_port, source_channel)
-            dest = PacketDestOp(dest, dest_port, dest_channel)
-            end = EndOp()
+            PacketSourceOp(source, source_port, source_channel)
+            dests = [dests] if isinstance(dests, dict) else dests
+            for dest in dests:
+                PacketDestOp(dest["dest"], dest["port"], dest["channel"])
+            EndOp()
 
 
 core = region_op(Core, terminator=lambda *_: EndOp())

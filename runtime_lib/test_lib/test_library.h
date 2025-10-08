@@ -50,7 +50,7 @@ public:
     //  _endE,
     //           u32 _resetE, XAie_ModuleType _module) {
     // tilePtr = _tilePtr;
-    devInst = &(_xaie->DevInst);
+    devInst = _xaie->XAieDevInst;
     row = _row;
     col = _col;
     pfc = _pfc;

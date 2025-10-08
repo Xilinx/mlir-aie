@@ -22,6 +22,8 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
+#include "llvm/ADT/StringRef.h"
+
 namespace xilinx::AIE {
 
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
@@ -151,6 +153,12 @@ using Connect = struct Connect {
 
   bool operator==(const Connect &rhs) const {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
+  }
+
+  bool operator!=(const Connect &rhs) const { return !(*this == rhs); }
+
+  bool operator<(const Connect &rhs) const {
+    return std::tie(src, dst) < std::tie(rhs.src, rhs.dst);
   }
 };
 

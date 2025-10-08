@@ -12,10 +12,10 @@
 
 // Check for ordered queuing of BD tasks.
 
-// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 1, /* EnToken */ XAIE_DISABLE));
-// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */1, /* Repeat */ 8, /* EnToken */ XAIE_DISABLE));
-// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */3, /* Repeat */ 1, /* EnToken */ XAIE_DISABLE));
-// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(&(ctx->DevInst), XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */2, /* Repeat */ 8, /* EnToken */ XAIE_DISABLE));
+// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(ctx->XAieDevInst, XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */0, /* Repeat */ 1, /* EnToken */ XAIE_DISABLE));
+// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(ctx->XAieDevInst, XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_S2MM, /* BdNum */1, /* Repeat */ 8, /* EnToken */ XAIE_DISABLE));
+// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(ctx->XAieDevInst, XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */3, /* Repeat */ 1, /* EnToken */ XAIE_DISABLE));
+// CHECK: __mlir_aie_try(XAie_DmaChannelSetStartQueue(ctx->XAieDevInst, XAie_TileLoc(7,3), /* ChNum */0, /* dmaDir */ DMA_MM2S, /* BdNum */2, /* Repeat */ 8, /* EnToken */ XAIE_DISABLE));
 
 module @aie_module {
   aie.device(xcve2802) {

@@ -15,6 +15,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
@@ -739,7 +740,7 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
+        if (auto *st = mlir::SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
@@ -1087,6 +1088,35 @@ const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
 }
 
+xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module,
+                                                     llvm::StringRef symbol) {
+  DeviceOp deviceOp;
+  if (!symbol.size()) {
+    // If no device name is given, assume 'main'
+    symbol = "main";
+  }
+  Operation *maybeDeviceOp = mlir::SymbolTable::lookupSymbolIn(module, symbol);
+  if (!maybeDeviceOp) {
+    return nullptr;
+  }
+  deviceOp = llvm::dyn_cast<DeviceOp>(maybeDeviceOp);
+  return deviceOp;
+}
+
+xilinx::AIE::DeviceOp
+DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module,
+                                      llvm::StringRef symbol) {
+  DeviceOp deviceOp = getForSymbolInModule(module, symbol);
+  if (!deviceOp) {
+    if (!symbol.empty()) {
+      module.emitError("No such device: ") << symbol;
+    } else {
+      module.emitError("No 'main' device in module");
+    }
+  }
+  return deviceOp;
+}
+
 //===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//
@@ -1344,6 +1374,16 @@ LogicalResult CoreOp::verify() {
     return emitOpError("CoreOp cannot be created on shim tile, i.e. row == 0");
   if (getTileOp().isMemTile())
     return emitOpError("CoreOp cannot be created on mem tile");
+  if (getElfFile()) {
+    // If an ELF file is specified, no MLIR body is allowed (to remove
+    // ambiguity); the ELF file will fully dictate what runs on the
+    // core and any MLIR would be ignored.
+    if (!isEmpty()) {
+      return emitOpError(
+          "When `elf_file` attribute is specified, core body must be empty "
+          "(consist of exactly one `aie.end` op).");
+    }
+  }
   return success();
 }
 
@@ -1352,6 +1392,13 @@ int CoreOp::colIndex() { return getTileOp().colIndex(); }
 int CoreOp::rowIndex() { return getTileOp().rowIndex(); }
 
 TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
+
+bool CoreOp::isEmpty() {
+  Region &body = getBody();
+  // Return iff. core body contains exactly one block with exactly one AIE.EndOp
+  return (body.hasOneBlock() && body.front().getOperations().size() == 1 &&
+          llvm::isa<AIE::EndOp>(body.front().front()));
+}
 
 //===----------------------------------------------------------------------===//
 // BufferOp

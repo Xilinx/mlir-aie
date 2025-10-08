@@ -72,15 +72,23 @@ static Value forceCastValueToType(OpBuilder &builder, Location loc, Value val,
   if (valTy == type)
     return val;
   auto srcVecTy = dyn_cast<VectorType>(valTy);
+  auto dstVecTy = dyn_cast<VectorType>(type);
+
   if (srcVecTy) {
-    auto dstVecTy = dyn_cast<VectorType>(type);
     assert(dstVecTy && "vector values cannot be forced into a non-vector type");
-    assert(srcVecTy.getRank() == 1 && dstVecTy.getRank() == 1 &&
-           "only flat 1D vectors can be force casted");
+
+    // Flatten source vector if it's not rank-1
+    auto flatSrcVecTy = getFlattenedVectorType(srcVecTy);
+    if (srcVecTy != flatSrcVecTy)
+      val = builder.create<vector::ShapeCastOp>(loc, flatSrcVecTy, val);
+
+    // Flatten destination type if it's not rank-1
+    auto flatDstVecTy = getFlattenedVectorType(dstVecTy);
+
     int64_t dstVecLength =
-        dstVecTy.getElementTypeBitWidth() * dstVecTy.getShape()[0];
+        flatDstVecTy.getElementTypeBitWidth() * flatDstVecTy.getShape()[0];
     int64_t srcVecLength =
-        srcVecTy.getElementTypeBitWidth() * srcVecTy.getShape()[0];
+        flatSrcVecTy.getElementTypeBitWidth() * flatSrcVecTy.getShape()[0];
     if (srcVecLength != dstVecLength) {
       assert(srcVecLength < dstVecLength &&
              "only widening forced casts are supported");
@@ -92,7 +100,19 @@ static Value forceCastValueToType(OpBuilder &builder, Location loc, Value val,
       else
         val = widen256bVectorValueTo512b(builder, loc, val);
     }
+
+    // Bitcast to flat destination type (bitcast only supports flat vectors)
+    val = bitcastValueToType(builder, loc, val, flatDstVecTy);
+
+    // Reshape back to original destination shape if needed
+    if (flatDstVecTy != dstVecTy)
+      val = builder.create<vector::ShapeCastOp>(loc, dstVecTy, val);
+
+    return val;
   }
+
+  // Non-vector types can be bitcast directly
+  assert(!dstVecTy && "cannot force cast scalar to vector type");
   return bitcastValueToType(builder, loc, val, type);
 }
 
@@ -215,6 +235,76 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     op.emitWarning() << "aie.add conversion is not implemented\n";
     return failure();
+  }
+};
+
+class AddElemOpConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::AddElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::AddElemOp>::ConvertOpToLLVMPattern;
+
+  struct DecodedAddElemOp {
+    enum class Kind { FP32_FP32_FP32_16x1x1x1, UNSUPPORTED };
+    Kind kind;
+    int conf;
+  };
+
+  static DecodedAddElemOp decodeAddElemOp(OpAdaptor op) {
+    auto lhs = op.getLhs();
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto lhsScaTy = lhsVecTy.getElementType();
+    unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
+
+    // Integer types
+    if (llvm::isa<IntegerType>(lhsScaTy)) {
+      return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
+    } else {
+      // Float types
+      if (lhsBitWidth == 32) {
+        // FP32 add_elem
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
+      }
+    }
+    return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::AddElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto decodedAddElemOp = decodeAddElemOp(adaptor);
+
+    if (decodedAddElemOp.kind == DecodedAddElemOp::Kind::UNSUPPORTED) {
+      op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
+      return failure();
+    }
+
+    auto confCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(),
+        rewriter.getI32IntegerAttr(decodedAddElemOp.conf));
+    Value addElemOp = nullptr;
+    SmallVector<Value> operands({adaptor.getLhs(), adaptor.getRhs(), confCst});
+
+    // Handle the FP32 add_elem
+    if (decodedAddElemOp.kind ==
+        DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
+      addElemOp = rewriter.create<xllvm::AddAccFloatIntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({8}, rewriter.getI64Type()),
+               VectorType::get({8}, rewriter.getI64Type()),
+               rewriter.getI32Type()}));
+    } else {
+      op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
+      return failure();
+    }
+
+    // create bitcast/shape_cast for result
+    auto resultVal = forceCastValueToType(rewriter, loc, addElemOp,
+                                          op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
+    return success();
   }
 };
 
@@ -574,9 +664,10 @@ public:
             /*variant=*/2, /*zero_acc=*/0, /*shift16=*/1,
             /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0, /*sub_mask=*/0));
 
-    // create bitcast for result
-    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                 acc64Val);
+    // create bitcast/shape_cast for result
+    auto resultVal =
+        forceCastValueToType(rewriter, loc, acc64Val, op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
     return success();
   }
 
@@ -759,9 +850,10 @@ public:
                                            createMacOps(c, e, cfMul))))))));
     }
 
-    // create bitcast for result
-    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                 finalMacVal);
+    // create bitcast/shape_cast for result
+    auto resultVal = forceCastValueToType(rewriter, loc, finalMacVal,
+                                          op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
     return success();
   }
 
@@ -812,9 +904,10 @@ public:
                rewriter.getI32Type()}));
     }
 
-    // create bitcast for result
-    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                 mulElemOp);
+    // create bitcast/shape_cast for result
+    auto resultVal = forceCastValueToType(rewriter, loc, mulElemOp,
+                                          op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
     return success();
   }
 };
@@ -1117,13 +1210,10 @@ public:
       return failure();
     }
 
-    // create bitcast for result if needed
-    if (op.getResult().getType() != srsIntrOp.getType()) {
-      rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                   srsIntrOp);
-    } else {
-      rewriter.replaceOp(op, srsIntrOp);
-    }
+    // create bitcast/shape_cast for result if needed
+    auto resultVal = forceCastValueToType(rewriter, loc, srsIntrOp,
+                                          op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
 
     return success();
   }
@@ -1319,9 +1409,10 @@ public:
       return failure();
     }
 
-    // create bitcast for result
-    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                 concatOp);
+    // create bitcast/shape_cast for result
+    auto resultVal =
+        forceCastValueToType(rewriter, loc, concatOp, op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
 
     return success();
   }
@@ -1415,13 +1506,10 @@ public:
       return failure();
     }
 
-    // create bitcast for result
-    if (op.getResult().getType() != extOp.getType()) {
-      rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                   extOp);
-    } else {
-      rewriter.replaceOp(op, extOp);
-    }
+    // create bitcast/shape_cast for result
+    auto resultVal =
+        forceCastValueToType(rewriter, loc, extOp, op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
 
     return success();
   }
@@ -1895,9 +1983,10 @@ public:
                rewriter.getI32Type(), rewriter.getI32Type()}));
     }
 
-    // create bitcast for result
-    rewriter.replaceOpWithNewOp<LLVM::BitcastOp>(op, op.getResult().getType(),
-                                                 shiftOp);
+    // create bitcast/shape_cast for result
+    auto resultVal =
+        forceCastValueToType(rewriter, loc, shiftOp, op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
 
     return success();
   }
@@ -2326,6 +2415,7 @@ void populateAIEVecToLLVMConversionPatterns(
     Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // clang-format off
   patterns.add<AddOpConversion,
+               AddElemOpConversion,
                SubOpConversion,
                FMAOpConversion,
                MulOpConversion,

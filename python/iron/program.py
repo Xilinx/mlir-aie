@@ -43,7 +43,7 @@ class Program:
         self._device = device
         self._rt = rt
 
-    def resolve_program(self, placer: Placer | None = None):
+    def resolve_program(self, placer: Placer | None = None, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
 
         Args:
@@ -62,13 +62,16 @@ class Program:
             # For dynamically created device classes, the constructor takes no arguments
             self._device = device_type()
 
-            @device(self._device.resolve())
+            @device(self._device.resolve(), sym_name=device_name)
             def device_body():
                 # Collect all fifos
                 all_fifos = set()
                 all_fifos.update(self._rt.fifos)
                 for w in self._rt.workers:
                     all_fifos.update(w.fifos)
+
+                # Sort fifos for deterministic resolve
+                all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
 
                 if placer:
                     # TODO: should maybe just take runtime?

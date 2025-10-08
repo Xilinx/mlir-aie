@@ -13,6 +13,8 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %buf_a = aie.buffer(%tile13) { sym_name = "a" } : memref<256xf32>
@@ -32,4 +34,5 @@ module @test {
     aie.use_lock(%lock13_3, "Release", 0) // release for write
     aie.end
   }
+}
 }

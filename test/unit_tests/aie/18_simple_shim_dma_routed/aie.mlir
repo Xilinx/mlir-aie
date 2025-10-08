@@ -12,6 +12,7 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test18_simple_shim_dma_routed {
+aie.device(xcvc1902) {
   %t70 = aie.tile(7, 0)
   %t72 = aie.tile(7, 2)
 
@@ -54,4 +55,5 @@ module @test18_simple_shim_dma_routed {
     ^end:
       aie.end
   }
+}
 }

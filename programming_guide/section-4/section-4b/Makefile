@@ -79,13 +79,13 @@ run_py: build/final.xclbin build/insts.bin
 
 trace: ${targetname}.exe build/final_trace.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../programming_examples/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
-	${srcdir}/../../../programming_examples/utils/get_trace_summary.py --input trace_4b.json
+	${srcdir}/../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
+	${srcdir}/../../../python/utils/get_trace_summary.py --input trace_4b.json
 
 trace_py: build/final_trace.xclbin build/insts.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -i2s ${in2_size} -os ${out_size}
-	${srcdir}/../../../programming_examples/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
-	${srcdir}/../../../programming_examples/utils/get_trace_summary.py --input trace_4b.json
+	${srcdir}/../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
+	${srcdir}/../../../python/utils/get_trace_summary.py --input trace_4b.json
 
 
 clean_trace:

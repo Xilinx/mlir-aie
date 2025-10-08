@@ -11,6 +11,37 @@ from util import construct_and_print_module
 # RUN: %python %s | FileCheck %s
 
 
+# CHECK-LABEL: TEST: objectfifo_order
+# CHECK: aie.objectfifo @in_A
+# CHECK: aie.objectfifo @in_B
+# CHECK: aie.objectfifo @out_C
+@construct_and_print_module
+def objectfifo_order(module):
+    N = 4096
+    n = 1024
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_in_A = ObjectFifo(n_ty, name="in_A")
+    of_in_B = ObjectFifo(n_ty, name="in_B")
+    of_out_C = ObjectFifo(n_ty, name="out_C")
+
+    def core_fn(in_A, in_B, out_C):
+        pass
+
+    my_worker = Worker(core_fn, [of_in_A.cons(), of_in_B.cons(), of_out_C.prod()])
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+        rt.start(my_worker)
+        rt.fill(of_in_A.prod(), A)
+        rt.fill(of_in_B.prod(), B)
+        rt.drain(of_out_C.cons(), C, wait=True)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
+
+
 # CHECK-LABEL: TEST: shim_three_in
 # CHECK: %[[shim_noc_tile_0_0:.+]] = aie.tile
 # CHECK: %[[shim_noc_tile_1_0:.+]] = aie.tile
@@ -224,4 +255,39 @@ def mem_eight_in_three_out(module):
         rt.drain(of_out_C.cons(), C, wait=True)
 
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
+
+
+# CHECK-LABEL: TEST: compute_three_in_col_lim
+# CHECK: %[[tile_0_2:.+]] = aie.tile
+# CHECK: %[[tile_0_3:.+]] = aie.tile
+# CHECK: %[[tile_1_2:.+]] = aie.tile
+@construct_and_print_module
+def compute_three_in_col_lim(module):
+    n = 1024
+    cores_per_col = 2
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+    of_2 = ObjectFifo(n_ty, name="iof2")
+
+    def core_fn(of):
+        pass
+
+    workers = [
+        Worker(core_fn, [of_0.cons()]),
+        Worker(core_fn, [of_1.cons()]),
+        Worker(core_fn, [of_2.cons()]),
+    ]
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+        rt.start(*workers)
+        rt.fill(of_0.prod(), A)
+        rt.fill(of_1.prod(), B)
+        rt.fill(of_2.prod(), C)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
     return module

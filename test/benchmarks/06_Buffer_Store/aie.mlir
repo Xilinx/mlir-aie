@@ -12,6 +12,8 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark06_buffer_store {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
@@ -22,4 +24,6 @@ module @benchmark06_buffer_store {
     memref.store %val1, %buf13_0[%idx1] : memref<256xi32>
     aie.end
   }
+
+}
 }

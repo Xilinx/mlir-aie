@@ -13,6 +13,8 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
+#include "mlir/IR/BuiltinAttributes.h"
+
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h.inc"
 #include "mlir/IR/Operation.h"
@@ -23,6 +25,10 @@
 
 #define GET_TYPEDEF_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEXTypes.h.inc"
+
+#include "llvm/ADT/StringRef.h"
+
+#include <optional>
 
 namespace xilinx {
 namespace AIEX {

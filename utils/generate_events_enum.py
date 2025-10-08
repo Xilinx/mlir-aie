@@ -6,7 +6,7 @@ importable Python file containing an enum of all events.
 
 The generated enum is included in python/utils/trace_events_enum.py and
 used by the trace utilities in python/utils/trace.py and in
-programming_examples/utils/parse_trace.py
+python/utils/parse_trace.py
 """
 
 import sys, re, argparse, collections

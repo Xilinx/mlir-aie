@@ -18,3 +18,6 @@ add_mlir_conversion_library(MLIRAIEToConfiguration
   LINK_LIBS PUBLIC
   AIERT
   )
+target_include_directories(MLIRAIEToConfiguration SYSTEM PRIVATE
+  ${AIE_BINARY_DIR}/include/xaienginecdo_static
+)

@@ -200,3 +200,61 @@ func.func @v32bf16_srs_v32f32(%arg0 : vector<32xf32>) {
 // CHECK-SAME: %[[BITCAST4]], %[[BITCAST5]]) :
 // CHECK-SAME: (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
 // CHECK-NEXT: %[[BITCAST6:.*]] = llvm.bitcast %[[CONCAT]] : vector<16xi32> to vector<32xbf16>
+
+// -----
+
+func.func @v4x4bf16_srs_v4x4f32(%arg0 : vector<4x4xf32>) {
+  %c0 = arith.constant 0 : i32
+  %0 = aievec.srs %arg0, %c0 : vector<4x4xf32>, i32, vector<4x4xbf16>
+  return
+}
+
+// CHECK-LABEL: @v4x4bf16_srs_v4x4f32
+// CHECK-SAME: %[[ARG0:.*]]: vector<4x4xf32>
+// CHECK-NEXT: %[[SHIFT0:.*]] = arith.constant 0 : i32
+// CHECK-NEXT: %[[FLATTEN0:.*]] = vector.shape_cast %[[ARG0]] : vector<4x4xf32> to vector<16xf32>
+// CHECK-NEXT: %[[BITCAST0:.*]] = llvm.bitcast %[[FLATTEN0]] : vector<16xf32> to vector<8xi64>
+// CHECK-NEXT: %[[SRS0:.*]] = "xllvm.intr.aie2.v16accfloat.to.v16bf16"(
+// CHECK-SAME: %[[BITCAST0]]) :
+// CHECK-SAME: (vector<8xi64>) -> vector<16xbf16>
+// CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS0]] : vector<16xbf16> to vector<16xbf16>
+// CHECK-NEXT: %[[RESHAPE0:.*]] = vector.shape_cast %[[BITCAST1]] : vector<16xbf16> to vector<4x4xbf16>
+
+// -----
+
+func.func @v1x1x4x4bf16_srs_v1x1x4x4f32(%arg0 : vector<1x1x4x4xf32>) {
+  %c0 = arith.constant 0 : i32
+  %0 = aievec.srs %arg0, %c0 : vector<1x1x4x4xf32>, i32, vector<1x1x4x4xbf16>
+  return
+}
+
+// CHECK-LABEL: @v1x1x4x4bf16_srs_v1x1x4x4f32
+// CHECK-SAME: %[[ARG0:.*]]: vector<1x1x4x4xf32>
+// CHECK-NEXT: %[[SHIFT0:.*]] = arith.constant 0 : i32
+// CHECK-NEXT: %[[FLATTEN0:.*]] = vector.shape_cast %[[ARG0]] : vector<1x1x4x4xf32> to vector<16xf32>
+// CHECK-NEXT: %[[BITCAST0:.*]] = llvm.bitcast %[[FLATTEN0]] : vector<16xf32> to vector<8xi64>
+// CHECK-NEXT: %[[SRS0:.*]] = "xllvm.intr.aie2.v16accfloat.to.v16bf16"(
+// CHECK-SAME: %[[BITCAST0]]) :
+// CHECK-SAME: (vector<8xi64>) -> vector<16xbf16>
+// CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS0]] : vector<16xbf16> to vector<16xbf16>
+// CHECK-NEXT: %[[RESHAPE0:.*]] = vector.shape_cast %[[BITCAST1]] : vector<16xbf16> to vector<1x1x4x4xbf16>
+
+// -----
+
+func.func @v2x8i16_srs_v2x8i32(%arg0 : vector<2x8xi32>) {
+  %c0 = arith.constant 0 : i32
+  %0 = aievec.srs %arg0, %c0 : vector<2x8xi32>, i32, vector<2x8xi16>
+  return
+}
+
+// CHECK-LABEL: @v2x8i16_srs_v2x8i32
+// CHECK-SAME: %[[ARG0:.*]]: vector<2x8xi32>
+// CHECK-NEXT: %[[SHIFT0:.*]] = arith.constant 0 : i32
+// CHECK-NEXT: %[[SIGN0:.*]] = llvm.mlir.constant(1 : i32) : i32
+// CHECK-NEXT: %[[FLATTEN0:.*]] = vector.shape_cast %[[ARG0]] : vector<2x8xi32> to vector<16xi32>
+// CHECK-NEXT: %[[BITCAST0:.*]] = llvm.bitcast %[[FLATTEN0]] : vector<16xi32> to vector<8xi64>
+// CHECK-NEXT: %[[SRS0:.*]] = "xllvm.intr.aie2.I256.v16.acc32.srs"(
+// CHECK-SAME: %[[BITCAST0]], %[[SHIFT0]], %[[SIGN0]]) :
+// CHECK-SAME: (vector<8xi64>, i32, i32) -> vector<16xi16>
+// CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS0]] : vector<16xi16> to vector<16xi16>
+// CHECK-NEXT: %[[RESHAPE0:.*]] = vector.shape_cast %[[BITCAST1]] : vector<16xi16> to vector<2x8xi16>

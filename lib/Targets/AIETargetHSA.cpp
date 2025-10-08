@@ -56,14 +56,15 @@ getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
   return std::nullopt;
 }
 
-mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
+mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
+                                      llvm::StringRef deviceName) {
 
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  if (module.getOps<DeviceOp>().empty())
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  if (!targetOp)
     return module.emitOpError("expected AIE.device operation at toplevel");
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   // Putting the standard header
   output << hsa_cpp_file_header;
