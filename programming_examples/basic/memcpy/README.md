@@ -19,7 +19,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 ---
 
-### **Step-by-Step Instructions**
+## Step-by-Step Instructions
 
 1. **Configure Your Run Using `make` Parameters:**
 
@@ -38,8 +38,8 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 2. **Explore the Two Modes:**
 
-   * **Bypass Mode (`--bypass True`)**: Uses only shim DMA, bypassing the AIE core. This isolates raw memory movement capability
-   * **Passthrough Mode (`--bypass False`)**: Adds a minimal AIE kernel, mimicking a compute+transfer design. Helps understand potential core overhead
+   * **Bypass Mode (`--bypass True`)**: Uses only shim DMA, bypassing the AIE core. This isolates raw memory movement capability.
+   * **Passthrough Mode (`--bypass False`)**: Adds a minimal AIE kernel, mimicking a compute+transfer design. Helps understand potential core overhead.
 
 3. **Calculate Effective Bandwidth:**
 
@@ -59,7 +59,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 4. **Ensure Optimal Task Sequencing in the Runtime**
 
-	To achieve full parallelism when draining data from all 	columns and channels, the `memcpy` design can use **task groups** in the IRON 	`Runtime().sequence` to group operations and start them together before waiting for completion.
+	To achieve full parallelism when draining data from all columns and channels, the `memcpy` design can use **task groups** in the IRON `Runtime().sequence` to group operations and start them together before waiting for completion.
 
 	Modify your IRON runtime sequences to optimize performance using **task groups**:
 
@@ -115,11 +115,9 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
    * Record latency and bandwidth
    * Identify the configuration that delivers the highest bandwidth
    * Discuss why bypass mode may or may not outperform passthrough
-   * Understand the runtme sequence operations in the generated `memcpy.mlir` file
+   * Understand the runtime sequence operations in the generated `memcpy.mlir` file
 
----
-
-### **Expected Outcome**
+## Expected Outcome
 
 By the end of this exercise, you should have a solid understanding of:
 

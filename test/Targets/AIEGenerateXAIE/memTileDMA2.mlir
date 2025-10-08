@@ -11,31 +11,31 @@
 // RUN: aie-translate --aie-generate-xaie %s | FileCheck %s
 
 // CHECK: XAie_DmaDesc [[bd0:.*]];
-// CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,1))
+// CHECK: XAie_DmaDescInit(ctx->XAieDevInst, &([[bd0]]), XAie_TileLoc(2,1))
 // CHECK: XAie_DmaSetLock(&([[bd0]]), XAie_LockInit(0,0),XAie_LockInit(0,1))
 // CHECK: [[bd0]].LockDesc.LockAcqEn = XAIE_DISABLE;
 // CHECK: XAie_DmaSetAddrLen(&([[bd0]]), /* addrA */ 0x0,  /* len */ 64)
 // CHECK: XAie_DmaSetNextBd(&([[bd0]]),  /* nextbd */ 1,  /* enableNextBd */ 1)
 // CHECK: XAie_DmaEnableBd(&([[bd0]]))
-// CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd0]]), XAie_TileLoc(2,1),  /* bd */ 0)
+// CHECK: XAie_DmaWriteBd(ctx->XAieDevInst, &([[bd0]]), XAie_TileLoc(2,1),  /* bd */ 0)
 
 // CHECK: XAie_DmaDesc [[bd1:.*]];
-// CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,1))
+// CHECK: XAie_DmaDescInit(ctx->XAieDevInst, &([[bd1]]), XAie_TileLoc(2,1))
 // CHECK: XAie_DmaSetLock(&([[bd1]]), XAie_LockInit(0,0),XAie_LockInit(64,1))
 // CHECK: [[bd1]].LockDesc.LockAcqEn = XAIE_DISABLE;
 // CHECK: XAie_DmaSetAddrLen(&([[bd1]]), /* addrA */ 0x80000,  /* len */ 64)
 // CHECK: XAie_DmaSetNextBd(&([[bd1]]),  /* nextbd */ 2,  /* enableNextBd */ 1)
 // CHECK: XAie_DmaEnableBd(&([[bd1]]))
-// CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd1]]), XAie_TileLoc(2,1),  /* bd */ 1)
+// CHECK: XAie_DmaWriteBd(ctx->XAieDevInst, &([[bd1]]), XAie_TileLoc(2,1),  /* bd */ 1)
 
 // CHECK: XAie_DmaDesc [[bd2:.*]];
-// CHECK: XAie_DmaDescInit(&(ctx->DevInst), &([[bd2]]), XAie_TileLoc(2,1))
+// CHECK: XAie_DmaDescInit(ctx->XAieDevInst, &([[bd2]]), XAie_TileLoc(2,1))
 // CHECK: XAie_DmaSetLock(&([[bd2]]), XAie_LockInit(0,0),XAie_LockInit(128,1))
 // CHECK: [[bd2]].LockDesc.LockAcqEn = XAIE_DISABLE;
 // CHECK: XAie_DmaSetAddrLen(&([[bd2]]), /* addrA */ 0x100000,  /* len */ 64)
 // CHECK: XAie_DmaSetNextBd(&([[bd2]]),  /* nextbd */ 0,  /* enableNextBd */ 0)
 // CHECK: XAie_DmaEnableBd(&([[bd2]]))
-// CHECK: XAie_DmaWriteBd(&(ctx->DevInst), &([[bd2]]), XAie_TileLoc(2,1),  /* bd */ 2)
+// CHECK: XAie_DmaWriteBd(ctx->XAieDevInst, &([[bd2]]), XAie_TileLoc(2,1),  /* bd */ 2)
 
 module @aie_module  {
  aie.device(xcve2802) {

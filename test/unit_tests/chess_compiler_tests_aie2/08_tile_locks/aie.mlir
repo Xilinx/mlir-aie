@@ -44,10 +44,7 @@
 
 module @test_chess_08_tile_locks {
   aie.device(xcve2802) {
-    %t63 = aie.tile(6, 3)
     %t73 = aie.tile(7, 3)
-    %t72 = aie.tile(7, 2)
-    %t74 = aie.tile(7, 4)
 
     %buf_e = aie.buffer(%t73) { sym_name = "east" } : memref<256xi32>
     %buf_n = aie.buffer(%t73) { sym_name = "north" } : memref<256xi32>

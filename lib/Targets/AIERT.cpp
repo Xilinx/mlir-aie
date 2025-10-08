@@ -854,17 +854,25 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
       int row = tileOp.rowIndex();
       if (auto coreOp = tileOp.getCoreOp()) {
         std::string fileName;
-        if (auto fileAttr = coreOp.getElfFile())
+        if (auto fileAttr = coreOp.getElfFile()) {
           fileName = fileAttr->str();
-        else
-          fileName = (llvm::Twine("core_") + std::to_string(col) + "_" +
-                      std::to_string(row) + ".elf")
-                         .str();
-        auto ps = std::filesystem::path::preferred_separator;
-        if (failed(addAieElf(
-                col, row,
-                (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str(),
-                aieSim)))
+        } else {
+          coreOp.emitOpError()
+              << "Expected lowered ELF file to be given as attribute "
+                 "`elf_file` for this core. Compile cores first.";
+          return failure();
+        }
+        // Check if fileName is already an absolute path.
+        // If so, use it directly. Otherwise, concatenate with elfPath.
+        std::string fullPath;
+        if (std::filesystem::path(fileName).is_absolute()) {
+          fullPath = fileName;
+        } else {
+          auto ps = std::filesystem::path::preferred_separator;
+          fullPath =
+              (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();
+        }
+        if (failed(addAieElf(col, row, fullPath, aieSim)))
           return failure();
       }
     }

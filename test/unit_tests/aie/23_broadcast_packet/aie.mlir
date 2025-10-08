@@ -11,6 +11,7 @@
 // RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %extraAieCcFlags% %S/test.cpp -o test.elf
 
 module @test23_broadcast_packet {
+aie.device(xcvc1902) {
 
   %t72 = aie.tile(7, 2)
 
@@ -110,4 +111,5 @@ module @test23_broadcast_packet {
     aie.end
   }
 
+}
 }

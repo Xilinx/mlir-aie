@@ -12,6 +12,7 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark01_DDR_SHIM_fill_rate {
+aie.device(xcvc1902) {
 
   %t70 = aie.tile(7, 0)
   %t71 = aie.tile(7, 1)
@@ -60,4 +61,6 @@ module @benchmark01_DDR_SHIM_fill_rate {
     ^end:
       aie.end
    }
+
+}
 }

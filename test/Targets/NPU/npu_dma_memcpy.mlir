@@ -10,7 +10,7 @@
 
 // RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
 
-// CHECK: memref.global "private" constant {{.*}} : memref<8xi32> = dense<[2048, 0, 0, 33554432, -2113929153, 2047, 0, 33554432]>
+// CHECK: memref.global "private" constant {{.*}} : memref<8xi32> = dense<[2048, 0, 0, 33554432, -2113929153, 33556479, 0, 33554432]>
 // CHECK: aiex.runtime_sequence
 // CHECK:   %[[VALUE:.*]] = memref.get_global {{.*}} : memref<8xi32>
 // CHECK:   aiex.npu.blockwrite(%[[VALUE]]) {address = 118784 : ui32} : memref<8xi32>

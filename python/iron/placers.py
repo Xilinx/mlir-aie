@@ -7,6 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from abc import ABCMeta, abstractmethod
+from typing import Optional
 import statistics
 
 from .device import Device
@@ -48,10 +49,15 @@ class SequentialPlacer(Placer):
     The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles.
     However, it can yield invalid placements that exceed other resource limits, such as memory, For complex or
     resource sensitive designs, a more complex placer or manual placement is required.
+
+    The user may define a limited number of cores per column, which could help with issues in using packet-
+    switched tracing. By limiting the number of cores per column, the placer will assign workers to compute
+    tiles in a row-wise direction up to the defined limit then move to the next column for subsequent placement.
     """
 
-    def __init__(self):
+    def __init__(self, cores_per_col: Optional[int] = None):
         super().__init__()
+        self.cores_per_col = cores_per_col
 
     def make_placement(
         self,
@@ -90,6 +96,19 @@ class SequentialPlacer(Placer):
                         f"device {device} or has already been used."
                     )
                 computes.remove(worker.tile)
+
+        # Shorten the list of compute tiles available if the cores per column value is set
+        if self.cores_per_col is not None:
+            unused_computes_at_col = {
+                column: [tile for tile in computes if tile.col == column]
+                for column in range(device.cols)
+            }
+            computes = []
+            for col, tiles in unused_computes_at_col.items():
+                if len(tiles) < self.cores_per_col:
+                    raise ValueError(f"Not enough compute tiles at column {col}!")
+                else:
+                    computes.extend(tiles[: self.cores_per_col])
 
         for worker in workers:
             if worker.tile == AnyComputeTile:

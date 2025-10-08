@@ -12,6 +12,8 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test01_memory_read_write {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
@@ -29,4 +31,6 @@ module @test01_memory_read_write {
     memref.store %val3,%buf13_0[%idx3] : memref<256xi32>
     aie.end
   }
+
+}
 }

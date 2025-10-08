@@ -10,7 +10,7 @@
 
 // REQUIRES: aiesimulator, valid_xchess_license, !hsa
 // RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
-// RUN: xchesscc_wrapper aie +l aie.mlir.prj/core_7_3.bcf %S/kernel.cc -o custom_7_3.elf
+// RUN: xchesscc_wrapper aie +l aie.mlir.prj/main_core_7_3.bcf %S/kernel.cc -o custom_7_3.elf
 // RUN: %run_on_board ./test.elf
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
 
@@ -18,6 +18,8 @@
 // CHECK: PASS!
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
+aie.device(xcvc1902) {
+
   %t73 = aie.tile(7, 3)
   %t72 = aie.tile(7, 2)
   %t71 = aie.tile(7, 1)
@@ -93,5 +95,5 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       aie.end
   }
 
-
+}
 }

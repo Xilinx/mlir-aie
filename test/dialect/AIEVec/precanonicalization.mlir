@@ -1,36 +1,36 @@
 // RUN: aie-opt %s -canonicalize-vector-for-aievec -canonicalize -split-input-file | FileCheck %s
 
-// CHECK-LABEL: func.func @splat(
+// CHECK-LABEL: func.func @broadcast(
 // CHECK-SAME: %[[MEM:.*]]: memref<?xi32>,
 // CHECK-SAME: %[[POS:.*]]: index
-func.func @splat(%m : memref<?xi32>, %pos : index) -> vector<8xi32> {
+func.func @broadcast(%m : memref<?xi32>, %pos : index) -> vector<8xi32> {
     // CHECK: %[[C0:.*]] = arith.constant 0 : i32
     %c0_i32 = arith.constant 0 : i32
     %i = affine.apply affine_map<(d0) -> (d0 + 5)>(%pos)
     // CHECK: %[[V:.*]] = vector.transfer_read %[[MEM]][%[[POS]]], %[[C0]] : memref<?xi32>, vector<8xi32>
     // CHECK: %[[E:.*]] = vector.extract %[[V]][5] : i32 from vector<8xi32>
-    // CHECK: %[[S:.*]] = vector.splat %[[E]] : vector<8xi32>
+    // CHECK: %[[B:.*]] = vector.broadcast %[[E]] : i32 to vector<8xi32>
     %v = vector.transfer_read %m[%i], %c0_i32 {in_bounds = [true], permutation_map = affine_map<(d0) -> (0)>} : memref<?xi32>, vector<8xi32>
-    // CHECK: return %[[S]] : vector<8xi32>
+    // CHECK: return %[[B]] : vector<8xi32>
     return %v : vector<8xi32>
 }
 
 // -----
 
 // CHECK: #[[IDXMAP:.*]] = affine_map<()[s0] -> (s0 + 24)>
-// CHECK-LABEL: func.func @far_splat(
+// CHECK-LABEL: func.func @far_broadcast(
 // CHECK-SAME: %[[MEM:.*]]: memref<?xi32>,
 // CHECK-SAME: %[[POS:.*]]: index
-func.func @far_splat(%m : memref<?xi32>, %pos : index) -> vector<8xi32> {
+func.func @far_broadcast(%m : memref<?xi32>, %pos : index) -> vector<8xi32> {
     // CHECK: %[[C0:.*]] = arith.constant 0 : i32
     %c0_i32 = arith.constant 0 : i32
     // CHECK: %[[IDX:.*]] = affine.apply #[[IDXMAP]]()[%[[POS]]]
     %i = affine.apply affine_map<(d0) -> (d0 + 29)>(%pos)
     // CHECK: %[[V:.*]] = vector.transfer_read %[[MEM]][%[[IDX]]], %[[C0]] : memref<?xi32>, vector<8xi32>
     // CHECK: %[[E:.*]] = vector.extract %[[V]][5] : i32 from vector<8xi32>
-    // CHECK: %[[S:.*]] = vector.splat %[[E]] : vector<8xi32>
+    // CHECK: %[[B:.*]] = vector.broadcast %[[E]] : i32 to vector<8xi32>
     %v = vector.transfer_read %m[%i], %c0_i32 {in_bounds = [true], permutation_map = affine_map<(d0) -> (0)>} : memref<?xi32>, vector<8xi32>
-    // CHECK: return %[[S]] : vector<8xi32>
+    // CHECK: return %[[B]] : vector<8xi32>
     return %v : vector<8xi32>
 }
 
@@ -61,9 +61,9 @@ func.func @rank_zero_transfer_read(%m : memref<i16>) -> vector<16xi16> {
     // CHECK-DAG: %[[EXPMEM:.*]] = memref.expand_shape %[[MEM]] [] output_shape [1] : memref<i16> into memref<1xi16>
     // CHECK: %[[LV:.*]] = vector.transfer_read %[[EXPMEM]][%[[C0idx]]], %[[C0i16]] : memref<1xi16>, vector<16xi16>
     // CHECK: %[[E:.*]] = vector.extract %[[LV]][0] : i16 from vector<16xi16>
-    // CHECK: %[[S:.*]] = vector.splat %[[E]] : vector<16xi16>
+    // CHECK: %[[B:.*]] = vector.broadcast %[[E]] : i16 to vector<16xi16>
     %v = vector.transfer_read %m[], %c0_i16 {in_bounds = [true], permutation_map = affine_map<()->(0)>} : memref<i16>, vector<16xi16>
-    // CHECK: return %[[S]] : vector<16xi16>
+    // CHECK: return %[[B]] : vector<16xi16>
     return %v : vector<16xi16>
 }
 
@@ -75,7 +75,7 @@ func.func @extsi_hoisting_through_extract_n_bcast(%v : vector<16xi8>)
                                                             -> vector<32xi32> {
 // CHECK: %[[EXV:.*]] = arith.extsi %[[VEC]] : vector<16xi8> to vector<16xi32>
 // CHECK: %[[EXS:.*]] = vector.extract %[[EXV]][7] : i32 from vector<16xi32>
-// CHECK: %[[BCAST:.*]] = vector.splat %[[EXS]] : vector<32xi32>
+// CHECK: %[[BCAST:.*]] = vector.broadcast %[[EXS]] : i32 to vector<32xi32>
 // CHECK: return %[[BCAST]] : vector<32xi32>
   %si8 = vector.extract %v[7] : i8 from vector<16xi8>
   %vi8 = vector.broadcast %si8 : i8 to vector<32xi8>

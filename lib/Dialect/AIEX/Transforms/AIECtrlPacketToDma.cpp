@@ -82,56 +82,102 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
       auto newBlockArg = newSeq.getBody().addArgument(ctrlPktMemrefType, loc);
       builder.setInsertionPointToStart(&newSeq.getBody().front());
 
+      // Collect all npu.control_packet ops, grouped by location in 'batches'
+      struct BatchInfo {
+        TileID tileId;
+        int64_t startOffset;
+        int64_t totalSize;
+        std::string shimDmaAllocName;
+        int shimChan;
+      };
+      std::vector<BatchInfo> batches;
+
       int64_t ddrOffset = 0;
       Block &entry = f.getBody().front();
+
+      // First pass: collect and batch control packet operations
       for (auto &o : entry) {
-        llvm::TypeSwitch<Operation *>(&o).Case<NpuControlPacketOp>(
-            [&](auto op) {
-              // Destination tile info
-              int col = op.getColumnFromAddr();
-              int row = op.getRowFromAddr();
+        auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
+        if (!ctrlPktOp)
+          continue;
+        int col = ctrlPktOp.getColumnFromAddr();
+        int row = ctrlPktOp.getRowFromAddr();
 
-              // Control packet offset (to raw data at ddr) and size
-              int64_t ctrlPktSize = 0;
-              auto data = op.getData();
-              if (data)
-                ctrlPktSize = data->size();
-              else if (op.getLength())
-                ctrlPktSize = *op.getLength();
-              ctrlPktSize++; // Ctrl info word
-              ctrlPktSize++; // Packet header
+        // Calculate control packet size
+        int64_t ctrlPktSize = 0;
+        auto data = ctrlPktOp.getData();
+        if (data)
+          ctrlPktSize = data->size();
+        else if (ctrlPktOp.getLength())
+          ctrlPktSize = *ctrlPktOp.getLength();
+        ctrlPktSize++; // Ctrl info word
+        ctrlPktSize++; // Packet header
 
-              const std::vector<int64_t> staticOffsets = {0, 0, 0, ddrOffset};
-              ddrOffset += ctrlPktSize;
-              const std::vector<int64_t> staticSizes = {1, 1, 1, ctrlPktSize};
-              const std::vector<int64_t> staticStrides = {0, 0, 0, 1};
+        // Check if we can batch with the previous packet
+        if (targetModel.getTargetArch() == AIEArch::AIE2p && !batches.empty() &&
+            batches.back().tileId == TileID{col, row}) {
+          // Add to existing batch
+          batches.back().totalSize += ctrlPktSize;
+        } else {
+          // Start new batch
+          auto rowToShimChanMap =
+              getRowToShimChanMap(targetModel, WireBundle::DMA);
+          int shimChan = rowToShimChanMap[row];
 
-              // Shim dma alloc symbol name
-              std::string shimDmaAllocName = "ctrlpkt";
-              shimDmaAllocName += "_col" + std::to_string(col);
-              shimDmaAllocName += "_mm2s";
-              auto rowToShimChanMap =
-                  getRowToShimChanMap(targetModel, WireBundle::DMA);
-              int shimChan = rowToShimChanMap[row];
-              shimDmaAllocName += "_chan" + std::to_string(shimChan);
+          std::string shimDmaAllocName = "ctrlpkt";
+          shimDmaAllocName += "_col" + std::to_string(col);
+          shimDmaAllocName += "_mm2s";
+          shimDmaAllocName += "_chan" + std::to_string(shimChan);
 
-              StringRef metadata = builder.getStringAttr(shimDmaAllocName);
-              builder.create<NpuDmaMemcpyNdOp>(
-                  builder.getUnknownLoc(), newBlockArg, SmallVector<Value>{},
-                  SmallVector<Value>{}, SmallVector<Value>{},
-                  ArrayRef(staticOffsets), ArrayRef(staticSizes),
-                  ArrayRef(staticStrides), nullptr, metadata, 0, true, 0, 0, 0,
-                  0, 0, 0);
+          batches.push_back({TileID{col, row}, ddrOffset, ctrlPktSize,
+                             shimDmaAllocName, shimChan});
+        }
+        ddrOffset += ctrlPktSize;
+      }
 
-              auto shimRow = builder.getI32IntegerAttr(0);
-              auto shimCol = builder.getI32IntegerAttr(col);
-              auto dir = builder.getI32IntegerAttr(1); // MM2S
-              auto chan = builder.getI32IntegerAttr(shimChan);
-              auto col_num = builder.getI32IntegerAttr(1);
-              auto row_num = builder.getI32IntegerAttr(1);
-              builder.create<AIEX::NpuSyncOp>(loc, shimCol, shimRow, dir, chan,
-                                              col_num, row_num);
-            });
+      // Second pass: emit batched operations in original order
+      auto batchIt = batches.begin();
+
+      for (auto &o : entry) {
+        auto ctrlPktOp = dyn_cast<NpuControlPacketOp>(&o);
+        if (!ctrlPktOp)
+          continue;
+
+        assert(batchIt != batches.end() &&
+               "Expected control packet to be in a batch");
+
+        int col = ctrlPktOp.getColumnFromAddr();
+        int row = ctrlPktOp.getRowFromAddr();
+
+        // Check if this is the first packet of a new batch,
+        // otherwise skip it.
+        if (batchIt->tileId != TileID{col, row})
+          continue;
+
+        // Emit the batched DMA operation for this (col, row) pair
+        const std::vector<int64_t> staticOffsets = {0, 0, 0,
+                                                    batchIt->startOffset};
+        const std::vector<int64_t> staticSizes = {1, 1, 1, batchIt->totalSize};
+        const std::vector<int64_t> staticStrides = {0, 0, 0, 1};
+
+        StringRef metadata = builder.getStringAttr(batchIt->shimDmaAllocName);
+        builder.create<NpuDmaMemcpyNdOp>(
+            builder.getUnknownLoc(), newBlockArg, SmallVector<Value>{},
+            SmallVector<Value>{}, SmallVector<Value>{}, ArrayRef(staticOffsets),
+            ArrayRef(staticSizes), ArrayRef(staticStrides), nullptr, metadata,
+            0, true, 0, 0, 0, 0, 0, 0);
+
+        auto shimRow = builder.getI32IntegerAttr(0);
+        auto shimCol = builder.getI32IntegerAttr(col);
+        auto dir = builder.getI32IntegerAttr(1); // MM2S
+        auto chan = builder.getI32IntegerAttr(batchIt->shimChan);
+        auto col_num = builder.getI32IntegerAttr(1);
+        auto row_num = builder.getI32IntegerAttr(1);
+        builder.create<AIEX::NpuSyncOp>(loc, shimCol, shimRow, dir, chan,
+                                        col_num, row_num);
+        ++batchIt;
+        if (batchIt == batches.end())
+          break;
       }
 
       erased.push_back(f);

@@ -118,7 +118,7 @@ jobs:
       - name: Build and test
         run: |
 
-          mkdir build_release
+          mkdir -p build_release/install
           cd build_release
 
           if [ x"${{ contains(matrix.OS, 'windows') }}" == x"true" ]; then
@@ -135,6 +135,7 @@ jobs:
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \

@@ -197,13 +197,13 @@ run: ${targetname}.exe ${xclbin_target}
 trace: ${targetname}.exe ${trace_xclbin_target} ${insts_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs} -t ${trace_size}
-	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir ${trace_mlir_target} --output trace_mm.json
+	${srcdir}/../../../../python/utils/parse_trace.py --input trace.txt --mlir ${trace_mlir_target} --output trace_mm.json
 
 #	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
 
 .PHONY: parse_trace
 parse_trace:
-	${srcdir}/../../../utils/parse_trace.py --input trace.txt --mlir ${trace_mlir_target} --output trace_mm.json
+	${srcdir}/../../../../python/utils/parse_trace.py --input trace.txt --mlir ${trace_mlir_target} --output trace_mm.json
 
 .PHONY: clean
 clean: clean_trace

@@ -62,6 +62,9 @@ config.substitutions.append(
     )
 )
 
+# make sure JIT stores compiled designs in different subdirectory for each test run
+llvm_config.with_system_environment("IRON_CACHE_HOME")
+
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 # for peano clang
@@ -142,10 +145,7 @@ if config.xrt_lib_dir:
         config.xrt_include_dir, config.xrt_lib_dir
     )
     try:
-        # xbutil is deprecated/renamed to xrt-smi, leaving it xbutil for now for
-        # compatibility with older versions of XRT
-        # xrtsmi = os.path.join(config.xrt_bin_dir, "xrt-smi")
-        xrtsmi = os.path.join(config.xrt_bin_dir, "xbutil")
+        xrtsmi = os.path.join(config.xrt_bin_dir, "xrt-smi")
         result = subprocess.run(
             [xrtsmi, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
@@ -338,6 +338,9 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
+
+# Concurrency tests control their own parallelism, so run them serially
+lit_config.parallelism_groups["concurrency"] = 1
 
 if "LIT_AVAILABLE_FEATURES" in os.environ:
     for feature in os.environ["LIT_AVAILABLE_FEATURES"].split():

@@ -121,7 +121,7 @@ int *mlir_aie_mem_alloc(struct aie_libxaie_ctx_t *ctx, ext_mem_model_t &handle,
   handle.size = size;
 
   // Map the memory
-  if (XAie_MemAttach(&(ctx->DevInst), &(handle.MemInst), DevAddr, (u64)VAddr,
+  if (XAie_MemAttach(ctx->XAieDevInst, &(handle.MemInst), DevAddr, (u64)VAddr,
                      size, XAIE_MEM_NONCACHEABLE, handle.fd) != XAIE_OK) {
     XAIE_ERROR("dmabuf map failed\n");
     goto error_map;

@@ -79,8 +79,7 @@ func.func @i32_i32_i32_mul_elem(%arg0 : vector<16xi32>, %arg1 : vector<16xi32>) 
 // CHECK-NEXT: %[[CST8:.*]] = llvm.mlir.constant(1114 : i32) : i32
 // CHECK-NEXT: %[[BITCAST3:.*]] = llvm.bitcast %[[SHUFF0]] : vector<16xi32> to vector<64xi8>
 // CHECK-NEXT: %[[ACC3:.*]] = "xllvm.intr.aie2.I512.I512.ACC1024.acc64.mac.conf"(%[[BITCAST3]], %[[SHUFF2]], %[[ACC2]], %[[CST8]]) : (vector<64xi8>, vector<16xi32>, vector<16xi64>, i32) -> vector<16xi64>
-// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[ACC3]] : vector<16xi64> to vector<16xi64>
-// CHECK-NEXT: return %[[RES]] : vector<16xi64>
+// CHECK-NEXT: return %[[ACC3]] : vector<16xi64>
 
 // -----
 

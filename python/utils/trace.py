@@ -1126,9 +1126,7 @@ def configure_packet_tracing_flow(tiles_to_trace, shim):
                 tiles_to_trace[i],
                 WireBundle.Trace,
                 0,
-                shim,
-                WireBundle.DMA,
-                1,
+                dests={"dest": shim, "port": WireBundle.DMA, "channel": 1},
                 keep_pkt_header=True,
             )
 
@@ -1140,9 +1138,7 @@ def configure_packet_tracing_flow(tiles_to_trace, shim):
                 tiles_to_trace[i],
                 WireBundle.Trace,
                 1,
-                shim,
-                WireBundle.DMA,
-                1,
+                dests={"dest": shim, "port": WireBundle.DMA, "channel": 1},
                 keep_pkt_header=True,
             )
 

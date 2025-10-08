@@ -12,6 +12,8 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test04_shared_memory {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
   %tile14 = aie.tile(1, 4)
 
@@ -54,4 +56,5 @@ module @test04_shared_memory {
     aie.use_lock(%lock14_7, "Release", 1) // release for read
     aie.end
   }
+}
 }
