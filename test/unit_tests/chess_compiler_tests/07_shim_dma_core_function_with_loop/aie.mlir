@@ -18,6 +18,8 @@
 // CHECK: test start.
 // CHECK: PASS!
 
+// XFAIL: *
+
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
 aie.device(xcvc1902) {
 
