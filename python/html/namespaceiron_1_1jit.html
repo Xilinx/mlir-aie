@@ -92,6 +92,10 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:af5f8841baed3375062e87e60d08b86bf" id="r_af5f8841baed3375062e87e60d08b86bf"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#af5f8841baed3375062e87e60d08b86bf">_cleanup_failed_compilation</a> (cache_dir)</td></tr>
+<tr class="separator:af5f8841baed3375062e87e60d08b86bf"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a70335eb4bc927ed713a862305dfedc6f" id="r_a70335eb4bc927ed713a862305dfedc6f"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a70335eb4bc927ed713a862305dfedc6f">file_lock</a> (lock_file_path, timeout_seconds=60)</td></tr>
+<tr class="separator:a70335eb4bc927ed713a862305dfedc6f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2d30fa0e813a182cd171cf28e6204a92" id="r_a2d30fa0e813a182cd171cf28e6204a92"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a2d30fa0e813a182cd171cf28e6204a92">jit</a> (function=None, is_placed=True, use_cache=True)</td></tr>
 <tr class="separator:a2d30fa0e813a182cd171cf28e6204a92"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6735e4cdaac7eed7879aa98e1cfa7142" id="r_a6735e4cdaac7eed7879aa98e1cfa7142"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1jit.html#a6735e4cdaac7eed7879aa98e1cfa7142">compile_external_kernel</a> (func, kernel_dir, target_arch)</td></tr>
@@ -111,6 +115,32 @@ Variables</h2></td></tr>
 <tr class="separator:a24e0a2fa0b6098d83d5bfca27909b5aa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
+<a id="af5f8841baed3375062e87e60d08b86bf" name="af5f8841baed3375062e87e60d08b86bf"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af5f8841baed3375062e87e60d08b86bf">&#9670;&#160;</a></span>_cleanup_failed_compilation()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.jit._cleanup_failed_compilation </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>cache_dir</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Clean up cache directory after failed compilation, preserving the lock file.</pre> 
+</div>
+</div>
 <a id="a2be40af94697cf00f64950ca30d32527" name="a2be40af94697cf00f64950ca30d32527"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a2be40af94697cf00f64950ca30d32527">&#9670;&#160;</a></span>_create_function_cache_key()</h2>
 
@@ -232,6 +262,39 @@ Args:
     func: ExternalFunction instance to compile
     kernel_dir: Directory to place the compiled object file
     target_arch: Target architecture (e.g., "aie2" or "aie2p")
+</pre> 
+</div>
+</div>
+<a id="a70335eb4bc927ed713a862305dfedc6f" name="a70335eb4bc927ed713a862305dfedc6f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a70335eb4bc927ed713a862305dfedc6f">&#9670;&#160;</a></span>file_lock()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.jit.file_lock </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>lock_file_path</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>timeout_seconds</em> = <code>60</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Context manager for file locking using flock to prevent race conditions.
+
+Args:
+    lock_file_path (str): Path to the lock file
+    timeout_seconds (int): Maximum time to wait for lock acquisition in seconds
 </pre> 
 </div>
 </div>
