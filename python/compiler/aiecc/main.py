@@ -32,7 +32,7 @@ import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
 from aie.dialects import aie as aiedialect
 from aie.dialects import aiex as aiexdialect
-from aie.ir import Context, Location, Module, InsertionPoint, IndexType, StringAttr
+from aie.ir import Context, Location, Module, InsertionPoint, IndexType, StringAttr, IntegerAttr, IntegerType
 from aie.passmanager import PassManager
 
 
@@ -318,6 +318,48 @@ def generate_runtime_sequences_list(device_op):
         if not opts.sequence_name or s.sym_name.value == opts.sequence_name
     ]
 
+    
+def find_aiebu_asm():
+    asm_bin = "aiebu-asm"
+    if shutil.which(asm_bin) is None:
+        asm_bin = os.path.join("/", "opt", "xilinx", "aiebu", "bin", "aiebu-asm")
+        if shutil.which(asm_bin) is None:
+            asm_bin = None
+    if asm_bin is None:
+        print(
+            "Error: aiebu-asm not found.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return asm_bin
+
+def create_device_id_mapping(devices):
+    """Assign an ID to each device in the MLIR; used later to assign IDs for each PDI"""
+    device_to_id = {}
+    for i, (device_op, device_name) in enumerate(devices, 1):
+        device_to_id[device_name] = i
+    return device_to_id
+
+
+def assign_load_pdi_ids(mlir_module_str, device_to_id_mapping):
+    """Transform symbolic aiex.npu.load_pdi references to numeric IDs"""
+    with Context() as context, Location.unknown():
+        module = Module.parse(mlir_module_str)
+        
+        for runtime_seq in find_ops(module.operation, 
+                                  lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp)):
+            for load_pdi_op in find_ops(runtime_seq.operation,
+                                      lambda o: isinstance(o.operation.opview, aiexdialect.NpuLoadPdiOp)):
+                if hasattr(load_pdi_op, 'device_ref') and load_pdi_op.device_ref is not None:
+                    device_name = load_pdi_op.device_ref.value
+                    if device_name not in device_to_id_mapping:
+                        print(f"Warning: Device '{device_name}' for load_pdi instruction does not have a matching device PDI.")
+                        sys.exit(1)
+                    pdi_id = device_to_id_mapping[device_name]
+                    load_pdi_op.id = IntegerAttr.get(IntegerType.get_signless(32, context=context), pdi_id)
+        
+        return str(module)
+
 
 def set_elf_file_for_core(core, path):
     with InsertionPoint.at_block_terminator(
@@ -492,6 +534,12 @@ class FlowRunner:
 
     def prepend_tmp(self, x):
         return os.path.join(self.tmpdirname, x)
+    
+    def pdi_file_name(self, device_name):
+        return opts.pdi_name.format(device_name) if opts.pdi else self.prepend_tmp(f"{device_name}.pdi")
+    
+    def npu_insts_file_name(self, device_name, seq_name):
+        return opts.insts_name.format(device_name, seq_name) if opts.npu else self.prepend_tmp(f"{device_name}_{seq_name}.bin")
 
     async def do_call(self, task_id, command, force=False):
         if self.stopall:
@@ -800,20 +848,7 @@ class FlowRunner:
         return file_txn
 
     async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
-
-        # find aiebu-asm binary
-        asm_bin = "aiebu-asm"
-        if shutil.which(asm_bin) is None:
-            asm_bin = os.path.join("/", "opt", "xilinx", "aiebu", "bin", "aiebu-asm")
-            if shutil.which(asm_bin) is None:
-                asm_bin = None
-
-        if asm_bin is None:
-            print(
-                "Error: aiebu-asm not found, generation of ELF file failed.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        asm_bin = find_aiebu_asm()
 
         args = [
             asm_bin,
@@ -848,6 +883,75 @@ class FlowRunner:
             ]
 
         await self.do_call(None, args)
+
+
+    async def generate_full_elf_config_json(self, devices, device_to_id_mapping, opts, parent_task=None):
+        config = {"xrt-kernels": []}
+        
+        for device_op, device_name in devices:
+            sequences = generate_runtime_sequences_list(device_op)
+            
+            max_arg_count = max(len(seq_op.body.blocks[0].arguments) for seq_op, seq_name in sequences)
+            arguments = [{
+                "name": f"arg_{i}",
+                "type": "char *", 
+                "offset": hex(i * 8)
+            } for i in range(max_arg_count)]
+            
+            kernel_entry = {
+                "name": device_name,
+                "arguments": arguments,
+                "instance": [],
+                "PDIs": []
+            }
+            
+            pdi_id = device_to_id_mapping[device_name]
+            pdi_filename = self.pdi_file_name(device_name)
+            kernel_entry["PDIs"].append({
+                "id": pdi_id,
+                "PDI_file": pdi_filename
+            })
+            
+            for seq_op, seq_name in sequences:
+                insts_filename = self.npu_insts_file_name(device_name, seq_name)
+                kernel_entry["instance"].append({
+                    "id": seq_name,
+                    "TXN_ctrl_code_file": insts_filename
+                })
+            
+            config["xrt-kernels"].append(kernel_entry)
+        
+        return config
+
+
+    async def assemble_full_elf(self, config_json_path, output_elf_path, parent_task=None):
+        asm_bin = find_aiebu_asm()
+        args = [
+            asm_bin,
+            "-t", "aie2_config",
+            "-j", config_json_path,
+            "-o", output_elf_path
+        ]
+        await self.do_call(parent_task, args)
+        if self.opts.verbose:
+            print(f"Generated full ELF: {output_elf_path}")
+
+
+    async def generate_full_elf(self, devices, device_to_id_mapping, parent_task=None):
+        """Generate config.json and invoke aiebu-asm after all artifacts are ready"""
+        if parent_task:
+            self.progress_bar.update(parent_task, advance=0, command="Generating config.json")
+        config = await self.generate_full_elf_config_json(devices, device_to_id_mapping, self.opts, parent_task)
+        config_json_path = self.prepend_tmp("config.json")
+        await write_file_async(json.dumps(config, indent=2), config_json_path)
+        if self.opts.verbose:
+            if self.opts.verbose:
+                print(f"Generated config.json: {config_json_path}")
+        if parent_task:
+            self.progress_bar.update(parent_task, advance=1, command="Generating config.json")
+        full_elf_path = self.opts.full_elf_name or "aie.elf"
+        await self.assemble_full_elf(config_json_path, full_elf_path, parent_task)
+
 
     async def process_ctrlpkt(self, module_str, device_name):
         with Context(), Location.unknown():
@@ -935,11 +1039,6 @@ class FlowRunner:
                 "-w",
             ],
         )
-        if opts.pdi:
-            tmp = file_design_pdi
-            if opts.verbose:
-                print(f"copy {tmp} to {opts.pdi_name.format(device_name)}")
-            shutil.copy(tmp, opts.pdi_name.format(device_name))
 
     # generate an xclbin. The inputs are self.mlir_module_str and the cdo
     # binaries from the process_cdo step.
@@ -954,7 +1053,7 @@ class FlowRunner:
             f"{device_name}_aie_input_partition.json"
         )
         file_kernels = self.prepend_tmp(f"{device_name}_kernels.json")
-        file_pdi = self.prepend_tmp(f"{device_name}_design.pdi")
+        file_pdi = self.pdi_file_name(device_name)
 
         # collect the tasks to generate the inputs to xclbinutil
         processes = []
@@ -1443,6 +1542,15 @@ class FlowRunner:
                 sys.exit(1)
             aie_target, aie_peano_target = aie_targets[0], aie_peano_targets[0]
 
+            # Handle full ELF generation configuration
+            if opts.generate_full_elf:
+                device_to_id_mapping = create_device_id_mapping(devices)
+                self.mlir_module_str = assign_load_pdi_ids(
+                    self.mlir_module_str, device_to_id_mapping
+                )
+                transformed_mlir_path = self.prepend_tmp("input_with_pdi_ids.mlir")
+                await write_file_async(self.mlir_module_str, transformed_mlir_path)
+                
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
                 opts.alloc_scheme,
                 opts.dynamic_objFifos,
@@ -1524,7 +1632,7 @@ class FlowRunner:
             # 3.) Targets that require the cores to be lowered but apply across all devices
 
             npu_insts_module = None
-            if opts.npu or opts.elf:
+            if opts.npu or opts.elf or opts.generate_full_elf:
                 task3 = progress_bar.add_task(
                     "[green] Lowering NPU instructions", total=2, command=""
                 )
@@ -1566,6 +1674,13 @@ class FlowRunner:
                     task4,
                 )
 
+            self.maxtasks = 2
+            task5 = progress_bar.add_task(
+                "[green] Creating full ELF", total=2, command=""
+            )
+            if opts.generate_full_elf:
+                await self.generate_full_elf(devices, device_to_id_mapping, task5)
+
     async def run_flow_for_device(
         self,
         input_physical,
@@ -1581,7 +1696,7 @@ class FlowRunner:
         nworkers = int(opts.nthreads)
 
         # Optionally generate insts.bin for NPU instruction stream
-        if opts.npu:
+        if opts.npu or opts.generate_full_elf:
             # write each runtime sequence binary into its own file
             runtime_sequences = generate_runtime_sequences_list(device_op)
             for seq_op, seq_name in runtime_sequences:
@@ -1592,7 +1707,7 @@ class FlowRunner:
                 npu_insts = aiedialect.translate_npu_to_binary(
                     npu_insts_module.operation, device_name, seq_name
                 )
-                npu_insts_path = opts.insts_name.format(device_name, seq_name)
+                npu_insts_path = opts.insts_name.format(device_name, seq_name) if opts.npu else self.prepend_tmp(f"{device_name}_{seq_name}.bin")
                 with open(npu_insts_path, "wb") as f:
                     f.write(struct.pack("I" * len(npu_insts), *npu_insts))
                 pb.update(parent_task_id, advance=1)
@@ -1625,17 +1740,17 @@ class FlowRunner:
 
         input_physical_with_elfs_str = await read_file_async(input_physical_with_elfs)
 
-        if (opts.cdo or opts.xcl or opts.pdi) and opts.execute:
+        if (opts.cdo or opts.xcl or opts.pdi or opts.generate_full_elf) and opts.execute:
             await self.process_cdo(input_physical_with_elfs_str, device_name)
 
         if opts.xcl:
             processes.append(self.process_xclbin_gen(device_op, device_name))
         # self.process_pdi_gen is called in process_xclbin_gen,
         # so don't call it again if opts.xcl is set
-        elif opts.pdi:
+        elif opts.pdi or opts.generate_full_elf:
             processes.append(
                 self.process_pdi_gen(
-                    device_name, self.prepend_tmp(f"{device_name}_design.pdi")
+                    device_name, self.pdi_file_name(device_name)
                 )
             )
 

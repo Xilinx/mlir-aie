@@ -40,15 +40,18 @@ module {
             // During compilation, aiebu will package the PDI for this core together with this runtime sequence into a ELF file.
             // At runtime, XRT will load the PDI into memory and patch the address of this load_pdi to the correct address, so we can set 0 for the address.
             // As far as I can tell currently, the size attribute is also patched at runtime or ignored, so we can set 0 for it as well.
-            aiex.npu.load_pdi { id = 1 : i32, size = 0 : i32, address = 0 : ui64  }
+            // Current load_pdi:
+            //aiex.npu.load_pdi { id = 1 : i32, size = 0 : i32, address = 0 : ui64 }
+            // Goal for new load_pdi after refactoring:
+            aiex.npu.load_pdi { device_ref = @add_two }
 
             %t_in = aiex.dma_configure_task_for @objfifo_in {
-            aie.dma_bd(%a : memref<512xi32>, 0, 512)
-            aie.end
+                aie.dma_bd(%a : memref<512xi32>, 0, 512)
+                aie.end
             }
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-            aie.dma_bd(%a: memref<512xi32>, 0, 512)
-            aie.end
+                aie.dma_bd(%a: memref<512xi32>, 0, 512)
+                aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_in)
             aiex.dma_start_task(%t_out)
