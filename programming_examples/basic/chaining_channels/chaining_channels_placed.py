@@ -145,72 +145,230 @@ def my_chaining_channels():
                         use_lock(verify_cons_lock, LockAction.Release, value=1)
                     use_lock(compute_prod_lock, LockAction.Release, value=1)
 
-            # To/from AIE-array data movement using DMA task operations
+            # To/from AIE-array data movement using low-level DMA operations
             if verify:
                 @runtime_sequence(vector_ty, vector_ty_read, vector_ty_read)
                 def sequence(A, B, C):
                     # Release MemTile lock to trigger DMA
                     npu_write32(column=col, row=1, address=0xC0000, value=1)
                     
-                    # Task to read from MemTile to DDR (1KB)
-                    write_task = dma_configure_task(ShimTile, DMAChannelDir.S2MM, 0, issue_token=True)
-                    with bds(write_task) as bd:
-                        with bd[0]:
-                            shim_dma_bd(A, offset=0, sizes=[1, 1, 1, n_elements], strides=[0, 0, 0, 1])
-                            EndOp()
+                    # Write BD for S2MM channel 0 (MemTile -> DDR, buffer A)
+                    npu_writebd(
+                        bd_id=0,
+                        buffer_length=n_elements,
+                        buffer_offset=0,
+                        column=col,
+                        row=0,
+                        enable_packet=0,
+                        out_of_order_id=0,
+                        packet_id=0,
+                        packet_type=0,
+                        d0_size=0,
+                        d0_stride=0,
+                        d0_zero_before=0,
+                        d0_zero_after=0,
+                        d1_size=0,
+                        d1_stride=0,
+                        d1_zero_before=0,
+                        d1_zero_after=0,
+                        d2_size=0,
+                        d2_stride=0,
+                        d2_zero_before=0,
+                        d2_zero_after=0,
+                        iteration_current=0,
+                        iteration_size=0,
+                        iteration_stride=0,
+                        lock_acq_enable=1,
+                        lock_acq_id=0,
+                        lock_acq_val=0,
+                        lock_rel_id=1,
+                        lock_rel_val=1,
+                        next_bd=0,
+                        use_next_bd=0,
+                        valid_bd=1,
+                    )
+                    npu_address_patch(addr=0x1D004, arg_idx=0, arg_plus=0)
                     
-                    # Task to write from DDR to ComputeTile (4KB)
-                    read_task = dma_configure_task(ShimTile, DMAChannelDir.MM2S, 0, issue_token=True)
-                    with bds(read_task) as bd:
-                        with bd[0]:
-                            shim_dma_bd(B, offset=0, sizes=[1, 1, 1, n_elements_read], strides=[0, 0, 0, 1])
-                            EndOp()
+                    # Write BD for MM2S channel 0 (DDR -> ComputeTile, buffer B)
+                    npu_writebd(
+                        bd_id=1,
+                        buffer_length=n_elements_read,
+                        buffer_offset=0,
+                        column=col,
+                        row=0,
+                        enable_packet=0,
+                        out_of_order_id=0,
+                        packet_id=0,
+                        packet_type=0,
+                        d0_size=0,
+                        d0_stride=0,
+                        d0_zero_before=0,
+                        d0_zero_after=0,
+                        d1_size=0,
+                        d1_stride=0,
+                        d1_zero_before=0,
+                        d1_zero_after=0,
+                        d2_size=0,
+                        d2_stride=0,
+                        d2_zero_before=0,
+                        d2_zero_after=0,
+                        iteration_current=0,
+                        iteration_size=0,
+                        iteration_stride=0,
+                        lock_acq_enable=1,
+                        lock_acq_id=1,
+                        lock_acq_val=1,
+                        lock_rel_id=2,
+                        lock_rel_val=1,
+                        next_bd=0,
+                        use_next_bd=0,
+                        valid_bd=1,
+                    )
+                    npu_address_patch(addr=0x1D024, arg_idx=1, arg_plus=0)
                     
-                    # Task to read verification data from ComputeTile to DDR (4KB)
-                    verify_task = dma_configure_task(ShimTile, DMAChannelDir.S2MM, 1, issue_token=True)
-                    with bds(verify_task) as bd:
-                        with bd[0]:
-                            shim_dma_bd(C, offset=0, sizes=[1, 1, 1, n_elements_read], strides=[0, 0, 0, 1])
-                            EndOp()
+                    # Write BD for S2MM channel 1 (ComputeTile -> DDR, buffer C)
+                    npu_writebd(
+                        bd_id=2,
+                        buffer_length=n_elements_read,
+                        buffer_offset=0,
+                        column=col,
+                        row=0,
+                        enable_packet=0,
+                        out_of_order_id=0,
+                        packet_id=0,
+                        packet_type=0,
+                        d0_size=0,
+                        d0_stride=0,
+                        d0_zero_before=0,
+                        d0_zero_after=0,
+                        d1_size=0,
+                        d1_stride=0,
+                        d1_zero_before=0,
+                        d1_zero_after=0,
+                        d2_size=0,
+                        d2_stride=0,
+                        d2_zero_before=0,
+                        d2_zero_after=0,
+                        iteration_current=0,
+                        iteration_size=0,
+                        iteration_stride=0,
+                        lock_acq_enable=1,
+                        lock_acq_id=2,
+                        lock_acq_val=1,
+                        lock_rel_id=0,
+                        lock_rel_val=0,
+                        next_bd=0,
+                        use_next_bd=0,
+                        valid_bd=1,
+                    )
+                    npu_address_patch(addr=0x1D044, arg_idx=2, arg_plus=0)
                     
-                    # Start write task first
-                    dma_start_task(write_task)
-                    dma_await_task(write_task)
+                    # Push BD 0 to S2MM channel 0 queue
+                    # Change issue_token to False to chain with locks
+                    npu_push_queue(column=col, row=0, direction=0, channel=0, bd_id=0, issue_token=False, repeat_count=0)
+                    # Wait for S2MM channel 0
+                    # npu_sync(column=col, row=0, direction=0, channel=0, column_num=1, row_num=1)
                     
-                    # Then start read task
-                    dma_start_task(read_task)
-                    dma_await_task(read_task)
-
-                    # Then start verify task
-                    dma_start_task(verify_task)
-                    dma_await_task(verify_task)
+                    # Push BD 1 to MM2S channel 0 queue
+                    # Change issue_token to False to chain with locks
+                    npu_push_queue(column=col, row=0, direction=1, channel=0, bd_id=1, issue_token=False, repeat_count=0)
+                    # Wait for MM2S channel 0
+                    # npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
+                    
+                    # Push BD 2 to S2MM channel 1 queue
+                    npu_push_queue(column=col, row=0, direction=0, channel=1, bd_id=2, issue_token=True, repeat_count=0)
+                    # Wait for S2MM channel 1
+                    npu_sync(column=col, row=0, direction=0, channel=1, column_num=1, row_num=1)
             else:
                 @runtime_sequence(vector_ty, vector_ty_read)
                 def sequence(A, B):
                     # Release MemTile lock to trigger DMA
                     npu_write32(column=col, row=1, address=0xC0000, value=1)
                     
-                    # Task to read from MemTile to DDR (1KB)
-                    write_task = dma_configure_task(ShimTile, DMAChannelDir.S2MM, 0, issue_token=True)
-                    with bds(write_task) as bd:
-                        with bd[0]:
-                            shim_dma_bd(A, offset=0, sizes=[1, 1, 1, n_elements], strides=[0, 0, 0, 1])
-                            EndOp()
+                    # Write BD for S2MM channel 0 (MemTile -> DDR, buffer A)
+                    npu_writebd(
+                        bd_id=0,
+                        buffer_length=n_elements,
+                        buffer_offset=0,
+                        column=col,
+                        row=0,
+                        enable_packet=0,
+                        out_of_order_id=0,
+                        packet_id=0,
+                        packet_type=0,
+                        d0_size=0,
+                        d0_stride=0,
+                        d0_zero_before=0,
+                        d0_zero_after=0,
+                        d1_size=0,
+                        d1_stride=0,
+                        d1_zero_before=0,
+                        d1_zero_after=0,
+                        d2_size=0,
+                        d2_stride=0,
+                        d2_zero_before=0,
+                        d2_zero_after=0,
+                        iteration_current=0,
+                        iteration_size=0,
+                        iteration_stride=0,
+                        lock_acq_enable=1,
+                        lock_acq_id=0,
+                        lock_acq_val=0,
+                        lock_rel_id=1,
+                        lock_rel_val=1,
+                        next_bd=0,
+                        use_next_bd=0,
+                        valid_bd=1,
+                    )
+                    npu_address_patch(addr=0x1D004, arg_idx=0, arg_plus=0)
                     
-                    # Task to write from DDR to ComputeTile (4KB)
-                    read_task = dma_configure_task(ShimTile, DMAChannelDir.MM2S, 0, issue_token=True)
-                    with bds(read_task) as bd:
-                        with bd[0]:
-                            shim_dma_bd(B, offset=0, sizes=[1, 1, 1, n_elements_read], strides=[0, 0, 0, 1])
-                            EndOp()
+                    # Write BD for MM2S channel 0 (DDR -> ComputeTile, buffer B)
+                    npu_writebd(
+                        bd_id=1,
+                        buffer_length=n_elements_read,
+                        buffer_offset=0,
+                        column=col,
+                        row=0,
+                        enable_packet=0,
+                        out_of_order_id=0,
+                        packet_id=0,
+                        packet_type=0,
+                        d0_size=0,
+                        d0_stride=0,
+                        d0_zero_before=0,
+                        d0_zero_after=0,
+                        d1_size=0,
+                        d1_stride=0,
+                        d1_zero_before=0,
+                        d1_zero_after=0,
+                        d2_size=0,
+                        d2_stride=0,
+                        d2_zero_before=0,
+                        d2_zero_after=0,
+                        iteration_current=0,
+                        iteration_size=0,
+                        iteration_stride=0,
+                        lock_acq_enable=1,
+                        lock_acq_id=1,
+                        lock_acq_val=1,
+                        lock_rel_id=0,
+                        lock_rel_val=0,
+                        next_bd=0,
+                        use_next_bd=0,
+                        valid_bd=1,
+                    )
+                    npu_address_patch(addr=0x1D024, arg_idx=1, arg_plus=0)
                     
-                    # Start write task first
-                    dma_start_task(write_task)
-                    dma_await_task(write_task)
+                    # Push BD 0 to S2MM channel 0 queue
+                    # Changed issue_token to False for chaining with locks
+                    npu_push_queue(column=col, row=0, direction=0, channel=0, bd_id=0, issue_token=False, repeat_count=0)
+                    # Wait for S2MM channel 0
+                    # npu_sync(column=col, row=0, direction=0, channel=0, column_num=1, row_num=1)
                     
-                    # Then start read task
-                    dma_start_task(read_task)
-                    dma_await_task(read_task)
+                    # Push BD 1 to MM2S channel 0 queue
+                    npu_push_queue(column=col, row=0, direction=1, channel=0, bd_id=1, issue_token=True, repeat_count=0)
+                    # Wait for MM2S channel 0
+                    npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
     print(ctx.module)
 
