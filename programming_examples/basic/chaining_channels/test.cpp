@@ -38,9 +38,7 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the command processor",
       cxxopts::value<std::string>())(
       "length,l", "the length of the transfer in bytes",
-      cxxopts::value<int>()->default_value("1024"))(
-      "verify", "enable verification path (0 or 1)",
-      cxxopts::value<int>()->default_value("0"));
+      cxxopts::value<int>()->default_value("1024"));
 
   try {
     vm = options.parse(argc, argv);
@@ -68,8 +66,6 @@ int main(int argc, const char *argv[]) {
   int verbosity = vm["verbosity"].as<int>();
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
-
-  int verify = vm["verify"].as<int>();
 
   int N = vm["length"].as<int>();
   if ((N % 4)) {
@@ -129,6 +125,15 @@ int main(int argc, const char *argv[]) {
                       kernel.group_id(3)); // 1KB write buffer
   auto bo_B = xrt::bo(device, N_read, XRT_BO_FLAGS_HOST_ONLY,
                       kernel.group_id(4)); // 4KB read buffer
+  
+  // Placeholder buffers
+  auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+  auto bo_tmp2 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
+  
+  // Trace buffer (8KB)
+  constexpr int trace_size = 8192;
+  auto bo_trace = xrt::bo(device, trace_size, XRT_BO_FLAGS_HOST_ONLY,
+                          kernel.group_id(7));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -145,92 +150,56 @@ int main(int argc, const char *argv[]) {
 
   // Initialize buffer B with increasing values
   uint32_t *bufB = bo_B.map<uint32_t *>();
-  for (int i = 0; i < N_read_int32; i++) {
+  for (int i = 0; i < N_read; i++) {
     bufB[i] = i;
   }
+  
+  // Initialize trace buffer
+  char *bufTrace = bo_trace.map<char *>();
+  memset(bufTrace, 0, trace_size);
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_A.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_B.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
+  unsigned int opcode = 3;
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_A, bo_B, bo_tmp1, bo_tmp2, bo_trace);
+  run.wait();
+
+  bo_A.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+  bufA = bo_A.map<uint32_t *>();
 
   int errors = 0;
 
-  if (verify) {
-    // Create buffer C for verification
-    auto bo_C = xrt::bo(device, N_read, XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(5)); // 4KB verification buffer
-    uint32_t *bufC = bo_C.map<uint32_t *>();
-    for (int i = 0; i < N_read_int32; i++) {
-      bufC[i] = 0xCAFEBABE; // Initialize with pattern
-    }
-    bo_C.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-    if (verbosity >= 1)
-      std::cout << "Running Kernel with verification." << std::endl;
-    unsigned int opcode = 3;
-    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_A, bo_B, bo_C);
-    run.wait();
-
-    bo_A.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-    bo_C.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-    bufA = bo_A.map<uint32_t *>();
-    bufC = bo_C.map<uint32_t *>();
-
-    // Verify that buffer A was written with the initialized pattern (1 to N)
-    if (verbosity >= 1)
-      std::cout << "Verifying buffer A (write buffer)..." << std::endl;
-    for (uint32_t i = 0; i < N_int32; i++) {
-      uint32_t ref = (i + 1);
-      if (bufA[i] != ref) {
-        if (errors < 10) {
-          std::cout << "Error in buffer A at index " << i << ": expected " << ref
-                    << ", got " << bufA[i] << std::endl;
-        }
-        errors++;
+  // Verify that buffer A was written with the initialized pattern (1 to N)
+  if (verbosity >= 1)
+    std::cout << "Verifying buffer A (write buffer)..." << std::endl;
+  for (uint32_t i = 0; i < N_int32; i++) {
+    uint32_t ref = (i + 1);
+    if (bufA[i] != ref) {
+      if (errors < 10) {
+        std::cout << "Error in buffer A at index " << i << ": expected " << ref
+                  << ", got " << bufA[i] << std::endl;
       }
-    }
-
-    // Verify buffer C contains the data read from B
-    if (verbosity >= 1)
-      std::cout << "Verifying buffer C (verification buffer)..." << std::endl;
-    for (uint32_t i = 0; i < N_read_int32; i++) {
-      uint32_t ref = i; // Buffer B was initialized with increasing values
-      if (bufC[i] != ref) {
-        if (errors < 10) {
-          std::cout << "Error in buffer C at index " << i << ": expected " << ref
-                    << ", got " << bufC[i] << std::endl;
-        }
-        errors++;
-      }
-    }
-  } else {
-    if (verbosity >= 1)
-      std::cout << "Running Kernel without verification." << std::endl;
-    unsigned int opcode = 3;
-    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_A, bo_B);
-    run.wait();
-
-    bo_A.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-    bufA = bo_A.map<uint32_t *>();
-
-    // Verify that buffer A was written with the initialized pattern (1 to N)
-    if (verbosity >= 1)
-      std::cout << "Verifying buffer A (write buffer)..." << std::endl;
-    for (uint32_t i = 0; i < N_int32; i++) {
-      uint32_t ref = (i + 1);
-      if (bufA[i] != ref) {
-        if (errors < N) {
-          std::cout << "Error in buffer A at index " << i << ": expected " << ref
-                    << ", got " << bufA[i] << std::endl;
-        }
-        errors++;
-      }
+      errors++;
     }
   }
+  
+  // Write trace data to file
+  std::ofstream trace_file("trace.txt");
+  uint32_t *trace_data = reinterpret_cast<uint32_t *>(bufTrace);
+  for (int i = 0; i < trace_size / 4; i++) {
+    if (trace_data[i] != 0) {
+      trace_file << std::hex << trace_data[i] << std::endl;
+    }
+  }
+  trace_file.close();
+  
+  if (verbosity >= 1)
+    std::cout << "Trace data written to trace.txt" << std::endl;
 
   if (!errors) {
     std::cout << std::endl << "PASS!" << std::endl << std::endl;
