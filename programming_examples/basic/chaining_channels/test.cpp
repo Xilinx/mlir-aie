@@ -134,7 +134,7 @@ int main(int argc, const char *argv[]) {
   auto bo_tmp2 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
   
   // Trace buffer (8KB if enabled, 1 byte otherwise)
-  constexpr int trace_size = 8192;
+  constexpr int trace_size = 16384;
   int actual_trace_size = enable_trace ? trace_size : 1;
   auto bo_trace = xrt::bo(device, actual_trace_size, XRT_BO_FLAGS_HOST_ONLY,
                           kernel.group_id(7));

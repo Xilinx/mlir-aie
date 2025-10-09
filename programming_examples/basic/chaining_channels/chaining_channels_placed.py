@@ -17,7 +17,7 @@ import aie.utils.trace as trace_utils
 N = 1024  # 1kB buffer (256 int32 elements = 1024 bytes)
 dev = AIEDevice.npu2_1col
 col = 0  # Always use column 0
-trace_size = 8192  # Trace buffer size in bytes
+trace_size = 16384  # Trace buffer size in bytes
 enable_trace = 0  # Trace disabled by default
 
 if len(sys.argv) > 1:
@@ -110,7 +110,7 @@ def my_chaining_channels():
 
             # Configure tracing on ShimTile (if enabled)
             if enable_trace:
-                tiles_to_trace = [ShimTile]
+                tiles_to_trace = [ShimTile, MemTile, ComputeTile2]
                 trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
             # Runtime sequence
@@ -122,6 +122,16 @@ def my_chaining_channels():
                         tiles_to_trace=tiles_to_trace,
                         shim=ShimTile,
                         trace_size=trace_size,
+                        shimtile_events=[
+                            trace_utils.ShimTileEvent.DMA_S2MM_0_START_TASK,
+                            trace_utils.ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+                            trace_utils.ShimTileEvent.DMA_MM2S_0_START_TASK,
+                            trace_utils.ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+                            trace_utils.ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
+                            trace_utils.ShimTileEvent.DMA_S2MM_0_STALLED_LOCK,
+                            trace_utils.ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
+                            trace_utils.ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
+                        ]
                     )
 
                 # Release MemTile lock to trigger DMA
