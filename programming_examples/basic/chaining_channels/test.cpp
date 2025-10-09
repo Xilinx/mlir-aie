@@ -38,7 +38,9 @@ int main(int argc, const char *argv[]) {
       "path of file containing userspace instructions to be sent to the command processor",
       cxxopts::value<std::string>())(
       "length,l", "the length of the transfer in bytes",
-      cxxopts::value<int>()->default_value("1024"));
+      cxxopts::value<int>()->default_value("1024"))(
+      "trace,t", "enable tracing (0 or 1)",
+      cxxopts::value<int>()->default_value("0"));
 
   try {
     vm = options.parse(argc, argv);
@@ -67,6 +69,8 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << std::endl;
 
+  int enable_trace = vm["trace"].as<int>();
+
   int N = vm["length"].as<int>();
   if ((N % 4)) {
     std::cerr << "Length must be a multiple of 4 bytes." << std::endl;
@@ -75,7 +79,6 @@ int main(int argc, const char *argv[]) {
 
   int N_int32 = N / 4; // Convert bytes to int32 elements (1KB = 256 int32)
   int N_read = N * 4; // Read buffer is 4KB
-  int N_read_int32 = N_read / 4; // 4KB = 1024 int32 elements
 
   // Start the XRT test code
   // Get a device handle
@@ -130,9 +133,10 @@ int main(int argc, const char *argv[]) {
   auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
   auto bo_tmp2 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
   
-  // Trace buffer (8KB)
+  // Trace buffer (8KB if enabled, 1 byte otherwise)
   constexpr int trace_size = 8192;
-  auto bo_trace = xrt::bo(device, trace_size, XRT_BO_FLAGS_HOST_ONLY,
+  int actual_trace_size = enable_trace ? trace_size : 1;
+  auto bo_trace = xrt::bo(device, actual_trace_size, XRT_BO_FLAGS_HOST_ONLY,
                           kernel.group_id(7));
 
   if (verbosity >= 1)
@@ -150,15 +154,19 @@ int main(int argc, const char *argv[]) {
 
   // Initialize buffer B with increasing values
   uint32_t *bufB = bo_B.map<uint32_t *>();
-  for (int i = 0; i < N_read; i++) {
+  for (int i = 0; i < N_read / 4; i++) {
     bufB[i] = i;
   }
   
-  // Initialize trace buffer
-  char *bufTrace = bo_trace.map<char *>();
-  memset(bufTrace, 0, trace_size);
+  // Initialize trace buffer if enabled
+  if (enable_trace) {
+    char *bufTrace = bo_trace.map<char *>();
+    memset(bufTrace, 0, trace_size);
+    bo_trace.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  }
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_A.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_B.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
@@ -168,7 +176,9 @@ int main(int argc, const char *argv[]) {
   run.wait();
 
   bo_A.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-  bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  if (enable_trace) {
+    bo_trace.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  }
 
   bufA = bo_A.map<uint32_t *>();
 
@@ -188,18 +198,21 @@ int main(int argc, const char *argv[]) {
     }
   }
   
-  // Write trace data to file
-  std::ofstream trace_file("trace.txt");
-  uint32_t *trace_data = reinterpret_cast<uint32_t *>(bufTrace);
-  for (int i = 0; i < trace_size / 4; i++) {
-    if (trace_data[i] != 0) {
-      trace_file << std::hex << trace_data[i] << std::endl;
+  // Write trace data to file if enabled
+  if (enable_trace) {
+    char *bufTrace = bo_trace.map<char *>();
+    std::ofstream trace_file("trace.txt");
+    uint32_t *trace_data = reinterpret_cast<uint32_t *>(bufTrace);
+    for (int i = 0; i < trace_size / 4; i++) {
+      if (trace_data[i] != 0) {
+        trace_file << std::hex << trace_data[i] << std::endl;
+      }
     }
+    trace_file.close();
+    
+    if (verbosity >= 1)
+      std::cout << "Trace data written to trace.txt" << std::endl;
   }
-  trace_file.close();
-  
-  if (verbosity >= 1)
-    std::cout << "Trace data written to trace.txt" << std::endl;
 
   if (!errors) {
     std::cout << std::endl << "PASS!" << std::endl << std::endl;

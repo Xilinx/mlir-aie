@@ -18,6 +18,7 @@ N = 1024  # 1kB buffer (256 int32 elements = 1024 bytes)
 dev = AIEDevice.npu2_1col
 col = 0  # Always use column 0
 trace_size = 8192  # Trace buffer size in bytes
+enable_trace = 0  # Trace disabled by default
 
 if len(sys.argv) > 1:
     N = int(sys.argv[1])
@@ -27,6 +28,9 @@ if len(sys.argv) > 2:
         dev = AIEDevice.npu2_1col
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
+
+if len(sys.argv) > 3:
+    enable_trace = int(sys.argv[3])
 
 
 def my_chaining_channels():
@@ -104,19 +108,21 @@ def my_chaining_channels():
                     # Do nothing with the data, just toggle locks
                     use_lock(compute_prod_lock, LockAction.Release, value=1)
 
-            # Configure tracing on ShimTile
-            tiles_to_trace = [ShimTile]
-            trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            # Configure tracing on ShimTile (if enabled)
+            if enable_trace:
+                tiles_to_trace = [ShimTile]
+                trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
             # Runtime sequence
             @runtime_sequence(vector_ty, vector_ty_read)
             def sequence(A, B):
-                # Setup trace buffer
-                trace_utils.configure_packet_tracing_aie2(
-                    tiles_to_trace=tiles_to_trace,
-                    shim=ShimTile,
-                    trace_size=trace_size,
-                )
+                # Setup trace buffer (if enabled)
+                if enable_trace:
+                    trace_utils.configure_packet_tracing_aie2(
+                        tiles_to_trace=tiles_to_trace,
+                        shim=ShimTile,
+                        trace_size=trace_size,
+                    )
 
                 # Release MemTile lock to trigger DMA
                 npu_write32(column=col, row=1, address=0xC0000, value=1)
@@ -196,7 +202,7 @@ def my_chaining_channels():
                 npu_address_patch(addr=0x1D024, arg_idx=1, arg_plus=0)
                 
                 # Push BD 0 to S2MM channel 0 queue
-                npu_push_queue(column=col, row=0, direction=0, channel=0, bd_id=0, issue_token=True, repeat_count=0)
+                npu_push_queue(column=col, row=0, direction=0, channel=0, bd_id=0, issue_token=False, repeat_count=0)
                 # Wait for S2MM channel 0
                 # npu_sync(column=col, row=0, direction=0, channel=0, column_num=1, row_num=1)
                 
@@ -205,7 +211,8 @@ def my_chaining_channels():
                 # Wait for MM2S channel 0
                 npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
-                trace_utils.gen_trace_done_aie2(ShimTile)
+                if enable_trace:
+                    trace_utils.gen_trace_done_aie2(ShimTile)
 
     print(ctx.module)
 

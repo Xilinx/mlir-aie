@@ -17,12 +17,13 @@ all: build/final.xclbin
 devicename ?= npu2
 targetname = chaining_channels
 LENGTH ?= 1024
+TRACE ?= 0
 
 aie_py_src=${targetname}_placed.py
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${LENGTH} ${devicename} > $@
+	python3 $< ${LENGTH} ${devicename} ${TRACE} > $@
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
@@ -42,7 +43,7 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${LENGTH}
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${LENGTH} -t ${TRACE}
 
 parse_trace: run
 	${srcdir}/../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie.mlir --output trace_${targetname}.json
