@@ -32,7 +32,16 @@ import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
 from aie.dialects import aie as aiedialect
 from aie.dialects import aiex as aiexdialect
-from aie.ir import Context, Location, Module, InsertionPoint, IndexType, StringAttr, IntegerAttr, IntegerType
+from aie.ir import (
+    Context,
+    Location,
+    Module,
+    InsertionPoint,
+    IndexType,
+    StringAttr,
+    IntegerAttr,
+    IntegerType,
+)
 from aie.passmanager import PassManager
 
 
@@ -318,7 +327,7 @@ def generate_runtime_sequences_list(device_op):
         if not opts.sequence_name or s.sym_name.value == opts.sequence_name
     ]
 
-    
+
 def find_aiebu_asm():
     asm_bin = "aiebu-asm"
     if shutil.which(asm_bin) is None:
@@ -333,6 +342,7 @@ def find_aiebu_asm():
         sys.exit(1)
     return asm_bin
 
+
 def create_device_id_mapping(devices):
     """Assign an ID to each device in the MLIR; used later to assign IDs for each PDI"""
     device_to_id = {}
@@ -345,19 +355,30 @@ def assign_load_pdi_ids(mlir_module_str, device_to_id_mapping):
     """Transform symbolic aiex.npu.load_pdi references to numeric IDs"""
     with Context() as context, Location.unknown():
         module = Module.parse(mlir_module_str)
-        
-        for runtime_seq in find_ops(module.operation, 
-                                  lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp)):
-            for load_pdi_op in find_ops(runtime_seq.operation,
-                                      lambda o: isinstance(o.operation.opview, aiexdialect.NpuLoadPdiOp)):
-                if hasattr(load_pdi_op, 'device_ref') and load_pdi_op.device_ref is not None:
+
+        for runtime_seq in find_ops(
+            module.operation,
+            lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
+        ):
+            for load_pdi_op in find_ops(
+                runtime_seq.operation,
+                lambda o: isinstance(o.operation.opview, aiexdialect.NpuLoadPdiOp),
+            ):
+                if (
+                    hasattr(load_pdi_op, "device_ref")
+                    and load_pdi_op.device_ref is not None
+                ):
                     device_name = load_pdi_op.device_ref.value
                     if device_name not in device_to_id_mapping:
-                        print(f"Warning: Device '{device_name}' for load_pdi instruction does not have a matching device PDI.")
+                        print(
+                            f"Warning: Device '{device_name}' for load_pdi instruction does not have a matching device PDI."
+                        )
                         sys.exit(1)
                     pdi_id = device_to_id_mapping[device_name]
-                    load_pdi_op.id = IntegerAttr.get(IntegerType.get_signless(32, context=context), pdi_id)
-        
+                    load_pdi_op.id = IntegerAttr.get(
+                        IntegerType.get_signless(32, context=context), pdi_id
+                    )
+
         return str(module)
 
 
@@ -534,12 +555,20 @@ class FlowRunner:
 
     def prepend_tmp(self, x):
         return os.path.join(self.tmpdirname, x)
-    
+
     def pdi_file_name(self, device_name):
-        return opts.pdi_name.format(device_name) if opts.pdi else self.prepend_tmp(f"{device_name}.pdi")
-    
+        return (
+            opts.pdi_name.format(device_name)
+            if opts.pdi
+            else self.prepend_tmp(f"{device_name}.pdi")
+        )
+
     def npu_insts_file_name(self, device_name, seq_name):
-        return opts.insts_name.format(device_name, seq_name) if opts.npu else self.prepend_tmp(f"{device_name}_{seq_name}.bin")
+        return (
+            opts.insts_name.format(device_name, seq_name)
+            if opts.npu
+            else self.prepend_tmp(f"{device_name}_{seq_name}.bin")
+        )
 
     async def do_call(self, task_id, command, force=False):
         if self.stopall:
@@ -884,74 +913,80 @@ class FlowRunner:
 
         await self.do_call(None, args)
 
-
-    async def generate_full_elf_config_json(self, devices, device_to_id_mapping, opts, parent_task=None):
+    async def generate_full_elf_config_json(
+        self, devices, device_to_id_mapping, opts, parent_task=None
+    ):
         config = {"xrt-kernels": []}
-        
+
         for device_op, device_name in devices:
             sequences = generate_runtime_sequences_list(device_op)
-            
-            max_arg_count = max(len(seq_op.body.blocks[0].arguments) for seq_op, seq_name in sequences)
-            arguments = [{
-                "name": f"arg_{i}",
-                "type": "char *", 
-                "offset": hex(i * 8)
-            } for i in range(max_arg_count)]
-            
+
+            max_arg_count = max(
+                len(seq_op.body.blocks[0].arguments) for seq_op, seq_name in sequences
+            )
+            arguments = [
+                {"name": f"arg_{i}", "type": "char *", "offset": hex(i * 8)}
+                for i in range(max_arg_count)
+            ]
+
             kernel_entry = {
                 "name": device_name,
                 "arguments": arguments,
                 "instance": [],
-                "PDIs": []
+                "PDIs": [],
             }
-            
+
             pdi_id = device_to_id_mapping[device_name]
             pdi_filename = self.pdi_file_name(device_name)
-            kernel_entry["PDIs"].append({
-                "id": pdi_id,
-                "PDI_file": pdi_filename
-            })
-            
+            kernel_entry["PDIs"].append({"id": pdi_id, "PDI_file": pdi_filename})
+
             for seq_op, seq_name in sequences:
                 insts_filename = self.npu_insts_file_name(device_name, seq_name)
-                kernel_entry["instance"].append({
-                    "id": seq_name,
-                    "TXN_ctrl_code_file": insts_filename
-                })
-            
+                kernel_entry["instance"].append(
+                    {"id": seq_name, "TXN_ctrl_code_file": insts_filename}
+                )
+
             config["xrt-kernels"].append(kernel_entry)
-        
+
         return config
 
-
-    async def assemble_full_elf(self, config_json_path, output_elf_path, parent_task=None):
+    async def assemble_full_elf(
+        self, config_json_path, output_elf_path, parent_task=None
+    ):
         asm_bin = find_aiebu_asm()
         args = [
             asm_bin,
-            "-t", "aie2_config",
-            "-j", config_json_path,
-            "-o", output_elf_path
+            "-t",
+            "aie2_config",
+            "-j",
+            config_json_path,
+            "-o",
+            output_elf_path,
         ]
         await self.do_call(parent_task, args)
         if self.opts.verbose:
             print(f"Generated full ELF: {output_elf_path}")
 
-
     async def generate_full_elf(self, devices, device_to_id_mapping, parent_task=None):
         """Generate config.json and invoke aiebu-asm after all artifacts are ready"""
         if parent_task:
-            self.progress_bar.update(parent_task, advance=0, command="Generating config.json")
-        config = await self.generate_full_elf_config_json(devices, device_to_id_mapping, self.opts, parent_task)
+            self.progress_bar.update(
+                parent_task, advance=0, command="Generating config.json"
+            )
+        config = await self.generate_full_elf_config_json(
+            devices, device_to_id_mapping, self.opts, parent_task
+        )
         config_json_path = self.prepend_tmp("config.json")
         await write_file_async(json.dumps(config, indent=2), config_json_path)
         if self.opts.verbose:
             if self.opts.verbose:
                 print(f"Generated config.json: {config_json_path}")
         if parent_task:
-            self.progress_bar.update(parent_task, advance=1, command="Generating config.json")
+            self.progress_bar.update(
+                parent_task, advance=1, command="Generating config.json"
+            )
         full_elf_path = self.opts.full_elf_name or "aie.elf"
         await self.assemble_full_elf(config_json_path, full_elf_path, parent_task)
-
 
     async def process_ctrlpkt(self, module_str, device_name):
         with Context(), Location.unknown():
@@ -1550,7 +1585,7 @@ class FlowRunner:
                 )
                 transformed_mlir_path = self.prepend_tmp("input_with_pdi_ids.mlir")
                 await write_file_async(self.mlir_module_str, transformed_mlir_path)
-                
+
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
                 opts.alloc_scheme,
                 opts.dynamic_objFifos,
@@ -1707,7 +1742,11 @@ class FlowRunner:
                 npu_insts = aiedialect.translate_npu_to_binary(
                     npu_insts_module.operation, device_name, seq_name
                 )
-                npu_insts_path = opts.insts_name.format(device_name, seq_name) if opts.npu else self.prepend_tmp(f"{device_name}_{seq_name}.bin")
+                npu_insts_path = (
+                    opts.insts_name.format(device_name, seq_name)
+                    if opts.npu
+                    else self.prepend_tmp(f"{device_name}_{seq_name}.bin")
+                )
                 with open(npu_insts_path, "wb") as f:
                     f.write(struct.pack("I" * len(npu_insts), *npu_insts))
                 pb.update(parent_task_id, advance=1)
@@ -1740,7 +1779,9 @@ class FlowRunner:
 
         input_physical_with_elfs_str = await read_file_async(input_physical_with_elfs)
 
-        if (opts.cdo or opts.xcl or opts.pdi or opts.generate_full_elf) and opts.execute:
+        if (
+            opts.cdo or opts.xcl or opts.pdi or opts.generate_full_elf
+        ) and opts.execute:
             await self.process_cdo(input_physical_with_elfs_str, device_name)
 
         if opts.xcl:
@@ -1749,9 +1790,7 @@ class FlowRunner:
         # so don't call it again if opts.xcl is set
         elif opts.pdi or opts.generate_full_elf:
             processes.append(
-                self.process_pdi_gen(
-                    device_name, self.pdi_file_name(device_name)
-                )
+                self.process_pdi_gen(device_name, self.pdi_file_name(device_name))
             )
 
         if opts.txn and opts.execute:
