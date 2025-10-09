@@ -1028,9 +1028,10 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
 def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
   let arguments = (
-    ins I32Attr:$id,
-        OptionalAttr<I32Attr>:$size,
-        OptionalAttr<UI64Attr>:$address
+    ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$id,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$size,
+        DefaultValuedOptionalAttr<UI64Attr, "0">:$address
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
@@ -1038,6 +1039,8 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     Load a PDI (Programmable Device Image) to configure the NPU.
     The PDI is identified by `id`. `address` and `size` are typically written at
     runtime by the driver or host program.
+
+    If a symbol reference is provided, the other attributes are ignored during instruction generation.
   }];
 }
 
