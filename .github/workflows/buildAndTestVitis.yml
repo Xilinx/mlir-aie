@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - test-vitis
-  #pull_request:
+  pull_request:
   #merge_group:
 
   # Allows you to run this workflow manually from the Actions tab by
