@@ -77,13 +77,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span> </div>
 <div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="preprocessor">#include &quot;llvm/IR/Module.h&quot;</span></div>
 <div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span> </div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="keyword">namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a> {</div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="keyword">namespace </span><a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a7c5a2bea9a27c4771156b8894b793a54">AIE</a> {</div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="keyword">using namespace </span><a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a7c5a2bea9a27c4771156b8894b793a54">AIE</a>;</div>
 <div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span> </div>
 <div class="foldopen" id="foldopen00023" data-start="{" data-end="}">
-<div class="line"><a id="l00023" name="l00023"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a21b71fcc9a4ed020237fd11d2b272139">   23</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a21b71fcc9a4ed020237fd11d2b272139">AIETranslateSCSimConfig</a>(mlir::ModuleOp module,</div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>                                            llvm::raw_ostream &amp;output,</div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>                                            llvm::StringRef deviceName) {</div>
+<div class="line"><a id="l00023" name="l00023"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a21b71fcc9a4ed020237fd11d2b272139">   23</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a21b71fcc9a4ed020237fd11d2b272139">AIE::AIETranslateSCSimConfig</a>(mlir::ModuleOp module,</div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span>                                                 llvm::raw_ostream &amp;output,</div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span>                                                 llvm::StringRef deviceName) {</div>
 <div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span>  DeviceOp targetOp =</div>
 <div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span>      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);</div>
 <div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span>  <span class="keywordflow">if</span> (!targetOp) {</div>
@@ -127,7 +127,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>           &lt;&lt; <span class="stringliteral">&quot;        ]\n&quot;</span></div>
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>           &lt;&lt; <span class="stringliteral">&quot;    }\n&quot;</span></div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>           &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>  } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (arch == <a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">AIEArch::AIE2</a>) {</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>  } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (arch == AIEArch::AIE2) {</div>
 <div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>    output</div>
 <div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>        &lt;&lt; <span class="stringliteral">&quot;{\n&quot;</span></div>
 <div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>        &lt;&lt; <span class="stringliteral">&quot;    \&quot;SimulationConfig\&quot;: {\n&quot;</span></div>
@@ -216,9 +216,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span><span class="comment">./Work/arch/aieshim_solution.aiesol</span></div>
 <div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span><span class="comment">*/</span></div>
 <div class="foldopen" id="foldopen00156" data-start="{" data-end="}">
-<div class="line"><a id="l00156" name="l00156"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a9f55f4fdf26f8d9533edcf1ba8afcb40">  156</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a9f55f4fdf26f8d9533edcf1ba8afcb40">AIETranslateShimSolution</a>(mlir::ModuleOp module,</div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>                                             llvm::raw_ostream &amp;output,</div>
-<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>                                             llvm::StringRef deviceName) {</div>
+<div class="line"><a id="l00156" name="l00156"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a9f55f4fdf26f8d9533edcf1ba8afcb40">  156</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a9f55f4fdf26f8d9533edcf1ba8afcb40">AIE::AIETranslateShimSolution</a>(mlir::ModuleOp module,</div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>                                                  llvm::raw_ostream &amp;output,</div>
+<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>                                                  llvm::StringRef deviceName) {</div>
 <div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>  DeviceOp targetOp =</div>
 <div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);</div>
 <div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>  <span class="keywordflow">if</span> (!targetOp) {</div>
@@ -278,9 +278,9 @@ $(document).ready(function() { init_codefold(0); });
 </div>
 <div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span> </div>
 <div class="foldopen" id="foldopen00216" data-start="{" data-end="}">
-<div class="line"><a id="l00216" name="l00216"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aa36cbfccdfe4200c087210aa18657d26">  216</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aa36cbfccdfe4200c087210aa18657d26">AIETranslateGraphXPE</a>(mlir::ModuleOp module,</div>
-<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>                                         llvm::raw_ostream &amp;output,</div>
-<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span>                                         llvm::StringRef deviceName) {</div>
+<div class="line"><a id="l00216" name="l00216"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aa36cbfccdfe4200c087210aa18657d26">  216</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aa36cbfccdfe4200c087210aa18657d26">AIE::AIETranslateGraphXPE</a>(mlir::ModuleOp module,</div>
+<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>                                              llvm::raw_ostream &amp;output,</div>
+<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span>                                              llvm::StringRef deviceName) {</div>
 <div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span>  <span class="comment">/* Generates a .xpe file which is necessary to run aiesim.</span></div>
 <div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span><span class="comment">  .xpe is a power report file, but has information on which AIE tiles are used.</span></div>
 <div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span><span class="comment">  Sample invocation:</span></div>
@@ -305,7 +305,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>         &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
 <div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>  output &lt;&lt; <span class="stringliteral">&quot;&lt;POWERDATA data=\&quot;AI-Engine Compiler\&quot; dataVersion=\&quot;2022.2\&quot; &quot;</span></div>
 <div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>            <span class="stringliteral">&quot;design=\&quot;graph\&quot; date=\&quot;2023\&quot;&gt;\n&quot;</span>;</div>
-<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>  <span class="keywordflow">if</span> ((arch == <a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">AIEArch::AIE2</a>) || (arch == AIEArch::AIE2p)) {</div>
+<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>  <span class="keywordflow">if</span> ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {</div>
 <div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>    output</div>
 <div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>        <span class="comment">// AIE2 xcve2802</span></div>
 <div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>        &lt;&lt; <span class="stringliteral">&quot; &lt;DEVICE part=\&quot;xcve2802\&quot; grade=\&quot;extended\&quot; package=\&quot;vsvh1760\&quot; &quot;</span></div>
@@ -324,7 +324,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>  <span class="keyword">auto</span> module_tile_ops = targetOp.getOps&lt;TileOp&gt;();</div>
 <div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>  <span class="keywordtype">int</span> num_tiles = std::distance(module_tile_ops.begin(), module_tile_ops.end());</div>
 <div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>  <span class="comment">// TODO: clk_freq only 1150 for AIE2</span></div>
-<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>  <span class="keywordflow">if</span> ((arch == <a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">AIEArch::AIE2</a>) || (arch == AIEArch::AIE2p)) {</div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>  <span class="keywordflow">if</span> ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {</div>
 <div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>    output &lt;&lt; <span class="stringliteral">&quot;    &lt;AIE_MODULE name=\&quot;graph\&quot; num_tiles=\&quot;&quot;</span></div>
 <div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>           &lt;&lt; std::to_string(num_tiles) &lt;&lt; <span class="stringliteral">&quot;\&quot; clk_freq=\&quot;1150\&quot;&gt;\n&quot;</span>;</div>
 <div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>  } <span class="keywordflow">else</span> {</div>
@@ -349,7 +349,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>    <span class="keywordflow">if</span> (tileOp.isShimNOCorPLTile() || tileOp.isMemTile())</div>
 <div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>      <span class="keywordflow">continue</span>; <span class="comment">// Skip shim and mem tiles (handled below)</span></div>
 <div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span> </div>
-<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>    <span class="keywordflow">if</span> ((arch == <a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">AIEArch::AIE2</a>) || (arch == AIEArch::AIE2p)) {</div>
+<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>    <span class="keywordflow">if</span> ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {</div>
 <div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span> </div>
 <div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>      output &lt;&lt; <span class="stringliteral">&quot;      &lt;TILE name=\&quot;CR(&quot;</span> &lt;&lt;</div>
 <div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span>          <span class="comment">// CR coordinates ignores shim, and 2 mem rows hence row-3</span></div>
@@ -402,7 +402,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span> </div>
 <div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>  <span class="comment">// For each ShimOp in the module, generate a &lt;SHIM&gt; section</span></div>
 <div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>  <span class="keywordflow">for</span> (ShimDMAOp shimOp : targetOp.getOps&lt;ShimDMAOp&gt;()) {</div>
-<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>    <span class="keywordflow">if</span> ((arch == <a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">AIEArch::AIE2</a>) || (arch == AIEArch::AIE2p)) {</div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>    <span class="keywordflow">if</span> ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {</div>
 <div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>      <span class="keyword">auto</span> noc_label = (targetOp.getTargetModel().isShimNOCTile(</div>
 <div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>                           shimOp.colIndex(), shimOp.rowIndex()))</div>
 <div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>                           ? <span class="stringliteral">&quot;AIE_PL_NOC_SIM&quot;</span></div>
@@ -432,7 +432,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>  }</div>
 <div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span> </div>
 <div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>  <span class="comment">// For each memTile</span></div>
-<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>  <span class="keywordflow">if</span> ((arch == <a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">AIEArch::AIE2</a>) || (arch == AIEArch::AIE2p)) {</div>
+<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>  <span class="keywordflow">if</span> ((arch == AIEArch::AIE2) || (arch == AIEArch::AIE2p)) {</div>
 <div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>    <span class="keywordflow">for</span> (TileOp tileOp : module_tile_ops) {</div>
 <div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.colIndex();</div>
 <div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.rowIndex();</div>
@@ -460,9 +460,6 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>  <span class="keywordflow">return</span> mlir::success();</div>
 <div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>}</div>
 </div>
-<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span> </div>
-<div class="line"><a id="l00398" name="l00398"></a><span class="lineno">  398</span>} <span class="comment">// namespace AIE</span></div>
-<div class="line"><a id="l00399" name="l00399"></a><span class="lineno">  399</span>} <span class="comment">// namespace xilinx</span></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargets_8h_html"><div class="ttname"><a href="AIETargets_8h.html">AIETargets.h</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a13c075c9d7c2571066fd7cf9c0633472"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">xilinx::AIE::channel</a></div><div class="ttdeci">int channel</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00122">AIEDialect.h:122</a></div></div>
@@ -473,12 +470,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_aa36cbfccdfe4200c087210aa18657d26"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aa36cbfccdfe4200c087210aa18657d26">xilinx::AIE::AIETranslateGraphXPE</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module, llvm::raw_ostream &amp;, llvm::StringRef)</div><div class="ttdef"><b>Definition</b> <a href="AIETargetSimulationFiles_8cpp_source.html#l00216">AIETargetSimulationFiles.cpp:216</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_html_aff3fe97ec80fed475662ca415d95f0a3"><div class="ttname"><a href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3">xilinx::AIEArch</a></div><div class="ttdeci">AIEArch</div><div class="ttdef"><b>Definition</b> <a href="Dialect_2AIEVec_2Pipelines_2Passes_8h_source.html#l00021">Passes.h:21</a></div></div>
-<div class="ttc" id="anamespacexilinx_html_aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5"><div class="ttname"><a href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">xilinx::AIEArch::AIE2</a></div><div class="ttdeci">@ AIE2</div></div>
 <div class="ttc" id="anamespacexilinx_html_aff3fe97ec80fed475662ca415d95f0a3a7c5a2bea9a27c4771156b8894b793a54"><div class="ttname"><a href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a7c5a2bea9a27c4771156b8894b793a54">xilinx::AIEArch::AIE</a></div><div class="ttdeci">@ AIE</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Oct 8 2025 21:13:55 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Oct 9 2025 14:16:40 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
