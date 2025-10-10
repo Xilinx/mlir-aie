@@ -16,12 +16,10 @@
 
 // RUN: ls | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
 
-// XCHESSCC: bootgen
-// XCHESSCC: copy{{.*}} to MlirAie0.pdi
+// XCHESSCC: bootgen {{.*}} MlirAie0.pdi
 // XCHESSCC-NOT: xclbinutil
 
-// PEANO: bootgen
-// PEANO: copy{{.*}} to MlirAie1.pdi
+// PEANO: bootgen {{.*}} MlirAie1.pdi
 // PEANO-NOT: xclbinutil
 
 // CHECK-FILE: MlirAie0.pdi
