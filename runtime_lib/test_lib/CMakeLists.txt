@@ -50,7 +50,7 @@ if (${BUILD_TEST_UTILS})
   set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;cxxopts.hpp")
   target_compile_options(test_utils PRIVATE -fPIC)
 
-  if(${XRT_FOUND})
+  if (${XRT_FOUND})
     target_compile_options(test_utils PRIVATE -DTEST_UTILS_USE_XRT)
   endif()
   target_include_directories(test_utils PRIVATE
