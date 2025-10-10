@@ -42,7 +42,7 @@ if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 endif()
 
 find_package(XRT)
-set(BUILD_TEST_UTILS ${XRT_FOUND} AND NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
+set(BUILD_TEST_UTILS NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 
 # test_utils library
 if (${BUILD_TEST_UTILS})
@@ -50,6 +50,9 @@ if (${BUILD_TEST_UTILS})
   set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;cxxopts.hpp")
   target_compile_options(test_utils PRIVATE -fPIC)
 
+  if(${XRT_FOUND})
+    target_compile_options(test_utils PRIVATE -DTEST_UTILS_USE_XRT)
+  endif()
   target_include_directories(test_utils PRIVATE
       ${LibXAIE_INC_DIR}
       ${XRT_INCLUDE_DIR}
