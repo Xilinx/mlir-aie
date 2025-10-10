@@ -123,14 +123,14 @@ def my_chaining_channels():
                         shim=ShimTile,
                         trace_size=trace_size,
                         memtile_events=[
-                            trace_utils.MemTilePortEvent(trace_utils.MemTileEvent.PORT_RUNNING_0, 10, True),
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_START_TASK,
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
                             trace_utils.MemTileEvent.LOCK_SEL0_ACQ_GE,
-                            trace_utils.MemTileEvent.GROUP_DMA_ACTIVITY,
+                            trace_utils.MemTilePortEvent(trace_utils.MemTileEvent.PORT_RUNNING_0, 10, True),  # master(0)
+                            trace_utils.MemTilePortEvent(trace_utils.MemTileEvent.PORT_TLAST_0, 10, True),  # master(0)
+                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
+                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
+                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_START_TASK,
+                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
+                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
                         ],
                         shimtile_events=[
                             trace_utils.ShimTileEvent.DMA_S2MM_0_START_TASK,
@@ -138,9 +138,9 @@ def my_chaining_channels():
                             trace_utils.ShimTileEvent.DMA_MM2S_0_START_TASK,
                             trace_utils.ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
                             trace_utils.ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
-                            trace_utils.ShimTileEvent.DMA_S2MM_0_STALLED_LOCK,
-                            trace_utils.ShimTileEvent.GROUP_DMA_ACTIVITY,
-                            trace_utils.ShimTileEvent.GROUP_LOCK,
+                            trace_utils.ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
+                            trace_utils.ShimTilePortEvent(trace_utils.ShimTileEvent.PORT_RUNNING_0, 4, True),  # master(2)
+                            trace_utils.ShimTilePortEvent(trace_utils.ShimTileEvent.PORT_RUNNING_1, 5, False), # slave(3)
                         ]
                     )
 
