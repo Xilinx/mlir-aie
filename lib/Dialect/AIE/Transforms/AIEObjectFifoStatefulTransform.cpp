@@ -1036,7 +1036,7 @@ struct AIEObjectFifoStatefulTransformPass
       repeatCount = op.getRepeatCount().value();
 
     // check for BD chain repeat count
-    auto bdChainRepeatCount = op.getBdChainRepeatCount();
+    auto bdChainIterCount = op.getBdChainIterCount();
 
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
@@ -1140,11 +1140,11 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
 
-    // Use bd_chain_repeat_count if available, otherwise default to 0
+    // Use bd_chain_iter_count if available, otherwise default to 0
     int taskCount = 0;
     bool isBdChainMode = false;
-    if (bdChainRepeatCount.has_value()) {
-      taskCount = bdChainRepeatCount.value();
+    if (bdChainIterCount.has_value()) {
+      taskCount = bdChainIterCount.value() - 1;
       isBdChainMode = true;
     }
     builder.create<DMAStartOp>(builder.getUnknownLoc(), channelDir,
@@ -1165,7 +1165,7 @@ struct AIEObjectFifoStatefulTransformPass
         break;
       for (int r = 0; r < repeatCount * joinDistribFactor; r++) {
         if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1) {
-          // If bd_chain_repeat_count attribute is set (BD chain mode), create a
+          // If bd_chain_iter_count attribute is set (BD chain mode), create a
           // dedicated terminating block
           if (isBdChainMode) {
             succ = builder.createBlock(endBlock);
@@ -1814,11 +1814,11 @@ struct AIEObjectFifoStatefulTransformPass
             consumerObjFifoSize, emptyDims, fromStreamDims);
         if (createOp.getDisableSynchronization())
           consumerFifo.setDisableSynchronization(true);
-        // Propagate bd_chain_repeat_count attribute from the original createOp
+        // Propagate bd_chain_iter_count attribute from the original createOp
         // to the new consumerFifo
-        if (auto bdChainRepeatCount = createOp.getBdChainRepeatCount()) {
-          consumerFifo.setBdChainRepeatCountAttr(
-              builder.getI32IntegerAttr(*bdChainRepeatCount));
+        if (auto bdChainIterCount = createOp.getBdChainIterCount()) {
+          consumerFifo.setBdChainIterCountAttr(
+              builder.getI32IntegerAttr(*bdChainIterCount));
         }
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 

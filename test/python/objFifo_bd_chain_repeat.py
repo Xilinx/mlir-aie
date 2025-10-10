@@ -7,12 +7,15 @@
 # RUN: %python %s | FileCheck %s --check-prefix=NORMAL
 # RUN: not %python %s zero 2>&1 | FileCheck %s --check-prefix=ERROR_ZERO
 # RUN: not %python %s high 2>&1 | FileCheck %s --check-prefix=ERROR_HIGH
+# RUN: not %python %s args 2>&1 | FileCheck %s --check-prefix=ERROR_ARGS
 
-# NORMAL: aie.objectfifo @shim_to_mem(%{{.*}}, {%{{.*}}}, {{.*}}) {bd_chain_repeat_count = 0 : i32} : !aie.objectfifo<memref<2048xi32>>
-# NORMAL: aie.objectfifo @shim_to_mem_fwd(%{{.*}}, {%{{.*}}}, {{.*}}) {bd_chain_repeat_count = 2 : i32} : !aie.objectfifo<memref<1024xi32>>
+# NORMAL: aie.objectfifo @shim_to_mem(%{{.*}}, {%{{.*}}}, {{.*}}) {bd_chain_iter_count = 1 : i32} : !aie.objectfifo<memref<2048xi32>>
+# NORMAL: aie.objectfifo @shim_to_mem_fwd(%{{.*}}, {%{{.*}}}, {{.*}}) {bd_chain_iter_count = 3 : i32} : !aie.objectfifo<memref<1024xi32>>
 
-# ERROR_ZERO: ValueError: Repeat count must be in [1, 256] range.
-# ERROR_HIGH: ValueError: Repeat count must be in [1, 256] range.
+# ERROR_ZERO: ValueError: Iter count must be in [1, 256] range.
+# ERROR_HIGH: ValueError: Iter count must be in [1, 256] range.
+
+# ERROR_ARGS: ValueError: iter_count is required. Provide a value between 1 and 256.
 
 import sys
 import numpy as np
@@ -28,10 +31,10 @@ def test_objectfifo_bd_chain_scenarios():
     mem_ty = np.ndarray[(2048,), np.dtype[np.int32]]
 
     of_shim_to_mem = ObjectFifo(mem_ty, name="shim_to_mem")
-    of_shim_to_mem.use_bd_chain()
+    of_shim_to_mem.use_bd_chain(1)
 
     of_mem_to_compute = of_shim_to_mem.cons().forward(obj_type=line_ty)
-    of_mem_to_compute.use_bd_chain(2)
+    of_mem_to_compute.use_bd_chain(3)
 
     rt = Runtime()
     vector_ty = np.ndarray[(4096,), np.dtype[np.int32]]
@@ -59,6 +62,13 @@ def test_objectfifo_bd_chain_error_high():
     of_test.use_bd_chain(257)
 
 
+def test_objectfifo_bd_chain_error_args():
+    line_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+
+    of_test = ObjectFifo(line_ty, name="test_args")
+    of_test.use_bd_chain()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         test_type = sys.argv[1]
@@ -66,5 +76,7 @@ if __name__ == "__main__":
             test_objectfifo_bd_chain_error_zero()
         elif test_type == "high":
             test_objectfifo_bd_chain_error_high()
+        elif test_type == "args":
+            test_objectfifo_bd_chain_error_args()
     else:
         test_objectfifo_bd_chain_scenarios()

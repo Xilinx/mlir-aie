@@ -1732,7 +1732,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
-        OptionalAttr<AIEI32Attr>:$bd_chain_repeat_count
+        OptionalAttr<AIEI32Attr>:$bd_chain_iter_count
   );
 
   let assemblyFormat = [{

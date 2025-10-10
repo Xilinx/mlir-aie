@@ -76,7 +76,7 @@ class ObjectFifo(Resolvable):
         self._prod: ObjectFifoHandle | None = None
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
-        self._bd_chain_repeat_count: int | None = None
+        self._bd_chain_iter_count: int | None = None
 
     @classmethod
     def __get_index(cls) -> int:
@@ -120,22 +120,25 @@ class ObjectFifo(Resolvable):
         """The tensor type of each buffer belonging to the ObjectFifo"""
         return self._obj_type
 
-    def use_bd_chain(self, repeat_count: int | None = None):
+    def use_bd_chain(self, iter_count: int = None):
         """Configure BD (Buffer Descriptor) chaining for the ObjectFifo.
 
         Args:
-            repeat_count (int | None, optional): Number of forward chain repeats.
-                - If None: Forward chain with single iteration and no repeat (default behavior)
-                - If 1-256: Forward chain with specified number of repeats
+            iter_count (int): Number of forward chain iterations.
+                - Must be in range [1, 256]: Forward chain with specified number of iterations
 
         Raises:
-            ValueError: If repeat_count is outside the valid range [1, 256]
+            ValueError: If iter_count is not provided or is outside the valid range [1, 256]
         """
-        if repeat_count is not None:
-            if repeat_count < 1 or repeat_count > 256:
-                raise ValueError("Repeat count must be in [1, 256] range.")
+        if iter_count is None:
+            raise ValueError(
+                "iter_count is required. Provide a value between 1 and 256."
+            )
 
-        self._bd_chain_repeat_count = 0 if repeat_count is None else repeat_count
+        if iter_count < 1 or iter_count > 256:
+            raise ValueError("Iter count must be in [1, 256] range.")
+
+        self._bd_chain_iter_count = iter_count
 
     def __str__(self) -> str:
         prod_endpoint = None
@@ -273,8 +276,8 @@ class ObjectFifo(Resolvable):
                 for con in self._cons
             ]
 
-            # Only pass bd_chain_repeat_count if use_bd_chain() was explicitly called
-            if self._bd_chain_repeat_count is not None:
+            # Pass bd_chain_iter_count if use_bd_chain() was explicitly called
+            if self._bd_chain_iter_count is not None:
                 self._op = object_fifo(
                     self.name,
                     self._prod_tile_op(),
@@ -284,7 +287,7 @@ class ObjectFifo(Resolvable):
                     dimensionsToStream=self._dims_to_stream,
                     dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                     plio=self._plio,
-                    bd_chain_repeat_count=self._bd_chain_repeat_count,
+                    bd_chain_iter_count=self._bd_chain_iter_count,
                 )
             else:
                 self._op = object_fifo(
