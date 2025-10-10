@@ -57,7 +57,9 @@ make run TRACE=1        # Run with tracing
 make parse_trace        # Parse and analyze trace data
 ```
 
-The trace will capture DMA channel activity, lock operations, and data traffic on the ShimTile. Trace data is written to `trace.txt` and can be analyzed with the parse_trace target, which generates `trace_chaining_channels.json` and displays a summary.
+The trace will capture DMA channel activity, lock operations, and data traffic on the ShimTile. Trace data is written to `trace.txt` and can be analyzed with the parse_trace target, which generates `trace_chaining_channels.json` and displays a summary. You can then use [perfetto](https://perfetto.dev) to view the trace as shown below:
+
+![Chaining Channels Trace](chaining_channels_trace.png)
 
 ### Cleaning
 
