@@ -1635,18 +1635,25 @@ struct AIEObjectFifoStatefulTransformPass
   /// shimDMAAllocationOp containing the channelDir, channelIndex and
   /// shimTile col assigned by the objectFifo lowering.
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
-                                      FlatSymbolRefAttr obj_fifo, int colIndex,
-                                      DMAChannelDir channelDir,
+                                      ObjectFifoCreateOp &objFifoOp,
+                                      int colIndex, DMAChannelDir channelDir,
                                       int channelIndex, bool plio,
                                       std::optional<PacketInfoAttr> packet) {
     PacketInfoAttr packetInfo = nullptr;
     if (packet)
       packetInfo = *packet;
-    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
+    std::string alloc_name = getShimAllocationName(objFifoOp.getName());
+    // SymbolRefAttr::get(ctx, objFifoOp.getName())
+    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(),
+                                        StringAttr::get(ctx, alloc_name),
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex),
                                         builder.getBoolAttr(plio), packetInfo);
+  }
+
+  static std::string getShimAllocationName(llvm::StringRef objFifoName) {
+    return (objFifoName + "_shim_alloc").str();
   }
 
   /// Function used to verify that an objectfifo is present in at most one
@@ -1908,9 +1915,9 @@ struct AIEObjectFifoStatefulTransformPass
 
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
-            builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-            producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel, producer.getPlio(), bdPacket);
+            builder, ctx, producer, producer.getProducerTileOp().colIndex(),
+            producerChan.direction, producerChan.channel, producer.getPlio(),
+            bdPacket);
 
       PacketFlowOp packetflow;
       if (clPacketSwObjectFifos) {
@@ -1963,9 +1970,9 @@ struct AIEObjectFifoStatefulTransformPass
 
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
-              builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-              consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel, producer.getPlio(), {});
+              builder, ctx, producer, consumer.getProducerTileOp().colIndex(),
+              consumerChan.direction, consumerChan.channel, producer.getPlio(),
+              {});
 
         if (!clPacketSwObjectFifos) {
           // create flow
@@ -2261,6 +2268,22 @@ struct AIEObjectFifoStatefulTransformPass
     computeTopologicalSorting(sorted);
     for (auto *op : llvm::reverse(sorted))
       op->erase();
+
+    //===------------------------------------------------------------------===//
+    // Replace any remaining uses of object fifo symbol with symbol of its shim
+    // dma allocation.
+    //===------------------------------------------------------------------===//
+    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+      std::string shimAllocName = getShimAllocationName(createOp.getName());
+      if (failed(SymbolTable::replaceAllSymbolUses(
+              createOp.getNameAttr(), builder.getStringAttr(shimAllocName),
+              device))) {
+        createOp.emitError(
+            "failed to replace symbol uses with shim allocation");
+        return signalPassFailure();
+      }
+      createOp.erase();
+    }
   }
 };
 
