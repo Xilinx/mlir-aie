@@ -14,6 +14,11 @@
 #include <cassert>
 #include <filesystem>
 
+#ifdef TEST_UTILS_USE_XRT
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_kernel.h"
+#endif
+
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
