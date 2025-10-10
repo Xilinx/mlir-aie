@@ -2246,7 +2246,9 @@ struct AIEObjectFifoStatefulTransformPass
     //===------------------------------------------------------------------===//
     SetVector<Operation *> opsToErase;
     device.walk([&](Operation *op) {
-      if (isa<ObjectFifoLinkOp, ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp, ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp, ObjectFifoAllocateOp>(op))
+      if (isa<ObjectFifoLinkOp, ObjectFifoRegisterExternalBuffersOp,
+              ObjectFifoAcquireOp, ObjectFifoSubviewAccessOp,
+              ObjectFifoReleaseOp, ObjectFifoAllocateOp>(op))
         opsToErase.insert(op);
     });
     SmallVector<Operation *> sorted{opsToErase.begin(), opsToErase.end()};

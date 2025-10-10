@@ -205,7 +205,8 @@ public:
     if (!dev)
       return failure();
 
-    auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(dev, op.getMetadata().getRootReference());
+    auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(
+        dev, op.getMetadata().getRootReference());
     if (!infoOp) {
       return op->emitOpError("couldn't find shim_dma_allocation op.");
     }
