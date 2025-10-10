@@ -101,14 +101,14 @@ def parse_args(args=None):
         dest="compile",
         default=not aie_disable_compile,
         action="store_true",
-        help="Enable compiling of AIE code",
+        help="Enable compiling of AIE code for each core in the array",
     )
     parser.add_argument(
         "--no-compile",
         dest="compile",
         default=not aie_disable_compile,
         action="store_false",
-        help="Disable compiling of AIE code",
+        help="Disable compiling of AIE code for each core in the array",
     )
     parser.add_argument(
         "--host-target",
