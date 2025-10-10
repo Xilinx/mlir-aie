@@ -47,7 +47,7 @@
 // CHECK:        }
 // CHECK:        aie.end
 // CHECK:      } {dynamic_objfifo_lowering = true}
-// CHECK:      aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
+// CHECK:      aie.shim_dma_allocation @input_fifo_shim_alloc(MM2S, 0, 0)
 // CHECK:      %mem_0_2 = aie.mem(%{{.*}}tile_0_2) {
 // CHECK:        %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:      ^bb1:  // 2 preds: ^bb0, ^bb1

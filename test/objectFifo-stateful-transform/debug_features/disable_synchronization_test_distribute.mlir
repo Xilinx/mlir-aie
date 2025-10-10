@@ -73,7 +73,7 @@
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @link3(S2MM, 0, 2)
+// CHECK:     aie.shim_dma_allocation @link3_shim_alloc(S2MM, 0, 2)
 // CHECK:   }
 // CHECK: }
 

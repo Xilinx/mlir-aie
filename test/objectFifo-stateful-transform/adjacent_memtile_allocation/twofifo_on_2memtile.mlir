@@ -42,7 +42,7 @@
 // CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 1, %[[TILE_0_2]], DMA : 0)
 // CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 0, %[[SHIM_NOC_TILE_0_0]], DMA : 0)
 // CHECK:     aie.flow(%[[TILE_0_2]], DMA : 0, %[[MEM_TILE_0_1]], DMA : 0)
-// CHECK:     aie.shim_dma_allocation @in0(MM2S, 0, 0)
+// CHECK:     aie.shim_dma_allocation @in0_shim_alloc(MM2S, 0, 0)
 // CHECK:     %{{.*}} = aie.memtile_dma(%[[MEM_TILE_0_1]]) {
 // CHECK:       aie.dma_start(S2MM, 1, ^bb1, ^bb3)
 // CHECK:     ^bb1:
@@ -81,7 +81,7 @@
 // CHECK:       aie.dma_bd(%[[OUT1_BUFF_0]] : memref<8xi32>, 0, 8)
 // CHECK:       aie.use_lock(%[[OUT1_PROD_LOCK]], Release, 1)
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @out0(S2MM, 0, 0)
+// CHECK:     aie.shim_dma_allocation @out0_shim_alloc(S2MM, 0, 0)
 // CHECK:   }
 // CHECK: }
 
