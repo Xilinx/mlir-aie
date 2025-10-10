@@ -17,12 +17,12 @@
 
 #include "llvm/IR/Module.h"
 
-namespace xilinx {
-namespace AIE {
+using namespace xilinx;
+using namespace AIE;
 
-mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
-                                            llvm::raw_ostream &output,
-                                            llvm::StringRef deviceName) {
+mlir::LogicalResult AIE::AIETranslateSCSimConfig(mlir::ModuleOp module,
+                                                 llvm::raw_ostream &output,
+                                                 llvm::StringRef deviceName) {
   DeviceOp targetOp =
       AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
   if (!targetOp) {
@@ -153,9 +153,9 @@ must be called first. So, a more practical invocation: aie-opt
 --aie-create-pathfinder-flows ./aie.mlir | aie-translate --aie-mlir-to-shim >
 ./Work/arch/aieshim_solution.aiesol
 */
-mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
-                                             llvm::raw_ostream &output,
-                                             llvm::StringRef deviceName) {
+mlir::LogicalResult AIE::AIETranslateShimSolution(mlir::ModuleOp module,
+                                                  llvm::raw_ostream &output,
+                                                  llvm::StringRef deviceName) {
   DeviceOp targetOp =
       AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
   if (!targetOp) {
@@ -213,9 +213,9 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
   return mlir::success();
 }
 
-mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
-                                         llvm::raw_ostream &output,
-                                         llvm::StringRef deviceName) {
+mlir::LogicalResult AIE::AIETranslateGraphXPE(mlir::ModuleOp module,
+                                              llvm::raw_ostream &output,
+                                              llvm::StringRef deviceName) {
   /* Generates a .xpe file which is necessary to run aiesim.
   .xpe is a power report file, but has information on which AIE tiles are used.
   Sample invocation:
@@ -394,6 +394,3 @@ mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
 
   return mlir::success();
 }
-
-} // namespace AIE
-} // namespace xilinx
