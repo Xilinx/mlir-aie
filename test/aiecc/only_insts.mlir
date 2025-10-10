@@ -10,7 +10,7 @@
 
 // Check that passing the --no-compile flag with --aie-generate-npu-insts generates _only_ the NPU instructions and skips other expensive compilation steps.
 
-// RUN: %PYTHON aiecc.py -v --no-compile --aie-generate-npu-insts %s --npu-insts-name=my_insts.bin | FileCheck %s
+// RUN: %PYTHON aiecc.py -v --no-compile --aie-generate-npu-insts --npu-insts-name=my_insts.bin %s | FileCheck %s
 // RUN: ls | FileCheck %s --check-prefix=LS
 // CHECK-NOT: xchesscc_wrapper
 // LS: my_insts.bin
