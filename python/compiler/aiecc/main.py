@@ -1460,7 +1460,14 @@ class FlowRunner:
                 self.opts.verbose,
             )
 
-            requires_routing = opts.xcl or opts.cdo or opts.pdi or opts.compile or opts.compile_host or opts.aiesim
+            requires_routing = (
+                opts.xcl
+                or opts.cdo
+                or opts.pdi
+                or opts.compile
+                or opts.compile_host
+                or opts.aiesim
+            )
             if requires_routing:
                 input_physical = self.prepend_tmp("input_physical.mlir")
                 processes = [
@@ -1480,11 +1487,17 @@ class FlowRunner:
             else:
                 input_physical = file_with_addresses
 
-
             self.progress_bar.update(task1, advance=1)
 
             # 2.) Generate code for each core
-            requires_core_compilation = opts.xcl or opts.cdo or opts.pdi or opts.compile or opts.compile_host or opts.aiesim
+            requires_core_compilation = (
+                opts.xcl
+                or opts.cdo
+                or opts.pdi
+                or opts.compile
+                or opts.compile_host
+                or opts.aiesim
+            )
             if requires_core_compilation:
                 task2 = progress_bar.add_task(
                     "[green] Generating code for each core", total=3, command=""
