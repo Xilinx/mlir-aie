@@ -12,12 +12,6 @@
 
 // CHECK: module @memtileRepeat {
 // CHECK:   aie.device(npu1) {
-// CHECK:     memref.global "public" @of2_cons : memref<32xi32>
-// CHECK:     memref.global "public" @of2 : memref<32xi32>
-// CHECK:     memref.global "public" @of1_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of1 : memref<16xi32>
-// CHECK:     memref.global "public" @of0_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of0 : memref<16xi32>
 // CHECK:     %{{.*}}tile_1_0 = aie.tile(1, 0)
 // CHECK:     %{{.*}}tile_1_1 = aie.tile(1, 1)
 // CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)

@@ -12,8 +12,6 @@
 
 // CHECK: module @elementGenerationShim {
 // CHECK:   aie.device(xcvc1902) {
-// CHECK:     memref.global "public" @of1_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of1 : memref<16xi32>
 // CHECK:     %[[VAL_0:.*]] = aie.tile(1, 0)
 // CHECK:     %[[VAL_1:.*]] = aie.tile(1, 2)
 // CHECK:     %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32> 

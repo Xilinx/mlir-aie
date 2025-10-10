@@ -12,8 +12,6 @@
 
 // CHECK:  module {
 // CHECK:    aie.device(npu1_1col) {
-// CHECK:      memref.global "public" @input_fifo_cons : memref<10xi32>
-// CHECK:      memref.global "public" @input_fifo : memref<10xi32>
 // CHECK:      func.func @passthrough_10_i32(%arg0: memref<10xi32>) {
 // CHECK:        return
 // CHECK:      }

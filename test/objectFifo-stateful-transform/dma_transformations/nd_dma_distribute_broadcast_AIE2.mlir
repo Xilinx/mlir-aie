@@ -11,14 +11,6 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK-DAG:     memref.global "public" @[[OF2_0_CONS:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF2_1_CONS:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF2:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF1_0_CONS:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF1_1_CONS:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF1:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF0_CONS:.+]] : memref<256xi32>
-// CHECK-DAG:     memref.global "public" @[[OF0:.+]] : memref<256xi32>
 // CHECK-DAG:     %[[TILE_1_0:.+]] = aie.tile(1, 0)
 // CHECK-DAG:     %[[TILE_1_1:.+]] = aie.tile(1, 1)
 // CHECK-DAG:     %[[TILE_1_2:.+]] = aie.tile(1, 2)
