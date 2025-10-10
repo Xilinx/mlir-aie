@@ -455,7 +455,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // no other way to express this at the dma_memcpy_nd interface otherwise.
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (auto allocOp =
-          AIE::ShimDMAAllocationOp::getForSymbol(dev, getMetadata())) {
+          AIE::ShimDMAAllocationOp::getForSymbol(dev, getMetadata().getRootReference())) {
     int col = allocOp.getCol();
     bool skipTransformationChecks = isLinearTransferWithoutTransformation();
     if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes,

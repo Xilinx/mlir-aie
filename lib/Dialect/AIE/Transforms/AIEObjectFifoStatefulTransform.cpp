@@ -2240,28 +2240,13 @@ struct AIEObjectFifoStatefulTransformPass
       if (res.wasInterrupted())
         return signalPassFailure();
     }
-    // make global symbols to replace the to be erased ObjectFifoCreateOps
-    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      builder.setInsertionPointToStart(device.getBody());
-      auto sym_name = createOp.getName();
-      createOp->setAttr(SymbolTable::getSymbolAttrName(),
-                        builder.getStringAttr("__erase_" + sym_name));
-      auto memrefType = llvm::cast<AIEObjectFifoType>(createOp.getElemType())
-                            .getElementType();
-      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
-                                       builder.getStringAttr("public"),
-                                       memrefType, nullptr, false, nullptr);
-    }
 
     //===------------------------------------------------------------------===//
     // Remove old ops
     //===------------------------------------------------------------------===//
     SetVector<Operation *> opsToErase;
     device.walk([&](Operation *op) {
-      if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp,
-              ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,
-              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp,
-              ObjectFifoAllocateOp>(op))
+      if (isa<ObjectFifoLinkOp, ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp, ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp, ObjectFifoAllocateOp>(op))
         opsToErase.insert(op);
     });
     SmallVector<Operation *> sorted{opsToErase.begin(), opsToErase.end()};
@@ -2273,6 +2258,7 @@ struct AIEObjectFifoStatefulTransformPass
     // Replace any remaining uses of object fifo symbol with symbol of its shim
     // dma allocation.
     //===------------------------------------------------------------------===//
+    opsToErase.clear();
     for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
       std::string shimAllocName = getShimAllocationName(createOp.getName());
       if (failed(SymbolTable::replaceAllSymbolUses(
@@ -2282,7 +2268,10 @@ struct AIEObjectFifoStatefulTransformPass
             "failed to replace symbol uses with shim allocation");
         return signalPassFailure();
       }
-      createOp.erase();
+      opsToErase.insert(createOp);
+    }
+    for (auto *op : opsToErase) {
+      op->erase();
     }
   }
 };
