@@ -15,6 +15,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIERT.h"
 
+#include <llvm/ADT/APInt.h>
 #include "llvm/Support/Debug.h"
 
 extern "C" {
@@ -23,6 +24,9 @@ extern "C" {
 #include "xaiengine/xaie_txn.h"
 }
 
+#include <cstring>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #define DEBUG_TYPE "aie-convert-to-config"
@@ -33,9 +37,45 @@ using namespace xilinx::AIE;
 
 namespace {
 
-// An TransactionBinaryOperation encapulates an aie-rt TnxCmd struct
+// A TransactionBinaryOperation encapsulates an aie-rt XAie_TxnCmd struct and
+// any additional metadata needed for custom operations that do not map cleanly
+// onto the core command fields.
 struct TransactionBinaryOperation {
-  struct XAie_TxnCmd cmd;
+  struct XAie_TxnCmd cmd = {};
+
+  struct SyncPayload {
+    int32_t column;
+    int32_t row;
+    int32_t direction;
+    int32_t channel;
+    int32_t columnCount;
+    int32_t rowCount;
+  };
+
+  struct LoadPdiPayload {
+    uint32_t id;
+    std::optional<uint32_t> size;
+    std::optional<uint64_t> address;
+  };
+
+  struct AddressPatchPayload {
+    uint32_t action;
+    uint32_t addr;
+    int32_t argIdx;
+    int32_t argPlus;
+  };
+
+  struct PreemptPayload {
+    uint8_t level;
+  };
+
+  std::optional<SyncPayload> sync;
+  std::optional<LoadPdiPayload> loadPdi;
+  std::optional<AddressPatchPayload> addressPatch;
+  std::optional<PreemptPayload> preempt;
+
+  TransactionBinaryOperation() = default;
+
   TransactionBinaryOperation(XAie_TxnOpcode opc, uint32_t mask, uint64_t addr,
                              uint32_t value, const uint8_t *data,
                              uint32_t size) {
@@ -47,6 +87,29 @@ struct TransactionBinaryOperation {
     cmd.Size = size;
   }
 };
+
+constexpr uint8_t kOpcodeWrite = 0x00;
+constexpr uint8_t kOpcodeBlockWrite = 0x01;
+constexpr uint8_t kOpcodeMaskWrite = 0x03;
+constexpr uint8_t kOpcodePreempt = 0x06;
+constexpr uint8_t kOpcodeLoadPdi = 0x08;
+constexpr uint8_t kOpcodeCustomTct = 0x80;
+constexpr uint8_t kOpcodeCustomDdrPatch = 0x81;
+constexpr size_t kTxnHeaderBytes = 16;
+
+struct TxnPreemptHeader {
+  uint8_t opcode;
+  uint8_t level;
+  uint16_t reserved;
+};
+
+struct TxnLoadPdiHeader {
+  uint8_t opcode;
+  uint8_t padding;
+  uint16_t id;
+  uint32_t size;
+  uint64_t address;
+};
 } // namespace
 
 // Parse a TXN binary blob. On success return the number of columns from the
@@ -54,6 +117,11 @@ struct TransactionBinaryOperation {
 static std::optional<int>
 parseTransactionBinary(const std::vector<uint8_t> &data,
                        std::vector<TransactionBinaryOperation> &ops) {
+
+  if (data.size() < kTxnHeaderBytes) {
+    llvm::errs() << "Transaction binary is too small for header\n";
+    return std::nullopt;
+  }
 
   uint32_t major = data[0];
   uint32_t minor = data[1];
@@ -72,20 +140,36 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   LLVM_DEBUG(llvm::dbgs() << "NumOps: " << num_ops << "\n");
   LLVM_DEBUG(llvm::dbgs() << "TxnSize: " << txn_size << " bytes\n");
 
-  size_t i = 16;
+  size_t i = kTxnHeaderBytes;
 
-  // Convert opcode from uint8 to enum
-  auto convertOpcode = [](uint8_t opc) {
+  auto requireBytes = [&](size_t offset, size_t length) -> bool {
+    if (offset + length > data.size()) {
+      llvm::errs() << "Transaction binary truncated while parsing opcode\n";
+      return false;
+    }
+    return true;
+  };
+
+  auto read32 = [&](size_t offset) -> uint32_t {
+    uint32_t value;
+    std::memcpy(&value, data.data() + offset, sizeof(uint32_t));
+    return value;
+  };
+
+  // Convert opcode from uint8 to a validated opcode byte
+  auto convertOpcode = [](uint8_t opc) -> std::optional<uint8_t> {
     switch (opc) {
-    case 0:
-      return XAie_TxnOpcode::XAIE_IO_WRITE;
-    case 1:
-      return XAie_TxnOpcode::XAIE_IO_BLOCKWRITE;
-    case 3:
-      return XAie_TxnOpcode::XAIE_IO_MASKWRITE;
+    case kOpcodeWrite:
+    case kOpcodeBlockWrite:
+    case kOpcodeMaskWrite:
+    case kOpcodePreempt:
+    case kOpcodeLoadPdi:
+    case kOpcodeCustomTct:
+    case kOpcodeCustomDdrPatch:
+      return opc;
     default:
       llvm::errs() << "Unhandled opcode: " << std::to_string(opc) << "\n";
-      return XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_MAX;
+      return std::nullopt;
     }
   };
 
@@ -94,95 +178,267 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
   // representing the parsed operations.
   if (major == 0 && minor == 1) {
     while (i < data.size()) {
+      auto maybeOpcode = convertOpcode(data[i]);
+      if (!maybeOpcode)
+        return std::nullopt;
+      uint8_t opcodeByte = *maybeOpcode;
+      LLVM_DEBUG(llvm::dbgs()
+                 << "opcode: " + std::to_string(static_cast<int>(opcodeByte))
+                 << "\n");
 
-      XAie_TxnOpcode opc = convertOpcode(data[i]);
-      LLVM_DEBUG(llvm::dbgs() << "opcode: " + std::to_string(opc) + "\n");
+      TransactionBinaryOperation op;
+      op.cmd.Opcode = static_cast<XAie_TxnOpcode>(opcodeByte);
 
-      uint64_t addr = 0;
-      uint32_t value = 0;
-      uint32_t size = 0;
-      uint32_t mask = 0;
-      const uint8_t *data_ptr = nullptr;
-
-      if (opc == XAie_TxnOpcode::XAIE_IO_WRITE) {
+      switch (opcodeByte) {
+      case kOpcodeWrite: {
         LLVM_DEBUG(llvm::dbgs() << "opcode: WRITE (0x00)\n");
-        uint32_t addr0, addr1;
-        std::memcpy(&addr0, &data[i + 8], 4);
-        std::memcpy(&addr1, &data[i + 12], 4);
-        std::memcpy(&value, &data[i + 16], 4);
-        std::memcpy(&size, &data[i + 20], 4);
-        addr = static_cast<uint64_t>(addr1) << 32 | addr0;
-        i += size;
-      } else if (opc == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
+        if (!requireBytes(i, 24))
+          return std::nullopt;
+        uint32_t addrLo = read32(i + 8);
+        uint32_t addrHi = read32(i + 12);
+        uint32_t value = read32(i + 16);
+        uint32_t opSize = read32(i + 20);
+        if (!requireBytes(i, opSize))
+          return std::nullopt;
+        uint64_t addr = (static_cast<uint64_t>(addrHi) << 32) | addrLo;
+        op.cmd.RegOff = addr;
+        op.cmd.Value = value;
+        op.cmd.Size = 0;
+        i += opSize;
+        break;
+      }
+      case kOpcodeBlockWrite: {
         LLVM_DEBUG(llvm::dbgs() << "opcode: BLOCKWRITE (0x01)\n");
-        std::memcpy(&addr, &data[i + 8], 4);
-        std::memcpy(&size, &data[i + 12], 4);
-        data_ptr = data.data() + i + 16;
-        i += size;
-        size = size - 16;
-      } else if (opc == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
+        if (!requireBytes(i, 16))
+          return std::nullopt;
+        uint32_t addr = read32(i + 8);
+        uint32_t opSize = read32(i + 12);
+        if (opSize < 16 || !requireBytes(i, opSize))
+          return std::nullopt;
+        const uint8_t *payload = data.data() + i + 16;
+        uint32_t payloadBytes = opSize - 16;
+        op.cmd.RegOff = addr;
+        op.cmd.DataPtr = reinterpret_cast<uint64_t>(payload);
+        op.cmd.Size = payloadBytes;
+        i += opSize;
+        break;
+      }
+      case kOpcodeMaskWrite: {
         LLVM_DEBUG(llvm::dbgs() << "opcode: MASKWRITE (0x03)\n");
-        uint32_t addr0, addr1;
-        std::memcpy(&addr0, &data[i + 8], 4);
-        std::memcpy(&addr1, &data[i + 12], 4);
-        std::memcpy(&value, &data[i + 16], 4);
-        std::memcpy(&mask, &data[i + 20], 4);
-        std::memcpy(&size, &data[i + 24], 4);
-        addr = static_cast<uint64_t>(addr1) << 32 | addr0;
-        i += size;
-      } else {
-        llvm::errs() << "Unhandled opcode: " << std::to_string(opc) << "\n";
+        if (!requireBytes(i, 28))
+          return std::nullopt;
+        uint32_t addrLo = read32(i + 8);
+        uint32_t addrHi = read32(i + 12);
+        uint32_t value = read32(i + 16);
+        uint32_t mask = read32(i + 20);
+        uint32_t opSize = read32(i + 24);
+        if (!requireBytes(i, opSize))
+          return std::nullopt;
+        uint64_t addr = (static_cast<uint64_t>(addrHi) << 32) | addrLo;
+        op.cmd.RegOff = addr;
+        op.cmd.Value = value;
+        op.cmd.Mask = mask;
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      case kOpcodeCustomTct: {
+        uint32_t opSize = read32(i + 4);
+        if (opSize < 16 || !requireBytes(i, opSize))
+          return std::nullopt;
+        uint32_t descriptor = read32(i + 8);
+        uint32_t config = read32(i + 12);
+        TransactionBinaryOperation::SyncPayload payload{
+            /*column=*/static_cast<int32_t>((descriptor >> 16) & 0xff),
+            /*row=*/static_cast<int32_t>((descriptor >> 8) & 0xff),
+            /*direction=*/static_cast<int32_t>(descriptor & 0xff),
+            /*channel=*/static_cast<int32_t>((config >> 24) & 0xff),
+            /*columnCount=*/static_cast<int32_t>((config >> 16) & 0xff),
+            /*rowCount=*/static_cast<int32_t>((config >> 8) & 0xff)};
+        op.sync = payload;
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      case kOpcodeLoadPdi: {
+        LLVM_DEBUG(llvm::dbgs() << "opcode: LOAD_PDI (0x08)\n");
+        constexpr size_t opSize = sizeof(TxnLoadPdiHeader);
+        if (!requireBytes(i, opSize))
+          return std::nullopt;
+        TxnLoadPdiHeader header;
+        std::memcpy(&header, data.data() + i, opSize);
+        TransactionBinaryOperation::LoadPdiPayload payload{
+            header.id,
+            header.size ? std::optional<uint32_t>(header.size)
+                        : std::nullopt,
+            header.address ? std::optional<uint64_t>(header.address)
+                           : std::nullopt};
+        op.loadPdi = payload;
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      case kOpcodeCustomDdrPatch: {
+        uint32_t opSize = read32(i + 4);
+        if (opSize < 44 || !requireBytes(i, opSize))
+          return std::nullopt;
+        uint32_t action = read32(i + 20);
+        uint32_t addr = read32(i + 24);
+        int32_t argIdx = static_cast<int32_t>(read32(i + 32));
+        int32_t argPlus = static_cast<int32_t>(read32(i + 40));
+        TransactionBinaryOperation::AddressPatchPayload payload{
+            action, addr, argIdx, argPlus};
+        op.addressPatch = payload;
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      case kOpcodePreempt: {
+        LLVM_DEBUG(llvm::dbgs() << "opcode: PREEMPT (0x06)\n");
+        constexpr size_t opSize = sizeof(TxnPreemptHeader);
+        if (!requireBytes(i, opSize))
+          return std::nullopt;
+        auto header = reinterpret_cast<const TxnPreemptHeader *>(data.data() + i);
+        op.preempt = TransactionBinaryOperation::PreemptPayload{header->level};
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      default:
+        llvm::errs() << "Unhandled opcode: "
+                     << std::to_string(static_cast<int>(opcodeByte))
+                     << " for v0.1 transaction\n";
         return std::nullopt;
       }
-      ops.emplace_back(opc, mask, addr, value, data_ptr, size);
-      LLVM_DEBUG(llvm::dbgs() << "addr: " << addr << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "value: " << value << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "size: " << size << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "mask: " << mask << "\n");
-      LLVM_DEBUG(llvm::dbgs()
-                 << "data: " << reinterpret_cast<uintptr_t>(data_ptr) << "\n");
+
+      ops.push_back(std::move(op));
     }
   } else if (major == 1 && minor == 0) {
     while (i < data.size()) {
+      auto maybeOpcode = convertOpcode(data[i]);
+      if (!maybeOpcode)
+        return std::nullopt;
+      uint8_t opcodeByte = *maybeOpcode;
+      LLVM_DEBUG(llvm::dbgs()
+                 << "opcode: " + std::to_string(static_cast<int>(opcodeByte))
+                 << "\n");
 
-      XAie_TxnOpcode opc = convertOpcode(data[i]);
-      LLVM_DEBUG(llvm::dbgs() << "opcode: " + std::to_string(opc) + "\n");
+      TransactionBinaryOperation op;
+      op.cmd.Opcode = static_cast<XAie_TxnOpcode>(opcodeByte);
 
-      uint64_t addr = 0;
-      uint32_t value = 0;
-      uint32_t size = 0;
-      uint32_t mask = 0;
-      const uint8_t *data_ptr = nullptr;
-
-      if (opc == XAie_TxnOpcode::XAIE_IO_WRITE) {
+      switch (opcodeByte) {
+      case kOpcodeWrite: {
         LLVM_DEBUG(llvm::dbgs() << "opcode: WRITE (0x00)\n");
-        std::memcpy(&addr, &data[i + 4], 4);
-        std::memcpy(&value, &data[i + 8], 4);
+        if (!requireBytes(i, 12))
+          return std::nullopt;
+        uint32_t addr = read32(i + 4);
+        uint32_t value = read32(i + 8);
+        op.cmd.RegOff = addr;
+        op.cmd.Value = value;
+        op.cmd.Size = 0;
         i += 12;
-      } else if (opc == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
+        break;
+      }
+      case kOpcodeBlockWrite: {
         LLVM_DEBUG(llvm::dbgs() << "opcode: BLOCKWRITE (0x01)\n");
-        std::memcpy(&addr, &data[i + 4], 4);
-        std::memcpy(&size, &data[i + 8], 4);
-        data_ptr = data.data() + i + 12;
-        i += size;
-        size = size - 12;
-      } else if (opc == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
+        if (!requireBytes(i, 12))
+          return std::nullopt;
+        uint32_t addr = read32(i + 4);
+        uint32_t opSize = read32(i + 8);
+        if (opSize < 12 || !requireBytes(i, opSize))
+          return std::nullopt;
+        const uint8_t *payload = data.data() + i + 12;
+        uint32_t payloadBytes = opSize - 12;
+        op.cmd.RegOff = addr;
+        op.cmd.DataPtr = reinterpret_cast<uint64_t>(payload);
+        op.cmd.Size = payloadBytes;
+        i += opSize;
+        break;
+      }
+      case kOpcodeMaskWrite: {
         LLVM_DEBUG(llvm::dbgs() << "opcode: MASKWRITE (0x03)\n");
-        std::memcpy(&addr, &data[i + 4], 4);
-        std::memcpy(&value, &data[i + 8], 4);
-        std::memcpy(&mask, &data[i + 12], 4);
+        if (!requireBytes(i, 16))
+          return std::nullopt;
+        uint32_t addr = read32(i + 4);
+        uint32_t value = read32(i + 8);
+        uint32_t mask = read32(i + 12);
+        op.cmd.RegOff = addr;
+        op.cmd.Value = value;
+        op.cmd.Mask = mask;
+        op.cmd.Size = 0;
         i += 16;
-      } else {
-        llvm::errs() << "Unhandled opcode: " << std::to_string(opc) << "\n";
+        break;
+      }
+      case kOpcodeCustomTct: {
+        uint32_t opSize = read32(i + 4);
+        if (opSize < 16 || !requireBytes(i, opSize))
+          return std::nullopt;
+        uint32_t descriptor = read32(i + 8);
+        uint32_t config = read32(i + 12);
+        TransactionBinaryOperation::SyncPayload payload{
+            static_cast<int32_t>((descriptor >> 16) & 0xff),
+            static_cast<int32_t>((descriptor >> 8) & 0xff),
+            static_cast<int32_t>(descriptor & 0xff),
+            static_cast<int32_t>((config >> 24) & 0xff),
+            static_cast<int32_t>((config >> 16) & 0xff),
+            static_cast<int32_t>((config >> 8) & 0xff)};
+        op.sync = payload;
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      case kOpcodeLoadPdi: {
+        LLVM_DEBUG(llvm::dbgs() << "opcode: LOAD_PDI (0x08)\n");
+        constexpr size_t opSize = sizeof(TxnLoadPdiHeader);
+        if (!requireBytes(i, opSize))
+          return std::nullopt;
+        TxnLoadPdiHeader header;
+        std::memcpy(&header, data.data() + i, opSize);
+        TransactionBinaryOperation::LoadPdiPayload payload{
+            header.id,
+            header.size ? std::optional<uint32_t>(header.size)
+                        : std::nullopt,
+            header.address ? std::optional<uint64_t>(header.address)
+                           : std::nullopt};
+        op.loadPdi = payload;
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      case kOpcodeCustomDdrPatch: {
+        uint32_t opSize = read32(i + 4);
+        if (opSize < 44 || !requireBytes(i, opSize))
+          return std::nullopt;
+        uint32_t action = read32(i + 20);
+        uint32_t addr = read32(i + 24);
+        int32_t argIdx = static_cast<int32_t>(read32(i + 32));
+        int32_t argPlus = static_cast<int32_t>(read32(i + 40));
+        TransactionBinaryOperation::AddressPatchPayload payload{
+            action, addr, argIdx, argPlus};
+        op.addressPatch = payload;
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      case kOpcodePreempt: {
+        LLVM_DEBUG(llvm::dbgs() << "opcode: PREEMPT (0x06)\n");
+        constexpr size_t opSize = sizeof(TxnPreemptHeader);
+        if (!requireBytes(i, opSize))
+          return std::nullopt;
+        auto header = reinterpret_cast<const TxnPreemptHeader *>(data.data() + i);
+        op.preempt = TransactionBinaryOperation::PreemptPayload{header->level};
+        op.cmd.Size = opSize;
+        i += opSize;
+        break;
+      }
+      default:
+        llvm::errs() << "Unhandled opcode: "
+                     << std::to_string(static_cast<int>(opcodeByte))
+                     << " for v1.0 transaction\n";
         return std::nullopt;
       }
-      LLVM_DEBUG(llvm::dbgs() << "addr: " << addr << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "value: " << value << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "size: " << size << "\n");
-      LLVM_DEBUG(llvm::dbgs() << "mask: " << mask << "\n");
-      LLVM_DEBUG(llvm::dbgs()
-                 << "data: " << reinterpret_cast<uintptr_t>(data_ptr) << "\n");
-      ops.emplace_back(opc, mask, addr, value, data_ptr, size);
+
+      ops.push_back(std::move(op));
     }
   } else {
     llvm::errs() << "Unsupported TXN binary version: " << major << "." << minor
@@ -222,20 +478,73 @@ emitTransactionOps(OpBuilder &builder,
   for (auto p : llvm::zip(operations, global_data)) {
     auto op = std::get<0>(p);
     memref::GlobalOp payload = std::get<1>(p);
+    uint8_t opcodeByte = static_cast<uint8_t>(op.cmd.Opcode);
 
-    if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
+    if (opcodeByte == kOpcodeWrite) {
       builder.create<AIEX::NpuWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
                                          nullptr, nullptr, nullptr);
-    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
+    } else if (opcodeByte == kOpcodeBlockWrite) {
       auto memref = builder.create<memref::GetGlobalOp>(loc, payload.getType(),
                                                         payload.getName());
       builder.create<AIEX::NpuBlockWriteOp>(
           loc, builder.getUI32IntegerAttr(op.cmd.RegOff), memref.getResult(),
           nullptr, nullptr, nullptr);
-    } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
+    } else if (opcodeByte == kOpcodeMaskWrite) {
       builder.create<AIEX::NpuMaskWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
                                              op.cmd.Mask, nullptr, nullptr,
                                              nullptr);
+    } else if (opcodeByte == kOpcodeCustomTct) {
+      if (!op.sync) {
+        llvm::errs() << "Missing sync payload while emitting transaction\n";
+        return failure();
+      }
+      auto makeI32Attr = [&](int32_t value) {
+        return builder.getI32IntegerAttr(value);
+      };
+      const auto &sync = *op.sync;
+      builder.create<AIEX::NpuSyncOp>(
+          loc, makeI32Attr(sync.column), makeI32Attr(sync.row),
+          makeI32Attr(sync.direction), makeI32Attr(sync.channel),
+          makeI32Attr(sync.columnCount), makeI32Attr(sync.rowCount));
+    } else if (opcodeByte == kOpcodeLoadPdi) {
+      if (!op.loadPdi) {
+        llvm::errs() << "Missing load_pdi payload while emitting transaction\n";
+        return failure();
+      }
+      const auto &payloadInfo = *op.loadPdi;
+      auto idAttr = builder.getI32IntegerAttr(
+          static_cast<int32_t>(payloadInfo.id));
+      IntegerAttr sizeAttr;
+      if (payloadInfo.size)
+        sizeAttr = builder.getI32IntegerAttr(
+            static_cast<int32_t>(*payloadInfo.size));
+      IntegerAttr addressAttr;
+      if (payloadInfo.address) {
+        auto ui64Ty = IntegerType::get(builder.getContext(), 64,
+                                       IntegerType::Unsigned);
+        addressAttr = IntegerAttr::get(
+            ui64Ty, llvm::APInt(64, *payloadInfo.address));
+      }
+      builder.create<AIEX::NpuLoadPdiOp>(loc, idAttr, sizeAttr, addressAttr);
+    } else if (opcodeByte == kOpcodeCustomDdrPatch) {
+      if (!op.addressPatch) {
+        llvm::errs() << "Missing address_patch payload while emitting transaction\n";
+        return failure();
+      }
+      const auto &patch = *op.addressPatch;
+      builder.create<AIEX::NpuAddressPatchOp>(
+          loc, builder.getUI32IntegerAttr(patch.addr),
+          builder.getI32IntegerAttr(patch.argIdx),
+          builder.getI32IntegerAttr(patch.argPlus));
+    } else if (opcodeByte == kOpcodePreempt) {
+      if (!op.preempt) {
+        llvm::errs() << "Missing preempt payload while emitting transaction\n";
+        return failure();
+      }
+      auto ui8Ty = IntegerType::get(builder.getContext(), 8,
+                                    IntegerType::Unsigned);
+      auto levelAttr = IntegerAttr::get(ui8Ty, llvm::APInt(8, op.preempt->level));
+      builder.create<AIEX::NpuPreemptOp>(loc, levelAttr);
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
       return failure();
