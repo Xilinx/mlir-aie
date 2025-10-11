@@ -14,11 +14,6 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
-// CHECK:           memref.global "public" @broadcast_of_0_cons : memref<16xi32>
-// CHECK:           memref.global "public" @broadcast_of_1_cons : memref<16xi32>
-// CHECK:           memref.global "public" @broadcast_of_2_cons : memref<16xi32>
-// CHECK:           memref.global "public" @broadcast_of_3_cons : memref<16xi32>
-// CHECK:           memref.global "public" @broadcast_of : memref<16xi32>
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(1, 3)
 // CHECK:           %[[VAL_2:.*]] = aie.tile(1, 4)

@@ -690,7 +690,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
         OptionalAttr<PacketInfoAttr>:$packet,
-        FlatSymbolRefAttr:$metadata,
+        SymbolRefAttr:$metadata,
         I64Attr:$id,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
@@ -1096,7 +1096,7 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"Ru
   let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
 
   let arguments = (
-    ins FlatSymbolRefAttr:$alloc,
+    ins SymbolRefAttr:$alloc,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );

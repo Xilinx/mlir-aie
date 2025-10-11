@@ -36,8 +36,8 @@ struct DMAConfigureTaskForOpPattern
                                 PatternRewriter &rewriter) const override {
     AIE::DeviceOp device = op->getParentOfType<AIE::DeviceOp>();
 
-    AIE::ShimDMAAllocationOp alloc_op =
-        AIE::ShimDMAAllocationOp::getForSymbol(device, op.getAlloc());
+    AIE::ShimDMAAllocationOp alloc_op = AIE::ShimDMAAllocationOp::getForSymbol(
+        device, op.getAlloc().getRootReference());
     if (!alloc_op) {
       return op.emitOpError("no shim DMA allocation found for symbol");
     }

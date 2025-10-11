@@ -201,23 +201,6 @@ int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 #include "aie/Dialect/AIE/IR/AIEOps.h.inc"
 
 namespace xilinx::AIE {
-class DeviceOp;
-class ShimDMAAllocationOp;
-struct ShimDMAllocationGetter {
-public:
-  std::optional<AIE::ShimDMAAllocationOp> get(DeviceOp dev,
-                                              mlir::StringRef sym_name);
-
-private:
-  llvm::DenseMap<std::pair<DeviceOp, mlir::StringRef>,
-                 std::optional<AIE::ShimDMAAllocationOp>>
-      allocGetter;
-  std::optional<AIE::ShimDMAAllocationOp>
-  cachelessGet(DeviceOp dev, mlir::StringRef sym_name);
-};
-} // namespace xilinx::AIE
-
-namespace xilinx::AIE {
 
 void collectTiles(DeviceOp &device,
                   llvm::DenseMap<TileID, mlir::Operation *> &tiles);

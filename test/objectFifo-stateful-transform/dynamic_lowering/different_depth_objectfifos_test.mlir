@@ -11,10 +11,6 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform=dynamic-objFifos %s | FileCheck %s
 
 // CHECK:   aie.device(npu1_1col) {
-// CHECK:       memref.global "public" @output_fifo_cons : memref<10xi32>
-// CHECK:       memref.global "public" @output_fifo : memref<10xi32>
-// CHECK:       memref.global "public" @input_fifo_cons : memref<10xi32>
-// CHECK:       memref.global "public" @input_fifo : memref<10xi32>
 // CHECK:       func.func @add_10_i32(%arg0: memref<10xi32>, %arg1: memref<10xi32>, %arg2: memref<10xi32>) {
 // CHECK:         return
 // CHECK:       }
@@ -207,7 +203,7 @@
 // CHECK:         memref.store %29, %buffer_0_2[%c0] : memref<2xi32>
 // CHECK:         aie.end
 // CHECK:       }
-// CHECK:       aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
+// CHECK:       aie.shim_dma_allocation @input_fifo_shim_alloc(MM2S, 0, 0)
 
 
 module {

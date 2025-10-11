@@ -11,8 +11,6 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           memref.global "public" @objfifo_cons : memref<16xi32>
-// CHECK:           memref.global "public" @objfifo : memref<16xi32>
 // CHECK:           %{{.*}}tile_2_0 = aie.tile(2, 0)
 // CHECK:           %{{.*}}tile_3_3 = aie.tile(3, 3)
 // CHECK:           %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_3_3) {sym_name = "objfifo_cons_buff_0"} : memref<16xi32> 
@@ -58,7 +56,7 @@
 // CHECK:           ^bb7:  // pred: ^bb5
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @objfifo(MM2S, 0, 2)
+// CHECK:           aie.shim_dma_allocation @objfifo_shim_alloc(MM2S, 0, 2)
 // CHECK:           %mem_3_3 = aie.mem(%{{.*}}tile_3_3) {
 // CHECK:             %3 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2

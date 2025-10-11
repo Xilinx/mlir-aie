@@ -12,8 +12,6 @@
 
 // CHECK: module @disable_sync {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @of0_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of0 : memref<16xi32>
 // CHECK:     %{{.*}}tile_2_0 = aie.tile(2, 0)
 // CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
 // CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of0_cons_buff_0"} : memref<16xi32> 
@@ -28,7 +26,7 @@
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of0(MM2S, 0, 2)
+// CHECK:     aie.shim_dma_allocation @of0_shim_alloc(MM2S, 0, 2)
 // CHECK:     %mem_1_3 = aie.mem(%{{.*}}tile_1_3) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2

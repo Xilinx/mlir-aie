@@ -187,13 +187,9 @@ public:
 struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
   using OpConversionPattern::OpConversionPattern;
 
-private:
-  AIE::ShimDMAllocationGetter &allocGetter;
-
 public:
-  DmaToNpuPattern(MLIRContext *context, AIE::ShimDMAllocationGetter &getter,
-                  PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), allocGetter(getter) {}
+  DmaToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
@@ -209,14 +205,15 @@ public:
     if (!dev)
       return failure();
 
-    auto infoOp = allocGetter.get(dev, op.getMetadata());
+    auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(
+        dev, op.getMetadata().getRootReference());
     if (!infoOp) {
       return op->emitOpError("couldn't find shim_dma_allocation op.");
     }
 
-    auto channelDir = infoOp->getChannelDir();
+    auto channelDir = infoOp.getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int col = infoOp->getCol();
+    int col = infoOp.getCol();
 
     // initialize fields to zero
     auto column = zero;
@@ -427,8 +424,8 @@ public:
 
     // push the patched bd onto the dma task queue
     rewriter.create<NpuPushQueueOp>(
-        op->getLoc(), column, row, infoOp->getChannelDirAttr(),
-        infoOp->getChannelIndexAttr(), issue_token, repeat_count, bd_id);
+        op->getLoc(), column, row, infoOp.getChannelDirAttr(),
+        infoOp.getChannelIndexAttr(), issue_token, repeat_count, bd_id);
 
     rewriter.eraseOp(op);
     return success();
@@ -440,16 +437,11 @@ public:
 /// symbol argument of this op.
 struct DmaWaitToSyncPattern : OpConversionPattern<NpuDmaWaitOp> {
 
-private:
-  AIE::ShimDMAllocationGetter &allocGetter;
-
 public:
   using OpConversionPattern::OpConversionPattern;
 
-  DmaWaitToSyncPattern(MLIRContext *context,
-                       AIE::ShimDMAllocationGetter &getter,
-                       PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), allocGetter(getter) {}
+  DmaWaitToSyncPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(NpuDmaWaitOp op, OpAdaptor adaptor,
@@ -458,8 +450,8 @@ public:
     if (!dev)
       return op->emitError("couldn't find parent of type DeviceOp");
 
-    std::optional<AIE::ShimDMAAllocationOp> shimDmaAllocOp =
-        allocGetter.get(dev, op.getSymbol());
+    AIE::ShimDMAAllocationOp shimDmaAllocOp =
+        AIE::ShimDMAAllocationOp::getForSymbol(dev, op.getSymbol());
     if (!shimDmaAllocOp) {
       return op->emitError("couldn't find shim_dma_allocation op");
     }
@@ -467,9 +459,9 @@ public:
     // Create with `column_num == 1` and `row_num == 1` to check for a single
     // column and row. Row is always 0 for shim tiles.
     (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(
-        op, shimDmaAllocOp->getCol(), /* row */ 0,
-        static_cast<uint32_t>(shimDmaAllocOp->getChannelDir()),
-        shimDmaAllocOp->getChannelIndex(), 1, 1);
+        op, shimDmaAllocOp.getCol(), /* row */ 0,
+        static_cast<uint32_t>(shimDmaAllocOp.getChannelDir()),
+        shimDmaAllocOp.getChannelIndex(), 1, 1);
 
     return success();
   }
@@ -632,8 +624,6 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
   void runOnOperation() override {
 
-    AIE::ShimDMAllocationGetter cachingGetter;
-
     AIE::DeviceOp device = getOperation();
 
     ConversionTarget target(getContext());
@@ -657,8 +647,8 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<BlockWriteSymToAddr>(&getContext());
-    patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
-    patterns.insert<DmaWaitToSyncPattern>(&getContext(), cachingGetter);
+    patterns.insert<DmaToNpuPattern>(&getContext());
+    patterns.insert<DmaWaitToSyncPattern>(&getContext());
     patterns.insert<MaskWrite32SymToAddr>(&getContext());
     patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());

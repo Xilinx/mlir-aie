@@ -12,9 +12,6 @@
 
 // CHECK: module @viaDMA {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @of_stream_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of_stream : memref<16xi32>
-// CHECK:     memref.global "public" @of_shared : memref<16xi32>
 // CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
 // CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32> 

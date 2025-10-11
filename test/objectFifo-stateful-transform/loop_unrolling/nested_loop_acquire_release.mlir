@@ -12,8 +12,6 @@
 
 // CHECK-LABEL:   module {
 // CHECK:             aie.device(npu1_1col) {
-// CHECK:               memref.global "public" @of_2 : memref<16xi32>
-// CHECK:               memref.global "public" @of_1 : memref<16xi32>
 // CHECK:               %{{.*}}tile_0_2 = aie.tile(0, 2)
 // CHECK:               %{{.*}}tile_0_3 = aie.tile(0, 3)
 // CHECK:               %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "of_2_buff_0"} : memref<16xi32> 

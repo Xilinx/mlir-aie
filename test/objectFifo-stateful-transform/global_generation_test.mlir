@@ -10,11 +10,6 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK:     memref.global "public" @of1_0_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of1_1_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of1 : memref<16xi32>
-// CHECK:     memref.global "public" @of0 : memref<16xi32>
-
 module @globals {
  aie.device(npu1) {
     %tile12 = aie.tile(1, 2)

@@ -108,7 +108,7 @@
 // CHECK:       }
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
+// CHECK:     aie.shim_dma_allocation @input_fifo_shim_alloc(MM2S, 0, 0)
 
 module {
   aie.device(npu1_1col) {

@@ -12,8 +12,6 @@
 
 // CHECK: module @init_shared_mem {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @of1 : memref<2x2xi32>
-// CHECK:     memref.global "public" @of0 : memref<2x2xi32>
 // CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
 // CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of1_buff_0"} : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
