@@ -37,23 +37,46 @@ void initialize_bufOut(DATATYPE_OUT *bufOut, int SIZE) {
   memset(bufOut, 0, SIZE);
 }
 
-// Functional correctness verifyer
+// Functional correctness verifyer for repeat functionality
 int verify_passthrough_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
                               int SIZE, int verbosity) {
   int errors = 0;
+  constexpr int REPEAT_COUNT = 2;  
+  
+  // Check that we have enough output data (should be SIZE * REPEAT_COUNT)
+  int expected_out_size = SIZE * REPEAT_COUNT;
+  
+  if (verbosity >= 1) {
+    std::cout << "Verifying repeat passthrough: input size=" << SIZE 
+              << ", expected output size=" << expected_out_size << std::endl;
+  }
 
-  for (int i = 0; i < SIZE; i++) {
-    int32_t ref = bufIn1[i];
-    int32_t test = bufOut[i];
-    if (test != ref) {
-      if (verbosity >= 1)
-        std::cout << "Error in output " << test << " != " << ref << std::endl;
-      errors++;
-    } else {
-      if (verbosity >= 1)
-        std::cout << "Correct output " << test << " == " << ref << std::endl;
+  // Verify each repetition
+  for (int repeat = 0; repeat < REPEAT_COUNT; repeat++) {
+    for (int i = 0; i < SIZE; i++) {
+      int out_idx = repeat * SIZE + i;  
+      int32_t ref = bufIn1[i];         
+      int32_t test = bufOut[out_idx];  
+      
+      if (test != ref) {
+        if (verbosity >= 1)
+          std::cout << "Error at repeat " << repeat << ", index " << i 
+                   << ": output[" << out_idx << "] = " << test 
+                   << " != " << ref << std::endl;
+        errors++;
+      } else {
+        if (verbosity >= 2) 
+          std::cout << "Correct at repeat " << repeat << ", index " << i 
+                   << ": output[" << out_idx << "] = " << test 
+                   << " == " << ref << std::endl;
+      }
     }
   }
+  
+  if (verbosity >= 1) {
+    std::cout << "Verification complete: " << errors << " errors found" << std::endl;
+  }
+  
   return errors;
 }
 
