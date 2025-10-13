@@ -379,7 +379,7 @@ def parse_args(args=None):
         dest="generate_full_elf",
         default=False,
         action="store_true",
-        help="Generate config.json and complete full ELF using aiebu-asm",
+        help="Generate complete full ELF using aiebu-asm",
     )
     parser.add_argument(
         "--full-elf-name",

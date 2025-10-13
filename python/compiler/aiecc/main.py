@@ -362,22 +362,20 @@ def assign_load_pdi_ids(mlir_module_str, device_to_id_mapping):
         ):
             for load_pdi_op in find_ops(
                 runtime_seq.operation,
-                lambda o: isinstance(o.operation.opview, aiexdialect.NpuLoadPdiOp),
+                lambda o: isinstance(o.operation.opview, aiexdialect.NpuLoadPdiOp)
+                and hasattr(o, "device_ref")
+                and o.device_ref is not None,
             ):
-                if (
-                    hasattr(load_pdi_op, "device_ref")
-                    and load_pdi_op.device_ref is not None
-                ):
-                    device_name = load_pdi_op.device_ref.value
-                    if device_name not in device_to_id_mapping:
-                        print(
-                            f"Warning: Device '{device_name}' for load_pdi instruction does not have a matching device PDI."
-                        )
-                        sys.exit(1)
-                    pdi_id = device_to_id_mapping[device_name]
-                    load_pdi_op.id = IntegerAttr.get(
-                        IntegerType.get_signless(32, context=context), pdi_id
+                device_name = load_pdi_op.device_ref.value
+                if device_name not in device_to_id_mapping:
+                    print(
+                        f"Warning: Device '{device_name}' for load_pdi instruction does not have a matching device PDI."
                     )
+                    sys.exit(1)
+                pdi_id = device_to_id_mapping[device_name]
+                load_pdi_op.id = IntegerAttr.get(
+                    IntegerType.get_signless(32, context=context), pdi_id
+                )
 
         return str(module)
 
@@ -1742,11 +1740,7 @@ class FlowRunner:
                 npu_insts = aiedialect.translate_npu_to_binary(
                     npu_insts_module.operation, device_name, seq_name
                 )
-                npu_insts_path = (
-                    opts.insts_name.format(device_name, seq_name)
-                    if opts.npu
-                    else self.prepend_tmp(f"{device_name}_{seq_name}.bin")
-                )
+                npu_insts_path = self.npu_insts_file_name(device_name, seq_name)
                 with open(npu_insts_path, "wb") as f:
                     f.write(struct.pack("I" * len(npu_insts), *npu_insts))
                 pb.update(parent_task_id, advance=1)
