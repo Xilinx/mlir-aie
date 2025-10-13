@@ -44,7 +44,7 @@
 // CHECK-DAG:     aie.flow(%[[TILE_1_1]], DMA : 0, %[[TILE_1_2]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[TILE_1_1]], DMA : 1, %[[TILE_2_3]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[TILE_1_1]], DMA : 1, %[[TILE_1_3]], DMA : 0)
-// CHECK:         aie.shim_dma_allocation @[[OF0]]_shim_alloc(MM2S, 0, 1)
+// CHECK:         aie.shim_dma_allocation @[[OF0:.*]]_shim_alloc(MM2S, 0, 1)
 // CHECK:         %{{.+}} = aie.memtile_dma(%[[TILE_1_1]]) {
 // CHECK:           %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:         ^bb1:  // 2 preds: ^bb0, ^bb4

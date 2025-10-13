@@ -36,8 +36,6 @@
 
 module {
   aie.device(xcvc1902) {
-    memref.global "public" @out0 : memref<16xi32>
-    memref.global "public" @in0 : memref<16xi32>
     %tile_6_0 = aie.tile(6, 0)
     %switchbox_6_0 = aie.switchbox(%tile_6_0) {
     }

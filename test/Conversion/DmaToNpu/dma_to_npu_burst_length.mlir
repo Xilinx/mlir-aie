@@ -12,8 +12,6 @@
 
 module {
   aie.device(npu2) {
-    memref.global "public" @of_fromMem : memref<32xi32>
-    memref.global "public" @of_toMem : memref<32xi32>
     aiex.runtime_sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
         // Here the burst length encoding is not mixed with the stride, since the stride is 0. This is 0xC0000000.
         // CHECK: memref.global "private" constant {{.*}} = dense<[{{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}, -1073741824, {{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}]>
@@ -28,8 +26,6 @@ module {
 
 module {
   aie.device(npu2) {
-    memref.global "public" @of_fromMem : memref<32xi32>
-    memref.global "public" @of_toMem : memref<32xi32>
     aiex.runtime_sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
         // Note that The burst length encoding is mixed with the stride, so the encoding does not exactly correspond to the burst length.
         // CHECK: memref.global "private" constant {{.*}} = dense<[{{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}, 2097152, {{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}]>
