@@ -110,6 +110,7 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
   SOURCES_GLOB
     compiler/aiecc/*.py
     compiler/txn2mlir/*.py
+    compiler/pkt2mlir/*.py
 )
 
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -424,8 +425,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
   ${CMAKE_CURRENT_SOURCE_DIR}/compiler/aiecc.py
   ${CMAKE_CURRENT_SOURCE_DIR}/compiler/txn2mlir.py
+  ${CMAKE_CURRENT_SOURCE_DIR}/compiler/pkt2mlir.py
   ${CMAKE_BINARY_DIR}/bin
 )
 # during install
-install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py DESTINATION bin)
+install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py compiler/pkt2mlir.py DESTINATION bin)
 
