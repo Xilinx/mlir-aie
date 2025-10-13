@@ -135,7 +135,8 @@ error_ion:
 // /*****************************************************************************/
 // /**
 //  *
-//  * This is function to attach the allocated memory descriptor to kernel driver
+//  * This is function to attach the allocated memory descriptor to kernel
+//  driver
 //  *
 //  * @param	IOInst: Linux IO instance pointer
 //  * @param	MemInst: Linux Memory instance pointer.

@@ -13,12 +13,14 @@
 
 /// enum ion_heap_types - list of all possible types of heaps
 enum ion_heap_type {
-  ION_HEAP_TYPE_SYSTEM,         ///< memory allocated via vmalloc
-  ION_HEAP_TYPE_SYSTEM_CONTIG,  ///< memory allocated via kmalloc
-  ION_HEAP_TYPE_CARVEOUT,       ///< memory allocated from a prereserved carveout heap, allocations are physically contiguous
+  ION_HEAP_TYPE_SYSTEM,        ///< memory allocated via vmalloc
+  ION_HEAP_TYPE_SYSTEM_CONTIG, ///< memory allocated via kmalloc
+  ION_HEAP_TYPE_CARVEOUT,      ///< memory allocated from a prereserved carveout
+                               ///< heap, allocations are physically contiguous
   ION_HEAP_TYPE_CHUNK,
-  ION_HEAP_TYPE_DMA,            ///< memory allocated via DMA API
-  ION_HEAP_TYPE_CUSTOM,         ///< must be last so device specific heaps always are at the end of this enum
+  ION_HEAP_TYPE_DMA,    ///< memory allocated via DMA API
+  ION_HEAP_TYPE_CUSTOM, ///< must be last so device specific heaps always are at
+                        ///< the end of this enum
 };
 
 #define ION_NUM_HEAP_IDS (sizeof(unsigned int) * 8)
@@ -48,11 +50,11 @@ enum ion_heap_type {
  * Provided by userspace as an argument to the ioctl
  */
 struct ion_allocation_data {
-  __u64 len;            ///< size of the allocation
-  __u32 heap_id_mask;   ///< mask of heap ids to allocate from
-  __u32 flags;          ///< flags passed to heap
-  __u32 fd;             ///< file descriptor for this allocation
-  __u32 unused;         ///< unused field
+  __u64 len;          ///< size of the allocation
+  __u32 heap_id_mask; ///< mask of heap ids to allocate from
+  __u32 flags;        ///< flags passed to heap
+  __u32 fd;           ///< file descriptor for this allocation
+  __u32 unused;       ///< unused field
 };
 
 #define MAX_HEAP_NAME 32
