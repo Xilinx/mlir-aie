@@ -29,6 +29,10 @@ std::optional<mlir::ModuleOp>
 convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                std::vector<uint8_t> &binary);
 
+std::optional<mlir::ModuleOp>
+convertControlPacketBinaryToMLIR(mlir::MLIRContext *ctx,
+                                 std::vector<uint8_t> &binary);
+
 } // namespace xilinx::AIE
 
 #endif // AIE_CONVERSION_AIETOCONFIGURATION_AIETOCONFIGURATION_H
