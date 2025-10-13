@@ -1460,45 +1460,66 @@ class FlowRunner:
                 self.opts.verbose,
             )
 
-            input_physical = self.prepend_tmp("input_physical.mlir")
-            processes = [
-                self.do_call(
-                    task1,
-                    [
-                        "aie-opt",
-                        "--aie-create-pathfinder-flows",
-                        file_with_addresses,
-                        "-o",
-                        input_physical,
-                    ],
-                    force=True,
-                )
-            ]
-
-            await asyncio.gather(*processes)
+            requires_routing = (
+                opts.xcl
+                or opts.cdo
+                or opts.pdi
+                or opts.compile
+                or opts.compile_host
+                or opts.aiesim
+            )
+            if requires_routing:
+                input_physical = self.prepend_tmp("input_physical.mlir")
+                processes = [
+                    self.do_call(
+                        task1,
+                        [
+                            "aie-opt",
+                            "--aie-create-pathfinder-flows",
+                            file_with_addresses,
+                            "-o",
+                            input_physical,
+                        ],
+                        force=True,
+                    )
+                ]
+                await asyncio.gather(*processes)
+            else:
+                input_physical = file_with_addresses
 
             self.progress_bar.update(task1, advance=1)
 
             # 2.) Generate code for each core
-            task2 = progress_bar.add_task(
-                "[green] Generating code for each core", total=3, command=""
+            requires_core_compilation = (
+                opts.xcl
+                or opts.cdo
+                or opts.pdi
+                or opts.compile
+                or opts.compile_host
+                or opts.aiesim
             )
-
-            # create core ELF files for each device and core
-            elf_paths = {}
-            for i, (device_op, device_name) in enumerate(devices):
-                aie_target, aie_peano_target = aie_targets[i], aie_peano_targets[i]
-                elf_paths[device_name] = await self.process_cores(
-                    device_op,
-                    device_name,
-                    file_with_addresses,
-                    aie_target,
-                    aie_peano_target,
-                    task2,
+            if requires_core_compilation:
+                task2 = progress_bar.add_task(
+                    "[green] Generating code for each core", total=3, command=""
                 )
-            input_physical_with_elfs = await self.write_elf_paths_to_mlir(
-                input_physical, elf_paths
-            )
+
+                # create core ELF files for each device and core
+                elf_paths = {}
+                for i, (device_op, device_name) in enumerate(devices):
+                    aie_target, aie_peano_target = aie_targets[i], aie_peano_targets[i]
+                    elf_paths[device_name] = await self.process_cores(
+                        device_op,
+                        device_name,
+                        file_with_addresses,
+                        aie_target,
+                        aie_peano_target,
+                        task2,
+                    )
+                input_physical_with_elfs = await self.write_elf_paths_to_mlir(
+                    input_physical, elf_paths
+                )
+            else:
+                input_physical_with_elfs = input_physical
 
             # 3.) Targets that require the cores to be lowered but apply across all devices
 
