@@ -10,9 +10,6 @@
 
 module {
   aie.device(NPUDEVICE) {
-    memref.global "public" @out0 : memref<8xi32>
-    memref.global "public" @ctrl0 : memref<8xi32>
-
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
     %tile_0_2 = aie.tile(0, 2)
 
