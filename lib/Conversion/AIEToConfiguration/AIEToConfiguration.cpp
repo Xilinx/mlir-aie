@@ -16,6 +16,7 @@
 #include "aie/Targets/AIERT.h"
 
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/Format.h"
 #include <llvm/ADT/APInt.h>
 
 extern "C" {
@@ -98,7 +99,131 @@ struct TxnLoadPdiHeader {
   uint32_t size;
   uint64_t address;
 };
+
+// A ControlPacketOperation encapsulates a parsed control packet including
+// stream header, control packet header, and optional data payload.
+struct ControlPacketOperation {
+  uint32_t streamHeader;   // word 0: parity + pkt_type + pkt_id
+  uint32_t packetHeader;   // word 1: parity + stream_id + opcode + beats + addr
+  std::vector<uint32_t> data;  // payload words (if opcode is write/blockwrite)
+  
+  // Decoded fields
+  uint8_t pktType;
+  uint8_t pktId;
+  uint8_t streamId;
+  uint8_t opcode;
+  uint8_t beats;
+  uint32_t address;
+};
+
 } // namespace
+
+// Check even parity bit (bit 31)
+// The parity bit (bit 31) is set to 1 if the popcount of bits[30:0] is even
+static bool checkParity(uint32_t word) {
+  uint32_t p = 0;
+  uint32_t w = word & 0x7FFFFFFF; // mask off parity bit
+  while (w) {
+    p += w & 1;
+    w >>= 1;
+  }
+  // Parity bit should be 1 if popcount is even, 0 if odd
+  bool expectedParity = (p % 2) == 0;
+  bool actualParity = (word >> 31) & 1;
+  return expectedParity == actualParity;
+}
+
+// Parse a control packet binary blob. On success return a vector of parsed
+// control packet operations. On failure return std::nullopt.
+static std::optional<std::vector<ControlPacketOperation>>
+parseControlPacket(const std::vector<uint8_t> &data) {
+  std::vector<ControlPacketOperation> ops;
+  
+  size_t i = 0;
+  
+  auto requireBytes = [&](size_t offset, size_t length) -> bool {
+    if (offset + length > data.size()) {
+      llvm::errs() << "Control packet binary truncated\n";
+      return false;
+    }
+    return true;
+  };
+  
+  auto read32 = [&](size_t offset) -> uint32_t {
+    uint32_t value;
+    std::memcpy(&value, data.data() + offset, sizeof(uint32_t));
+    return value;
+  };
+  
+  while (i + 8 <= data.size()) {  // Need at least 2 words (stream hdr + pkt hdr)
+    ControlPacketOperation op;
+    
+    // Read stream header (word 0)
+    op.streamHeader = read32(i);
+    
+    // Read control packet header (word 1)
+    op.packetHeader = read32(i + 4);
+    
+    // Verify parity
+    if (!checkParity(op.streamHeader)) {
+      llvm::errs() << "Stream header parity check failed at offset " << i << "\n";
+      return std::nullopt;
+    }
+    if (!checkParity(op.packetHeader)) {
+      llvm::errs() << "Packet header parity check failed at offset " << i + 4 << "\n";
+      return std::nullopt;
+    }
+    
+    // Decode stream header fields
+    op.pktType = (op.streamHeader >> 12) & 0x7;
+    op.pktId = op.streamHeader & 0xFF;
+    
+    // Decode control packet header fields
+    op.streamId = (op.packetHeader >> 24) & 0x7F;
+    op.opcode = (op.packetHeader >> 22) & 0x3;
+    op.beats = (op.packetHeader >> 20) & 0x3;
+    op.address = op.packetHeader & 0xFFFFF;
+    
+    i += 8;  // consumed 2 words
+    
+    LLVM_DEBUG(llvm::dbgs() << "Control packet at offset " << (i - 8)
+                            << ": opcode=" << static_cast<int>(op.opcode)
+                            << " stream_id=" << static_cast<int>(op.streamId)
+                            << " addr=0x" << llvm::format("%05X", op.address)
+                            << " beats=" << static_cast<int>(op.beats) << "\n");
+    
+    // Read data payload if present (opcode 0x0=write or 0x2=blockwrite)
+    if (op.opcode == 0x0 || op.opcode == 0x2) {
+      uint32_t numDataWords = op.beats + 1;
+      if (!requireBytes(i, numDataWords * 4)) {
+        llvm::errs() << "Truncated data payload\n";
+        return std::nullopt;
+      }
+      
+      op.data.resize(numDataWords);
+      for (uint32_t j = 0; j < numDataWords; j++) {
+        op.data[j] = read32(i + j * 4);
+      }
+      i += numDataWords * 4;
+      
+      LLVM_DEBUG(llvm::dbgs() << "  Data: [";
+                 for (size_t j = 0; j < op.data.size(); j++) {
+                   if (j > 0) llvm::dbgs() << ", ";
+                   llvm::dbgs() << op.data[j];
+                 }
+                 llvm::dbgs() << "]\n");
+    }
+    
+    ops.push_back(std::move(op));
+  }
+  
+  if (i != data.size()) {
+    llvm::errs() << "Warning: " << (data.size() - i) 
+                 << " bytes remaining after parsing control packets\n";
+  }
+  
+  return ops;
+}
 
 // Parse a TXN binary blob. On success return the number of columns from the
 // header and a vector of parsed operations. On failure return std::nullopt.
@@ -744,6 +869,93 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   if (failed(convertTransactionOpsToMLIR(builder, device,
                                          OutputType::Transaction, operations)))
     return std::nullopt;
+
+  return module;
+}
+
+// Convert (disassemble) a control packet binary to MLIR. On success return a
+// new ModuleOp containing a DeviceOp containing a runtime sequence with the
+// control packet binary encoded as a sequence of aiex.control_packet
+// operations. On failure return std::nullopt.
+std::optional<mlir::ModuleOp>
+xilinx::AIE::convertControlPacketBinaryToMLIR(mlir::MLIRContext *ctx,
+                                              std::vector<uint8_t> &binary) {
+
+  // parse the binary
+  auto maybeOps = parseControlPacket(binary);
+  if (!maybeOps) {
+    llvm::errs() << "Failed to parse control packet binary\n";
+    return std::nullopt;
+  }
+  std::vector<ControlPacketOperation> operations = *maybeOps;
+
+  auto loc = mlir::UnknownLoc::get(ctx);
+
+  // create a new ModuleOp and set the insertion point
+  auto module = ModuleOp::create(loc);
+  OpBuilder builder(module.getBodyRegion());
+  builder.setInsertionPointToStart(module.getBody());
+
+  // Create aie.device - default to npu1_1col
+  // Note: Control packets don't have device info in the binary format
+  auto device = builder.create<DeviceOp>(loc, AIEDevice::npu1_1col,
+                                         StringAttr::get(builder.getContext()));
+  device.getRegion().emplaceBlock();
+  DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
+  builder.setInsertionPointToStart(device.getBody());
+
+  // Create tiles and set controller_id attributes based on packet info
+  // Group operations by (pktType, pktId) to determine which tile they target
+  std::map<std::pair<uint8_t, uint8_t>, std::pair<uint32_t, uint32_t>> tileMap;
+  for (const auto &op : operations) {
+    auto key = std::make_pair(op.pktType, op.pktId);
+    if (tileMap.find(key) == tileMap.end()) {
+      // Extract col/row from address using target model
+      const AIETargetModel &targetModel = device.getTargetModel();
+      uint32_t colInt = (op.address >> targetModel.getColumnShift()) & 0x1f;
+      uint32_t rowInt = (op.address >> targetModel.getRowShift()) & 0x1f;
+      tileMap[key] = std::make_pair(colInt, rowInt);
+      
+      // Create tile and set controller_id attribute
+      auto tile = TileOp::getOrCreate(builder, device, colInt, rowInt);
+      auto packetInfoAttr = AIE::PacketInfoAttr::get(
+          builder.getContext(), op.pktType, op.pktId);
+      tile->setAttr("controller_id", packetInfoAttr);
+    }
+  }
+
+  // Create aiex.runtime_sequence
+  std::string seq_name = "configure";
+  StringAttr seq_sym_name = builder.getStringAttr(seq_name);
+  auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
+  seq.getBody().push_back(new Block);
+
+  // Create control packet ops
+  builder.setInsertionPointToStart(&seq.getBody().front());
+  for (const auto &op : operations) {
+    IntegerAttr lengthAttr;
+    DenseI32ArrayAttr dataAttr;
+    
+    if (op.opcode == 0x0 || op.opcode == 0x2) {
+      // Write or blockwrite - has data payload
+      SmallVector<int32_t> dataVec;
+      for (uint32_t val : op.data) {
+        dataVec.push_back(static_cast<int32_t>(val));
+      }
+      dataAttr = DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(dataVec));
+    } else if (op.opcode == 0x1) {
+      // Read - has length but no data
+      lengthAttr = builder.getI32IntegerAttr(op.beats + 1);
+    }
+    
+    builder.create<AIEX::NpuControlPacketOp>(
+        loc,
+        builder.getUI32IntegerAttr(op.address),
+        lengthAttr,
+        builder.getI32IntegerAttr(op.opcode),
+        builder.getI32IntegerAttr(op.streamId),
+        dataAttr);
+  }
 
   return module;
 }
