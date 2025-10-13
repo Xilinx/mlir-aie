@@ -94,9 +94,10 @@ Classes</h2></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">DOC: Ion Userspace API.  <a href="struction__allocation__data.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struction__heap__data.html">ion_heap_data</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">struct <a class="el" href="struction__heap__data.html" title="struct ion_heap_data - data about a heap">ion_heap_data</a> - data about a heap  <a href="struction__heap__data.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struction__heap__query.html">ion_heap_query</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">struct <a class="el" href="struction__heap__query.html" title="struct ion_heap_query - collection of data about all heaps @cnt - total number of heaps to be copied ...">ion_heap_query</a> - collection of data about all heaps @cnt - total number of heaps to be copied @heaps - buffer to copy heap data  <a href="struction__heap__query.html#details">More...</a><br /></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">struct <a class="el" href="struction__heap__query.html" title="struct ion_heap_query - collection of data about all heaps">ion_heap_query</a> - collection of data about all heaps  <a href="struction__heap__query.html#details">More...</a><br /></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="define-members" name="define-members"></a>
@@ -108,10 +109,6 @@ Macros</h2></td></tr>
 <tr class="separator:a4b930e6f7b2ebdc71c8eba3a7cf1194d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad75b96bac439c84806ea7a2d4f9cf6db" id="r_ad75b96bac439c84806ea7a2d4f9cf6db"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion_8h.html#ad75b96bac439c84806ea7a2d4f9cf6db">MAX_HEAP_NAME</a>&#160;&#160;&#160;32</td></tr>
 <tr class="separator:ad75b96bac439c84806ea7a2d4f9cf6db"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr><td colspan="2"><div class="groupHeader">- first 32 characters of the heap name</div></td></tr>
-<tr><td colspan="2"><div class="groupText"><p>struct <a class="el" href="struction__heap__data.html">ion_heap_data</a> - data about a heap</p>
-<p>@type - heap type @heap_id - heap id for the heap </p>
-</div></td></tr>
 <tr class="memitem:a461e0e82b720bb044543254a4ff70bfb" id="r_a461e0e82b720bb044543254a4ff70bfb"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion_8h.html#a461e0e82b720bb044543254a4ff70bfb">ION_IOC_MAGIC</a>&#160;&#160;&#160;'I'</td></tr>
 <tr class="separator:a461e0e82b720bb044543254a4ff70bfb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1ec0b7076544d61f0a60de9367919564" id="r_a1ec0b7076544d61f0a60de9367919564"><td class="memItemLeft" align="right" valign="top">#define&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="ion_8h.html#a1ec0b7076544d61f0a60de9367919564">ION_IOC_ALLOC</a>&#160;&#160;&#160;_IOWR(<a class="el" href="ion_8h.html#a461e0e82b720bb044543254a4ff70bfb">ION_IOC_MAGIC</a>, 0, struct <a class="el" href="struction__allocation__data.html">ion_allocation_data</a>)</td></tr>
@@ -133,7 +130,7 @@ Enumerations</h2></td></tr>
 , <a class="el" href="ion_8h.html#af4b4f1b113d4bd4095b7a75f1bd52076ac470795f8cf9ec655e99f163851276b2">ION_HEAP_TYPE_CUSTOM</a>
 <br />
  }</td></tr>
-<tr class="memdesc:af4b4f1b113d4bd4095b7a75f1bd52076"><td class="mdescLeft">&#160;</td><td class="mdescRight">enum ion_heap_types - list of all possible types of heaps @ION_HEAP_TYPE_SYSTEM: memory allocated via vmalloc @ION_HEAP_TYPE_SYSTEM_CONTIG: memory allocated via kmalloc @ION_HEAP_TYPE_CARVEOUT: memory allocated from a prereserved carveout heap, allocations are physically contiguous @ION_HEAP_TYPE_DMA: memory allocated via DMA API @ION_NUM_HEAPS: helper for iterating over heaps, a bit mask is used to identify the heaps, so only 32 total heap types are supported  <a href="ion_8h.html#af4b4f1b113d4bd4095b7a75f1bd52076">More...</a><br /></td></tr>
+<tr class="memdesc:af4b4f1b113d4bd4095b7a75f1bd52076"><td class="mdescLeft">&#160;</td><td class="mdescRight">enum ion_heap_types - list of all possible types of heaps  <a href="ion_8h.html#af4b4f1b113d4bd4095b7a75f1bd52076">More...</a><br /></td></tr>
 <tr class="separator:af4b4f1b113d4bd4095b7a75f1bd52076"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Macro Definition Documentation</h2>
@@ -151,7 +148,7 @@ Enumerations</h2></td></tr>
 
 <p>allocation flags - the lower 16 bits are used by core ion, the upper 16 bits are reserved for use by the heaps themselves. </p>
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00049">49</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00037">37</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
@@ -170,7 +167,7 @@ Enumerations</h2></td></tr>
 <p>DOC: ION_IOC_ALLOC - allocate memory. </p>
 <p>Takes an <a class="el" href="struction__allocation__data.html" title="DOC: Ion Userspace API.">ion_allocation_data</a> struct and returns it with the handle field populated with the opaque handle for the allocation. </p>
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00115">115</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00093">93</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
@@ -187,9 +184,9 @@ Enumerations</h2></td></tr>
 </div><div class="memdoc">
 
 <p>DOC: ION_IOC_HEAP_QUERY - information about available heaps. </p>
-<p>Takes an <a class="el" href="struction__heap__query.html" title="struct ion_heap_query - collection of data about all heaps @cnt - total number of heaps to be copied ...">ion_heap_query</a> structure and populates information about available Ion heaps. </p>
+<p>Takes an <a class="el" href="struction__heap__query.html" title="struct ion_heap_query - collection of data about all heaps">ion_heap_query</a> structure and populates information about available Ion heaps. </p>
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00123">123</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00101">101</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
@@ -205,7 +202,7 @@ Enumerations</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00107">107</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00085">85</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
@@ -221,7 +218,7 @@ Enumerations</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00038">38</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00026">26</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
@@ -237,7 +234,7 @@ Enumerations</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00077">77</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00060">60</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
@@ -254,24 +251,29 @@ Enumerations</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p>enum ion_heap_types - list of all possible types of heaps @ION_HEAP_TYPE_SYSTEM: memory allocated via vmalloc @ION_HEAP_TYPE_SYSTEM_CONTIG: memory allocated via kmalloc @ION_HEAP_TYPE_CARVEOUT: memory allocated from a prereserved carveout heap, allocations are physically contiguous @ION_HEAP_TYPE_DMA: memory allocated via DMA API @ION_NUM_HEAPS: helper for iterating over heaps, a bit mask is used to identify the heaps, so only 32 total heap types are supported </p>
+<p>enum ion_heap_types - list of all possible types of heaps </p>
 <table class="fieldtable">
-<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076adc125abcfbf69dbb0f0651d298d4190d" name="af4b4f1b113d4bd4095b7a75f1bd52076adc125abcfbf69dbb0f0651d298d4190d"></a>ION_HEAP_TYPE_SYSTEM&#160;</td><td class="fielddoc"></td></tr>
-<tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076a679ebda57f49bd280634d51edc5e9881" name="af4b4f1b113d4bd4095b7a75f1bd52076a679ebda57f49bd280634d51edc5e9881"></a>ION_HEAP_TYPE_SYSTEM_CONTIG&#160;</td><td class="fielddoc"></td></tr>
-<tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076a6d1adf95d68ece0d8b46bf9d766f660c" name="af4b4f1b113d4bd4095b7a75f1bd52076a6d1adf95d68ece0d8b46bf9d766f660c"></a>ION_HEAP_TYPE_CARVEOUT&#160;</td><td class="fielddoc"></td></tr>
+<tr><th colspan="2">Enumerator</th></tr><tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076adc125abcfbf69dbb0f0651d298d4190d" name="af4b4f1b113d4bd4095b7a75f1bd52076adc125abcfbf69dbb0f0651d298d4190d"></a>ION_HEAP_TYPE_SYSTEM&#160;</td><td class="fielddoc"><p>memory allocated via vmalloc </p>
+</td></tr>
+<tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076a679ebda57f49bd280634d51edc5e9881" name="af4b4f1b113d4bd4095b7a75f1bd52076a679ebda57f49bd280634d51edc5e9881"></a>ION_HEAP_TYPE_SYSTEM_CONTIG&#160;</td><td class="fielddoc"><p>memory allocated via kmalloc </p>
+</td></tr>
+<tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076a6d1adf95d68ece0d8b46bf9d766f660c" name="af4b4f1b113d4bd4095b7a75f1bd52076a6d1adf95d68ece0d8b46bf9d766f660c"></a>ION_HEAP_TYPE_CARVEOUT&#160;</td><td class="fielddoc"><p>memory allocated from a prereserved carveout heap, allocations are physically contiguous </p>
+</td></tr>
 <tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076a779b88a5a68c5aeee7aefccf6bfeb376" name="af4b4f1b113d4bd4095b7a75f1bd52076a779b88a5a68c5aeee7aefccf6bfeb376"></a>ION_HEAP_TYPE_CHUNK&#160;</td><td class="fielddoc"></td></tr>
-<tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076a9800bb3987bbbcf59ca21ede17e25b86" name="af4b4f1b113d4bd4095b7a75f1bd52076a9800bb3987bbbcf59ca21ede17e25b86"></a>ION_HEAP_TYPE_DMA&#160;</td><td class="fielddoc"></td></tr>
-<tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076ac470795f8cf9ec655e99f163851276b2" name="af4b4f1b113d4bd4095b7a75f1bd52076ac470795f8cf9ec655e99f163851276b2"></a>ION_HEAP_TYPE_CUSTOM&#160;</td><td class="fielddoc"></td></tr>
+<tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076a9800bb3987bbbcf59ca21ede17e25b86" name="af4b4f1b113d4bd4095b7a75f1bd52076a9800bb3987bbbcf59ca21ede17e25b86"></a>ION_HEAP_TYPE_DMA&#160;</td><td class="fielddoc"><p>memory allocated via DMA API </p>
+</td></tr>
+<tr><td class="fieldname"><a id="af4b4f1b113d4bd4095b7a75f1bd52076ac470795f8cf9ec655e99f163851276b2" name="af4b4f1b113d4bd4095b7a75f1bd52076ac470795f8cf9ec655e99f163851276b2"></a>ION_HEAP_TYPE_CUSTOM&#160;</td><td class="fielddoc"><p>must be last so device specific heaps always are at the end of this enum </p>
+</td></tr>
 </table>
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00026">26</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00015">15</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Oct 13 2025 21:30:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Oct 13 2025 23:41:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -225,7 +225,7 @@ Functions</h2></td></tr>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l01106">1106</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l01113">1113</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 </div>
 </div>
@@ -293,7 +293,7 @@ Functions</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>Return non-zero on success, i.e. the operation did not timeout. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00306">306</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00307">307</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -335,9 +335,9 @@ Functions</h2></td></tr>
 <p>Zero out the program and configuration memory of the tile.</p>
 <p>This includes: clearing the program memory, data memory, DMA descriptors, and stream switch configuration. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l01048">1048</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l01055">1055</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00361">mlir_aie_get_tile_addr()</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
+<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00368">mlir_aie_get_tile_addr()</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
 </div>
 </div>
@@ -377,9 +377,9 @@ Functions</h2></td></tr>
 <p>Zero out the configuration memory of the shim tile.</p>
 <p>This includes: clearing the program memory, data memory, DMA descriptors, and stream switch configuration. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l01078">1078</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l01085">1085</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00361">mlir_aie_get_tile_addr()</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
+<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00368">mlir_aie_get_tile_addr()</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
 </div>
 </div>
@@ -419,7 +419,7 @@ Functions</h2></td></tr>
 <p>Clear the contents of the memory associated with the given tile.</p>
 <p>Values that are zero are not shown </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00380">380</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00387">387</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -466,13 +466,16 @@ Functions</h2></td></tr>
 <p>Read a value from the data memory of a particular tile memory. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">addr</td><td>The address in the given tile. </td></tr>
+    <tr><td class="paramname">ctx</td><td>The AIE context </td></tr>
+    <tr><td class="paramname">col</td><td>The column coordinate of the tile </td></tr>
+    <tr><td class="paramname">row</td><td>The row coordinate of the tile </td></tr>
+    <tr><td class="paramname">addr</td><td>The address within the tile\'s data memory </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>The data </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>The 32-bit data value read from the specified address </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00343">343</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00347">347</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -525,13 +528,16 @@ Functions</h2></td></tr>
 <p>Write a value to the data memory of a particular tile memory. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">addr</td><td>The address in the given tile. </td></tr>
-    <tr><td class="paramname">data</td><td>The data </td></tr>
+    <tr><td class="paramname">ctx</td><td>The AIE context </td></tr>
+    <tr><td class="paramname">col</td><td>The column coordinate of the tile </td></tr>
+    <tr><td class="paramname">row</td><td>The row coordinate of the tile </td></tr>
+    <tr><td class="paramname">addr</td><td>The address within the tile\'s data memory </td></tr>
+    <tr><td class="paramname">data</td><td>The 32-bit data value to write </td></tr>
   </table>
   </dd>
 </dl>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00353">353</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00360">360</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -602,7 +608,7 @@ Functions</h2></td></tr>
 <p>Dump the tile memory of the given tile Values that are zero are not shown. </p>
 <p>Dump the contents of the memory associated with the given tile. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00368">368</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00375">375</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -643,11 +649,11 @@ Functions</h2></td></tr>
 <p>Return the base address of the given tile. </p>
 <p>The configuration address space of most tiles is very similar, relative to this base address. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00361">361</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00368">368</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="test__library_8cpp_source.html#l01048">mlir_aie_clear_config()</a>, <a class="el" href="test__library_8cpp_source.html#l01078">mlir_aie_clear_shim_config()</a>, <a class="el" href="test__library_8cpp_source.html#l00510">mlir_aie_print_dma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00715">mlir_aie_print_memtiledma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00777">mlir_aie_print_shimdma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00947">mlir_aie_print_tile_status()</a>, and <a class="el" href="test__library_8cpp_source.html#l00700">print_aie2_lock_status()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="test__library_8cpp_source.html#l01055">mlir_aie_clear_config()</a>, <a class="el" href="test__library_8cpp_source.html#l01085">mlir_aie_clear_shim_config()</a>, <a class="el" href="test__library_8cpp_source.html#l00517">mlir_aie_print_dma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00722">mlir_aie_print_memtiledma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00784">mlir_aie_print_shimdma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00954">mlir_aie_print_tile_status()</a>, and <a class="el" href="test__library_8cpp_source.html#l00707">print_aie2_lock_status()</a>.</p>
 
 </div>
 </div>
@@ -680,13 +686,14 @@ Functions</h2></td></tr>
 <p>Initialize the device represented by the context. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">ctx</td><td>The context </td></tr>
+    <tr><td class="paramname">ctx</td><td>The AIE context </td></tr>
+    <tr><td class="paramname">device_id</td><td>The device ID to initialize </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>Zero on success </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>Zero on success, negative value on error </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00173">173</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00174">174</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00025">SYSFS_PATH_MAX</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -727,9 +734,9 @@ Functions</h2></td></tr>
 <p>Print a summary of the status of the given Tile DMA. </p>
 <p>Print the status of a dma represented by the given tile. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00510">510</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00517">517</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00361">mlir_aie_get_tile_addr()</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
+<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00368">mlir_aie_get_tile_addr()</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
 </div>
 </div>
@@ -768,9 +775,9 @@ Functions</h2></td></tr>
 <p>Print a summary of the status of the given MemTile DMA. </p>
 <p>Print the status of a memtiledma represented by the given location. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00715">715</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00722">722</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00361">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00700">print_aie2_lock_status()</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
+<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00368">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00707">print_aie2_lock_status()</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
 </div>
 </div>
@@ -809,9 +816,9 @@ Functions</h2></td></tr>
 <p>Print a summary of the status of the given Shim DMA. </p>
 <p>Print the status of a shimdma represented by the given location (row = 0). </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00777">777</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00784">784</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00361">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00700">print_aie2_lock_status()</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
+<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00368">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00707">print_aie2_lock_status()</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
 </div>
 </div>
@@ -850,9 +857,9 @@ Functions</h2></td></tr>
 <p>Print the status of a core represented by the given tile, at the given coordinates. </p>
 <p>Print the status of a core represented by the given tile. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00947">947</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00954">954</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00361">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00700">print_aie2_lock_status()</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
+<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00368">mlir_aie_get_tile_addr()</a>, <a class="el" href="test__library_8cpp_source.html#l00707">print_aie2_lock_status()</a>, <a class="el" href="target_8h_source.html#l00032">aie_libxaie_ctx_t::XAieConfig</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
 </div>
 </div>
@@ -884,7 +891,7 @@ Functions</h2></td></tr>
 
 <p>Read the AIE configuration memory at the given physical address. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00327">327</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00328">328</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -954,7 +961,7 @@ Functions</h2></td></tr>
 </dl>
 <dl class="section return"><dt>Returns</dt><dd>Return non-zero on success, i.e. the operation did not timeout. </dd></dl>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00320">320</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00321">321</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -995,7 +1002,7 @@ Functions</h2></td></tr>
 <p>Write the AIE configuration memory at the given physical address. </p>
 <p>It's almost always better to use some more indirect method of accessing configuration registers, but this is provided as a last resort. </p>
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00336">336</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00337">337</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
@@ -1051,18 +1058,18 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00700">700</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="test__library_8cpp_source.html#l00707">707</a> of file <a class="el" href="test__library_8cpp_source.html">test_library.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00361">mlir_aie_get_tile_addr()</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
+<p class="reference">References <a class="el" href="test__library_8cpp_source.html#l00368">mlir_aie_get_tile_addr()</a>, and <a class="el" href="target_8h_source.html#l00033">aie_libxaie_ctx_t::XAieDevInst</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="test__library_8cpp_source.html#l00715">mlir_aie_print_memtiledma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00777">mlir_aie_print_shimdma_status()</a>, and <a class="el" href="test__library_8cpp_source.html#l00947">mlir_aie_print_tile_status()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="test__library_8cpp_source.html#l00722">mlir_aie_print_memtiledma_status()</a>, <a class="el" href="test__library_8cpp_source.html#l00784">mlir_aie_print_shimdma_status()</a>, and <a class="el" href="test__library_8cpp_source.html#l00954">mlir_aie_print_tile_status()</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Oct 13 2025 21:30:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Oct 13 2025 23:41:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

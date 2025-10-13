@@ -1,5 +1,5 @@
 <map id="ion_heap_query" name="ion_heap_query">
-<area shape="rect" id="Node000001" title="struct ion_heap_query &#45; collection of data about all heaps @cnt &#45; total number of heaps to be copied ..." alt="" coords="21,137,146,163"/>
+<area shape="rect" id="Node000001" title="struct ion_heap_query &#45; collection of data about all heaps" alt="" coords="21,137,146,163"/>
 <area shape="rect" id="Node000002" title=" " alt="" coords="5,5,65,31"/>
 <area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="33,45,31,78,33,96,39,112,49,125,62,135,58,139,45,129,34,115,28,97,25,78,27,44"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="101,5,161,31"/>

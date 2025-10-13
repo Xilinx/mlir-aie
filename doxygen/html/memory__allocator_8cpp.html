@@ -97,18 +97,18 @@ Functions</h2></td></tr>
 <tr class="separator:aaba3a75889ae7254d7d4d2af0f76dff6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1b16fd4871110f0baf6dbb018655fced" id="r_a1b16fd4871110f0baf6dbb018655fced"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#a1b16fd4871110f0baf6dbb018655fced">ess_ReadGM</a> (uint64_t addr, void *data, uint64_t size)</td></tr>
 <tr class="separator:a1b16fd4871110f0baf6dbb018655fced"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac1926460735d45ca543f54789389ca75" id="r_ac1926460735d45ca543f54789389ca75"><td class="memItemLeft" align="right" valign="top">int *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#ac1926460735d45ca543f54789389ca75">mlir_aie_mem_alloc</a> (<a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *_xaie, <a class="el" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle, int size)</td></tr>
-<tr class="memdesc:ac1926460735d45ca543f54789389ca75"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocate a buffer in device memory.  <br /></td></tr>
-<tr class="separator:ac1926460735d45ca543f54789389ca75"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afb79e239c96ecebfb550712d74f3b4f4" id="r_afb79e239c96ecebfb550712d74f3b4f4"><td class="memItemLeft" align="right" valign="top">int *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#afb79e239c96ecebfb550712d74f3b4f4">mlir_aie_mem_alloc</a> (<a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *ctx, <a class="el" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle, int size)</td></tr>
+<tr class="memdesc:afb79e239c96ecebfb550712d74f3b4f4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Allocate a buffer in device memory.  <br /></td></tr>
+<tr class="separator:afb79e239c96ecebfb550712d74f3b4f4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aea504051e5c6954fd32736547d6465ad" id="r_aea504051e5c6954fd32736547d6465ad"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#aea504051e5c6954fd32736547d6465ad">mlir_aie_sync_mem_cpu</a> (<a class="el" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle)</td></tr>
 <tr class="memdesc:aea504051e5c6954fd32736547d6465ad"><td class="mdescLeft">&#160;</td><td class="mdescRight">Synchronize the buffer from the device to the host CPU.  <br /></td></tr>
 <tr class="separator:aea504051e5c6954fd32736547d6465ad"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a77c79273bcfd268082495fe8b6b6a721" id="r_a77c79273bcfd268082495fe8b6b6a721"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#a77c79273bcfd268082495fe8b6b6a721">mlir_aie_sync_mem_dev</a> (<a class="el" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle)</td></tr>
 <tr class="memdesc:a77c79273bcfd268082495fe8b6b6a721"><td class="mdescLeft">&#160;</td><td class="mdescRight">Synchronize the buffer from the host CPU to the device.  <br /></td></tr>
 <tr class="separator:a77c79273bcfd268082495fe8b6b6a721"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a03815492edc8a392f987bd27f856c20a" id="r_a03815492edc8a392f987bd27f856c20a"><td class="memItemLeft" align="right" valign="top">u64&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#a03815492edc8a392f987bd27f856c20a">mlir_aie_get_device_address</a> (<a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *_xaie, void *VA)</td></tr>
-<tr class="memdesc:a03815492edc8a392f987bd27f856c20a"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return a device address corresponding to the given host address.  <br /></td></tr>
-<tr class="separator:a03815492edc8a392f987bd27f856c20a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5031b428d4cf58a163ffbdb2e14a259c" id="r_a5031b428d4cf58a163ffbdb2e14a259c"><td class="memItemLeft" align="right" valign="top">u64&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="memory__allocator_8cpp.html#a5031b428d4cf58a163ffbdb2e14a259c">mlir_aie_get_device_address</a> (<a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *ctx, void *VA)</td></tr>
+<tr class="memdesc:a5031b428d4cf58a163ffbdb2e14a259c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Return a device address corresponding to the given host address.  <br /></td></tr>
+<tr class="separator:a5031b428d4cf58a163ffbdb2e14a259c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
 <a id="a1b16fd4871110f0baf6dbb018655fced" name="a1b16fd4871110f0baf6dbb018655fced"></a>
@@ -183,8 +183,8 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="a03815492edc8a392f987bd27f856c20a" name="a03815492edc8a392f987bd27f856c20a"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a03815492edc8a392f987bd27f856c20a">&#9670;&#160;</a></span>mlir_aie_get_device_address()</h2>
+<a id="a5031b428d4cf58a163ffbdb2e14a259c" name="a5031b428d4cf58a163ffbdb2e14a259c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5031b428d4cf58a163ffbdb2e14a259c">&#9670;&#160;</a></span>mlir_aie_get_device_address()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -193,7 +193,7 @@ Functions</h2></td></tr>
           <td class="memname">u64 mlir_aie_get_device_address </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *&#160;</td>
-          <td class="paramname"><em>_xaie</em>, </td>
+          <td class="paramname"><em>ctx</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -212,10 +212,12 @@ Functions</h2></td></tr>
 <p>Return a device address corresponding to the given host address. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
+    <tr><td class="paramname">ctx</td><td>The AIE context </td></tr>
     <tr><td class="paramname">host_address</td><td>A host-side pointer returned from mlir_aie_mem_alloc </td></tr>
   </table>
   </dd>
 </dl>
+<dl class="section return"><dt>Returns</dt><dd>The device physical address corresponding to the host pointer </dd></dl>
 
 <p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00056">56</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
 
@@ -223,8 +225,8 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="ac1926460735d45ca543f54789389ca75" name="ac1926460735d45ca543f54789389ca75"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac1926460735d45ca543f54789389ca75">&#9670;&#160;</a></span>mlir_aie_mem_alloc()</h2>
+<a id="afb79e239c96ecebfb550712d74f3b4f4" name="afb79e239c96ecebfb550712d74f3b4f4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afb79e239c96ecebfb550712d74f3b4f4">&#9670;&#160;</a></span>mlir_aie_mem_alloc()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -233,7 +235,7 @@ Functions</h2></td></tr>
           <td class="memname">int * mlir_aie_mem_alloc </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *&#160;</td>
-          <td class="paramname"><em>_xaie</em>, </td>
+          <td class="paramname"><em>ctx</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -258,12 +260,13 @@ Functions</h2></td></tr>
 <p>Allocate a buffer in device memory. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">bufIdx</td><td>The index of the buffer to allocate. </td></tr>
+    <tr><td class="paramname">ctx</td><td>The AIE context </td></tr>
+    <tr><td class="paramname">handle</td><td>External memory model handle for tracking the allocation </td></tr>
     <tr><td class="paramname">size</td><td>The number of 32-bit words to allocate </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>A host-side pointer that can write into the given buffer. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>A host-side pointer that can write into the allocated buffer </dd></dl>
 <dl class="todo"><dt><b><a class="el" href="todo.html#_todo000001">Todo:</a></b></dt><dd>This is at best a quick hack and should be replaced </dd></dl>
 
 <p class="definition">Definition at line <a class="el" href="memory__allocator_8cpp_source.html#l00022">22</a> of file <a class="el" href="memory__allocator_8cpp_source.html">memory_allocator.cpp</a>.</p>
@@ -291,7 +294,7 @@ Functions</h2></td></tr>
 <p>Synchronize the buffer from the device to the host CPU. </p>
 <p>This is expected to be called after the device writes data into device memory, so that the data can be read by the CPU. In a non-cache coherent system, this implies invalidating the processor cache associated with the buffer. </p><dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">bufIdx</td><td>The buffer index. </td></tr>
+    <tr><td class="paramname">handle</td><td>External memory model handle identifying the buffer to synchronize </td></tr>
   </table>
   </dd>
 </dl>
@@ -321,7 +324,7 @@ Functions</h2></td></tr>
 <p>Synchronize the buffer from the host CPU to the device. </p>
 <p>This is expected to be called after the host writes data into device memory, so that the data can be read by the device. In a non-cache coherent system, this implies flushing the processor cache associated with the buffer. </p><dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">bufIdx</td><td>The buffer index. </td></tr>
+    <tr><td class="paramname">handle</td><td>External memory model handle identifying the buffer to synchronize </td></tr>
   </table>
   </dd>
 </dl>
@@ -335,7 +338,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Oct 13 2025 21:30:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Oct 13 2025 23:41:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

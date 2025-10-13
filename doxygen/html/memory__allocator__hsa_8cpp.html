@@ -126,7 +126,7 @@ Functions</h2></td></tr>
           <td class="memname">u64 mlir_aie_get_device_address </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *&#160;</td>
-          <td class="paramname"><em>_xaie</em>, </td>
+          <td class="paramname"><em>ctx</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -145,10 +145,12 @@ Functions</h2></td></tr>
 <p>Return a device address corresponding to the given host address. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
+    <tr><td class="paramname">ctx</td><td>The AIE context </td></tr>
     <tr><td class="paramname">host_address</td><td>A host-side pointer returned from mlir_aie_mem_alloc </td></tr>
   </table>
   </dd>
 </dl>
+<dl class="section return"><dt>Returns</dt><dd>The device physical address corresponding to the host pointer </dd></dl>
 
 <p class="definition">Definition at line <a class="el" href="memory__allocator__hsa_8cpp_source.html#l00053">53</a> of file <a class="el" href="memory__allocator__hsa_8cpp_source.html">memory_allocator_hsa.cpp</a>.</p>
 
@@ -164,7 +166,7 @@ Functions</h2></td></tr>
           <td class="memname">int * mlir_aie_mem_alloc </td>
           <td>(</td>
           <td class="paramtype"><a class="el" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *&#160;</td>
-          <td class="paramname"><em>_xaie</em>, </td>
+          <td class="paramname"><em>ctx</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -189,12 +191,13 @@ Functions</h2></td></tr>
 <p>Allocate a buffer in device memory. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">bufIdx</td><td>The index of the buffer to allocate. </td></tr>
+    <tr><td class="paramname">ctx</td><td>The AIE context </td></tr>
+    <tr><td class="paramname">handle</td><td>External memory model handle for tracking the allocation </td></tr>
     <tr><td class="paramname">size</td><td>The number of 32-bit words to allocate </td></tr>
   </table>
   </dd>
 </dl>
-<dl class="section return"><dt>Returns</dt><dd>A host-side pointer that can write into the given buffer. </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>A host-side pointer that can write into the allocated buffer </dd></dl>
 <dl class="todo"><dt><b><a class="el" href="todo.html#_todo000001">Todo:</a></b></dt><dd>This is at best a quick hack and should be replaced </dd></dl>
 
 <p class="definition">Definition at line <a class="el" href="memory__allocator__hsa_8cpp_source.html#l00020">20</a> of file <a class="el" href="memory__allocator__hsa_8cpp_source.html">memory_allocator_hsa.cpp</a>.</p>
@@ -222,7 +225,7 @@ Functions</h2></td></tr>
 <p>Synchronize the buffer from the device to the host CPU. </p>
 <p>This is expected to be called after the device writes data into device memory, so that the data can be read by the CPU. In a non-cache coherent system, this implies invalidating the processor cache associated with the buffer. </p><dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">bufIdx</td><td>The buffer index. </td></tr>
+    <tr><td class="paramname">handle</td><td>External memory model handle identifying the buffer to synchronize </td></tr>
   </table>
   </dd>
 </dl>
@@ -250,7 +253,7 @@ Functions</h2></td></tr>
 <p>Synchronize the buffer from the host CPU to the device. </p>
 <p>This is expected to be called after the host writes data into device memory, so that the data can be read by the device. In a non-cache coherent system, this implies flushing the processor cache associated with the buffer. </p><dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">bufIdx</td><td>The buffer index. </td></tr>
+    <tr><td class="paramname">handle</td><td>External memory model handle identifying the buffer to synchronize </td></tr>
   </table>
   </dd>
 </dl>
@@ -262,7 +265,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Oct 13 2025 21:30:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Oct 13 2025 23:41:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

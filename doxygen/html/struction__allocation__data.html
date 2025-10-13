@@ -75,22 +75,27 @@ $(function() {
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
 <tr class="memitem:af148427efe423fccd4812dd59da48531" id="r_af148427efe423fccd4812dd59da48531"><td class="memItemLeft" align="right" valign="top">__u64&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struction__allocation__data.html#af148427efe423fccd4812dd59da48531">len</a></td></tr>
+<tr class="memdesc:af148427efe423fccd4812dd59da48531"><td class="mdescLeft">&#160;</td><td class="mdescRight">size of the allocation  <br /></td></tr>
 <tr class="separator:af148427efe423fccd4812dd59da48531"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a099627af88d3992e679b5fc5fbc52740" id="r_a099627af88d3992e679b5fc5fbc52740"><td class="memItemLeft" align="right" valign="top">__u32&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struction__allocation__data.html#a099627af88d3992e679b5fc5fbc52740">heap_id_mask</a></td></tr>
+<tr class="memdesc:a099627af88d3992e679b5fc5fbc52740"><td class="mdescLeft">&#160;</td><td class="mdescRight">mask of heap ids to allocate from  <br /></td></tr>
 <tr class="separator:a099627af88d3992e679b5fc5fbc52740"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ad9834d2398831fee72519f8435852f0e" id="r_ad9834d2398831fee72519f8435852f0e"><td class="memItemLeft" align="right" valign="top">__u32&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struction__allocation__data.html#ad9834d2398831fee72519f8435852f0e">flags</a></td></tr>
+<tr class="memdesc:ad9834d2398831fee72519f8435852f0e"><td class="mdescLeft">&#160;</td><td class="mdescRight">flags passed to heap  <br /></td></tr>
 <tr class="separator:ad9834d2398831fee72519f8435852f0e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a89d2e95f5721d660eccc32bc2aa6f728" id="r_a89d2e95f5721d660eccc32bc2aa6f728"><td class="memItemLeft" align="right" valign="top">__u32&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struction__allocation__data.html#a89d2e95f5721d660eccc32bc2aa6f728">fd</a></td></tr>
+<tr class="memdesc:a89d2e95f5721d660eccc32bc2aa6f728"><td class="mdescLeft">&#160;</td><td class="mdescRight">file descriptor for this allocation  <br /></td></tr>
 <tr class="separator:a89d2e95f5721d660eccc32bc2aa6f728"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:adf772a20a1dc5c01bda985a294c6d36d" id="r_adf772a20a1dc5c01bda985a294c6d36d"><td class="memItemLeft" align="right" valign="top">__u32&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="struction__allocation__data.html#adf772a20a1dc5c01bda985a294c6d36d">unused</a></td></tr>
+<tr class="memdesc:adf772a20a1dc5c01bda985a294c6d36d"><td class="mdescLeft">&#160;</td><td class="mdescRight">unused field  <br /></td></tr>
 <tr class="separator:adf772a20a1dc5c01bda985a294c6d36d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>DOC: Ion Userspace API. </p>
-<p>create a client by opening /dev/ion most operations handled via following ioctls struct <a class="el" href="struction__allocation__data.html" title="DOC: Ion Userspace API.">ion_allocation_data</a> - metadata passed from userspace for allocations @len: size of the allocation @heap_id_mask: mask of heap ids to allocate from @flags: flags passed to heap @handle: pointer that will be populated with a cookie to use to refer to this allocation</p>
+<p>create a client by opening /dev/ion most operations handled via following ioctls struct <a class="el" href="struction__allocation__data.html" title="DOC: Ion Userspace API.">ion_allocation_data</a> - metadata passed from userspace for allocations</p>
 <p>Provided by userspace as an argument to the ioctl </p>
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00069">69</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00052">52</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 </div><h2 class="groupheader">Member Data Documentation</h2>
 <a id="a89d2e95f5721d660eccc32bc2aa6f728" name="a89d2e95f5721d660eccc32bc2aa6f728"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a89d2e95f5721d660eccc32bc2aa6f728">&#9670;&#160;</a></span>fd</h2>
@@ -104,9 +109,11 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00073">73</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p>file descriptor for this allocation </p>
 
-<p class="reference">Referenced by <a class="el" href="memory__allocator__ion_8cpp_source.html#l00045">mlir_aie_mem_alloc()</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00056">56</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="memory__allocator__ion_8cpp_source.html#l00038">mlir_aie_mem_alloc()</a>.</p>
 
 </div>
 </div>
@@ -122,7 +129,9 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00072">72</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p>flags passed to heap </p>
+
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00055">55</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
@@ -138,9 +147,11 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00071">71</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p>mask of heap ids to allocate from </p>
 
-<p class="reference">Referenced by <a class="el" href="memory__allocator__ion_8cpp_source.html#l00045">mlir_aie_mem_alloc()</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00054">54</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="memory__allocator__ion_8cpp_source.html#l00038">mlir_aie_mem_alloc()</a>.</p>
 
 </div>
 </div>
@@ -156,9 +167,11 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00070">70</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p>size of the allocation </p>
 
-<p class="reference">Referenced by <a class="el" href="memory__allocator__ion_8cpp_source.html#l00045">mlir_aie_mem_alloc()</a>.</p>
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00053">53</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="memory__allocator__ion_8cpp_source.html#l00038">mlir_aie_mem_alloc()</a>.</p>
 
 </div>
 </div>
@@ -174,7 +187,9 @@ Public Attributes</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00074">74</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
+<p>unused field </p>
+
+<p class="definition">Definition at line <a class="el" href="ion_8h_source.html#l00057">57</a> of file <a class="el" href="ion_8h_source.html">ion.h</a>.</p>
 
 </div>
 </div>
@@ -184,7 +199,7 @@ Public Attributes</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Oct 13 2025 21:30:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Oct 13 2025 23:41:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

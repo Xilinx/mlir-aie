@@ -88,61 +88,68 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="comment">/// Depending on the model of a particular device, this API supports several</span></div>
 <div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="comment">/// different scenarios for device memory allocation and reference.</span></div>
 <div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="comment">/// For instance, on the VCK190 with ARM host programmed through libXAIE,</span></div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span><span class="comment">/// mem_alloc() might allocate data in device DDR and return a cacheable mapping</span></div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span><span class="comment">/// to it.   sync_mem_cpu and sync_mem_dev would flush and invalidate caches.</span></div>
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span><span class="comment">/// A device address would correspond to a DDR physical address.</span></div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span><span class="comment">/// Alternatively in the AIESIM environment, mem_alloc allocates a duplicate</span></div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span><span class="comment">/// buffer in the host memory and in the simulator memory for each allocation,</span></div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><span class="comment">/// sync_mem_cpu and sync_mem_dev make an explicit copy between these two</span></div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="comment">/// buffers and device addresses are modeled in a simulator-specific way. Other</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="comment">/// combinations are also possible, largely representing different tradeoffs</span></div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="comment">/// between efficiency of host data access vs. efficiency of accelerator access.</span></div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="comment"></span> </div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="comment">// static variable for tracking current DDR physical addr during AIESIM</span></div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="keyword">static</span> uint16_t nextAlignedAddr;</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span><span class="comment"></span> </div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span><span class="comment">/// @brief Allocate a buffer in device memory</span></div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span><span class="comment">/// @param bufIdx The index of the buffer to allocate.</span></div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span><span class="comment">/// @param size The number of 32-bit words to allocate</span></div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span><span class="comment">/// @return A host-side pointer that can write into the given buffer.</span></div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span><span class="comment">/// @todo This is at best a quick hack and should be replaced</span></div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span><span class="comment"></span><span class="keywordtype">int</span> *<a class="code hl_function" href="memory__allocator_8h.html#ac1926460735d45ca543f54789389ca75">mlir_aie_mem_alloc</a>(<a class="code hl_struct" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *_xaie, <a class="code hl_struct" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle,</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>                        <span class="keywordtype">int</span> size);</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span><span class="comment"></span> </div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span><span class="comment">/// @brief Synchronize the buffer from the device to the host CPU.</span></div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span><span class="comment">/// This is expected to be called after the device writes data into</span></div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span><span class="comment">/// device memory, so that the data can be read by the CPU.  In</span></div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span><span class="comment">/// a non-cache coherent system, this implies invalidating the</span></div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span><span class="comment">/// processor cache associated with the buffer.</span></div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span><span class="comment">/// @param bufIdx The buffer index.</span></div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span><span class="comment"></span><span class="keywordtype">void</span> <a class="code hl_function" href="memory__allocator_8h.html#aea504051e5c6954fd32736547d6465ad">mlir_aie_sync_mem_cpu</a>(<a class="code hl_struct" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle);</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span><span class="comment"></span> </div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span><span class="comment">/// @brief Synchronize the buffer from the host CPU to the device.</span></div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span><span class="comment">/// This is expected to be called after the host writes data into</span></div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span><span class="comment">/// device memory, so that the data can be read by the device.  In</span></div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span><span class="comment">/// a non-cache coherent system, this implies flushing the</span></div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span><span class="comment">/// processor cache associated with the buffer.</span></div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span><span class="comment">/// @param bufIdx The buffer index.</span></div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span><span class="comment"></span><span class="keywordtype">void</span> <a class="code hl_function" href="memory__allocator_8h.html#a77c79273bcfd268082495fe8b6b6a721">mlir_aie_sync_mem_dev</a>(<a class="code hl_struct" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle);</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span><span class="comment"></span> </div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span><span class="comment">/// @brief Return a device address corresponding to the given host address.</span></div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span><span class="comment">/// @param host_address A host-side pointer returned from mlir_aie_mem_alloc</span></div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span><span class="comment"></span>u64 <a class="code hl_function" href="memory__allocator_8h.html#a292d10f33250b7ada7cab450885ee166">mlir_aie_get_device_address</a>(<a class="code hl_struct" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *_xaie, <span class="keywordtype">void</span> *host_address);</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span> </div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>} <span class="comment">// extern &quot;C&quot;</span></div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span> </div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span><span class="preprocessor">#endif</span></div>
-<div class="ttc" id="amemory__allocator_8h_html_a292d10f33250b7ada7cab450885ee166"><div class="ttname"><a href="memory__allocator_8h.html#a292d10f33250b7ada7cab450885ee166">mlir_aie_get_device_address</a></div><div class="ttdeci">u64 mlir_aie_get_device_address(aie_libxaie_ctx_t *_xaie, void *host_address)</div><div class="ttdoc">Return a device address corresponding to the given host address.</div><div class="ttdef"><b>Definition</b> <a href="memory__allocator_8cpp_source.html#l00056">memory_allocator.cpp:56</a></div></div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span><span class="comment">/// `mlir_aie_mem_alloc()` might allocate data in device DDR and return a</span></div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span><span class="comment">/// cacheable mapping to it. `mlir_aie_sync_mem_cpu()` and</span></div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span><span class="comment">/// `mlir_aie_sync_mem_dev()` would flush and invalidate caches.</span></div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span><span class="comment">/// A device address would correspond to a DDR physical address.</span></div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span><span class="comment">/// Alternatively in the AIESIM environment, `mlir_aie_mem_alloc()` allocates</span></div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><span class="comment">/// a duplicate buffer in the host memory and in the simulator memory for each</span></div>
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="comment">/// allocation. `mlir_aie_sync_mem_cpu()` and `mlir_aie_sync_mem_dev()` make</span></div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="comment">/// an explicit copy between these two buffers and device addresses are modeled</span></div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="comment">/// in a simulator-specific way. Other combinations are also possible, largely</span></div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span><span class="comment">/// representing different tradeoffs between efficiency of host data access vs.</span></div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span><span class="comment">/// efficiency of accelerator access.</span></div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span><span class="comment"></span> </div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span><span class="comment">// static variable for tracking current DDR physical addr during AIESIM</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span><span class="keyword">static</span> uint16_t nextAlignedAddr;</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span><span class="comment"></span> </div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span><span class="comment">/// @brief Allocate a buffer in device memory</span></div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span><span class="comment">/// @param ctx The AIE context</span></div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span><span class="comment">/// @param handle External memory model handle for tracking the allocation</span></div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span><span class="comment">/// @param size The number of 32-bit words to allocate</span></div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span><span class="comment">/// @return A host-side pointer that can write into the allocated buffer</span></div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span><span class="comment">/// @todo This is at best a quick hack and should be replaced</span></div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span><span class="comment"></span><span class="keywordtype">int</span> *<a class="code hl_function" href="memory__allocator_8h.html#afb79e239c96ecebfb550712d74f3b4f4">mlir_aie_mem_alloc</a>(<a class="code hl_struct" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *ctx, <a class="code hl_struct" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle,</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>                        <span class="keywordtype">int</span> size);</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span><span class="comment"></span> </div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span><span class="comment">/// @brief Synchronize the buffer from the device to the host CPU.</span></div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span><span class="comment">/// This is expected to be called after the device writes data into</span></div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span><span class="comment">/// device memory, so that the data can be read by the CPU.  In</span></div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span><span class="comment">/// a non-cache coherent system, this implies invalidating the</span></div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span><span class="comment">/// processor cache associated with the buffer.</span></div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span><span class="comment">/// @param handle External memory model handle identifying the buffer to</span></div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span><span class="comment">/// synchronize</span></div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span><span class="comment"></span><span class="keywordtype">void</span> <a class="code hl_function" href="memory__allocator_8h.html#aea504051e5c6954fd32736547d6465ad">mlir_aie_sync_mem_cpu</a>(<a class="code hl_struct" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle);</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span><span class="comment"></span> </div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span><span class="comment">/// @brief Synchronize the buffer from the host CPU to the device.</span></div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span><span class="comment">/// This is expected to be called after the host writes data into</span></div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span><span class="comment">/// device memory, so that the data can be read by the device.  In</span></div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span><span class="comment">/// a non-cache coherent system, this implies flushing the</span></div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span><span class="comment">/// processor cache associated with the buffer.</span></div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span><span class="comment">/// @param handle External memory model handle identifying the buffer to</span></div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span><span class="comment">/// synchronize</span></div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span><span class="comment"></span><span class="keywordtype">void</span> <a class="code hl_function" href="memory__allocator_8h.html#a77c79273bcfd268082495fe8b6b6a721">mlir_aie_sync_mem_dev</a>(<a class="code hl_struct" href="structext__mem__model__t.html">ext_mem_model_t</a> &amp;handle);</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span><span class="comment"></span> </div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span><span class="comment">/// @brief Return a device address corresponding to the given host address.</span></div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span><span class="comment">/// @param ctx The AIE context</span></div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span><span class="comment">/// @param host_address A host-side pointer returned from mlir_aie_mem_alloc</span></div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span><span class="comment">/// @return The device physical address corresponding to the host pointer</span></div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span><span class="comment"></span>u64 <a class="code hl_function" href="memory__allocator_8h.html#acb8f4f233f06e5d2338991b7878ca9e2">mlir_aie_get_device_address</a>(<a class="code hl_struct" href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a> *ctx, <span class="keywordtype">void</span> *host_address);</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span> </div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>} <span class="comment">// extern &quot;C&quot;</span></div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span> </div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span><span class="preprocessor">#endif</span></div>
 <div class="ttc" id="amemory__allocator_8h_html_a77c79273bcfd268082495fe8b6b6a721"><div class="ttname"><a href="memory__allocator_8h.html#a77c79273bcfd268082495fe8b6b6a721">mlir_aie_sync_mem_dev</a></div><div class="ttdeci">void mlir_aie_sync_mem_dev(ext_mem_model_t &amp;handle)</div><div class="ttdoc">Synchronize the buffer from the host CPU to the device.</div><div class="ttdef"><b>Definition</b> <a href="memory__allocator_8cpp_source.html#l00052">memory_allocator.cpp:52</a></div></div>
-<div class="ttc" id="amemory__allocator_8h_html_ac1926460735d45ca543f54789389ca75"><div class="ttname"><a href="memory__allocator_8h.html#ac1926460735d45ca543f54789389ca75">mlir_aie_mem_alloc</a></div><div class="ttdeci">int * mlir_aie_mem_alloc(aie_libxaie_ctx_t *_xaie, ext_mem_model_t &amp;handle, int size)</div><div class="ttdoc">Allocate a buffer in device memory.</div><div class="ttdef"><b>Definition</b> <a href="memory__allocator_8cpp_source.html#l00022">memory_allocator.cpp:22</a></div></div>
+<div class="ttc" id="amemory__allocator_8h_html_acb8f4f233f06e5d2338991b7878ca9e2"><div class="ttname"><a href="memory__allocator_8h.html#acb8f4f233f06e5d2338991b7878ca9e2">mlir_aie_get_device_address</a></div><div class="ttdeci">u64 mlir_aie_get_device_address(aie_libxaie_ctx_t *ctx, void *host_address)</div><div class="ttdoc">Return a device address corresponding to the given host address.</div><div class="ttdef"><b>Definition</b> <a href="memory__allocator_8cpp_source.html#l00056">memory_allocator.cpp:56</a></div></div>
 <div class="ttc" id="amemory__allocator_8h_html_aea504051e5c6954fd32736547d6465ad"><div class="ttname"><a href="memory__allocator_8h.html#aea504051e5c6954fd32736547d6465ad">mlir_aie_sync_mem_cpu</a></div><div class="ttdeci">void mlir_aie_sync_mem_cpu(ext_mem_model_t &amp;handle)</div><div class="ttdoc">Synchronize the buffer from the device to the host CPU.</div><div class="ttdef"><b>Definition</b> <a href="memory__allocator_8cpp_source.html#l00048">memory_allocator.cpp:48</a></div></div>
+<div class="ttc" id="amemory__allocator_8h_html_afb79e239c96ecebfb550712d74f3b4f4"><div class="ttname"><a href="memory__allocator_8h.html#afb79e239c96ecebfb550712d74f3b4f4">mlir_aie_mem_alloc</a></div><div class="ttdeci">int * mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, ext_mem_model_t &amp;handle, int size)</div><div class="ttdoc">Allocate a buffer in device memory.</div><div class="ttdef"><b>Definition</b> <a href="memory__allocator_8cpp_source.html#l00022">memory_allocator.cpp:22</a></div></div>
 <div class="ttc" id="astructaie__libxaie__ctx__t_html"><div class="ttname"><a href="structaie__libxaie__ctx__t.html">aie_libxaie_ctx_t</a></div><div class="ttdef"><b>Definition</b> <a href="target_8h_source.html#l00031">target.h:31</a></div></div>
 <div class="ttc" id="astructext__mem__model__t_html"><div class="ttname"><a href="structext__mem__model__t.html">ext_mem_model_t</a></div><div class="ttdef"><b>Definition</b> <a href="target_8h_source.html#l00023">target.h:23</a></div></div>
 <div class="ttc" id="atarget_8h_html"><div class="ttname"><a href="target_8h.html">target.h</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Oct 13 2025 21:30:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Oct 13 2025 23:41:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

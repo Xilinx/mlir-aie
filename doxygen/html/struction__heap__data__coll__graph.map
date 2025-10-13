@@ -1,5 +1,5 @@
 <map id="ion_heap_data" name="ion_heap_data">
-<area shape="rect" id="Node000001" title=" " alt="" coords="12,152,129,177"/>
+<area shape="rect" id="Node000001" title="struct ion_heap_data &#45; data about a heap" alt="" coords="12,152,129,177"/>
 <area shape="rect" id="Node000002" title=" " alt="" coords="5,5,56,31"/>
 <area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="31,44,32,84,42,127,59,150,55,153,38,129,27,85,26,44"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="81,5,141,31"/>
