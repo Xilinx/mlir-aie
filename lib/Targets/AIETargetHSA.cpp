@@ -104,7 +104,8 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
       return failure();
     }
 
-    AIE::ShimDMAAllocationOp infoOp = AIE::ShimDMAAllocationOp::getForSymbol(dev, op.getMetadata().getRootReference());
+    AIE::ShimDMAAllocationOp infoOp = AIE::ShimDMAAllocationOp::getForSymbol(
+        dev, op.getMetadata().getRootReference());
     if (!infoOp) {
       op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
