@@ -39,10 +39,6 @@ def my_vector_add():
         tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
         tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
-        # Global symbols declaration
-        memref.global_("of_in1", T.memref(16, T.i32()), sym_visibility="public")
-        memref.global_("of_out", T.memref(16, T.i32()), sym_visibility="public")
-
         # Tile declarations
         ShimTile = tile(int(sys.argv[2]), 0)
         ComputeTile2 = tile(int(sys.argv[2]), 2)
