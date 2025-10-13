@@ -7,14 +7,16 @@
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 
 import os
-import re
-import shutil
-import subprocess
+import sys
+
+# Add shared AIE lit utilities to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 import lit.formats
 import lit.util
 
 from lit.llvm import llvm_config
+from aie_lit_utils import LitConfigHelper
 
 # Configuration file for the 'lit' test runner.
 
@@ -29,6 +31,12 @@ config.suffixes = [".mlir"]
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
 
+# Setup standard environment (PYTHONPATH, AIETOOLS, system env, etc.)
+LitConfigHelper.setup_standard_environment(
+    llvm_config, config, config.aie_obj_root, config.vitis_aietools_dir
+)
+
+# Basic substitutions
 config.substitutions.append(("%PATH%", config.environment["PATH"]))
 config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -40,133 +48,27 @@ config.substitutions.append(
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 
-# make sure JIT stores compiled designs in different subdirectory for each test run
-llvm_config.with_system_environment("IRON_CACHE_HOME")
-
-# for xchesscc_wrapper
-llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
-
-# for python
-llvm_config.with_environment("PYTHONPATH", os.path.join(config.aie_obj_root, "python"))
-
 # Not using run_on_board anymore, need more specific per-platform commands
 config.substitutions.append(("%run_on_board", "echo"))
 
-if config.hsa_dir and (not ("NOTFOUND" in config.hsa_dir)):
-    if not "hsa" in config.aieHostTarget:
-        print(
-            "ROCm found, but disabled because host target {}".format(
-                config.aieHostTarget
-            )
-        )
-        config.substitutions.append(("%run_on_vck5000", "echo"))
-        config.substitutions.append(("%link_against_hsa%", ""))
-        config.substitutions.append(("%HSA_DIR%", ""))
+# Detect ROCm/HSA and VCK5000
+rocm_config = LitConfigHelper.detect_rocm(
+    config.hsa_dir, config.aieHostTarget, config.enable_board_tests
+)
 
-    else:
-        # Getting the path to the ROCm directory. hsa-runtime64 points to the cmake
-        # directory so need to go up three directories
-        rocm_root = os.path.join(config.hsa_dir, "..", "..", "..")
-        print("Found ROCm:", rocm_root)
-        config.available_features.add("hsa")
-        config.substitutions.append(("%HSA_DIR%", "{}".format(rocm_root)))
-        config.substitutions.append(("%link_against_hsa%", "--link_against_hsa"))
-        found_vck5000 = False
-
-        if config.enable_board_tests:
-            # If board tests are enabled, make sure there is an AIE ROCm device that we can find
-            try:
-                # Making sure that we use the experimental ROCm install that can see the AIE device
-                my_env = os.environ.copy()
-                my_env.update(LD_LIBRARY_PATH="{}/lib/".format(rocm_root))
-                result = subprocess.run(
-                    ["rocminfo"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=my_env,
-                )
-                result = result.stdout.decode("utf-8").split("\n")
-
-                # Go through result and look for the VCK5000
-                for l in result:
-                    if "Versal VCK5000" in l:
-                        print("Found VCK500 in rocminfo. Enabling on board tests")
-                        found_vck5000 = True
-                        config.substitutions.append(
-                            ("%run_on_vck5000", "flock /tmp/vck5000.lock")
-                        )
-                        break
-
-                if not found_vck5000:
-                    config.substitutions.append(("%run_on_vck5000", "echo"))
-                    print(
-                        "Enable board set and HSA found but couldn't find device using rocminfo"
-                    )
-
-            except:
-                print("Enable board set and HSA found but unable to run rocminfo")
-                pass
-        else:
-            print("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
-            config.substitutions.append(("%run_on_vck5000", "echo"))
-else:
-    print("ROCm not found")
-    config.substitutions.append(("%run_on_vck5000", "echo"))
-    config.substitutions.append(("%link_against_hsa%", ""))
-    config.substitutions.append(("%HSA_DIR%", ""))
-
-run_on_npu1 = "echo"
-run_on_npu2 = "echo"
-xrt_flags = ""
-
-if config.xrt_lib_dir:
-    print("xrt found at", os.path.dirname(config.xrt_lib_dir))
-    xrt_flags = "-I{} -L{} -luuid -lxrt_coreutil".format(
-        config.xrt_include_dir, config.xrt_lib_dir
-    )
-    try:
-        xrtsmi = os.path.join(config.xrt_bin_dir, "xrt-smi")
-        result = subprocess.run(
-            [xrtsmi, "examine"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
-        result = result.stdout.decode("utf-8").split("\n")
-        # Older format is "|[0000:41:00.1]  ||RyzenAI-npu1  |"
-        # Newer format is "|[0000:41:00.1]  |NPU Phoenix  |"
-        p = re.compile(r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU (\w+))\W*\|")
-        for l in result:
-            m = p.match(l)
-            if not m:
-                continue
-            print("Found Ryzen AI device:", m.group(1))
-            model = "unknown"
-            if m.group(3):
-                model = str(m.group(3))
-            if m.group(4):
-                model = str(m.group(4))
-            print(f"\tmodel: '{model}'")
-            config.available_features.add("ryzen_ai")
-            run_on_npu = f"{config.aie_src_root}/utils/run_on_npu.sh"
-            if model in ["npu1", "Phoenix"]:
-                run_on_npu1 = run_on_npu
-                config.available_features.add("ryzen_ai_npu1")
-                print("Running tests on NPU1 with command line: ", run_on_npu1)
-            elif model in ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"]:
-                run_on_npu2 = run_on_npu
-                config.available_features.add("ryzen_ai_npu2")
-                print("Running tests on NPU4 with command line: ", run_on_npu2)
-            else:
-                print("WARNING: xrt-smi reported unknown NPU model '{model}'.")
-            break
-    except:
-        print("Failed to run xrt-smi")
-        pass
-else:
-    print("xrt not found")
+# Detect XRT and Ryzen AI NPU devices
+xrt_config, run_on_npu1, run_on_npu2 = LitConfigHelper.detect_xrt(
+    config.xrt_lib_dir,
+    config.xrt_include_dir,
+    config.xrt_bin_dir,
+    config.aie_src_root,
+)
 
 config.substitutions.append(("%run_on_npu1%", run_on_npu1))
 config.substitutions.append(("%run_on_npu2%", run_on_npu2))
-config.substitutions.append(("%xrt_flags", xrt_flags))
+config.substitutions.append(("%xrt_flags", xrt_config.flags))
 
+# OpenCV detection
 opencv_flags = ""
 if config.opencv_include_dir and config.opencv_libs:
     print("opencv found")
@@ -183,20 +85,17 @@ config.substitutions.append(("%opencv_flags", opencv_flags))
 
 try:
     import torch
-
     config.available_features.add("torch")
 except ImportError:
     print("torch not found", file=sys.stderr)
     pass
 
-VitisSysrootFlag = ""
-if "x86_64" in config.aieHostTarget:
-    config.substitutions.append(("%aieHostTargetTriplet%", "x86_64-unknown-linux-gnu"))
-elif config.aieHostTarget == "aarch64":
-    config.substitutions.append(("%aieHostTargetTriplet%", "aarch64-linux-gnu"))
-    VitisSysrootFlag = "--sysroot=" + config.vitis_sysroot
-
-config.substitutions.append(("%VitisSysrootFlag%", VitisSysrootFlag))
+# Setup host target triplet and sysroot
+triplet, sysroot_flag = LitConfigHelper.setup_host_target_triplet(
+    config.aieHostTarget, config.vitis_sysroot
+)
+config.substitutions.append(("%aieHostTargetTriplet%", triplet))
+config.substitutions.append(("%VitisSysrootFlag%", sysroot_flag))
 config.substitutions.append(("%aieHostTargetArch%", config.aieHostTarget))
 
 llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
@@ -217,6 +116,62 @@ config.excludes = [
 ]
 
 config.aie_tools_dir = os.path.join(config.aie_obj_root, "bin")
+
+# Setup the PATH with all necessary tool directories
+LitConfigHelper.prepend_path(llvm_config, config.aie_tools_dir)
+if config.vitis_root:
+    config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
+    LitConfigHelper.prepend_path(llvm_config, config.vitis_aietools_bin)
+    llvm_config.with_environment("VITIS", config.vitis_root)
+
+peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
+LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
+LitConfigHelper.prepend_path(llvm_config, peano_tools_dir)
+config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
+
+tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
+
+# Detect Peano backend
+peano_config = LitConfigHelper.detect_peano(
+    peano_tools_dir, config.peano_install_dir, llvm_config
+)
+
+# Detect Chess compiler
+chess_config = LitConfigHelper.detect_chess(
+    config.vitis_root, config.enable_chess_tests, llvm_config
+)
+
+# Detect aiesimulator
+aiesim_config = LitConfigHelper.detect_aiesimulator()
+
+# Apply all hardware/tool configurations
+LitConfigHelper.apply_config_to_lit(config, {
+    "rocm": rocm_config,
+    "xrt": xrt_config,
+    "peano": peano_config,
+    "chess": chess_config,
+    "aiesim": aiesim_config,
+})
+
+# Add Vitis components as features
+LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
+
+tools = [
+    "aie-opt",
+    "aie-translate",
+    "aiecc.py",
+    "ld.lld",
+    "llc",
+    "llvm-objdump",
+    "opt",
+    "xchesscc_wrapper",
+]
+
+llvm_config.add_tool_substitutions(tools, tool_dirs)
+
+if config.enable_board_tests:
+    lit_config.parallelism_groups["board"] = 1
+    config.parallelism_group = "board"
 
 
 def prepend_path(path):
