@@ -34,14 +34,7 @@
 /***************************** Macro Definitions *****************************/
 #define XAIE_128BIT_ALIGN_MASK 0xFF
 
-/**
- * This is the memory function to allocate a memory
- *
- * @param	handle: Device Instance
- * @param	size: Size of the memory
- *
- * @return	Pointer to the allocated memory instance.
- *******************************************************************************/
+// Allocate memory for the AIE device
 int *mlir_aie_mem_alloc(struct aie_libxaie_ctx_t *ctx, ext_mem_model_t &handle,
                         int size) {
   int RC;
@@ -139,19 +132,19 @@ error_ion:
   return NULL;
 }
 
-/*****************************************************************************/
-/**
- *
- * This is function to attach the allocated memory descriptor to kernel driver
- *
- * @param	IOInst: Linux IO instance pointer
- * @param	MemInst: Linux Memory instance pointer.
- *
- * @return	XAIE_OK on success, Error code on failure.
- *
- * @note		Internal only.
- *
- *******************************************************************************/
+// /*****************************************************************************/
+// /**
+//  *
+//  * This is function to attach the allocated memory descriptor to kernel driver
+//  *
+//  * @param	IOInst: Linux IO instance pointer
+//  * @param	MemInst: Linux Memory instance pointer.
+//  *
+//  * @return	XAIE_OK on success, Error code on failure.
+//  *
+//  * @note		Internal only.
+//  *
+//  *******************************************************************************/
 // static int _XAie_LinuxMemDetach(XAie_LinuxIO *IOInst, XAie_LinuxMem *MemInst)
 // {
 // 	int Ret;
@@ -166,18 +159,18 @@ error_ion:
 // 	return XAIE_OK;
 // }
 
-/*****************************************************************************/
-/**
- *
- * This is the memory function to free the memory
- *
- * @param	MemInst: Memory instance pointer.
- *
- * @return	XAIE_OK on success, Error code on failure.
- *
- * @note		Internal only.
- *
- *******************************************************************************/
+// /*****************************************************************************/
+// /**
+//  *
+//  * This is the memory function to free the memory
+//  *
+//  * @param	MemInst: Memory instance pointer.
+//  *
+//  * @return	XAIE_OK on success, Error code on failure.
+//  *
+//  * @note		Internal only.
+//  *
+//  *******************************************************************************/
 // static int XAie_LinuxMemFree(XAie_MemInst *MemInst)
 // {
 // 	int RC;
@@ -198,18 +191,7 @@ error_ion:
 // 	return XAIE_OK;
 // }
 
-/*****************************************************************************/
-/**
- *
- * This is the memory function to sync the memory for CPU.
- *
- * @param	MemInst: Memory instance pointer.
- *
- * @return	XAIE_OK on success, Error code on failure.
- *
- * @note		Internal only.
- *
- *******************************************************************************/
+// Sync the memory for CPU
 void mlir_aie_sync_mem_cpu(ext_mem_model_t &handle) {
   struct dma_buf_sync Sync;
   int Ret;
@@ -225,18 +207,7 @@ void mlir_aie_sync_mem_cpu(ext_mem_model_t &handle) {
   // return XAIE_OK;
 }
 
-/*****************************************************************************/
-/**
- *
- * This is the memory function to sync the memory for Device.
- *
- * @param	MemInst: Memory instance pointer.
- *
- * @return	XAIE_OK on success, Error code on failure.
- *
- * @note		Internal only.
- *
- *******************************************************************************/
+// Sync the memory for Device
 void mlir_aie_sync_mem_dev(ext_mem_model_t &handle) {
   struct dma_buf_sync Sync;
   int Ret;
