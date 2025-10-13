@@ -95,7 +95,7 @@ MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary) {
 }
 
 MlirOperation aieTranslateBinaryToControlPackets(MlirContext ctx,
-                                                  MlirStringRef binary) {
+                                                 MlirStringRef binary) {
   std::vector<uint8_t> binaryData(binary.data, binary.data + binary.length);
   auto mod = convertControlPacketBinaryToMLIR(unwrap(ctx), binaryData);
   if (!mod)
