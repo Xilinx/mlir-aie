@@ -135,8 +135,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>  }</div>
 <div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>  collectTiles(targetOp, tiles);</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>  collectBuffers(targetOp, buffers);</div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>  <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3a91d62b738d30b89aaca25caf49edbe">collectTiles</a>(targetOp, tiles);</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>  <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3e9658a61800052f09a70ec072b7ced9">collectBuffers</a>(targetOp, buffers);</div>
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span> </div>
 <div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> tile : targetOp.getOps&lt;TileOp&gt;())</div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    if (tile.colIndex() == tileCol &amp;&amp; tile.rowIndex() == tileRow) {</div>
@@ -250,6 +250,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aAIETargets_8h_html"><div class="ttname"><a href="AIETargets_8h.html">AIETargets.h</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a3a91d62b738d30b89aaca25caf49edbe"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a3a91d62b738d30b89aaca25caf49edbe">xilinx::AIE::collectTiles</a></div><div class="ttdeci">void collectTiles(DeviceOp &amp;device, llvm::DenseMap&lt; TileID, mlir::Operation * &gt; &amp;tiles)</div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a3e9658a61800052f09a70ec072b7ced9"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a3e9658a61800052f09a70ec072b7ced9">xilinx::AIE::collectBuffers</a></div><div class="ttdeci">void collectBuffers(DeviceOp &amp;device, llvm::DenseMap&lt; mlir::Operation *, llvm::SmallVector&lt; BufferOp, 4 &gt; &gt; &amp;buffers)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a49f04dcae147b7f78d5efa3c1ffb6972"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a49f04dcae147b7f78d5efa3c1ffb6972">xilinx::AIE::AIETranslateToLdScript</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateToLdScript(mlir::ModuleOp module, llvm::raw_ostream &amp;output, int tileCol, int tileRow, llvm::StringRef deviceName=&quot;&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a5254f10e13189e4a0b14256c79305ec6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">xilinx::AIE::TileID</a></div><div class="ttdeci">TileID { friend std::ostream &amp;operator&lt;&lt;(std::ostream &amp;os, const TileID &amp;s) { os&lt;&lt; &quot;TileID(&quot;&lt;&lt; s.col&lt;&lt; &quot;, &quot;&lt;&lt; s.row&lt;&lt; &quot;)&quot; TileID</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00022">AIETargetModel.h:26</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a769a997456783a9c7f8bfe14531e40b3"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a769a997456783a9c7f8bfe14531e40b3">xilinx::AIE::getBufferBaseAddress</a></div><div class="ttdeci">int32_t getBufferBaseAddress(mlir::Operation *bufOp)</div></div>
@@ -258,7 +260,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Oct 14 2025 21:09:32 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Oct 14 2025 22:18:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

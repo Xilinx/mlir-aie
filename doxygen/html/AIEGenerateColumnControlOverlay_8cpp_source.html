@@ -447,66 +447,61 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span> </div>
 <div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>      builder.create&lt;AIE::ShimDMAAllocationOp&gt;(</div>
 <div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>          builder.getUnknownLoc(), StringRef(dma_name), dir,</div>
-<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>          rowToShimChanMap[tOp.rowIndex()], shimTile.colIndex(), <span class="keyword">false</span>);</div>
-<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>      MemRefType memref_ty = MemRefType::get(</div>
-<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>          ArrayRef&lt;int64_t&gt;{2048}, IntegerType::get(builder.getContext(), 32),</div>
-<div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>          <span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>      builder.create&lt;memref::GlobalOp&gt;(builder.getUnknownLoc(), dma_name,</div>
-<div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>                                       builder.getStringAttr(<span class="stringliteral">&quot;public&quot;</span>),</div>
-<div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span>                                       memref_ty, <span class="keyword">nullptr</span>, <span class="keyword">false</span>, <span class="keyword">nullptr</span>);</div>
-<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>    }</div>
-<div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>  }</div>
+<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>          rowToShimChanMap[tOp.rowIndex()], shimTile.colIndex(), <span class="keyword">false</span>,</div>
+<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>          <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>    }</div>
+<div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>  }</div>
 </div>
-<div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span> </div>
-<div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>  <span class="comment">// Get packet-flow op with the same source or destination</span></div>
-<div class="foldopen" id="foldopen00377" data-start="{" data-end="}">
-<div class="line"><a id="l00377" name="l00377"></a><span class="lineno"><a class="line" href="structAIEGenerateColumnControlOverlayPass.html#aba61336c57fe3970b2088d21819d4134">  377</a></span>  AIE::PacketFlowOp <a class="code hl_function" href="structAIEGenerateColumnControlOverlayPass.html#aba61336c57fe3970b2088d21819d4134">getPktFlowWithSameSrcOrDst</a>(DeviceOp device, TileOp srcTile,</div>
-<div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span>                                               WireBundle srcBundle,</div>
-<div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span>                                               <span class="keywordtype">int</span> srcChan, TileOp destTile,</div>
-<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>                                               WireBundle destBundle,</div>
-<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>                                               <span class="keywordtype">int</span> destChan) {</div>
-<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span>    AIE::PacketFlowOp result = <span class="keyword">nullptr</span>;</div>
-<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>    device.walk([&amp;](AIE::PacketFlowOp fOp) {</div>
-<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> srcOp : fOp.getOps&lt;AIE::PacketSourceOp&gt;()) {</div>
-<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>        <span class="keywordflow">if</span> (srcOp.getTile() == srcTile &amp;&amp; srcOp.getBundle() == srcBundle &amp;&amp;</div>
-<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>            srcOp.channelIndex() == srcChan) {</div>
-<div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>          result = fOp;</div>
-<div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span>          <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span>        }</div>
-<div class="line"><a id="l00390" name="l00390"></a><span class="lineno">  390</span>      }</div>
-<div class="line"><a id="l00391" name="l00391"></a><span class="lineno">  391</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> destOp : fOp.getOps&lt;AIE::PacketDestOp&gt;()) {</div>
-<div class="line"><a id="l00392" name="l00392"></a><span class="lineno">  392</span>        <span class="keywordflow">if</span> (destOp.getTile() == destTile &amp;&amp; destOp.getBundle() == destBundle &amp;&amp;</div>
-<div class="line"><a id="l00393" name="l00393"></a><span class="lineno">  393</span>            destOp.channelIndex() == destChan) {</div>
-<div class="line"><a id="l00394" name="l00394"></a><span class="lineno">  394</span>          result = fOp;</div>
-<div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>          <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>        }</div>
-<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span>      }</div>
-<div class="line"><a id="l00398" name="l00398"></a><span class="lineno">  398</span>    });</div>
-<div class="line"><a id="l00399" name="l00399"></a><span class="lineno">  399</span>    <span class="keywordflow">return</span> result;</div>
-<div class="line"><a id="l00400" name="l00400"></a><span class="lineno">  400</span>  }</div>
+<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span> </div>
+<div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>  <span class="comment">// Get packet-flow op with the same source or destination</span></div>
+<div class="foldopen" id="foldopen00372" data-start="{" data-end="}">
+<div class="line"><a id="l00372" name="l00372"></a><span class="lineno"><a class="line" href="structAIEGenerateColumnControlOverlayPass.html#aba61336c57fe3970b2088d21819d4134">  372</a></span>  AIE::PacketFlowOp <a class="code hl_function" href="structAIEGenerateColumnControlOverlayPass.html#aba61336c57fe3970b2088d21819d4134">getPktFlowWithSameSrcOrDst</a>(DeviceOp device, TileOp srcTile,</div>
+<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>                                               WireBundle srcBundle,</div>
+<div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>                                               <span class="keywordtype">int</span> srcChan, TileOp destTile,</div>
+<div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span>                                               WireBundle destBundle,</div>
+<div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>                                               <span class="keywordtype">int</span> destChan) {</div>
+<div class="line"><a id="l00377" name="l00377"></a><span class="lineno">  377</span>    AIE::PacketFlowOp result = <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span>    device.walk([&amp;](AIE::PacketFlowOp fOp) {</div>
+<div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> srcOp : fOp.getOps&lt;AIE::PacketSourceOp&gt;()) {</div>
+<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>        <span class="keywordflow">if</span> (srcOp.getTile() == srcTile &amp;&amp; srcOp.getBundle() == srcBundle &amp;&amp;</div>
+<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>            srcOp.channelIndex() == srcChan) {</div>
+<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span>          result = fOp;</div>
+<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>          <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span>        }</div>
+<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>      }</div>
+<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> destOp : fOp.getOps&lt;AIE::PacketDestOp&gt;()) {</div>
+<div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>        <span class="keywordflow">if</span> (destOp.getTile() == destTile &amp;&amp; destOp.getBundle() == destBundle &amp;&amp;</div>
+<div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span>            destOp.channelIndex() == destChan) {</div>
+<div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span>          result = fOp;</div>
+<div class="line"><a id="l00390" name="l00390"></a><span class="lineno">  390</span>          <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00391" name="l00391"></a><span class="lineno">  391</span>        }</div>
+<div class="line"><a id="l00392" name="l00392"></a><span class="lineno">  392</span>      }</div>
+<div class="line"><a id="l00393" name="l00393"></a><span class="lineno">  393</span>    });</div>
+<div class="line"><a id="l00394" name="l00394"></a><span class="lineno">  394</span>    <span class="keywordflow">return</span> result;</div>
+<div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>  }</div>
 </div>
-<div class="line"><a id="l00401" name="l00401"></a><span class="lineno">  401</span>};</div>
+<div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>};</div>
 </div>
-<div class="line"><a id="l00402" name="l00402"></a><span class="lineno">  402</span> </div>
+<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span> </div>
+<div class="foldopen" id="foldopen00398" data-start="{" data-end="}">
+<div class="line"><a id="l00398" name="l00398"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a3e3bb0497849a0805cf7380669324206">  398</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3e3bb0497849a0805cf7380669324206">AIE::createAIEAssignTileCtrlIDsPass</a>() {</div>
+<div class="line"><a id="l00399" name="l00399"></a><span class="lineno">  399</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEAssignTileCtrlIDsPass&gt;();</div>
+<div class="line"><a id="l00400" name="l00400"></a><span class="lineno">  400</span>}</div>
+</div>
+<div class="line"><a id="l00401" name="l00401"></a><span class="lineno">  401</span> </div>
+<div class="line"><a id="l00402" name="l00402"></a><span class="lineno">  402</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
 <div class="foldopen" id="foldopen00403" data-start="{" data-end="}">
-<div class="line"><a id="l00403" name="l00403"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a3e3bb0497849a0805cf7380669324206">  403</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3e3bb0497849a0805cf7380669324206">AIE::createAIEAssignTileCtrlIDsPass</a>() {</div>
-<div class="line"><a id="l00404" name="l00404"></a><span class="lineno">  404</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEAssignTileCtrlIDsPass&gt;();</div>
+<div class="line"><a id="l00403" name="l00403"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aff6f2dde50d2f9ee5387ccc17ee12b18">  403</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#aff6f2dde50d2f9ee5387ccc17ee12b18">AIE::createAIEGenerateColumnControlOverlayPass</a>() {</div>
+<div class="line"><a id="l00404" name="l00404"></a><span class="lineno">  404</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEGenerateColumnControlOverlayPass&gt;();</div>
 <div class="line"><a id="l00405" name="l00405"></a><span class="lineno">  405</span>}</div>
 </div>
 <div class="line"><a id="l00406" name="l00406"></a><span class="lineno">  406</span> </div>
-<div class="line"><a id="l00407" name="l00407"></a><span class="lineno">  407</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00408" data-start="{" data-end="}">
-<div class="line"><a id="l00408" name="l00408"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aff6f2dde50d2f9ee5387ccc17ee12b18">  408</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#aff6f2dde50d2f9ee5387ccc17ee12b18">AIE::createAIEGenerateColumnControlOverlayPass</a>() {</div>
-<div class="line"><a id="l00409" name="l00409"></a><span class="lineno">  409</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEGenerateColumnControlOverlayPass&gt;();</div>
-<div class="line"><a id="l00410" name="l00410"></a><span class="lineno">  410</span>}</div>
-</div>
-<div class="line"><a id="l00411" name="l00411"></a><span class="lineno">  411</span> </div>
-<div class="line"><a id="l00412" name="l00412"></a><span class="lineno"><a class="line" href="AIEGenerateColumnControlOverlay_8h.html#ab86eb5d47b7cc58fb3c5c130351a9041">  412</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="AIEGenerateColumnControlOverlay_8cpp.html#ab86eb5d47b7cc58fb3c5c130351a9041">populateAIEColumnControlOverlay</a>(DeviceOp &amp;device) {}</div>
+<div class="line"><a id="l00407" name="l00407"></a><span class="lineno"><a class="line" href="AIEGenerateColumnControlOverlay_8h.html#ab86eb5d47b7cc58fb3c5c130351a9041">  407</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="AIEGenerateColumnControlOverlay_8cpp.html#ab86eb5d47b7cc58fb3c5c130351a9041">populateAIEColumnControlOverlay</a>(DeviceOp &amp;device) {}</div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEGenerateColumnControlOverlay_8cpp_html_a76cdff4aebbd85e1e329a40e5821a4f5"><div class="ttname"><a href="AIEGenerateColumnControlOverlay_8cpp.html#a76cdff4aebbd85e1e329a40e5821a4f5">getUnusedPacketIdFrom</a></div><div class="ttdeci">int getUnusedPacketIdFrom(DeviceOp device)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00026">AIEGenerateColumnControlOverlay.cpp:26</a></div></div>
 <div class="ttc" id="aAIEGenerateColumnControlOverlay_8cpp_html_aa8f129a8b0c47b84ebfa776937b89d3c"><div class="ttname"><a href="AIEGenerateColumnControlOverlay_8cpp.html#aa8f129a8b0c47b84ebfa776937b89d3c">getRowToShimChanMap</a></div><div class="ttdeci">DenseMap&lt; int, int &gt; getRowToShimChanMap(const AIETargetModel &amp;targetModel, WireBundle bundle)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00097">AIEGenerateColumnControlOverlay.cpp:97</a></div></div>
 <div class="ttc" id="aAIEGenerateColumnControlOverlay_8cpp_html_aaa748b0a5074a3274cf8bbff8532fdf6"><div class="ttname"><a href="AIEGenerateColumnControlOverlay_8cpp.html#aaa748b0a5074a3274cf8bbff8532fdf6">getTileToControllerIdMap6RowsOrLess</a></div><div class="ttdeci">DenseMap&lt; AIE::TileID, int &gt; getTileToControllerIdMap6RowsOrLess(bool clColumnWiseUniqueIDs, const AIETargetModel &amp;targetModel)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00045">AIEGenerateColumnControlOverlay.cpp:45</a></div></div>
-<div class="ttc" id="aAIEGenerateColumnControlOverlay_8cpp_html_ab86eb5d47b7cc58fb3c5c130351a9041"><div class="ttname"><a href="AIEGenerateColumnControlOverlay_8cpp.html#ab86eb5d47b7cc58fb3c5c130351a9041">populateAIEColumnControlOverlay</a></div><div class="ttdeci">void populateAIEColumnControlOverlay(DeviceOp &amp;device)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00412">AIEGenerateColumnControlOverlay.cpp:412</a></div></div>
+<div class="ttc" id="aAIEGenerateColumnControlOverlay_8cpp_html_ab86eb5d47b7cc58fb3c5c130351a9041"><div class="ttname"><a href="AIEGenerateColumnControlOverlay_8cpp.html#ab86eb5d47b7cc58fb3c5c130351a9041">populateAIEColumnControlOverlay</a></div><div class="ttdeci">void populateAIEColumnControlOverlay(DeviceOp &amp;device)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00407">AIEGenerateColumnControlOverlay.cpp:407</a></div></div>
 <div class="ttc" id="aAIEGenerateColumnControlOverlay_8cpp_html_ada5216168c0b4e0050aa7c4d7e164736"><div class="ttname"><a href="AIEGenerateColumnControlOverlay_8cpp.html#ada5216168c0b4e0050aa7c4d7e164736">getTileToControllerIdMap</a></div><div class="ttdeci">DenseMap&lt; AIE::TileID, int &gt; getTileToControllerIdMap(bool clColumnWiseUniqueIDs, const AIETargetModel &amp;targetModel)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00070">AIEGenerateColumnControlOverlay.cpp:70</a></div></div>
 <div class="ttc" id="aAIEGenerateColumnControlOverlay_8h_html"><div class="ttname"><a href="AIEGenerateColumnControlOverlay_8h.html">AIEGenerateColumnControlOverlay.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
@@ -521,9 +516,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a1e6006c1b4fccd997eba880457892eec"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">xilinx::AIE::row</a></div><div class="ttdeci">int row</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2e68be9ae4fa95fd84120dc8154599e6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">xilinx::AIE::col</a></div><div class="ttdeci">int col</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a3e3bb0497849a0805cf7380669324206"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a3e3bb0497849a0805cf7380669324206">xilinx::AIE::createAIEAssignTileCtrlIDsPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEAssignTileCtrlIDsPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00403">AIEGenerateColumnControlOverlay.cpp:403</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_a3e3bb0497849a0805cf7380669324206"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a3e3bb0497849a0805cf7380669324206">xilinx::AIE::createAIEAssignTileCtrlIDsPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEAssignTileCtrlIDsPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00398">AIEGenerateColumnControlOverlay.cpp:398</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a5254f10e13189e4a0b14256c79305ec6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">xilinx::AIE::TileID</a></div><div class="ttdeci">TileID { friend std::ostream &amp;operator&lt;&lt;(std::ostream &amp;os, const TileID &amp;s) { os&lt;&lt; &quot;TileID(&quot;&lt;&lt; s.col&lt;&lt; &quot;, &quot;&lt;&lt; s.row&lt;&lt; &quot;)&quot; TileID</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00022">AIETargetModel.h:26</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_aff6f2dde50d2f9ee5387ccc17ee12b18"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aff6f2dde50d2f9ee5387ccc17ee12b18">xilinx::AIE::createAIEGenerateColumnControlOverlayPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEGenerateColumnControlOverlayPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00408">AIEGenerateColumnControlOverlay.cpp:408</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_aff6f2dde50d2f9ee5387ccc17ee12b18"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aff6f2dde50d2f9ee5387ccc17ee12b18">xilinx::AIE::createAIEGenerateColumnControlOverlayPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEGenerateColumnControlOverlayPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00403">AIEGenerateColumnControlOverlay.cpp:403</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructAIEAssignTileCtrlIDsPass_html"><div class="ttname"><a href="structAIEAssignTileCtrlIDsPass.html">AIEAssignTileCtrlIDsPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00137">AIEGenerateColumnControlOverlay.cpp:138</a></div></div>
 <div class="ttc" id="astructAIEAssignTileCtrlIDsPass_html_a6a0180a256c25b3c6f83a352185c81f9"><div class="ttname"><a href="structAIEAssignTileCtrlIDsPass.html#a6a0180a256c25b3c6f83a352185c81f9">AIEAssignTileCtrlIDsPass::getDependentDialects</a></div><div class="ttdeci">void getDependentDialects(DialectRegistry &amp;registry) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00139">AIEGenerateColumnControlOverlay.cpp:139</a></div></div>
@@ -534,11 +529,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructAIEGenerateColumnControlOverlayPass_html_a62681b4a839309eac5666af5c46874b2"><div class="ttname"><a href="structAIEGenerateColumnControlOverlayPass.html#a62681b4a839309eac5666af5c46874b2">AIEGenerateColumnControlOverlayPass::getDependentDialects</a></div><div class="ttdeci">void getDependentDialects(DialectRegistry &amp;registry) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00183">AIEGenerateColumnControlOverlay.cpp:183</a></div></div>
 <div class="ttc" id="astructAIEGenerateColumnControlOverlayPass_html_a751a001672d151eb1cca52fb3ac4bb2f"><div class="ttname"><a href="structAIEGenerateColumnControlOverlayPass.html#a751a001672d151eb1cca52fb3ac4bb2f">AIEGenerateColumnControlOverlayPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00187">AIEGenerateColumnControlOverlay.cpp:187</a></div></div>
 <div class="ttc" id="astructAIEGenerateColumnControlOverlayPass_html_aa20316b8bd4f0b8ccb1e95580945335a"><div class="ttname"><a href="structAIEGenerateColumnControlOverlayPass.html#aa20316b8bd4f0b8ccb1e95580945335a">AIEGenerateColumnControlOverlayPass::generatePacketFlowsForControl</a></div><div class="ttdeci">void generatePacketFlowsForControl(OpBuilder builder, DeviceOp device, TileOp shimTile, WireBundle shimWireBundle, SmallVector&lt; AIE::TileOp &gt; ctrlTiles, WireBundle ctrlWireBundle, int coreOrMemChanId, DenseMap&lt; TileID, int &gt; tileIDMap, bool isShimMM2S)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00302">AIEGenerateColumnControlOverlay.cpp:302</a></div></div>
-<div class="ttc" id="astructAIEGenerateColumnControlOverlayPass_html_aba61336c57fe3970b2088d21819d4134"><div class="ttname"><a href="structAIEGenerateColumnControlOverlayPass.html#aba61336c57fe3970b2088d21819d4134">AIEGenerateColumnControlOverlayPass::getPktFlowWithSameSrcOrDst</a></div><div class="ttdeci">AIE::PacketFlowOp getPktFlowWithSameSrcOrDst(DeviceOp device, TileOp srcTile, WireBundle srcBundle, int srcChan, TileOp destTile, WireBundle destBundle, int destChan)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00377">AIEGenerateColumnControlOverlay.cpp:377</a></div></div>
+<div class="ttc" id="astructAIEGenerateColumnControlOverlayPass_html_aba61336c57fe3970b2088d21819d4134"><div class="ttname"><a href="structAIEGenerateColumnControlOverlayPass.html#aba61336c57fe3970b2088d21819d4134">AIEGenerateColumnControlOverlayPass::getPktFlowWithSameSrcOrDst</a></div><div class="ttdeci">AIE::PacketFlowOp getPktFlowWithSameSrcOrDst(DeviceOp device, TileOp srcTile, WireBundle srcBundle, int srcChan, TileOp destTile, WireBundle destBundle, int destChan)</div><div class="ttdef"><b>Definition</b> <a href="AIEGenerateColumnControlOverlay_8cpp_source.html#l00372">AIEGenerateColumnControlOverlay.cpp:372</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Oct 14 2025 21:09:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Oct 14 2025 22:18:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

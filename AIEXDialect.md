@@ -303,7 +303,7 @@ Traits: `HasParent<RuntimeSequenceOp>`
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>alloc</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>alloc</code></td><td>::mlir::SymbolRefAttr</td><td>symbol reference attribute</td></tr>
 <tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
@@ -825,7 +825,7 @@ Interfaces: `MyOffsetSizeAndStrideOpInterface`
 <tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
     Tuple encoding the type and header of a packet;
   </td></tr>
-<tr><td><code>metadata</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>metadata</code></td><td>::mlir::SymbolRefAttr</td><td>symbol reference attribute</td></tr>
 <tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>d0_zero_before</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>

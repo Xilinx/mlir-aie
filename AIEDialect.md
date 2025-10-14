@@ -1844,11 +1844,13 @@ could produce the following allocation info (channel direction MM2S, channel ind
 
 Traits: `HasParent<DeviceOp>`
 
+Interfaces: `Symbol`
+
 #### Attributes:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>sym_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>

@@ -48,6 +48,7 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pub-static-methods">Static Public Member Functions</a> &#124;
 <a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="structAIEObjectFifoStatefulTransformPass-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">AIEObjectFifoStatefulTransformPass Struct Reference</div></div>
@@ -169,9 +170,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a18afcd7104ba20c5e354909ec3e74ac5" id="r_a18afcd7104ba20c5e354909ec3e74ac5"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a18afcd7104ba20c5e354909ec3e74ac5">findObjectFifoSize</a> (DeviceOp &amp;device, Value tile, ObjectFifoCreateOp objFifo)</td></tr>
 <tr class="memdesc:a18afcd7104ba20c5e354909ec3e74ac5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to find the size of an objectFifo after split based on the maximum number of elements (of the original objectFifo) acquired by a process running on given tile.  <br /></td></tr>
 <tr class="separator:a18afcd7104ba20c5e354909ec3e74ac5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a56a87e338cea7d9f144bcb8ca32de7fe" id="r_a56a87e338cea7d9f144bcb8ca32de7fe"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a56a87e338cea7d9f144bcb8ca32de7fe">createObjectFifoAllocationInfo</a> (OpBuilder &amp;builder, MLIRContext *ctx, FlatSymbolRefAttr obj_fifo, int colIndex, DMAChannelDir channelDir, int channelIndex, <a class="el" href="classbool.html">bool</a> plio, std::optional&lt; PacketInfoAttr &gt; packet)</td></tr>
-<tr class="memdesc:a56a87e338cea7d9f144bcb8ca32de7fe"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to generate, from an objectFifo with a shimTile endpoint, a shimDMAAllocationOp containing the channelDir, channelIndex and shimTile col assigned by the objectFifo lowering.  <br /></td></tr>
-<tr class="separator:a56a87e338cea7d9f144bcb8ca32de7fe"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aa1636570c7407be86f975805e6fe2f69" id="r_aa1636570c7407be86f975805e6fe2f69"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#aa1636570c7407be86f975805e6fe2f69">createObjectFifoAllocationInfo</a> (OpBuilder &amp;builder, MLIRContext *ctx, ObjectFifoCreateOp &amp;objFifoOp, int colIndex, DMAChannelDir channelDir, int channelIndex, <a class="el" href="classbool.html">bool</a> plio, std::optional&lt; PacketInfoAttr &gt; packet)</td></tr>
+<tr class="memdesc:aa1636570c7407be86f975805e6fe2f69"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to generate, from an objectFifo with a shimTile endpoint, a shimDMAAllocationOp containing the channelDir, channelIndex and shimTile col assigned by the objectFifo lowering.  <br /></td></tr>
+<tr class="separator:aa1636570c7407be86f975805e6fe2f69"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6de3e5eafa8cc99f7d8bcd71754167d7" id="r_a6de3e5eafa8cc99f7d8bcd71754167d7"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a6de3e5eafa8cc99f7d8bcd71754167d7">verifyObjectFifoLinks</a> (DeviceOp &amp;device)</td></tr>
 <tr class="memdesc:a6de3e5eafa8cc99f7d8bcd71754167d7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to verify that an objectfifo is present in at most one ObjectFifoLinkOp.  <br /></td></tr>
 <tr class="separator:a6de3e5eafa8cc99f7d8bcd71754167d7"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -183,6 +184,11 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a91b64de63b2fbe09cc1e637cfdf06ed4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4bcb0cbfeb82ea2325e9923fc973c49b" id="r_a4bcb0cbfeb82ea2325e9923fc973c49b"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a4bcb0cbfeb82ea2325e9923fc973c49b">runOnOperation</a> () override</td></tr>
 <tr class="separator:a4bcb0cbfeb82ea2325e9923fc973c49b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
+Static Public Member Functions</h2></td></tr>
+<tr class="memitem:ad534f00d3227495d074dcef97315aff7" id="r_ad534f00d3227495d074dcef97315aff7"><td class="memItemLeft" align="right" valign="top">static std::string&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ad534f00d3227495d074dcef97315aff7">getShimAllocationName</a> (llvm::StringRef objFifoName)</td></tr>
+<tr class="separator:ad534f00d3227495d074dcef97315aff7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
@@ -322,7 +328,7 @@ Public Attributes</h2></td></tr>
 
 <p>Helper function to assign DMA channel indices for FIFOs based on cross-tile conditions. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01686">1686</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01693">1693</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00111">DMAChannelAnalysis::getDMAChannelIndex()</a>.</p>
 
@@ -967,8 +973,8 @@ template&lt;typename MyOp &gt; </div>
 
 </div>
 </div>
-<a id="a56a87e338cea7d9f144bcb8ca32de7fe" name="a56a87e338cea7d9f144bcb8ca32de7fe"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a56a87e338cea7d9f144bcb8ca32de7fe">&#9670;&#160;</a></span>createObjectFifoAllocationInfo()</h2>
+<a id="aa1636570c7407be86f975805e6fe2f69" name="aa1636570c7407be86f975805e6fe2f69"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa1636570c7407be86f975805e6fe2f69">&#9670;&#160;</a></span>createObjectFifoAllocationInfo()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -991,8 +997,8 @@ template&lt;typename MyOp &gt; </div>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">FlatSymbolRefAttr&#160;</td>
-          <td class="paramname"><em>obj_fifo</em>, </td>
+          <td class="paramtype">ObjectFifoCreateOp &amp;&#160;</td>
+          <td class="paramname"><em>objFifoOp</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -1625,6 +1631,34 @@ template&lt;typename MyOp &gt; </div>
 
 </div>
 </div>
+<a id="ad534f00d3227495d074dcef97315aff7" name="ad534f00d3227495d074dcef97315aff7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ad534f00d3227495d074dcef97315aff7">&#9670;&#160;</a></span>getShimAllocationName()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">static std::string AIEObjectFifoStatefulTransformPass::getShimAllocationName </td>
+          <td>(</td>
+          <td class="paramtype">llvm::StringRef&#160;</td>
+          <td class="paramname"><em>objFifoName</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span><span class="mlabel">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01655">1655</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+
+</div>
+</div>
 <a id="aeb8fca113bd4114f9e7391dc4baf2836" name="aeb8fca113bd4114f9e7391dc4baf2836"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#aeb8fca113bd4114f9e7391dc4baf2836">&#9670;&#160;</a></span>getStartPacketID()</h2>
 
@@ -1651,7 +1685,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Account for already used packet IDs and return next available ID. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01673">1673</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01680">1680</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -1819,7 +1853,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01723">1723</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01730">1730</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::port</a>.</p>
 
@@ -1994,7 +2028,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Function used to verify that an objectfifo is present in at most one ObjectFifoLinkOp. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01654">1654</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l01661">1661</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -2113,7 +2147,7 @@ template&lt;typename MyOp &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Oct 14 2025 21:09:32 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Oct 14 2025 22:18:55 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

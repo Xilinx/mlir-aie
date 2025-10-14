@@ -517,10 +517,10 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00453" name="l00453"></a><span class="lineno">  453</span>  <span class="comment">// even if it exceeds the maximum stride/wrap size of any one dimension,</span></div>
 <div class="line"><a id="l00454" name="l00454"></a><span class="lineno">  454</span>  <span class="comment">// and simply do not lower any data layout transformations, since there is</span></div>
 <div class="line"><a id="l00455" name="l00455"></a><span class="lineno">  455</span>  <span class="comment">// no other way to express this at the dma_memcpy_nd interface otherwise.</span></div>
-<div class="line"><a id="l00456" name="l00456"></a><span class="lineno">  456</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1ShimDMAllocationGetter.html">AIE::ShimDMAllocationGetter</a> allocGetter;</div>
-<div class="line"><a id="l00457" name="l00457"></a><span class="lineno">  457</span>  AIE::DeviceOp dev = getOperation()-&gt;getParentOfType&lt;AIE::DeviceOp&gt;();</div>
-<div class="line"><a id="l00458" name="l00458"></a><span class="lineno">  458</span>  <span class="keywordflow">if</span> (<span class="keyword">auto</span> allocOp = allocGetter.<a class="code hl_function" href="structxilinx_1_1AIE_1_1ShimDMAllocationGetter.html#a4e6c614cf45ac0590110fc0011aaf799">get</a>(dev, getMetadata())) {</div>
-<div class="line"><a id="l00459" name="l00459"></a><span class="lineno">  459</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = allocOp-&gt;getCol();</div>
+<div class="line"><a id="l00456" name="l00456"></a><span class="lineno">  456</span>  AIE::DeviceOp dev = getOperation()-&gt;getParentOfType&lt;AIE::DeviceOp&gt;();</div>
+<div class="line"><a id="l00457" name="l00457"></a><span class="lineno">  457</span>  <span class="keywordflow">if</span> (<span class="keyword">auto</span> allocOp = AIE::ShimDMAAllocationOp::getForSymbol(</div>
+<div class="line"><a id="l00458" name="l00458"></a><span class="lineno">  458</span>          dev, getMetadata().getRootReference())) {</div>
+<div class="line"><a id="l00459" name="l00459"></a><span class="lineno">  459</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = allocOp.getCol();</div>
 <div class="line"><a id="l00460" name="l00460"></a><span class="lineno">  460</span>    <span class="keywordtype">bool</span> skipTransformationChecks = isLinearTransferWithoutTransformation();</div>
 <div class="line"><a id="l00461" name="l00461"></a><span class="lineno">  461</span>    <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">verifyStridesWraps</a>(*<span class="keyword">this</span>, buffer, col, 0, inputSizes,</div>
 <div class="line"><a id="l00462" name="l00462"></a><span class="lineno">  462</span>                                  inputStrides, hardwareSizes, hardwareStrides,</div>
@@ -1171,12 +1171,10 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a98d14c817daebc58ad822d608bc73313"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">xilinx::AIE::getTargetModel</a></div><div class="ttdeci">const AIETargetModel &amp; getTargetModel(mlir::Operation *op)</div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_html_aff3fe97ec80fed475662ca415d95f0a3a7c5a2bea9a27c4771156b8894b793a54"><div class="ttname"><a href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a7c5a2bea9a27c4771156b8894b793a54">xilinx::AIEArch::AIE</a></div><div class="ttdeci">@ AIE</div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1ShimDMAllocationGetter_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1ShimDMAllocationGetter.html">xilinx::AIE::ShimDMAllocationGetter</a></div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00206">AIEDialect.h:206</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1ShimDMAllocationGetter_html_a4e6c614cf45ac0590110fc0011aaf799"><div class="ttname"><a href="structxilinx_1_1AIE_1_1ShimDMAllocationGetter.html#a4e6c614cf45ac0590110fc0011aaf799">xilinx::AIE::ShimDMAllocationGetter::get</a></div><div class="ttdeci">std::optional&lt; AIE::ShimDMAAllocationOp &gt; get(DeviceOp dev, mlir::StringRef sym_name)</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8cpp_source.html#l00101">AIEDialect.cpp:101</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Oct 14 2025 21:09:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Oct 14 2025 22:18:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

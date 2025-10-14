@@ -96,8 +96,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>                                PatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    AIE::DeviceOp device = op-&gt;getParentOfType&lt;AIE::DeviceOp&gt;();</div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    AIE::ShimDMAAllocationOp alloc_op =</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>        AIE::ShimDMAAllocationOp::getForSymbol(device, op.getAlloc());</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    AIE::ShimDMAAllocationOp alloc_op = AIE::ShimDMAAllocationOp::getForSymbol(</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>        device, op.getAlloc().getRootReference());</div>
 <div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>    <span class="keywordflow">if</span> (!alloc_op) {</div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>      <span class="keywordflow">return</span> op.emitOpError(<span class="stringliteral">&quot;no shim DMA allocation found for symbol&quot;</span>);</div>
 <div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>    }</div>
@@ -151,7 +151,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Oct 14 2025 21:09:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Oct 14 2025 22:18:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

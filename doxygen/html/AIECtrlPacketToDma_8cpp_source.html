@@ -226,46 +226,47 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>        <span class="keyword">const</span> std::vector&lt;int64_t&gt; staticSizes = {1, 1, 1, batchIt-&gt;totalSize};</div>
 <div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>        <span class="keyword">const</span> std::vector&lt;int64_t&gt; staticStrides = {0, 0, 0, 1};</div>
 <div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span> </div>
-<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span>        StringRef metadata = builder.getStringAttr(batchIt-&gt;shimDmaAllocName);</div>
-<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>        builder.create&lt;NpuDmaMemcpyNdOp&gt;(</div>
-<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>            builder.getUnknownLoc(), newBlockArg, SmallVector&lt;Value&gt;{},</div>
-<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>            SmallVector&lt;Value&gt;{}, SmallVector&lt;Value&gt;{}, ArrayRef(staticOffsets),</div>
-<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>            ArrayRef(staticSizes), ArrayRef(staticStrides), <span class="keyword">nullptr</span>, metadata,</div>
-<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>            0, <span class="keyword">true</span>, 0, 0, 0, 0, 0, 0);</div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span> </div>
-<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>        <span class="keyword">auto</span> shimRow = builder.getI32IntegerAttr(0);</div>
-<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>        <span class="keyword">auto</span> shimCol = builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>);</div>
-<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>        <span class="keyword">auto</span> dir = builder.getI32IntegerAttr(1); <span class="comment">// MM2S</span></div>
-<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>        <span class="keyword">auto</span> chan = builder.getI32IntegerAttr(batchIt-&gt;shimChan);</div>
-<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>        <span class="keyword">auto</span> col_num = builder.getI32IntegerAttr(1);</div>
-<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>        <span class="keyword">auto</span> row_num = builder.getI32IntegerAttr(1);</div>
-<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>        builder.create&lt;AIEX::NpuSyncOp&gt;(loc, shimCol, shimRow, dir, chan,</div>
-<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>                                        col_num, row_num);</div>
-<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>        ++batchIt;</div>
-<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>        <span class="keywordflow">if</span> (batchIt == batches.end())</div>
-<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>          <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>      }</div>
-<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span> </div>
-<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>      erased.push_back(f);</div>
-<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>    }</div>
-<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span> </div>
-<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> e : erased)</div>
-<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>      e-&gt;erase();</div>
-<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>  }</div>
+<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span>        SymbolRefAttr metadata =</div>
+<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>            SymbolRefAttr::get(builder.getContext(), batchIt-&gt;shimDmaAllocName);</div>
+<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>        builder.create&lt;NpuDmaMemcpyNdOp&gt;(</div>
+<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>            builder.getUnknownLoc(), newBlockArg, SmallVector&lt;Value&gt;{},</div>
+<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>            SmallVector&lt;Value&gt;{}, SmallVector&lt;Value&gt;{}, ArrayRef(staticOffsets),</div>
+<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>            ArrayRef(staticSizes), ArrayRef(staticStrides), <span class="keyword">nullptr</span>, metadata,</div>
+<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>            0, <span class="keyword">true</span>, 0, 0, 0, 0, 0, 0);</div>
+<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span> </div>
+<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>        <span class="keyword">auto</span> shimRow = builder.getI32IntegerAttr(0);</div>
+<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>        <span class="keyword">auto</span> shimCol = builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>);</div>
+<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>        <span class="keyword">auto</span> dir = builder.getI32IntegerAttr(1); <span class="comment">// MM2S</span></div>
+<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>        <span class="keyword">auto</span> chan = builder.getI32IntegerAttr(batchIt-&gt;shimChan);</div>
+<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>        <span class="keyword">auto</span> col_num = builder.getI32IntegerAttr(1);</div>
+<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>        <span class="keyword">auto</span> row_num = builder.getI32IntegerAttr(1);</div>
+<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>        builder.create&lt;AIEX::NpuSyncOp&gt;(loc, shimCol, shimRow, dir, chan,</div>
+<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>                                        col_num, row_num);</div>
+<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>        ++batchIt;</div>
+<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>        <span class="keywordflow">if</span> (batchIt == batches.end())</div>
+<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>          <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>      }</div>
+<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span> </div>
+<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>      erased.push_back(f);</div>
+<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>    }</div>
+<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span> </div>
+<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> e : erased)</div>
+<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>      e-&gt;erase();</div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>  }</div>
 </div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>};</div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>};</div>
 </div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span> </div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00192" data-start="{" data-end="}">
-<div class="line"><a id="l00192" name="l00192"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a256b69b7450520713cd664e3460c9bcc">  192</a></span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a256b69b7450520713cd664e3460c9bcc">AIEX::createAIECtrlPacketInferTilesPass</a>() {</div>
-<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIECtrlPacketInferTilesPass&gt;();</div>
-<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>}</div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span> </div>
+<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00193" data-start="{" data-end="}">
+<div class="line"><a id="l00193" name="l00193"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a256b69b7450520713cd664e3460c9bcc">  193</a></span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a256b69b7450520713cd664e3460c9bcc">AIEX::createAIECtrlPacketInferTilesPass</a>() {</div>
+<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIECtrlPacketInferTilesPass&gt;();</div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>}</div>
 </div>
-<div class="foldopen" id="foldopen00195" data-start="{" data-end="}">
-<div class="line"><a id="l00195" name="l00195"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a7c07d8db68041cc016b5d10114bad022">  195</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a7c07d8db68041cc016b5d10114bad022">AIEX::createAIECtrlPacketToDmaPass</a>() {</div>
-<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIECtrlPacketToDmaPass&gt;();</div>
-<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>}</div>
+<div class="foldopen" id="foldopen00196" data-start="{" data-end="}">
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a7c07d8db68041cc016b5d10114bad022">  196</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a7c07d8db68041cc016b5d10114bad022">AIEX::createAIECtrlPacketToDmaPass</a>() {</div>
+<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIECtrlPacketToDmaPass&gt;();</div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEGenerateColumnControlOverlay_8h_html"><div class="ttname"><a href="AIEGenerateColumnControlOverlay_8h.html">AIEGenerateColumnControlOverlay.h</a></div></div>
@@ -277,8 +278,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassAIECtrlPacketToDmaBase_html"><div class="ttname"><a href="classAIECtrlPacketToDmaBase.html">AIECtrlPacketToDmaBase</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a256b69b7450520713cd664e3460c9bcc"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a256b69b7450520713cd664e3460c9bcc">xilinx::AIEX::createAIECtrlPacketInferTilesPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIECtrlPacketInferTilesPass()</div><div class="ttdef"><b>Definition</b> <a href="AIECtrlPacketToDma_8cpp_source.html#l00192">AIECtrlPacketToDma.cpp:192</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a7c07d8db68041cc016b5d10114bad022"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a7c07d8db68041cc016b5d10114bad022">xilinx::AIEX::createAIECtrlPacketToDmaPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIECtrlPacketToDmaPass()</div><div class="ttdef"><b>Definition</b> <a href="AIECtrlPacketToDma_8cpp_source.html#l00195">AIECtrlPacketToDma.cpp:195</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a256b69b7450520713cd664e3460c9bcc"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a256b69b7450520713cd664e3460c9bcc">xilinx::AIEX::createAIECtrlPacketInferTilesPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIECtrlPacketInferTilesPass()</div><div class="ttdef"><b>Definition</b> <a href="AIECtrlPacketToDma_8cpp_source.html#l00193">AIECtrlPacketToDma.cpp:193</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a7c07d8db68041cc016b5d10114bad022"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a7c07d8db68041cc016b5d10114bad022">xilinx::AIEX::createAIECtrlPacketToDmaPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIECtrlPacketToDmaPass()</div><div class="ttdef"><b>Definition</b> <a href="AIECtrlPacketToDma_8cpp_source.html#l00196">AIECtrlPacketToDma.cpp:196</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a1e6006c1b4fccd997eba880457892eec"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">xilinx::AIE::row</a></div><div class="ttdeci">int row</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2e68be9ae4fa95fd84120dc8154599e6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">xilinx::AIE::col</a></div><div class="ttdeci">int col</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00052">AIETargetModel.h:52</a></div></div>
@@ -291,7 +292,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Oct 14 2025 21:09:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Oct 14 2025 22:18:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
