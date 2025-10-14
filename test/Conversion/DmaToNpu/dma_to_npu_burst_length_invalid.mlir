@@ -56,8 +56,6 @@ module {
 
 module {
   aie.device(npu2) {
-    memref.global "public" @of_toMem : memref<32xi32>
-    memref.global "public" @of_fromMem : memref<32xi32>
     aiex.runtime_sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
       aiex.npu.dma_memcpy_nd (%in[0,2,0,0][1,2,2,8][0,16,8,1]) { metadata = @of_fromMem, id = 0 : i64, burst_length = 64} : memref<4x2x8xi32>
       aiex.npu.dma_memcpy_nd (%out[0,0,0,0][1,1,1,32][0,0,0,1]) { metadata = @of_toMem, id = 1 : i64, burst_length = 510 } : memref<64xi32>
@@ -74,8 +72,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @of_toMem : memref<32xi32>
-    memref.global "public" @of_fromMem : memref<32xi32>
     aiex.runtime_sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
       aiex.npu.dma_memcpy_nd (%in[0,2,0,0][1,2,2,8][0,16,8,1]) { metadata = @of_fromMem, id = 0 : i64, burst_length = 64} : memref<4x2x8xi32>
       aiex.npu.dma_memcpy_nd (%out[0,0,0,0][1,1,1,32][0,0,0,1]) { metadata = @of_toMem, id = 1 : i64, burst_length = 512 } : memref<64xi32>

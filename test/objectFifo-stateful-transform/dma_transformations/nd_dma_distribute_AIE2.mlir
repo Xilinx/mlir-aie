@@ -14,12 +14,6 @@
 
 // CHECK: module @ndDMAObjFifoAIE2 {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @of2_cons : memref<128xi32>
-// CHECK:     memref.global "public" @of2 : memref<128xi32>
-// CHECK:     memref.global "public" @of1_cons : memref<128xi32>
-// CHECK:     memref.global "public" @of1 : memref<128xi32>
-// CHECK:     memref.global "public" @of0_cons : memref<256xi32>
-// CHECK:     memref.global "public" @of0 : memref<256xi32>
 // CHECK:     %[[tile_1_0:.*]] = aie.tile(1, 0)
 // CHECK:     %[[tile_1_1:.*]] = aie.tile(1, 1)
 // CHECK:     %[[tile_2_2:.*]] = aie.tile(2, 2)
@@ -43,7 +37,7 @@
 // CHECK:     aie.flow(%[[tile_1_0:.*]], DMA : 0, %[[tile_1_1:.*]], DMA : 0)
 // CHECK:     aie.flow(%[[tile_1_1:.*]], DMA : 0, %[[tile_2_2:.*]], DMA : 0)
 // CHECK:     aie.flow(%[[tile_1_1:.*]], DMA : 1, %[[tile_2_3:.*]], DMA : 0)
-// CHECK:     aie.shim_dma_allocation @of0(MM2S, 0, 1)
+// CHECK:     aie.shim_dma_allocation @of0_shim_alloc(MM2S, 0, 1)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%{{.*}}tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4

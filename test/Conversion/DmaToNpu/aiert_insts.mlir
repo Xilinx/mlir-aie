@@ -14,8 +14,6 @@
 
 module {
   aie.device(npu1) {
-    memref.global "public" @of_toMem : memref<32xi32>
-    memref.global "public" @of_fromMem : memref<32xi32>
     aiex.runtime_sequence(%in : memref<4x2x8xi32>, %buf : memref<32xi32>, %out : memref<64xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
