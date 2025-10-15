@@ -514,8 +514,7 @@ emitTransactionOps(OpBuilder &builder,
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
           IntegerType::get(builder.getContext(), 8, IntegerType::Unsigned);
-      auto levelAttr =
-          IntegerAttr::get(ui8Ty, llvm::APInt(8, op.cmd.Value));
+      auto levelAttr = IntegerAttr::get(ui8Ty, llvm::APInt(8, op.cmd.Value));
       builder.create<AIEX::NpuPreemptOp>(loc, levelAttr);
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
