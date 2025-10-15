@@ -65,14 +65,9 @@ struct TransactionBinaryOperation {
     int32_t argPlus;
   };
 
-  struct PreemptPayload {
-    uint8_t level;
-  };
-
   std::optional<SyncPayload> sync;
   std::optional<LoadPdiPayload> loadPdi;
   std::optional<AddressPatchPayload> addressPatch;
-  std::optional<PreemptPayload> preempt;
 
   TransactionBinaryOperation() = default;
 
@@ -287,7 +282,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
           return std::nullopt;
         auto header =
             reinterpret_cast<const TxnPreemptHeader *>(data.data() + i);
-        op.preempt = TransactionBinaryOperation::PreemptPayload{header->level};
+        op.cmd.Value = header->level;
         op.cmd.Size = opSize;
         i += opSize;
         break;
@@ -408,7 +403,7 @@ parseTransactionBinary(const std::vector<uint8_t> &data,
           return std::nullopt;
         auto header =
             reinterpret_cast<const TxnPreemptHeader *>(data.data() + i);
-        op.preempt = TransactionBinaryOperation::PreemptPayload{header->level};
+        op.cmd.Value = header->level;
         op.cmd.Size = opSize;
         i += opSize;
         break;
@@ -517,14 +512,10 @@ emitTransactionOps(OpBuilder &builder,
           builder.getI32IntegerAttr(patch.argIdx),
           builder.getI32IntegerAttr(patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
-      if (!op.preempt) {
-        llvm::errs() << "Missing preempt payload while emitting transaction\n";
-        return failure();
-      }
       auto ui8Ty =
           IntegerType::get(builder.getContext(), 8, IntegerType::Unsigned);
       auto levelAttr =
-          IntegerAttr::get(ui8Ty, llvm::APInt(8, op.preempt->level));
+          IntegerAttr::get(ui8Ty, llvm::APInt(8, op.cmd.Value));
       builder.create<AIEX::NpuPreemptOp>(loc, levelAttr);
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
