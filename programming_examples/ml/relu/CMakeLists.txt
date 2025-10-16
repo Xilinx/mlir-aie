@@ -51,6 +51,10 @@ target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
 )
 
+if(DEFINED XRT_INC_DIR AND XRT_INC_DIR)
+    target_compile_definitions(${currentTarget} PRIVATE TEST_UTILS_USE_XRT)
+endif()
+
 target_link_directories(${currentTarget} PUBLIC
     ${XRT_LIB_DIR}
 )

@@ -68,6 +68,10 @@ target_include_directories (${currentTarget} PUBLIC
     ${OpenCV_INCLUDE_DIRS}
 )
 
+if(DEFINED XRT_INC_DIR AND XRT_INC_DIR)
+    target_compile_definitions(${currentTarget} PRIVATE TEST_UTILS_USE_XRT)
+endif()
+
 target_link_directories(${currentTarget} PUBLIC
     ${XRT_LIB_DIR}
     ${OpenCV_LIB_PATH}
