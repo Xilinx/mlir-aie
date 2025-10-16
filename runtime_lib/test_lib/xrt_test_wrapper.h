@@ -1,7 +1,6 @@
 #include "cxxopts.hpp"
 #include "test_utils.h"
 
-#include "xrt/experimental/xrt_xclbin.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_hw_context.h"

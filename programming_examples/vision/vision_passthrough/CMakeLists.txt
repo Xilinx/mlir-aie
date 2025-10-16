@@ -12,6 +12,7 @@
 
 # cmake needs this line
 cmake_minimum_required(VERSION 3.30)
+
 include(../../common.cmake)
 
 #set(CMAKE_CXX_STANDARD 23)
@@ -66,15 +67,6 @@ target_include_directories (${currentTarget} PUBLIC
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
 )
-
-# If XRT include dir was provided, make sure test_utils.cpp (which is compiled
-# in-tree by some examples) gets the same compile define that the standalone
-# test_utils target receives: -DTEST_UTILS_USE_XRT. This preserves behavior
-# from the test_lib CMake and avoids build breakage when examples compile the
-# .cpp directly instead of linking against the test_utils library
-if(DEFINED XRT_INC_DIR AND XRT_INC_DIR)
-    target_compile_definitions(${currentTarget} PRIVATE TEST_UTILS_USE_XRT)
-endif()
 
 target_link_directories(${currentTarget} PUBLIC
     ${XRT_LIB_DIR}
