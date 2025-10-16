@@ -51,7 +51,6 @@ message("opencv libs: ${OpenCV_LIBS}")
 
 add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
@@ -82,3 +81,13 @@ target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil
     ${OpenCV_LIBS}
 )
+
+if(NOT TARGET test_utils)
+    if(NOT DEFINED AIE_RUNTIME_TARGET)
+        set(AIE_RUNTIME_TARGET "x86_64" CACHE STRING "Default runtime target for test_lib when example configured standalone")
+    endif()
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
+                                     ${CMAKE_CURRENT_BINARY_DIR}/runtime_lib_test_lib)
+endif()
+
+target_link_libraries(${currentTarget} PUBLIC test_utils)
