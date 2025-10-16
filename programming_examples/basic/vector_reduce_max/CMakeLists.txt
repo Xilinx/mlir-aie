@@ -16,7 +16,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
 include(../../common.cmake)
 
-
 find_program(WSL NAMES powershell.exe)
 
 if (NOT WSL)
