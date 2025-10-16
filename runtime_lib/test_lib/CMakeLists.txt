@@ -47,7 +47,7 @@ set(BUILD_TEST_UTILS NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 # test_utils library
 if (${BUILD_TEST_UTILS})
   add_library(test_utils STATIC test_utils.cpp)
-  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;cxxopts.hpp")
+  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;xrt_test_wrapper.h;cxxopts.hpp")
   target_compile_options(test_utils PRIVATE -fPIC)
 
   if (${XRT_FOUND})
@@ -60,7 +60,7 @@ if (${BUILD_TEST_UTILS})
 endif()
 
 # copy test_library and test_utils header files into build area
-set(headers target.h test_library.h test_utils.h memory_allocator.h hsa_ext_air.h cxxopts.hpp)
+set(headers target.h test_library.h test_utils.h xrt_test_wrapper.h memory_allocator.h hsa_ext_air.h cxxopts.hpp)
 foreach(basefile ${headers})
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/../include/${basefile})
     add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})

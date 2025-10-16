@@ -40,9 +40,7 @@ endif ()
 project(${ProjectName})
 
 
-add_executable(${currentTarget}
-    test.cpp
-)
+add_executable(${currentTarget} test.cpp)
 
 target_include_directories (${currentTarget} PUBLIC
     ${XRT_INC_DIR}

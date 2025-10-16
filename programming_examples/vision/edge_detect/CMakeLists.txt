@@ -14,6 +14,8 @@
 cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
+include(../../common.cmake)
+
 
 find_program(WSL NAMES powershell.exe)
 
@@ -62,8 +64,6 @@ target_compile_definitions(${currentTarget} PUBLIC
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
 )
@@ -83,17 +83,4 @@ target_link_libraries(${currentTarget} PUBLIC
     ${OpenCV_LIBS}
 )
 
-# Prefer linking the test_utils library target instead of compiling the .cpp
-# directly. If the target isn't available (standalone example configure), add
-# the runtime_lib/test_lib subdirectory to expose it and then link.
-if(NOT TARGET test_utils)
-    if(NOT DEFINED AIE_RUNTIME_TARGET)
-        # Default to x86_64 when configuring the example standalone so the
-        # runtime_lib/test_lib CMake has a sane AIE_RUNTIME_TARGET value.
-        set(AIE_RUNTIME_TARGET "x86_64" CACHE STRING "Default runtime target for test_lib when example configured standalone")
-    endif()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
-                                     ${CMAKE_CURRENT_BINARY_DIR}/runtime_lib_test_lib)
-endif()
-
-target_link_libraries(${currentTarget} PUBLIC test_utils)
+target_link_test_utils(${currentTarget})
