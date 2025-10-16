@@ -5,11 +5,6 @@ AIE2_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/aie_ml/lib
 
 MLIR_AIE_DIR ?= $(shell python3 -c "from aie.utils.config import root_path; print(root_path())")
 
-# Test library paths
-TEST_UTILS_LIB_DIR = ${MLIR_AIE_DIR}/runtime_lib/x86_64/test_lib/lib
-TEST_UTILS_INC_DIR = ${MLIR_AIE_DIR}/runtime_lib/test_lib
-TEST_UTILS_LDFLAGS = -L${TEST_UTILS_LIB_DIR} -ltest_utils
-
 WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw
 
 CHESSCC1_FLAGS = -f -p me -P ${AIE_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include
