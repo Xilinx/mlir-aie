@@ -55,7 +55,6 @@ target_compile_definitions(${currentTarget} PUBLIC
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
-    ${TEST_UTILS_RUNTIME_LIB_DIR}
     ${XRT_INC_DIR}
 )
 
