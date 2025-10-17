@@ -498,7 +498,7 @@ emitTransactionOps(OpBuilder &builder,
       IntegerAttr addressAttr =
           IntegerAttr::get(ui64Ty, llvm::APInt(64, payloadInfo.address));
 
-      builder.create<AIEX::NpuLoadPdiOp>(loc, idAttr, sizeAttr, addressAttr);
+      builder.create<AIEX::NpuLoadPdiOp>(loc, nullptr, idAttr, sizeAttr, addressAttr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH) {
       if (!op.addressPatch) {
         llvm::errs()
