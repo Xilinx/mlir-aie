@@ -902,10 +902,13 @@ Load a PDI (Programmable Device Image) to configure the NPU.
 The PDI is identified by `id`. `address` and `size` are typically written at
 runtime by the driver or host program.
 
+If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
+
 #### Attributes:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>device_ref</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>64-bit unsigned integer attribute</td></tr>
