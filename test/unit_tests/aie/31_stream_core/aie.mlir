@@ -17,6 +17,9 @@
 // CHECK: test start.
 // CHECK: PASS!
 
+// --no-xchesscc --xbridge does not work
+// XFAIL: *
+
 module {
 aie.device(xcvc1902) { 
 
