@@ -10,6 +10,7 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
@@ -37,24 +38,12 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    auto device = op->getParentOfType<AIE::DeviceOp>();
-    auto buffer = device.lookupSymbol<AIE::BufferOp>(*op.getBuffer());
-    if (!buffer)
-      return op->emitError("buffer '" + *op.getBuffer() +
-                           "' not found in device");
+    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    if (!address.has_value()) {
+      return failure();
+    }
 
-    if (!buffer.getAddress())
-      return op->emitError("buffer must have address assigned");
-
-    const AIE::AIETargetModel &tm = device.getTargetModel();
-    uint32_t address = static_cast<uint32_t>(*buffer.getAddress()) +
-                       op.getAddress() * sizeof(uint32_t);
-    auto col = buffer.getTileOp().getCol();
-    auto row = buffer.getTileOp().getRow();
-    address |= ((col & 0xff) << tm.getColumnShift()) |
-               ((row & 0xff) << tm.getRowShift()) | (address & 0xFFFFF);
-
-    rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, address, op.getValue(),
+    rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, *address, op.getValue(),
                                               nullptr, nullptr, nullptr);
     return success();
   }
@@ -73,25 +62,11 @@ struct BlockWriteSymToAddr : OpConversionPattern<NpuBlockWriteOp> {
     if (!op.getBuffer())
       return failure();
 
-    auto device = op->getParentOfType<AIE::DeviceOp>();
-
-    auto buffer = device.lookupSymbol<AIE::BufferOp>(*op.getBuffer());
-    if (!buffer)
-      return op->emitError("buffer '" + *op.getBuffer() +
-                           "' not found in device");
-
-    if (!buffer.getAddress())
-      return op->emitError("buffer must have address assigned");
-
-    const AIE::AIETargetModel &tm = device.getTargetModel();
-    uint32_t address = static_cast<uint32_t>(*buffer.getAddress()) +
-                       op.getAddress() * sizeof(uint32_t);
-    auto col = buffer.getTileOp().getCol();
-    auto row = buffer.getTileOp().getRow();
-    address |= ((col & 0xff) << tm.getColumnShift()) |
-               ((row & 0xff) << tm.getRowShift()) | (address & 0xFFFFF);
-
-    rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(op, address, op.getData(),
+    std::optional<uint32_t> address = op.getAbsoluteAddress();
+    if (!address.has_value()) {
+      return failure();
+    }
+    rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(op, *address, op.getData(),
                                                  nullptr, nullptr, nullptr);
     return success();
   }
@@ -110,26 +85,14 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
     if (!op.getBuffer())
       return failure();
 
-    auto device = op->getParentOfType<AIE::DeviceOp>();
+    std::optional<uint32_t> absoluteAddress = op.getAbsoluteAddress();
+    if (!absoluteAddress.has_value()) {
+      return failure();
+    }
 
-    auto buffer = device.lookupSymbol<AIE::BufferOp>(*op.getBuffer());
-    if (!buffer)
-      return op->emitError("buffer '" + *op.getBuffer() +
-                           "' not found in device");
-
-    if (!buffer.getAddress())
-      return op->emitError("buffer must have address assigned");
-
-    const AIE::AIETargetModel &tm = device.getTargetModel();
-    uint32_t address = static_cast<uint32_t>(*buffer.getAddress()) +
-                       op.getAddress() * sizeof(uint32_t);
-    auto col = buffer.getTileOp().getCol();
-    auto row = buffer.getTileOp().getRow();
-    address |= ((col & 0xff) << tm.getColumnShift()) |
-               ((row & 0xff) << tm.getRowShift()) | (address & 0xFFFFF);
-
-    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
-        op, address, op.getValue(), op.getMask(), nullptr, nullptr, nullptr);
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(op, *absoluteAddress,
+                                                  op.getValue(), op.getMask(),
+                                                  nullptr, nullptr, nullptr);
     return success();
   }
 };
@@ -224,13 +187,9 @@ public:
 struct DmaToNpuPattern : OpConversionPattern<NpuDmaMemcpyNdOp> {
   using OpConversionPattern::OpConversionPattern;
 
-private:
-  AIE::ShimDMAllocationGetter &allocGetter;
-
 public:
-  DmaToNpuPattern(MLIRContext *context, AIE::ShimDMAllocationGetter &getter,
-                  PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), allocGetter(getter) {}
+  DmaToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
@@ -246,14 +205,15 @@ public:
     if (!dev)
       return failure();
 
-    auto infoOp = allocGetter.get(dev, op.getMetadata());
+    auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(
+        dev, op.getMetadata().getRootReference());
     if (!infoOp) {
       return op->emitOpError("couldn't find shim_dma_allocation op.");
     }
 
-    auto channelDir = infoOp->getChannelDir();
+    auto channelDir = infoOp.getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int col = infoOp->getCol();
+    int col = infoOp.getCol();
 
     // initialize fields to zero
     auto column = zero;
@@ -464,8 +424,8 @@ public:
 
     // push the patched bd onto the dma task queue
     rewriter.create<NpuPushQueueOp>(
-        op->getLoc(), column, row, infoOp->getChannelDirAttr(),
-        infoOp->getChannelIndexAttr(), issue_token, repeat_count, bd_id);
+        op->getLoc(), column, row, infoOp.getChannelDirAttr(),
+        infoOp.getChannelIndexAttr(), issue_token, repeat_count, bd_id);
 
     rewriter.eraseOp(op);
     return success();
@@ -477,16 +437,11 @@ public:
 /// symbol argument of this op.
 struct DmaWaitToSyncPattern : OpConversionPattern<NpuDmaWaitOp> {
 
-private:
-  AIE::ShimDMAllocationGetter &allocGetter;
-
 public:
   using OpConversionPattern::OpConversionPattern;
 
-  DmaWaitToSyncPattern(MLIRContext *context,
-                       AIE::ShimDMAllocationGetter &getter,
-                       PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit), allocGetter(getter) {}
+  DmaWaitToSyncPattern(MLIRContext *context, PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit) {}
 
   LogicalResult
   matchAndRewrite(NpuDmaWaitOp op, OpAdaptor adaptor,
@@ -495,8 +450,8 @@ public:
     if (!dev)
       return op->emitError("couldn't find parent of type DeviceOp");
 
-    std::optional<AIE::ShimDMAAllocationOp> shimDmaAllocOp =
-        allocGetter.get(dev, op.getSymbol());
+    AIE::ShimDMAAllocationOp shimDmaAllocOp =
+        AIE::ShimDMAAllocationOp::getForSymbol(dev, op.getSymbol());
     if (!shimDmaAllocOp) {
       return op->emitError("couldn't find shim_dma_allocation op");
     }
@@ -504,9 +459,9 @@ public:
     // Create with `column_num == 1` and `row_num == 1` to check for a single
     // column and row. Row is always 0 for shim tiles.
     (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(
-        op, shimDmaAllocOp->getCol(), /* row */ 0,
-        static_cast<uint32_t>(shimDmaAllocOp->getChannelDir()),
-        shimDmaAllocOp->getChannelIndex(), 1, 1);
+        op, shimDmaAllocOp.getCol(), /* row */ 0,
+        static_cast<uint32_t>(shimDmaAllocOp.getChannelDir()),
+        shimDmaAllocOp.getChannelIndex(), 1, 1);
 
     return success();
   }
@@ -515,12 +470,8 @@ public:
 struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
-private:
-  static int cachedId;
-
 public:
-  WriteBdToBlockWritePattern(MLIRContext *context, int &cachedId,
-                             PatternBenefit benefit = 1)
+  WriteBdToBlockWritePattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
   LogicalResult
@@ -569,8 +520,9 @@ public:
       words[4] |= op.getD1Stride() & 0xfffff;
 
       // DMA_BDX_5
-      // TODO: SIMID, AxCache, AXQoS
-      words[5] = op.getD2Stride() & 0xfffff;
+      // TODO: SIMID, AXQoS
+      words[5] |= (2 & 0xf) << 24; // AXCache = 2 to enable upsizing in NoC
+      words[5] |= op.getD2Stride() & 0xfffff;
 
       // DMA_BDX_6
       words[6] |= (op.getIterationCurrent() & 0x3f) << 26;
@@ -647,47 +599,22 @@ public:
       return failure();
     }
 
-    MemRefType memrefType = MemRefType::get({num_words}, rewriter.getI32Type());
-    TensorType tensorType =
-        RankedTensorType::get({num_words}, rewriter.getI32Type());
     memref::GlobalOp global = nullptr;
-    auto initVal = DenseElementsAttr::get<uint32_t>(tensorType, words);
-    auto otherGlobals = dev.getOps<memref::GlobalOp>();
-    for (auto g : otherGlobals) {
-      if (g == op)
-        continue;
-      if (g.getType() != memrefType)
-        continue;
-      auto otherValue = g.getInitialValue();
-      if (!otherValue)
-        continue;
-      if (*otherValue != initVal)
-        continue;
-      global = g;
-      break;
-    }
-    if (!global) {
+    {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(
           op->getParentOfType<AIEX::RuntimeSequenceOp>());
-      std::string name = "blockwrite_data_";
-      while (dev.lookupSymbol(name + std::to_string(cachedId)))
-        cachedId++;
-      name += std::to_string(cachedId);
-      global = rewriter.create<memref::GlobalOp>(
-          op->getLoc(), name, rewriter.getStringAttr("private"), memrefType,
-          initVal, true, nullptr);
+      global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words);
     }
-    auto memref = rewriter.create<memref::GetGlobalOp>(op->getLoc(), memrefType,
-                                                       global.getName());
+    auto memref = rewriter.create<memref::GetGlobalOp>(
+        op.getLoc(), global.getType(), global.getName());
+
     (void)rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(
         op, rewriter.getUI32IntegerAttr(bd_addr), memref.getResult(), nullptr,
         nullptr, nullptr);
     return success();
   }
 };
-
-int WriteBdToBlockWritePattern::cachedId = 0;
 
 struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
@@ -696,8 +623,6 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
   }
 
   void runOnOperation() override {
-
-    AIE::ShimDMAllocationGetter cachingGetter;
 
     AIE::DeviceOp device = getOperation();
 
@@ -722,8 +647,8 @@ struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
     RewritePatternSet patterns(&getContext());
     patterns.insert<BlockWriteSymToAddr>(&getContext());
-    patterns.insert<DmaToNpuPattern>(&getContext(), cachingGetter);
-    patterns.insert<DmaWaitToSyncPattern>(&getContext(), cachingGetter);
+    patterns.insert<DmaToNpuPattern>(&getContext());
+    patterns.insert<DmaWaitToSyncPattern>(&getContext());
     patterns.insert<MaskWrite32SymToAddr>(&getContext());
     patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());

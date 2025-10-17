@@ -319,7 +319,20 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
     SmallVector<Value, 2> args;
-    args.push_back(op.getCascadeValue());
+    Value cascadeValue = op.getCascadeValue();
+
+    // Check if we need a bitcast for the input value
+    Type expectedInputType = putMCDFunc.getFunctionType().getInput(0);
+    Type actualInputType = cascadeValue.getType();
+
+    if (expectedInputType != actualInputType) {
+      // Create a bitcast operation to convert from actual input type to
+      // expected type
+      cascadeValue = rewriter.create<vector::BitCastOp>(
+          op.getLoc(), expectedInputType, cascadeValue);
+    }
+
+    args.push_back(cascadeValue);
     if (isa<AIE2TargetModel>(targetModel))
       args.push_back(rewriter.create<arith::ConstantOp>(
           op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
@@ -363,7 +376,20 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
 
     auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
                                                     getSCDFunc, args);
-    rewriter.replaceOp(op, getSCDCall.getResult(0));
+    Value result = getSCDCall.getResult(0);
+
+    // Check if we need a bitcast
+    Type expectedType = op.getResult().getType();
+    Type intrinsicReturnType = result.getType();
+
+    if (expectedType != intrinsicReturnType) {
+      // Create a bitcast operation to convert from intrinsic return type to
+      // expected type
+      result =
+          rewriter.create<vector::BitCastOp>(op.getLoc(), expectedType, result);
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
@@ -569,12 +595,11 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
-    if (m.getOps<DeviceOp>().empty()) {
-      m.emitOpError("expected AIE.device operation at toplevel");
+    DeviceOp deviceOp = DeviceOp::getForSymbolInModuleOrError(m, deviceName);
+    if (!deviceOp) {
       return signalPassFailure();
     }
-    DeviceOp device = *m.getOps<DeviceOp>().begin();
-    const auto &targetModel = device.getTargetModel();
+    const auto &targetModel = deviceOp.getTargetModel();
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
@@ -612,20 +637,21 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
 
     patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
                                       tileRow);
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(deviceOp, target, std::move(patterns))))
       return signalPassFailure();
 
     RewritePatternSet outlinePatterns(&getContext());
     outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                                tileToBuffers, /*benefit*/ 1,
                                                tileCol, tileRow);
-    if (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))
+    if (failed(applyPartialConversion(deviceOp, target,
+                                      std::move(outlinePatterns))))
       return signalPassFailure();
 
     // Move all the func.func ops and memref.globals from the device to the
     // module
-    outlineOps<memref::GlobalOp>(device);
-    outlineOps<func::FuncOp>(device);
+    outlineOps<memref::GlobalOp>(deviceOp);
+    outlineOps<func::FuncOp>(deviceOp);
 
     RewritePatternSet removepatterns(&getContext());
     removepatterns.add<

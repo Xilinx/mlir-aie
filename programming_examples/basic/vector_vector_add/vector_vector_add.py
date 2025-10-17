@@ -98,7 +98,6 @@ def main():
         "-d",
         "--device",
         choices=["npu", "npu2"],
-        default="npu",
         help="Target device",
     )
     parser.add_argument(
@@ -116,7 +115,8 @@ def main():
     input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input0)
 
-    iron.set_current_device(device_map[args.device])
+    if args.device:
+        iron.set_current_device(device_map[args.device])
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects

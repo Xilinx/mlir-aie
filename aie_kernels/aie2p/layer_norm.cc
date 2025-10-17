@@ -43,7 +43,7 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
 
   ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>(mean);
   ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>(inv_std);
-  
+
   for (int i = 0; i < vector_chunks; i++) {
     ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
     ::aie::vector<T, N> diff_v = ::aie::sub(reg_a, mean_v);

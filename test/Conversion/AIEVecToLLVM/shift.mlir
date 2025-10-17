@@ -52,8 +52,7 @@ func.func @i32_shift(%arg0 : vector<16xi32>, %shift : i32) -> vector<16xi32> {
 // CHECK-NEXT: %[[VSHIFT:.*]] = "xllvm.intr.aie2.vshift.I512.I512"(
 // CHECK-SAME: %[[ARG0]], %[[ARG0]], %[[CST]], %[[SHIFT]]) : 
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>, i32, i32) -> vector<16xi32>
-// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[VSHIFT]] : vector<16xi32> to vector<16xi32>
-// CHECK-NEXT: return %[[RES]] : vector<16xi32>
+// CHECK-NEXT: return %[[VSHIFT]] : vector<16xi32>
 
 // -----
 
@@ -69,5 +68,4 @@ func.func @bf16_shift(%arg0 : vector<32xbf16>, %shift : i32) -> vector<32xbf16> 
 // CHECK-NEXT: %[[VSHIFT:.*]] = "xllvm.intr.aie2.vshift.bf512.bf512"(
 // CHECK-SAME: %[[ARG0]], %[[ARG0]], %[[CST]], %[[SHIFT]]) : 
 // CHECK-SAME: (vector<32xbf16>, vector<32xbf16>, i32, i32) -> vector<32xbf16>
-// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[VSHIFT]] : vector<32xbf16> to vector<32xbf16>
-// CHECK-NEXT: return %[[RES]] : vector<32xbf16>
+// CHECK-NEXT: return %[[VSHIFT]] : vector<32xbf16>

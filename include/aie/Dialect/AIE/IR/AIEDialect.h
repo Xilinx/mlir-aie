@@ -17,10 +17,12 @@
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
+
+#include "llvm/ADT/StringRef.h"
 
 namespace xilinx::AIE {
 
@@ -143,7 +145,6 @@ using Port = struct Port {
     os << to_string(port);
     return os;
   }
-
 };
 
 using Connect = struct Connect {
@@ -152,6 +153,12 @@ using Connect = struct Connect {
 
   bool operator==(const Connect &rhs) const {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
+  }
+
+  bool operator!=(const Connect &rhs) const { return !(*this == rhs); }
+
+  bool operator<(const Connect &rhs) const {
+    return std::tie(src, dst) < std::tie(rhs.src, rhs.dst);
   }
 };
 
@@ -192,23 +199,6 @@ int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.h.inc"
-
-namespace xilinx::AIE {
-class DeviceOp;
-class ShimDMAAllocationOp;
-struct ShimDMAllocationGetter {
-public:
-  std::optional<AIE::ShimDMAAllocationOp> get(DeviceOp dev,
-                                              mlir::StringRef sym_name);
-
-private:
-  llvm::DenseMap<std::pair<DeviceOp, mlir::StringRef>,
-                 std::optional<AIE::ShimDMAAllocationOp>>
-      allocGetter;
-  std::optional<AIE::ShimDMAAllocationOp>
-  cachelessGet(DeviceOp dev, mlir::StringRef sym_name);
-};
-} // namespace xilinx::AIE
 
 namespace xilinx::AIE {
 

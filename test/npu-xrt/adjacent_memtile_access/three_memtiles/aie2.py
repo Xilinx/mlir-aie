@@ -34,9 +34,6 @@ def my_vector_add():
         tensor_ty = np.ndarray[(N // 4,), np.dtype[np.int32]]
         tensor_ty_s = np.ndarray[(n,), np.dtype[np.int32]]
 
-        memref.global_("out", T.memref(16, T.i32()), sym_visibility="public")
-        memref.global_("in1", T.memref(16, T.i32()), sym_visibility="public")
-
         # Tile declarations
         ShimTile = tile(0, 0)
         MemTile = tile(0, 1)

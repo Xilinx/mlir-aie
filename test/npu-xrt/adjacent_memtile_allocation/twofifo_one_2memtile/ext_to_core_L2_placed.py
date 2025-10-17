@@ -59,7 +59,7 @@ def external_mem_to_core_L2():
             @core(ComputeTile2)
             def core_body():
                 # Effective while(1)
-                for _ in range_(int(mem_tile_size/8)):
+                for _ in range_(int(mem_tile_size / 8)):
                     elem_in = of_in1.acquire(ObjectFifoPort.Consume, 1)
                     elem_out = of_out1.acquire(ObjectFifoPort.Produce, 1)
                     for i in range_(8):
@@ -73,10 +73,16 @@ def external_mem_to_core_L2():
             @runtime_sequence(data_ty, data_ty, data_ty)
             def sequence(inTensor, notUsed, outTensor):
                 npu_dma_memcpy_nd(
-                    metadata=of_in0, bd_id=1, mem=inTensor, sizes=[1, 1, 1, mem_tile_size]
+                    metadata=of_in0,
+                    bd_id=1,
+                    mem=inTensor,
+                    sizes=[1, 1, 1, mem_tile_size],
                 )
                 npu_dma_memcpy_nd(
-                    metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, mem_tile_size]
+                    metadata=of_out0,
+                    bd_id=0,
+                    mem=outTensor,
+                    sizes=[1, 1, 1, mem_tile_size],
                 )
                 # of_out0 will only complete after of_in0 completes, so we just wait on of_out0 instead of both
                 dma_wait(of_out0)

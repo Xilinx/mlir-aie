@@ -239,7 +239,7 @@ class DevelopWithPth(develop):
         super().run()
         pth_target = os.path.join(self.install_dir, "aie.pth")
         with open(pth_target, "w") as pth_file:
-            pth_file.write("mlir_aie//python")
+            pth_file.write("mlir_aie/python")
 
 
 class InstallWithPth(install):
@@ -249,7 +249,7 @@ class InstallWithPth(install):
         super().run()
         pth_target = os.path.join(self.install_lib, "aie.pth")
         with open(pth_target, "w") as pth_file:
-            pth_file.write("mlir_aie//python")
+            pth_file.write("mlir_aie/python")
 
 
 def get_version():

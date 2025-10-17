@@ -250,7 +250,7 @@ struct ConvertSplatTransferReadToBroadcastPattern
         adaptor.getPadding());
     auto extractOp = rewriter.create<vector::ExtractOp>(
         readOp.getLoc(), newReadOp.getResult(), ArrayRef<int64_t>{offset});
-    rewriter.replaceOpWithNewOp<vector::SplatOp>(
+    rewriter.replaceOpWithNewOp<vector::BroadcastOp>(
         readOp, newReadOp.getVector().getType(), extractOp.getResult());
     return success();
   }
@@ -276,7 +276,7 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
       return failure();
 
     // At the moment, we only accept ops we know we can swap with cast.
-    if (!isa<vector::BroadcastOp, vector::ExtractOp, vector::SplatOp,
+    if (!isa<vector::BroadcastOp, vector::ExtractOp,
              vector::ExtractStridedSliceOp>(defOp))
       return failure();
 

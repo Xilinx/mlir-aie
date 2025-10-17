@@ -12,12 +12,6 @@
 
 // CHECK: module @disable_sync {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @link3_cons : memref<20xi32>
-// CHECK:     memref.global "public" @link3 : memref<20xi32>
-// CHECK:     memref.global "public" @link2_cons : memref<4x4xi32>
-// CHECK:     memref.global "public" @link2 : memref<4x4xi32>
-// CHECK:     memref.global "public" @link1_cons : memref<36xi32>
-// CHECK:     memref.global "public" @link1 : memref<36xi32>
 // CHECK:     %{{.*}}tile_2_0 = aie.tile(2, 0)
 // CHECK:     %{{.*}}tile_2_1 = aie.tile(2, 1)
 // CHECK:     %{{.*}}tile_2_2 = aie.tile(2, 2)
@@ -32,7 +26,7 @@
 // CHECK:     aie.flow(%{{.*}}tile_2_0, DMA : 0, %{{.*}}tile_2_1, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_2_1, DMA : 0, %{{.*}}tile_2_2, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_2_1, DMA : 1, %{{.*}}tile_2_3, DMA : 0)
-// CHECK:     aie.shim_dma_allocation @link1(MM2S, 0, 2)
+// CHECK:     aie.shim_dma_allocation @link1_shim_alloc(MM2S, 0, 2)
 // CHECK:     %memtile_dma_2_1 = aie.memtile_dma(%{{.*}}tile_2_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
