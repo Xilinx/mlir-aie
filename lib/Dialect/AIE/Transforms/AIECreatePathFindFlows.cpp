@@ -163,7 +163,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         }
       }
 
-      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | " << "\n");
+      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | "
+                              << "\n");
     }
 
     LLVM_DEBUG(llvm::dbgs()
@@ -378,13 +379,20 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // Therefore, the number of "logical" arbiters is 6 x 4 = 24
   // A master port can only be associated with one arbiter
 
+  // Constants for arbiter configuration
+  constexpr int INVALID_AMSEL_VALUE = -1;
+  constexpr int INVALID_ARBITER_VALUE = -1;
+
   // A map from Tile and master selectValue to the ports targetted by that
   // master select.
   std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels;
 
+  // Track which arbiter each port is assigned to (to prevent conflicts)
+  std::map<PhysPort, int> portToArbiter;
+
   // Count of currently used logical arbiters for each tile.
   DenseMap<Operation *, int> amselValues;
-  int numMsels = 4;
+  int numMselsPerArbiter = 4;
   int numArbiters = 6;
 
   // Get arbiter id from amsel
@@ -398,16 +406,17 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   // Get a new unique amsel from masterAMSels on tile op. Prioritize on
   // incrementing arbiter id, before incrementing msel
   auto getNewUniqueAmsel =
-      [&](std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels,
+      [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
+              &masterAMSels,
           TileOp tileOp, bool isCtrlPkt) {
         if (isCtrlPkt) { // Higher AMsel first
-          for (int i = numMsels - 1; i >= 0; i--)
+          for (int i = numMselsPerArbiter - 1; i >= 0; i--)
             for (int a = numArbiters - 1; a >= 0; a--)
               if (!masterAMSels.count(
                       {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
                 return getAmselFromArbiterIDAndMsel(a, i);
         } else { // Lower AMsel first
-          for (int i = 0; i < numMsels; i++)
+          for (int i = 0; i < numMselsPerArbiter; i++)
             for (int a = 0; a < numArbiters; a++)
               if (!masterAMSels.count(
                       {tileOp.getTileID(), getAmselFromArbiterIDAndMsel(a, i)}))
@@ -415,19 +424,20 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         }
         tileOp->emitOpError(
             "tile op has used up all arbiter-msel combinations");
-        return -1;
+        return INVALID_AMSEL_VALUE;
       };
   // Get a new unique amsel from masterAMSels on tile op with given arbiter id
   auto getNewUniqueAmselPerArbiterID =
-      [&](std::map<std::pair<TileID, int>, SmallVector<Port, 4>> masterAMSels,
+      [&](const std::map<std::pair<TileID, int>, SmallVector<Port, 4>>
+              &masterAMSels,
           TileOp tileOp, int arbiter) {
-        for (int i = 0; i < numMsels; i++)
+        for (int i = 0; i < numMselsPerArbiter; i++)
           if (!masterAMSels.count({tileOp.getTileID(),
                                    getAmselFromArbiterIDAndMsel(arbiter, i)}))
             return getAmselFromArbiterIDAndMsel(arbiter, i);
         tileOp->emitOpError("tile op arbiter ")
-            << std::to_string(arbiter) << "has used up all its msels";
-        return -1;
+            << std::to_string(arbiter) << " has used up all its msels";
+        return INVALID_AMSEL_VALUE;
       };
 
   // Order the packet flows in order to get determinsitic amsel allocation;
@@ -453,6 +463,46 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
   packetFlows.insert(ctrlPacketFlows.begin(), ctrlPacketFlows.end());
 
+  // Helper function to assign ports to a given amsel value
+  // Updates masterAMSels and portToArbiter, skipping ports already on different
+  // arbiters
+  auto assignPortsToAmsel = [&](TileID tileId, int amselValue,
+                                const SmallVector<PhysPort, 4> &destinations) {
+    int targetArbiter = getArbiterIDFromAmsel(amselValue);
+    for (auto dest : destinations) {
+      Port port = dest.second;
+      PhysPort physPort = {tileId, port};
+
+      // Skip this port if it's already assigned to a different arbiter
+      if (portToArbiter.count(physPort) &&
+          portToArbiter[physPort] != targetArbiter) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Skipping port " << stringifyWireBundle(port.bundle)
+                   << ":" << port.channel << " - already on arbiter "
+                   << portToArbiter[physPort] << ", target is " << targetArbiter
+                   << "\n");
+        continue;
+      }
+
+      masterAMSels[{tileId, amselValue}].push_back(port);
+      portToArbiter[physPort] = targetArbiter;
+    }
+  };
+
+  // Helper function to find existing arbiter assignment for ports in a flow
+  // Returns -1 if no existing assignment found
+  auto findExistingArbiter =
+      [&](TileID tileId, const SmallVector<PhysPort, 4> &destinations) -> int {
+    for (auto dest : destinations) {
+      Port port = dest.second;
+      PhysPort physPort = {tileId, port};
+      if (portToArbiter.count(physPort)) {
+        return portToArbiter[physPort];
+      }
+    }
+    return INVALID_ARBITER_VALUE;
+  };
+
   // Check all multi-cast flows (same source, same ID). They should be
   // assigned the same arbiter and msel so that the flow can reach all the
   // destination ports at the same time For destination ports that appear in
@@ -475,75 +525,128 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     int amselValue = amselValues[tileOp];
     assert(amselValue < numArbiters && "Could not allocate new arbiter!");
 
-    // Find existing arbiter assignment
-    // If there is an assignment of an arbiter to a master port before, we
-    // assign all the master ports here with the same arbiter but different
-    // msel
-    bool foundMatchedDest =
-        false; // This switchbox's output channels match completely or
-               // partially with an existing amsel entry.
-    int foundPartialMatchArbiter =
-        -1; // This switchbox's output channels match partially with an
-            // existing amsel entry on this arbiter ID (-1 means null).
-    for (const auto &map : masterAMSels) {
-      if (map.first.first != tileId)
-        continue;
-      amselValue = map.first.second;
+    // Find existing arbiter and amsel assignments for this flow
+    // Strategy: Look for existing amsel entries that match the flow's
+    // destinations
+    // - Complete match: reuse existing amsel
+    // - Partial match: create new amsel on same arbiter
+    // - No match: create new amsel (on existing arbiter if ports already
+    // assigned)
+    bool hasMatchingAmselEntry = false;
+    int partialMatchArbiterID = INVALID_ARBITER_VALUE;
 
-      // check if same destinations
-      SmallVector<Port, 4> ports(masterAMSels[{tileId, amselValue}]);
-      // check for complete/partial overlapping amsel -> port mapping with any
-      // previous amsel assignments
-      bool matched =
-          false; // Found at least one port with overlapping amsel assignment
-      bool mismatched = false; // Found at least one port without any
-                               // overlapping amsel assignment
-      for (auto dest : packetFlow.second) {
-        Port port = dest.second;
-        if (std::find(ports.begin(), ports.end(), port) == ports.end())
-          mismatched = true;
-        else
-          matched = true;
+    // Check if any ports in this flow already have arbiter assignments
+    int existingArbiter = findExistingArbiter(tileId, packetFlow.second);
+
+    // Search for matching amsel entries, prioritizing those that match the
+    // existing arbiter
+    for (const auto &amselEntry : masterAMSels) {
+      if (amselEntry.first.first != tileId)
+        continue;
+      amselValue = amselEntry.first.second;
+      int thisArbiter = getArbiterIDFromAmsel(amselValue);
+
+      // If we have an existing arbiter assignment, only consider amsels from
+      // that arbiter
+      if (existingArbiter != INVALID_ARBITER_VALUE &&
+          existingArbiter != thisArbiter) {
+        continue;
       }
 
-      if (matched) {
-        foundMatchedDest = true;
-        if (mismatched)
-          foundPartialMatchArbiter = getArbiterIDFromAmsel(amselValue);
-        else if (ports.size() != packetFlow.second.size())
-          foundPartialMatchArbiter = getArbiterIDFromAmsel(amselValue);
+      // Check if destinations match (completely or partially)
+      const SmallVector<Port, 4> &existingPorts =
+          masterAMSels[{tileId, amselValue}];
+      bool hasOverlap = false;
+      bool hasNonOverlap = false;
+
+      for (auto dest : packetFlow.second) {
+        Port port = dest.second;
+        if (std::find(existingPorts.begin(), existingPorts.end(), port) ==
+            existingPorts.end())
+          hasNonOverlap = true;
+        else
+          hasOverlap = true;
+      }
+
+      if (hasOverlap) {
+        hasMatchingAmselEntry = true;
+        // Partial match if some ports don't overlap or sizes differ
+        if (hasNonOverlap || existingPorts.size() != packetFlow.second.size())
+          partialMatchArbiterID = thisArbiter;
         break;
       }
     }
 
-    if (!foundMatchedDest) {
+    if (!hasMatchingAmselEntry) {
       // This packet flow switchbox's output ports completely mismatches with
       // any existing amsel. Creating a new amsel.
 
-      // Check if any of the master ports have ever been used for ctrl pkts.
-      // Ctrl pkt (i.e. prioritized packet flow) amsel assignment follows a
-      // different strategy (see method below).
-      bool ctrlPktAMsel =
-          llvm::any_of(packetFlow.second, [&](PhysPort destPhysPort) {
-            Port port = destPhysPort.second;
-            return ctrlPktFlows[{{tileId, port}, packetFlow.first.second}];
-          });
+      // Determine target arbiter: use existing if available, otherwise allocate
+      // based on priority
+      int targetArbiter = existingArbiter;
 
-      amselValue = getNewUniqueAmsel(masterAMSels, tileOp, ctrlPktAMsel);
-      // Update masterAMSels with new amsel
-      for (auto dest : packetFlow.second) {
-        Port port = dest.second;
-        masterAMSels[{tileId, amselValue}].push_back(port);
+      if (targetArbiter == INVALID_ARBITER_VALUE) {
+        // No existing assignment, choose based on control packet priority
+        bool isCtrlPkt =
+            llvm::any_of(packetFlow.second, [&](PhysPort destPhysPort) {
+              Port port = destPhysPort.second;
+              return ctrlPktFlows[{{tileId, port}, packetFlow.first.second}];
+            });
+
+        amselValue = getNewUniqueAmsel(masterAMSels, tileOp, isCtrlPkt);
+      } else {
+        // Use existing arbiter to maintain consistency
+        amselValue =
+            getNewUniqueAmselPerArbiterID(masterAMSels, tileOp, targetArbiter);
+        if (amselValue == INVALID_AMSEL_VALUE) {
+          // No more msels available on this arbiter - this is a routing
+          // conflict
+          tileOp->emitOpError("cannot assign flow: arbiter ")
+              << targetArbiter
+              << " has no free msels, but flow requires this arbiter due to "
+                 "existing port assignments";
+          return;
+        }
       }
-    } else if (foundPartialMatchArbiter >= 0) {
+
+      // Update masterAMSels with new amsel, skipping ports already assigned to
+      // different arbiters
+      assignPortsToAmsel(tileId, amselValue, packetFlow.second);
+    } else if (partialMatchArbiterID != INVALID_ARBITER_VALUE) {
       // This packet flow switchbox's output ports partially overlaps with
-      // some existing amsel. Creating a new amsel with the same arbiter.
-      amselValue = getNewUniqueAmselPerArbiterID(masterAMSels, tileOp,
-                                                 foundPartialMatchArbiter);
-      // Update masterAMSels with new amsel
+      // some existing amsel. Create a NEW amsel with the SAME arbiter for this
+      // flow. The comment states: "destination ports that appear in different
+      // (multicast) flows should have a different <arbiterID, msel> value pair
+      // for each flow" but use the same arbiter to maintain the constraint.
+
+      // Use the arbiter we found (which should match existingArbiter if set)
+      int targetArbiter = partialMatchArbiterID;
+      if (existingArbiter != INVALID_ARBITER_VALUE &&
+          existingArbiter != targetArbiter) {
+        // Conflict detected - should have been caught earlier, but add safety
+        // check
+        tileOp->emitOpError(
+            "internal error: arbiter conflict in partial match");
+        return;
+      }
+
+      amselValue =
+          getNewUniqueAmselPerArbiterID(masterAMSels, tileOp, targetArbiter);
+
+      // Update masterAMSels with new amsel, skipping ports already assigned to
+      // different arbiters
+      assignPortsToAmsel(tileId, amselValue, packetFlow.second);
+    } else {
+      // Complete match - reuse the existing amsel
+      // Track arbiter assignments for all ports in this flow
+      int arbiter = getArbiterIDFromAmsel(amselValue);
       for (auto dest : packetFlow.second) {
         Port port = dest.second;
-        masterAMSels[{tileId, amselValue}].push_back(port);
+        PhysPort physPort = {tileId, port};
+        // Update tracking even for reused amsels
+        if (!portToArbiter.count(physPort)) {
+          portToArbiter[physPort] = arbiter;
+        }
       }
     }
 
@@ -552,14 +655,38 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   }
 
   // Compute the master set IDs
-  // A map from a switchbox output port to the number of that port.
+  // A map from a switchbox output port to its associated amsel values
   std::map<PhysPort, SmallVector<int, 4>> mastersets;
   for (const auto &[physPort, ports] : masterAMSels) {
     TileID tileId = physPort.first;
     int amselValue = physPort.second;
     for (auto port : ports) {
-      PhysPort pp = {tileId, port};
-      mastersets[pp].push_back(amselValue);
+      PhysPort physPort = {tileId, port};
+      mastersets[physPort].push_back(amselValue);
+    }
+  }
+
+  // Validate that each port only has amsels from a single arbiter
+  for (const auto &[physPort, amselList] : mastersets) {
+    int assignedArbiter = INVALID_ARBITER_VALUE;
+    for (auto amsel : amselList) {
+      int thisArbiter = getArbiterIDFromAmsel(amsel);
+      if (assignedArbiter != INVALID_ARBITER_VALUE &&
+          assignedArbiter != thisArbiter) {
+        TileID tileId = physPort.first;
+        Port port = physPort.second;
+        TileOp tileOp = analyzer.getTile(builder, tileId);
+        tileOp->emitOpError("port ")
+            << stringifyWireBundle(port.bundle) << ":" << port.channel
+            << " assigned to multiple arbiters: " << assignedArbiter << " and "
+            << thisArbiter << " (amsels: " << amselList[0];
+        for (size_t i = 1; i < amselList.size(); i++) {
+          llvm::errs() << ", " << amselList[i];
+        }
+        llvm::errs() << ")\n";
+        return signalPassFailure();
+      }
+      assignedArbiter = thisArbiter;
     }
   }
 
@@ -661,14 +788,14 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     LLVM_DEBUG(llvm::dbgs()
                << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
                << channel << '\n');
-    LLVM_DEBUG(llvm::dbgs()
-               << "Mask " << "0x" << llvm::Twine::utohexstr(mask) << '\n');
-    LLVM_DEBUG(llvm::dbgs()
-               << "ID " << "0x" << llvm::Twine::utohexstr(ID) << '\n');
+    LLVM_DEBUG(llvm::dbgs() << "Mask "
+                            << "0x" << llvm::Twine::utohexstr(mask) << '\n');
+    LLVM_DEBUG(llvm::dbgs() << "ID "
+                            << "0x" << llvm::Twine::utohexstr(ID) << '\n');
     for (int i = 0; i < 31; i++) {
       if ((i & mask) == (ID & mask))
-        LLVM_DEBUG(llvm::dbgs() << "matches flow ID " << "0x"
-                                << llvm::Twine::utohexstr(i) << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
+                                << "0x" << llvm::Twine::utohexstr(i) << '\n');
     }
   }
 #endif
@@ -703,7 +830,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     Block &b = swbox.getConnections().front();
     builder.setInsertionPoint(b.getTerminator());
 
-    std::vector<bool> amselOpNeededVector(numMsels * numArbiters);
+    std::vector<bool> amselOpNeededVector(numMselsPerArbiter * numArbiters);
     for (const auto &map : mastersets) {
       if (tileId != map.first.first)
         continue;
@@ -714,7 +841,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     }
     // Create all the amsel Ops
     std::map<int, AMSelOp> amselOps;
-    for (int i = 0; i < numMsels; i++) {
+    for (int i = 0; i < numMselsPerArbiter; i++) {
       for (int a = 0; a < numArbiters; a++) {
         auto amselValue = getAmselFromArbiterIDAndMsel(a, i);
         if (amselOpNeededVector[amselValue]) {

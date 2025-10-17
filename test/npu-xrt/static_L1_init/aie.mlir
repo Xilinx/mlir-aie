@@ -10,10 +10,6 @@
 
 module {
   aie.device(NPUDEVICE) {
-    memref.global "public" @out_cons : memref<16xi32>
-    memref.global "public" @out : memref<16xi32>
-    memref.global "public" @in1_cons : memref<16xi32>
-    memref.global "public" @in1 : memref<16xi32>
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_3 = aie.tile(0, 3)

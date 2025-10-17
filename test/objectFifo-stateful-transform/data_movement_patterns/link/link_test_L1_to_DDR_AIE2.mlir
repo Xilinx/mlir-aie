@@ -13,10 +13,6 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK:           memref.global "public" @from_memTile_cons : memref<48xi32>
-// CHECK:           memref.global "public" @from_memTile : memref<48xi32>
-// CHECK:           memref.global "public" @to_memTile_cons : memref<16xi32>
-// CHECK:           memref.global "public" @to_memTile : memref<16xi32>
 // CHECK:           %[[VAL_0:.*]] = aie.tile(2, 0)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(2, 1)
 // CHECK:           %[[VAL_2:.*]] = aie.tile(2, 2)
@@ -85,7 +81,7 @@
 // CHECK:           ^bb2:  // pred: ^bb0
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @from_memTile(S2MM, 0, 2)
+// CHECK:           aie.shim_dma_allocation @from_memTile_shim_alloc(S2MM, 0, 2)
 // CHECK:         }
 
 module @link_L1_DDR {

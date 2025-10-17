@@ -20,8 +20,6 @@
 // CHECK-SAME: arg_idx = 1 : i32
 module  {
   aie.device(npu1) {
-    memref.global "public" @toMem : memref<16xi32>
-    memref.global "public" @fromMem : memref<16xi32>
     aiex.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 16][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @fromMem, id = 0 : i64 } : memref<16xi32>
@@ -47,7 +45,6 @@ module  {
 // CHECK-SAME: row_num = 1 : i32
 module  {
   aie.device(npu1) {
-    memref.global "public" @toMem : memref<16xi32>
     aiex.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { issue_token = true, metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_wait {symbol = @toMem}
@@ -73,7 +70,6 @@ module  {
 // CHECK-SAME: row_num = 1 : i32
 module  {
   aie.device(npu1) {
-    memref.global "public" @toMem : memref<16xi32>
     aiex.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { issue_token = true, metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_wait {symbol = @toMem}
@@ -137,7 +133,6 @@ module {
 // CHECK: aiex.npu.write32
 module {
   aie.device(npu1_1col) {
-    memref.global "public" @toMem : memref<16xi32>
     aiex.runtime_sequence(%arg0: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1], packet = <pkt_id = 2, pkt_type = 3>) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
     }

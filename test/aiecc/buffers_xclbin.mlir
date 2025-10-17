@@ -93,12 +93,6 @@ module {
     %02 = aie.tile(0, 2)
     %12 = aie.tile(1, 2)
     %22 = aie.tile(2, 2)
-    memref.global "public" @in0 : memref<1024xi32>
-    memref.global "public" @in1 : memref<1024xi32>
-    memref.global "public" @in2 : memref<1024xi32>
-    memref.global "public" @out0 : memref<1024xi32>
-    memref.global "public" @out1 : memref<1024xi32>
-    memref.global "public" @out2 : memref<1024xi32>
     aie.shim_dma_allocation @in0 (S2MM, 0, 0)
     aie.shim_dma_allocation @in1(S2MM, 1, 0)
     aie.shim_dma_allocation @in2(S2MM, 2, 0)
