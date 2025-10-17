@@ -12,6 +12,9 @@
 
 # cmake needs this line
 cmake_minimum_required(VERSION 3.30)
+
+include(../../common.cmake)
+
 #set(CMAKE_CXX_STANDARD 23)
 #set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
@@ -51,7 +54,6 @@ message("opencv libs: ${OpenCV_LIBS}")
 
 add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
@@ -62,8 +64,6 @@ target_compile_definitions(${currentTarget} PUBLIC
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
 )
@@ -78,3 +78,5 @@ target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil
     ${OpenCV_LIBS}
 )
+
+target_link_test_utils(${currentTarget})

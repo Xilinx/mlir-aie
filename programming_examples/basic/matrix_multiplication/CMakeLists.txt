@@ -14,6 +14,8 @@ cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
+include(../../common.cmake)
+
 find_program(WSL NAMES powershell.exe)
 
 if (NOT WSL)
@@ -41,15 +43,10 @@ endif ()
 project(${ProjectName})
 
 add_executable(${currentTarget}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     ${subdir}/test.cpp
 )
 
-target_include_directories (${currentTarget} PUBLIC
-    ${XRT_INC_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
-)
+target_include_directories (${currentTarget} PUBLIC ${XRT_INC_DIR})
 
 target_link_directories(${currentTarget} PUBLIC
     ${XRT_LIB_DIR}
@@ -58,3 +55,5 @@ target_link_directories(${currentTarget} PUBLIC
 target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil
 )
+
+target_link_test_utils(${currentTarget})
