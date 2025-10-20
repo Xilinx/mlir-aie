@@ -238,16 +238,11 @@ public:
   }
 };
 
-class AddElemOpConversion
+// AIE2 version of AddElemOp conversion
+class AddElemOpAIE2Conversion
     : public mlir::ConvertOpToLLVMPattern<aievec::AddElemOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::AddElemOp>::ConvertOpToLLVMPattern;
-
-  AddElemOpConversion(const LLVMTypeConverter &typeConverter,
-                      StringRef aieTargetParam)
-      : ConvertOpToLLVMPattern(typeConverter), aieTarget(aieTargetParam) {}
-
-  StringRef aieTarget;
 
   struct DecodedAddElemOp {
     enum class Kind { FP32_FP32_FP32_16x1x1x1, UNSUPPORTED };
@@ -285,87 +280,134 @@ public:
       return failure();
     }
 
-    // Handle the FP32 add_elem
+    // Handle the FP32 add_elem for AIE2 - uses packed I64 representation
     if (decodedAddElemOp.kind ==
         DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
-      // For AIE2p, we need to expand <16xf32> to <64xf32> for the ACC2048
-      // intrinsic
-      if (aieTarget == "aie2p") {
-        // Step 1: Bitcast <16 x float> to <8 x i64>
-        auto v8i64Ty = VectorType::get({8}, rewriter.getI64Type());
-        auto lhsI64 =
-            rewriter.create<LLVM::BitcastOp>(loc, v8i64Ty, adaptor.getLhs());
-        auto rhsI64 =
-            rewriter.create<LLVM::BitcastOp>(loc, v8i64Ty, adaptor.getRhs());
+      auto confCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(),
+          rewriter.getI32IntegerAttr(decodedAddElemOp.conf));
+      SmallVector<Value> operands(
+          {adaptor.getLhs(), adaptor.getRhs(), confCst});
 
-        // Step 2: Shuffle <8 x i64> to <32 x i64> (expand with poison values)
-        auto v32i64Ty = VectorType::get({32}, rewriter.getI64Type());
-        SmallVector<int64_t> expandMask = {0, 1, 2, 3, 4, 5, 6, 7};
-        for (int i = 8; i < 32; ++i)
-          expandMask.push_back(-1); // poison values
+      auto addElemOp = rewriter.create<xllvm::AddAccFloatAIE2IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({8}, rewriter.getI64Type()),
+               VectorType::get({8}, rewriter.getI64Type()),
+               rewriter.getI32Type()}));
 
-        auto lhsExpanded =
-            rewriter.create<vector::ShuffleOp>(loc, lhsI64, lhsI64, expandMask);
-        auto rhsExpanded =
-            rewriter.create<vector::ShuffleOp>(loc, rhsI64, rhsI64, expandMask);
+      // create bitcast/shape_cast for result
+      auto resultVal = forceCastValueToType(rewriter, loc, addElemOp,
+                                            op.getResult().getType());
+      rewriter.replaceOp(op, resultVal);
+      return success();
+    }
 
-        // Step 3: Bitcast <32 x i64> to <64 x float>
-        auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
-        auto lhsF32 =
-            rewriter.create<LLVM::BitcastOp>(loc, v64f32Ty, lhsExpanded);
-        auto rhsF32 =
-            rewriter.create<LLVM::BitcastOp>(loc, v64f32Ty, rhsExpanded);
+    op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
+    return failure();
+  }
+};
 
-        // Step 4: Call the ACC2048 intrinsic with conf=60
-        auto confCst = rewriter.create<LLVM::ConstantOp>(
-            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(60));
+// AIE2p version of AddElemOp conversion
+class AddElemOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::AddElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::AddElemOp>::ConvertOpToLLVMPattern;
 
-        // Create the intrinsic call
-        auto addResult = rewriter.create<xllvm::AddACC2048AccFloatAIE2pIntrOp>(
-            loc, v64f32Ty, lhsF32, rhsF32, confCst);
+  struct DecodedAddElemOp {
+    enum class Kind { FP32_FP32_FP32_16x1x1x1, UNSUPPORTED };
+    Kind kind;
+    int conf;
+  };
 
-        // Step 5: Bitcast <64 x float> back to <32 x i64>
-        auto resultI64 =
-            rewriter.create<LLVM::BitcastOp>(loc, v32i64Ty, addResult);
+  static DecodedAddElemOp decodeAddElemOp(OpAdaptor op) {
+    auto lhs = op.getLhs();
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto lhsScaTy = lhsVecTy.getElementType();
+    unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
 
-        // Step 6: Shuffle to extract first 8 elements <32 x i64> -> <8 x i64>
-        SmallVector<int64_t> extractMask = {0, 1, 2, 3, 4, 5, 6, 7};
-        auto resultExtracted = rewriter.create<vector::ShuffleOp>(
-            loc, resultI64, resultI64, extractMask);
-
-        // Step 7: Bitcast <8 x i64> back to <16 x float>
-        auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
-        auto finalResult =
-            rewriter.create<LLVM::BitcastOp>(loc, v16f32Ty, resultExtracted);
-
-        rewriter.replaceOp(op, finalResult);
-        return success();
-      } else {
-        // Default to aie2 - uses packed I64 representation
-        auto confCst = rewriter.create<LLVM::ConstantOp>(
-            loc, rewriter.getI32Type(),
-            rewriter.getI32IntegerAttr(decodedAddElemOp.conf));
-        SmallVector<Value> operands(
-            {adaptor.getLhs(), adaptor.getRhs(), confCst});
-
-        auto addElemOp = rewriter.create<xllvm::AddAccFloatAIE2IntrOp>(
-            loc, VectorType::get({8}, rewriter.getI64Type()),
-            forceCastOperandsToSignature(
-                rewriter, loc, operands,
-                {VectorType::get({8}, rewriter.getI64Type()),
-                 VectorType::get({8}, rewriter.getI64Type()),
-                 rewriter.getI32Type()}));
-
-        // create bitcast/shape_cast for result
-        auto resultVal = forceCastValueToType(rewriter, loc, addElemOp,
-                                              op.getResult().getType());
-        rewriter.replaceOp(op, resultVal);
-        return success();
-      }
+    // Integer types
+    if (llvm::isa<IntegerType>(lhsScaTy)) {
+      return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
     } else {
+      // Float types
+      if (lhsBitWidth == 32) {
+        // FP32 add_elem
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
+      }
+    }
+    return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::AddElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto decodedAddElemOp = decodeAddElemOp(adaptor);
+
+    if (decodedAddElemOp.kind == DecodedAddElemOp::Kind::UNSUPPORTED) {
       op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
       return failure();
     }
+
+    // Handle the FP32 add_elem for AIE2p
+    // We need to expand <16xf32> to <64xf32> for the ACC2048 intrinsic
+    if (decodedAddElemOp.kind ==
+        DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
+      // Step 1: Bitcast <16 x float> to <8 x i64>
+      auto v8i64Ty = VectorType::get({8}, rewriter.getI64Type());
+      auto lhsI64 =
+          rewriter.create<LLVM::BitcastOp>(loc, v8i64Ty, adaptor.getLhs());
+      auto rhsI64 =
+          rewriter.create<LLVM::BitcastOp>(loc, v8i64Ty, adaptor.getRhs());
+
+      // Step 2: Shuffle <8 x i64> to <32 x i64> (expand with poison values)
+      auto v32i64Ty = VectorType::get({32}, rewriter.getI64Type());
+      SmallVector<int64_t> expandMask = {0, 1, 2, 3, 4, 5, 6, 7};
+      for (int i = 8; i < 32; ++i)
+        expandMask.push_back(-1); // poison values
+
+      auto lhsExpanded =
+          rewriter.create<vector::ShuffleOp>(loc, lhsI64, lhsI64, expandMask);
+      auto rhsExpanded =
+          rewriter.create<vector::ShuffleOp>(loc, rhsI64, rhsI64, expandMask);
+
+      // Step 3: Bitcast <32 x i64> to <64 x float>
+      auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
+      auto lhsF32 =
+          rewriter.create<LLVM::BitcastOp>(loc, v64f32Ty, lhsExpanded);
+      auto rhsF32 =
+          rewriter.create<LLVM::BitcastOp>(loc, v64f32Ty, rhsExpanded);
+
+      // Step 4: Call the ACC2048 intrinsic with conf=60
+      auto confCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(60));
+
+      // Create the intrinsic call
+      auto addResult = rewriter.create<xllvm::AddACC2048AccFloatAIE2pIntrOp>(
+          loc, v64f32Ty, lhsF32, rhsF32, confCst);
+
+      // Step 5: Bitcast <64 x float> back to <32 x i64>
+      auto resultI64 =
+          rewriter.create<LLVM::BitcastOp>(loc, v32i64Ty, addResult);
+
+      // Step 6: Shuffle to extract first 8 elements <32 x i64> -> <8 x i64>
+      SmallVector<int64_t> extractMask = {0, 1, 2, 3, 4, 5, 6, 7};
+      auto resultExtracted = rewriter.create<vector::ShuffleOp>(
+          loc, resultI64, resultI64, extractMask);
+
+      // Step 7: Bitcast <8 x i64> back to <16 x float>
+      auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
+      auto finalResult =
+          rewriter.create<LLVM::BitcastOp>(loc, v16f32Ty, resultExtracted);
+
+      rewriter.replaceOp(op, finalResult);
+      return success();
+    }
+
+    op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
+    return failure();
   }
 };
 
@@ -976,15 +1018,28 @@ public:
   }
 };
 
-class UPSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
+// Enum to represent different AIE target architectures
+enum class AIEArch {
+  AIE2,
+  AIE2p,
+};
+
+// Template trait to encode the target architecture
+template <AIEArch Arch>
+struct AIETargetTrait {
+  static constexpr AIEArch arch = Arch;
+  // Helper to check if we're using AIE2p or architectures with similar behavior
+  // This determines how accumulators are represented in LLVM IR:
+  // - AIE2:  Uses packed I64 types (e.g., vector<8xi64>) for float accumulators
+  // - AIE2p: Uses native F32/I32 types (e.g., vector<16xf32>) for accumulators
+  static constexpr bool usesNativeF32Types = (Arch == AIEArch::AIE2p);
+};
+
+// Base template for UPSOpConversion
+template <typename AIETrait>
+class UPSOpConversionBase : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::UPSOp>::ConvertOpToLLVMPattern;
-
-  UPSOpConversion(const LLVMTypeConverter &typeConverter,
-                  StringRef aieTargetParam)
-      : ConvertOpToLLVMPattern(typeConverter), aieTarget(aieTargetParam) {}
-
-  StringRef aieTarget;
 
   LogicalResult
   matchAndRewrite(aievec::UPSOp op, OpAdaptor adaptor,
@@ -1011,6 +1066,7 @@ public:
     // create xllvm intrinsic
     // Integer types
     Value upsIntrOp = nullptr;
+    constexpr bool usesNativeF32 = AIETrait::usesNativeF32Types;
     if (llvm::isa<IntegerType>(resultScaTy)) {
       // create constant for sign
       auto signCst = rewriter.create<LLVM::ConstantOp>(
@@ -1020,12 +1076,11 @@ public:
           rewriter.getI32IntegerAttr(op.getShift()));
 
       SmallVector<Value> operands({opSrcVal, shiftCst, signCst});
-      bool isAIE2p = (aieTarget == "aie2p");
       if (resultVectorSize == 512) {
         if (resultBitWidth == 32) {
           // v16int16 -> v16acc32
           // AIE2p uses native I32 types, AIE2 uses packed I64 types
-          if (isAIE2p)
+          if (usesNativeF32)
             upsIntrOp = rewriter.create<xllvm::Acc32V16I256UpsAIE2pIntrOp>(
                 loc, VectorType::get({16}, rewriter.getI32Type()),
                 forceCastOperandsToSignature(
@@ -1041,7 +1096,7 @@ public:
                      rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64) {
           // v8int32 -> v8acc64
-          if (isAIE2p)
+          if (usesNativeF32)
             upsIntrOp = rewriter.create<xllvm::Acc64V8I256UpsAIE2pIntrOp>(
                 loc, VectorType::get({8}, rewriter.getI64Type()),
                 forceCastOperandsToSignature(
@@ -1065,7 +1120,7 @@ public:
         if (resultBitWidth == 32 && srcBitWidth == 16) {
           // v32int16 -> v32acc32
           // AIE2p uses native I32 types, AIE2 uses packed I64 types
-          if (isAIE2p)
+          if (usesNativeF32)
             upsIntrOp = rewriter.create<xllvm::Acc32V32I512UpsAIE2pIntrOp>(
                 loc, VectorType::get({32}, rewriter.getI32Type()),
                 forceCastOperandsToSignature(
@@ -1081,7 +1136,7 @@ public:
                      rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64 && srcBitWidth == 32) {
           // v16int32 -> v16acc64
-          if (isAIE2p)
+          if (usesNativeF32)
             upsIntrOp = rewriter.create<xllvm::Acc64V16I512UpsAIE2pIntrOp>(
                 loc, VectorType::get({16}, rewriter.getI64Type()),
                 forceCastOperandsToSignature(
@@ -1097,7 +1152,7 @@ public:
                      rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64 && srcBitWidth == 16) {
           // v16int16 -> v16acc64
-          if (isAIE2p)
+          if (usesNativeF32)
             upsIntrOp = rewriter.create<xllvm::Acc64V16I256UpsAIE2pIntrOp>(
                 loc, VectorType::get({16}, rewriter.getI64Type()),
                 forceCastOperandsToSignature(
@@ -1114,7 +1169,7 @@ public:
         } else if (resultBitWidth == 32 && srcBitWidth == 8) {
           // v32int8 -> v32acc32
           // AIE2p uses native I32 types, AIE2 uses packed I64 types
-          if (isAIE2p)
+          if (usesNativeF32)
             upsIntrOp = rewriter.create<xllvm::Acc32V32I256UpsAIE2pIntrOp>(
                 loc, VectorType::get({32}, rewriter.getI32Type()),
                 forceCastOperandsToSignature(
@@ -1133,10 +1188,9 @@ public:
     } else {
       // Float types
       // AIE2p uses native F32 types, AIE2 uses packed I64 types
-      bool isAIE2p = (aieTarget == "aie2p");
       if (resultVectorSize == 512) {
         // v16bfloat16 -> v16accfloat
-        if (isAIE2p)
+        if (usesNativeF32)
           upsIntrOp =
               rewriter.create<xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp>(
                   loc, VectorType::get({16}, rewriter.getF32Type()),
@@ -1170,7 +1224,7 @@ public:
                   {VectorType::get({16}, rewriter.getI32Type()),
                    rewriter.getI32Type()}));
           // AIE2p uses native F32 types, AIE2 uses packed I64 types
-          if (isAIE2p)
+          if (usesNativeF32)
             return rewriter.create<xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp>(
                 loc, VectorType::get({16}, rewriter.getF32Type()),
                 forceCastOperandsToSignature(
@@ -1215,15 +1269,16 @@ public:
   }
 };
 
-class SRSOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::SRSOp> {
+// AIE2 and AIE2p specializations
+using UPSOpAIE2Conversion = UPSOpConversionBase<AIETargetTrait<AIEArch::AIE2>>;
+using UPSOpAIE2pConversion =
+    UPSOpConversionBase<AIETargetTrait<AIEArch::AIE2p>>;
+
+// Base template for SRSOpConversion
+template <typename AIETrait>
+class SRSOpConversionBase : public mlir::ConvertOpToLLVMPattern<aievec::SRSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::SRSOp>::ConvertOpToLLVMPattern;
-
-  SRSOpConversion(const LLVMTypeConverter &typeConverter,
-                  StringRef aieTargetParam)
-      : ConvertOpToLLVMPattern(typeConverter), aieTarget(aieTargetParam) {}
-
-  StringRef aieTarget;
 
   LogicalResult
   matchAndRewrite(aievec::SRSOp op, OpAdaptor adaptor,
@@ -1239,7 +1294,7 @@ public:
 
     // Integer types
     Value srsIntrOp = nullptr;
-    bool isAIE2p = (aieTarget == "aie2p");
+    constexpr bool usesNativeF32 = AIETrait::usesNativeF32Types;
     if (llvm::isa<IntegerType>(resultScaTy)) {
       // create constant for sign
       auto signCst = rewriter.create<LLVM::ConstantOp>(
@@ -1252,7 +1307,7 @@ public:
         if (resultBitWidth == 16) {
           // v32acc32 -> v32int16
           // AIE2p uses native I32 types, AIE2 uses packed I64 types
-          if (isAIE2p)
+          if (usesNativeF32)
             srsIntrOp = rewriter.create<xllvm::I512V32Acc32SrsAIE2pIntrOp>(
                 loc, VectorType::get({32}, rewriter.getI16Type()),
                 forceCastOperandsToSignature(
@@ -1268,7 +1323,7 @@ public:
                      rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32) {
           // v16acc64 -> v16int32
-          if (isAIE2p)
+          if (usesNativeF32)
             srsIntrOp = rewriter.create<xllvm::I512V16Acc64SrsAIE2pIntrOp>(
                 loc, VectorType::get({16}, rewriter.getI32Type()),
                 forceCastOperandsToSignature(
@@ -1292,7 +1347,7 @@ public:
         if (resultBitWidth == 16 && srcBitWidth == 32) {
           // v16acc32 -> v16int16
           // AIE2p uses native I32 types, AIE2 uses packed I64 types
-          if (isAIE2p)
+          if (usesNativeF32)
             srsIntrOp = rewriter.create<xllvm::I256V16Acc32SrsAIE2pIntrOp>(
                 loc, VectorType::get({16}, rewriter.getI16Type()),
                 forceCastOperandsToSignature(
@@ -1309,7 +1364,7 @@ public:
         } else if (resultBitWidth == 8 && srcBitWidth == 32) {
           // v32acc32 -> v32int8
           // AIE2p uses native I32 types, AIE2 uses packed I64 types
-          if (isAIE2p)
+          if (usesNativeF32)
             srsIntrOp = rewriter.create<xllvm::I256V32Acc32SrsAIE2pIntrOp>(
                 loc, VectorType::get({32}, rewriter.getI8Type()),
                 forceCastOperandsToSignature(
@@ -1325,7 +1380,7 @@ public:
                      rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 16 && srcBitWidth == 64) {
           // v16acc64 -> v16int16
-          if (isAIE2p)
+          if (usesNativeF32)
             srsIntrOp = rewriter.create<xllvm::I256V16Acc64SrsAIE2pIntrOp>(
                 loc, VectorType::get({16}, rewriter.getI16Type()),
                 forceCastOperandsToSignature(
@@ -1341,7 +1396,7 @@ public:
                      rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32 && srcBitWidth == 64) {
           // v8acc64 -> v8int32
-          if (isAIE2p)
+          if (usesNativeF32)
             srsIntrOp = rewriter.create<xllvm::I256V8Acc64SrsAIE2pIntrOp>(
                 loc, VectorType::get({8}, rewriter.getI32Type()),
                 forceCastOperandsToSignature(
@@ -1362,7 +1417,7 @@ public:
       // AIE2p uses native F32 types, AIE2 uses packed I64 types
       if (resultVectorSize == 256) {
         // v16accfloat -> v16bfloat16
-        if (isAIE2p)
+        if (usesNativeF32)
           srsIntrOp =
               rewriter.create<xllvm::Vector16AccFloatToV16BF16AIE2pIntrOp>(
                   loc, VectorType::get({16}, rewriter.getBF16Type()),
@@ -1396,7 +1451,7 @@ public:
                   {VectorType::get({32}, rewriter.getI32Type()),
                    rewriter.getI32Type()}));
           // AIE2p uses native F32 types, AIE2 uses packed I64 types
-          if (isAIE2p)
+          if (usesNativeF32)
             return rewriter.create<xllvm::Vector16AccFloatToV16BF16AIE2pIntrOp>(
                 loc, VectorType::get({16}, rewriter.getBF16Type()),
                 forceCastOperandsToSignature(
@@ -1435,6 +1490,11 @@ public:
     return success();
   }
 };
+
+// AIE2 and AIE2p specializations
+using SRSOpAIE2Conversion = SRSOpConversionBase<AIETargetTrait<AIEArch::AIE2>>;
+using SRSOpAIE2pConversion =
+    SRSOpConversionBase<AIETargetTrait<AIEArch::AIE2p>>;
 
 class UPDOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPDOp> {
 public:
@@ -2627,10 +2687,11 @@ class ShuffleOpConversion
   }
 };
 
-void populateAIEVecToLLVMConversionPatterns(
+void populateAIEVecToLLVMCommonConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
-    Aie2Fp32Emulation aie2Fp32EmulationOption, StringRef aieTarget) {
+    Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // clang-format off
+  // Patterns that work for all backends (AIE1, AIE2, AIE2p)
   patterns.add<AddOpConversion,
                SubOpConversion,
                FMAOpConversion,
@@ -2651,9 +2712,33 @@ void populateAIEVecToLLVMConversionPatterns(
                ExtractElemOpConversion,
                FoldAIECastOps,
                ShuffleOpConversion>(converter);
-  patterns.add<AddElemOpConversion, UPSOpConversion, SRSOpConversion>(converter, aieTarget);
   patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   // clang-format on
+}
+
+void populateAIEVecToLLVMAIE2ConversionPatterns(
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
+  // Patterns specific to AIE2 backend
+  patterns.add<AddElemOpAIE2Conversion>(converter);
+  patterns.add<UPSOpAIE2Conversion, SRSOpAIE2Conversion>(converter);
+}
+
+void populateAIEVecToLLVMAIE2pConversionPatterns(
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
+  // Patterns specific to AIE2p backend
+  patterns.add<AddElemOpAIE2pConversion>(converter);
+  patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
+}
+
+void populateAIEVecToLLVMConversionPatterns(
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
+    Aie2Fp32Emulation aie2Fp32EmulationOption, StringRef aieTarget) {
+  populateAIEVecToLLVMCommonConversionPatterns(converter, patterns,
+                                               aie2Fp32EmulationOption);
+  if (aieTarget == "aie2p")
+    populateAIEVecToLLVMAIE2pConversionPatterns(converter, patterns);
+  else
+    populateAIEVecToLLVMAIE2ConversionPatterns(converter, patterns);
 }
 
 struct ConvertAIEVecToLLVMPass
