@@ -1,4 +1,15 @@
+//===- test-srs.mlir -------------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt %s -split-input-file --convert-aievec-to-llvm | FileCheck %s
+// RUN: aie-opt %s -split-input-file --convert-aievec-to-llvm="aie-target=aie2p" | FileCheck %s --check-prefix=AIE2P
 
 func.func @v32i16_srs_v32i32(%arg0 : vector<32xi32>) {
   %c0 = arith.constant 0 : i32
@@ -23,6 +34,10 @@ func.func @v32i16_srs_v32i32(%arg0 : vector<32xi32>) {
 // CHECK-SAME: [[BITCAST1]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<16xi64>, i32, i32) -> vector<32xi16>
 
+// AIE2P-LABEL: @v32i16_srs_v32i32
+// AIE2P: xllvm.intr.aie2p.I512.v32.acc32.srs
+// AIE2P: xllvm.intr.aie2p.I512.v32.acc32.srs
+
 // -----
 
 func.func @v16i32_srs_v16i64(%arg0 : vector<16xi64>) {
@@ -45,6 +60,10 @@ func.func @v16i32_srs_v16i64(%arg0 : vector<16xi64>) {
 // CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2.I512.v16.acc64.srs"(
 // CHECK-SAME: [[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<16xi64>, i32, i32) -> vector<16xi32>
+
+// AIE2P-LABEL: @v16i32_srs_v16i64
+// AIE2P: xllvm.intr.aie2p.I512.v16.acc64.srs
+// AIE2P: xllvm.intr.aie2p.I512.v16.acc64.srs
 
 // -----
 
@@ -71,6 +90,10 @@ func.func @v16i16_srs_v16i32(%arg0 : vector<16xi32>) {
 // CHECK-SAME: [[BITCAST1]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<8xi64>, i32, i32) -> vector<16xi16>
 
+// AIE2P-LABEL: @v16i16_srs_v16i32
+// AIE2P: xllvm.intr.aie2p.I256.v16.acc32.srs
+// AIE2P: xllvm.intr.aie2p.I256.v16.acc32.srs
+
 // -----
 
 func.func @v32i8_srs_v32i32(%arg0 : vector<32xi32>) {
@@ -96,6 +119,10 @@ func.func @v32i8_srs_v32i32(%arg0 : vector<32xi32>) {
 // CHECK-SAME: [[BITCAST1]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<16xi64>, i32, i32) -> vector<32xi8>
 
+// AIE2P-LABEL: @v32i8_srs_v32i32
+// AIE2P: xllvm.intr.aie2p.I256.v32.acc32.srs
+// AIE2P: xllvm.intr.aie2p.I256.v32.acc32.srs
+
 // -----
 
 func.func @v16i16_srs_v16i64(%arg0 : vector<16xi64>) {
@@ -118,6 +145,10 @@ func.func @v16i16_srs_v16i64(%arg0 : vector<16xi64>) {
 // CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2.I256.v16.acc64.srs"(
 // CHECK-SAME: [[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<16xi64>, i32, i32) -> vector<16xi16>
+
+// AIE2P-LABEL: @v16i16_srs_v16i64
+// AIE2P: xllvm.intr.aie2p.I256.v16.acc64.srs
+// AIE2P: xllvm.intr.aie2p.I256.v16.acc64.srs
 
 // -----
 
@@ -142,6 +173,10 @@ func.func @v8i32_srs_v8i64(%arg0 : vector<8xi64>) {
 // CHECK-SAME: [[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<8xi64>, i32, i32) -> vector<8xi32>
 
+// AIE2P-LABEL: @v8i32_srs_v8i64
+// AIE2P: xllvm.intr.aie2p.I256.v8.acc64.srs
+// AIE2P: xllvm.intr.aie2p.I256.v8.acc64.srs
+
 // -----
 
 func.func @v16bf16_srs_v16f32(%arg0 : vector<16xf32>) {
@@ -164,6 +199,10 @@ func.func @v16bf16_srs_v16f32(%arg0 : vector<16xf32>) {
 // CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2.v16accfloat.to.v16bf16"(
 // CHECK-SAME: [[BITCAST1]]) : 
 // CHECK-SAME: (vector<8xi64>) -> vector<16xbf16>
+
+// AIE2P-LABEL: @v16bf16_srs_v16f32
+// AIE2P: xllvm.intr.aie2p.v16accfloat.to.v16bf16
+// AIE2P: xllvm.intr.aie2p.v16accfloat.to.v16bf16
 
 // -----
 
@@ -220,6 +259,9 @@ func.func @v4x4bf16_srs_v4x4f32(%arg0 : vector<4x4xf32>) {
 // CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS0]] : vector<16xbf16> to vector<16xbf16>
 // CHECK-NEXT: %[[RESHAPE0:.*]] = vector.shape_cast %[[BITCAST1]] : vector<16xbf16> to vector<4x4xbf16>
 
+// AIE2P-LABEL: @v4x4bf16_srs_v4x4f32
+// AIE2P: xllvm.intr.aie2p.v16accfloat.to.v16bf16
+
 // -----
 
 func.func @v1x1x4x4bf16_srs_v1x1x4x4f32(%arg0 : vector<1x1x4x4xf32>) {
@@ -238,6 +280,9 @@ func.func @v1x1x4x4bf16_srs_v1x1x4x4f32(%arg0 : vector<1x1x4x4xf32>) {
 // CHECK-SAME: (vector<8xi64>) -> vector<16xbf16>
 // CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS0]] : vector<16xbf16> to vector<16xbf16>
 // CHECK-NEXT: %[[RESHAPE0:.*]] = vector.shape_cast %[[BITCAST1]] : vector<16xbf16> to vector<1x1x4x4xbf16>
+
+// AIE2P-LABEL: @v1x1x4x4bf16_srs_v1x1x4x4f32
+// AIE2P: xllvm.intr.aie2p.v16accfloat.to.v16bf16
 
 // -----
 
@@ -258,3 +303,6 @@ func.func @v2x8i16_srs_v2x8i32(%arg0 : vector<2x8xi32>) {
 // CHECK-SAME: (vector<8xi64>, i32, i32) -> vector<16xi16>
 // CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS0]] : vector<16xi16> to vector<16xi16>
 // CHECK-NEXT: %[[RESHAPE0:.*]] = vector.shape_cast %[[BITCAST1]] : vector<16xi16> to vector<2x8xi16>
+
+// AIE2P-LABEL: @v2x8i16_srs_v2x8i32
+// AIE2P: xllvm.intr.aie2p.I256.v16.acc32.srs

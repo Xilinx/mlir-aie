@@ -1,4 +1,15 @@
+//===- test-ups.mlir -------------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt %s -split-input-file --convert-aievec-to-llvm | FileCheck %s
+// RUN: aie-opt %s -split-input-file --convert-aievec-to-llvm="aie-target=aie2p" | FileCheck %s --check-prefix=AIE2P
 
 func.func @v16i32_ups_v16i16(%arg0 : vector<16xi16>) {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<16xi16>, vector<16xi32>
@@ -21,6 +32,10 @@ func.func @v16i32_ups_v16i16(%arg0 : vector<16xi16>) {
 // CHECK-SAME: (vector<16xi16>, i32, i32) -> vector<8xi64>
 // CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS1]] : vector<8xi64> to vector<16xi32>
 
+// AIE2P-LABEL: @v16i32_ups_v16i16
+// AIE2P: xllvm.intr.aie2p.acc32.v16.I256.ups
+// AIE2P: xllvm.intr.aie2p.acc32.v16.I256.ups
+
 // -----
 
 func.func @v8acc64_ups_v8i32(%arg0 : vector<8xi32>) {
@@ -41,6 +56,10 @@ func.func @v8acc64_ups_v8i32(%arg0 : vector<8xi32>) {
 // CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2.acc64.v8.I256.ups"(
 // CHECK-SAME: [[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<8xi32>, i32, i32) -> vector<8xi64>
+
+// AIE2P-LABEL: @v8acc64_ups_v8i32
+// AIE2P: xllvm.intr.aie2p.acc64.v8.I256.ups
+// AIE2P: xllvm.intr.aie2p.acc64.v8.I256.ups
 
 // -----
 
@@ -65,6 +84,10 @@ func.func @v32i32_ups_v32i16(%arg0 : vector<32xi16>) {
 // CHECK-SAME: (vector<32xi16>, i32, i32) -> vector<16xi64>
 // CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS1]] : vector<16xi64> to vector<32xi32>
 
+// AIE2P-LABEL: @v32i32_ups_v32i16
+// AIE2P: xllvm.intr.aie2p.acc32.v32.I512.ups
+// AIE2P: xllvm.intr.aie2p.acc32.v32.I512.ups
+
 // -----
 
 func.func @v16acc64_ups_v16i32(%arg0 : vector<16xi32>) {
@@ -86,6 +109,10 @@ func.func @v16acc64_ups_v16i32(%arg0 : vector<16xi32>) {
 // CHECK-SAME: [[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<16xi32>, i32, i32) -> vector<16xi64>
 
+// AIE2P-LABEL: @v16acc64_ups_v16i32
+// AIE2P: xllvm.intr.aie2p.acc64.v16.I512.ups
+// AIE2P: xllvm.intr.aie2p.acc64.v16.I512.ups
+
 // -----
 
 func.func @v16acc64_ups_v16i16(%arg0 : vector<16xi16>) {
@@ -106,6 +133,10 @@ func.func @v16acc64_ups_v16i16(%arg0 : vector<16xi16>) {
 // CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2.acc64.v16.I256.ups"(
 // CHECK-SAME: [[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<16xi16>, i32, i32) -> vector<16xi64>
+
+// AIE2P-LABEL: @v16acc64_ups_v16i16
+// AIE2P: xllvm.intr.aie2p.acc64.v16.I256.ups
+// AIE2P: xllvm.intr.aie2p.acc64.v16.I256.ups
 
 // -----
 
@@ -130,6 +161,10 @@ func.func @v32i32_ups_v32i8(%arg0 : vector<32xi8>) {
 // CHECK-SAME: (vector<32xi8>, i32, i32) -> vector<16xi64>
 // CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS1]] : vector<16xi64> to vector<32xi32>
 
+// AIE2P-LABEL: @v32i32_ups_v32i8
+// AIE2P: xllvm.intr.aie2p.acc32.v32.I256.ups
+// AIE2P: xllvm.intr.aie2p.acc32.v32.I256.ups
+
 // -----
 
 func.func @v16f32_ups_v16bf16(%arg0 : vector<16xbf16>) {
@@ -148,6 +183,10 @@ func.func @v16f32_ups_v16bf16(%arg0 : vector<16xbf16>) {
 // CHECK-SAME: [[ARG0]]) : 
 // CHECK-SAME: (vector<16xbf16>) -> vector<8xi64>
 // CHECK-NEXT: %[[BITCAST1:.*]] = llvm.bitcast %[[SRS1]] : vector<8xi64> to vector<16xf32> 
+
+// AIE2P-LABEL: @v16f32_ups_v16bf16
+// AIE2P: xllvm.intr.aie2p.v16bf16.to.v16accfloat
+// AIE2P: xllvm.intr.aie2p.v16bf16.to.v16accfloat
 
 // -----
 
@@ -195,6 +234,10 @@ func.func @v32f32_ups_v32bf16(%arg0 : vector<32xbf16>) {
 // CHECK: %[[FR:.*]] = llvm.bitcast %3 : vector<16xi64> to vector<32xi32>
 // CHECK: %[[UPS:.*]] = vector.shape_cast %[[FR]]
 // CHECK-sAME:                     : vector<32xi32> to vector<4x8xi32>
+
+// AIE2P-LABEL: @multidim_ups_i8_to_i32
+// AIE2P: xllvm.intr.aie2p.acc32.v32.I256.ups
+
 func.func @multidim_ups_i8_to_i32(%arg0 : vector<4x8xi8>) -> vector<4x8xi32> {
   %0 = aievec.ups %arg0 {shift = 0 : i8} : vector<4x8xi8>, vector<4x8xi32>
   return %0 : vector<4x8xi32>
