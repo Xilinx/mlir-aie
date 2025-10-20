@@ -57,7 +57,9 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
         # Tile declarations
         ShimTile = tile(0, 0)
         CtrlShimTile = tile(1, 0)
-        ComputeTile2 = tile(0, 2) # {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
+        ComputeTile2 = tile(
+            0, 2
+        )  # {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, tile_ty)
@@ -85,7 +87,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
             trace_utils.configure_packet_ctrl_flow([ComputeTile2], CtrlShimTile)
-       
+
         trace_size_int32 = trace_size // 4
 
         # To/from AIE-array data movement
@@ -134,8 +136,8 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
 
             if trace_size > 0:
                 trace_utils.config_ctrl_pkts_aie(
-                    [ComputeTile2],
-                    CtrlShimTile, output_offset=trace_size, num_pkts=2)
+                    [ComputeTile2], CtrlShimTile, output_offset=trace_size, num_pkts=2
+                )
 
             if trace_size > 0:
                 trace_utils.gen_trace_done_aie2(ShimTile)
