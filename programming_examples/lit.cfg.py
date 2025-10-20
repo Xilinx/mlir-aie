@@ -39,6 +39,10 @@ config.substitutions.append(
     )
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
+
+# make sure JIT stores compiled designs in different subdirectory for each test run
+llvm_config.with_system_environment("IRON_CACHE_HOME")
+
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 
@@ -237,6 +241,9 @@ if config.vitis_root:
     config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
     prepend_path(config.vitis_aietools_bin)
     llvm_config.with_environment("VITIS", config.vitis_root)
+
+# Prepend path to XRT installation, which contains a more recent `aiebu-asm` than the Vitis installation.
+prepend_path(config.xrt_bin_dir)
 
 peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
 prepend_path(config.llvm_tools_dir)

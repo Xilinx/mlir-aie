@@ -27,8 +27,12 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
+    Symbol,
+    AIETarget, 
+    HasParent<"mlir::ModuleOp">,
+    SymbolTable, 
+    SingleBlockImplicitTerminator<"EndOp">, 
+    IsolatedFromAbove
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -55,13 +59,19 @@ def AIE_DeviceOp: AIE_Op<"device", [
     ```
   }];
 
-  let arguments = (ins AIEDevice:$device);
+  let arguments = (
+    ins AIEDevice:$device,
+        DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name
+  );
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
-    `(` $device `)` regions attr-dict
+    `(` $device `)` ($sym_name^)? regions attr-dict
   }];
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
+    static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
+    static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
+    static llvm::StringRef getDefaultDeviceName() { return "main"; }
   }];
 }
 
@@ -325,6 +335,11 @@ def AIE_CoreOp: AIE_Op<"core", [
     for each core.  The name of this file can be be specified using the `elf_file`
     attribute.
 
+    If the `elf_file` attribute is present, no MLIR besides a terminator may be
+    present in the core; in that case, the binary file linked dictates what 
+    will run in the core. The path specified should is relative to the MLIR
+    file.
+
     This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
     reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
     are always stored in the local core memory, to avoid conflicts with static data allocations
@@ -359,6 +374,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     int colIndex();
     int rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
+    bool isEmpty();
     TileOp getTileOp();
     using ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames;
   }];
@@ -1567,7 +1583,7 @@ def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
   let assemblyFormat = [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
 }
 
-def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">]> {
+def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
     This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
@@ -1591,7 +1607,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   }];
 
   let arguments = (
-    ins FlatSymbolRefAttr:$sym_name,
+    ins SymbolNameAttr:$sym_name,
         DMAChannelDir:$channel_dir,
         AIEI64Attr:$channel_index,
         AIEI64Attr:$col,
@@ -1610,15 +1626,6 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
 
-  let builders = [
-    OpBuilder<(ins "mlir::StringRef":$sym_name, "DMAChannelDir":$dir, "int":$channel_index,
-               "int":$col, "bool":$plio), [{
-      build($_builder, $_state, ::mlir::SymbolRefAttr::get(odsBuilder.getContext(), sym_name), 
-            DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
-            $_builder.getI64IntegerAttr(channel_index), 
-            $_builder.getI64IntegerAttr(col), $_builder.getBoolAttr(plio), nullptr);
-    }]>
-  ];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {

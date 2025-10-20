@@ -62,6 +62,9 @@ config.substitutions.append(
     )
 )
 
+# make sure JIT stores compiled designs in different subdirectory for each test run
+llvm_config.with_system_environment("IRON_CACHE_HOME")
+
 # for xchesscc_wrapper
 llvm_config.with_environment("AIETOOLS", config.vitis_aietools_dir)
 # for peano clang
@@ -234,6 +237,9 @@ if config.vitis_root:
     prepend_path(config.vitis_aietools_bin)
     llvm_config.with_environment("VITIS", config.vitis_root)
 
+# Prepend path to XRT installation, which contains a more recent `aiebu-asm` than the Vitis installation.
+prepend_path(config.xrt_bin_dir)
+
 peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
 prepend_path(config.llvm_tools_dir)
 prepend_path(peano_tools_dir)
@@ -335,6 +341,9 @@ llvm_config.add_tool_substitutions(tools, tool_dirs)
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
     config.parallelism_group = "board"
+
+# Concurrency tests control their own parallelism, so run them serially
+lit_config.parallelism_groups["concurrency"] = 1
 
 if "LIT_AVAILABLE_FEATURES" in os.environ:
     for feature in os.environ["LIT_AVAILABLE_FEATURES"].split():

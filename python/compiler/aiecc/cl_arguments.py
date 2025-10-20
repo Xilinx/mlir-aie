@@ -101,14 +101,14 @@ def parse_args(args=None):
         dest="compile",
         default=not aie_disable_compile,
         action="store_true",
-        help="Enable compiling of AIE code",
+        help="Enable compiling of AIE code for each core in the array",
     )
     parser.add_argument(
         "--no-compile",
         dest="compile",
         default=not aie_disable_compile,
         action="store_false",
-        help="Disable compiling of AIE code",
+        help="Disable compiling of AIE code for each core in the array",
     )
     parser.add_argument(
         "--host-target",
@@ -237,8 +237,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--npu-insts-name",
         dest="insts_name",
-        default="npu_insts.bin",
-        help="Output instructions filename for NPU target",
+        default="{0}_{1}.bin",
+        help="Output instructions filename for NPU target. `{0}` is replaced with device name, `{1}` with the selected runtime sequence.",
     )
     parser.add_argument(
         "--aie-generate-cdo",
@@ -259,8 +259,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--txn-name",
         dest="txn_name",
-        default="transaction.mlir",
-        help="Output filename for transaction binary mlir",
+        default="{0}_transaction.mlir",
+        help="Output filename for transaction binary mlir. `{0}` is replaced with device name.",
     )
     parser.add_argument(
         "--aie-generate-ctrlpkt",
@@ -269,6 +269,24 @@ def parse_args(args=None):
         action="store_const",
         const=True,
         help="Generate control packets for configuration",
+    )
+    parser.add_argument(
+        "--ctrlpkt-name",
+        dest="ctrlpkt_name",
+        default="{0}_ctrlpkt.bin",
+        help="Output filename for control packet binary data. `{0}` is replaced with the device name.",
+    )
+    parser.add_argument(
+        "--ctrlpkt-dma-seq-name",
+        dest="ctrlpkt_dma_seq_name",
+        default="{0}_ctrlpkt_dma_seq.bin",
+        help="Output filename for control packet DMA sequence. `{0}` is replaced with the device name.",
+    )
+    parser.add_argument(
+        "--ctrlpkt-elf-name",
+        dest="ctrlpkt_elf_name",
+        default="{0}_ctrlpkt.elf",
+        help="Output filename for control packet DMA sequence and control packet binary data in combined ELF file. `{0}` is replaced with the device name.",
     )
     parser.add_argument(
         "--aie-generate-xclbin",
@@ -295,8 +313,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--xclbin-name",
         dest="xclbin_name",
-        default="final.xclbin",
-        help="Output xclbin filename for CDO/XCLBIN target",
+        default="{0}.xclbin",
+        help="Output xclbin filename for CDO/XCLBIN target. `{0}` is replaced with device name.",
     )
     parser.add_argument(
         "--aie-generate-pdi",
@@ -309,8 +327,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--pdi-name",
         dest="pdi_name",
-        default="design.pdi",
-        help="Output pdi filename for PDI/CDO/XCLBIN target",
+        default="{0}.pdi",
+        help="Output pdi filename for PDI/CDO/XCLBIN target. `{0}` is replaced with device name.",
     )
     parser.add_argument(
         "--xclbin-kernel-name",
@@ -341,8 +359,33 @@ def parse_args(args=None):
     parser.add_argument(
         "--elf-name",
         dest="elf_name",
-        default="design.elf",
-        help="Output elf filename for ELF target",
+        default="design_{0}.elf",
+        help="Output elf filename for ELF target. `{0}` is replaced with the device name.",
+    )
+    parser.add_argument(
+        "--device-name",
+        dest="device_name",
+        default="",
+        help="Symbol name of the device configuration to compile. If none supplied, all devices are compiled.",
+    )
+    parser.add_argument(
+        "--sequence-name",
+        dest="sequence_name",
+        default="",
+        help="Symbol name of the runtime sequence to compile. If none supplied, all runtime sequences in the selected device(s) are compiled.",
+    )
+    parser.add_argument(
+        "--generate-full-elf",
+        dest="generate_full_elf",
+        default=False,
+        action="store_true",
+        help="Generate complete full ELF using aiebu-asm",
+    )
+    parser.add_argument(
+        "--full-elf-name",
+        dest="full_elf_name",
+        default="aie.elf",
+        help="Output filename for full ELF (default: aie.elf)",
     )
 
     opts = parser.parse_args(args)

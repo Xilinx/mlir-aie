@@ -1242,10 +1242,7 @@ struct AIEObjectFifoStatefulTransformPass
               int64_t tripCount = 0;
               if (remLoop.getSingleLowerBound() &&
                   remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
-                tripCount = constantTripCount(*(remLoop.getSingleLowerBound()),
-                                              *(remLoop.getSingleUpperBound()),
-                                              *(remLoop.getSingleStep()))
-                                .value_or(0);
+                tripCount = remLoop.getStaticTripCount()->getSExtValue();
               }
               int unrollFactor =
                   computeLCM(objFifoSizes); // also counts original loop body
@@ -1638,18 +1635,25 @@ struct AIEObjectFifoStatefulTransformPass
   /// shimDMAAllocationOp containing the channelDir, channelIndex and
   /// shimTile col assigned by the objectFifo lowering.
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
-                                      FlatSymbolRefAttr obj_fifo, int colIndex,
-                                      DMAChannelDir channelDir,
+                                      ObjectFifoCreateOp &objFifoOp,
+                                      int colIndex, DMAChannelDir channelDir,
                                       int channelIndex, bool plio,
                                       std::optional<PacketInfoAttr> packet) {
     PacketInfoAttr packetInfo = nullptr;
     if (packet)
       packetInfo = *packet;
-    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(), obj_fifo,
+    std::string alloc_name = getShimAllocationName(objFifoOp.getName());
+    // SymbolRefAttr::get(ctx, objFifoOp.getName())
+    builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(),
+                                        StringAttr::get(ctx, alloc_name),
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
                                         builder.getI64IntegerAttr(colIndex),
                                         builder.getBoolAttr(plio), packetInfo);
+  }
+
+  static std::string getShimAllocationName(llvm::StringRef objFifoName) {
+    return (objFifoName + "_shim_alloc").str();
   }
 
   /// Function used to verify that an objectfifo is present in at most one
@@ -1911,9 +1915,9 @@ struct AIEObjectFifoStatefulTransformPass
 
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
-            builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-            producer.getProducerTileOp().colIndex(), producerChan.direction,
-            producerChan.channel, producer.getPlio(), bdPacket);
+            builder, ctx, producer, producer.getProducerTileOp().colIndex(),
+            producerChan.direction, producerChan.channel, producer.getPlio(),
+            bdPacket);
 
       PacketFlowOp packetflow;
       if (clPacketSwObjectFifos) {
@@ -1966,9 +1970,9 @@ struct AIEObjectFifoStatefulTransformPass
 
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
-              builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-              consumer.getProducerTileOp().colIndex(), consumerChan.direction,
-              consumerChan.channel, producer.getPlio(), {});
+              builder, ctx, producer, consumer.getProducerTileOp().colIndex(),
+              consumerChan.direction, consumerChan.channel, producer.getPlio(),
+              {});
 
         if (!clPacketSwObjectFifos) {
           // create flow
@@ -2236,34 +2240,41 @@ struct AIEObjectFifoStatefulTransformPass
       if (res.wasInterrupted())
         return signalPassFailure();
     }
-    // make global symbols to replace the to be erased ObjectFifoCreateOps
-    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
-      builder.setInsertionPointToStart(device.getBody());
-      auto sym_name = createOp.getName();
-      createOp->setAttr(SymbolTable::getSymbolAttrName(),
-                        builder.getStringAttr("__erase_" + sym_name));
-      auto memrefType = llvm::cast<AIEObjectFifoType>(createOp.getElemType())
-                            .getElementType();
-      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), sym_name,
-                                       builder.getStringAttr("public"),
-                                       memrefType, nullptr, false, nullptr);
-    }
 
     //===------------------------------------------------------------------===//
     // Remove old ops
     //===------------------------------------------------------------------===//
     SetVector<Operation *> opsToErase;
     device.walk([&](Operation *op) {
-      if (isa<ObjectFifoCreateOp, ObjectFifoLinkOp,
-              ObjectFifoRegisterExternalBuffersOp, ObjectFifoAcquireOp,
-              ObjectFifoSubviewAccessOp, ObjectFifoReleaseOp,
-              ObjectFifoAllocateOp>(op))
+      if (isa<ObjectFifoLinkOp, ObjectFifoRegisterExternalBuffersOp,
+              ObjectFifoAcquireOp, ObjectFifoSubviewAccessOp,
+              ObjectFifoReleaseOp, ObjectFifoAllocateOp>(op))
         opsToErase.insert(op);
     });
     SmallVector<Operation *> sorted{opsToErase.begin(), opsToErase.end()};
     computeTopologicalSorting(sorted);
     for (auto *op : llvm::reverse(sorted))
       op->erase();
+
+    //===------------------------------------------------------------------===//
+    // Replace any remaining uses of object fifo symbol with symbol of its shim
+    // dma allocation.
+    //===------------------------------------------------------------------===//
+    opsToErase.clear();
+    for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+      std::string shimAllocName = getShimAllocationName(createOp.getName());
+      if (failed(SymbolTable::replaceAllSymbolUses(
+              createOp.getNameAttr(), builder.getStringAttr(shimAllocName),
+              device))) {
+        createOp.emitError(
+            "failed to replace symbol uses with shim allocation");
+        return signalPassFailure();
+      }
+      opsToErase.insert(createOp);
+    }
+    for (auto *op : opsToErase) {
+      op->erase();
+    }
   }
 };
 

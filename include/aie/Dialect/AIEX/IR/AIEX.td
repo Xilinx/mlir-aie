@@ -17,6 +17,7 @@ include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
+include "mlir/IR/BuiltinAttributes.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/DataLayoutInterfaces.td"
@@ -527,7 +528,11 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent<"AIE::DeviceOp">]> {
+def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [
+  Symbol,
+  NoTerminator, 
+  HasParent<"AIE::DeviceOp">, 
+]> {
   let summary = "Program the configuration co-processor of the AI Engine array";
   let description = [{
     Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
@@ -537,13 +542,69 @@ def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [NoTerminator, HasParent
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
   }];
   let arguments = (
-    ins OptionalAttr<SymbolNameAttr>:$sym_name
+    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name
   );
   let regions = (region
     AnyRegion:$body
   );
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    static llvm::StringRef getDefaultRuntimeSequenceName() { return "sequence"; }
+    static RuntimeSequenceOp getForSymbolInDevice(AIE::DeviceOp module, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDeviceOrError(AIE::DeviceOp module, llvm::StringRef symbol);
+  }];
+  let extraClassDefinition = [{
+  }];
+}
+
+def AIE_ConfigureOp: AIEX_Op<"configure", [
+  HasParent<"RuntimeSequenceOp">,
+  NoTerminator
+]>,
+  Results<(outs Index:$result)>
+ {
+  let summary = "Set up a configuration (program memories, stream switches, etc.) on the NPU device.";
+  let arguments = (
+    ins FlatSymbolRefAttr:$symbol
+  );
+
+  let assemblyFormat = [{
+     $symbol regions attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    AIE::DeviceOp getReferencedDeviceOp();
+  }];
+
+  let regions = (region
+    AnyRegion:$body
+  );
+
+  let hasVerifier = 1;
+}
+
+def AIE_RunOp: AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
+  let arguments = (
+    ins FlatSymbolRefAttr:$runtime_sequence_symbol,
+        Variadic<AnyType>:$args
+  );
+
+  let assemblyFormat = [{
+     $runtime_sequence_symbol `(` $args `)` `:` `(` type($args) `)` attr-dict
+  }];
+
+  let extraClassDeclaration = [{
+    AIE::DeviceOp getCalleeDeviceOp();
+    RuntimeSequenceOp getCalleeRuntimeSequenceOp();
+  }];
+
+  let hasVerifier = 1;
+  
+  let summary = "Execute a runtime sequence";
+  let description = [{
+    Executes an `aiex.runtime_sequence` with the given name and arguments by inlining its instructions at the call site.
+  }];
 }
 
 def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
@@ -629,7 +690,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
         OptionalAttr<PacketInfoAttr>:$packet,
-        FlatSymbolRefAttr:$metadata,
+        SymbolRefAttr:$metadata,
         I64Attr:$id,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
@@ -772,6 +833,9 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
+  let extraClassDeclaration = [{
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
 }
 
 // MASKWRITE
@@ -798,6 +862,9 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
+  let extraClassDeclaration = [{
+    std::optional<uint32_t> getAbsoluteAddress();
+  }];
 }
 
 // BLOCKWRITE
@@ -822,6 +889,10 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
     into the memory space of aie.tile(column, row).
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
+  }];
+  let extraClassDeclaration = [{
+    std::optional<uint32_t> getAbsoluteAddress();
+    mlir::DenseIntElementsAttr getDataWords(); 
   }];
 }
 
@@ -957,9 +1028,10 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
 def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
   let arguments = (
-    ins I32Attr:$id,
-        OptionalAttr<I32Attr>:$size,
-        OptionalAttr<UI64Attr>:$address
+    ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$id,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$size,
+        DefaultValuedOptionalAttr<UI64Attr, "0">:$address
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
@@ -967,6 +1039,8 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     Load a PDI (Programmable Device Image) to configure the NPU.
     The PDI is identified by `id`. `address` and `size` are typically written at
     runtime by the driver or host program.
+
+    If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
   }];
 }
 
@@ -1025,7 +1099,7 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"Ru
   let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
 
   let arguments = (
-    ins FlatSymbolRefAttr:$alloc,
+    ins SymbolRefAttr:$alloc,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );

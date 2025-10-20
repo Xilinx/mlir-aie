@@ -10,14 +10,6 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-DAG:     memref.global "public" @out1_cons : memref<8xi32>
-// CHECK-DAG:     memref.global "public" @out1 : memref<8xi32>
-// CHECK-DAG:     memref.global "public" @out0_cons : memref<8xi32>
-// CHECK-DAG:     memref.global "public" @out0 : memref<8xi32>
-// CHECK-DAG:     memref.global "public" @in1_cons : memref<8xi32>
-// CHECK-DAG:     memref.global "public" @in1 : memref<8xi32>
-// CHECK-DAG:     memref.global "public" @in0_cons : memref<96000xi32>
-// CHECK-DAG:     memref.global "public" @in0 : memref<96000xi32>
 // CHECK-DAG:     %[[SHIM_NOC_TILE_0_0:.*]] = aie.tile(0, 0)
 // CHECK-DAG:     %[[MEM_TILE_0_1:.*]] = aie.tile(0, 1)
 // CHECK-DAG:     %[[MEM_TILE_1_1:.*]] = aie.tile(1, 1)
@@ -42,7 +34,7 @@
 // CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 0, %[[TILE_0_2]], DMA : 0)
 // CHECK:     aie.flow(%[[MEM_TILE_0_1]], DMA : 1, %[[SHIM_NOC_TILE_0_0]], DMA : 0)
 // CHECK:     aie.flow(%[[TILE_0_2]], DMA : 0, %[[MEM_TILE_0_1]], DMA : 1)
-// CHECK:     aie.shim_dma_allocation @in0(MM2S, 0, 0)
+// CHECK:     aie.shim_dma_allocation @in0_shim_alloc(MM2S, 0, 0)
 // CHECK:     %{{.*}} = aie.memtile_dma(%[[MEM_TILE_0_1]]) {
 // CHECK:       aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:
@@ -121,7 +113,7 @@
 // CHECK:     ^bb6:
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @out0(S2MM, 0, 0)
+// CHECK:     aie.shim_dma_allocation @out0_shim_alloc(S2MM, 0, 0)
 // CHECK:   }
 // CHECK: }
 

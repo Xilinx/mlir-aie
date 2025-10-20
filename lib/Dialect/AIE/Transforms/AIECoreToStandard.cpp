@@ -92,6 +92,7 @@ static auto getAIE2Intrinsics(OpBuilder &builder) {
   Type accType = VectorType::get({16}, int32Type);
   IntrinsicDecls functions = {
       {"debug_i32", {int32Type}, {}},
+      {"llvm.aie2.event", {int32Type}, {}},
       {"llvm.aie2.put.ms", {int32Type, int32Type}, {}}, //(%value, %tlast) -> ()
       {"llvm.aie2.get.ss", {}, {int32Type, int32Type}}, //() -> (%value, %tlast)
       {"llvm.aie2.mcd.write.vec",
@@ -115,6 +116,7 @@ static auto getAIE2pIntrinsics(OpBuilder &builder) {
   Type accType = VectorType::get({16}, int32Type);
   IntrinsicDecls functions = {
       {"debug_i32", {int32Type}, {}},
+      {"llvm.aie2p.event", {int32Type}, {}},
       {"llvm.aie2p.put.ms",
        {int32Type, int32Type},
        {}}, //(%value, %tlast) -> ()
@@ -577,13 +579,33 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
   LogicalResult
   matchAndRewrite(EventOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    std::string funcName = "llvm.aie.event" + std::to_string(op.getVal());
+    auto device = op->getParentOfType<DeviceOp>();
+    std::string funcName;
+    SmallVector<Value, 1> args;
+    switch (device.getTargetModel().getTargetArch()) {
+    case AIEArch::AIE1:
+      funcName = "llvm.aie.event" + std::to_string(op.getVal());
+      break;
+    case AIEArch::AIE2:
+      funcName = "llvm.aie2.event";
+      args.push_back(rewriter.create<arith::ConstantOp>(
+          op.getLoc(), rewriter.getI32Type(),
+          rewriter.getI32IntegerAttr(op.getVal())));
+      break;
+    case AIEArch::AIE2p:
+      funcName = "llvm.aie2p.event";
+      args.push_back(rewriter.create<arith::ConstantOp>(
+          op.getLoc(), rewriter.getI32Type(),
+          rewriter.getI32IntegerAttr(op.getVal())));
+      break;
+    default:
+      return op->emitOpError("Unsupported AIEArch for EventOp lowering");
+    }
     auto eventFunc = module.lookupSymbol<func::FuncOp>(funcName);
     if (!eventFunc)
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), eventFunc,
-                                  ValueRange({}));
+    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), eventFunc, args);
     rewriter.eraseOp(op);
     return success();
   }
@@ -595,12 +617,11 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     ModuleOp m = getOperation();
     OpBuilder builder = OpBuilder::atBlockEnd(m.getBody());
 
-    if (m.getOps<DeviceOp>().empty()) {
-      m.emitOpError("expected AIE.device operation at toplevel");
+    DeviceOp deviceOp = DeviceOp::getForSymbolInModuleOrError(m, deviceName);
+    if (!deviceOp) {
       return signalPassFailure();
     }
-    DeviceOp device = *m.getOps<DeviceOp>().begin();
-    const auto &targetModel = device.getTargetModel();
+    const auto &targetModel = deviceOp.getTargetModel();
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
@@ -638,20 +659,21 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
 
     patterns.add<AIEBufferToStandard>(m.getContext(), m, /*benefit*/ 1, tileCol,
                                       tileRow);
-    if (failed(applyPartialConversion(m, target, std::move(patterns))))
+    if (failed(applyPartialConversion(deviceOp, target, std::move(patterns))))
       return signalPassFailure();
 
     RewritePatternSet outlinePatterns(&getContext());
     outlinePatterns.add<AIECoreToStandardFunc>(m.getContext(), m, mapper,
                                                tileToBuffers, /*benefit*/ 1,
                                                tileCol, tileRow);
-    if (failed(applyPartialConversion(m, target, std::move(outlinePatterns))))
+    if (failed(applyPartialConversion(deviceOp, target,
+                                      std::move(outlinePatterns))))
       return signalPassFailure();
 
     // Move all the func.func ops and memref.globals from the device to the
     // module
-    outlineOps<memref::GlobalOp>(device);
-    outlineOps<func::FuncOp>(device);
+    outlineOps<memref::GlobalOp>(deviceOp);
+    outlineOps<func::FuncOp>(deviceOp);
 
     RewritePatternSet removepatterns(&getContext());
     removepatterns.add<

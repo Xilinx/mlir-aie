@@ -11,11 +11,6 @@
 
 module {
   aie.device(npu1_1col) {
-    memref.global "public" @in : memref<1024xi32>
-    memref.global "public" @in_cons : memref<1024xi32>
-    memref.global "public" @out : memref<1024xi32>
-    memref.global "public" @out_cons : memref<1024xi32>
-
     func.func private @scale_int32(memref<1024xi32>, memref<1024xi32>)
 
     %tile_0_0 = aie.tile(0, 0)
