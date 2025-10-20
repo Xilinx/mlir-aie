@@ -874,6 +874,125 @@ def configure_shimtile_dma_tracing_aie2(
     )
 
 
+def push_bd_to_task_queue(
+    shim, bd_id, direction, channel, enable_token  # 0: s2mm, 1: mm2s
+):
+    task_queue_addr = 0x0
+    if direction == 0:  # s2mm
+        if channel == 0:
+            task_queue_addr = 0x1D204
+        else:
+            task_queue_addr = 0x1D20C
+    else:  # mm2s
+        if channel == 0:
+            task_queue_addr = 0x1D214
+        else:
+            task_queue_addr = 0x1D21C
+
+    # Add bd to task queue to begin transaction
+    npu_write32(
+        column=int(shim.col),
+        row=int(shim.row),
+        address=task_queue_addr,
+        value=((enable_token & 0x1) << 31) | bd_id,
+    )
+
+
+def configure_shimtile_dma_aie2(
+    shim,
+    channel=1,
+    direction=0,  # 0: s2mm, 1: mm2s
+    bd_id=13,
+    ddr_id=4,  # ddr_id (0,1,2,3,4) -> xrt bo/ grp id (3,4,5,6,7)
+    size=8192,  # in words (32-bits)
+    offset=0,  # in bytes
+    enable_token=0,
+    enable_packet=0,  # for mm2s xfer
+    packet_id=0,  # for mm2s xfer
+    packet_type=PacketType.CORE,  # for mm2s xfer
+    shim_burst_length=64,
+):
+
+    dev = shim.parent.attributes["device"]
+    tm = get_target_model(dev)
+
+    # Shim has to be a shim tile
+    assert tm.is_shim_noc_tile(shim.col, shim.row)
+
+    # configure_shimtile_bd_aie2(shim, channel, bd_id, ddr_id, size, offset, 1, 0, 0)
+    # Configure a buffer descriptor to write tracing information that has been routed into this shim tile
+    # out to host DDR memory
+    npu_writebd(
+        bd_id=bd_id,
+        buffer_length=size,  # buffer length in words (32 bits)
+        buffer_offset=offset,  # offset in bytes
+        enable_packet=enable_packet,  # used for mm2s xfer, direction=1
+        out_of_order_id=0,
+        packet_id=packet_id,  # used for mm2s xfer, direction=1
+        packet_type=packet_type,  # used for mm2s xfer, direction=1
+        column=int(shim.col),
+        d0_size=0,
+        d0_stride=0,
+        d0_zero_after=0,
+        d0_zero_before=0,
+        d1_size=0,
+        d1_stride=0,
+        d1_zero_after=0,
+        d1_zero_before=0,
+        d2_size=0,
+        d2_stride=0,
+        d2_zero_after=0,
+        d2_zero_before=0,
+        burst_length=shim_burst_length,
+        iteration_current=0,
+        iteration_size=0,
+        iteration_stride=0,
+        lock_acq_enable=0,
+        lock_acq_id=0,
+        lock_acq_val=0,
+        lock_rel_id=0,
+        lock_rel_val=0,
+        next_bd=0,
+        # next_bd=bd_id,
+        row=0,
+        use_next_bd=0,
+        # use_next_bd=1,
+        valid_bd=1,
+    )
+    addr = (int(shim.col) << tm.get_column_shift()) | (0x1D004 + bd_id * 0x20)
+    npu_address_patch(addr=addr, arg_idx=ddr_id, arg_plus=offset)
+
+    ctrl_addr = 0x0
+    if direction == 0:  # s2mm
+        if channel == 0:
+            ctrl_addr = 0x1D200
+        else:
+            ctrl_addr = 0x1D208
+    else:  # mm2s
+        if channel == 0:
+            ctrl_addr = 0x1D210
+        else:
+            ctrl_addr = 0x1D218
+
+    # Set controller id to match autorouted tilecontrol->south0 which is 15 (xF)
+    # This is needed so tct tokens are properly routed for us to sync on.
+    npu_maskwrite32(
+        column=int(shim.col),
+        row=int(shim.row),
+        address=ctrl_addr,
+        value=0xF00,  # pkt_id = 15
+        mask=0x1F00,
+    )
+
+    push_bd_to_task_queue(
+        shim=shim,
+        bd_id=bd_id,
+        direction=direction,  # 0: s2mm, 1: mm2s
+        channel=channel,
+        enable_token=enable_token,
+    )
+
+
 # Wrapper to configure the core tile and shim tile for packet tracing. This does
 # the following:
 # 1. Configure core tile based on start/ stop, events, and flow id. The flow id
@@ -918,7 +1037,8 @@ def configure_coremem_packet_tracing_aie2(
         packet_type=PacketType.MEM,
     )
     configure_timer_ctrl_coremem_aie2(tile, start)
-    configure_shimtile_dma_tracing_aie2(
+    # configure_shimtile_dma_tracing_aie2(
+    configure_shimtile_dma_aie2(
         shim=shim,
         channel=channel,
         bd_id=bd_id,
@@ -977,7 +1097,8 @@ def configure_coretile_packet_tracing_aie2(
         packet_type=PacketType.CORE,
     )
     configure_timer_ctrl_coretile_aie2(tile, start)
-    configure_shimtile_dma_tracing_aie2(
+    # configure_shimtile_dma_tracing_aie2(
+    configure_shimtile_dma_aie2(
         shim=shim,
         channel=channel,
         bd_id=bd_id,
@@ -1036,7 +1157,8 @@ def configure_memtile_packet_tracing_aie2(
         packet_type=PacketType.MEMTILE,
     )
     configure_timer_ctrl_memtile_aie2(tile, start)
-    configure_shimtile_dma_tracing_aie2(
+    # configure_shimtile_dma_tracing_aie2(
+    configure_shimtile_dma_aie2(
         shim,
         channel,
         bd_id,
@@ -1090,7 +1212,8 @@ def configure_shimtile_packet_tracing_aie2(
         packet_type=PacketType.SHIMTILE,
     )
     configure_timer_ctrl_shimtile_aie2(tile, start)
-    configure_shimtile_dma_tracing_aie2(
+    # configure_shimtile_dma_tracing_aie2(
+    configure_shimtile_dma_aie2(
         shim,
         channel,
         bd_id,
@@ -1115,14 +1238,19 @@ def configure_shimtile_packet_tracing_aie2(
 # Function arguments:
 # * `tiles to trace` - array of tiles to trace
 # * `shim tile` - Single shim tile to configure for writing trace packets to DDR
-def configure_packet_tracing_flow(tiles_to_trace, shim):
+def configure_packet_tracing_flow(
+    tiles_to_trace,
+    shim,
+    packet_id=16,
+):
 
     exist_traces = []
     for i in range(len(tiles_to_trace)):
 
         if tiles_to_trace[i] not in exist_traces:
             packetflow(
-                i + 1,
+                # i + 1,
+                packet_id,
                 tiles_to_trace[i],
                 WireBundle.Trace,
                 0,
@@ -1131,10 +1259,12 @@ def configure_packet_tracing_flow(tiles_to_trace, shim):
             )
 
             exist_traces.append(tiles_to_trace[i])
+
         else:
             # Ct's memory trace?
             packetflow(
-                i + 1,
+                # i + 1,
+                packet_id,
                 tiles_to_trace[i],
                 WireBundle.Trace,
                 1,
@@ -1206,7 +1336,7 @@ def configure_packet_tracing_aie2(
     shim,
     trace_size,
     trace_offset=0,
-    enable_token=0,
+    enable_token=1,
     ddr_id=4,
     start_user_event=ShimTileEvent.USER_EVENT_1,
     stop_user_event=ShimTileEvent.USER_EVENT_0,
@@ -1252,9 +1382,11 @@ def configure_packet_tracing_aie2(
         MemEvent.EDGE_DETECTION_EVENT_0,
         MemEvent.EDGE_DETECTION_EVENT_1,
     ],
+    packet_id=16,
     shim_burst_length=64,
 ):
 
+    # print("trace_size: ", trace_size)
     if coretile_events == None:
         coretile_events = [
             CoreEvent.INSTR_EVENT_0,
@@ -1321,7 +1453,8 @@ def configure_packet_tracing_aie2(
                     stop=stop_user_event,
                     events=shimtile_events,
                     enable_packet=1,
-                    packet_id=i + 1,
+                    # packet_id=i + 1,
+                    packet_id=packet_id,
                     packet_type=PacketType.SHIMTILE,
                 )
                 configure_timer_ctrl_shimtile_aie2(tiles_to_trace[i], start_user_event)
@@ -1332,7 +1465,8 @@ def configure_packet_tracing_aie2(
                     stop=stop_shimtile_broadcast_event,
                     events=shimtile_events,
                     enable_packet=1,
-                    packet_id=i + 1,
+                    # packet_id=i + 1,
+                    packet_id=packet_id,
                     packet_type=PacketType.SHIMTILE,
                 )
                 configure_timer_ctrl_shimtile_aie2(
@@ -1345,7 +1479,8 @@ def configure_packet_tracing_aie2(
                 stop=stop_memtile_broadcast_event,
                 events=memtile_events,
                 enable_packet=1,
-                packet_id=i + 1,
+                # packet_id=i + 1,
+                packet_id=packet_id,
                 packet_type=PacketType.MEMTILE,
             )
             configure_timer_ctrl_memtile_aie2(
@@ -1359,7 +1494,8 @@ def configure_packet_tracing_aie2(
                     stop=stop_core_broadcast_event,
                     events=coretile_events,
                     enable_packet=1,
-                    packet_id=i + 1,
+                    # packet_id=i + 1,
+                    packet_id=packet_id,
                     packet_type=PacketType.CORE,
                 )
                 configure_timer_ctrl_coretile_aie2(
@@ -1373,7 +1509,8 @@ def configure_packet_tracing_aie2(
                     stop=stop_core_mem_broadcast_event,
                     events=coremem_events,
                     enable_packet=1,
-                    packet_id=i + 1,
+                    # packet_id=i + 1,
+                    packet_id=packet_id,
                     packet_type=PacketType.MEM,
                 )
                 configure_timer_ctrl_coremem_aie2(
@@ -1387,7 +1524,8 @@ def configure_packet_tracing_aie2(
                 + str(tiles_to_trace[i].row)
                 + "). Check tile coordinates are within a valid range."
             )
-    configure_shimtile_dma_tracing_aie2(
+    # configure_shimtile_dma_tracing_aie2(
+    configure_shimtile_dma_aie2(
         shim=shim,
         channel=1,
         bd_id=15,
@@ -1395,7 +1533,7 @@ def configure_packet_tracing_aie2(
         size=trace_size,
         offset=trace_offset,
         enable_token=enable_token,
-        enable_packet=1,
+        enable_packet=1,  # not used
         shim_burst_length=shim_burst_length,
     )
 
@@ -1471,4 +1609,105 @@ def configure_simple_tracing_aie2(
     ],
 ):
     configure_coretile_tracing_aie2(tile, start, stop, events)
-    configure_shimtile_dma_tracing_aie2(shim, channel, bd_id, ddr_id, size, offset)
+    # configure_shimtile_dma_tracing_aie2(shim, channel, bd_id, ddr_id, size, offset)
+    configure_shimtile_dma_aie2(shim, channel, bd_id, ddr_id, size, offset)
+
+
+# default packet_id = 30 for broadcast packet to all tiles to trace/ ctrl packet
+# We do not choose id = 31 in case that's might be chosen for a special purpose
+# return packet_id starts at 29 and goes down. We run into potential conflict when we get
+# to id = 15 since that's used for routing of tct token in shim stream switch to
+# axi interface (south 0). So in practice, we support 14 targets.
+def configure_packet_ctrl_flow(
+    tiles_to_trace,
+    shim,
+    tile2shim_pkt_id=28,  # WARNING: Careful not to change. Must match stream id for control packet
+    # shim2tile_pkt_id = 16,
+    shim2tile_pkt_id=29,  # WARNING: Careful not to change. Used by config_ctrl_pkts_aie
+):
+
+    exist_traces = []
+    for i in range(len(tiles_to_trace)):
+
+        if tiles_to_trace[i] not in exist_traces:
+
+            exist_traces.append(tiles_to_trace[i])
+
+            # id 14 - tile -> shim
+            packetflow(
+                tile2shim_pkt_id,
+                tiles_to_trace[i],
+                WireBundle.TileControl,
+                0,
+                dests={"dest": shim, "port": WireBundle.DMA, "channel": 0},
+                keep_pkt_header=True,
+            )
+
+            # id 15 - shim -> tile
+            packetflow(
+                shim2tile_pkt_id,
+                shim,
+                WireBundle.DMA,
+                0,
+                dests={
+                    "dest": tiles_to_trace[i],
+                    "port": WireBundle.TileControl,
+                    "channel": 0,
+                },
+            )
+
+
+# Only supports one target so far
+# * need packet router at shim to use mask to allow multiple packet_ids
+def config_ctrl_pkts_aie(
+    tiles_to_trace,
+    shim,
+    shim2tile_pkt_id=29,  # WARNING: Careful not to change. Used by configure_packet_ctrl_flow
+    output_offset=0,  # needs offset from trace buffer
+    num_pkts=1,
+    channel=0,
+    mm2s_bd_id=14,  # TODO: default bd ids (hopefully doesn't conflict with other shim cfg)
+    s2mm_bd_id=15,  # TODO: default bd ids (hopefully doesn't conflict with other shim cfg)
+):
+
+    for i in range(num_pkts):
+        # config mm2s shim
+        configure_shimtile_dma_aie2(
+            shim=shim,
+            channel=channel,
+            direction=1,
+            bd_id=mm2s_bd_id,
+            ddr_id=3,  # group_id(6)
+            size=1,  # 1x 32b word
+            offset=(i * 4),  # bytes
+            packet_id=shim2tile_pkt_id,
+            packet_type=0,  # no used in same way as trace to identiyf source
+            enable_token=1,
+            enable_packet=1,
+            # shim_burst_length=64 # ? is this too big for 2x 32b words
+        )
+
+        npu_sync(
+            column=int(shim.col), column_num=1, row=0, direction=1, channel=channel
+        )  # input
+
+        # config s2mm shim
+        configure_shimtile_dma_aie2(
+            shim=shim,
+            channel=channel,
+            direction=0,
+            bd_id=s2mm_bd_id,
+            # ddr_id=3, # group_id(6)
+            ddr_id=4,  # group_id(7)
+            size=2,  # 2 32b words, pkt header + 1 word data
+            offset=output_offset + (i * 8),  # bytes
+            # packet_id=tile2shim_pkt_id, # NOT USED
+            packet_type=0,  # not used in same way as trace to identify source
+            enable_token=1,
+            # enable_packet=1, # NOT USED
+            # shim_burst_length=64 # ? is this too big for 2x 32b words
+        )
+
+        npu_sync(
+            column=int(shim.col), column_num=1, row=0, direction=0, channel=channel
+        )  # output

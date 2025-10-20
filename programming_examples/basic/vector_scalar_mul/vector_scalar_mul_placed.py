@@ -44,6 +44,8 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
         tensor_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
         tile_ty = np.ndarray[(tile_size,), np.dtype[in1_dtype]]
         scalar_ty = np.ndarray[(1,), np.dtype[in2_dtype]]
+        ctrl_pkt_ty = np.ndarray[(1,), np.dtype[np.uint32]]
+        trace_ty = np.ndarray[(trace_size,), np.dtype[np.uint8]]
 
         # AIE Core Function declarations
         func_type = "vector" if vectorized else "scalar"
@@ -54,7 +56,8 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
 
         # Tile declarations
         ShimTile = tile(0, 0)
-        ComputeTile2 = tile(0, 2)
+        CtrlShimTile = tile(1, 0)
+        ComputeTile2 = tile(0, 2) # {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile2, 2, tile_ty)
@@ -81,15 +84,19 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
         tiles_to_trace = [ComputeTile2, ComputeTile2]
         if trace_size > 0:
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
+            trace_utils.configure_packet_ctrl_flow([ComputeTile2], CtrlShimTile)
+       
+        trace_size_int32 = trace_size // 4
 
         # To/from AIE-array data movement
+        # @runtime_sequence(tensor_ty, scalar_ty, tensor_ty, ctrl_pkt_ty, trace_ty)
         @runtime_sequence(tensor_ty, scalar_ty, tensor_ty)
         def sequence(A, F, C):
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_aie2(
                     tiles_to_trace=tiles_to_trace,
                     shim=ShimTile,
-                    trace_size=trace_size,
+                    trace_size=trace_size_int32,
                     coretile_events=[
                         CoreEvent.INSTR_EVENT_0,
                         CoreEvent.INSTR_EVENT_1,
@@ -111,7 +118,6 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
                         MemEvent.LOCK_SEL1_ACQ_EQ,
                     ],
                 )
-                # npu_maskwrite32( address=0x000001DE00,mask=0b1 ,value=0b1, row=2, column=0 )
 
             in_task = shim_dma_single_bd_task(
                 of_in, A, sizes=[1, 1, 1, tensor_size], issue_token=True
@@ -126,7 +132,16 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
             dma_start_task(in_task, in_factor_task, out_task)
             dma_await_task(in_task, in_factor_task, out_task)
 
-            trace_utils.gen_trace_done_aie2(ShimTile)
+            if trace_size > 0:
+                trace_utils.config_ctrl_pkts_aie(
+                    [ComputeTile2],
+                    CtrlShimTile, output_offset=trace_size, num_pkts=2)
+
+            if trace_size > 0:
+                trace_utils.gen_trace_done_aie2(ShimTile)
+
+                # Wait for trace done (only use if trace_size < actual trace data, otherwise, get timeout)
+                # npu_sync(column=int(ShimTile.col), column_num=1, row=0, direction=0, channel=1) # output
 
 
 if len(sys.argv) < 5:
