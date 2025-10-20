@@ -1610,7 +1610,9 @@ def configure_simple_tracing_aie2(
 ):
     configure_coretile_tracing_aie2(tile, start, stop, events)
     # configure_shimtile_dma_tracing_aie2(shim, channel, bd_id, ddr_id, size, offset)
-    configure_shimtile_dma_aie2(shim, channel, bd_id, ddr_id, size, offset)
+    configure_shimtile_dma_aie2(
+        shim=shim, channel=channel, bd_id=bd_id, ddr_id=ddr_id, size=size, offset=offset
+    )
 
 
 # default packet_id = 30 for broadcast packet to all tiles to trace/ ctrl packet
