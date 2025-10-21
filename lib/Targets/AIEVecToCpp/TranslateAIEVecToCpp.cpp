@@ -2841,8 +2841,8 @@ StringRef CppEmitter::getMemRefDimParam(Value memref, unsigned index) {
 /// associated with it
 bool CppEmitter::isMemRefDimParam(Value memref, unsigned index) {
   assert([&] {
-    auto type = llvm::dyn_cast<MemRefType>(memref.getType());
-    if (!(type && type.isDynamicDim(index))) {
+    auto type = llvm::cast<MemRefType>(memref.getType());
+    if (!type.isDynamicDim(index)) {
       printf("the dimension size at index is not dynamic\n");
       return false;
     }

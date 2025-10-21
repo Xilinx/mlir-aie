@@ -658,7 +658,7 @@ static void configureDMAs(DeviceOp &targetOp) {
       std::optional<int> lockID = std::nullopt;
 
       for (auto op : block.getOps<UseLockOp>()) {
-        LockOp lock = dyn_cast<LockOp>(op.getLock().getDefiningOp());
+        LockOp lock = cast<LockOp>(op.getLock().getDefiningOp());
         lockID = lock.getLockIDValue();
         if (op.acquire()) {
           acqEnable = ENABLE;
@@ -906,7 +906,7 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
           auto mask = 0u;
           int arbiter = -1;
           for (auto val : connectOp.getAmsels()) {
-            auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+            auto amsel = cast<AMSelOp>(val.getDefiningOp());
             arbiter = amsel.arbiterIndex();
             int msel = amsel.getMselValue();
             mask |= 1u << msel;
@@ -931,7 +931,7 @@ static void configureSwitchBoxes(DeviceOp &targetOp) {
       int slot = 0;
       Block &block = connectOp.getRules().front();
       for (auto slotOp : block.getOps<PacketRuleOp>()) {
-        AMSelOp amselOp = dyn_cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
+        AMSelOp amselOp = cast<AMSelOp>(slotOp.getAmsel().getDefiningOp());
         int arbiter = amselOp.arbiterIndex();
         int msel = amselOp.getMselValue();
 

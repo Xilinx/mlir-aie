@@ -486,9 +486,9 @@ static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
                                       Attribute initValues) {
   if (op.getInitValues()) {
     p << "= [";
-    int depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    int depth = llvm::cast<mlir::IntegerAttr>(numElem).getInt();
     for (int i = 0; i < depth; i++) {
-      p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
+      p.printStrippedAttrOrType(llvm::cast<mlir::ArrayAttr>(initValues)[i]);
       if (i < depth - 1) {
         p << ", ";
       }
@@ -522,7 +522,7 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
   if (parser.parseAttribute(initValues, tensorType))
     return failure();
   for (int i = 0; i < depth; i++) {
-    auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
+    auto initialValues = llvm::cast<mlir::ArrayAttr>(initValues);
     if ((int)initialValues.size() != depth)
       return parser.emitError(parser.getNameLoc())
              << "initial values should initialize all objects";
@@ -1946,9 +1946,9 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   }
 
   // Repeating BD chains detected. Erasing repetitions.
-  auto lastBDTerm = dyn_cast<NextBDOp>(reachable.back()->getTerminator());
+  auto lastBDTerm = cast<NextBDOp>(reachable.back()->getTerminator());
   auto lastUniqueBDTerm =
-      dyn_cast<NextBDOp>(uniquePattern.back()->getTerminator());
+      cast<NextBDOp>(uniquePattern.back()->getTerminator());
   lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
 
   return success();
