@@ -1187,6 +1187,7 @@ public:
   }
 };
 
+// TODO: Split the op at AIEVec dialect level
 class UPSOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
 public:
@@ -1297,39 +1298,9 @@ public:
                     {VectorType::get({16}, rewriter.getBF16Type())}));
       } else if (resultVectorSize == 1024) {
         // v32bfloat16 -> v32accfloat
-        // The CPP example of the implementation is below:
-        //   INTRINSIC(v32accfloat) ups_to_v32accfloat(v32bfloat16 a) {
-        //     v16accfloat x0 = ups_to_v16accfloat(extract_v16bfloat16(a, 0));
-        //     v16accfloat x1 = ups_to_v16accfloat(extract_v16bfloat16(a, 1));
-        //     return concat(x0, x1);
-        //   }
-        auto indexZeroCst = rewriter.create<LLVM::ConstantOp>(
-            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
-        auto indexOneCst = rewriter.create<LLVM::ConstantOp>(
-            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
-        auto extractUps = [&](Value source, Value index) -> Value {
-          auto extOp = rewriter.create<xllvm::ExtI256I512IntrOp>(
-              loc, VectorType::get({8}, rewriter.getI32Type()),
-              forceCastOperandsToSignature(
-                  rewriter, loc, {source, index},
-                  {VectorType::get({16}, rewriter.getI32Type()),
-                   rewriter.getI32Type()}));
-          return rewriter.create<xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp>(
-              loc, VectorType::get({16}, rewriter.getF32Type()),
-              forceCastOperandsToSignature(
-                  rewriter, loc, {extOp},
-                  {VectorType::get({16}, rewriter.getBF16Type())}));
-        };
-        auto resLo = extractUps(opSrcVal, indexZeroCst);
-        auto resHi = extractUps(opSrcVal, indexOneCst);
-        // Concat the two 512-bit vector to a 1024-bit vector.
-        // Note that given sources a0 and a1, the result is [a1; a0].
-        upsIntrOp = rewriter.create<xllvm::ConcatI1024I512IntrOp>(
-            loc, VectorType::get({32}, rewriter.getI32Type()),
-            forceCastOperandsToSignature(
-                rewriter, loc, {resLo, resHi},
-                {VectorType::get({16}, rewriter.getI32Type()),
-                 VectorType::get({16}, rewriter.getI32Type())}));
+        // TODO: Support UPS for 1024b vectors.
+        // TODO: This is supported in aie2, but aie2p lacks the required
+        // TODO: intrinsics in peano.
       }
     }
 
@@ -1490,6 +1461,7 @@ public:
   }
 };
 
+// TODO: Split the op at AIEVec dialect level
 class SRSOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::SRSOp> {
 public:
@@ -1588,39 +1560,9 @@ public:
                     {VectorType::get({16}, rewriter.getF32Type())}));
       } else if (resultVectorSize == 512) {
         // v32accfloat -> v32bfloat16
-        // The CPP example of the implementation is below:
-        //   v32bfloat16 to_v32bfloat16(v32accfloat acc) {
-        //     v16bfloat16 x0 = to_v16bfloat16(extract_v16accfloat(acc, 0));
-        //     v16bfloat16 x1 = to_v16bfloat16(extract_v16accfloat(acc, 1));
-        //     return concat(x0, x1);
-        //   }
-        auto indexZeroCst = rewriter.create<LLVM::ConstantOp>(
-            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
-        auto indexOneCst = rewriter.create<LLVM::ConstantOp>(
-            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
-        auto extractSrs = [&](Value source, Value index) -> Value {
-          auto extOp = rewriter.create<xllvm::ExtI512I1024IntrOp>(
-              loc, VectorType::get({16}, rewriter.getI32Type()),
-              forceCastOperandsToSignature(
-                  rewriter, loc, {source, index},
-                  {VectorType::get({32}, rewriter.getI32Type()),
-                   rewriter.getI32Type()}));
-          return rewriter.create<xllvm::Vector16AccFloatToV16BF16AIE2pIntrOp>(
-              loc, VectorType::get({16}, rewriter.getBF16Type()),
-              forceCastOperandsToSignature(
-                  rewriter, loc, {extOp},
-                  {VectorType::get({16}, rewriter.getF32Type())}));
-        };
-        auto resLo = extractSrs(adaptor.getSource(), indexZeroCst);
-        auto resHi = extractSrs(adaptor.getSource(), indexOneCst);
-        // Concat the two 256-bit vector to a 512-bit vector.
-        // Note that given sources a0 and a1, the result is [a1; a0].
-        srsIntrOp = rewriter.create<xllvm::ConcatI512I256IntrOp>(
-            loc, VectorType::get({16}, rewriter.getI32Type()),
-            forceCastOperandsToSignature(
-                rewriter, loc, {resLo, resHi},
-                {VectorType::get({8}, rewriter.getI32Type()),
-                 VectorType::get({8}, rewriter.getI32Type())}));
+        // TODO: Support SRS for 512b vectors.
+        // TODO: This is supported in aie2, but aie2p lacks the required
+        // TODO: intrinsics in peano.
       }
     }
 
