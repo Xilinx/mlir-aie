@@ -994,8 +994,6 @@ class FlowRunner:
         file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
             f"{device_name}_ctrlpkt_dma_seq.mlir"
         )
-        # file_ctrlpkt_dma_seq_bin = opts.ctrlpkt_dma_seq_name.format(device_name)
-        # file_ctrlpkt_elf = opts.ctrlpkt_elf_name.format(device_name)
         run_passes(
             f"builtin.module(aie.device(convert-aie-to-control-packets{{"
             + f"device-name={device_name} elf-dir={self.tmpdirname}}}))",
