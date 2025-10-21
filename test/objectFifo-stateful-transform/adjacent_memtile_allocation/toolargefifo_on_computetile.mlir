@@ -1,4 +1,4 @@
-//===- onelargefifo_on_2memtile.mlir ----------------------------*- MLIR -*-===//
+//===- toolargefifo_on_computetile.mlir -------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -118,15 +118,9 @@
 // CHECK: }
 
 module {
-  aie.device(npu1) {
+  aie.device(npu2) {
     %shim_noc_tile_0_0 = aie.tile(0, 0)
-    %mem_tile_0_1 = aie.tile(0, 1)
-    %tile_0_2 = aie.tile(0, 2)
-    aie.objectfifo @in0(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<96000xi32>> 
-    aie.objectfifo @in1(%mem_tile_0_1, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<8xi32>> 
-    aie.objectfifo.link [@in0] -> [@in1]([] [])
-    aie.objectfifo @out0(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<8xi32>> 
-    aie.objectfifo @out1(%tile_0_2, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<8xi32>> 
-    aie.objectfifo.link [@out1] -> [@out0]([] [])
+    %tile_0_3 = aie.tile(0, 3)
+    aie.objectfifo @in0(%shim_noc_tile_0_0, {%tile_0_3}, 2 : i32) : !aie.objectfifo<memref<96000xi32>>
   }
 }
