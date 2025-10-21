@@ -96,7 +96,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span><span class="comment">// AIEVec to Cpp translation registration</span></div>
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="keyword">static</span> llvm::cl::opt&lt;bool&gt; <a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">AIE2</a>(<span class="stringliteral">&quot;aie2&quot;</span>,</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="keyword">static</span> llvm::cl::opt&lt;bool&gt; <a class="code hl_enumvalue" href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5">AIE2</a>(<span class="stringliteral">&quot;aie2&quot;</span>,</div>
 <div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>                                llvm::cl::desc(<span class="stringliteral">&quot;AIE2 (i.e. AI Engine-ML)&quot;</span>),</div>
 <div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>                                llvm::cl::init(<span class="keyword">false</span>));</div>
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
@@ -105,7 +105,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>  TranslateFromMLIRRegistration reg(</div>
 <div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>      <span class="stringliteral">&quot;aievec-to-cpp&quot;</span>, <span class="stringliteral">&quot;Translate AIEVecDialect dialect to C++&quot;</span>,</div>
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">aievec::translateAIEVecToCpp</a>(module, <a class="code hl_enumvalue" href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">AIE2</a>.getValue(), output);</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">aievec::translateAIEVecToCpp</a>(module, <a class="code hl_enumvalue" href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5">AIE2</a>.getValue(), output);</div>
 <div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>      },</div>
 <div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>      [](DialectRegistry &amp;registry) {</div>
 <div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        <span class="comment">// clang-format off</span></div>
@@ -135,12 +135,12 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a00e8f83c1c8e075872c09d6af694c9bf"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">xilinx::aievec::translateAIEVecToCpp</a></div><div class="ttdeci">mlir::LogicalResult translateAIEVecToCpp(mlir::Operation *op, bool aie2, mlir::raw_ostream &amp;os)</div><div class="ttdoc">Translates the AIE vector dialect MLIR to C++ code.</div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a83d82824fad8b84de684246e887dd572"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a83d82824fad8b84de684246e887dd572">xilinx::aievec::registerAIEVecToCppTranslation</a></div><div class="ttdeci">void registerAIEVecToCppTranslation()</div><div class="ttdef"><b>Definition</b> <a href="TranslateRegistration_8cpp_source.html#l00043">TranslateRegistration.cpp:43</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1aievec_html_a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5">xilinx::aievec::AIEArch::AIE2</a></div><div class="ttdeci">@ AIE2</div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="anamespacexilinx_html_aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5"><div class="ttname"><a href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a40bccc3bdca296053c771114097848e5">xilinx::AIEArch::AIE2</a></div><div class="ttdeci">@ AIE2</div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Oct 18 2025 02:18:45 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Oct 21 2025 22:58:00 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
