@@ -108,7 +108,7 @@ if config.vitis_root:
     llvm_config.with_environment("VITIS", config.vitis_root)
 
 # Prepend path to XRT installation, which contains a more recent `aiebu-asm` than the Vitis installation.
-prepend_path(config.xrt_bin_dir)
+LitConfigHelper.prepend_path(llvm_config, config.xrt_bin_dir)
 
 peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
 LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
