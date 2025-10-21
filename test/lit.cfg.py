@@ -132,13 +132,16 @@ chess_config = LitConfigHelper.detect_chess(
 aiesim_config = LitConfigHelper.detect_aiesimulator()
 
 # Apply all hardware/tool configurations
-LitConfigHelper.apply_config_to_lit(config, {
-    "rocm": rocm_config,
-    "xrt": xrt_config,
-    "peano": peano_config,
-    "chess": chess_config,
-    "aiesim": aiesim_config,
-})
+LitConfigHelper.apply_config_to_lit(
+    config,
+    {
+        "rocm": rocm_config,
+        "xrt": xrt_config,
+        "peano": peano_config,
+        "chess": chess_config,
+        "aiesim": aiesim_config,
+    },
+)
 
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)

@@ -101,10 +101,13 @@ chess_config = LitConfigHelper.detect_chess(
 )
 
 # Apply all tool configurations
-LitConfigHelper.apply_config_to_lit(config, {
-    "peano": peano_config,
-    "chess": chess_config,
-})
+LitConfigHelper.apply_config_to_lit(
+    config,
+    {
+        "peano": peano_config,
+        "chess": chess_config,
+    },
+)
 
 tool_dirs = [config.aie_tools_dir, config.peano_tools_dir, config.llvm_tools_dir]
 tools = [
