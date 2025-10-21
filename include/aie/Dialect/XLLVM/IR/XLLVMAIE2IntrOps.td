@@ -93,7 +93,39 @@ def MacConfBF16IntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
         AIE2BF16MACConf;
 
-// ----- MSC ----- 
+def MacConfBF16I1024ACC2048AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I1024.I1024.ACC2048.bf.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[64], [BF16]>:$rhs,
+                   VectorOfLengthAndType<[64], [F32]>:$acc,
+                   I32:$conf)>;
+
+def MacConfBF16I512ACC2048AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC2048.bf.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   VectorOfLengthAndType<[64], [F32]>:$acc,
+                   I32:$conf)>;
+
+def MacConfBF16I512ACC1024AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC1024.bf.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   VectorOfLengthAndType<[32], [F32]>:$acc,
+                   I32:$conf)>;
+
+def MacConfBF16I512ACC512AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC512.bf.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   VectorOfLengthAndType<[16], [F32]>:$acc,
+                   I32:$conf)>;
+
+// ----- MSC -----
 
 def MscConfBF16IntrOp :
     AIEVec2_IntrOp<"bf.msc16.conf",
