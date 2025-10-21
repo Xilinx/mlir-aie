@@ -1070,7 +1070,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI16Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64) {
           // v8int32 -> v8acc64
           upsIntrOp = rewriter.create<xllvm::Acc64V8I256UpsAIE2IntrOp>(
@@ -1078,7 +1078,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({8}, rewriter.getI32Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       } else if (resultVectorSize == 1024) {
         Value src = opSrcVal;
@@ -1093,7 +1093,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI16Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64 && srcBitWidth == 32) {
           // v16int32 -> v16acc64
           upsIntrOp = rewriter.create<xllvm::Acc64V16I512UpsAIE2IntrOp>(
@@ -1101,7 +1101,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI32Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64 && srcBitWidth == 16) {
           // v16int16 -> v16acc64
           upsIntrOp = rewriter.create<xllvm::Acc64V16I256UpsAIE2IntrOp>(
@@ -1109,7 +1109,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI16Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32 && srcBitWidth == 8) {
           // v32int8 -> v32acc32
           upsIntrOp = rewriter.create<xllvm::Acc32V32I256UpsAIE2IntrOp>(
@@ -1117,7 +1117,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI8Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       }
     } else {
@@ -1125,12 +1125,11 @@ public:
       // AIE2p uses native F32 types, AIE2 uses packed I64 types
       if (resultVectorSize == 512) {
         // v16bfloat16 -> v16accfloat
-        upsIntrOp =
-            rewriter.create<xllvm::Vector16BF16ToV16AccFloatAIE2IntrOp>(
-                loc, VectorType::get({8}, rewriter.getI64Type()),
-                forceCastOperandsToSignature(
-                    rewriter, loc, {opSrcVal},
-                    {VectorType::get({16}, rewriter.getBF16Type())}));
+        upsIntrOp = rewriter.create<xllvm::Vector16BF16ToV16AccFloatAIE2IntrOp>(
+            loc, VectorType::get({8}, rewriter.getI64Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, {opSrcVal},
+                {VectorType::get({16}, rewriter.getBF16Type())}));
       } else if (resultVectorSize == 1024) {
         // v32bfloat16 -> v32accfloat
         // The CPP example of the implementation is below:
@@ -1188,7 +1187,8 @@ public:
   }
 };
 
-class UPSOpAIE2pConversion : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
+class UPSOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::UPSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::UPSOp>::ConvertOpToLLVMPattern;
 
@@ -1234,7 +1234,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI16Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64) {
           // v8int32 -> v8acc64
           upsIntrOp = rewriter.create<xllvm::Acc64V8I256UpsAIE2pIntrOp>(
@@ -1242,7 +1242,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({8}, rewriter.getI32Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       } else if (resultVectorSize == 1024) {
         Value src = opSrcVal;
@@ -1257,7 +1257,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI16Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64 && srcBitWidth == 32) {
           // v16int32 -> v16acc64
           upsIntrOp = rewriter.create<xllvm::Acc64V16I512UpsAIE2pIntrOp>(
@@ -1265,7 +1265,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI32Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 64 && srcBitWidth == 16) {
           // v16int16 -> v16acc64
           upsIntrOp = rewriter.create<xllvm::Acc64V16I256UpsAIE2pIntrOp>(
@@ -1273,7 +1273,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI16Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32 && srcBitWidth == 8) {
           // v32int8 -> v32acc32
           upsIntrOp = rewriter.create<xllvm::Acc32V32I256UpsAIE2pIntrOp>(
@@ -1281,7 +1281,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI8Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       }
     } else {
@@ -1385,14 +1385,14 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32) {
           srsIntrOp = rewriter.create<xllvm::I512V16Acc64SrsAIE2IntrOp>(
               loc, VectorType::get({16}, rewriter.getI32Type()),
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       } else if (resultVectorSize == 256) {
         Value src = adaptor.getSource();
@@ -1406,39 +1406,38 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({8}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 8 && srcBitWidth == 32) {
           srsIntrOp = rewriter.create<xllvm::I256V32Acc32SrsAIE2IntrOp>(
               loc, VectorType::get({32}, rewriter.getI8Type()),
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 16 && srcBitWidth == 64) {
           srsIntrOp = rewriter.create<xllvm::I256V16Acc64SrsAIE2IntrOp>(
               loc, VectorType::get({16}, rewriter.getI16Type()),
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32 && srcBitWidth == 64) {
           srsIntrOp = rewriter.create<xllvm::I256V8Acc64SrsAIE2IntrOp>(
               loc, VectorType::get({8}, rewriter.getI32Type()),
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({8}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       }
     } else {
       // Float types
       if (resultVectorSize == 256) {
-        srsIntrOp =
-            rewriter.create<xllvm::Vector16AccFloatToV16BF16AIE2IntrOp>(
-                loc, VectorType::get({16}, rewriter.getBF16Type()),
-                forceCastOperandsToSignature(
-                    rewriter, loc, {adaptor.getSource()},
-                    {VectorType::get({8}, rewriter.getI64Type())}));
+        srsIntrOp = rewriter.create<xllvm::Vector16AccFloatToV16BF16AIE2IntrOp>(
+            loc, VectorType::get({16}, rewriter.getBF16Type()),
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getSource()},
+                {VectorType::get({8}, rewriter.getI64Type())}));
       } else if (resultVectorSize == 512) {
         // v32accfloat -> v32bfloat16
         // The CPP example of the implementation is below:
@@ -1491,7 +1490,8 @@ public:
   }
 };
 
-class SRSOpAIE2pConversion : public mlir::ConvertOpToLLVMPattern<aievec::SRSOp> {
+class SRSOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::SRSOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::SRSOp>::ConvertOpToLLVMPattern;
 
@@ -1525,7 +1525,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI32Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32) {
           // v16acc64 -> v16int32
           srsIntrOp = rewriter.create<xllvm::I512V16Acc64SrsAIE2pIntrOp>(
@@ -1533,7 +1533,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       } else if (resultVectorSize == 256) {
         Value src = adaptor.getSource();
@@ -1548,7 +1548,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI32Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 8 && srcBitWidth == 32) {
           // v32acc32 -> v32int8
           srsIntrOp = rewriter.create<xllvm::I256V32Acc32SrsAIE2pIntrOp>(
@@ -1556,7 +1556,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI32Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 16 && srcBitWidth == 64) {
           // v16acc64 -> v16int16
           srsIntrOp = rewriter.create<xllvm::I256V16Acc64SrsAIE2pIntrOp>(
@@ -1564,7 +1564,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         } else if (resultBitWidth == 32 && srcBitWidth == 64) {
           // v8acc64 -> v8int32
           srsIntrOp = rewriter.create<xllvm::I256V8Acc64SrsAIE2pIntrOp>(
@@ -1572,7 +1572,7 @@ public:
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({8}, rewriter.getI64Type()),
-                    rewriter.getI32Type(), rewriter.getI32Type()}));
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       }
     } else {
