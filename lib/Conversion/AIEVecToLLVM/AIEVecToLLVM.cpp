@@ -1298,9 +1298,71 @@ public:
                     {VectorType::get({16}, rewriter.getBF16Type())}));
       } else if (resultVectorSize == 1024) {
         // v32bfloat16 -> v32accfloat
-        // TODO: Support UPS for 1024b vectors.
-        // TODO: This is supported in aie2, but aie2p lacks the required
-        // TODO: intrinsics in peano.
+        upsIntrOp =
+            rewriter.create<xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp>(
+                loc, VectorType::get({32}, rewriter.getF32Type()),
+                forceCastOperandsToSignature(
+                    rewriter, loc, {opSrcVal},
+                    {VectorType::get({32}, rewriter.getBF16Type())}));
+      } else if (resultVectorSize == 2048) {
+        // v64bfloat16 -> v64accfloat
+        // Extract 2 chunks of v32bfloat16 and convert each to v32accfloat
+        auto index0Cst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+        auto index1Cst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+
+        auto extractUps2048 = [&](Value source, Value index) -> Value {
+          // Use vector::ShuffleOp to extract 512-bit from 1024-bit
+          // Cast source to v32xi32 for shuffling
+          auto v32i32Source = forceCastValueToType(
+              rewriter, loc, source,
+              VectorType::get({32}, rewriter.getI32Type()));
+
+          // Determine shuffle mask based on index
+          // index 0: elements [0-15]
+          // index 1: elements [16-31]
+          SmallVector<int64_t> shuffleMask;
+          if (auto constIndex = index.getDefiningOp<LLVM::ConstantOp>()) {
+            auto indexAttr = cast<IntegerAttr>(constIndex.getValue());
+            int64_t idxVal = indexAttr.getInt();
+            int startIdx = idxVal * 16;
+            for (int i = 0; i < 16; ++i) {
+              shuffleMask.push_back(startIdx + i);
+            }
+          } else {
+            // Default to index 0 if not constant
+            for (int i = 0; i < 16; ++i) {
+              shuffleMask.push_back(i);
+            }
+          }
+
+          auto extOp = rewriter.create<vector::ShuffleOp>(
+              loc, v32i32Source, v32i32Source, shuffleMask);
+
+          return rewriter.create<xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp>(
+              loc, VectorType::get({32}, rewriter.getF32Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, {extOp},
+                  {VectorType::get({32}, rewriter.getBF16Type())}));
+        };
+
+        auto res0 = extractUps2048(opSrcVal, index0Cst);
+        auto res1 = extractUps2048(opSrcVal, index1Cst);
+
+        // Concat two 1024-bit vectors to a 2048-bit vector using
+        // vector::ShuffleOp
+        auto v32i32Res0 = forceCastValueToType(
+            rewriter, loc, res0, VectorType::get({32}, rewriter.getI32Type()));
+        auto v32i32Res1 = forceCastValueToType(
+            rewriter, loc, res1, VectorType::get({32}, rewriter.getI32Type()));
+
+        SmallVector<int64_t> concatMask;
+        for (int i = 0; i < 64; ++i) {
+          concatMask.push_back(i);
+        }
+        upsIntrOp = rewriter.create<vector::ShuffleOp>(loc, v32i32Res0,
+                                                       v32i32Res1, concatMask);
       }
     }
 
@@ -1560,9 +1622,71 @@ public:
                     {VectorType::get({16}, rewriter.getF32Type())}));
       } else if (resultVectorSize == 512) {
         // v32accfloat -> v32bfloat16
-        // TODO: Support SRS for 512b vectors.
-        // TODO: This is supported in aie2, but aie2p lacks the required
-        // TODO: intrinsics in peano.
+        srsIntrOp =
+            rewriter.create<xllvm::Vector32AccFloatToV32BF16AIE2pIntrOp>(
+                loc, VectorType::get({32}, rewriter.getBF16Type()),
+                forceCastOperandsToSignature(
+                    rewriter, loc, {adaptor.getSource()},
+                    {VectorType::get({32}, rewriter.getF32Type())}));
+      } else if (resultVectorSize == 1024) {
+        // v64accfloat -> v64bfloat16
+        // Extract 2 chunks of v32accfloat and convert each to v32bfloat16
+        auto index0Cst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+        auto index1Cst = rewriter.create<LLVM::ConstantOp>(
+            loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+
+        auto extractSrs1024 = [&](Value source, Value index) -> Value {
+          // Use vector::ShuffleOp to extract 1024-bit from 2048-bit
+          // Cast source to v64xi32 for shuffling
+          auto v64i32Source = forceCastValueToType(
+              rewriter, loc, source,
+              VectorType::get({64}, rewriter.getI32Type()));
+
+          // Determine shuffle mask based on index
+          // index 0: elements [0-31]
+          // index 1: elements [32-63]
+          SmallVector<int64_t> shuffleMask;
+          if (auto constIndex = index.getDefiningOp<LLVM::ConstantOp>()) {
+            auto indexAttr = cast<IntegerAttr>(constIndex.getValue());
+            int64_t idxVal = indexAttr.getInt();
+            int startIdx = idxVal * 32;
+            for (int i = 0; i < 32; ++i) {
+              shuffleMask.push_back(startIdx + i);
+            }
+          } else {
+            // Default to index 0 if not constant
+            for (int i = 0; i < 32; ++i) {
+              shuffleMask.push_back(i);
+            }
+          }
+
+          auto extOp = rewriter.create<vector::ShuffleOp>(
+              loc, v64i32Source, v64i32Source, shuffleMask);
+
+          return rewriter.create<xllvm::Vector32AccFloatToV32BF16AIE2pIntrOp>(
+              loc, VectorType::get({32}, rewriter.getBF16Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, {extOp},
+                  {VectorType::get({32}, rewriter.getF32Type())}));
+        };
+
+        auto res0 = extractSrs1024(adaptor.getSource(), index0Cst);
+        auto res1 = extractSrs1024(adaptor.getSource(), index1Cst);
+
+        // Concat two 512-bit vectors to a 1024-bit vector using
+        // vector::ShuffleOp
+        auto v16i32Res0 = forceCastValueToType(
+            rewriter, loc, res0, VectorType::get({16}, rewriter.getI32Type()));
+        auto v16i32Res1 = forceCastValueToType(
+            rewriter, loc, res1, VectorType::get({16}, rewriter.getI32Type()));
+
+        SmallVector<int64_t> concatMask;
+        for (int i = 0; i < 32; ++i) {
+          concatMask.push_back(i);
+        }
+        srsIntrOp = rewriter.create<vector::ShuffleOp>(loc, v16i32Res0,
+                                                       v16i32Res1, concatMask);
       }
     }
 

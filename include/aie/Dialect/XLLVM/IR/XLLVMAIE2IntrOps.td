@@ -248,7 +248,12 @@ def Vector16AccFloatToV16BF16AIE2pIntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
 
-// ----- BROADCAST ----- 
+def Vector32AccFloatToV32BF16AIE2pIntrOp :
+    AIEVec2p_IntrOp<"v32accfloat.to.v32bf16",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [F32]>:$src)>;
+
+// ----- BROADCAST -----
 
 def VectorBroadcast8I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast8.I512",
@@ -442,7 +447,12 @@ def Vector16BF16ToV16AccFloatAIE2pIntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$src)>;
 
-// ----- SHIFT ----- 
+def Vector32BF16ToV32AccFloatAIE2pIntrOp :
+    AIEVec2p_IntrOp<"v32bf16.to.v32accfloat",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$src)>;
+
+// ----- SHIFT -----
 
 def VectorShiftI512I512IntrOp :
     AIEVec2_IntrOp<"vshift.I512.I512",

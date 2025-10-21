@@ -240,6 +240,13 @@ func.func @v32bf16_srs_v32f32(%arg0 : vector<32xf32>) {
 // CHECK-SAME: (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
 // CHECK-NEXT: %[[BITCAST6:.*]] = llvm.bitcast %[[CONCAT]] : vector<16xi32> to vector<32xbf16>
 
+// AIE2P-LABEL: @v32bf16_srs_v32f32
+// AIE2P-SAME: %[[ARG0:.*]]: vector<32xf32>
+// AIE2P-NEXT: %[[SHIFT0:.*]] = arith.constant 0 : i32
+// AIE2P-NEXT: %[[SRS:.*]] = "xllvm.intr.aie2p.v32accfloat.to.v32bf16"(
+// AIE2P-SAME: %[[ARG0]]) :
+// AIE2P-SAME: (vector<32xf32>) -> vector<32xbf16>
+
 // -----
 
 func.func @v4x4bf16_srs_v4x4f32(%arg0 : vector<4x4xf32>) {

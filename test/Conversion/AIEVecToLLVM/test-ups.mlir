@@ -222,6 +222,12 @@ func.func @v32f32_ups_v32bf16(%arg0 : vector<32xbf16>) {
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>) -> vector<32xi32>
 // CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<32xi32> to vector<32xf32>
 
+// AIE2P-LABEL: @v32f32_ups_v32bf16
+// AIE2P-SAME: %[[ARG0:.*]]: vector<32xbf16>
+// AIE2P-NEXT: %[[UPS:.*]] = "xllvm.intr.aie2p.v32bf16.to.v32accfloat"(
+// AIE2P-SAME: %[[ARG0]]) :
+// AIE2P-SAME: (vector<32xbf16>) -> vector<32xf32>
+
 // -----
 
 // CHECK-LABEL: @multidim_ups_i8_to_i32
