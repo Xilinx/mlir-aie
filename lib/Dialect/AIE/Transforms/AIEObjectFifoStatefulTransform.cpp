@@ -670,7 +670,8 @@ struct AIEObjectFifoStatefulTransformPass
                                                currentCol - 1, currentRow);
 
             int share_direction = 0;
-            if (isSharedMemory(creation_tile, leftTile, &share_direction)) {
+            if (isSharedMemory(creation_tile, leftTile, &share_direction) &&
+                share_direction == 1) {
               neighborTiles.push_back(leftTile);
             }
           }
@@ -680,7 +681,8 @@ struct AIEObjectFifoStatefulTransformPass
             TileOp rightTile = findOrCreateTile(builder, dev, creation_tile,
                                                 currentCol + 1, currentRow);
             int share_direction = 0;
-            if (isSharedMemory(creation_tile, rightTile, &share_direction)) {
+            if (isSharedMemory(creation_tile, rightTile, &share_direction) &&
+                share_direction == 1) {
               neighborTiles.push_back(rightTile);
             }
           }
