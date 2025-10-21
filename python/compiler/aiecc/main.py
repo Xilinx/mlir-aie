@@ -989,6 +989,11 @@ class FlowRunner:
         await self.assemble_full_elf(config_json_path, full_elf_path, parent_task)
 
     async def process_ctrlpkt(self, module_str, device_op, device_name):
+        file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
+        file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
+        file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
+            f"{device_name}_ctrlpkt_dma_seq.mlir"
+        )
         ctrlpkt_mlir_str = run_passes(
             "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
             + self.tmpdirname
