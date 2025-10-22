@@ -8,4 +8,4 @@ for lit test suites across the AIE project.
 
 from .lit_config_helpers import LitConfigHelper, HardwareConfig
 
-__all__ = ['LitConfigHelper', 'HardwareConfig']
+__all__ = ["LitConfigHelper", "HardwareConfig"]
