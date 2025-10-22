@@ -14,7 +14,10 @@ def config(device, xclbin_path, instr_path):
     # Register xclbin and create a context for it
     xclbin = pyxrt.xclbin(xclbin_path)
     kernels = xclbin.get_kernels()
-    xkernel = [k for k in kernels if "MLIR_AIE" == k.get_name()][0]
+    try:
+        xkernel = [k for k in kernels if "MLIR_AIE" == k.get_name()][0]
+    except KeyError:
+        raise AIE_Application_Error("No such kernel: " + kernel_name)
 
     device.register_xclbin(xclbin)
     context = pyxrt.hw_context(device, xclbin.get_uuid())
@@ -30,29 +33,29 @@ def config(device, xclbin_path, instr_path):
 def run1(device, context, kernel, insts, size):
     dtype = np.uint8
 
-    in_volume = size // np.dtype(dtype).itemsize
-    out_volume = size // np.dtype(dtype).itemsize
-
     # Initialize data for input, output, and testing
-    in_data = np.arange(0, in_volume, dtype=dtype)
-    out_data = np.zeros([out_volume], dtype=dtype)
+    in_data = np.arange(0, size, dtype=dtype)
+    out_data = np.zeros([size], dtype=dtype)
 
     ref = in_data
 
     # Create instruction buffer (always needed)
     bo_insts = pyxrt.bo(device, len(insts) * 4, pyxrt.bo.cacheable, kernel.group_id(1))
 
-    # Create input/output buffers, and populate them with data
-    bo_in = pyxrt.bo(device, in_volume, pyxrt.bo.host_only, kernel.group_id(3))
-    bo_in.write(in_data.view(np.uint8), 0)
-    bo_out = pyxrt.bo(device, out_volume, pyxrt.bo.host_only, kernel.group_id(4))
-    bo_out.write(out_data.view(np.uint8), 0)
+    # Create input/output buffers
+    bo_in = pyxrt.bo(device, in_data.nbytes, pyxrt.bo.host_only, kernel.group_id(3))
+    bo_out = pyxrt.bo(device, out_data.nbytes, pyxrt.bo.host_only, kernel.group_id(4))
 
-    # Sync input buffers to device
-    bo_insts.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+    # Write and sync input buffers to device
+    bo_in.write(in_data.view(np.uint8), 0)
     bo_in.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
+    bo_out.write(out_data.view(np.uint8), 0)
+    bo_out.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+
     # Run the kernel
+    bo_insts.write(insts, 0)
+    bo_insts.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
     run = kernel(
         3,
         bo_insts,
@@ -68,47 +71,43 @@ def run1(device, context, kernel, insts, size):
 
     # Sync data from device
     bo_out.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
-
-    # Read output buffer
-    output_bytes = bo_out.read(out_volume, 0)
-    output_data = np.frombuffer(output_bytes, dtype=dtype)
+    actual_output = bo_out.read(out_data.nbytes, 0).view(dtype).reshape(out_data.shape)
 
     # Check data
-    print(ref)
-    print(output_data)
-    assert (ref == output_data).all()
+    assert (ref == actual_output).all()
 
 
 def run2(device, context, kernel, insts, size):
     dtype = np.uint8
 
-    in_volume = size // np.dtype(dtype).itemsize
-    out_volume = size * 2 // np.dtype(dtype).itemsize
-
     # Initialize data for input, output, and testing
-    in1_data = np.arange(0, in_volume, dtype=dtype)
-    in2_data = np.arange(0, in_volume, dtype=dtype)
-    out_data = np.zeros([out_volume], dtype=dtype)
+    in1_data = np.arange(0, size, dtype=dtype)
+    in2_data = np.arange(0, size, dtype=dtype)
+    out_data = np.zeros([size * 2], dtype=dtype)
 
     ref = np.concatenate((in1_data, in2_data))
 
     # Create instruction buffer (always needed)
     bo_insts = pyxrt.bo(device, len(insts) * 4, pyxrt.bo.cacheable, kernel.group_id(1))
 
-    # Create input/output buffers, and populate them with data
+    # Create input/output buffers
     bo_in1 = pyxrt.bo(device, in1_data.nbytes, pyxrt.bo.host_only, kernel.group_id(3))
-    bo_in1.write(in1_data.view(np.uint8), 0)
     bo_in2 = pyxrt.bo(device, in2_data.nbytes, pyxrt.bo.host_only, kernel.group_id(4))
-    bo_in2.write(in2_data.view(np.uint8), 0)
     bo_out = pyxrt.bo(device, out_data.nbytes, pyxrt.bo.host_only, kernel.group_id(5))
-    bo_out.write(out_data.view(np.uint8), 0)
 
-    # Sync input buffers to device
-    bo_insts.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+    # Write and sync input buffers to device
+    bo_in1.write(in1_data.view(np.uint8), 0)
     bo_in1.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+
+    bo_in2.write(in2_data.view(np.uint8), 0)
     bo_in2.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
+    bo_out.write(out_data.view(np.uint8), 0)
+    bo_out.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+
     # Run the kernel
+    bo_insts.write(insts, 0)
+    bo_insts.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
     run = kernel(
         3,
         bo_insts,
@@ -125,23 +124,36 @@ def run2(device, context, kernel, insts, size):
 
     # Sync data from device
     bo_out.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
-
-    # Read output buffer
-    output_bytes = bo_out.read(out_volume, 0)
-    output_data = np.frombuffer(output_bytes, dtype=dtype)
+    actual_output = bo_out.read(out_data.nbytes, 0).view(dtype).reshape(out_data.shape)
 
     # Check data
-    print(ref)
-    print(output_data)
-    assert (ref == output_data).all()
+    assert (ref == actual_output).all()
 
 
 def main(opts):
     device = pyxrt.device(0)
 
-    # TODO: loop
     context1, kernel1, insts1 = config(device, opts.xclbin1, opts.insts1)
-    run2(device, context1, kernel1, insts1, opts.size)
+    context2, kernel2, insts2 = config(device, opts.xclbin2, opts.insts2)
+
+    # This is good
+    run1(device, context1, kernel1, insts1, opts.size)
+    run2(device, context2, kernel2, insts2, opts.size)
+
+    # This is bad
+    # run2(device, context2, kernel2, insts2, opts.size)
+    # run1(device, context1, kernel1, insts1, opts.size)
+    """
+    Traceback (most recent call last):
+    File "/scratch/ehunhoff/mlir-aie/programming_examples/basic/pyxrt_buffer_bugcheck/test.py", line 171, in <module>
+        main(opts)
+    File "/scratch/ehunhoff/mlir-aie/programming_examples/basic/pyxrt_buffer_bugcheck/test.py", line 157, in main
+        run1(device, context1, kernel1, insts1, opts.size)
+    File "/scratch/ehunhoff/mlir-aie/programming_examples/basic/pyxrt_buffer_bugcheck/test.py", line 58, in run1
+        run = kernel(
+            ^^^^^^^
+    RuntimeError: DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-2): No such file or directory
+    """
 
 
 if __name__ == "__main__":
