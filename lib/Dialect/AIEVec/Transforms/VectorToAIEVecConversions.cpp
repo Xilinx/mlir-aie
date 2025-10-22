@@ -2928,7 +2928,9 @@ struct ComputeSignedIntRightShiftOpPattern
   }
 };
 
-// Convert a `vector.contract` op to an `aievec.matmul` op for AIE2
+// Convert a `vector.contract` op to an `aievec.matmul` op for AIE2 or
+// `aievec.matmul_aie2p` for AIE2P
+template <typename MatMulOpTy>
 struct LowerVectorContractionOpToAIEVecMatMulPattern
     : OpConversionPattern<vector::ContractionOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -2968,18 +2970,19 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
       acc = rewriter.create<aievec::CastOp>(contractOp.getLoc(), acc.getType(),
                                             acc, true);
 
-    auto matmulOp = rewriter.create<aievec::MatMulOp>(
-        contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
+    auto matmulOp = rewriter.create<MatMulOpTy>(contractOp.getLoc(),
+                                                acc.getType(), lhs, rhs, acc);
+    Value result;
     {
       // Replace diagnostics handler to silence errors when verifying the
-      // validity of the `aievec.matmul` ops being generated.
+      // validity of the matmul ops being generated.
       ScopedDiagnosticHandler diagHandler(
           contractOp.getContext(), [](Diagnostic &) { return success(); });
       if (failed(matmulOp.verifyInvariants())) {
         rewriter.eraseOp(matmulOp);
         // There is a possibility that, when the linalg op is converted to
         // contractions, lower precisions operands are cast to the target
-        // precission outside the contraction. For those cases, we check.
+        // precision outside the contraction. For those cases, we check.
         lhs = adaptor.getLhs();
         auto wideLhsValue = getSourceOfWideningOp(lhs).value_or(nullptr);
         if (wideLhsValue)
@@ -2990,17 +2993,17 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
         if (wideRhsValue)
           rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
 
-        matmulOp = rewriter.create<aievec::MatMulOp>(
-            contractOp.getLoc(), acc.getType(), lhs, rhs, acc);
+        matmulOp = rewriter.create<MatMulOpTy>(contractOp.getLoc(),
+                                               acc.getType(), lhs, rhs, acc);
         if (failed(matmulOp.verifyInvariants()))
           return failure();
       }
     }
+    result = matmulOp.getResult();
 
-    Value result = matmulOp.getResult();
     if (matMoveToAcc)
       result = rewriter.create<aievec::CastOp>(contractOp.getLoc(),
-                                               acc.getType(), matmulOp, false);
+                                               acc.getType(), result, false);
     if (bReshapedAcc)
       result = rewriter.create<vector::ShapeCastOp>(
           contractOp.getLoc(), adaptor.getAcc().getType(), result);
@@ -3011,6 +3014,11 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
 
   bool matMoveToAcc;
 };
+
+using LowerVectorContractionOpToAIEVecMatMulOpAIE2 =
+    LowerVectorContractionOpToAIEVecMatMulPattern<aievec::MatMulOp>;
+using LowerVectorContractionOpToAIEVecMatMulOpAIE2P =
+    LowerVectorContractionOpToAIEVecMatMulPattern<aievec::MatMulOp_AIE2P>;
 
 // Convert a `vector.transpose` op to an `aievec.shuffle` op for AIE2.
 struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
@@ -3122,8 +3130,10 @@ static void populateAIEVecV1ConversionPatterns(RewritePatternSet &patterns,
   // clang-format on
 }
 
-static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
-                                               TargetBackend backend) {
+// Populate common conversion patterns for AIE2 and AIE2P
+static void
+populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
+                                         TargetBackend backend) {
   // clang-format off
   // TODO: Reorder these alphabetically
   if (backend == TargetBackend::CPP) {
@@ -3180,9 +3190,21 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       LowerVectorExtractStridedSliceOpAIE2Pattern,
       LowerVectorTransposeOpToAIEVecShuffleOpPattern
       >(patterns.getContext());
-  patterns.add<LowerVectorContractionOpToAIEVecMatMulPattern
-      >(patterns.getContext(), backend == TargetBackend::CPP);
   // clang-format on
+}
+
+static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
+                                               TargetBackend backend) {
+  populateAIEVecV2CommonConversionPatterns(patterns, backend);
+  patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2>(
+      patterns.getContext(), backend == TargetBackend::CPP);
+}
+
+static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
+                                                TargetBackend backend) {
+  populateAIEVecV2CommonConversionPatterns(patterns, backend);
+  patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2P>(
+      patterns.getContext(), backend == TargetBackend::CPP);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3608,6 +3630,41 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
   target.addLegalDialect<memref::MemRefDialect>();
 }
 
+static void configureAIEVecV2PLegalizations(ConversionTarget &target,
+                                            TargetBackend backend) {
+  // AIE2P-specific legalization: ExtFOp is always illegal
+  target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
+    auto srcType = dyn_cast<VectorType>(extfOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(extfOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
+      return true;
+
+    // For aie2p, ExtFOp is always illegal
+    return false;
+  });
+
+  // AIE2P-specific legalization: TruncFOp is always illegal
+  target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
+    auto srcType = dyn_cast<VectorType>(truncfOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(truncfOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
+      return true;
+
+    // For aie2p, TruncFOp is always illegal
+    return false;
+  });
+}
+
 static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                            TargetBackend backend) {
   target.addLegalOp<UnrealizedConversionCastOp>();
@@ -3876,8 +3933,10 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     auto aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string targetStr = aieTarget;
-      if (targetStr == "aieml" || targetStr == "aie2" || targetStr == "aie2p")
+      if (targetStr == "aieml" || targetStr == "aie2")
         aieVersion = AIEArch::AIE2;
+      else if (targetStr == "aie2p")
+        aieVersion = AIEArch::AIE2P;
       else if (targetStr != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         return signalPassFailure();
@@ -3895,7 +3954,7 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
           return;
         }
       } else if (backendStr != "cpp") {
-        op->emitError() << "unknown target backend'" << targetBackend << "'";
+        op->emitError() << "unknown target backend '" << targetBackend << "'";
         signalPassFailure();
         return;
       }
@@ -3906,9 +3965,15 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     if (aieVersion == AIEArch::AIE) {
       populateAIEVecV1ConversionPatterns(patterns, backend);
       configureAIEVecV1Legalizations(target, backend);
-    } else {
+    } else if (aieVersion == AIEArch::AIE2) {
       populateAIEVecV2ConversionPatterns(patterns, backend);
       configureAIEVecV2Legalizations(target, backend);
+    } else if (aieVersion == AIEArch::AIE2P) {
+      populateAIEVecV2PConversionPatterns(patterns, backend);
+      configureAIEVecV2Legalizations(target, backend);
+      configureAIEVecV2PLegalizations(target, backend);
+    } else {
+      llvm_unreachable("AIE version is misconfigured");
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns))))

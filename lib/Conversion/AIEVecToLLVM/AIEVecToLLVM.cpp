@@ -2841,6 +2841,168 @@ class MatMulOpConversion
   }
 };
 
+class MatMulOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P> {
+  using ConvertOpToLLVMPattern<aievec::MatMulOp_AIE2P>::ConvertOpToLLVMPattern;
+  struct DecodedMatMulOp {
+    typedef enum {
+      BF16_I1024_ACC2048,
+      BF16_I512_ACC2048,
+      BF16_I512_ACC1024,
+      BF16_I512_ACC512,
+      UNSUPPORTED
+    } Kind;
+    Kind kind;
+    Value lhs;
+    Value rhs;
+    Value acc;
+    int conf;
+  };
+  static DecodedMatMulOp decodeMatMulOp(OpAdaptor op) {
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
+    Value acc = op.getAcc();
+
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto rhsVecTy = cast<VectorType>(rhs.getType());
+    auto accVecTy = cast<VectorType>(acc.getType());
+
+    // Check for AIE2p bf16 matmul
+    if (isa<BFloat16Type>(lhsVecTy.getElementType()) &&
+        isa<BFloat16Type>(rhsVecTy.getElementType()) &&
+        isa<Float32Type>(accVecTy.getElementType())) {
+
+      // Determine input size and accumulator size to select the right variant
+      int lhsLanes = getVectorLaneSize(lhsVecTy);
+      int rhsLanes = getVectorLaneSize(rhsVecTy);
+      int accLanes = getVectorLaneSize(accVecTy);
+
+      // I512 inputs (32 lanes each)
+      if (lhsLanes == 32 && rhsLanes == 32) {
+        if (accLanes == 64) {
+          // Uses I512.I512.ACC2048 (64 lanes of f32)
+          return {DecodedMatMulOp::Kind::BF16_I512_ACC2048, lhs, rhs, acc, 60};
+        } else if (accLanes == 32) {
+          // Uses I512.I512.ACC1024 (32 lanes of f32)
+          return {DecodedMatMulOp::Kind::BF16_I512_ACC1024, lhs, rhs, acc, 60};
+        } else if (accLanes == 16) {
+          // Uses I512.I512.ACC512 (16 lanes of f32)
+          return {DecodedMatMulOp::Kind::BF16_I512_ACC512, lhs, rhs, acc, 60};
+        }
+      }
+      // I1024 inputs (64 lanes each)
+      else if (lhsLanes == 64 && rhsLanes == 64 && accLanes == 64) {
+        // Uses I1024.I1024.ACC2048 (64 lanes of f32)
+        return {DecodedMatMulOp::Kind::BF16_I1024_ACC2048, lhs, rhs, acc, 60};
+      }
+    }
+
+    return {DecodedMatMulOp::Kind::UNSUPPORTED, lhs, rhs, acc, -1};
+  }
+  LogicalResult
+  matchAndRewrite(aievec::MatMulOp_AIE2P op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto decodedMatMulOp = decodeMatMulOp(adaptor);
+    if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::UNSUPPORTED) {
+      op.emitWarning() << "aievec.matmul_aie2p conversion is not supported for "
+                          "this type combination.\n";
+      return failure();
+    }
+    Location loc = op.getLoc();
+
+    // Flatten the inputs
+    auto lhsFlattenedVecTy =
+        getFlattenedVectorType(cast<VectorType>(decodedMatMulOp.lhs.getType()));
+    decodedMatMulOp.lhs = rewriter.create<vector::ShapeCastOp>(
+        loc, lhsFlattenedVecTy, decodedMatMulOp.lhs);
+    auto rhsFlattenedVecTy =
+        getFlattenedVectorType(cast<VectorType>(decodedMatMulOp.rhs.getType()));
+    decodedMatMulOp.rhs = rewriter.create<vector::ShapeCastOp>(
+        loc, rhsFlattenedVecTy, decodedMatMulOp.rhs);
+    auto accFlattenedVecTy =
+        getFlattenedVectorType(cast<VectorType>(decodedMatMulOp.acc.getType()));
+    decodedMatMulOp.acc = rewriter.create<vector::ShapeCastOp>(
+        loc, accFlattenedVecTy, decodedMatMulOp.acc);
+    Type i32ty = rewriter.getI32Type();
+    auto confCst = rewriter.create<LLVM::ConstantOp>(
+        loc, i32ty, rewriter.getI32IntegerAttr(decodedMatMulOp.conf));
+
+    SmallVector<Value> operands({decodedMatMulOp.lhs, decodedMatMulOp.rhs,
+                                 decodedMatMulOp.acc, confCst});
+
+    Value matMulResVal;
+
+    if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::BF16_I1024_ACC2048) {
+      // <8x8xbf16> x <8x8xbf16> + <8x8xf32>
+      // Signature: <64 x float> @llvm.aie2p.I1024.I1024.ACC2048.bf.mac.conf(
+      //              <64 x bfloat>, <64 x bfloat>, <64 x float>, i32)
+      matMulResVal =
+          rewriter
+              .create<xllvm::MacConfBF16I1024ACC2048AIE2pIntrOp>(
+                  loc, VectorType::get({64}, rewriter.getF32Type()),
+                  forceCastOperandsToSignature(
+                      rewriter, loc, operands,
+                      {VectorType::get({64}, rewriter.getBF16Type()),
+                       VectorType::get({64}, rewriter.getBF16Type()),
+                       VectorType::get({64}, rewriter.getF32Type()), i32ty}))
+              .getResult();
+    } else if (decodedMatMulOp.kind ==
+               DecodedMatMulOp::Kind::BF16_I512_ACC2048) {
+      // I512 inputs with ACC2048 (64 lanes)
+      // Signature: <64 x float> @llvm.aie2p.I512.I512.ACC2048.bf.mac.conf(
+      //              <32 x bfloat>, <32 x bfloat>, <64 x float>, i32)
+      matMulResVal =
+          rewriter
+              .create<xllvm::MacConfBF16I512ACC2048AIE2pIntrOp>(
+                  loc, VectorType::get({64}, rewriter.getF32Type()),
+                  forceCastOperandsToSignature(
+                      rewriter, loc, operands,
+                      {VectorType::get({32}, rewriter.getBF16Type()),
+                       VectorType::get({32}, rewriter.getBF16Type()),
+                       VectorType::get({64}, rewriter.getF32Type()), i32ty}))
+              .getResult();
+    } else if (decodedMatMulOp.kind ==
+               DecodedMatMulOp::Kind::BF16_I512_ACC1024) {
+      // I512 inputs with ACC1024 (32 lanes)
+      // Signature: <32 x float> @llvm.aie2p.I512.I512.ACC1024.bf.mac.conf(
+      //              <32 x bfloat>, <32 x bfloat>, <32 x float>, i32)
+      matMulResVal =
+          rewriter
+              .create<xllvm::MacConfBF16I512ACC1024AIE2pIntrOp>(
+                  loc, VectorType::get({32}, rewriter.getF32Type()),
+                  forceCastOperandsToSignature(
+                      rewriter, loc, operands,
+                      {VectorType::get({32}, rewriter.getBF16Type()),
+                       VectorType::get({32}, rewriter.getBF16Type()),
+                       VectorType::get({32}, rewriter.getF32Type()), i32ty}))
+              .getResult();
+    } else if (decodedMatMulOp.kind ==
+               DecodedMatMulOp::Kind::BF16_I512_ACC512) {
+      // I512 inputs with ACC512 (16 lanes)
+      // Signature: <16 x float> @llvm.aie2p.I512.I512.ACC512.bf.mac.conf(
+      //              <32 x bfloat>, <32 x bfloat>, <16 x float>, i32)
+      matMulResVal =
+          rewriter
+              .create<xllvm::MacConfBF16I512ACC512AIE2pIntrOp>(
+                  loc, VectorType::get({16}, rewriter.getF32Type()),
+                  forceCastOperandsToSignature(
+                      rewriter, loc, operands,
+                      {VectorType::get({32}, rewriter.getBF16Type()),
+                       VectorType::get({32}, rewriter.getBF16Type()),
+                       VectorType::get({16}, rewriter.getF32Type()), i32ty}))
+              .getResult();
+    }
+
+    // Cast from flattened result back to original accumulator shape
+    auto castFromAcc =
+        forceCastValueToType(rewriter, loc, matMulResVal, accFlattenedVecTy);
+    // Reshape back to original shape
+    rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(op, op.getType(),
+                                                     castFromAcc);
+    return success();
+  }
+};
+
 // This pattern folds aievec.cast op. For AIE2, the accumulators are in 32/64
 // bits, and the vectors are in 4/8/16/32 bits. Hence, we don't have to
 // explicitly express the casting between accumulators and vectors at the LLVM
@@ -2936,6 +3098,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   // Patterns specific to AIE2p backend
   patterns.add<AddElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
+  patterns.add<MatMulOpAIE2pConversion>(converter);
 }
 
 void populateAIEVecToLLVMConversionPatterns(
