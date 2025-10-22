@@ -37,8 +37,6 @@ LitConfigHelper.setup_standard_environment(
 )
 
 # Basic substitutions
-config.substitutions.append(("%PATH%", config.environment["PATH"]))
-config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
 config.substitutions.append(
     (

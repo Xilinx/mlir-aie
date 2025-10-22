@@ -39,10 +39,7 @@ LitConfigHelper.setup_standard_environment(
 )
 
 # Basic substitutions
-config.substitutions.append(("%PATH%", config.environment["PATH"]))
-config.substitutions.append(("%AIE_SRC_ROOT", config.aie_src_root))
 config.substitutions.append(("%PYTHON", config.python_executable))
-config.substitutions.append(("%shlibext", config.llvm_shlib_ext))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
 config.substitutions.append(
     ("%aie_runtime_lib%", os.path.join(config.aie_obj_root, "aie_runtime_lib"))
