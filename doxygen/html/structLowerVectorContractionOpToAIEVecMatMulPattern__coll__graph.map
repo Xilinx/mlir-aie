@@ -1,7 +1,7 @@
-<map id="LowerVectorContractionOpToAIEVecMatMulPattern" name="LowerVectorContractionOpToAIEVecMatMulPattern">
-<area shape="rect" id="Node000001" title=" " alt="" coords="79,108,273,148"/>
+<map id="LowerVectorContractionOpToAIEVecMatMulPattern&lt; MatMulOpTy &gt;" name="LowerVectorContractionOpToAIEVecMatMulPattern&lt; MatMulOpTy &gt;">
+<area shape="rect" id="Node000001" title=" " alt="" coords="79,108,273,163"/>
 <area shape="rect" id="Node000002" href="$classOpConversionPattern.html" title=" " alt="" coords="5,5,200,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="127,55,164,106,160,110,122,58"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="125,55,160,106,156,109,121,58"/>
 <area shape="rect" id="Node000003" href="$classbool.html" title=" " alt="" coords="224,13,275,38"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="235,51,192,109,188,106,231,48"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="236,51,196,109,192,106,232,48"/>
 </map>

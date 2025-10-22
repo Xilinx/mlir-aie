@@ -600,6 +600,50 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `aievec.matmul_aie2p` (::xilinx::aievec::MatMulOp_AIE2P)
+
+_AIE2P matrix-multiply and accummulate_
+
+Syntax:
+
+```
+operation ::= `aievec.matmul_aie2p` $lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
+              type($rhs) `into` type($acc)
+```
+
+AMD AIEv2P-specific intrinsic that performs a matrix multiplication
+between `lhs` and `rhs`, and accumulates the result in `acc`.
+
+Currently, this intrinsic supports the following type combination:
+
+     lhs                 | rhs                 | Accumulator
+    :-------------------:|:-------------------:|:------------------:
+     `vector<8x8xbf16>`  | `vector<8x8xbf16>`  | `vector<8x8xf32>`
+     `vector<8x4xbf16>`  | `vector<4x8xbf16>`  | `vector<8x8xf32>`
+     `vector<4x8xbf16>`  | `vector<8x4xbf16>`  | `vector<4x4xf32>`
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | a vector compatible with a lhs operand of AIE2P matrix-multiply and accumulate |
+| `rhs` | a vector compatible with a rhs operand of AIE2P matrix-multiply and accumulate |
+| `acc` | a vector compatible with an accumulator of AIE2P matrix-multiply and accumulate |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | a vector compatible with an accumulator of AIE2P matrix-multiply and accumulate |
+
+
+
 ### `aievec.max` (::xilinx::aievec::MaxOp)
 
 _AIE vector maximum_

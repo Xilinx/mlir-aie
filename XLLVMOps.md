@@ -1043,6 +1043,25 @@ _Types and operations for external LLVM dialect_
 
 
 
+### `xllvm.intr.aie2p.I1024.I1024.ACC2048.bf.mac.conf` (::xilinx::xllvm::MacConfBF16I1024ACC2048AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 64 |
+| `rhs` | vector of bfloat16 type values of length 64 |
+| `acc` | vector of 32-bit float values of length 64 |
+| `conf` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2p.I256.v16.acc32.srs` (::xilinx::xllvm::I256V16Acc32SrsAIE2pIntrOp)
 
 #### Operands:
@@ -1106,6 +1125,63 @@ _Types and operations for external LLVM dialect_
 | `src` | vector of 64-bit signless integer values of length 8 |
 | `shift` | 32-bit signless integer |
 | `sign` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.I512.I512.ACC1024.bf.mac.conf` (::xilinx::xllvm::MacConfBF16I512ACC1024AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 32 |
+| `rhs` | vector of bfloat16 type values of length 32 |
+| `acc` | vector of 32-bit float values of length 32 |
+| `conf` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.I512.I512.ACC2048.bf.mac.conf` (::xilinx::xllvm::MacConfBF16I512ACC2048AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 32 |
+| `rhs` | vector of bfloat16 type values of length 32 |
+| `acc` | vector of 32-bit float values of length 64 |
+| `conf` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.I512.I512.ACC512.bf.mac.conf` (::xilinx::xllvm::MacConfBF16I512ACC512AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 32 |
+| `rhs` | vector of bfloat16 type values of length 32 |
+| `acc` | vector of 32-bit float values of length 16 |
+| `conf` | 32-bit signless integer |
 
 #### Results:
 

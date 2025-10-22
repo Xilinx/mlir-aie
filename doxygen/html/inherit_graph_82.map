@@ -1,57 +1,59 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" title=" " alt="" coords="5,769,224,794"/>
+<area shape="rect" id="Node000000" title=" " alt="" coords="5,809,224,834"/>
 <area shape="rect" id="Node000001" href="$classxilinx_1_1aievec_1_1AddElemOpAIE2Conversion.html" title=" " alt="" coords="295,5,488,45"/>
-<area shape="poly" id="edge34_Node000000_Node000001" title=" " alt="" coords="115,755,130,611,159,401,180,292,205,193,235,111,252,80,270,55,293,39,296,43,274,59,256,83,240,114,210,195,185,294,164,402,135,611,121,755"/>
+<area shape="poly" id="edge34_Node000000_Node000001" title=" " alt="" coords="115,795,128,644,156,422,177,307,203,202,233,115,251,81,270,55,293,39,296,43,274,59,255,84,238,117,208,203,182,308,162,423,133,645,120,795"/>
 <area shape="rect" id="Node000002" href="$classxilinx_1_1aievec_1_1AddElemOpAIE2pConversion.html" title=" " alt="" coords="295,69,488,109"/>
-<area shape="poly" id="edge35_Node000000_Node000002" title=" " alt="" coords="116,754,132,621,163,431,184,333,209,243,237,170,253,141,270,119,293,103,296,107,274,123,258,144,242,172,214,245,189,334,168,432,137,622,121,755"/>
+<area shape="poly" id="edge35_Node000000_Node000002" title=" " alt="" coords="116,795,131,655,160,452,181,348,206,252,236,173,252,143,270,119,293,103,296,107,274,123,257,146,241,176,211,254,186,349,166,453,136,656,121,795"/>
 <area shape="rect" id="Node000003" href="$classxilinx_1_1aievec_1_1AddOpConversion.html" title=" " alt="" coords="275,134,508,159"/>
-<area shape="poly" id="edge36_Node000000_Node000003" title=" " alt="" coords="116,755,133,631,165,455,186,365,211,283,239,216,254,190,270,170,288,157,291,162,274,174,258,193,243,218,216,284,191,366,170,456,139,632,122,756"/>
+<area shape="poly" id="edge36_Node000000_Node000003" title=" " alt="" coords="116,795,132,663,162,475,183,379,208,291,237,219,253,191,270,170,288,157,291,162,274,174,257,194,242,221,213,293,189,380,168,476,137,664,121,795"/>
 <area shape="rect" id="Node000004" href="$classxilinx_1_1aievec_1_1BroadcastOpConversion.html" title=" " alt="" coords="300,184,483,224"/>
-<area shape="poly" id="edge37_Node000000_Node000004" title=" " alt="" coords="112,755,115,658,122,591,134,518,153,441,181,366,220,296,243,264,270,234,298,216,301,220,274,238,247,267,224,299,186,368,158,443,139,519,127,592,121,658,118,755"/>
+<area shape="poly" id="edge37_Node000000_Node000004" title=" " alt="" coords="117,795,135,675,168,507,189,421,213,343,240,278,255,253,270,234,298,215,301,220,274,238,259,256,245,281,218,344,194,422,173,508,140,676,122,795"/>
 <area shape="rect" id="Node000005" href="$classxilinx_1_1aievec_1_1BroadcastScalarOpConversion.html" title=" " alt="" coords="300,248,483,288"/>
-<area shape="poly" id="edge38_Node000000_Node000005" title=" " alt="" coords="114,755,120,667,128,609,142,545,162,478,189,413,225,352,270,298,298,280,301,284,274,302,229,355,194,415,167,480,147,546,134,610,125,668,119,755"/>
+<area shape="poly" id="edge38_Node000000_Node000005" title=" " alt="" coords="113,795,117,701,124,638,137,568,156,495,184,424,222,357,244,326,270,298,298,280,301,284,274,302,248,330,226,360,189,426,161,497,142,569,130,638,122,702,118,795"/>
 <area shape="rect" id="Node000006" href="$classxilinx_1_1aievec_1_1ConcatOpConversion.html" title=" " alt="" coords="301,312,481,352"/>
-<area shape="poly" id="edge39_Node000000_Node000006" title=" " alt="" coords="115,755,125,678,150,572,170,515,196,459,229,407,270,362,299,344,302,348,274,366,234,411,201,462,175,517,155,573,130,679,120,755"/>
+<area shape="poly" id="edge39_Node000000_Node000006" title=" " alt="" coords="114,795,122,712,131,656,145,595,165,532,191,470,226,413,270,362,300,343,303,348,274,366,231,416,196,473,170,534,150,596,136,657,127,712,119,795"/>
 <area shape="rect" id="Node000007" href="$classxilinx_1_1aievec_1_1ExtOpConversion.html" title=" " alt="" coords="277,377,506,402"/>
-<area shape="poly" id="edge40_Node000000_Node000007" title=" " alt="" coords="116,755,129,686,155,593,175,543,201,495,232,451,270,413,291,400,294,404,274,417,236,454,205,498,180,546,160,594,134,687,122,756"/>
+<area shape="poly" id="edge40_Node000000_Node000007" title=" " alt="" coords="115,795,125,719,150,616,170,560,196,506,229,456,270,413,290,400,293,404,274,417,233,459,201,509,175,562,155,617,130,720,120,796"/>
 <area shape="rect" id="Node000008" href="$classxilinx_1_1aievec_1_1ExtractElemOpConversion.html" title=" " alt="" coords="293,427,489,467"/>
-<area shape="poly" id="edge41_Node000000_Node000008" title=" " alt="" coords="119,755,136,697,165,622,185,582,209,544,238,508,270,477,292,463,295,468,274,481,242,511,214,547,190,585,170,624,141,699,124,756"/>
+<area shape="poly" id="edge41_Node000000_Node000008" title=" " alt="" coords="118,794,132,730,160,644,180,599,205,554,235,513,270,477,292,463,294,467,274,481,239,516,209,557,185,601,165,646,137,731,123,796"/>
 <area shape="rect" id="Node000009" href="$classxilinx_1_1aievec_1_1FMAElemOpConversion.html" title=" " alt="" coords="293,491,490,531"/>
-<area shape="poly" id="edge42_Node000000_Node000009" title=" " alt="" coords="123,755,143,709,175,651,217,591,242,564,270,540,291,528,294,533,274,545,246,568,221,595,179,653,148,711,128,757"/>
+<area shape="poly" id="edge42_Node000000_Node000009" title=" " alt="" coords="120,795,138,741,169,673,212,601,239,569,270,541,291,528,294,533,274,545,243,573,217,605,173,675,143,743,126,796"/>
 <area shape="rect" id="Node000010" href="$classxilinx_1_1aievec_1_1FMAOpConversion.html" title=" " alt="" coords="273,555,510,581"/>
-<area shape="poly" id="edge43_Node000000_Node000010" title=" " alt="" coords="127,755,149,717,182,672,222,627,271,590,295,578,297,583,273,594,226,631,186,676,154,720,131,758"/>
+<area shape="poly" id="edge43_Node000000_Node000010" title=" " alt="" coords="123,795,144,750,175,694,217,637,243,612,271,590,293,578,295,583,273,594,246,616,221,641,179,697,148,752,128,797"/>
 <area shape="rect" id="Node000011" href="$classxilinx_1_1aievec_1_1FoldAIECastOps.html" title=" " alt="" coords="282,605,501,630"/>
-<area shape="poly" id="edge44_Node000000_Node000011" title=" " alt="" coords="133,756,190,698,229,666,271,640,304,628,306,633,273,645,232,671,194,702,137,760"/>
-<area shape="rect" id="Node000012" href="$classxilinx_1_1aievec_1_1MatMulOpConversion.html" title=" " alt="" coords="299,655,483,695"/>
-<area shape="poly" id="edge45_Node000000_Node000012" title=" " alt="" coords="150,760,206,732,271,704,307,692,309,697,273,709,208,737,152,765"/>
-<area shape="rect" id="Node000013" href="$classxilinx_1_1aievec_1_1MaxOpConversion.html" title=" " alt="" coords="273,719,509,745"/>
-<area shape="poly" id="edge46_Node000000_Node000013" title=" " alt="" coords="199,764,319,742,320,747,200,769"/>
-<area shape="rect" id="Node000014" href="$classxilinx_1_1aievec_1_1MinOpConversion.html" title=" " alt="" coords="275,769,507,794"/>
-<area shape="poly" id="edge47_Node000000_Node000014" title=" " alt="" coords="238,779,275,779,275,784,238,784"/>
-<area shape="rect" id="Node000015" href="$classxilinx_1_1aievec_1_1MulElemOpConversion.html" title=" " alt="" coords="295,819,487,859"/>
-<area shape="poly" id="edge48_Node000000_Node000015" title=" " alt="" coords="191,794,295,816,294,821,190,799"/>
-<area shape="rect" id="Node000016" href="$classxilinx_1_1aievec_1_1MulOpConversion.html" title=" " alt="" coords="275,883,507,909"/>
-<area shape="poly" id="edge49_Node000000_Node000016" title=" " alt="" coords="147,800,204,835,273,868,315,881,313,886,271,873,201,839,144,804"/>
-<area shape="rect" id="Node000017" href="$classxilinx_1_1aievec_1_1PackOpConversion.html" title=" " alt="" coords="272,933,511,958"/>
-<area shape="poly" id="edge50_Node000000_Node000017" title=" " alt="" coords="137,803,194,861,232,892,273,918,306,930,304,935,271,922,229,896,190,865,133,806"/>
-<area shape="rect" id="Node000018" href="$classxilinx_1_1aievec_1_1SRSOpAIE2Conversion.html" title=" " alt="" coords="297,983,486,1023"/>
-<area shape="poly" id="edge51_Node000000_Node000018" title=" " alt="" coords="132,805,155,841,187,885,227,929,273,967,299,980,296,985,271,972,223,933,183,888,151,844,128,808"/>
-<area shape="rect" id="Node000019" href="$classxilinx_1_1aievec_1_1SRSOpAIE2pConversion.html" title=" " alt="" coords="293,1047,490,1087"/>
-<area shape="poly" id="edge52_Node000000_Node000019" title=" " alt="" coords="127,806,146,855,177,916,219,979,245,1008,274,1033,294,1045,291,1049,270,1037,241,1012,215,982,172,919,141,857,122,808"/>
-<area shape="rect" id="Node000020" href="$classxilinx_1_1aievec_1_1SelectOpConversion.html" title=" " alt="" coords="304,1111,479,1151"/>
-<area shape="poly" id="edge53_Node000000_Node000020" title=" " alt="" coords="124,807,140,867,168,946,188,987,212,1027,241,1064,274,1097,305,1114,303,1119,270,1101,237,1068,208,1030,184,989,163,948,135,869,119,808"/>
-<area shape="rect" id="Node000021" href="$classxilinx_1_1aievec_1_1ShiftOpConversion.html" title=" " alt="" coords="273,1175,510,1201"/>
-<area shape="poly" id="edge54_Node000000_Node000021" title=" " alt="" coords="121,807,133,879,158,975,178,1026,204,1076,235,1121,274,1161,294,1173,291,1178,270,1165,231,1125,199,1078,173,1028,153,976,127,880,116,808"/>
-<area shape="rect" id="Node000022" href="$classxilinx_1_1aievec_1_1ShuffleOpConversion.html" title=" " alt="" coords="301,1225,481,1265"/>
-<area shape="poly" id="edge55_Node000000_Node000022" title=" " alt="" coords="120,807,130,886,154,994,173,1053,200,1110,233,1164,274,1210,303,1228,300,1233,270,1214,228,1167,195,1113,169,1055,149,996,124,887,115,808"/>
-<area shape="rect" id="Node000023" href="$classxilinx_1_1aievec_1_1SubOpConversion.html" title=" " alt="" coords="275,1290,507,1315"/>
-<area shape="poly" id="edge56_Node000000_Node000023" title=" " alt="" coords="118,808,123,898,131,958,143,1025,163,1093,190,1160,227,1222,274,1275,292,1288,289,1292,270,1279,222,1225,185,1162,158,1095,138,1026,125,959,118,898,113,808"/>
-<area shape="rect" id="Node000024" href="$classxilinx_1_1aievec_1_1UPDOpConversion.html" title=" " alt="" coords="273,1339,509,1365"/>
-<area shape="poly" id="edge57_Node000000_Node000024" title=" " alt="" coords="123,807,142,920,175,1076,196,1156,220,1228,246,1286,274,1325,292,1337,288,1341,270,1329,241,1289,215,1229,191,1157,170,1077,136,921,117,808"/>
-<area shape="rect" id="Node000025" href="$classxilinx_1_1aievec_1_1UPSOpAIE2Conversion.html" title=" " alt="" coords="296,1389,487,1429"/>
-<area shape="poly" id="edge58_Node000000_Node000025" title=" " alt="" coords="122,808,140,929,173,1099,194,1186,218,1266,245,1331,259,1355,274,1374,297,1391,294,1395,270,1378,255,1358,240,1333,213,1267,189,1188,168,1100,135,930,117,808"/>
-<area shape="rect" id="Node000026" href="$classxilinx_1_1aievec_1_1UPSOpAIE2pConversion.html" title=" " alt="" coords="292,1453,491,1493"/>
-<area shape="poly" id="edge59_Node000000_Node000026" title=" " alt="" coords="121,808,137,941,168,1131,189,1229,214,1318,242,1391,258,1419,274,1439,293,1454,290,1458,270,1443,253,1421,237,1393,209,1319,184,1230,163,1132,132,941,116,808"/>
-<area shape="rect" id="Node000027" href="$classxilinx_1_1aievec_1_1UnpackOpConversion.html" title=" " alt="" coords="299,1517,483,1557"/>
-<area shape="poly" id="edge60_Node000000_Node000027" title=" " alt="" coords="121,807,135,951,164,1161,185,1269,210,1368,240,1449,256,1480,274,1503,301,1522,298,1526,270,1507,252,1483,235,1451,205,1370,180,1270,159,1162,130,952,115,808"/>
+<area shape="poly" id="edge44_Node000000_Node000011" title=" " alt="" coords="128,795,151,760,183,718,224,676,271,640,300,628,302,632,273,645,227,680,187,721,155,763,132,798"/>
+<area shape="rect" id="Node000012" href="$classxilinx_1_1aievec_1_1MatMulOpAIE2pConversion.html" title=" " alt="" coords="299,655,483,695"/>
+<area shape="poly" id="edge45_Node000000_Node000012" title=" " alt="" coords="138,797,196,750,232,726,271,704,301,692,303,697,273,709,235,730,199,755,142,801"/>
+<area shape="rect" id="Node000013" href="$classxilinx_1_1aievec_1_1MatMulOpConversion.html" title=" " alt="" coords="299,719,483,759"/>
+<area shape="poly" id="edge46_Node000000_Node000013" title=" " alt="" coords="166,802,271,768,313,756,314,761,273,773,167,807"/>
+<area shape="rect" id="Node000014" href="$classxilinx_1_1aievec_1_1MaxOpConversion.html" title=" " alt="" coords="273,783,509,809"/>
+<area shape="poly" id="edge47_Node000000_Node000014" title=" " alt="" coords="238,807,273,804,273,809,238,813"/>
+<area shape="rect" id="Node000015" href="$classxilinx_1_1aievec_1_1MinOpConversion.html" title=" " alt="" coords="275,833,507,858"/>
+<area shape="poly" id="edge48_Node000000_Node000015" title=" " alt="" coords="238,829,276,833,275,838,238,835"/>
+<area shape="rect" id="Node000016" href="$classxilinx_1_1aievec_1_1MulElemOpConversion.html" title=" " alt="" coords="295,883,487,923"/>
+<area shape="poly" id="edge49_Node000000_Node000016" title=" " alt="" coords="170,835,273,867,319,880,317,885,271,872,168,841"/>
+<area shape="rect" id="Node000017" href="$classxilinx_1_1aievec_1_1MulOpConversion.html" title=" " alt="" coords="275,947,507,973"/>
+<area shape="poly" id="edge50_Node000000_Node000017" title=" " alt="" coords="141,841,199,888,235,912,273,932,309,945,308,950,271,937,232,916,195,892,138,845"/>
+<area shape="rect" id="Node000018" href="$classxilinx_1_1aievec_1_1PackOpConversion.html" title=" " alt="" coords="272,997,511,1022"/>
+<area shape="poly" id="edge51_Node000000_Node000018" title=" " alt="" coords="134,844,190,914,229,951,273,982,303,994,301,999,271,986,226,955,186,917,130,847"/>
+<area shape="rect" id="Node000019" href="$classxilinx_1_1aievec_1_1SRSOpAIE2Conversion.html" title=" " alt="" coords="297,1047,486,1087"/>
+<area shape="poly" id="edge52_Node000000_Node000019" title=" " alt="" coords="130,845,151,886,183,936,224,988,274,1031,298,1044,295,1049,270,1036,220,991,179,939,147,889,125,848"/>
+<area shape="rect" id="Node000020" href="$classxilinx_1_1aievec_1_1SRSOpAIE2pConversion.html" title=" " alt="" coords="293,1111,490,1151"/>
+<area shape="poly" id="edge53_Node000000_Node000020" title=" " alt="" coords="126,846,144,899,174,967,217,1037,243,1069,274,1097,294,1109,291,1113,270,1101,240,1073,212,1040,169,969,139,901,121,848"/>
+<area shape="rect" id="Node000021" href="$classxilinx_1_1aievec_1_1SelectOpConversion.html" title=" " alt="" coords="304,1175,479,1215"/>
+<area shape="poly" id="edge54_Node000000_Node000021" title=" " alt="" coords="123,847,137,911,165,996,185,1041,209,1085,239,1125,274,1161,305,1179,302,1183,270,1165,235,1129,205,1088,180,1043,160,998,132,912,118,848"/>
+<area shape="rect" id="Node000022" href="$classxilinx_1_1aievec_1_1ShiftOpConversion.html" title=" " alt="" coords="273,1239,510,1265"/>
+<area shape="poly" id="edge55_Node000000_Node000022" title=" " alt="" coords="120,847,130,923,155,1025,175,1080,201,1133,233,1182,274,1225,293,1237,290,1241,270,1229,229,1186,196,1136,170,1082,150,1027,125,924,115,848"/>
+<area shape="rect" id="Node000023" href="$classxilinx_1_1aievec_1_1ShuffleOpConversion.html" title=" " alt="" coords="301,1289,481,1329"/>
+<area shape="poly" id="edge56_Node000000_Node000023" title=" " alt="" coords="120,847,128,930,137,985,151,1045,170,1107,197,1168,231,1224,274,1274,303,1292,300,1297,270,1278,227,1228,192,1170,165,1109,145,1046,131,986,122,930,114,848"/>
+<area shape="rect" id="Node000024" href="$classxilinx_1_1aievec_1_1SubOpConversion.html" title=" " alt="" coords="275,1354,507,1379"/>
+<area shape="poly" id="edge57_Node000000_Node000024" title=" " alt="" coords="118,848,121,942,128,1005,140,1075,160,1147,187,1218,225,1283,248,1312,274,1339,292,1352,289,1356,270,1343,244,1316,221,1286,183,1220,155,1149,135,1076,123,1006,116,942,113,848"/>
+<area shape="rect" id="Node000025" href="$classxilinx_1_1aievec_1_1UPDOpConversion.html" title=" " alt="" coords="273,1403,509,1429"/>
+<area shape="poly" id="edge58_Node000000_Node000025" title=" " alt="" coords="122,847,141,964,173,1128,194,1211,218,1287,245,1348,259,1371,274,1389,291,1401,288,1405,270,1393,255,1374,240,1351,213,1288,189,1212,168,1129,135,965,117,848"/>
+<area shape="rect" id="Node000026" href="$classxilinx_1_1aievec_1_1UPSOpAIE2Conversion.html" title=" " alt="" coords="296,1453,487,1493"/>
+<area shape="poly" id="edge59_Node000000_Node000026" title=" " alt="" coords="122,847,139,973,171,1150,192,1241,216,1325,244,1393,259,1419,274,1438,297,1455,294,1459,270,1442,254,1422,239,1395,211,1326,187,1243,166,1152,134,973,117,848"/>
+<area shape="rect" id="Node000027" href="$classxilinx_1_1aievec_1_1UPSOpAIE2pConversion.html" title=" " alt="" coords="292,1517,491,1557"/>
+<area shape="poly" id="edge60_Node000000_Node000027" title=" " alt="" coords="121,848,137,985,167,1182,188,1284,212,1377,241,1453,257,1482,274,1503,293,1518,290,1522,270,1507,253,1485,236,1455,207,1378,182,1285,162,1183,131,985,116,848"/>
+<area shape="rect" id="Node000028" href="$classxilinx_1_1aievec_1_1UnpackOpConversion.html" title=" " alt="" coords="299,1581,483,1621"/>
+<area shape="poly" id="edge61_Node000000_Node000028" title=" " alt="" coords="121,848,134,996,163,1213,183,1325,209,1427,239,1511,256,1543,274,1567,301,1586,298,1590,270,1571,251,1546,234,1513,204,1429,178,1326,157,1213,129,996,115,848"/>
 </map>

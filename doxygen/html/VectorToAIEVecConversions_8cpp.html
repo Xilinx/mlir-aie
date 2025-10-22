@@ -280,7 +280,7 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structComputeSignedIntRightShiftOpPattern.html">ComputeSignedIntRightShiftOpPattern</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerVectorContractionOpToAIEVecMatMulPattern.html">LowerVectorContractionOpToAIEVecMatMulPattern</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerVectorContractionOpToAIEVecMatMulPattern.html">LowerVectorContractionOpToAIEVecMatMulPattern&lt; MatMulOpTy &gt;</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerVectorTransposeOpToAIEVecShuffleOpPattern.html">LowerVectorTransposeOpToAIEVecShuffleOpPattern</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -352,6 +352,10 @@ Typedefs</h2></td></tr>
 <tr class="separator:a1ac0f14087398761c6ee3a2598afc7d7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1ad339033d39c73981079f2e32eb0cec" id="r_a1ad339033d39c73981079f2e32eb0cec"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="VectorToAIEVecConversions_8cpp.html#a1ad339033d39c73981079f2e32eb0cec">ComputeBandOpPattern</a> = <a class="el" href="structComputeBandAndBorOpPattern.html">ComputeBandAndBorOpPattern</a>&lt; arith::AndIOp, aievec::BandOp &gt;</td></tr>
 <tr class="separator:a1ad339033d39c73981079f2e32eb0cec"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4d17c3b0eaa4d4f0ad26e1f1ecf03711" id="r_a4d17c3b0eaa4d4f0ad26e1f1ecf03711"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="VectorToAIEVecConversions_8cpp.html#a4d17c3b0eaa4d4f0ad26e1f1ecf03711">LowerVectorContractionOpToAIEVecMatMulOpAIE2</a> = <a class="el" href="structLowerVectorContractionOpToAIEVecMatMulPattern.html">LowerVectorContractionOpToAIEVecMatMulPattern</a>&lt; aievec::MatMulOp &gt;</td></tr>
+<tr class="separator:a4d17c3b0eaa4d4f0ad26e1f1ecf03711"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aeb580541a37782f505b3232b3e492263" id="r_aeb580541a37782f505b3232b3e492263"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="VectorToAIEVecConversions_8cpp.html#aeb580541a37782f505b3232b3e492263">LowerVectorContractionOpToAIEVecMatMulOpAIE2P</a> = <a class="el" href="structLowerVectorContractionOpToAIEVecMatMulPattern.html">LowerVectorContractionOpToAIEVecMatMulPattern</a>&lt; aievec::MatMulOp_AIE2P &gt;</td></tr>
+<tr class="separator:aeb580541a37782f505b3232b3e492263"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
@@ -584,6 +588,38 @@ Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="a4d17c3b0eaa4d4f0ad26e1f1ecf03711" name="a4d17c3b0eaa4d4f0ad26e1f1ecf03711"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4d17c3b0eaa4d4f0ad26e1f1ecf03711">&#9670;&#160;</a></span>LowerVectorContractionOpToAIEVecMatMulOpAIE2</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">using <a class="el" href="VectorToAIEVecConversions_8cpp.html#a4d17c3b0eaa4d4f0ad26e1f1ecf03711">LowerVectorContractionOpToAIEVecMatMulOpAIE2</a> =  <a class="el" href="structLowerVectorContractionOpToAIEVecMatMulPattern.html">LowerVectorContractionOpToAIEVecMatMulPattern</a>&lt;aievec::MatMulOp&gt;</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03018">3018</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+
+</div>
+</div>
+<a id="aeb580541a37782f505b3232b3e492263" name="aeb580541a37782f505b3232b3e492263"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aeb580541a37782f505b3232b3e492263">&#9670;&#160;</a></span>LowerVectorContractionOpToAIEVecMatMulOpAIE2P</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">using <a class="el" href="VectorToAIEVecConversions_8cpp.html#aeb580541a37782f505b3232b3e492263">LowerVectorContractionOpToAIEVecMatMulOpAIE2P</a> =  <a class="el" href="structLowerVectorContractionOpToAIEVecMatMulPattern.html">LowerVectorContractionOpToAIEVecMatMulPattern</a>&lt;aievec::MatMulOp_AIE2P&gt;</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03020">3020</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+
+</div>
+</div>
 <a id="a0a111fafa36d2d1daefe86d515b8fe1a" name="a0a111fafa36d2d1daefe86d515b8fe1a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a0a111fafa36d2d1daefe86d515b8fe1a">&#9670;&#160;</a></span>LowerVectorMaximumFOpToAIEVecMaxOp</h2>
 
@@ -747,7 +783,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Oct 22 2025 16:07:33 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Oct 22 2025 16:53:00 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
