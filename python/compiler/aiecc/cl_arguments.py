@@ -171,14 +171,6 @@ def parse_args(args=None):
         help="Use packet switched flows when lowering object fifos",
     )
     parser.add_argument(
-        "--aie-generate-airbin",
-        dest="airbin",
-        default=False,
-        action="store_const",
-        const=True,
-        help="Generate airbin configuration (default is off)",
-    )
-    parser.add_argument(
         "host_args",
         action="store",
         help="arguments for host compiler",
