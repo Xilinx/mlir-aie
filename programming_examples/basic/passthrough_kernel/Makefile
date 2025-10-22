@@ -15,8 +15,8 @@ VPATH := ${srcdir}/../../../aie_kernels/generic
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_kernel
-in1_size = 16384 # in bytes
-out_size = 32768 # in bytes, 2x input size due to repeat_count = 2
+in1_size = 4096 # in bytes
+out_size = 4096 # in bytes, should always be equal to in1_size
 trace_size = 8192
 CHESS ?= false
 
