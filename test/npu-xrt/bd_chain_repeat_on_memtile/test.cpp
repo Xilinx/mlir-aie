@@ -62,10 +62,11 @@ int verify_passthrough_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
         if (test != ref) {
           errors++;
         } else {
-          if (verbosity >= 1) 
-            std::cout << "Correct at chunk " << chunk << ", repeat " << repeat 
-                     << ", index " << i << ": output[" << out_idx << "] = " << test 
-                     << " == input[" << in_idx << "] = " << ref << std::endl;
+          if (verbosity >= 1)
+            std::cout << "Correct at chunk " << chunk << ", repeat " << repeat
+                      << ", index " << i << ": output[" << out_idx
+                      << "] = " << test << " == input[" << in_idx
+                      << "] = " << ref << std::endl;
         }
       }
     }
