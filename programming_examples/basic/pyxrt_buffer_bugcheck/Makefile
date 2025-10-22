@@ -70,11 +70,11 @@ endif
 run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE 
 
-run_py1: build/final_${data_size}_in1.xclbin build/insts_${data_size}_in1.bin
-	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}_in1.xclbin -i build/insts_${data_size}_in1.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size} --ncores 1
-
-run_py2: build/final_${data_size}_in2.xclbin build/insts_${data_size}_in2.bin
-	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}_in2.xclbin -i build/insts_${data_size}_in2.bin -k MLIR_AIE -i1s ${in1_size} -i2s ${in1_size} -os ${out2_size} --ncores 2
+run_py: build/final_${data_size}_in2.xclbin build/insts_${data_size}_in2.bin build/final_${data_size}_in1.xclbin build/insts_${data_size}_in1.bin
+	${powershell} python3 ${srcdir}/test.py \
+	    -x1 build/final_${data_size}_in1.xclbin -i1 build/insts_${data_size}_in1.bin \
+		-x2 build/final_${data_size}_in2.xclbin -i2 build/insts_${data_size}_in2.bin \
+		-s ${in1_size}
 
 
 clean:
