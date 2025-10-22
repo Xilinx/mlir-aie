@@ -3933,8 +3933,10 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     auto aieVersion = AIEArch::AIE;
     if (!aieTarget.empty()) {
       std::string targetStr = aieTarget;
-      if (targetStr == "aieml" || targetStr == "aie2" || targetStr == "aie2p")
+      if (targetStr == "aieml" || targetStr == "aie2")
         aieVersion = AIEArch::AIE2;
+      else if (targetStr == "aie2p")
+        aieVersion = AIEArch::AIE2P;
       else if (targetStr != "aie") {
         op->emitError() << "unknown AIE target '" << aieTarget << "'";
         return signalPassFailure();
@@ -3952,7 +3954,7 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
           return;
         }
       } else if (backendStr != "cpp") {
-        op->emitError() << "unknown target backend'" << targetBackend << "'";
+        op->emitError() << "unknown target backend '" << targetBackend << "'";
         signalPassFailure();
         return;
       }
@@ -3963,16 +3965,15 @@ struct LowerVectorToAIEVec : PassWrapper<LowerVectorToAIEVec, OperationPass<>> {
     if (aieVersion == AIEArch::AIE) {
       populateAIEVecV1ConversionPatterns(patterns, backend);
       configureAIEVecV1Legalizations(target, backend);
+    } else if (aieVersion == AIEArch::AIE2) {
+      populateAIEVecV2ConversionPatterns(patterns, backend);
+      configureAIEVecV2Legalizations(target, backend);
+    } else if (aieVersion == AIEArch::AIE2P) {
+      populateAIEVecV2PConversionPatterns(patterns, backend);
+      configureAIEVecV2Legalizations(target, backend);
+      configureAIEVecV2PLegalizations(target, backend);
     } else {
-      std::string targetStr = aieTarget;
-      if (targetStr == "aie2p") {
-        populateAIEVecV2PConversionPatterns(patterns, backend);
-        configureAIEVecV2Legalizations(target, backend);
-        configureAIEVecV2PLegalizations(target, backend);
-      } else {
-        populateAIEVecV2ConversionPatterns(patterns, backend);
-        configureAIEVecV2Legalizations(target, backend);
-      }
+      llvm_unreachable("AIE version is misconfigured");
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns))))
