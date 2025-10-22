@@ -15,22 +15,24 @@ from aie.iron.device import NPU1Col1, NPU2, Tile
 
 def my_passthrough_kernel(dev, in1_size, out_size, ncores=1):
     assert ncores == 1 or ncores == 2
+    assert in1_size * ncores == out_size
 
     in1_dtype = np.uint8
     out_dtype = np.uint8
 
     # Define tensor types
     line_size = in1_size // in1_dtype(0).nbytes
+    line_out_size = out_size // out_dtype(0).nbytes
     line_type = np.ndarray[(line_size,), np.dtype[in1_dtype]]
-    line_out_type = np.ndarray[(line_size * ncores,), np.dtype[in1_dtype]]
+    line_out_type = np.ndarray[(line_out_size,), np.dtype[out_dtype]]
 
     # Dataflow with ObjectFifos
     of_in, of_out = [], []
     for i in range(ncores):
         of_in.append(ObjectFifo(line_type, name=f"in{i}"))
-    of_out_shim = ObjectFifo(line_type, name=f"out{i}")
+    of_out_shim = ObjectFifo(line_out_type, name=f"out{i}")
     of_out = of_out_shim.prod().join(
-        offsets=[line_size * i for i in range(ncores)],
+        offsets=[line_size * i for i in range(ncores)], obj_types=[line_type]*ncores
     )
 
     # External, binary kernel definition
@@ -57,11 +59,10 @@ def my_passthrough_kernel(dev, in1_size, out_size, ncores=1):
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    rt_types = [line_type] * ncores
-    rt_types.append(line_out_type)
+    rt_types = [line_type] * ncores + [line_out_type]
 
     with rt.sequence(*rt_types) as in_outs:
-        rt.start(my_worker)
+        rt.start(*workers)
         for i in range(ncores):
             rt.fill(of_in[i].prod(), in_outs[i])
         rt.drain(of_out_shim.cons(), in_outs[-1], wait=True)
@@ -73,9 +74,9 @@ def my_passthrough_kernel(dev, in1_size, out_size, ncores=1):
 p = argparse.ArgumentParser()
 p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
 p.add_argument(
-    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
+    "-i1s", "--in1_size", required=True, dest="in1_size", type=int, help="Input 1 size"
 )
-p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument("-os", "--out_size", required=True, dest="out_size", type=int, help="Output size")
 p.add_argument("--ncores", type=int, required=True, help="1 or 2")
 opts = p.parse_args(sys.argv[1:])
 
@@ -86,14 +87,7 @@ elif opts.device == "npu2":
 else:
     raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
 
-in1_size = int(opts.in1_size)
-if in1_size % 64 != 0 or in1_size < 512:
-    print(
-        "In1 buffer size ("
-        + str(in1_size)
-        + ") must be a multiple of 64 and greater than or equal to 512"
-    )
+if opts.in1_size % 64 != 0 or opts.in1_size < 512:
+    print(f"In1 buffer size ({in1_size}) must be a multiple of 64 and greater than or equal to 512")
     raise ValueError
-out_size = int(opts.out_size)
-
-print(my_passthrough_kernel(dev, in1_size, out_size, opts.ncores))
+print(my_passthrough_kernel(dev, opts.in1_size, opts.out_size, opts.ncores))

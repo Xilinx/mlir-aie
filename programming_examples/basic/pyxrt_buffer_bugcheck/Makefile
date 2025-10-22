@@ -17,6 +17,7 @@ devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_kernel
 in1_size = 4096 # in bytes
 out_size = 4096 # in bytes, should always be equal to in1_size
+out2_size = 8192
 CHESS ?= false
 
 data_size = in1_size
@@ -41,7 +42,7 @@ build/aie2_lineBased_8b_${data_size}_in1.mlir: ${srcdir}/${aie_py_src}
 	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} --ncores 1 > $@
 build/aie2_lineBased_8b_${data_size}_in2.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} --ncores 2 > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out2_size} --ncores 2 > $@
 
 build/final_${data_size}_in1.xclbin: build/aie2_lineBased_8b_${data_size}_in1.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
@@ -73,7 +74,7 @@ run_py1: build/final_${data_size}_in1.xclbin build/insts_${data_size}_in1.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}_in1.xclbin -i build/insts_${data_size}_in1.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size} --ncores 1
 
 run_py2: build/final_${data_size}_in2.xclbin build/insts_${data_size}_in2.bin
-	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}_in2.xclbin -i build/insts_${data_size}_in2.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size} --ncores 2
+	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}_in2.xclbin -i build/insts_${data_size}_in2.bin -k MLIR_AIE -i1s ${in1_size} -i2s ${in1_size} -os ${out2_size} --ncores 2
 
 
 clean:
