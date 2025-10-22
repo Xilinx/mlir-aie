@@ -45,8 +45,8 @@ int verify_passthrough_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
                               int SIZE, int verbosity) {
   int errors = 0;
   constexpr int REPEAT_COUNT = 2;
-  constexpr int CHUNK_SIZE = 1024;  // Must match chunk_size in AIE design
-  
+  constexpr int CHUNK_SIZE = 1024;
+
   int num_chunks = SIZE / CHUNK_SIZE;
 
   // Verify chunk-based repetition: each chunk repeated REPEAT_COUNT times
