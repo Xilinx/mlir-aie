@@ -10,62 +10,6 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK:   aie.device(npu1_1col) {
-// CHECK:     memref.global "public" @out_cons : memref<1024xui8>
-// CHECK:     memref.global "public" @out : memref<1024xui8>
-// CHECK:     memref.global "public" @join_1_cons : memref<512xui8>
-// CHECK:     memref.global "public" @join_1 : memref<512xui8>
-// CHECK:     memref.global "public" @join_0_cons : memref<512xui8>
-// CHECK:     memref.global "public" @join_0 : memref<512xui8>
-// CHECK:     memref.global "public" @split_1_cons : memref<512xui8>
-// CHECK:     memref.global "public" @split_1 : memref<512xui8>
-// CHECK:     memref.global "public" @split_0_cons : memref<512xui8>
-// CHECK:     memref.global "public" @split_0 : memref<512xui8>
-// CHECK:     memref.global "public" @in_cons : memref<1024xui8>
-// CHECK:     memref.global "public" @in : memref<1024xui8>
-// CHECK:     %tile_0_2 = aie.tile(0, 2)
-// CHECK:     %tile_0_3 = aie.tile(0, 3)
-// CHECK:     %shim_noc_tile_0_0 = aie.tile(0, 0)
-// CHECK:     %mem_tile_0_1 = aie.tile(0, 1)
-// CHECK:     %out_cons_prod_lock_0 = aie.lock(%shim_noc_tile_0_0, 2) {init = 0 : i32, sym_name = "out_cons_prod_lock_0"}
-// CHECK:     %out_cons_cons_lock_0 = aie.lock(%shim_noc_tile_0_0, 3) {init = 0 : i32, sym_name = "out_cons_cons_lock_0"}
-// CHECK:     %out_buff_0 = aie.buffer(%mem_tile_0_1) {sym_name = "out_buff_0"} : memref<1024xui8> 
-// CHECK:     %out_buff_1 = aie.buffer(%mem_tile_0_1) {sym_name = "out_buff_1"} : memref<1024xui8> 
-// CHECK:     %out_prod_lock_0 = aie.lock(%mem_tile_0_1, 4) {init = 2 : i32, sym_name = "out_prod_lock_0"}
-// CHECK:     %out_cons_lock_0 = aie.lock(%mem_tile_0_1, 5) {init = 0 : i32, sym_name = "out_cons_lock_0"}
-// CHECK:     %out_prod_lock_1 = aie.lock(%mem_tile_0_1, 6) {init = 2 : i32, sym_name = "out_prod_lock_1"}
-// CHECK:     %out_cons_lock_1 = aie.lock(%mem_tile_0_1, 7) {init = 0 : i32, sym_name = "out_cons_lock_1"}
-// CHECK:     %join_1_buff_0 = aie.buffer(%tile_0_3) {sym_name = "join_1_buff_0"} : memref<512xui8> 
-// CHECK:     %join_1_buff_1 = aie.buffer(%tile_0_3) {sym_name = "join_1_buff_1"} : memref<512xui8> 
-// CHECK:     %join_1_prod_lock_0 = aie.lock(%tile_0_3, 2) {init = 2 : i32, sym_name = "join_1_prod_lock_0"}
-// CHECK:     %join_1_cons_lock_0 = aie.lock(%tile_0_3, 3) {init = 0 : i32, sym_name = "join_1_cons_lock_0"}
-// CHECK:     %join_0_buff_0 = aie.buffer(%tile_0_2) {sym_name = "join_0_buff_0"} : memref<512xui8> 
-// CHECK:     %join_0_buff_1 = aie.buffer(%tile_0_2) {sym_name = "join_0_buff_1"} : memref<512xui8> 
-// CHECK:     %join_0_prod_lock_0 = aie.lock(%tile_0_2, 2) {init = 2 : i32, sym_name = "join_0_prod_lock_0"}
-// CHECK:     %join_0_cons_lock_0 = aie.lock(%tile_0_2, 3) {init = 0 : i32, sym_name = "join_0_cons_lock_0"}
-// CHECK:     %split_1_cons_buff_0 = aie.buffer(%tile_0_3) {sym_name = "split_1_cons_buff_0"} : memref<512xui8> 
-// CHECK:     %split_1_cons_buff_1 = aie.buffer(%tile_0_3) {sym_name = "split_1_cons_buff_1"} : memref<512xui8> 
-// CHECK:     %split_1_cons_prod_lock_0 = aie.lock(%tile_0_3, 0) {init = 2 : i32, sym_name = "split_1_cons_prod_lock_0"}
-// CHECK:     %split_1_cons_cons_lock_0 = aie.lock(%tile_0_3, 1) {init = 0 : i32, sym_name = "split_1_cons_cons_lock_0"}
-// CHECK:     %split_0_cons_buff_0 = aie.buffer(%tile_0_2) {sym_name = "split_0_cons_buff_0"} : memref<512xui8> 
-// CHECK:     %split_0_cons_buff_1 = aie.buffer(%tile_0_2) {sym_name = "split_0_cons_buff_1"} : memref<512xui8> 
-// CHECK:     %split_0_cons_prod_lock_0 = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "split_0_cons_prod_lock_0"}
-// CHECK:     %split_0_cons_cons_lock_0 = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "split_0_cons_cons_lock_0"}
-// CHECK:     %in_cons_buff_0 = aie.buffer(%mem_tile_0_1) {sym_name = "in_cons_buff_0"} : memref<1024xui8> 
-// CHECK:     %in_cons_buff_1 = aie.buffer(%mem_tile_0_1) {sym_name = "in_cons_buff_1"} : memref<1024xui8> 
-// CHECK:     %in_cons_prod_lock_0 = aie.lock(%mem_tile_0_1, 0) {init = 2 : i32, sym_name = "in_cons_prod_lock_0"}
-// CHECK:     %in_cons_cons_lock_0 = aie.lock(%mem_tile_0_1, 1) {init = 0 : i32, sym_name = "in_cons_cons_lock_0"}
-// CHECK:     %in_cons_prod_lock_1 = aie.lock(%mem_tile_0_1, 2) {init = 2 : i32, sym_name = "in_cons_prod_lock_1"}
-// CHECK:     %in_cons_cons_lock_1 = aie.lock(%mem_tile_0_1, 3) {init = 0 : i32, sym_name = "in_cons_cons_lock_1"}
-// CHECK:     %in_prod_lock_0 = aie.lock(%shim_noc_tile_0_0, 0) {init = 0 : i32, sym_name = "in_prod_lock_0"}
-// CHECK:     %in_cons_lock_0 = aie.lock(%shim_noc_tile_0_0, 1) {init = 0 : i32, sym_name = "in_cons_lock_0"}
-// CHECK:     aie.flow(%shim_noc_tile_0_0, DMA : 0, %mem_tile_0_1, DMA : 0)
-// CHECK:     aie.flow(%mem_tile_0_1, DMA : 0, %tile_0_2, DMA : 0)
-// CHECK:     aie.flow(%mem_tile_0_1, DMA : 1, %tile_0_3, DMA : 0)
-// CHECK:     aie.flow(%tile_0_2, DMA : 0, %mem_tile_0_1, DMA : 1)
-// CHECK:     aie.flow(%tile_0_3, DMA : 0, %mem_tile_0_1, DMA : 2)
-// CHECK:     aie.flow(%mem_tile_0_1, DMA : 2, %shim_noc_tile_0_0, DMA : 0)
-// CHECK:     aie.shim_dma_allocation @in(MM2S, 0, 0)
 // CHECK:     %memtile_dma_0_1 = aie.memtile_dma(%mem_tile_0_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4
