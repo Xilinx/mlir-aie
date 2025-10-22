@@ -1250,8 +1250,10 @@ public:
         VectorType srcType = cast<VectorType>(src.getType());
         Type srcScaType = srcType.getElementType();
         unsigned srcBitWidth = srcScaType.getIntOrFloatBitWidth();
+        int srcLanes = getVectorLaneSize(srcType);
+        int srcVectorSize = srcBitWidth * srcLanes;
 
-        if (resultBitWidth == 32 && srcBitWidth == 16) {
+        if (resultBitWidth == 32 && srcBitWidth == 16 && srcVectorSize == 512) {
           // v32int16 -> v32acc32
           upsIntrOp = rewriter.create<xllvm::Acc32V32I512UpsAIE2pIntrOp>(
               loc, VectorType::get({32}, rewriter.getI32Type()),
@@ -1259,7 +1261,8 @@ public:
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI16Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
-        } else if (resultBitWidth == 64 && srcBitWidth == 32) {
+        } else if (resultBitWidth == 64 && srcBitWidth == 32 &&
+                   srcVectorSize == 512) {
           // v16int32 -> v16acc64
           upsIntrOp = rewriter.create<xllvm::Acc64V16I512UpsAIE2pIntrOp>(
               loc, VectorType::get({16}, rewriter.getI64Type()),
@@ -1267,7 +1270,8 @@ public:
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI32Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
-        } else if (resultBitWidth == 64 && srcBitWidth == 16) {
+        } else if (resultBitWidth == 64 && srcBitWidth == 16 &&
+                   srcVectorSize == 256) {
           // v16int16 -> v16acc64
           upsIntrOp = rewriter.create<xllvm::Acc64V16I256UpsAIE2pIntrOp>(
               loc, VectorType::get({16}, rewriter.getI64Type()),
@@ -1275,7 +1279,8 @@ public:
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI16Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
-        } else if (resultBitWidth == 32 && srcBitWidth == 8) {
+        } else if (resultBitWidth == 32 && srcBitWidth == 8 &&
+                   srcVectorSize == 256) {
           // v32int8 -> v32acc32
           upsIntrOp = rewriter.create<xllvm::Acc32V32I256UpsAIE2pIntrOp>(
               loc, VectorType::get({32}, rewriter.getI32Type()),
@@ -1283,6 +1288,89 @@ public:
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI8Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
+        }
+      } else if (resultVectorSize == 2048) {
+        Value src = opSrcVal;
+        VectorType srcType = cast<VectorType>(src.getType());
+        Type srcScaType = srcType.getElementType();
+        unsigned srcBitWidth = srcScaType.getIntOrFloatBitWidth();
+        int srcLanes = getVectorLaneSize(srcType);
+        int srcVectorSize = srcBitWidth * srcLanes;
+
+        if (resultBitWidth == 32 && srcBitWidth == 8 && srcVectorSize == 512) {
+          // v64int8 -> v64acc32
+          upsIntrOp = rewriter.create<xllvm::Acc32V64I512UpsAIE2pIntrOp>(
+              loc, VectorType::get({64}, rewriter.getI32Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, operands,
+                  {VectorType::get({64}, rewriter.getI8Type()),
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
+        } else if (resultBitWidth == 64 && srcBitWidth == 16 &&
+                   srcVectorSize == 512) {
+          // v32int16 -> v32acc64
+          upsIntrOp = rewriter.create<xllvm::Acc64V32I512UpsAIE2pIntrOp>(
+              loc, VectorType::get({32}, rewriter.getI64Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, operands,
+                  {VectorType::get({32}, rewriter.getI16Type()),
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
+        } else if (resultBitWidth == 32 && srcBitWidth == 16 &&
+                   srcVectorSize == 1024) {
+          // v64int16 -> v64acc32
+          // Extract 2 chunks of v32int16 and convert each to v32acc32
+          auto index0Cst = rewriter.create<LLVM::ConstantOp>(
+              loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+          auto index1Cst = rewriter.create<LLVM::ConstantOp>(
+              loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+
+          auto extractUps2048 = [&](Value source, Value index, Value shiftCst,
+                                    Value signCst) -> Value {
+            // Use vector::ShuffleOp to extract 512-bit from 1024-bit
+            // Cast source to v32xi32 for shuffling
+            auto v32i32Source = forceCastValueToType(
+                rewriter, loc, source,
+                VectorType::get({32}, rewriter.getI32Type()));
+
+            // Determine shuffle mask based on index
+            // index 0: elements [0-15]
+            // index 1: elements [16-31]
+            SmallVector<int64_t> shuffleMask;
+            if (auto constIndex = index.getDefiningOp<LLVM::ConstantOp>()) {
+              auto indexAttr = cast<IntegerAttr>(constIndex.getValue());
+              int64_t idxVal = indexAttr.getInt();
+              int startIdx = idxVal * 16;
+              for (int i = 0; i < 16; ++i) {
+                shuffleMask.push_back(startIdx + i);
+              }
+            } else {
+              // Default to index 0 if not constant
+              for (int i = 0; i < 16; ++i) {
+                shuffleMask.push_back(i);
+              }
+            }
+
+            auto extOp = rewriter.create<vector::ShuffleOp>(
+                loc, v32i32Source, v32i32Source, shuffleMask);
+
+            return rewriter.create<xllvm::Acc32V32I512UpsAIE2pIntrOp>(
+                loc, VectorType::get({32}, rewriter.getI32Type()),
+                forceCastOperandsToSignature(
+                    rewriter, loc, {extOp, shiftCst, signCst},
+                    {VectorType::get({32}, rewriter.getI16Type()),
+                     rewriter.getI32Type(), rewriter.getI32Type()}));
+          };
+
+          auto res0 = extractUps2048(opSrcVal, index0Cst, shiftCst, signCst);
+          auto res1 = extractUps2048(opSrcVal, index1Cst, shiftCst, signCst);
+
+          // Concat two 1024-bit vectors to a 2048-bit vector using
+          // vector::ShuffleOp
+          SmallVector<int64_t> concatMask;
+          for (int i = 0; i < 64; ++i) {
+            concatMask.push_back(i);
+          }
+          upsIntrOp =
+              rewriter.create<vector::ShuffleOp>(loc, res0, res1, concatMask);
         }
       }
     } else {
@@ -1552,7 +1640,12 @@ public:
       SmallVector<Value> operands(
           {adaptor.getSource(), adaptor.getShift(), signCst});
       if (resultVectorSize == 512) {
-        if (resultBitWidth == 16) {
+        Value src = adaptor.getSource();
+        VectorType srcType = cast<VectorType>(src.getType());
+        Type srcScaType = srcType.getElementType();
+        unsigned srcBitWidth = srcScaType.getIntOrFloatBitWidth();
+
+        if (resultBitWidth == 16 && srcBitWidth == 32) {
           // v32acc32 -> v32int16
           srsIntrOp = rewriter.create<xllvm::I512V32Acc32SrsAIE2pIntrOp>(
               loc, VectorType::get({32}, rewriter.getI16Type()),
@@ -1560,13 +1653,29 @@ public:
                   rewriter, loc, operands,
                   {VectorType::get({32}, rewriter.getI32Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
-        } else if (resultBitWidth == 32) {
+        } else if (resultBitWidth == 16 && srcBitWidth == 64) {
+          // v32acc64 -> v32int16
+          srsIntrOp = rewriter.create<xllvm::I512V32Acc64SrsAIE2pIntrOp>(
+              loc, VectorType::get({32}, rewriter.getI16Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, operands,
+                  {VectorType::get({32}, rewriter.getI64Type()),
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
+        } else if (resultBitWidth == 32 && srcBitWidth == 64) {
           // v16acc64 -> v16int32
           srsIntrOp = rewriter.create<xllvm::I512V16Acc64SrsAIE2pIntrOp>(
               loc, VectorType::get({16}, rewriter.getI32Type()),
               forceCastOperandsToSignature(
                   rewriter, loc, operands,
                   {VectorType::get({16}, rewriter.getI64Type()),
+                   rewriter.getI32Type(), rewriter.getI32Type()}));
+        } else if (resultBitWidth == 8 && srcBitWidth == 32) {
+          // v64acc32 -> v64int8
+          srsIntrOp = rewriter.create<xllvm::I512V64Acc32SrsAIE2pIntrOp>(
+              loc, VectorType::get({64}, rewriter.getI8Type()),
+              forceCastOperandsToSignature(
+                  rewriter, loc, operands,
+                  {VectorType::get({64}, rewriter.getI32Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
         }
       } else if (resultVectorSize == 256) {
@@ -1607,6 +1716,78 @@ public:
                   rewriter, loc, operands,
                   {VectorType::get({8}, rewriter.getI64Type()),
                    rewriter.getI32Type(), rewriter.getI32Type()}));
+        }
+      } else if (resultVectorSize == 1024) {
+        Value src = adaptor.getSource();
+        VectorType srcType = cast<VectorType>(src.getType());
+        Type srcScaType = srcType.getElementType();
+        unsigned srcBitWidth = srcScaType.getIntOrFloatBitWidth();
+
+        if (resultBitWidth == 16 && srcBitWidth == 32) {
+          // v64acc32 -> v64int16
+          // Extract 2 chunks of v32acc32 and convert each to v32int16
+          auto index0Cst = rewriter.create<LLVM::ConstantOp>(
+              loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+          auto index1Cst = rewriter.create<LLVM::ConstantOp>(
+              loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+
+          auto extractSrs1024 = [&](Value source, Value index, Value shiftCst,
+                                    Value signCst) -> Value {
+            // Use vector::ShuffleOp to extract 1024-bit from 2048-bit
+            // Cast source to v64xi32 for shuffling
+            auto v64i32Source = forceCastValueToType(
+                rewriter, loc, source,
+                VectorType::get({64}, rewriter.getI32Type()));
+
+            // Determine shuffle mask based on index
+            // index 0: elements [0-31]
+            // index 1: elements [32-63]
+            SmallVector<int64_t> shuffleMask;
+            if (auto constIndex = index.getDefiningOp<LLVM::ConstantOp>()) {
+              auto indexAttr = cast<IntegerAttr>(constIndex.getValue());
+              int64_t idxVal = indexAttr.getInt();
+              int startIdx = idxVal * 32;
+              for (int i = 0; i < 32; ++i) {
+                shuffleMask.push_back(startIdx + i);
+              }
+            } else {
+              // Default to index 0 if not constant
+              for (int i = 0; i < 32; ++i) {
+                shuffleMask.push_back(i);
+              }
+            }
+
+            auto extOp = rewriter.create<vector::ShuffleOp>(
+                loc, v64i32Source, v64i32Source, shuffleMask);
+
+            return rewriter.create<xllvm::I512V32Acc32SrsAIE2pIntrOp>(
+                loc, VectorType::get({32}, rewriter.getI16Type()),
+                forceCastOperandsToSignature(
+                    rewriter, loc, {extOp, shiftCst, signCst},
+                    {VectorType::get({32}, rewriter.getI32Type()),
+                     rewriter.getI32Type(), rewriter.getI32Type()}));
+          };
+
+          auto res0 =
+              extractSrs1024(src, index0Cst, adaptor.getShift(), signCst);
+          auto res1 =
+              extractSrs1024(src, index1Cst, adaptor.getShift(), signCst);
+
+          // Concat two 512-bit vectors to a 1024-bit vector using
+          // vector::ShuffleOp
+          auto v16i32Res0 = forceCastValueToType(
+              rewriter, loc, res0,
+              VectorType::get({16}, rewriter.getI32Type()));
+          auto v16i32Res1 = forceCastValueToType(
+              rewriter, loc, res1,
+              VectorType::get({16}, rewriter.getI32Type()));
+
+          SmallVector<int64_t> concatMask;
+          for (int i = 0; i < 32; ++i) {
+            concatMask.push_back(i);
+          }
+          srsIntrOp = rewriter.create<vector::ShuffleOp>(
+              loc, v16i32Res0, v16i32Res1, concatMask);
         }
       }
     } else {
@@ -2850,6 +3031,8 @@ class MatMulOpAIE2pConversion
       BF16_I512_ACC2048,
       BF16_I512_ACC1024,
       BF16_I512_ACC512,
+      I8_I512_ACC2048,
+      I16_I1024_ACC2048,
       UNSUPPORTED
     } Kind;
     Kind kind;
@@ -2866,6 +3049,38 @@ class MatMulOpAIE2pConversion
     auto lhsVecTy = cast<VectorType>(lhs.getType());
     auto rhsVecTy = cast<VectorType>(rhs.getType());
     auto accVecTy = cast<VectorType>(acc.getType());
+
+    // Check for AIE2p integer matmul
+    if (isa<IntegerType>(lhsVecTy.getElementType()) &&
+        isa<IntegerType>(rhsVecTy.getElementType()) &&
+        isa<IntegerType>(accVecTy.getElementType())) {
+
+      auto lhsIntTy = cast<IntegerType>(lhsVecTy.getElementType());
+      auto rhsIntTy = cast<IntegerType>(rhsVecTy.getElementType());
+      auto accIntTy = cast<IntegerType>(accVecTy.getElementType());
+
+      int lhsLanes = getVectorLaneSize(lhsVecTy);
+      int rhsLanes = getVectorLaneSize(rhsVecTy);
+      int accLanes = getVectorLaneSize(accVecTy);
+
+      // Check for <8x8xi8> x <8x8xi8> + <8x8xi32>
+      if (lhsIntTy.getWidth() == 8 && rhsIntTy.getWidth() == 8 &&
+          accIntTy.getWidth() == 32 && lhsLanes == 64 && rhsLanes == 64 &&
+          accLanes == 64) {
+        // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32)
+        return {DecodedMatMulOp::Kind::I8_I512_ACC2048, lhs, rhs, acc, 8};
+      }
+
+      // Check for <8x2xi16> x <2x8xi16> + <8x8xi32>
+      // Note: Vectors are <8x8xi16> shape, but only lower <8x2xi16> and
+      // <2x8xi16> contain data
+      if (lhsIntTy.getWidth() == 16 && rhsIntTy.getWidth() == 16 &&
+          accIntTy.getWidth() == 32 && lhsLanes == 16 && rhsLanes == 16 &&
+          accLanes == 64) {
+        // Uses I1024.I1024.ACC2048 (64 lanes of i16 -> 64 lanes of i32)
+        return {DecodedMatMulOp::Kind::I16_I1024_ACC2048, lhs, rhs, acc, 24};
+      }
+    }
 
     // Check for AIE2p bf16 matmul
     if (isa<BFloat16Type>(lhsVecTy.getElementType()) &&
@@ -2932,7 +3147,67 @@ class MatMulOpAIE2pConversion
 
     Value matMulResVal;
 
-    if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::BF16_I1024_ACC2048) {
+    if (decodedMatMulOp.kind == DecodedMatMulOp::Kind::I8_I512_ACC2048) {
+      // <8x8xi8> x <8x8xi8> + <8x8xi32>
+      // Signature: <32 x i64> @llvm.aie2p.I512.I512.ACC2048.mac.conf(
+      //              <16 x i32>, <32 x i16>, <32 x i64>, i32)
+      // Bitcast LHS <64 x i8> -> <16 x i32>
+      // Bitcast RHS <64 x i8> -> <32 x i16>
+      // Bitcast ACC <64 x i32> -> <32 x i64>
+      matMulResVal =
+          rewriter
+              .create<xllvm::MacConfI512ACC2048AIE2pIntrOp>(
+                  loc, VectorType::get({32}, rewriter.getI64Type()),
+                  forceCastOperandsToSignature(
+                      rewriter, loc, operands,
+                      {VectorType::get({16}, rewriter.getI32Type()),
+                       VectorType::get({32}, rewriter.getI16Type()),
+                       VectorType::get({32}, rewriter.getI64Type()), i32ty}))
+              .getResult();
+    } else if (decodedMatMulOp.kind ==
+               DecodedMatMulOp::Kind::I16_I1024_ACC2048) {
+      // <8x2xi16> x <2x8xi16> + <8x8xi32>
+      // Input vectors are 16 lanes each, need to pad to 64 lanes for intrinsic
+      // Signature: <32 x i64> @llvm.aie2p.I1024.I1024.ACC2048.mac.conf(
+      //              <32 x i32>, <64 x i16>, <32 x i64>, i32)
+
+      // Pad LHS from <16 x i16> to <64 x i16> using shuffle
+      SmallVector<int64_t> lhsPadMask;
+      for (int i = 0; i < 16; ++i)
+        lhsPadMask.push_back(i);
+      for (int i = 16; i < 64; ++i)
+        lhsPadMask.push_back(-1); // undef/poison
+      auto lhsPadded = rewriter.create<vector::ShuffleOp>(
+          loc, decodedMatMulOp.lhs, decodedMatMulOp.lhs, lhsPadMask);
+
+      // Pad RHS from <16 x i16> to <64 x i16> using shuffle
+      SmallVector<int64_t> rhsPadMask;
+      for (int i = 0; i < 16; ++i)
+        rhsPadMask.push_back(i);
+      for (int i = 16; i < 64; ++i)
+        rhsPadMask.push_back(-1); // undef/poison
+      auto rhsPadded = rewriter.create<vector::ShuffleOp>(
+          loc, decodedMatMulOp.rhs, decodedMatMulOp.rhs, rhsPadMask);
+
+      // Update operands with padded vectors
+      SmallVector<Value> paddedOperands(
+          {lhsPadded, rhsPadded, decodedMatMulOp.acc, confCst});
+
+      // Bitcast LHS <64 x i16> -> <32 x i32>
+      // Keep RHS as <64 x i16>
+      // Bitcast ACC <64 x i32> -> <32 x i64>
+      matMulResVal =
+          rewriter
+              .create<xllvm::MacConfI1024ACC2048AIE2pIntrOp>(
+                  loc, VectorType::get({32}, rewriter.getI64Type()),
+                  forceCastOperandsToSignature(
+                      rewriter, loc, paddedOperands,
+                      {VectorType::get({32}, rewriter.getI32Type()),
+                       VectorType::get({64}, rewriter.getI16Type()),
+                       VectorType::get({32}, rewriter.getI64Type()), i32ty}))
+              .getResult();
+    } else if (decodedMatMulOp.kind ==
+               DecodedMatMulOp::Kind::BF16_I1024_ACC2048) {
       // <8x8xbf16> x <8x8xbf16> + <8x8xf32>
       // Signature: <64 x float> @llvm.aie2p.I1024.I1024.ACC2048.bf.mac.conf(
       //              <64 x bfloat>, <64 x bfloat>, <64 x float>, i32)

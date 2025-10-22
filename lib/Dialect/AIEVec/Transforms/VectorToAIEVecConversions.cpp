@@ -2398,10 +2398,8 @@ struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
     VectorType dstType = dyn_cast<VectorType>(truncOp.getOut().getType());
     Type scalarType = srcType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-
-    unsigned laneSize = getVectorLaneSize(srcType);
     auto accType = isa<IntegerType>(scalarType) && (elWidth == 32)
-                       ? createVectorType(laneSize, scalarType)
+                       ? srcType
                        : getVectorOpDestType(srcType, /*AIE2 =*/true);
 
     auto shiftParamOp = rewriter.create<arith::ConstantOp>(
@@ -3661,6 +3659,38 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
       return true;
 
     // For aie2p, TruncFOp is always illegal
+    return false;
+  });
+
+  // AIE2P-specific legalization: ExtSIOp is always illegal
+  target.addDynamicallyLegalOp<arith::ExtSIOp>([](arith::ExtSIOp extsiOp) {
+    auto srcType = dyn_cast<VectorType>(extsiOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(extsiOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
+      return true;
+
+    // For aie2p, ExtSIOp is always illegal
+    return false;
+  });
+
+  // AIE2P-specific legalization: TruncIOp is always illegal
+  target.addDynamicallyLegalOp<arith::TruncIOp>([](arith::TruncIOp trunciOp) {
+    auto srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
+      return true;
+
+    // For aie2p, TruncIOp is always illegal
     return false;
   });
 }
