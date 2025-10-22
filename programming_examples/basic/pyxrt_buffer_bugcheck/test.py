@@ -63,5 +63,7 @@ def main(opts):
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
-    opts = p.parse_args(sys.argv[1:])
+    p.add_argument('--ncores', type=int)
+    opts = p.parse_args()
+
     main(opts)
