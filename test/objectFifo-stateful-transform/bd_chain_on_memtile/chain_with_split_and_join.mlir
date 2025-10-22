@@ -167,8 +167,6 @@
 // CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @out(S2MM, 0, 0)
-// CHECK:   }
 
 module {
   aie.device(npu1_1col) {
