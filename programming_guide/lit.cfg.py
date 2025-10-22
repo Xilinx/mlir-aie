@@ -68,20 +68,10 @@ config.substitutions.append(("%run_on_npu1%", run_on_npu1))
 config.substitutions.append(("%run_on_npu2%", run_on_npu2))
 config.substitutions.append(("%xrt_flags", xrt_config.flags))
 
-# OpenCV detection
-opencv_flags = ""
-if config.opencv_include_dir and config.opencv_libs:
-    print("opencv found")
-    config.available_features.add("opencv")
-    opencv_flags = opencv_flags + " -I" + config.opencv_include_dir
-    if config.opencv_lib_dir:
-        opencv_flags = opencv_flags + " -L" + config.opencv_lib_dir
-    libs = config.opencv_libs.split(";")
-    opencv_flags = opencv_flags + " " + " ".join(["-l" + l for l in libs])
-else:
-    print("opencv not found")
-    opencv_flags = ""
-config.substitutions.append(("%opencv_flags", opencv_flags))
+# Detect OpenCV
+opencv_config = LitConfigHelper.detect_opencv(
+    config.opencv_include_dir, config.opencv_lib_dir, config.opencv_libs
+)
 
 try:
     import torch
@@ -154,6 +144,7 @@ LitConfigHelper.apply_config_to_lit(
         "peano": peano_config,
         "chess": chess_config,
         "aiesim": aiesim_config,
+        "opencv": opencv_config,
     },
 )
 

@@ -381,6 +381,43 @@ class LitConfigHelper:
         return config
 
     @staticmethod
+    def detect_opencv(
+        opencv_include_dir: str, opencv_lib_dir: str, opencv_libs: str
+    ) -> HardwareConfig:
+        """
+        Detect OpenCV installation and generate compiler flags.
+
+        Args:
+            opencv_include_dir: Path to OpenCV include directory
+            opencv_lib_dir: Path to OpenCV library directory (optional)
+            opencv_libs: Semicolon-separated list of OpenCV libraries
+
+        Returns:
+            HardwareConfig with OpenCV detection results and flags
+        """
+        config = HardwareConfig()
+
+        if not opencv_include_dir or not opencv_libs:
+            print("opencv not found")
+            config.substitutions["%opencv_flags"] = ""
+            return config
+
+        print("opencv found")
+        config.found = True
+        config.features.append("opencv")
+
+        # Build compiler flags
+        flags = f" -I{opencv_include_dir}"
+        if opencv_lib_dir:
+            flags += f" -L{opencv_lib_dir}"
+
+        libs = opencv_libs.split(";")
+        flags += " " + " ".join([f"-l{lib}" for lib in libs])
+
+        config.substitutions["%opencv_flags"] = flags
+        return config
+
+    @staticmethod
     def setup_host_target_triplet(
         aie_host_target: str, vitis_sysroot: str = ""
     ) -> Tuple[str, str]:
