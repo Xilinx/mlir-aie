@@ -97,9 +97,6 @@ module {
       aie.end
     }
 
-    // the absolutely only thing that's relevant here is (MM2S, 0, 0) and (S2MM, 0, 0)
-    memref.global "public" @data_in : memref<1xi32>
-    memref.global "public" @data_out : memref<1xi32>
     aie.shim_dma_allocation @data_in(MM2S, 0, 0)
     aie.shim_dma_allocation @data_out(S2MM, 0, 0)
     aiex.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {

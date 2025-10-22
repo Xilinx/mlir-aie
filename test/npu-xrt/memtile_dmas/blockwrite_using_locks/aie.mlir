@@ -7,10 +7,6 @@
 
 module {
   aie.device(npu1_1col) {
-    memref.global "public" @out_cons : memref<4096xi32>
-    memref.global "public" @out : memref<4096xi32>
-    memref.global "public" @in_cons : memref<4096xi32>
-    memref.global "public" @in : memref<4096xi32>
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
     %tile_0_1 = aie.tile(0, 1)
     %in_cons_buff_0 = aie.buffer(%tile_0_1) {address = 0 : i32, mem_bank = 0 : i32, sym_name = "in_cons_buff_0"} : memref<4096xi32> 

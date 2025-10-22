@@ -160,7 +160,8 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
         const std::vector<int64_t> staticSizes = {1, 1, 1, batchIt->totalSize};
         const std::vector<int64_t> staticStrides = {0, 0, 0, 1};
 
-        StringRef metadata = builder.getStringAttr(batchIt->shimDmaAllocName);
+        SymbolRefAttr metadata =
+            SymbolRefAttr::get(builder.getContext(), batchIt->shimDmaAllocName);
         builder.create<NpuDmaMemcpyNdOp>(
             builder.getUnknownLoc(), newBlockArg, SmallVector<Value>{},
             SmallVector<Value>{}, SmallVector<Value>{}, ArrayRef(staticOffsets),

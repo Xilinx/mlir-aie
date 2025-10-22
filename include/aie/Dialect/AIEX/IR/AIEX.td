@@ -690,7 +690,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
         OptionalAttr<PacketInfoAttr>:$packet,
-        FlatSymbolRefAttr:$metadata,
+        SymbolRefAttr:$metadata,
         I64Attr:$id,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
@@ -1028,9 +1028,10 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
 def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
   let arguments = (
-    ins I32Attr:$id,
-        OptionalAttr<I32Attr>:$size,
-        OptionalAttr<UI64Attr>:$address
+    ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$id,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$size,
+        DefaultValuedOptionalAttr<UI64Attr, "0">:$address
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
@@ -1038,6 +1039,8 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     Load a PDI (Programmable Device Image) to configure the NPU.
     The PDI is identified by `id`. `address` and `size` are typically written at
     runtime by the driver or host program.
+
+    If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
   }];
 }
 
@@ -1096,7 +1099,7 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"Ru
   let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
 
   let arguments = (
-    ins FlatSymbolRefAttr:$alloc,
+    ins SymbolRefAttr:$alloc,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );

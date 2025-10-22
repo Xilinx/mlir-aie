@@ -12,9 +12,6 @@
 
 // CHECK: module @disable_sync {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @of1_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of1 : memref<16xi32>
-// CHECK:     memref.global "public" @of0 : memref<16xi32>
 // CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:     %{{.*}}tile_1_3 = aie.tile(1, 3)
 // CHECK:     %{{.*}}tile_3_3 = aie.tile(3, 3)

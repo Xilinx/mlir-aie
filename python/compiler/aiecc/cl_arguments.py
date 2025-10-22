@@ -374,6 +374,19 @@ def parse_args(args=None):
         default="",
         help="Symbol name of the runtime sequence to compile. If none supplied, all runtime sequences in the selected device(s) are compiled.",
     )
+    parser.add_argument(
+        "--generate-full-elf",
+        dest="generate_full_elf",
+        default=False,
+        action="store_true",
+        help="Generate complete full ELF using aiebu-asm",
+    )
+    parser.add_argument(
+        "--full-elf-name",
+        dest="full_elf_name",
+        default="aie.elf",
+        help="Output filename for full ELF (default: aie.elf)",
+    )
 
     opts = parser.parse_args(args)
     return opts

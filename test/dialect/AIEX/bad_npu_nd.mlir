@@ -13,7 +13,6 @@
 
 module {
   aie.device(npu1) {
-    memref.global "public" @of_fromMem : memref<32xi32, 1 : i32>
     aiex.runtime_sequence(%in : memref<1920x1080xi32>, %buf : memref<32xi32>, %out : memref<1920x1080xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -30,7 +29,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @of_fromMem : memref<32xi32, 1 : i32>
     aiex.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -51,7 +49,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @of_fromMem : memref<32xi32, 1 : i32>
     aiex.runtime_sequence(%in : memref<8388608xi32>, %buf : memref<32xi32>, %out : memref<8388608xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -88,7 +85,6 @@ module {
   
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -108,7 +104,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi16, 1 : i16>
     aiex.runtime_sequence(%a : memref<8xi16>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -130,7 +125,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -147,7 +141,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -167,7 +160,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi8, 1 : i8>
     aiex.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -187,7 +179,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi16, 1 : i16>
     aiex.runtime_sequence(%a : memref<8xi16>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -206,7 +197,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi32, 1 : i32>
     aiex.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -228,7 +218,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi32, 1 : i32>
     aiex.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
@@ -249,7 +238,6 @@ module {
 
 module {
   aie.device(npu1) {
-    memref.global "public" @objectfifo : memref<8xi32, 1 : i32>
     aiex.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64

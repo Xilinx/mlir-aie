@@ -1583,7 +1583,7 @@ def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
   let assemblyFormat = [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
 }
 
-def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">]> {
+def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
     This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
@@ -1607,7 +1607,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   }];
 
   let arguments = (
-    ins FlatSymbolRefAttr:$sym_name,
+    ins SymbolNameAttr:$sym_name,
         DMAChannelDir:$channel_dir,
         AIEI64Attr:$channel_index,
         AIEI64Attr:$col,
@@ -1626,15 +1626,6 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
 
-  let builders = [
-    OpBuilder<(ins "mlir::StringRef":$sym_name, "DMAChannelDir":$dir, "int":$channel_index,
-               "int":$col, "bool":$plio), [{
-      build($_builder, $_state, ::mlir::SymbolRefAttr::get(odsBuilder.getContext(), sym_name), 
-            DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
-            $_builder.getI64IntegerAttr(channel_index), 
-            $_builder.getI64IntegerAttr(col), $_builder.getBoolAttr(plio), nullptr);
-    }]>
-  ];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
