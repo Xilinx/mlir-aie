@@ -109,7 +109,7 @@ LOWER_TO_LLVM_PIPELINE = (
 )
 
 AIE_LOWER_TO_LLVM = (
-    lambda device_name=None, col=None, row=None: (
+    lambda device_name=None, col=None, row=None, aie_target="aie2": (
         Pipeline()
         .Nested(
             "aie.device",
@@ -120,7 +120,7 @@ AIE_LOWER_TO_LLVM = (
         )
         .add_pass("aie-standard-lowering", device=device_name, tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
-        .add_pass("convert-aievec-to-llvm")
+        .add_pass("convert-aievec-to-llvm", aie_target=aie_target.lower())
     )
     + LOWER_TO_LLVM_PIPELINE
 )
@@ -681,7 +681,7 @@ class FlowRunner:
         # fmt: off
         if opts.unified:
             file_opt_with_addresses = self.prepend_tmp(f"{device_name}_input_opt_with_addresses.mlir")
-            await self.do_call(parent_task_id, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name)}", file_with_addresses, "-o", file_opt_with_addresses])
+            await self.do_call(parent_task_id, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, aie_target=aie_target)}", file_with_addresses, "-o", file_opt_with_addresses])
 
             file_llvmir = self.prepend_tmp(f"{device_name}_input.ll")
             await self.do_call(parent_task_id, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])
@@ -768,7 +768,7 @@ class FlowRunner:
             if not opts.unified:
                 file_core = corefile(self.tmpdirname, device_name, core, "mlir")
                 file_opt_core = corefile(self.tmpdirname, device_name, core, "opt.mlir")
-                await self.do_call(task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, corecol, corerow)}", file_with_addresses, "-o", file_opt_core])
+                await self.do_call(task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, corecol, corerow, aie_target)}", file_with_addresses, "-o", file_opt_core])
             if self.opts.xbridge:
                 file_core_bcf = corefile(self.tmpdirname, device_name, core, "bcf")
                 await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--aie-device-name", device_name, "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
