@@ -11,8 +11,7 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, NPU2
-
+from aie.iron.device import NPU1Col1, NPU2, Tile
 
 def my_passthrough_kernel(dev, in1_size, out_size, ncores=1):
     assert ncores == 1 or ncores == 2
@@ -31,7 +30,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, ncores=1):
         of_in.append(ObjectFifo(line_type, name=f"in{i}"))
     of_out_shim = ObjectFifo(line_type, name=f"out{i}")
     of_out = of_out_shim.prod().join(
-        offsets=[line_size * i for i in range(ncores)], obj_types=[line_type] * ncores
+        offsets=[line_size * i for i in range(ncores)],
     )
 
     # External, binary kernel definition
@@ -52,7 +51,8 @@ def my_passthrough_kernel(dev, in1_size, out_size, ncores=1):
     # Create a worker to perform the task
     workers = []
     for i in range(ncores):
-        my_worker = Worker(core_fn, [of_in[i].cons(), of_out[i].prod(), passthrough_fn])
+        # TODO: placer fails unless I put placement here... why??
+        my_worker = Worker(core_fn, [of_in[i].cons(), of_out[i].prod(), passthrough_fn], placement=Tile(0, 2+i))
         workers.append(my_worker)
 
     # Runtime operations to move data to/from the AIE-array
@@ -76,6 +76,7 @@ p.add_argument(
     "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
 )
 p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
+p.add_argument("--ncores", type=int, required=True, help="1 or 2")
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
@@ -95,4 +96,4 @@ if in1_size % 64 != 0 or in1_size < 512:
     raise ValueError
 out_size = int(opts.out_size)
 
-print(my_passthrough_kernel(dev, in1_size, out_size))
+print(my_passthrough_kernel(dev, in1_size, out_size, opts.ncores))

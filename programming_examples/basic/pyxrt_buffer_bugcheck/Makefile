@@ -24,7 +24,7 @@ aie_py_src=${targetname}.py
 
 .PHONY: all template clean
 
-all: build/final_${data_size}.xclbin
+all: build/final_${data_size}_in1.xclbin build/final_${data_size}_in2.xclbin
 
 build/%.cc.o: %.cc
 	mkdir -p ${@D}
@@ -36,15 +36,24 @@ else
 	echo "Device type not supported"
 endif
 
-build/aie2_lineBased_8b_${data_size}.mlir: ${srcdir}/${aie_py_src}
+build/aie2_lineBased_8b_${data_size}_in1.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} --ncores 1 > $@
+build/aie2_lineBased_8b_${data_size}_in2.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} --ncores 2 > $@
 
-build/final_${data_size}.xclbin: build/aie2_lineBased_8b_${data_size}.mlir build/passThrough.cc.o
+build/final_${data_size}_in1.xclbin: build/aie2_lineBased_8b_${data_size}_in1.mlir build/passThrough.cc.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
+		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}_in1.bin $(<:%=../%)
+
+build/final_${data_size}_in2.xclbin: build/aie2_lineBased_8b_${data_size}_in2.mlir build/passThrough.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}_in2.bin $(<:%=../%)
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -60,8 +69,12 @@ endif
 run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE 
 
-run_py: build/final_${data_size}.xclbin build/insts_${data_size}.bin
-	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size}
+run_py1: build/final_${data_size}_in1.xclbin build/insts_${data_size}_in1.bin
+	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}_in1.xclbin -i build/insts_${data_size}_in1.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size} --ncores 1
+
+run_py2: build/final_${data_size}_in2.xclbin build/insts_${data_size}_in2.bin
+	${powershell} python3 ${srcdir}/test.py -x build/final_${data_size}_in2.xclbin -i build/insts_${data_size}_in2.bin -k MLIR_AIE -i1s ${in1_size} -os ${out_size} --ncores 2
+
 
 clean:
 	rm -rf build _build ${targetname}*.exe
