@@ -82,8 +82,9 @@ config.excludes = [
 config.aie_tools_dir = os.path.join(config.aie_obj_root, "bin")
 
 # Setup the PATH with all necessary tool directories
+peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
 LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
-LitConfigHelper.prepend_path(llvm_config, config.peano_tools_dir)
+LitConfigHelper.prepend_path(llvm_config, peano_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, config.aie_tools_dir)
 if config.vitis_root:
     config.vitis_aietools_bin = os.path.join(config.vitis_aietools_dir, "bin")
@@ -92,7 +93,7 @@ if config.vitis_root:
 
 # Detect Peano backend
 peano_config = LitConfigHelper.detect_peano(
-    config.peano_tools_dir, config.peano_install_dir, llvm_config
+    peano_tools_dir, config.peano_install_dir, llvm_config
 )
 
 # Detect Chess compiler
@@ -109,7 +110,7 @@ LitConfigHelper.apply_config_to_lit(
     },
 )
 
-tool_dirs = [config.aie_tools_dir, config.peano_tools_dir, config.llvm_tools_dir]
+tool_dirs = [config.aie_tools_dir, peano_tools_dir, config.llvm_tools_dir]
 tools = [
     "aie-opt",
     "aie-translate",
