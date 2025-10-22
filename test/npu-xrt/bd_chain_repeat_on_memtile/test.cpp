@@ -55,7 +55,6 @@ int verify_passthrough_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
       for (int i = 0; i < CHUNK_SIZE; i++) {
         int in_idx = chunk * CHUNK_SIZE + i;
         int out_idx = (chunk * REPEAT_COUNT + repeat) * CHUNK_SIZE + i;
-        
         int32_t ref = bufIn1[in_idx];
         int32_t test = bufOut[out_idx];
         
