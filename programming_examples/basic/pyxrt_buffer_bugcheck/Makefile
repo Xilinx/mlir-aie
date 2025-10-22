@@ -23,7 +23,7 @@ data_size = in1_size
 aie_py_src=${targetname}.py
 
 .PHONY: all template clean
-ß
+
 all: build/final_${data_size}.xclbin
 
 build/%.cc.o: %.cc
