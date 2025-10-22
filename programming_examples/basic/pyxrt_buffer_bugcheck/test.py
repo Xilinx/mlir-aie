@@ -12,9 +12,11 @@ import aie.utils.test as test_utils
 
 
 def main(opts):
+    assert opts.ncores == 1 or opts.ncores == 2
     in1_size = int(opts.in1_size)  # in bytes
     in2_size = int(opts.in2_size)  # in bytes
     out_size = int(opts.out_size)  # in bytes
+    assert in1_size + in2_size == out_size
 
     # --------------------------------------------------------------------------
     # ----- Edit your data types -----------------------------------------------
@@ -32,28 +34,31 @@ def main(opts):
     # ----- Edit your data init and reference data here ------------------------
     # --------------------------------------------------------------------------
 
-    # check buffer sizes
-    assert out_size == in1_size
-
     # Initialize data
     in1_data = np.arange(0, in1_volume, dtype=in1_dtype)
+    in2_data = np.arange(0, in1_volume, dtype=in1_dtype)
     out_data = np.zeros([out_volume], dtype=out_dtype)
 
     # Define reference data
-    ref = in1_data
+    if opts.ncores == 2:
+        in2_dtype, in2_data, in2_volume = (in1_dtype, in2_data, in1_volume)
+        ref = np.concatenate((in1_data, in2_data))
+    else:
+        in2_dtype, in2_data, in2_volume = (None, None, None)
+        ref = in1_data
 
     # --------------------------------------------------------------------------
 
-    print("Running...\n")
+    print(f"Running... {opts}\n")
     res = xrt_utils.setup_and_run_aie(
         in1_dtype,
-        None,
+        in2_dtype,
         out_dtype,
         in1_data,
-        None,
+        in2_data,
         out_data,
         in1_volume,
-        None,
+        in2_volume,
         out_volume,
         ref,
         opts,
