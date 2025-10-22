@@ -14,6 +14,15 @@
 # RUN: %run_on_npu1% ./test.exe -x final.xclbin -k MLIR_AIE -i insts.bin | FileCheck %s
 # CHECK: PASS!
 
+# This example demonstrates the use of `bd_chain_iter_count` in conjunction with
+# `split`, `join`, and `repeat_count` features of objectFifo on a MemTile.
+#
+# - `bd_chain_iter_count` is the number of times the buffer descriptor (BD) chain iterates for each objectFifo.
+# - `repeat_count` is set on the split FIFOs to repeat the data for each consumer.
+#
+# The code below sets up a pipeline where input data is distributed to two compute tiles,
+# each processes its chunk, and the results are joined and repeated as specified.
+
 import numpy as np
 import argparse
 import sys
