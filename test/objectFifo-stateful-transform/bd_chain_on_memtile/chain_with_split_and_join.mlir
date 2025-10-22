@@ -10,7 +10,6 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-LABEL: module {
 // CHECK:   aie.device(npu1_1col) {
 // CHECK:     memref.global "public" @out_cons : memref<1024xui8>
 // CHECK:     memref.global "public" @out : memref<1024xui8>
@@ -226,7 +225,6 @@
 // CHECK:     }
 // CHECK:     aie.shim_dma_allocation @out(S2MM, 0, 0)
 // CHECK:   }
-// CHECK: }
 
 module {
   aie.device(npu1_1col) {
