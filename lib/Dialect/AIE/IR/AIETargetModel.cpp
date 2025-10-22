@@ -746,7 +746,7 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
       return dstBundle != WireBundle::TileControl &&
              dstBundle != WireBundle::DMA;
     if (srcBundle == WireBundle::Trace) {
-      if (dstBundle == WireBundle::DMA)
+      if (dstBundle == WireBundle::East || dstBundle == WireBundle::West)
         return dstChan == 0;
       if (isBundleInList(dstBundle, {WireBundle::FIFO, WireBundle::South}))
         return true;
