@@ -61,6 +61,7 @@ $(function() {
 <code>#include &quot;<a class="el" href="AIEXDialect_8h_source.html">aie/Dialect/AIEX/IR/AIEXDialect.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="AIEXPasses_8h_source.html">aie/Dialect/AIEX/Transforms/AIEXPasses.h</a>&quot;</code><br />
 <code>#include &quot;mlir/IR/Attributes.h&quot;</code><br />
+<code>#include &quot;mlir/IR/IRMapping.h&quot;</code><br />
 <code>#include &quot;mlir/Pass/Pass.h&quot;</code><br />
 <code>#include &quot;llvm/ADT/TypeSwitch.h&quot;</code><br />
 </div><div class="textblock"><div id="dynsection-0" onclick="return toggleVisibility(this)" class="dynheader closed" style="cursor:pointer;">
@@ -70,21 +71,23 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="AIECtrlPacketToDma_8cpp__incl.png" border="0" usemap="#alib_2Dialect_2AIEX_2Transforms_2AIECtrlPacketToDma_8cpp" alt=""/></div>
 <map name="alib_2Dialect_2AIEX_2Transforms_2AIECtrlPacketToDma_8cpp" id="alib_2Dialect_2AIEX_2Transforms_2AIECtrlPacketToDma_8cpp">
-<area shape="rect" title=" " alt="" coords="1831,5,2030,45"/>
+<area shape="rect" title=" " alt="" coords="1901,5,2099,45"/>
 <area shape="rect" href="AIEDialect_8h.html" title=" " alt="" coords="1310,269,1445,309"/>
-<area shape="poly" title=" " alt="" coords="1893,48,1795,96,1672,161,1548,224,1443,267,1441,262,1546,219,1670,157,1792,91,1890,43"/>
+<area shape="poly" title=" " alt="" coords="1932,48,1864,69,1793,96,1723,129,1670,158,1618,189,1548,224,1443,267,1441,262,1546,219,1615,184,1667,154,1720,124,1791,91,1863,64,1931,43"/>
 <area shape="rect" href="AIEGenerateColumnControlOverlay_8h.html" title=" " alt="" coords="1270,181,1535,221"/>
-<area shape="poly" title=" " alt="" coords="1832,37,1704,57,1635,74,1569,96,1532,113,1497,133,1438,175,1435,170,1494,129,1530,108,1567,91,1634,68,1703,52,1831,32"/>
+<area shape="poly" title=" " alt="" coords="1901,33,1826,39,1742,51,1654,69,1569,96,1532,113,1497,133,1437,175,1434,170,1494,128,1530,108,1567,91,1653,64,1741,46,1826,34,1900,28"/>
 <area shape="rect" href="AIEXDialect_8h.html" title=" " alt="" coords="1721,181,1863,221"/>
-<area shape="poly" title=" " alt="" coords="1882,48,1848,68,1820,95,1803,131,1796,168,1791,167,1798,129,1815,92,1845,63,1879,43"/>
+<area shape="poly" title=" " alt="" coords="1901,46,1857,66,1837,79,1819,95,1808,111,1801,130,1795,168,1789,167,1796,129,1804,109,1815,92,1833,75,1854,61,1899,41"/>
 <area shape="rect" href="AIEXPasses_8h.html" title=" " alt="" coords="1829,93,2032,133"/>
-<area shape="poly" title=" " alt="" coords="1933,46,1933,79,1928,79,1928,46"/>
+<area shape="poly" title=" " alt="" coords="1987,47,1957,84,1953,81,1983,44"/>
 <area shape="rect" title=" " alt="" coords="2115,189,2242,214"/>
-<area shape="poly" title=" " alt="" coords="1967,43,2046,91,2156,178,2152,182,2042,96,1964,48"/>
+<area shape="poly" title=" " alt="" coords="2017,44,2053,85,2098,131,2154,178,2150,182,2094,135,2049,89,2013,47"/>
 <area shape="rect" title=" " alt="" coords="2107,101,2253,126"/>
-<area shape="poly" title=" " alt="" coords="1986,43,2135,94,2133,99,1985,48"/>
-<area shape="rect" title=" " alt="" coords="2277,101,2448,126"/>
-<area shape="poly" title=" " alt="" coords="2026,43,2292,95,2291,101,2025,48"/>
+<area shape="poly" title=" " alt="" coords="2041,43,2145,93,2143,97,2038,48"/>
+<area shape="rect" title=" " alt="" coords="2277,101,2427,126"/>
+<area shape="poly" title=" " alt="" coords="2078,43,2293,95,2291,100,2077,48"/>
+<area shape="rect" title=" " alt="" coords="2452,101,2623,126"/>
+<area shape="poly" title=" " alt="" coords="2100,38,2440,91,2467,95,2466,101,2440,96,2099,43"/>
 <area shape="rect" href="AIEEnums_8h.html" title=" " alt="" coords="1407,445,1505,471"/>
 <area shape="poly" title=" " alt="" coords="1400,308,1419,330,1436,356,1449,395,1456,431,1451,432,1444,396,1431,359,1415,333,1396,312"/>
 <area shape="rect" href="AIETargetModel_8h.html" title=" " alt="" coords="1497,357,1636,397"/>
@@ -172,14 +175,14 @@ Macros</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00021">21</a> of file <a class="el" href="AIECtrlPacketToDma_8cpp_source.html">AIECtrlPacketToDma.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECtrlPacketToDma_8cpp_source.html#l00022">22</a> of file <a class="el" href="AIECtrlPacketToDma_8cpp_source.html">AIECtrlPacketToDma.cpp</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Oct 22 2025 22:04:42 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Oct 22 2025 23:36:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

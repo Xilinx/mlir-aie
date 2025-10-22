@@ -382,26 +382,28 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = packetOp.getRowFromAddr();</div>
 <div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>    <span class="keyword">auto</span> destTile = TileOp::getOrCreate(builder, deviceOp, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
 <div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>    <span class="keyword">auto</span> info = destTile-&gt;getAttrOfType&lt;AIE::PacketInfoAttr&gt;(<span class="stringliteral">&quot;controller_id&quot;</span>);</div>
-<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>    <span class="keywordflow">if</span> (!info)</div>
-<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>      <span class="keywordflow">return</span> destTile-&gt;emitError(<span class="stringliteral">&quot;Expected controller_id attribute&quot;</span>);</div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>    uint32_t hdr = (info.getPktType() &amp; 0x7) &lt;&lt; 12 | (info.getPktId() &amp; 0xff);</div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>    words[0] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
-<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span> </div>
-<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>    <span class="comment">// control packet header</span></div>
-<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>    uint32_t addr = packetOp.getAddress() &amp; 0xFFFFF;</div>
-<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>    uint32_t beats = size - 1;</div>
-<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>    uint32_t opc = packetOp.getOpcode();</div>
-<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>    uint32_t <span class="keywordtype">id</span> = packetOp.getStreamId();</div>
-<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>    hdr = <span class="keywordtype">id</span> &lt;&lt; 24 | opc &lt;&lt; 22 | beats &lt;&lt; 20 | addr;</div>
-<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>    words[1] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
-<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span> </div>
-<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>    <span class="comment">// configuration data</span></div>
-<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>    <span class="keywordflow">if</span> (opc == 0x0 || opc == 0x2)</div>
-<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>      <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; size; i++)</div>
-<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>        words[i + 2] = data.value()[i];</div>
-<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>  }</div>
-<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>}</div>
+<div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>    uint32_t hdr = 0;</div>
+<div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>    <span class="keywordflow">if</span> (info)</div>
+<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>      hdr = (info.getPktType() &amp; 0x7) &lt;&lt; 12 | (info.getPktId() &amp; 0xff);</div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>    <span class="keywordflow">else</span></div>
+<div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>      destTile-&gt;emitWarning(<span class="stringliteral">&quot;Expected controller_id attribute&quot;</span>);</div>
+<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>    words[0] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
+<div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span> </div>
+<div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>    <span class="comment">// control packet header</span></div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>    uint32_t addr = packetOp.getAddress() &amp; 0xFFFFF;</div>
+<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>    uint32_t beats = size - 1;</div>
+<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>    uint32_t opc = packetOp.getOpcode();</div>
+<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>    uint32_t <span class="keywordtype">id</span> = packetOp.getStreamId();</div>
+<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>    hdr = <span class="keywordtype">id</span> &lt;&lt; 24 | opc &lt;&lt; 22 | beats &lt;&lt; 20 | addr;</div>
+<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>    words[1] = hdr | (0x1 &amp; parity(hdr)) &lt;&lt; 31;</div>
+<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span> </div>
+<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>    <span class="comment">// configuration data</span></div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>    <span class="keywordflow">if</span> (opc == 0x0 || opc == 0x2)</div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>      <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; size; i++)</div>
+<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>        words[i + 2] = data.value()[i];</div>
+<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>  }</div>
+<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>}</div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0">XAie_TxnOpcode</a></div><div class="ttdeci">XAie_TxnOpcode</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00029">AIETargetNPU.cpp:29</a></div></div>
 <div class="ttc" id="aAIETargetNPU_8cpp_html_a7c1a0e02fa154665df7ceafb69d99ac0a0224ffc31ffd9ef5ee11478d198d72be"><div class="ttname"><a href="AIETargetNPU_8cpp.html#a7c1a0e02fa154665df7ceafb69d99ac0a0224ffc31ffd9ef5ee11478d198d72be">XAIE_IO_LOAD_PM_START</a></div><div class="ttdeci">@ XAIE_IO_LOAD_PM_START</div><div class="ttdef"><b>Definition</b> <a href="AIETargetNPU_8cpp_source.html#l00039">AIETargetNPU.cpp:39</a></div></div>
@@ -448,7 +450,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Oct 22 2025 22:04:42 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Oct 22 2025 23:36:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
