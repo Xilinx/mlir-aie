@@ -34,6 +34,40 @@ func.func @matmul_aie2p(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>,
 // CHECK-SAME:                      vector<64xf32> to vector<8x8xf32>
 // CHECK:      return %[[R]] : vector<8x8xf32>
 
+func.func @matmul_aie2p_i512_acc2048_int(%A : vector<16xi32>, %B : vector<32xi16>,
+                                         %C : vector<32xi64>) -> vector<32xi64> {
+  %conf = arith.constant 0 : i32
+  %0 = "xllvm.intr.aie2p.I512.I512.ACC2048.mac.conf"(%A, %B, %C, %conf) :
+      (vector<16xi32>, vector<32xi16>, vector<32xi64>, i32) -> vector<32xi64>
+  return %0 : vector<32xi64>
+}
+
+// CHECK-LABEL: @matmul_aie2p_i512_acc2048_int
+// CHECK-SAME: %[[A:.*]]: vector<16xi32>, %[[B:.*]]: vector<32xi16>, %[[C:.*]]: vector<32xi64>
+// CHECK:      %[[CONF:.*]] = arith.constant 0 : i32
+// CHECK:      %[[RACC:.*]] = "xllvm.intr.aie2p.I512.I512.ACC2048.mac.conf"(
+// CHECK-SAME:         %[[A]], %[[B]], %[[C]], %[[CONF]]) :
+// CHECK-SAME:         (vector<16xi32>, vector<32xi16>, vector<32xi64>, i32)
+// CHECK-SAME:         -> vector<32xi64>
+// CHECK:      return %[[RACC]] : vector<32xi64>
+
+func.func @matmul_aie2p_i1024_acc2048_int(%A : vector<32xi32>, %B : vector<64xi16>,
+                                          %C : vector<32xi64>) -> vector<32xi64> {
+  %conf = arith.constant 0 : i32
+  %0 = "xllvm.intr.aie2p.I1024.I1024.ACC2048.mac.conf"(%A, %B, %C, %conf) :
+      (vector<32xi32>, vector<64xi16>, vector<32xi64>, i32) -> vector<32xi64>
+  return %0 : vector<32xi64>
+}
+
+// CHECK-LABEL: @matmul_aie2p_i1024_acc2048_int
+// CHECK-SAME: %[[A:.*]]: vector<32xi32>, %[[B:.*]]: vector<64xi16>, %[[C:.*]]: vector<32xi64>
+// CHECK:      %[[CONF:.*]] = arith.constant 0 : i32
+// CHECK:      %[[RACC:.*]] = "xllvm.intr.aie2p.I1024.I1024.ACC2048.mac.conf"(
+// CHECK-SAME:         %[[A]], %[[B]], %[[C]], %[[CONF]]) :
+// CHECK-SAME:         (vector<32xi32>, vector<64xi16>, vector<32xi64>, i32)
+// CHECK-SAME:         -> vector<32xi64>
+// CHECK:      return %[[RACC]] : vector<32xi64>
+
 func.func @matmul_aie2p_i512_acc2048(%A : vector<4x8xbf16>, %B : vector<8x4xbf16>,
                                      %C : vector<4x4xf32>) -> vector<4x4xf32> {
   %0 = aievec.matmul_aie2p %A, %B, %C : vector<4x8xbf16>, vector<8x4xbf16>
