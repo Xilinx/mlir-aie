@@ -2366,7 +2366,12 @@ struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
     VectorType srcType = dyn_cast<VectorType>(extOp.getIn().getType());
     VectorType dstType = dyn_cast<VectorType>(extOp.getOut().getType());
 
-    auto accType = getVectorOpDestType(srcType, /*AIE2 =*/true);
+    Type scalarType = dstType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    auto accType =
+        isa<IntegerType>(scalarType) && (elWidth == 32 || elWidth == 64)
+            ? dstType
+            : getVectorOpDestType(srcType, /*AIE2 =*/true);
     auto upsOp =
         rewriter.create<aievec::UPSOp>(extOp.getLoc(), accType, extOp.getIn());
 
@@ -2398,9 +2403,10 @@ struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
     VectorType dstType = dyn_cast<VectorType>(truncOp.getOut().getType());
     Type scalarType = srcType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    auto accType = isa<IntegerType>(scalarType) && (elWidth == 32)
-                       ? srcType
-                       : getVectorOpDestType(srcType, /*AIE2 =*/true);
+    auto accType =
+        isa<IntegerType>(scalarType) && (elWidth == 32 || elWidth == 64)
+            ? srcType
+            : getVectorOpDestType(srcType, /*AIE2 =*/true);
 
     auto shiftParamOp = rewriter.create<arith::ConstantOp>(
         truncOp.getLoc(), rewriter.getI32IntegerAttr(0));
@@ -3630,7 +3636,7 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
 
 static void configureAIEVecV2PLegalizations(ConversionTarget &target,
                                             TargetBackend backend) {
-  // AIE2P-specific legalization: ExtFOp is always illegal
+  // AIE2P-specific legalization: ExtFOp on vector is always illegal
   target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
     auto srcType = dyn_cast<VectorType>(extfOp.getIn().getType());
     auto dstType = dyn_cast<VectorType>(extfOp.getOut().getType());
@@ -3642,11 +3648,10 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
       return true;
 
-    // For aie2p, ExtFOp is always illegal
     return false;
   });
 
-  // AIE2P-specific legalization: TruncFOp is always illegal
+  // AIE2P-specific legalization: TruncFOp on vector is always illegal
   target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
     auto srcType = dyn_cast<VectorType>(truncfOp.getIn().getType());
     auto dstType = dyn_cast<VectorType>(truncfOp.getOut().getType());
@@ -3658,11 +3663,10 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
       return true;
 
-    // For aie2p, TruncFOp is always illegal
     return false;
   });
 
-  // AIE2P-specific legalization: ExtSIOp is always illegal
+  // AIE2P-specific legalization: ExtSIOp on vector is always illegal
   target.addDynamicallyLegalOp<arith::ExtSIOp>([](arith::ExtSIOp extsiOp) {
     auto srcType = dyn_cast<VectorType>(extsiOp.getIn().getType());
     auto dstType = dyn_cast<VectorType>(extsiOp.getOut().getType());
@@ -3674,23 +3678,20 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
-    // For aie2p, ExtSIOp is always illegal
     return false;
   });
 
-  // AIE2P-specific legalization: TruncIOp is always illegal
+  // AIE2P-specific legalization: TruncIOp on vector is always illegal
   target.addDynamicallyLegalOp<arith::TruncIOp>([](arith::TruncIOp trunciOp) {
     auto srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
     auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
     if (!srcType || !dstType)
       return true;
-
     Type srcScalarType = srcType.getElementType();
     Type dstScalarType = dstType.getElementType();
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
-    // For aie2p, TruncIOp is always illegal
     return false;
   });
 }
@@ -3904,6 +3905,65 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
         return false;
       });
+
+  // AIE2-specific legalization: ExtFOp on vector is always illegal
+  target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
+    auto srcType = dyn_cast<VectorType>(extfOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(extfOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
+      return true;
+
+    return false;
+  });
+
+  // AIE2-specific legalization: TruncFOp on vector is always illegal
+  target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
+    auto srcType = dyn_cast<VectorType>(truncfOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(truncfOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
+      return true;
+
+    return false;
+  });
+
+  // AIE2-specific legalization: ExtSIOp on vector is always illegal
+  target.addDynamicallyLegalOp<arith::ExtSIOp>([](arith::ExtSIOp extsiOp) {
+    auto srcType = dyn_cast<VectorType>(extsiOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(extsiOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
+      return true;
+
+    return false;
+  });
+
+  // AIE2-specific legalization: TruncIOp on vector is always illegal
+  target.addDynamicallyLegalOp<arith::TruncIOp>([](arith::TruncIOp trunciOp) {
+    auto srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
+    auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
+    if (!srcType || !dstType)
+      return true;
+    Type srcScalarType = srcType.getElementType();
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
+      return true;
+
+    return false;
+  });
 
   target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,
                       vector::FMAOp>();
