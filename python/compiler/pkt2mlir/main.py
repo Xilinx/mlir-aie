@@ -24,14 +24,24 @@ def main():
         required=True,
         help="Input control packet binary file",
     )
+    parser.add_argument(
+        "-device",
+        "-d",
+        type=str,
+        default="npu1",
+        help="Target AIE device type (default: npu1)",
+    )
 
     args = parser.parse_args()
 
     # Read the data from the file
     data = args.file.read()
 
+    # Get the device enum value
+    device_value = getattr(AIEDevice, args.device)
+
     with Context() as ctx:
-        module = control_packets_binary_to_mlir(ctx, data)
+        module = control_packets_binary_to_mlir(ctx, data, device_value)
 
     print(str(module))
 
