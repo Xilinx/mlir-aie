@@ -135,12 +135,12 @@ NB_MODULE(_aie, m) {
 
   m.def(
       "control_packets_binary_to_mlir",
-      [](MlirContext ctx, nb::bytes bytes) {
+      [](MlirContext ctx, nb::bytes bytes, int device) {
         MlirStringRef bin = {static_cast<const char *>(bytes.data()),
                              bytes.size()};
-        return aieTranslateBinaryToControlPackets(ctx, bin);
+        return aieTranslateBinaryToControlPackets(ctx, bin, device);
       },
-      "ctx"_a, "binary"_a);
+      "ctx"_a, "binary"_a, "device"_a = 4); /* npu1 */
 
   m.def(
       "translate_npu_to_binary",

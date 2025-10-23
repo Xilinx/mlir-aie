@@ -879,9 +879,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 // new ModuleOp containing a DeviceOp containing a runtime sequence with the
 // control packet binary encoded as a sequence of aiex.control_packet
 // operations. On failure return std::nullopt.
-std::optional<mlir::ModuleOp>
-xilinx::AIE::convertControlPacketBinaryToMLIR(mlir::MLIRContext *ctx,
-                                              std::vector<uint8_t> &binary) {
+std::optional<mlir::ModuleOp> xilinx::AIE::convertControlPacketBinaryToMLIR(
+    mlir::MLIRContext *ctx, std::vector<uint8_t> &binary, AIEDevice device) {
 
   // parse the binary
   auto maybeOps = parseControlPacket(binary);
@@ -898,13 +897,13 @@ xilinx::AIE::convertControlPacketBinaryToMLIR(mlir::MLIRContext *ctx,
   OpBuilder builder(module.getBodyRegion());
   builder.setInsertionPointToStart(module.getBody());
 
-  // Create aie.device - default to npu1_1col
-  // Note: Control packets don't have device info in the binary format
-  auto device = builder.create<DeviceOp>(loc, AIEDevice::npu1_1col,
-                                         StringAttr::get(builder.getContext()));
-  device.getRegion().emplaceBlock();
-  DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
-  builder.setInsertionPointToStart(device.getBody());
+  // Create aie.device with specified device type
+  auto deviceAttr = AIEDeviceAttr::get(ctx, device);
+  auto deviceOp = builder.create<DeviceOp>(
+      loc, deviceAttr, StringAttr::get(builder.getContext()));
+  deviceOp.getRegion().emplaceBlock();
+  DeviceOp::ensureTerminator(deviceOp.getBodyRegion(), builder, loc);
+  builder.setInsertionPointToStart(deviceOp.getBody());
 
   // Create tiles and set controller_id attributes based on packet info
   // Group operations by (pktType, pktId) to determine which tile they target
@@ -913,13 +912,13 @@ xilinx::AIE::convertControlPacketBinaryToMLIR(mlir::MLIRContext *ctx,
     auto key = std::make_pair(op.pktType, op.pktId);
     if (tileMap.find(key) == tileMap.end()) {
       // Extract col/row from address using target model
-      const AIETargetModel &targetModel = device.getTargetModel();
+      const AIETargetModel &targetModel = deviceOp.getTargetModel();
       uint32_t colInt = (op.address >> targetModel.getColumnShift()) & 0x1f;
       uint32_t rowInt = (op.address >> targetModel.getRowShift()) & 0x1f;
       tileMap[key] = std::make_pair(colInt, rowInt);
 
       // Create tile and set controller_id attribute
-      auto tile = TileOp::getOrCreate(builder, device, colInt, rowInt);
+      auto tile = TileOp::getOrCreate(builder, deviceOp, colInt, rowInt);
       auto packetInfoAttr =
           AIE::PacketInfoAttr::get(builder.getContext(), op.pktType, op.pktId);
       tile->setAttr("controller_id", packetInfoAttr);
