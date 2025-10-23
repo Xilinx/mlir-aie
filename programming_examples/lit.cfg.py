@@ -133,9 +133,6 @@ chess_config = LitConfigHelper.detect_chess(
     config.vitis_root, config.enable_chess_tests, llvm_config
 )
 
-# Detect aiesimulator
-aiesim_config = LitConfigHelper.detect_aiesimulator()
-
 # Apply all hardware/tool configurations
 LitConfigHelper.apply_config_to_lit(
     config,
@@ -144,7 +141,6 @@ LitConfigHelper.apply_config_to_lit(
         "xrt": xrt_config,
         "peano": peano_config,
         "chess": chess_config,
-        "aiesim": aiesim_config,
         "opencv": opencv_config,
     },
 )
