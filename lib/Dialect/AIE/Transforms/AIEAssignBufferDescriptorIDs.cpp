@@ -85,6 +85,9 @@ struct AIEAssignBufferDescriptorIDsPass
               std::optional<int32_t> next_id =
                   gen.nextBdId(dmaOp.getChannelIndex());
               if (!next_id) {
+                // TOOD(erika) -- review
+                // getNumBDs --> gets 48 but only 24 per direction, so print is
+                // wrong.
                 bd.emitOpError()
                     << "Allocator exhausted available BD IDs (maximum "
                     << targetModel.getNumBDs(col, row) << " available).";
