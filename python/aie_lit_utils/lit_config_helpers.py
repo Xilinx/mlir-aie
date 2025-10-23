@@ -5,7 +5,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021-2025 Xilinx Inc.
+# (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 """
 Shared utilities for AIE/AIR lit test configuration.
