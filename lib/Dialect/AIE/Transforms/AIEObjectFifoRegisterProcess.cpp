@@ -146,7 +146,7 @@ struct AIEObjectFifoRegisterProcessPass
         builder.create<EndOp>(builder.getUnknownLoc());
         builder.setInsertionPointToStart(&block);
       } else {
-        CoreOp coreOp = llvm::dyn_cast<CoreOp>(op);
+        CoreOp coreOp = llvm::cast<CoreOp>(op);
         Region &r = coreOp.getBody();
         Block &endBlock = r.back();
         builder.setInsertionPointToStart(&endBlock);

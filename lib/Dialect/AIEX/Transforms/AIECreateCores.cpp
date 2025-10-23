@@ -105,7 +105,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
         tiles[{colIndex, rowIndex}] = tile;
       }
       Operation *tileOp = tiles[{colIndex, rowIndex}];
-      TileOp tile = dyn_cast<TileOp>(tileOp);
+      TileOp tile = cast<TileOp>(tileOp);
       builder.setInsertionPointAfter(tileOp);
 
       // create MemOp
@@ -218,8 +218,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     // DenseMap<Value, int> destChannel;
     // for (auto op : device.getOps<MemcpyOp>()) {
     //   builder.setInsertionPoint(op);
-    //   TileOp srcTile = dyn_cast<TileOp>(op.srcTile().getDefiningOp());
-    //   TileOp dstTile = dyn_cast<TileOp>(op.dstTile().getDefiningOp());
+    //   TileOp srcTile = cast<TileOp>(op.srcTile().getDefiningOp());
+    //   TileOp dstTile = cast<TileOp>(op.dstTile().getDefiningOp());
     //   // TODO: perhaps a better approach is to not assert here, but rather
     //   have a subsequent pass
     //   // that legally relocates the ports
