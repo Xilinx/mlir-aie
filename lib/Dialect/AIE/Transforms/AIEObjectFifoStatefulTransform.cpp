@@ -302,7 +302,8 @@ struct AIEObjectFifoStatefulTransformPass
             isSharedMemory(delegate, createOp.getProducerTileOp(),
                            &prodShareDir);
             isSharedMemory(delegate, consumerTileOp, &consShareDir);
-            if (prodShareDir == -1 && consShareDir == -1)
+            if ((prodShareDir == -1 || prodShareDir == 2) &&
+                (consShareDir == -1 || consShareDir == 2))
               isUsedInLinkOp = false;
             else
               splitBecauseLink.push_back(createOp);
@@ -610,7 +611,8 @@ struct AIEObjectFifoStatefulTransformPass
       int consShareDir;
       isSharedMemory(delegate, op.getProducerTileOp(), &prodShareDir);
       isSharedMemory(delegate, consumerTileOp, &consShareDir);
-      if (prodShareDir == -1 && consShareDir == -1)
+      if ((prodShareDir == -1 || prodShareDir == 2) &&
+          (consShareDir == -1 || consShareDir == 2))
         creation_tile = delegate;
       else
         opAlloc->emitOpError("objectfifo has no shared memory access to "
