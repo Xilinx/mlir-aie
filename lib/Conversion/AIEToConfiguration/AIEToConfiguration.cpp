@@ -451,9 +451,7 @@ emitTransactionOps(OpBuilder &builder,
   auto loc = builder.getUnknownLoc();
 
   // create the txn ops
-  for (auto p : llvm::zip(operations, global_data)) {
-    auto op = std::get<0>(p);
-    memref::GlobalOp payload = std::get<1>(p);
+  for (auto [op, payload] : llvm::zip(operations, global_data)) {
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       builder.create<AIEX::NpuWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
@@ -536,9 +534,7 @@ emitControlPacketOps(OpBuilder &builder,
   auto ctx = builder.getContext();
 
   // create the control packet ops
-  for (auto p : llvm::zip(operations, global_data)) {
-    auto op = std::get<0>(p);
-    memref::GlobalOp payload = std::get<1>(p);
+  for (auto [op, payload] : llvm::zip(operations, global_data)) {
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       builder.create<AIEX::NpuControlPacketOp>(
@@ -547,10 +543,10 @@ emitControlPacketOps(OpBuilder &builder,
           /*stream_id*/ builder.getI32IntegerAttr(0),
           DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-      if (!std::get<1>(p).getInitialValue())
+      if (!payload.getInitialValue())
         continue;
       auto blockWriteData =
-          dyn_cast<DenseIntElementsAttr>(*std::get<1>(p).getInitialValue());
+          dyn_cast<DenseIntElementsAttr>(*payload.getInitialValue());
       if (!blockWriteData) {
         payload.emitError(
             "Global symbol initial value is not a dense int array");
@@ -664,17 +660,30 @@ static LogicalResult convertTransactionOpsToMLIR(
     global_data.push_back(global);
   }
 
-  // create aiex.runtime_sequence
-  int id = 0;
-  std::string seq_name = "configure";
-  while (device.lookupSymbol(seq_name))
-    seq_name = "configure" + std::to_string(id++);
-  StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-  auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
-  seq.getBody().push_back(new Block);
+  // search for aiex.configure ops in runtime sequences by walking the device
+  // and collect them in a vector. If there are none, create a new runtime
+  // sequence. Otherwise assume the insertion point is the first aiex.configure
+  // op.
+  SmallVector<AIEX::ConfigureOp> configureOps;
+  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
+
+  if (configureOps.empty()) {
+
+    // create aiex.runtime_sequence
+    int id = 0;
+    std::string seq_name = "configure";
+    while (device.lookupSymbol(seq_name))
+      seq_name = "configure" + std::to_string(id++);
+    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
+    auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
+    seq.getBody().push_back(new Block);
+
+    builder.setInsertionPointToStart(&seq.getBody().front());
+  } else {
+    builder.setInsertionPoint(configureOps.front());
+  }
 
   // create the txn ops
-  builder.setInsertionPointToStart(&seq.getBody().front());
   if (outputType == OutputType::Transaction) {
     if (failed(emitTransactionOps(builder, operations, global_data)))
       return failure();
@@ -682,12 +691,19 @@ static LogicalResult convertTransactionOpsToMLIR(
     if (failed(emitControlPacketOps(builder, operations, global_data)))
       return failure();
     // resolve mask writes; control packet doesn't natively support mask write.
-    if (failed(orConsecutiveWritesOnSameAddr(&seq.getBody().front())))
+    if (failed(orConsecutiveWritesOnSameAddr(builder.getBlock())))
       return failure();
   } else {
     llvm_unreachable("bad output type");
   }
 
+  if (!configureOps.empty()) {
+    // splice the body into the current insertion point
+    builder.getBlock()->getOperations().splice(
+        builder.getInsertionPoint(),
+        configureOps.front().getBody().front().getOperations());
+    configureOps.front().erase();
+  }
   return success();
 }
 

@@ -320,9 +320,11 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     int row = packetOp.getRowFromAddr();
     auto destTile = TileOp::getOrCreate(builder, deviceOp, col, row);
     auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-    if (!info)
-      return destTile->emitError("Expected controller_id attribute");
-    uint32_t hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+    uint32_t hdr = 0;
+    if (info)
+      hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+    else
+      destTile->emitWarning("Expected controller_id attribute");
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // control packet header

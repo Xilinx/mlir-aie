@@ -109,7 +109,7 @@ LOWER_TO_LLVM_PIPELINE = (
 )
 
 AIE_LOWER_TO_LLVM = (
-    lambda device_name=None, col=None, row=None: (
+    lambda device_name=None, col=None, row=None, aie_target="aie2": (
         Pipeline()
         .Nested(
             "aie.device",
@@ -120,7 +120,7 @@ AIE_LOWER_TO_LLVM = (
         )
         .add_pass("aie-standard-lowering", device=device_name, tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
-        .add_pass("convert-aievec-to-llvm")
+        .add_pass("convert-aievec-to-llvm", aie_target=aie_target.lower())
     )
     + LOWER_TO_LLVM_PIPELINE
 )
@@ -681,7 +681,7 @@ class FlowRunner:
         # fmt: off
         if opts.unified:
             file_opt_with_addresses = self.prepend_tmp(f"{device_name}_input_opt_with_addresses.mlir")
-            await self.do_call(parent_task_id, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name)}", file_with_addresses, "-o", file_opt_with_addresses])
+            await self.do_call(parent_task_id, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, aie_target=aie_target)}", file_with_addresses, "-o", file_opt_with_addresses])
 
             file_llvmir = self.prepend_tmp(f"{device_name}_input.ll")
             await self.do_call(parent_task_id, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])
@@ -768,7 +768,7 @@ class FlowRunner:
             if not opts.unified:
                 file_core = corefile(self.tmpdirname, device_name, core, "mlir")
                 file_opt_core = corefile(self.tmpdirname, device_name, core, "opt.mlir")
-                await self.do_call(task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, corecol, corerow)}", file_with_addresses, "-o", file_opt_core])
+                await self.do_call(task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, corecol, corerow, aie_target)}", file_with_addresses, "-o", file_opt_core])
             if self.opts.xbridge:
                 file_core_bcf = corefile(self.tmpdirname, device_name, core, "bcf")
                 await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--aie-device-name", device_name, "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
@@ -874,7 +874,9 @@ class FlowRunner:
             shutil.copy(file_txn, txn_dest)
         return file_txn
 
-    async def aiebu_asm(self, input_file, output_file, ctrl_packet_file=None):
+    async def aiebu_asm(
+        self, input_file, output_file, ctrl_packet_file=None, ctrl_packet_idx=0
+    ):
         asm_bin = find_aiebu_asm()
 
         args = [
@@ -892,7 +894,7 @@ class FlowRunner:
             exteral_buffers_json = {
                 "external_buffers": {
                     "buffer_ctrl": {
-                        "xrt_id": 0,
+                        "xrt_id": ctrl_packet_idx,
                         "logical_id": -1,
                         "size_in_bytes": ctrl_packet_size,
                         "ctrl_pkt_buffer": 1,
@@ -986,59 +988,60 @@ class FlowRunner:
         full_elf_path = self.opts.full_elf_name or "aie.elf"
         await self.assemble_full_elf(config_json_path, full_elf_path, parent_task)
 
-    async def process_ctrlpkt(self, module_str, device_name):
+    async def process_ctrlpkt(self, module_str, device_op, device_name):
+        file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
+        file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
+        file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
+            f"{device_name}_ctrlpkt_dma_seq.mlir"
+        )
+        ctrlpkt_mlir_str = run_passes(
+            "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
+            + self.tmpdirname
+            + "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))",
+            module_str,
+            file_ctrlpkt_mlir,
+            self.opts.verbose,
+        )
+
+        # aie-translate --aie-ctrlpkt-to-bin -o ctrlpkt.bin
         with Context(), Location.unknown():
-            file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
-            file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
-            file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
-                f"{device_name}_ctrlpkt_dma_seq.mlir"
+            ctrlpkt_bin = aiedialect.generate_control_packets(
+                Module.parse(ctrlpkt_mlir_str).operation, device_name
             )
-            file_ctrlpkt_dma_seq_bin = opts.ctrlpkt_dma_seq_name.format(device_name)
-            file_ctrlpkt_elf = opts.ctrlpkt_elf_name.format(device_name)
-            run_passes(
-                f"builtin.module(aie.device(convert-aie-to-control-packets{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
-                module_str,
-                file_ctrlpkt_mlir,
-                self.opts.verbose,
+        with open(file_ctrlpkt_bin, "wb") as f:
+            f.write(struct.pack("I" * len(ctrlpkt_bin), *ctrlpkt_bin))
+
+        # aie-opt --aie-ctrl-packet-to-dma -aie-dma-to-npu
+        ctrl_seq_str = run_passes(
+            "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
+            ctrlpkt_mlir_str,
+            file_ctrlpkt_dma_seq_mlir,
+            self.opts.verbose,
+        )
+
+        # aie-translate --aie-npu-to-binary -o npu_insts.bin
+        with Context(), Location.unknown():
+            insts_bin = aiedialect.translate_npu_to_binary(
+                Module.parse(ctrl_seq_str).operation, device_name, opts.sequence_name
             )
-            await self.do_call(
-                None,
-                [
-                    "aie-translate",
-                    "--aie-ctrlpkt-to-bin",
-                    "--aie-device-name",
-                    device_name,
-                    "--aie-sequence-name",
-                    "configure",
-                    file_ctrlpkt_mlir,
-                    "-o",
-                    file_ctrlpkt_bin,
-                ],
+        with open(opts.insts_name.format(device_name, "seq"), "wb") as f:
+            f.write(struct.pack("I" * len(insts_bin), *insts_bin))
+
+        ctrl_idx = 0
+        with Context(), Location.unknown():
+            # walk the device to find runtime sequence
+            seqs = find_ops(
+                device_op.operation,
+                lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
             )
-            ctrlpkt_mlir_str = await read_file_async(file_ctrlpkt_mlir)
-            run_passes(
-                "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
-                ctrlpkt_mlir_str,
-                file_ctrlpkt_dma_seq_mlir,
-                self.opts.verbose,
-            )
-            await self.do_call(
-                None,
-                [
-                    "aie-translate",
-                    "--aie-npu-to-binary",
-                    "--aie-device-name",
-                    device_name,
-                    "--aie-sequence-name",
-                    "configure",
-                    file_ctrlpkt_dma_seq_mlir,
-                    "-o",
-                    file_ctrlpkt_dma_seq_bin,
-                ],
-            )
-            await self.aiebu_asm(
-                file_ctrlpkt_dma_seq_bin, file_ctrlpkt_elf, file_ctrlpkt_bin
-            )
+            if seqs:
+                ctrl_idx = len(seqs[0].regions[0].blocks[0].arguments.types)
+        await self.aiebu_asm(
+            opts.insts_name.format(device_name, "seq"),
+            opts.elf_name.format(device_name),
+            file_ctrlpkt_bin,
+            ctrl_idx,
+        )
 
     async def process_elf(self, npu_insts_module, device_name):
         # translate npu instructions to binary and write to file
@@ -1665,7 +1668,7 @@ class FlowRunner:
             # 3.) Targets that require the cores to be lowered but apply across all devices
 
             npu_insts_module = None
-            if opts.npu or opts.elf or opts.generate_full_elf:
+            if opts.npu or opts.elf or opts.generate_full_elf and not opts.ctrlpkt:
                 task3 = progress_bar.add_task(
                     "[green] Lowering NPU instructions", total=2, command=""
                 )
@@ -1729,7 +1732,7 @@ class FlowRunner:
         nworkers = int(opts.nthreads)
 
         # Optionally generate insts.bin for NPU instruction stream
-        if opts.npu or opts.generate_full_elf:
+        if opts.npu or opts.generate_full_elf and not opts.ctrlpkt:
             # write each runtime sequence binary into its own file
             runtime_sequences = generate_runtime_sequences_list(device_op)
             for seq_op, seq_name in runtime_sequences:
@@ -1794,10 +1797,12 @@ class FlowRunner:
 
         if opts.ctrlpkt and opts.execute:
             processes.append(
-                self.process_ctrlpkt(input_physical_with_elfs_str, device_name)
+                self.process_ctrlpkt(
+                    input_physical_with_elfs_str, device_op, device_name
+                )
             )
 
-        if opts.elf and opts.execute:
+        if opts.elf and not opts.ctrlpkt and opts.execute:
             processes.append(self.process_elf(npu_insts_module, device_name))
 
         await asyncio.gather(*processes)
