@@ -342,7 +342,9 @@ class LitConfigHelper:
                 timeout=5,
             )
 
-            if re.search("Xilinx AI Engine", result.stdout.decode("utf-8", errors="ignore")):
+            if re.search(
+                "Xilinx AI Engine", result.stdout.decode("utf-8", errors="ignore")
+            ):
                 config.found = True
                 config.features.append("peano")
                 config.substitutions["%PEANO_INSTALL_DIR"] = peano_install_dir
