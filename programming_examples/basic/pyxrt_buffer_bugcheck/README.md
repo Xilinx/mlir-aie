@@ -29,4 +29,20 @@ Device(s) Present
 |[0000:e6:00.1]  |NPU Krackan  |
 ```
 
-
+Error:
+```bash
+make
+make run_py
+```
+Yields:
+```
+    Traceback (most recent call last):
+    File "/scratch/ehunhoff/mlir-aie/programming_examples/basic/pyxrt_buffer_bugcheck/test.py", line 171, in <module>
+        main(opts)
+    File "/scratch/ehunhoff/mlir-aie/programming_examples/basic/pyxrt_buffer_bugcheck/test.py", line 157, in main
+        run1(device, context1, kernel1, insts1, opts.size)
+    File "/scratch/ehunhoff/mlir-aie/programming_examples/basic/pyxrt_buffer_bugcheck/test.py", line 58, in run1
+        run = kernel(
+            ^^^^^^^
+    RuntimeError: DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-2): No such file or directory
+```
