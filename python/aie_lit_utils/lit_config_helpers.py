@@ -363,7 +363,7 @@ class LitConfigHelper:
         return config
 
     @staticmethod
-    def detect_aiesimulator() -> HardwareConfig:
+    def detect_aiesimulator(aie_obj_root) -> HardwareConfig:
         """
         Detect aiesimulator availability.
 
@@ -379,7 +379,7 @@ class LitConfigHelper:
             config.features.append("aiesimulator")
             config.environment["LD_LIBRARY_PATH"] = "{}".format(
                 os.path.join(
-                    config.aie_obj_root, "runtime_lib", "x86_64", "xaiengine", "lib"
+                    aie_obj_root, "runtime_lib", "x86_64", "xaiengine", "lib"
                 )
             )
         else:
