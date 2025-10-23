@@ -2366,7 +2366,12 @@ struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
     VectorType srcType = dyn_cast<VectorType>(extOp.getIn().getType());
     VectorType dstType = dyn_cast<VectorType>(extOp.getOut().getType());
 
-    auto accType = getVectorOpDestType(srcType, /*AIE2 =*/true);
+    Type scalarType = dstType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    auto accType =
+        isa<IntegerType>(scalarType) && (elWidth == 32 || elWidth == 64)
+            ? dstType
+            : getVectorOpDestType(srcType, /*AIE2 =*/true);
     auto upsOp =
         rewriter.create<aievec::UPSOp>(extOp.getLoc(), accType, extOp.getIn());
 
@@ -2398,9 +2403,10 @@ struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
     VectorType dstType = dyn_cast<VectorType>(truncOp.getOut().getType());
     Type scalarType = srcType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    auto accType = isa<IntegerType>(scalarType) && (elWidth == 32)
-                       ? srcType
-                       : getVectorOpDestType(srcType, /*AIE2 =*/true);
+    auto accType =
+        isa<IntegerType>(scalarType) && (elWidth == 32 || elWidth == 64)
+            ? srcType
+            : getVectorOpDestType(srcType, /*AIE2 =*/true);
 
     auto shiftParamOp = rewriter.create<arith::ConstantOp>(
         truncOp.getLoc(), rewriter.getI32IntegerAttr(0));
@@ -3306,12 +3312,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
-    unsigned srcLaneSize = getVectorLaneSize(srcType);
-    unsigned dstLaneSize = getVectorLaneSize(dstType);
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-    return srcLaneSize != 32 || (dstElWidth <= srcElWidth) ||
-           (dstLaneSize != srcLaneSize);
+    // For aie2, ExtSIOp is always illegal
+    return false;
   });
 
   target.addDynamicallyLegalOp<arith::TruncFOp>([](arith::TruncFOp truncfOp) {
@@ -3344,13 +3346,8 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
-    unsigned srcLaneSize = getVectorLaneSize(srcType);
-    unsigned dstLaneSize = getVectorLaneSize(dstType);
-    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
-    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
-
-    return srcLaneSize != 32 || (dstElWidth >= srcElWidth) ||
-           (dstLaneSize != srcLaneSize);
+    // For aie2, TruncIOp is always illegal
+    return false;
   });
 
   target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
