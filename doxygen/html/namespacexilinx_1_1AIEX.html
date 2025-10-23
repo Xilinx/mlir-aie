@@ -102,6 +102,10 @@ Functions</h2></td></tr>
 <tr class="separator:a2dbd961c6a84a34fe14387e7e944caa1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a13f46b6e16dc1574e3179dbcde166686" id="r_a13f46b6e16dc1574e3179dbcde166686"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a13f46b6e16dc1574e3179dbcde166686">createAIETransformBfpTypesPass</a> ()</td></tr>
 <tr class="separator:a13f46b6e16dc1574e3179dbcde166686"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9d25eaf4441c51b7c3433f5855546cc9" id="r_a9d25eaf4441c51b7c3433f5855546cc9"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a9d25eaf4441c51b7c3433f5855546cc9">createAIETxnToControlPacketPass</a> ()</td></tr>
+<tr class="separator:a9d25eaf4441c51b7c3433f5855546cc9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af9c01c4ec6cb5d98279a0baa437f7ec0" id="r_af9c01c4ec6cb5d98279a0baa437f7ec0"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#af9c01c4ec6cb5d98279a0baa437f7ec0">createAIELegalizeControlPacketPass</a> ()</td></tr>
+<tr class="separator:af9c01c4ec6cb5d98279a0baa437f7ec0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
 <a id="ae8a75a918c01877ae01686160fe90489" name="ae8a75a918c01877ae01686160fe90489"></a>
@@ -275,6 +279,25 @@ Functions</h2></td></tr>
 
 </div>
 </div>
+<a id="af9c01c4ec6cb5d98279a0baa437f7ec0" name="af9c01c4ec6cb5d98279a0baa437f7ec0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af9c01c4ec6cb5d98279a0baa437f7ec0">&#9670;&#160;</a></span>createAIELegalizeControlPacketPass()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; AIE::DeviceOp &gt; &gt; xilinx::AIEX::createAIELegalizeControlPacketPass </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIETxnToControlPacket_8cpp_source.html#l00172">172</a> of file <a class="el" href="AIETxnToControlPacket_8cpp_source.html">AIETxnToControlPacket.cpp</a>.</p>
+
+</div>
+</div>
 <a id="a1303bab0abbc7a3f3b961d6f5f8c51aa" name="a1303bab0abbc7a3f3b961d6f5f8c51aa"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a1303bab0abbc7a3f3b961d6f5f8c51aa">&#9670;&#160;</a></span>createAIELowerMemcpyPass()</h2>
 
@@ -386,6 +409,25 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p class="definition">Definition at line <a class="el" href="AIETransformBfpTypes_8cpp_source.html#l00233">233</a> of file <a class="el" href="AIETransformBfpTypes_8cpp_source.html">AIETransformBfpTypes.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a9d25eaf4441c51b7c3433f5855546cc9" name="a9d25eaf4441c51b7c3433f5855546cc9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9d25eaf4441c51b7c3433f5855546cc9">&#9670;&#160;</a></span>createAIETxnToControlPacketPass()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; AIE::DeviceOp &gt; &gt; xilinx::AIEX::createAIETxnToControlPacketPass </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIETxnToControlPacket_8cpp_source.html#l00167">167</a> of file <a class="el" href="AIETxnToControlPacket_8cpp_source.html">AIETxnToControlPacket.cpp</a>.</p>
 
 </div>
 </div>
@@ -593,7 +635,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Oct 23 2025 20:04:02 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Oct 23 2025 20:25:18 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

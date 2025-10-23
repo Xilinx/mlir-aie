@@ -64,6 +64,10 @@ _Lowering herds with place and route ops to AIE cores, mems, and switchboxes_
 An experimental pass which elaborates herd operations (e.g. aie.herd, aie.iter, aie.select)
 into an explicit representation (e.g. aie.core, aie.mem, etc.).
 
+### `-aie-legalize-ctrl-packet`
+
+_Legalize control packet operations for target_
+
 ### `-aie-lower-broadcast-packet`
 
 _Replace combination of broadcast and packet-switch by packet-flow_
@@ -106,6 +110,10 @@ _Transform bfp types to standard builtin types_
 
 Lowers bfp types to standard builtin types.
 Adapts operations as necessary to accomodate for bfp data movement.
+
+### `-aie-txn-to-ctrl-packet`
+
+_Convert transaction operations to control packet operations_
 
 ### `-aiex-standard-lowering`
 
