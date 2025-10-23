@@ -126,7 +126,7 @@ chess_config = LitConfigHelper.detect_chess(
 )
 
 # Detect aiesimulator
-aiesim_config = LitConfigHelper.detect_aiesimulator()
+aiesim_config = LitConfigHelper.detect_aiesimulator(config.aie_obj_root)
 
 # Apply all hardware/tool configurations
 LitConfigHelper.apply_config_to_lit(
