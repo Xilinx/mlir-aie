@@ -74,7 +74,7 @@ class LitConfigHelper:
         current_paths = llvm_config.config.environment.get("PATH", None)
         if current_paths:
             paths.extend(current_paths.split(os.path.pathsep))
-            paths = [os.path.normcase(os.path.normpath(p)) for p in paths]
+        paths = [os.path.normcase(os.path.normpath(p)) for p in paths]
         llvm_config.config.environment["PATH"] = os.pathsep.join(paths)
 
     @staticmethod
@@ -342,7 +342,7 @@ class LitConfigHelper:
                 timeout=5,
             )
 
-            if re.search("Xilinx AI Engine", result.stdout.decode("utf-8")):
+            if re.search("Xilinx AI Engine", result.stdout.decode("utf-8", errors="ignore")):
                 config.found = True
                 config.features.append("peano")
                 config.substitutions["%PEANO_INSTALL_DIR"] = peano_install_dir
