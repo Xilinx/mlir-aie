@@ -1079,6 +1079,27 @@ _Types and operations for external LLVM dialect_
 
 
 
+### `xllvm.intr.aie2p.BFP576.BFP576.ACC2048.mac.conf` (::xilinx::xllvm::MacConfBFP576ACC2048AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs_data` | vector of 8-bit signless integer values of length 64 |
+| `lhs_exp` | vector of 8-bit signless integer values of length 8 |
+| `rhs_data` | vector of 8-bit signless integer values of length 64 |
+| `rhs_exp` | vector of 8-bit signless integer values of length 8 |
+| `acc` | vector of 32-bit signless integer values of length 64 |
+| `conf` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2p.I1024.I1024.ACC2048.bf.mac.conf` (::xilinx::xllvm::MacConfBF16I1024ACC2048AIE2pIntrOp)
 
 #### Operands:
@@ -1198,6 +1219,24 @@ _Types and operations for external LLVM dialect_
 | `lhs` | vector of bfloat16 type values of length 32 |
 | `rhs` | vector of bfloat16 type values of length 32 |
 | `acc` | vector of 32-bit float values of length 32 |
+| `conf` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.I512.I512.ACC1024.bf.mul.conf` (::xilinx::xllvm::MulConfBF16I512ACC1024AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of bfloat16 type values of length 32 |
+| `rhs` | vector of bfloat16 type values of length 32 |
 | `conf` | 32-bit signless integer |
 
 #### Results:
@@ -1392,6 +1431,40 @@ _Types and operations for external LLVM dialect_
 | Operand | Description |
 | :-----: | ----------- |
 | `src` | vector of bfloat16 type values of length 32 |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.v64accfloat.to.v64bfp16ebs8` (::xilinx::xllvm::Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 32-bit float values of length 64 |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.vshuffle` (::xilinx::xllvm::VectorShuffleAIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 32-bit signless integer values of length 16 |
+| `rhs` | vector of 32-bit signless integer values of length 16 |
+| `mode` | 32-bit signless integer |
 
 #### Results:
 

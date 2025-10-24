@@ -619,8 +619,10 @@ Currently, this intrinsic supports the following type combinations:
      lhs                 | rhs                 | Accumulator
     :-------------------:|:-------------------:|:------------------:
      `vector<8x8xbf16>`  | `vector<8x8xbf16>`  | `vector<8x8xf32>`
-     `vector<8x4xbf16>`  | `vector<4x8xbf16>`  | `vector<8x8xf32>`
      `vector<4x8xbf16>`  | `vector<8x4xbf16>`  | `vector<4x4xf32>`
+     `vector<4x8xbf16>`  | `vector<8x8xbf16>`  | `vector<4x8xf32>`
+     `vector<8x1xbf16>`  | `vector<1x8xbf16>`  | `vector<8x8xf32>`
+     `vector<8x8xbf16>`  | `vector<8x4xbf16>`  | `vector<8x4xf32>`
      `vector<8x8xi8>`    | `vector<8x8xi8>`    | `vector<8x8xi32>`
      `vector<8x2xi16>`   | `vector<2x8xi16>`   | `vector<8x8xi32>`
 
