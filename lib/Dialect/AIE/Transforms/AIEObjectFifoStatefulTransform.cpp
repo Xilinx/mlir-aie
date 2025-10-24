@@ -162,6 +162,7 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function that returns true if two tiles in the AIE array share a memory
   /// module. share_direction is equal to:
+  ///   * 2 if the memory modules on both tiles can be shared,
   ///   * -1 if the shared memory module is that of the first input tile,
   ///   * 1 if it is that of the second input tile,
   ///   * 0 is no memory module is shared.
@@ -186,7 +187,9 @@ struct AIEObjectFifoStatefulTransformPass
     bool leftShared = targetModel.isLegalMemAffinity(
         b.colIndex(), b.rowIndex(), a.colIndex(), a.rowIndex());
 
-    if (leftShared)
+    if (leftShared && rightShared)
+      *share_direction = 2;
+    else if (leftShared)
       *share_direction = -1;
     else if (rightShared)
       *share_direction = 1;
@@ -299,7 +302,8 @@ struct AIEObjectFifoStatefulTransformPass
             isSharedMemory(delegate, createOp.getProducerTileOp(),
                            &prodShareDir);
             isSharedMemory(delegate, consumerTileOp, &consShareDir);
-            if (prodShareDir == -1 && consShareDir == -1)
+            if ((prodShareDir == -1 || prodShareDir == 2) &&
+                (consShareDir == -1 || consShareDir == 2))
               isUsedInLinkOp = false;
             else
               splitBecauseLink.push_back(createOp);
@@ -595,7 +599,7 @@ struct AIEObjectFifoStatefulTransformPass
     TileOp creation_tile;
     auto consumerTileOp =
         dyn_cast<TileOp>(op.getConsumerTiles()[0].getDefiningOp());
-    if (share_direction == 0 || share_direction == -1)
+    if (share_direction != 1)
       creation_tile = op.getProducerTileOp();
     else
       creation_tile = consumerTileOp;
@@ -607,7 +611,8 @@ struct AIEObjectFifoStatefulTransformPass
       int consShareDir;
       isSharedMemory(delegate, op.getProducerTileOp(), &prodShareDir);
       isSharedMemory(delegate, consumerTileOp, &consShareDir);
-      if (prodShareDir == -1 && consShareDir == -1)
+      if ((prodShareDir == -1 || prodShareDir == 2) &&
+          (consShareDir == -1 || consShareDir == 2))
         creation_tile = delegate;
       else
         opAlloc->emitOpError("objectfifo has no shared memory access to "
@@ -656,47 +661,51 @@ struct AIEObjectFifoStatefulTransformPass
         TileOp current_buf_allocation_tile =
             creation_tile; // used to keep track of the tile where the buffer is
                            // allocated
-        if (static_cast<int>(currentUsedMemory + totalSizeBytes) >
-            maxDataMemorySize) {
-          // if not, check if the neighbour can hold the new buffer or not
-          // Find neighbor tiles with shared memory
-          std::vector<TileOp> neighborTiles;
-          int currentCol = creation_tile.getCol();
-          int currentRow = creation_tile.getRow();
+        if (creation_tile.isMemTile()) {
+          if (static_cast<int>(currentUsedMemory + totalSizeBytes) >
+              maxDataMemorySize) {
+            // if not, check if the neighbour can hold the new buffer or not
+            // Find neighbor tiles with shared memory
+            std::vector<TileOp> neighborTiles;
+            int currentCol = creation_tile.getCol();
+            int currentRow = creation_tile.getRow();
 
-          // Check tile to the left
-          if (currentCol > 0) {
-            TileOp leftTile = findOrCreateTile(builder, dev, creation_tile,
-                                               currentCol - 1, currentRow);
+            // Check tile to the left
+            if (currentCol > 0) {
+              TileOp leftTile = findOrCreateTile(builder, dev, creation_tile,
+                                                 currentCol - 1, currentRow);
 
-            int share_direction = 0;
-            if (isSharedMemory(creation_tile, leftTile, &share_direction)) {
-              neighborTiles.push_back(leftTile);
+              int share_direction = 0;
+              if (isSharedMemory(creation_tile, leftTile, &share_direction) &&
+                  (share_direction == 1 || share_direction == 2)) {
+                neighborTiles.push_back(leftTile);
+              }
             }
-          }
 
-          // Check tile to the right
-          if (currentCol < (targetModel.columns() - 1)) {
-            TileOp rightTile = findOrCreateTile(builder, dev, creation_tile,
-                                                currentCol + 1, currentRow);
-            int share_direction = 0;
-            if (isSharedMemory(creation_tile, rightTile, &share_direction)) {
-              neighborTiles.push_back(rightTile);
+            // Check tile to the right
+            if (currentCol < (targetModel.columns() - 1)) {
+              TileOp rightTile = findOrCreateTile(builder, dev, creation_tile,
+                                                  currentCol + 1, currentRow);
+              int share_direction = 0;
+              if (isSharedMemory(creation_tile, rightTile, &share_direction) &&
+                  (share_direction == 1 || share_direction == 2)) {
+                neighborTiles.push_back(rightTile);
+              }
             }
-          }
 
-          // try to allocate on neighbor tiles
-          if (!neighborTiles.empty()) {
-            for (auto &tile : neighborTiles) {
-              // Try to allocate on this neighbor tile
-              int neighborUsedMemory =
-                  calculateCurrentUsedMemory(tile, buffersPerFifo, buffers);
-              if (static_cast<int>(neighborUsedMemory + totalSizeBytes) <=
-                  maxDataMemorySize) {
-                // Allocate buffer on neighbor tile, change creation_tile to be
-                // this neighbour tile
-                current_buf_allocation_tile = tile;
-                break;
+            // try to allocate on neighbor tiles
+            if (!neighborTiles.empty()) {
+              for (auto &tile : neighborTiles) {
+                // Try to allocate on this neighbor tile
+                int neighborUsedMemory =
+                    calculateCurrentUsedMemory(tile, buffersPerFifo, buffers);
+                if (static_cast<int>(neighborUsedMemory + totalSizeBytes) <=
+                    maxDataMemorySize) {
+                  // Allocate buffer on neighbor tile, change creation_tile to
+                  // be this neighbour tile
+                  current_buf_allocation_tile = tile;
+                  break;
+                }
               }
             }
           }
