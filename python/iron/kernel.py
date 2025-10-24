@@ -4,9 +4,10 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc.
 
 import numpy as np
+import hashlib
 
 from .. import ir  # type: ignore
 from ..extras.dialects.ext.func import FuncOp  # type: ignore
@@ -76,7 +77,8 @@ class Kernel(BaseKernel):
 
 
 class ExternalFunction(BaseKernel):
-    _instances = set()
+    _instances = set()  # A set of all instances of ExternalFunction
+    _cache = {}  # Cache for compiled functions based on source hash
 
     def __init__(
         self,
@@ -93,7 +95,7 @@ class ExternalFunction(BaseKernel):
 
         Args:
             name (str): The name of the function
-            object_file_name (str, optional): The name of the object file. If None, it will be name.o.
+            object_file_name (str, optional): The name of the object file. If None, it will be name.o. If provided, this bypasses all caching mechanisms and uses the exact filename specified.
             source_file (str): Path to the C/C++ source file
             source_string (str): C/C++ source code as a string
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
@@ -104,14 +106,48 @@ class ExternalFunction(BaseKernel):
         self._setup_source(source_file, source_string)
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
+
+        # If object_file_name is provided, bypass caching entirely
         if object_file_name:
             self._object_file_name = object_file_name
+            self._cache_key = None  # No cache key needed when bypassing cache
         else:
-            self._object_file_name = f"{self._name}.o"
-        self._compiled = False
+            # Generate a hash-based cache key for this function
+            self._cache_key = self._generate_cache_key()
+
+            # Check if we can reuse a cached object file
+            if self._cache_key in ExternalFunction._cache:
+                cached_info = ExternalFunction._cache[self._cache_key]
+                self._object_file_name = cached_info["object_file_name"]
+            else:
+                # We never compile the code object until we resolve the ExternalFunction
+                # so we use the cache key as the object file name to avoid having two object files or
+                # having to ask the user to use the same object file name for both ExternalFunctions.
+                self._object_file_name = self._cache_key
 
         # Track this instance for JIT compilation
         ExternalFunction._instances.add(self)
+
+    def _generate_cache_key(self) -> str:
+        """Generate a unique cache key based on source content and compilation parameters."""
+        # Create a hash of the source content and compilation parameters
+        content_to_hash = []
+
+        # Get the source content as a string
+        try:
+            source_content = self._get_source_content()
+            content_to_hash.append(source_content)
+        except RuntimeError as e:
+            # If we can't read the source file, this is a critical error
+            raise RuntimeError(f"Failed to read source content for cache key: {e}")
+
+        # Include compilation parameters in the hash
+        content_to_hash.extend([str(self._include_dirs), str(self._compile_flags)])
+
+        # Create a hash of all the content
+        combined_content = "".join(content_to_hash)
+        computed_hash = hashlib.md5(combined_content.encode("utf-8")).hexdigest()
+        return computed_hash
 
     def _setup_source(self, source_file: str | None, source_string: str | None) -> None:
         """Set up the source file for compilation."""
@@ -124,6 +160,21 @@ class ExternalFunction(BaseKernel):
             self._source_file = None
             self._source_string = source_string
 
+    def _get_source_content(self) -> str:
+        """Get the source content as a string."""
+        if self._source_string is not None:
+            return self._source_string
+        elif self._source_file is not None:
+            try:
+                with open(self._source_file, "r") as f:
+                    return f.read()
+            except (IOError, OSError) as e:
+                raise RuntimeError(
+                    f"Failed to read source file '{self._source_file}': {e}"
+                )
+        else:
+            raise RuntimeError("No source content available")
+
     def __enter__(self):
         """Enter the context."""
         return self
@@ -131,6 +182,11 @@ class ExternalFunction(BaseKernel):
     def __exit__(self, exc_type, exc_value, traceback):
         """Exit the context."""
         pass
+
+    @classmethod
+    def clear(cls):
+        """Clear all instances."""
+        cls._instances.clear()
 
     @property
     def bin_name(self) -> str:
@@ -218,3 +274,13 @@ class ExternalFunction(BaseKernel):
         if not self._op:
             raise ValueError("Need to resolve ExternalFunction before it can be called")
         call(self._op, args, **kwargs)
+
+    @classmethod
+    def add_to_cache(
+        cls, cache_key: str, object_file_name: str, source_dir: str = None
+    ):
+        """Add a compiled function to the cache."""
+        cache_entry = {"object_file_name": object_file_name}
+        if source_dir:
+            cache_entry["source_dir"] = source_dir
+        cls._cache[cache_key] = cache_entry
