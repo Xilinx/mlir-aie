@@ -43,12 +43,14 @@ class HardwareConfig:
         features: List of lit features to add
         substitutions: Dictionary of lit substitutions
         flags: Compiler/linker flags for this hardware
+        environment: Dictionary of environment variables to set
     """
 
     found: bool = False
     features: List[str] = field(default_factory=list)
     substitutions: Dict[str, str] = field(default_factory=dict)
     flags: str = ""
+    environment: Dict[str, str] = field(default_factory=dict)
 
 
 class LitConfigHelper:
@@ -462,6 +464,10 @@ class LitConfigHelper:
             # Add substitutions
             for key, value in hw_config.substitutions.items():
                 config_obj.substitutions.append((key, value))
+
+            # Add environment variables
+            for key, value in hw_config.environment.items():
+                config_obj.environment[key] = value
 
     @staticmethod
     def setup_standard_environment(
