@@ -126,32 +126,23 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    <span class="keywordtype">bool</span> bigEndian = <span class="keyword">false</span>, <span class="keywordtype">bool</span> emitUnified = <span class="keyword">false</span>, <span class="keywordtype">bool</span> cdoDebug = <span class="keyword">false</span>,</div>
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    <span class="keywordtype">bool</span> aieSim = <span class="keyword">false</span>, <span class="keywordtype">bool</span> xaieDebug = <span class="keyword">false</span>, <span class="keywordtype">bool</span> enableCores = <span class="keyword">true</span>);</div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span> </div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span><span class="preprocessor">#ifdef AIE_ENABLE_AIRBIN</span></div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a1311986a04ba38cd8561e7b008acf860">AIETranslateToAirbin</a>(mlir::ModuleOp module,</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>                                         <span class="keyword">const</span> std::string &amp;outputFilename,</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>                                         <span class="keyword">const</span> std::string &amp;coreFilesDir,</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>                                         llvm::StringRef deviceName,</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>                                         <span class="keywordtype">bool</span> testAirBin = <span class="keyword">false</span>);</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span> </div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a3acbad8a82860269ff564305de18ea1e">   77</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3acbad8a82860269ff564305de18ea1e">AIETranslateToTargetArch</a>(mlir::ModuleOp module,</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>                                             llvm::raw_ostream &amp;output,</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>                                             llvm::StringRef deviceName);</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a3acbad8a82860269ff564305de18ea1e">   69</a></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3acbad8a82860269ff564305de18ea1e">AIETranslateToTargetArch</a>(mlir::ModuleOp module,</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>                                             llvm::raw_ostream &amp;output,</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>                                             llvm::StringRef deviceName);</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span> </div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>} <span class="comment">// namespace AIE</span></div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span><span class="keyword">namespace </span>aievec {</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span><span class="comment"></span> </div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span><span class="comment">/// Translates the AIE vector dialect MLIR to C++ code.</span></div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">   78</a></span><span class="comment"></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">translateAIEVecToCpp</a>(mlir::Operation *op, <span class="keywordtype">bool</span> aie2,</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>                                         mlir::raw_ostream &amp;os);</div>
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span> </div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>} <span class="comment">// namespace AIE</span></div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span> </div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span><span class="keyword">namespace </span>aievec {</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span><span class="comment"></span> </div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span><span class="comment">/// Translates the AIE vector dialect MLIR to C++ code.</span></div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">   86</a></span><span class="comment"></span>mlir::LogicalResult <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">translateAIEVecToCpp</a>(mlir::Operation *op, <span class="keywordtype">bool</span> aie2,</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>                                         mlir::raw_ostream &amp;os);</div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span> </div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>} <span class="comment">// namespace aievec</span></div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>} <span class="comment">// namespace xilinx</span></div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span> </div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>} <span class="comment">// namespace aievec</span></div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>} <span class="comment">// namespace xilinx</span></div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span> </div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span><span class="preprocessor">#endif</span></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a04655f2f648be0b1bca2cdfc4c15eb92"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a04655f2f648be0b1bca2cdfc4c15eb92">xilinx::AIE::AIETranslateControlPacketsToUI32Vec</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector&lt; uint32_t &gt; &amp;, llvm::StringRef deviceName=&quot;&quot;, llvm::StringRef sequenceName=&quot;&quot;)</div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a1311986a04ba38cd8561e7b008acf860"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a1311986a04ba38cd8561e7b008acf860">xilinx::AIE::AIETranslateToAirbin</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module, const std::string &amp;outputFilename, const std::string &amp;coreFilesDir, llvm::StringRef deviceName, bool testAirBin)</div><div class="ttdef"><b>Definition</b> <a href="AIETargetAirbin_8cpp_source.html#l01183">AIETargetAirbin.cpp:1183</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a21b71fcc9a4ed020237fd11d2b272139"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a21b71fcc9a4ed020237fd11d2b272139">xilinx::AIE::AIETranslateSCSimConfig</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef deviceName=&quot;&quot;)</div><div class="ttdef"><b>Definition</b> <a href="AIETargetSimulationFiles_8cpp_source.html#l00023">AIETargetSimulationFiles.cpp:23</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a2cfe2629350d0872208508d8b825c37c"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a2cfe2629350d0872208508d8b825c37c">xilinx::AIE::AIETranslateToCDODirect</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateToCDODirect(mlir::ModuleOp m, llvm::StringRef workDirPath, llvm::StringRef deviceName, bool bigEndian=false, bool emitUnified=false, bool cdoDebug=false, bool aieSim=false, bool xaieDebug=false, bool enableCores=true)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a30e8589826e233942459ef918300110c"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a30e8589826e233942459ef918300110c">xilinx::AIE::AIELLVMLink</a></div><div class="ttdeci">mlir::LogicalResult AIELLVMLink(llvm::raw_ostream &amp;output, std::vector&lt; std::string &gt; Files, bool DisableDITypeMap=false, bool NoVerify=false, bool Internalize=false, bool OnlyNeeded=false, bool PreserveAssemblyUseListOrder=false, bool Verbose=false)</div><div class="ttdef"><b>Definition</b> <a href="AIELLVMLink_8cpp_source.html#l00123">AIELLVMLink.cpp:123</a></div></div>
@@ -171,7 +162,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Oct 24 2025 18:39:12 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Oct 24 2025 20:38:59 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
