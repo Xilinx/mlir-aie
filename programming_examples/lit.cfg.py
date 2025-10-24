@@ -13,7 +13,6 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "python"))
 
 import lit.formats
-import lit.util
 
 from lit.llvm import llvm_config
 from aie_lit_utils import LitConfigHelper
@@ -26,7 +25,7 @@ config.name = "AIE_PROGRAMMING_EXAMPLES"
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 
 # suffixes: A list of file extensions to treat as test files.
-config.suffixes = [".mlir"]
+config.suffixes = [".lit"]
 
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
@@ -49,6 +48,9 @@ config.substitutions.append(("%aietools", config.vitis_aietools_dir))
 # Not using run_on_board anymore, need more specific per-platform commands
 config.substitutions.append(("%run_on_board", "echo"))
 
+# Add Vitis components as features
+LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
+
 # Detect ROCm/HSA and VCK5000
 rocm_config = LitConfigHelper.detect_rocm(
     config.hsa_dir, config.aieHostTarget, config.enable_board_tests
@@ -60,6 +62,7 @@ xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_include_dir,
     config.xrt_bin_dir,
     config.aie_src_root,
+    config.vitis_components,
 )
 
 # Detect OpenCV
@@ -83,20 +86,12 @@ config.substitutions.append(("%aieHostTargetTriplet%", triplet))
 config.substitutions.append(("%VitisSysrootFlag%", sysroot_flag))
 config.substitutions.append(("%aieHostTargetArch%", config.aieHostTarget))
 
-llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
-
 llvm_config.use_default_substitutions()
 
 # excludes: A list of directories to exclude from the testsuite. The 'Inputs'
 # subdirectories contain auxiliary inputs for various tests in their parent
 # directories.
 config.excludes = [
-    "Inputs",
-    "Examples",
-    "CMakeLists.txt",
-    "README.txt",
-    "LICENSE.txt",
-    "aie.mlir.prj",
     "lit.cfg.py",
 ]
 
@@ -140,9 +135,6 @@ LitConfigHelper.apply_config_to_lit(
         "opencv": opencv_config,
     },
 )
-
-# Add Vitis components as features
-LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 
 tools = [
     "aie-opt",

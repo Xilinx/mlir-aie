@@ -59,12 +59,16 @@ rocm_config = LitConfigHelper.detect_rocm(
     config.hsa_dir, config.aieHostTarget, config.enable_board_tests
 )
 
+# Add Vitis components as features
+LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
+
 # Detect XRT and Ryzen AI NPU devices
 xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_lib_dir,
     config.xrt_include_dir,
     config.xrt_bin_dir,
     config.aie_src_root,
+    config.vitis_components,
 )
 
 # Setup host target triplet and sysroot
@@ -75,20 +79,12 @@ config.substitutions.append(("%aieHostTargetTriplet%", triplet))
 config.substitutions.append(("%VitisSysrootFlag%", sysroot_flag))
 config.substitutions.append(("%aieHostTargetArch%", config.aieHostTarget))
 
-llvm_config.with_system_environment(["HOME", "INCLUDE", "LIB", "TMP", "TEMP"])
-
 llvm_config.use_default_substitutions()
 
 # excludes: A list of directories to exclude from the testsuite. The 'Inputs'
 # subdirectories contain auxiliary inputs for various tests in their parent
 # directories.
 config.excludes = [
-    "Inputs",
-    "Examples",
-    "CMakeLists.txt",
-    "README.txt",
-    "LICENSE.txt",
-    "aie.mlir.prj",
     "lit.cfg.py",
 ]
 
@@ -135,9 +131,6 @@ LitConfigHelper.apply_config_to_lit(
         "aiesim": aiesim_config,
     },
 )
-
-# Add Vitis components as features
-LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 
 tools = [
     "aie-opt",

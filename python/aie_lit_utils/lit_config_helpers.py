@@ -173,7 +173,11 @@ class LitConfigHelper:
 
     @staticmethod
     def detect_xrt(
-        xrt_lib_dir: str, xrt_include_dir: str, xrt_bin_dir: str, aie_src_root: str
+        xrt_lib_dir: str,
+        xrt_include_dir: str,
+        xrt_bin_dir: str,
+        aie_src_root: str,
+        vitis_components: Optional[List[str]] = None,
     ) -> HardwareConfig:
         """
         Detect XRT installation and Ryzen AI NPU hardware.
@@ -183,10 +187,21 @@ class LitConfigHelper:
             xrt_include_dir: Path to XRT include directory
             xrt_bin_dir: Path to XRT binary directory
             aie_src_root: Path to AIE source root (for run_on_npu.sh script)
+            vitis_components: List of available Vitis components for feature filtering
 
         Returns:
-            Tuple of (HardwareConfig, run_on_npu1_cmd, run_on_npu2_cmd)
+            HardwareConfig with XRT detection results
+
+            HardwareConfig contains:
+                - found: True if XRT is detected and valid
+                - flags: Compiler/linker flags for XRT (includes -I, -L, and libraries)
+                - substitutions: Dictionary with "%xrt_flags", "%run_on_npu1%", and "%run_on_npu2%" mappings
+                - features: List of features including "ryzen_ai", "ryzen_ai_npu1", or "ryzen_ai_npu2"
+                           based on detected NPU hardware and available Vitis components
         """
+        if vitis_components is None:
+            vitis_components = []
+
         config = HardwareConfig()
         run_on_npu1 = "echo"
         run_on_npu2 = "echo"
@@ -238,21 +253,26 @@ class LitConfigHelper:
                     model = str(match.group(4))
 
                 print(f"\tmodel: '{model}'")
-                config.features.append("ryzen_ai")
 
                 run_on_npu = f"{aie_src_root}/utils/run_on_npu.sh"
 
-                # Map model to NPU generation
+                # Map model to NPU generation and filter by available components
                 if model in LitConfigHelper.NPU_MODELS["npu1"]:
-                    run_on_npu1 = run_on_npu
-                    config.features.append("ryzen_ai_npu1")
-                    config.substitutions["%run_on_npu1%"] = run_on_npu1
-                    print(f"Running tests on NPU1 with command line: {run_on_npu1}")
+                    if "aie2" in vitis_components:
+                        run_on_npu1 = run_on_npu
+                        config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
+                        config.substitutions["%run_on_npu1%"] = run_on_npu1
+                        print(f"Running tests on NPU1 with command line: {run_on_npu1}")
+                    else:
+                        print("NPU1 detected but aietools for aie2 not available")
                 elif model in LitConfigHelper.NPU_MODELS["npu2"]:
-                    run_on_npu2 = run_on_npu
-                    config.features.append("ryzen_ai_npu2")
-                    config.substitutions["%run_on_npu2%"] = run_on_npu2
-                    print(f"Running tests on NPU4 with command line: {run_on_npu2}")
+                    if "aie2p" in vitis_components:
+                        run_on_npu2 = run_on_npu
+                        config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
+                        config.substitutions["%run_on_npu2%"] = run_on_npu2
+                        print(f"Running tests on NPU2 with command line: {run_on_npu2}")
+                    else:
+                        print("NPU2 detected but aietools for aie2p not available")
                 else:
                     print(f"WARNING: xrt-smi reported unknown NPU model '{model}'.")
                 break
@@ -389,9 +409,7 @@ class LitConfigHelper:
             config.found = True
             config.features.append("aiesimulator")
             config.environment["LD_LIBRARY_PATH"] = "{}".format(
-                os.path.join(
-                    aie_obj_root, "runtime_lib", "x86_64", "xaiengine", "lib"
-                )
+                os.path.join(aie_obj_root, "runtime_lib", "x86_64", "xaiengine", "lib")
             )
         else:
             print("aiesimulator not found")
