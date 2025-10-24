@@ -3648,7 +3648,12 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
       return true;
 
-    return false;
+    unsigned srcLaneSize = getVectorLaneSize(srcType);
+    unsigned dstLaneSize = getVectorLaneSize(dstType);
+    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
+      return false;
+
+    return true;
   });
 
   // AIE2P-specific legalization: TruncFOp on vector is always illegal
@@ -3663,7 +3668,12 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
       return true;
 
-    return false;
+    unsigned srcLaneSize = getVectorLaneSize(srcType);
+    unsigned dstLaneSize = getVectorLaneSize(dstType);
+    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
+      return false;
+
+    return true;
   });
 
   // AIE2P-specific legalization: ExtSIOp on vector is always illegal
@@ -3678,7 +3688,12 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
-    return false;
+    unsigned srcLaneSize = getVectorLaneSize(srcType);
+    unsigned dstLaneSize = getVectorLaneSize(dstType);
+    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
+      return false;
+
+    return true;
   });
 
   // AIE2P-specific legalization: TruncIOp on vector is always illegal
@@ -3692,7 +3707,12 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
-    return false;
+    unsigned srcLaneSize = getVectorLaneSize(srcType);
+    unsigned dstLaneSize = getVectorLaneSize(dstType);
+    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
+      return false;
+
+    return true;
   });
 }
 
@@ -3918,7 +3938,12 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
       return true;
 
-    return false;
+    unsigned srcLaneSize = getVectorLaneSize(srcType);
+    unsigned dstLaneSize = getVectorLaneSize(dstType);
+    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
+      return false;
+
+    return true;
   });
 
   // AIE2-specific legalization: TruncFOp on vector is always illegal
@@ -3933,7 +3958,12 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     if (!isa<FloatType>(srcScalarType) || !isa<FloatType>(dstScalarType))
       return true;
 
-    return false;
+    unsigned srcLaneSize = getVectorLaneSize(srcType);
+    unsigned dstLaneSize = getVectorLaneSize(dstType);
+    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
+      return false;
+
+    return true;
   });
 
   // AIE2-specific legalization: ExtSIOp on vector is always illegal
@@ -3948,7 +3978,12 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
-    return false;
+    unsigned srcLaneSize = getVectorLaneSize(srcType);
+    unsigned dstLaneSize = getVectorLaneSize(dstType);
+    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
+      return false;
+
+    return true;
   });
 
   // AIE2-specific legalization: TruncIOp on vector is always illegal
@@ -3962,7 +3997,12 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
-    return false;
+    unsigned srcLaneSize = getVectorLaneSize(srcType);
+    unsigned dstLaneSize = getVectorLaneSize(dstType);
+    if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
+      return false;
+
+    return true;
   });
 
   target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,
