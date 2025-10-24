@@ -83,3 +83,15 @@ func.func @v64i8_srs_v64i32(%arg0 : vector<64xi32>) {
 // CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2p.I512.v64.acc32.srs"(
 // CHECK-SAME: %[[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<64xi32>, i32, i32) -> vector<64xi8>
+
+// -----
+
+func.func @v64bfp16_from_v64f32(%arg0 : vector<64xf32>) -> !llvm.struct<(vector<64xi8>, vector<8xi8>)> {
+  %0 = "xllvm.intr.aie2p.v64accfloat.to.v64bfp16ebs8"(%arg0) : (vector<64xf32>) -> !llvm.struct<(vector<64xi8>, vector<8xi8>)>
+  return %0 : !llvm.struct<(vector<64xi8>, vector<8xi8>)>
+}
+
+// CHECK-LABEL: @v64bfp16_from_v64f32
+// CHECK-SAME: %[[ARG0:.*]]: vector<64xf32>
+// CHECK-NEXT: %[[BFP:.*]] = "xllvm.intr.aie2p.v64accfloat.to.v64bfp16ebs8"(%[[ARG0]]) : (vector<64xf32>) -> !llvm.struct<(vector<64xi8>, vector<8xi8>)>
+// CHECK-NEXT: return %[[BFP]] : !llvm.struct<(vector<64xi8>, vector<8xi8>)>
