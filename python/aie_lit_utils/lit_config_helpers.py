@@ -174,7 +174,7 @@ class LitConfigHelper:
     @staticmethod
     def detect_xrt(
         xrt_lib_dir: str, xrt_include_dir: str, xrt_bin_dir: str, aie_src_root: str
-    ) -> Tuple[HardwareConfig, str, str]:
+    ) -> HardwareConfig:
         """
         Detect XRT installation and Ryzen AI NPU hardware.
 
@@ -194,11 +194,15 @@ class LitConfigHelper:
         if not xrt_lib_dir:
             print("xrt not found")
             config.flags = ""
-            return config, run_on_npu1, run_on_npu2
+            config.substitutions["%xrt_flags"] = ""
+            config.substitutions["%run_on_npu1%"] = run_on_npu1
+            config.substitutions["%run_on_npu2%"] = run_on_npu2
+            return config
 
         print(f"xrt found at {os.path.dirname(xrt_lib_dir)}")
         config.found = True
         config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -luuid -lxrt_coreutil"
+        config.substitutions["%xrt_flags"] = config.flags
 
         # Detect NPU hardware
         try:
@@ -242,10 +246,12 @@ class LitConfigHelper:
                 if model in LitConfigHelper.NPU_MODELS["npu1"]:
                     run_on_npu1 = run_on_npu
                     config.features.append("ryzen_ai_npu1")
+                    config.substitutions["%run_on_npu1%"] = run_on_npu1
                     print(f"Running tests on NPU1 with command line: {run_on_npu1}")
                 elif model in LitConfigHelper.NPU_MODELS["npu2"]:
                     run_on_npu2 = run_on_npu
                     config.features.append("ryzen_ai_npu2")
+                    config.substitutions["%run_on_npu2%"] = run_on_npu2
                     print(f"Running tests on NPU4 with command line: {run_on_npu2}")
                 else:
                     print(f"WARNING: xrt-smi reported unknown NPU model '{model}'.")
@@ -258,7 +264,10 @@ class LitConfigHelper:
         except Exception as e:
             print(f"Failed to run xrt-smi: {e}")
 
-        return config, run_on_npu1, run_on_npu2
+        config.substitutions["%run_on_npu1%"] = run_on_npu1
+        config.substitutions["%run_on_npu2%"] = run_on_npu2
+
+        return config
 
     @staticmethod
     def detect_chess(
