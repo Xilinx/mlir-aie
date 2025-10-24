@@ -92,6 +92,7 @@ def AIE2MatMulACC :
 def AIE2PMatMulLHS :
   AnyTypeOf<[VectorOfShapeAndType<[8, 8], BF16>,
             VectorOfShapeAndType<[8, 4], BF16>,
+            VectorOfShapeAndType<[8, 1], BF16>,
             VectorOfShapeAndType<[4, 8], BF16>,
             VectorOfShapeAndType<[8, 8], I8>,
             VectorOfShapeAndType<[8, 2], I16>],
@@ -102,6 +103,7 @@ def AIE2PMatMulLHS :
 def AIE2PMatMulRHS :
   AnyTypeOf<[VectorOfShapeAndType<[8, 8], BF16>,
             VectorOfShapeAndType<[4, 8], BF16>,
+            VectorOfShapeAndType<[1, 8], BF16>,
             VectorOfShapeAndType<[8, 4], BF16>,
             VectorOfShapeAndType<[8, 8], I8>,
             VectorOfShapeAndType<[2, 8], I16>],
@@ -111,6 +113,8 @@ def AIE2PMatMulRHS :
 
 def AIE2PMatMulACC :
   AnyTypeOf<[VectorOfShapeAndType<[8, 8], F32>,
+             VectorOfShapeAndType<[8, 4], F32>,
+             VectorOfShapeAndType<[4, 8], F32>,
              VectorOfShapeAndType<[4, 4], F32>,
              VectorOfShapeAndType<[8, 8], I32>],
             "a vector compatible with an accumulator of AIE2P matrix-multiply and "
@@ -180,12 +184,18 @@ class IsValidAIE2PMatMulShapeAndType<string lhs, string rhs, string acc> :
               Or<[VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 8], BF16>,
                                    rhs, VectorOfShapeAndType<[8, 8], BF16>,
                                    acc, VectorOfShapeAndType<[8, 8], F32>>,
-                  VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 4], BF16>,
-                                   rhs, VectorOfShapeAndType<[4, 8], BF16>,
-                                   acc, VectorOfShapeAndType<[8, 8], F32>>,
                   VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 8], BF16>,
                                    rhs, VectorOfShapeAndType<[8, 4], BF16>,
                                    acc, VectorOfShapeAndType<[4, 4], F32>>,
+                  VectorTypesMatch<lhs, VectorOfShapeAndType<[4, 8], BF16>,
+                                   rhs, VectorOfShapeAndType<[8, 8], BF16>,
+                                   acc, VectorOfShapeAndType<[4, 8], F32>>,
+                  VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 1], BF16>,
+                                   rhs, VectorOfShapeAndType<[1, 8], BF16>,
+                                   acc, VectorOfShapeAndType<[8, 8], F32>>,
+                  VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 8], BF16>,
+                                   rhs, VectorOfShapeAndType<[8, 4], BF16>,
+                                   acc, VectorOfShapeAndType<[8, 4], F32>>,
                   VectorTypesMatch<lhs, VectorOfShapeAndType<[8, 8], I8>,
                                    rhs, VectorOfShapeAndType<[8, 8], I8>,
                                    acc, VectorOfShapeAndType<[8, 8], I32>>,
