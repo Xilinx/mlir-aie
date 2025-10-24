@@ -378,9 +378,7 @@ class LitConfigHelper:
             config.found = True
             config.features.append("aiesimulator")
             config.environment["LD_LIBRARY_PATH"] = "{}".format(
-                os.path.join(
-                    aie_obj_root, "runtime_lib", "x86_64", "xaiengine", "lib"
-                )
+                os.path.join(aie_obj_root, "runtime_lib", "x86_64", "xaiengine", "lib")
             )
         else:
             print("aiesimulator not found")
