@@ -60,16 +60,12 @@ rocm_config = LitConfigHelper.detect_rocm(
 )
 
 # Detect XRT and Ryzen AI NPU devices
-xrt_config, run_on_npu1, run_on_npu2 = LitConfigHelper.detect_xrt(
+xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_lib_dir,
     config.xrt_include_dir,
     config.xrt_bin_dir,
     config.aie_src_root,
 )
-
-config.substitutions.append(("%run_on_npu1%", run_on_npu1))
-config.substitutions.append(("%run_on_npu2%", run_on_npu2))
-config.substitutions.append(("%xrt_flags", xrt_config.flags))
 
 # Setup host target triplet and sysroot
 triplet, sysroot_flag = LitConfigHelper.setup_host_target_triplet(
