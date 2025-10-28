@@ -70,11 +70,20 @@ class Program:
                 for w in self._rt.workers:
                     all_fifos.update(w.fifos)
 
+                # In some "incomplete" designs where ofs aren't fully used
+                # (a technique that is useful during development)
+                # we have to manually fetch all the handles to ensure they all get placed.
+                all_fifo_handles = set()
+                for ofh in all_fifos:
+                    all_fifo_handles.add(ofh._object_fifo._prod)
+                    all_fifo_handles.update(ofh._object_fifo._cons)
+
                 # Sort fifos for deterministic resolve
-                all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
+                all_fifos = sorted(all_fifo_handles, key=lambda obj: obj.name)
 
                 if placer:
-                    # TODO: should maybe just take runtime?
+                    # We cannot just give rt because some designs are purposefully incomplete
+                    # and it is still useful to place them.
                     placer.make_placement(
                         self._device, self._rt, self._rt.workers, all_fifos
                     )

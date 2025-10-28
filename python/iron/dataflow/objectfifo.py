@@ -129,12 +129,15 @@ class ObjectFifo(Resolvable):
             f"prod={prod_endpoint}, cons={[c.endpoint for c in self._cons]})"
         )
 
-    def prod(self, depth: int | None = None) -> ObjectFifoHandle:
+    def prod(
+        self, depth: int | None = None, endpoint: ObjectFifoEndpoint | None = None
+    ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type producer. Each ObjectFifo may have only one producer
         handle, so if one already exists, a new reference to this handle will be returned.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to the producer handle. Defaults to None.
+            endpoint: Most of the time, the endpoint of an ObjectFifo can be inferred. But if the ObjectFifo is not used, it may be necessary to manually set it.
 
         Raises:
             ValueError: Arguments are validated
@@ -153,12 +156,15 @@ class ObjectFifo(Resolvable):
                 raise ValueError(f"Depth must be > 1, but got {depth}")
         else:
             self._prod = ObjectFifoHandle(self, True, depth)
+            if not endpoint is None:
+                self._prod.endpoint = endpoint
         return self._prod
 
     def cons(
         self,
         depth: int | None = None,
         dims_from_stream: list[Sequence[int]] | None = None,
+        endpoint: ObjectFifoEndpoint | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
         will return a new consumer handle every time is it callled.
@@ -166,6 +172,7 @@ class ObjectFifo(Resolvable):
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
             dims_from_stream (list[Sequence[int]] | None, optional): Dimensions from stream for this consumer. Defaults to None.
+            endpoint: Most of the time, the endpoint of an ObjectFifo can be inferred. But if the ObjectFifo is not used, it may be necessary to manually set it.
 
         Raises:
             ValueError: Arguments are validated
@@ -181,11 +188,13 @@ class ObjectFifo(Resolvable):
 
         if dims_from_stream is None:
             dims_from_stream = self._dims_from_stream_per_cons
-        self._cons.append(
-            ObjectFifoHandle(
-                self, is_prod=False, depth=depth, dims_from_stream=dims_from_stream
-            )
+
+        ofh = ObjectFifoHandle(
+            self, is_prod=False, depth=depth, dims_from_stream=dims_from_stream
         )
+        if not endpoint is None:
+            ofh.endpoint = endpoint
+        self._cons.append(ofh)
         return self._cons[-1]
 
     def tiles(self) -> list[PlacementTile]:

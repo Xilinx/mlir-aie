@@ -4,7 +4,8 @@
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2, AnyComputeTile, Tile
+from aie.iron.device import NPU2, AnyComputeTile, AnyShimTile, Tile
+from aie.iron.runtime.endpoint import RuntimeEndpoint
 from aie.helpers.util import np_ndarray_type_get_shape
 from util import construct_and_print_module
 
@@ -290,4 +291,33 @@ def compute_three_in_col_lim(module):
         rt.fill(of_2.prod(), C)
 
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
+    return module
+
+
+# CHECK-LABEL: TEST: explicit_of_endpoint
+# CHECK: aie.objectfifo @of0(%[[tile_0_2:.+]], {%[[shim_noc_tile_0_0:.+]]}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+# CHECK: aie.objectfifo @of1(%[[shim_noc_tile_0_0:.+]], {%[[tile_0_2:.+]]}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+@construct_and_print_module
+def explicit_of_endpoint(module):
+    n = 1024
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+
+    of_0.cons(endpoint=RuntimeEndpoint(AnyShimTile))
+    of_1.prod(endpoint=RuntimeEndpoint(AnyShimTile))
+
+    def core_fn(of0, of1):
+        pass
+
+    workers = [
+        Worker(core_fn, [of_0.prod(), of_1.cons()]),
+    ]
+
+    rt = Runtime()
+    with rt.sequence(n_ty) as (A):
+        rt.start(*workers)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module
