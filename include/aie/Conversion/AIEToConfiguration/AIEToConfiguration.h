@@ -17,6 +17,7 @@
 
 namespace xilinx::AIE {
 
+enum class AIEDevice : uint32_t;
 class DeviceOp;
 
 std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
@@ -28,6 +29,10 @@ createConvertAIEToControlPacketsPass();
 std::optional<mlir::ModuleOp>
 convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                std::vector<uint8_t> &binary);
+
+std::optional<mlir::ModuleOp> convertControlPacketBinaryToMLIR(
+    mlir::MLIRContext *ctx, std::vector<uint8_t> &binary,
+    AIEDevice device = static_cast<AIEDevice>(4)); /* npu1 */
 
 } // namespace xilinx::AIE
 
