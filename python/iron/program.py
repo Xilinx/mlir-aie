@@ -70,8 +70,13 @@ class Program:
                 for w in self._rt.workers:
                     all_fifos.update(w.fifos)
 
+                all_fifo_handles = set()
+                for ofh in all_fifos:
+                    all_fifo_handles.add(ofh._object_fifo._prod)
+                    all_fifo_handles.update(ofh._object_fifo._cons)
+
                 # Sort fifos for deterministic resolve
-                all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
+                all_fifos = sorted(all_fifo_handles, key=lambda obj: obj.name)
 
                 if placer:
                     # TODO: should maybe just take runtime?
