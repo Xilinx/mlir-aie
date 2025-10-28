@@ -148,7 +148,6 @@ class SequentialPlacer(Placer):
 
         for ofh in object_fifos:
             of_endpoints = ofh.all_of_endpoints()
-            of_handle_endpoints = ofh._object_fifo._get_endpoint(is_prod=ofh._is_prod)
             of_compute_endpoints_tiles = [
                 ofe.tile for ofe in of_endpoints if ofe.tile in computes
             ]
@@ -157,7 +156,7 @@ class SequentialPlacer(Placer):
                 ofe for ofe in of_endpoints if isinstance(ofe, ObjectFifoLink)
             ]
             # Place "closest" to the compute endpoints
-            for ofe in of_handle_endpoints:
+            for ofe in of_endpoints:
                 if isinstance(ofe, Worker):
                     continue
 
