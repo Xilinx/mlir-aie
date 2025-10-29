@@ -29,6 +29,7 @@ class TensorTiler2D:
         tile_col_major: bool = False,
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
+        prune_step: Optional[bool] = True,
     ) -> TensorAccessSequence:
         """The simple_tiler is a special case of the group_tiler. The simple_tiler produces a TensorAccessSequence
         with one TensorAccessPattern per tile.
@@ -52,6 +53,7 @@ class TensorTiler2D:
             tile_col_major=tile_col_major,
             iter_col_major=iter_col_major,
             pattern_repeat=pattern_repeat,
+            prune_step=prune_step,
         )
 
     @classmethod
@@ -65,6 +67,7 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
         allow_partial: bool = False,
+        prune_step: Optional[bool] = True,
     ) -> TensorAccessSequence:
         """The group_tiler is a special case of the step_tiler. The group_tiler produces a TensorAccessSequence
         with a group of tiles per TensorAccesspattern in the sequence.
@@ -96,6 +99,7 @@ class TensorTiler2D:
             iter_col_major=iter_col_major,
             pattern_repeat=pattern_repeat,
             allow_partial=allow_partial,
+            prune_step=prune_step,
         )
 
     @classmethod
