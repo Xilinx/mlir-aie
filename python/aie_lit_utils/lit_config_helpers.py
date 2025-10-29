@@ -43,12 +43,14 @@ class HardwareConfig:
         features: List of lit features to add
         substitutions: Dictionary of lit substitutions
         flags: Compiler/linker flags for this hardware
+        environment: Dictionary of environment variables to set
     """
 
     found: bool = False
     features: List[str] = field(default_factory=list)
     substitutions: Dict[str, str] = field(default_factory=dict)
     flags: str = ""
+    environment: Dict[str, str] = field(default_factory=dict)
 
 
 class LitConfigHelper:
@@ -171,8 +173,12 @@ class LitConfigHelper:
 
     @staticmethod
     def detect_xrt(
-        xrt_lib_dir: str, xrt_include_dir: str, xrt_bin_dir: str, aie_src_root: str
-    ) -> Tuple[HardwareConfig, str, str]:
+        xrt_lib_dir: str,
+        xrt_include_dir: str,
+        xrt_bin_dir: str,
+        aie_src_root: str,
+        vitis_components: Optional[List[str]] = None,
+    ) -> HardwareConfig:
         """
         Detect XRT installation and Ryzen AI NPU hardware.
 
@@ -181,10 +187,21 @@ class LitConfigHelper:
             xrt_include_dir: Path to XRT include directory
             xrt_bin_dir: Path to XRT binary directory
             aie_src_root: Path to AIE source root (for run_on_npu.sh script)
+            vitis_components: List of available Vitis components for feature filtering
 
         Returns:
-            Tuple of (HardwareConfig, run_on_npu1_cmd, run_on_npu2_cmd)
+            HardwareConfig with XRT detection results
+
+            HardwareConfig contains:
+                - found: True if XRT is detected and valid
+                - flags: Compiler/linker flags for XRT (includes -I, -L, and libraries)
+                - substitutions: Dictionary with "%xrt_flags", "%run_on_npu1%", and "%run_on_npu2%" mappings
+                - features: List of features including "ryzen_ai", "ryzen_ai_npu1", or "ryzen_ai_npu2"
+                           based on detected NPU hardware and available Vitis components
         """
+        if vitis_components is None:
+            vitis_components = []
+
         config = HardwareConfig()
         run_on_npu1 = "echo"
         run_on_npu2 = "echo"
@@ -192,11 +209,15 @@ class LitConfigHelper:
         if not xrt_lib_dir:
             print("xrt not found")
             config.flags = ""
-            return config, run_on_npu1, run_on_npu2
+            config.substitutions["%xrt_flags"] = ""
+            config.substitutions["%run_on_npu1%"] = run_on_npu1
+            config.substitutions["%run_on_npu2%"] = run_on_npu2
+            return config
 
         print(f"xrt found at {os.path.dirname(xrt_lib_dir)}")
         config.found = True
         config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -luuid -lxrt_coreutil"
+        config.substitutions["%xrt_flags"] = config.flags
 
         # Detect NPU hardware
         try:
@@ -232,19 +253,26 @@ class LitConfigHelper:
                     model = str(match.group(4))
 
                 print(f"\tmodel: '{model}'")
-                config.features.append("ryzen_ai")
 
                 run_on_npu = f"{aie_src_root}/utils/run_on_npu.sh"
 
-                # Map model to NPU generation
+                # Map model to NPU generation and filter by available components
                 if model in LitConfigHelper.NPU_MODELS["npu1"]:
-                    run_on_npu1 = run_on_npu
-                    config.features.append("ryzen_ai_npu1")
-                    print(f"Running tests on NPU1 with command line: {run_on_npu1}")
+                    if "aie2" in vitis_components:
+                        run_on_npu1 = run_on_npu
+                        config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
+                        config.substitutions["%run_on_npu1%"] = run_on_npu1
+                        print(f"Running tests on NPU1 with command line: {run_on_npu1}")
+                    else:
+                        print("NPU1 detected but aietools for aie2 not available")
                 elif model in LitConfigHelper.NPU_MODELS["npu2"]:
-                    run_on_npu2 = run_on_npu
-                    config.features.append("ryzen_ai_npu2")
-                    print(f"Running tests on NPU4 with command line: {run_on_npu2}")
+                    if "aie2p" in vitis_components:
+                        run_on_npu2 = run_on_npu
+                        config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
+                        config.substitutions["%run_on_npu2%"] = run_on_npu2
+                        print(f"Running tests on NPU2 with command line: {run_on_npu2}")
+                    else:
+                        print("NPU2 detected but aietools for aie2p not available")
                 else:
                     print(f"WARNING: xrt-smi reported unknown NPU model '{model}'.")
                 break
@@ -256,7 +284,10 @@ class LitConfigHelper:
         except Exception as e:
             print(f"Failed to run xrt-smi: {e}")
 
-        return config, run_on_npu1, run_on_npu2
+        config.substitutions["%run_on_npu1%"] = run_on_npu1
+        config.substitutions["%run_on_npu2%"] = run_on_npu2
+
+        return config
 
     @staticmethod
     def detect_chess(
@@ -363,7 +394,7 @@ class LitConfigHelper:
         return config
 
     @staticmethod
-    def detect_aiesimulator() -> HardwareConfig:
+    def detect_aiesimulator(aie_obj_root) -> HardwareConfig:
         """
         Detect aiesimulator availability.
 
@@ -377,9 +408,11 @@ class LitConfigHelper:
             print(f"aiesimulator found: {sim_path}")
             config.found = True
             config.features.append("aiesimulator")
+            config.environment["LD_LIBRARY_PATH"] = "{}".format(
+                os.path.join(aie_obj_root, "runtime_lib", "x86_64", "xaiengine", "lib")
+            )
         else:
             print("aiesimulator not found")
-
         return config
 
     @staticmethod
@@ -458,6 +491,10 @@ class LitConfigHelper:
             # Add substitutions
             for key, value in hw_config.substitutions.items():
                 config_obj.substitutions.append((key, value))
+
+            # Add environment variables
+            for key, value in hw_config.environment.items():
+                config_obj.environment[key] = value
 
     @staticmethod
     def setup_standard_environment(
