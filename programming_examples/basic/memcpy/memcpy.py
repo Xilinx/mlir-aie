@@ -137,7 +137,7 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
                     taps[i * num_channels + j],
                     wait=True,  # wait for the transfer to complete and data to be available
                 )
-    # END EXERCISE: Modify the code below to use task groups
+    # END EXERCISE
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())
