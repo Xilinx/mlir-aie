@@ -218,17 +218,17 @@ def my_matmul(
 
     # Define tensor access patterns for inputs/outputs
     A_tiles = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
+        (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n, prune_step=False
     )
     # There is only one access pattern for B - it tiles the entire matrix in (k x n) tiles.
     if b_col_maj:
-        b_tap = TensorTiler2D.group_tiler((N, K), (n, k), (N_div_n, K_div_k))[0]
+        b_tap = TensorTiler2D.group_tiler((N, K), (n, k), (N_div_n, K_div_k), prune_step=False)[0]
     else:
         b_tap = TensorTiler2D.group_tiler(
-            (K, N), (k, n), (K_div_k, N_div_n), tile_group_col_major=True
+            (K, N), (k, n), (K_div_k, N_div_n), tile_group_col_major=True, prune_step=False
         )[0]
 
-    C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
+    C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n), prune_step=False)
     c_index = 0
 
     # Runtime operations to move data to/from the AIE-array
