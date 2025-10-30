@@ -418,7 +418,7 @@ class object_fifo(ObjectFifoCreateOp):
         plio=None,
         padDimensions=None,
         disable_synchronization=None,
-        bd_chain_iter_count=None,
+        iter_count=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
@@ -449,7 +449,7 @@ class object_fifo(ObjectFifoCreateOp):
             padDimensions=padDimensions,
             disable_synchronization=disable_synchronization,
             initValues=initValues,
-            bd_chain_iter_count=bd_chain_iter_count,
+            iter_count=iter_count,
         )
 
     def acquire(self, port, num_elem):
