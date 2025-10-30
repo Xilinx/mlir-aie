@@ -14,10 +14,10 @@
 # RUN: %run_on_npu1% ./test.exe -x final.xclbin -k MLIR_AIE -i insts.bin | FileCheck %s
 # CHECK: PASS!
 
-# This example demonstrates the use of `bd_chain_iter_count` in conjunction with
+# This example demonstrates the use of `iter_count` in conjunction with
 # `split`, `join`, and `repeat_count` features of objectFifo on a MemTile.
 #
-# - `bd_chain_iter_count` is the number of times the buffer descriptor (BD) chain iterates for each objectFifo.
+# - `iter_count` is the number of times the buffer descriptor (BD) chain iterates for each objectFifo on the MemTile.
 # - `repeat_count` is set on the split FIFOs to repeat the data for each consumer.
 #
 # The code below sets up a pipeline where input data is distributed to two compute tiles,
@@ -74,7 +74,7 @@ def my_passthrough_kernel(in1_size, out_size):
 
         # AIE-array data movement with object fifos
         of_in = object_fifo(
-            "in", ShimTile, MemTile, 2, chunk_ty, bd_chain_iter_count=in_num_iterations
+            "in", ShimTile, MemTile, 2, chunk_ty, iter_count=in_num_iterations
         )
 
         of_split = []
@@ -85,7 +85,7 @@ def my_passthrough_kernel(in1_size, out_size):
                 compute_tiles[i],
                 2,
                 core_chunk_ty,
-                bd_chain_iter_count=in_num_iterations,
+                iter_count=in_num_iterations,
             )
             split_fifo.set_repeat_count(repeat_counter)
             of_split.append(split_fifo)
@@ -101,7 +101,7 @@ def my_passthrough_kernel(in1_size, out_size):
                 MemTile,
                 2,
                 core_chunk_ty,
-                bd_chain_iter_count=out_num_iterations,
+                iter_count=out_num_iterations,
             )
             of_join.append(join_fifo)
 
@@ -111,7 +111,7 @@ def my_passthrough_kernel(in1_size, out_size):
             ShimTile,
             2,
             chunk_ty,
-            bd_chain_iter_count=out_num_iterations,
+            iter_count=out_num_iterations,
         )
 
         join_offsets = [i * elements_per_core_per_chunk for i in range(n_cores)]
