@@ -80,9 +80,10 @@ class ExternalFunction(BaseKernel):
 
     def __init__(
         self,
-        name: str,
+        name: str = "external_func",
         object_file_name: str | None = None,
-        source_file: str | None = None,
+        object_files: list[str] | None = None,
+        source_file: str | list[str] | None = None,
         source_string: str | None = None,
         arg_types: list[type[np.ndarray] | np.dtype] = [],
         include_dirs: list[str] = [],
@@ -94,7 +95,8 @@ class ExternalFunction(BaseKernel):
         Args:
             name (str): The name of the function
             object_file_name (str, optional): The name of the object file. If None, it will be name.o.
-            source_file (str): Path to the C/C++ source file
+            object_files (list[str], optional): List of pre-compiled object files.
+            source_file (str | list[str]): Path to the C/C++ source file(s)
             source_string (str): C/C++ source code as a string
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
             include_dirs (list[str], optional): Additional include directories. Defaults to [].
@@ -102,6 +104,7 @@ class ExternalFunction(BaseKernel):
         """
         super().__init__(name, arg_types)
         self._setup_source(source_file, source_string)
+        self._object_files = object_files
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
         if object_file_name:
@@ -113,14 +116,17 @@ class ExternalFunction(BaseKernel):
         # Track this instance for JIT compilation
         ExternalFunction._instances.add(self)
 
-    def _setup_source(self, source_file: str | None, source_string: str | None) -> None:
+    def _setup_source(
+        self, source_file: str | list[str] | None, source_string: str | None
+    ) -> None:
         """Set up the source file for compilation."""
         if source_file is not None:
             self._source_file = source_file
             self._source_string = None
         else:
             if source_string is None:
-                raise ValueError("source_file or source_string must be provided")
+                # This is allowed now, since we can have an ExternalFunction that just holds flags
+                pass
             self._source_file = None
             self._source_string = source_string
 
@@ -206,9 +212,17 @@ class ExternalFunction(BaseKernel):
         if self._source_string:
             hash_parts.append(self._source_string)
         elif self._source_file:
-            with open(self._source_file, "r") as f:
-                file_content = f.read()
-            hash_parts.append(file_content)
+            if isinstance(self._source_file, list):
+                for f in self._source_file:
+                    with open(f, "r") as file:
+                        file_content = file.read()
+                    hash_parts.append(file_content)
+            else:
+                with open(self._source_file, "r") as f:
+                    file_content = f.read()
+                hash_parts.append(file_content)
+        if self._object_files:
+            hash_parts.append(str(sorted(self._object_files)))
 
         # Create hash from combined string
         combined = "|".join(hash_parts)

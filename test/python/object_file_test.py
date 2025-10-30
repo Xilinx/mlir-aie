@@ -8,13 +8,12 @@
 # RUN: %run_on_npu2% %pytest %s
 
 import pytest
-import numpy as np
 import aie.iron as iron
+import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
-
 
 def _vector_vector_add_impl(input0, input1, output):
     if input0.shape != input1.shape:
@@ -82,53 +81,16 @@ def _vector_vector_add_impl(input0, input1, output):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-@iron.jit()
-def vector_vector_add(input0, input1, output):
-    return _vector_vector_add_impl(input0, input1, output)
-
-
-@iron.compileconfig()
-def vector_vector_add_config(input0, input1, output):
-    return _vector_vector_add_impl(input0, input1, output)
-
-
 @pytest.mark.parametrize("num_elements", [16, 64])
 @pytest.mark.parametrize("dtype", [np.int32])
-def test_multiple_jit_compilations(num_elements, dtype):
-    # Construct two input random tensors and an output zeroed tensor
-    input0 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
-    input1 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
-    output = iron.zeros_like(input0)
-
-    # JIT-compile the kernel then launch the kernel with the given arguments
-    vector_vector_add(input0, input1, output)
-    assert np.array_equal(input0.numpy() + input1.numpy(), output.numpy())
-
-
-@pytest.mark.parametrize("num_elements", [16, 64])
-@pytest.mark.parametrize("dtype", [np.int32])
-def test_jit_with_config(num_elements, dtype):
-    # Construct two input random tensors and an output zeroed tensor
-    input0 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
-    input1 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
-    output = iron.zeros_like(input0)
-
-    # JIT-compile the kernel then launch the kernel with the given arguments
-    jitted_vector_add = iron.jit(vector_vector_add_config)
-    jitted_vector_add(input0, input1, output)
-    assert np.array_equal(input0.numpy() + input1.numpy(), output.numpy())
-
-
-@pytest.mark.parametrize("num_elements", [16, 64])
-@pytest.mark.parametrize("dtype", [np.int32])
-def test_jit_with_source_files(num_elements, dtype):
+def test_jit_with_object_files(num_elements, dtype):
     # Construct two input random tensors and an output zeroed tensor
     input0 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
     input1 = iron.randint(1, 100, (num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input0)
 
     @iron.jit(
-        source_files=["test/python/test_file_1.cpp", "test/python/test_file_2.cpp"],
+        object_files=["test/python/test_obj.o"],
     )
     def jitted_vector_add(input0, input1, output):
         return _vector_vector_add_impl(input0, input1, output)

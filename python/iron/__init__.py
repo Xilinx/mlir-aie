@@ -6,6 +6,7 @@ from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
 from .dtype import str_to_dtype, dtype_to_str
+from .metaprogram import metaprogramming_ctx, get_metaprogram
 
 try:
     # The .jit module requires pyxrt which may not exist.
@@ -13,6 +14,7 @@ try:
     # imports the .jit module.
     import pyxrt
     from .jit import jit
+    from .compileconfig import compileconfig, Compilable
     from .config import set_current_device, get_current_device, detect_npu_device
 
     from .tensor import (
