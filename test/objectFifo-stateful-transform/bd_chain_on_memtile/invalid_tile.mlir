@@ -17,6 +17,6 @@ module @objectfifo_invalid_bd_chain_iter_count_no_memtile {
     %tile13 = aie.tile(1, 2)
     %tile14 = aie.tile(1, 3)
 
-    aie.objectfifo @of_0 (%tile13, {%tile14}, 2 : i32) {bd_chain_iter_count = 5 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_0 (%tile13, {%tile14}, 2 : i32) {iter_count = 5 : i32} : !aie.objectfifo<memref<16xi32>>
  }
 }
