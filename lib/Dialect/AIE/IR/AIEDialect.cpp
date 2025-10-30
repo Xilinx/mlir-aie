@@ -408,8 +408,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
       }
     }
     if (!hasMemTile)
-      return emitError(
-          "`iter_count` is currently only supported on MemTiles");
+      return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
   return success();
