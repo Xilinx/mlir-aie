@@ -392,6 +392,25 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`init_values` does not initialize all objects");
   }
 
+  if (getIterCount().has_value()) {
+    int iterCount = getIterCount().value();
+    if (iterCount < 1 || iterCount > 256)
+      return emitError("`iter_count` must be between 1 and 256");
+
+    // Check that either producer or at least one consumer is a MemTile
+    bool hasMemTile = getProducerTileOp().isMemTile();
+    if (!hasMemTile) {
+      for (auto consumerTile : getConsumerTiles()) {
+        if (cast<TileOp>(consumerTile.getDefiningOp()).isMemTile()) {
+          hasMemTile = true;
+          break;
+        }
+      }
+    }
+    if (!hasMemTile)
+      return emitError("`iter_count` is currently only supported on MemTiles");
+  }
+
   return success();
 }
 
