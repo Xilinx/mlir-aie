@@ -1723,6 +1723,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        // iter_count*depth number of objects will be transferred
         OptionalAttr<AIEI32Attr>:$iter_count
   );
 
