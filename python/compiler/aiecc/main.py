@@ -1182,21 +1182,6 @@ class FlowRunner:
                 "[yellow] Host compilation ", total=10, command="starting"
             )
 
-            if opts.airbin:
-                file_airbin = self.prepend_tmp("air.bin")
-                await self.do_call(
-                    task,
-                    [
-                        "aie-translate",
-                        "--aie-generate-airbin",
-                        "--aie-device-name",
-                        device_name,
-                        file_physical_with_elfs,
-                        "-o",
-                        file_airbin,
-                    ],
-                )
-
             if opts.link_against_hsa:
                 file_inc_cpp = self.prepend_tmp("aie_data_movement.cpp")
                 await self.do_call(
