@@ -10,7 +10,7 @@
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
 
-// CHECK: `bd_chain_iter_count` is currently only supported on MemTiles
+// CHECK: `iter_count` is currently only supported on MemTiles
 
 module @objectfifo_invalid_bd_chain_iter_count_no_memtile {
  aie.device(npu1) {
