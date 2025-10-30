@@ -76,8 +76,8 @@ class ObjectFifo(Resolvable):
         self._prod: ObjectFifoHandle | None = None
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
-        self._bd_chain_iter_count: int | None = None
-
+        self._iter_count: int | None = None
+        
     @classmethod
     def __get_index(cls) -> int:
         idx = cls.__of_index
@@ -120,8 +120,8 @@ class ObjectFifo(Resolvable):
         """The tensor type of each buffer belonging to the ObjectFifo"""
         return self._obj_type
 
-    def use_bd_chain(self, iter_count: int = None):
-        """Configure BD (Buffer Descriptor) chaining for the ObjectFifo.
+    def set_iter_count(self, iter_count: int = None):
+        """Set iteration count for DMA BD (Buffer Descriptor) chaining on MemTile for the ObjectFifo.
 
         Args:
             iter_count (int): Number of forward chain iterations.
@@ -138,7 +138,7 @@ class ObjectFifo(Resolvable):
         if iter_count < 1 or iter_count > 256:
             raise ValueError("Iter count must be in [1, 256] range.")
 
-        self._bd_chain_iter_count = iter_count
+        self._iter_count = iter_count
 
     def __str__(self) -> str:
         prod_endpoint = None
@@ -276,8 +276,8 @@ class ObjectFifo(Resolvable):
                 for con in self._cons
             ]
 
-            # Pass bd_chain_iter_count if use_bd_chain() was explicitly called
-            if self._bd_chain_iter_count is not None:
+            # Pass iter_count if set_iter_count() was explicitly called
+            if self._iter_count is not None:
                 self._op = object_fifo(
                     self.name,
                     self._prod_tile_op(),
@@ -287,7 +287,7 @@ class ObjectFifo(Resolvable):
                     dimensionsToStream=self._dims_to_stream,
                     dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                     plio=self._plio,
-                    bd_chain_iter_count=self._bd_chain_iter_count,
+                    iter_count=self._iter_count,
                 )
             else:
                 self._op = object_fifo(
