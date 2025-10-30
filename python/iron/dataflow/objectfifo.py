@@ -77,6 +77,7 @@ class ObjectFifo(Resolvable):
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
         self._iter_count: int | None = None
+
     @classmethod
     def __get_index(cls) -> int:
         idx = cls.__of_index
