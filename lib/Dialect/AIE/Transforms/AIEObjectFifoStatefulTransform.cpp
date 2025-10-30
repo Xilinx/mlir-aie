@@ -1045,7 +1045,7 @@ struct AIEObjectFifoStatefulTransformPass
       repeatCount = op.getRepeatCount().value();
 
     // check for BD chain repeat count
-    auto bdChainIterCount = op.getBdChainIterCount();
+    auto bdChainIterCount = op.getIterCount();
 
     // search for the buffers/locks (based on if this objFifo has a link)
     // identify size difference between input and output memrefs
@@ -1830,10 +1830,10 @@ struct AIEObjectFifoStatefulTransformPass
             consumerObjFifoSize, emptyDims, fromStreamDims);
         if (createOp.getDisableSynchronization())
           consumerFifo.setDisableSynchronization(true);
-        // Propagate bd_chain_iter_count attribute from the original createOp
+        // Propagate iter_count attribute from the original createOp
         // to the new consumerFifo
-        if (auto bdChainIterCount = createOp.getBdChainIterCount()) {
-          consumerFifo.setBdChainIterCountAttr(
+        if (auto bdChainIterCount = createOp.getIterCount()) {
+          consumerFifo.setIterCountAttr(
               builder.getI32IntegerAttr(*bdChainIterCount));
         }
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
