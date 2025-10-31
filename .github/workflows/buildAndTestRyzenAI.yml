@@ -227,11 +227,16 @@ jobs:
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
-          source aie-venv/bin/activate
           pip install -r python/requirements.txt
           HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
           pip install -r python/requirements_dev.txt
+
+          # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code
+          pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+          export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+          
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
@@ -262,6 +267,9 @@ jobs:
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             $CMAKE_ARGS
+
+          # Create runner-specific cache directory
+          mkdir -p $IRON_CACHE_HOME
 
           ninja install
           ninja check-aie
@@ -319,6 +327,9 @@ jobs:
           else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
+
+          # Create runner-specific cache directory
+          mkdir -p $IRON_CACHE_HOME
 
           ninja install
           ninja check-reference-designs
