@@ -28,7 +28,7 @@ def test_json_serialization():
     json_str = compilable.to_json()
     data = json.loads(json_str)
 
-    assert data["function"] == "my_func"
+    assert data["mlir_generator"] == "my_func"
     assert data["compile_flags"] == ["-O3"]
     assert data["source_files"] == ["a.cpp", "b.cpp"]
     assert data["aiecc_flags"] == ["--verbose"]
@@ -39,7 +39,7 @@ def test_json_serialization():
 def test_json_deserialization():
     json_str = """
     {
-        "function": "my_func",
+        "mlir_generator": "my_func",
         "use_cache": true,
         "compile_flags": ["-O3"],
         "source_files": ["a.cpp", "b.cpp"],
@@ -52,7 +52,7 @@ def test_json_deserialization():
     }
     """
     compilable = iron.Compilable.from_json(json_str, my_func)
-    assert compilable.function.__name__ == "my_func"
+    assert compilable.mlir_generator.__name__ == "my_func"
     assert compilable.compile_flags == ["-O3"]
     assert compilable.source_files == ["a.cpp", "b.cpp"]
     assert compilable.aiecc_flags == ["--verbose"]
@@ -86,6 +86,14 @@ def test_iron_callable_round_trip():
     json_str = callable1.to_json()
     callable2 = iron.Callable.from_json(json_str, my_func)
     assert callable1.to_json() == callable2.to_json()
+
+
+def test_get_json_schema():
+    schema_str = iron.Callable.get_json_schema()
+    schema = json.loads(schema_str)
+    assert schema["type"] == "object"
+    assert "properties" in schema
+    assert "function" in schema["properties"]
 
 
 def test_file_not_found():

@@ -165,28 +165,45 @@ class NPUKernel_Error(Exception):
 
 
 class Callable:
-    def __init__(self, function, **kwargs):
-        if isinstance(function, (Compilable, PreCompiled)):
-            self.compilable = function
+    def __init__(
+        self, mlir_generator: callable | Path | Compilable | PreCompiled, **kwargs
+    ):
+        if isinstance(mlir_generator, (Compilable, PreCompiled)):
+            self.compilable = mlir_generator
         else:
-            self.compilable = Compilable(function, **kwargs)
-        functools.update_wrapper(self, function)
+            self.compilable = Compilable(mlir_generator, **kwargs)
+        if callable(mlir_generator):
+            functools.update_wrapper(self, mlir_generator)
 
     def to_json(self):
         return self.compilable.to_json()
 
     @classmethod
-    def from_json(cls, json_str, func):
+    def get_json_schema(cls) -> str:
+        """Gets the JSON schema for the Callable object.
+
+        Returns:
+            str: The JSON schema.
+        """
+        return Compilable.get_json_schema()
+
+    @classmethod
+    def from_json(cls, json_str, func=None):
         import json
 
         data = json.loads(json_str)
-        func_name = data.pop("function")
-        compilable = Compilable.from_json(json_str, func)
+        mlir_generator = data.pop("mlir_generator")
+        if func:
+            mlir_generator = func
+        compilable = Compilable.from_json(json_str, mlir_generator)
 
         def new_func(*args, **kwargs):
-            return compilable.function(*args, **kwargs)
+            return compilable.mlir_generator(*args, **kwargs)
 
-        new_func.__name__ = func_name
+        if isinstance(mlir_generator, str):
+            new_func.__name__ = mlir_generator
+        else:
+            new_func.__name__ = mlir_generator.__name__
         return cls(new_func, **data)
 
     def __call__(self, *args, **kwargs):
@@ -195,7 +212,7 @@ class Callable:
             cache_key = (str(xclbin_path), str(inst_path))
         else:
             cache_key = _create_function_cache_key(
-                self.compilable.function, args, kwargs
+                self.compilable.mlir_generator, args, kwargs
             )
         if cache_key in _compiled_kernels:
             cached_kernel = _compiled_kernels[cache_key]
@@ -216,15 +233,15 @@ class Callable:
             raise
 
 
-def jit(function=None, **kwargs):
+def jit(mlir_generator=None, **kwargs):
     """
     Decorator to JIT compile and run an IRON kernel on the NPU.
     """
 
-    if function is None:
+    if mlir_generator is None:
         return functools.partial(jit, **kwargs)
 
-    return Callable(function, **kwargs)
+    return Callable(mlir_generator, **kwargs)
 
 
 def _create_function_cache_key(function, args, kwargs):

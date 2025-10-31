@@ -119,7 +119,7 @@ class Compilable:
 
     def __init__(
         self,
-        function: callable,
+        mlir_generator: callable | Path,
         use_cache: bool = True,
         compile_flags: list[str] | None = None,
         source_files: list[Path] | None = None,
@@ -128,7 +128,7 @@ class Compilable:
         metaargs: dict[str, object] | None = None,
         object_files: list[Path] | None = None,
     ):
-        self.function = function
+        self.mlir_generator = mlir_generator
         self.use_cache = use_cache
         self.compile_flags = compile_flags
         self.source_files = source_files if source_files else []
@@ -138,7 +138,8 @@ class Compilable:
         self.object_files = object_files if object_files else []
         self.xclbin_path: Path | None = None
         self.insts_path: Path | None = None
-        functools.update_wrapper(self, function)
+        if callable(mlir_generator):
+            functools.update_wrapper(self, mlir_generator)
 
         if self.source_files:
             for f in self.source_files:
@@ -155,7 +156,11 @@ class Compilable:
         Returns:
             any: The result of the function call.
         """
-        return self.function(*args, **kwargs)
+        if callable(self.mlir_generator):
+            return self.mlir_generator(*args, **kwargs)
+        else:
+            with open(self.mlir_generator, "r") as f:
+                return f.read()
 
     def get_artifacts(self) -> tuple[Path, Path]:
         """Returns the artifact paths.
@@ -171,9 +176,13 @@ class Compilable:
         Returns:
             str: The JSON string representation of the object.
         """
+        if callable(self.mlir_generator):
+            mlir_generator = self.mlir_generator.__name__
+        else:
+            mlir_generator = str(self.mlir_generator)
         return json.dumps(
             {
-                "function": self.function.__name__,
+                "mlir_generator": mlir_generator,
                 "use_cache": self.use_cache,
                 "compile_flags": self.compile_flags,
                 "source_files": [str(f) for f in self.source_files],
@@ -186,7 +195,29 @@ class Compilable:
         )
 
     @classmethod
-    def from_json(cls, json_str: str, func: callable) -> "Compilable":
+    def get_json_schema(cls) -> str:
+        """Gets the JSON schema for the Compilable object.
+
+        Returns:
+            str: The JSON schema.
+        """
+        schema = {
+            "type": "object",
+            "properties": {
+                "mlir_generator": {"type": "string"},
+                "use_cache": {"type": "boolean"},
+                "compile_flags": {"type": "array", "items": {"type": "string"}},
+                "source_files": {"type": "array", "items": {"type": "string"}},
+                "include_paths": {"type": "array", "items": {"type": "string"}},
+                "aiecc_flags": {"type": "array", "items": {"type": "string"}},
+                "metaargs": {"type": "object"},
+                "object_files": {"type": "array", "items": {"type": "string"}},
+            },
+        }
+        return json.dumps(schema, indent=4)
+
+    @classmethod
+    def from_json(cls, json_str: str, func: callable | None = None) -> "Compilable":
         """Deserializes a Compilable object from a JSON string.
 
         Args:
@@ -197,8 +228,11 @@ class Compilable:
             Compilable: The deserialized Compilable object.
         """
         data = json.loads(json_str)
+        mlir_generator = data["mlir_generator"]
+        if func:
+            mlir_generator = func
         return cls(
-            func,
+            mlir_generator,
             use_cache=data["use_cache"],
             compile_flags=data["compile_flags"],
             source_files=data["source_files"],
@@ -214,9 +248,12 @@ class Compilable:
         Returns:
             int: The hash of the object.
         """
-        func_name = self.function.__name__
-        func_source_path = inspect.getsourcefile(self.function)
-        hash_parts = [func_name, func_source_path]
+        if callable(self.mlir_generator):
+            func_name = self.mlir_generator.__name__
+            func_source_path = inspect.getsourcefile(self.mlir_generator)
+            hash_parts = [func_name, func_source_path]
+        else:
+            hash_parts = [str(self.mlir_generator)]
 
         if self.compile_flags:
             hash_parts.append(str(sorted(self.compile_flags)))
@@ -251,16 +288,20 @@ class Compilable:
             if isinstance(value, ExternalFunction):
                 external_kernels.append(value)
 
-        try:
-            with compile_ctx(**self.metaargs):
-                with mlir_mod_ctx() as ctx:
-                    self.function(*args, **kwargs)
-                    assert (
-                        ctx.module.operation.verify()
-                    ), f"Verification failed for '{self.function.__name__}'"
-                    mlir_module = ctx.module
-        except Exception as e:
-            raise
+        if callable(self.mlir_generator):
+            try:
+                with compile_ctx(**self.metaargs):
+                    with mlir_mod_ctx() as ctx:
+                        self.mlir_generator(*args, **kwargs)
+                        assert (
+                            ctx.module.operation.verify()
+                        ), f"Verification failed for '{self.mlir_generator.__name__}'"
+                        mlir_module = ctx.module
+            except Exception as e:
+                raise
+        else:
+            with open(self.mlir_generator, "r") as f:
+                mlir_module = f.read()
 
         for func in ExternalFunction._instances:
             if not hasattr(func, "_compiled") or not func._compiled:
@@ -330,7 +371,7 @@ class Compilable:
 
 
 def compileconfig(
-    function: callable | None = None,
+    mlir_generator: callable | Path,
     use_cache: bool = True,
     compile_flags: list[str] | None = None,
     source_files: list[str] | None = None,
@@ -343,7 +384,7 @@ def compileconfig(
     """A decorator to create a Compilable object.
 
     Args:
-        function (callable | None, optional): The function to be compiled. Defaults to None.
+        mlir_generator (callable | Path): The function to be compiled or the path to the MLIR file.
         use_cache (bool, optional): Whether to use the cache. Defaults to True.
         compile_flags (list[str] | None, optional): Additional compile flags. Defaults to None.
         source_files (list[str] | None, optional): A list of source files to compile. Defaults to None.
@@ -355,7 +396,7 @@ def compileconfig(
     Returns:
         Compilable: A Compilable object.
     """
-    if function is None:
+    if mlir_generator is None:
         return functools.partial(
             compileconfig,
             use_cache=use_cache,
@@ -368,7 +409,7 @@ def compileconfig(
             **kwargs,
         )
     return Compilable(
-        function,
+        mlir_generator,
         use_cache,
         compile_flags,
         source_files,

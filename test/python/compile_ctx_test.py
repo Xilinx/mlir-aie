@@ -9,6 +9,7 @@
 
 import pytest
 import aie.iron as iron
+from pathlib import Path
 
 
 def test_compile_ctx():
@@ -42,3 +43,34 @@ def test_compile_args_hash():
         pass
 
     assert hash(my_kernel_1) != hash(my_kernel_2)
+
+
+def test_mlir_file_generator():
+    with open("test.mlir", "w") as f:
+        f.write(
+            """
+module {
+  func.func @main() {
+    return
+  }
+}
+"""
+        )
+    compilable = iron.compileconfig(mlir_generator=Path("test.mlir"))
+    assert compilable.mlir_generator == Path("test.mlir")
+    with pytest.raises(TypeError):
+        compilable()
+
+
+def test_function_generator():
+    from .test_utils import _vector_vector_add_impl
+    import numpy as np
+
+    compilable = iron.compileconfig(mlir_generator=_vector_vector_add_impl)
+    assert compilable.mlir_generator == _vector_vector_add_impl
+    # This should not raise an error
+    compilable(
+        np.ones(16, dtype=np.int32),
+        np.ones(16, dtype=np.int32),
+        np.zeros(16, dtype=np.int32),
+    )
