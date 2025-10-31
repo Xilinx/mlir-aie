@@ -8,7 +8,23 @@
 
 import subprocess
 
-from .device import NPU1Col4, NPU2
+from .device import NPU1, NPU2
+
+
+# Detect WSL
+def is_wsl() -> bool:
+    try:
+        with open("/proc/sys/kernel/osrelease", "r", encoding="utf-8") as kernel:
+            return "microsoft" in kernel.read().lower()
+    except OSError:
+        return False
+
+
+# Prefer Windows xrt-smi when in WSL. Linux native otherwise.
+def xrt_smi_path() -> str:
+    if is_wsl():
+        return "/mnt/c/Windows/System32/AMD/xrt-smi.exe"
+    return "/opt/xilinx/xrt/bin/xrt-smi"
 
 
 def detect_npu_device():
@@ -21,8 +37,9 @@ def detect_npu_device():
     """
     try:
         # Run `xrt-smi examine` and capture output
+        xrt_smi = xrt_smi_path()
         result = subprocess.run(
-            ["/opt/xilinx/xrt/bin/xrt-smi", "examine"],
+            [xrt_smi, "examine"],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -31,7 +48,7 @@ def detect_npu_device():
         output = result.stdout
 
         # Match strings for NPU2 or NPU1
-        # Set's generic "whole array" devices, this is overkill...
+        # Sets generic "whole array" devices. Overkill.
         if any(
             keyword.lower() in output.lower()
             for keyword in [
@@ -46,15 +63,20 @@ def detect_npu_device():
         elif any(
             keyword.lower() in output.lower()
             for keyword in [
+                "NPU",
                 "NPU Phoenix",
                 "RyzenAI-npu1",
             ]
         ):
-            return NPU1Col4()
+            return NPU1()
         else:
             raise RuntimeError("No supported NPU device found.")
 
     except FileNotFoundError:
+        if is_wsl():
+            raise RuntimeError(
+                "WSL detected but Windows xrt-smi.exe not found. Install AMD Ryzen AI Software."
+            )
         raise RuntimeError("xrt-smi not found. Make sure XRT is installed.")
     except subprocess.CalledProcessError:
         raise RuntimeError("Failed to run xrt-smi examine.")

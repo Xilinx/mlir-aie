@@ -11,17 +11,11 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform=dynamic-objFifos %s | FileCheck %s
 
 // CHECK:   aie.device(npu1_1col) {
-// CHECK:       memref.global "public" @output_fifo_cons : memref<10xi32>
-// CHECK:       memref.global "public" @output_fifo : memref<10xi32>
-// CHECK:       memref.global "public" @input_fifo_cons : memref<10xi32>
-// CHECK:       memref.global "public" @input_fifo : memref<10xi32>
 // CHECK:       func.func @add_10_i32(%arg0: memref<10xi32>, %arg1: memref<10xi32>, %arg2: memref<10xi32>) {
 // CHECK:         return
 // CHECK:       }
 // CHECK:       %{{.*}}tile_0_0 = aie.tile(0, 0)
 // CHECK:       %{{.*}}tile_0_2 = aie.tile(0, 2)
-// CHECK:       %[[VAL_0:.*]] = aie.lock(%{{.*}}tile_0_0, 2) {init = 1 : i32, sym_name = "output_fifo_cons_prod_lock_0"}
-// CHECK:       %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_0, 3) {init = 0 : i32, sym_name = "output_fifo_cons_cons_lock_0"}
 // CHECK:       %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "output_fifo_buff_0"} : memref<10xi32> 
 // CHECK:       %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "output_fifo_buff_1"} : memref<10xi32> 
 // CHECK:       %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_0_2, 2) {init = 2 : i32, sym_name = "output_fifo_prod_lock_0"}
@@ -30,8 +24,6 @@
 // CHECK:       %[[VAL_7:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "input_fifo_cons_buff_1"} : memref<10xi32> 
 // CHECK:       %[[VAL_8:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 2 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
 // CHECK:       %[[VAL_9:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
-// CHECK:       %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_0_0, 0) {init = 1 : i32, sym_name = "input_fifo_prod_lock_0"}
-// CHECK:       %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_0_0, 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock_0"}
 // CHECK:       aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
 // CHECK:       aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}tile_0_0, DMA : 0)
 // CHECK:       %buffer_0_2 = aie.buffer(%{{.*}}tile_0_2) : memref<2xi32> 

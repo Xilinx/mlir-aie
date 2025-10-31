@@ -22,9 +22,14 @@
 // ------------------------------------------------------
 // Configure this to match your buffer data type
 // ------------------------------------------------------
-using DATATYPE_IN1 = std::uint16_t;
+#if INT_BIT_WIDTH == 16
+using DATATYPE_IN1 = std::int16_t;
+using DATATYPE_OUT = std::int16_t;
+#else
+using DATATYPE_IN1 = std::int32_t;
+using DATATYPE_OUT = std::int32_t;
+#endif
 using DATATYPE_IN2 = std::int32_t;
-using DATATYPE_OUT = std::uint16_t;
 #endif
 
 // Initialize Input buffer 1

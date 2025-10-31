@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Trace Details (Unplaced and Placed desings)</ins>
+# <ins>Trace Details (Unplaced and Placed designs)</ins>
 
 * [Section 4 - Performance Measurement & Vector Programming](../../section-4)
     * [Section 4a - Timers](../section-4a)
@@ -21,8 +21,8 @@ In [section-4b](../section-4b), we introduced how trace is enabled in our high-l
 
 ## Trace Considerations for High-level IRON Python
 * Only core tiles are currently able to be traced in high-level IRON python since we trace workers and workers are attached to core tiles. If you want to trace mem tiles and shim tiles, see the next section on how to do that in close-to-metal IRON python (adding this to high level IRON python TBD)
-* A shim tile is needed to route trace packets. We assume all designs have an objfifo that who's consumer endpoint is on a shimtile. The convenience algorithm currently searches for he first one in our design and configures it for trace on channel 1. If that shim dma already channel 1 configured for something else, a conflict can occur
-* We assign packet flows with incrementing route IDs for each flow between a tile and the shim dma. There is not currently a step to resolve these route IDs with ones used by other kinds of packet flows. At the moment, objfifos only operate in circuit switched flows so this is an immediate issues. 
+* A shim tile is needed to route trace packets. We assume all designs have an objfifo where the consumer endpoint is on a shimtile. High-level IRON currently employs a convenience algorithm to search for the first objfifo going out of the AIE array and configures it for trace on channel 1. If that shim dma already has channel 1 configured for something else, a conflict can occur
+* We assign packet flows with incrementing route IDs for each flow between a tile and the shim dma. There is not currently a step to resolve these route IDs with ones used by other kinds of packet flows. At the moment, objfifos only operate in circuit switched flows so this is an not an immediate issue. 
 
 ## <u>1. Enable and configure AIE trace units for close-to-metal IRON Python ([aie2_placed.py](./aie2_placed.py))</u>
 
@@ -63,6 +63,45 @@ The arguments for this example are:
 1. We can try building our close-to-metal IRON python design now. Run `make clean; make use_placed=1 trace`. This compiles the placed design, generates a trace data file, and runs `prase_trace.py` to generate the `trace_4b.json` waveform file.
 
     Note that many of the designs under [programming_examples](../../../programming_examples/) have both an high-level IRON python version and a close-to-metal IRON python version, otherwise known as the placed version. Invoking make with the `use_placed=1` is a common way to build these versions of the design.
+
+## <u>2. Customizing Trace Behavior</u>
+The wrapper python function `configure_packet_tracing_flow` abstracts much of the configuration of trace by making some assumptions of the desired trace behavior. Some of those assumptions are listed below along with how to customize them further.
+
+1. Additional configuration arguments for `configure_packet_tracing_flow` as descrbied in [utils/python](../../../python/utils)
+
+    * `tiles to trace` - array of tiles to trace
+    * `shim tile` - Single shim tile to configure for writing trace packets to DDR
+    * `size` - trace buffer size (in bytes)
+    * `offset` - offest (in bytes) where trace buffer data should begin. By default, this is 0 but can be >0 if we share a buffer with an output.
+    * `enable_token` - enable token generation for shimdma. Not recommended since we generally have our dma size > trace data size which we don't always know how big it needs to be.
+    * `ddr_id` - which XRT buffer to use where 0 -> group_id(3) ... 4 -> group_id(7). We generally put trace last so we use ddr_id=4.
+    * `start_user_event` - which user event do we use as a start event
+    * `stop_user_event` - which user event do we use as a stop event
+    * `start_broadcast_num` - which broadcast number do we send the start user event
+    * `stop_broadcast_num` - which broadcast number do we send the stop user event
+    * `coretile_events` - which 8 events do we use for all coretiles in array
+    * `memtile_events` - which 8 events do we use for all memtiles in array
+    * `shimtile_events` - which 8 events do we use for all shimtiles in array
+    * `shim_burst_length` - burst size for shim dma. Default is 256B but can be as low as 64B which may be helpful for small trace designs
+
+    An example use case to customize coretile events and map it to a 3rd XRT buffer instead of the 5th XRT buffer would be:
+    ```python
+    trace_utils.configure_packet_tracing_aie2(
+        tile_to_trace
+        ShimTile, 
+        opts.trace_size,
+        ddr_id = 5,
+        coretile_events = [ 
+                trace_utils.CoreEvent.INSTR_EVENT_0,
+                trace_utils.CoreEvent.INSTR_EVENT_1,
+                trace_utils.CoreEvent.INSTR_VECTOR,
+                trace_utils.CoreEvent.MEMORY_STALL,
+                trace_utils.CoreEvent.STREAM_STALL,
+                trace_utils.CoreEvent.LOCK_STALL,
+                trace_utils.CoreEvent.ACTIVE,
+                trace_utils.CoreEvent.DISABLED]
+    )
+    ```
 
 -----
 [[Prev]](../section-4a) [[Up]](../../section-4b) [[Next]](../section-4c)

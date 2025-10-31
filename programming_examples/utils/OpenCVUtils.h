@@ -21,7 +21,7 @@ void readImage(const std::string &fileName, cv::Mat &image, int flags = 1);
 void initializeSingleGrayImageTest(std::string fileName, cv::Mat &src);
 void initializeSingleImageTest(std::string fileName, cv::Mat &src);
 
-void initializeVideoCapture(cv::VideoCapture &cap);
+void initializeVideoCapture(cv::VideoCapture &cap, int deviceID);
 void initializeVideoFile(cv::VideoCapture &cap, std::string fileName);
 
 void addSaltPepperNoise(cv::Mat &src, float percentWhite, float percentBlack);

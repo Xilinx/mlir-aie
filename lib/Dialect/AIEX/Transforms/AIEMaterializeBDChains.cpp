@@ -116,8 +116,8 @@ struct AIEMaterializeBDChainsPass
     MLIRContext *ctx = &getContext();
     AIE::DeviceOp device = getOperation();
     GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
-    rewriter_config.enableRegionSimplification =
-        GreedySimplifyRegionLevel::Disabled;
+    rewriter_config.setRegionSimplificationLevel(
+        GreedySimplifyRegionLevel::Disabled);
 
     RewritePatternSet patterns_0(ctx);
     patterns_0.insert<DMAStartBdChainForOpPattern>(ctx);
@@ -129,8 +129,8 @@ struct AIEMaterializeBDChainsPass
 
     RewritePatternSet patterns_1(ctx);
     patterns_1.insert<DMAInlineBDChainPattern>(ctx);
-    rewriter_config.enableRegionSimplification =
-        GreedySimplifyRegionLevel::Disabled;
+    rewriter_config.setRegionSimplificationLevel(
+        GreedySimplifyRegionLevel::Disabled);
     DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_1, ctx);
     if (failed(applyPatternsGreedily(device, std::move(patterns_1),
                                      rewriter_config))) {

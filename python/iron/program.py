@@ -18,6 +18,12 @@ from .resolvable import Resolvable
 # import aie.utils.trace as trace_utils
 from ..utils import trace as trace_utils
 
+import contextvars
+
+CurrentDeviceOp = contextvars.ContextVar("CurrentDeviceOp", default=None)
+
+CurrentModule = contextvars.ContextVar("CurrentModule", default=None)
+
 
 class Program:
     def __init__(
@@ -37,7 +43,7 @@ class Program:
         self._device = device
         self._rt = rt
 
-    def resolve_program(self, placer: Placer | None = None):
+    def resolve_program(self, placer: Placer | None = None, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
 
         Args:
@@ -48,14 +54,24 @@ class Program:
             module (Module): The module containing the MLIR context information.
         """
         with mlir_mod_ctx() as ctx:
+            CurrentModule.set(ctx.module)
 
-            @device(self._device.resolve())
+            # Create a fresh device instance of the same type to avoid stale MLIR operations
+            # This preserves the device configuration while ensuring clean state
+            device_type = type(self._device)
+            # For dynamically created device classes, the constructor takes no arguments
+            self._device = device_type()
+
+            @device(self._device.resolve(), sym_name=device_name)
             def device_body():
                 # Collect all fifos
                 all_fifos = set()
                 all_fifos.update(self._rt.fifos)
                 for w in self._rt.workers:
                     all_fifos.update(w.fifos)
+
+                # Sort fifos for deterministic resolve
+                all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
 
                 if placer:
                     # TODO: should maybe just take runtime?
@@ -112,6 +128,9 @@ class Program:
 
                 # In/Out Sequence
                 self._rt.resolve()
+
+            device_op = device_body
+            CurrentDeviceOp.set(device_op)
 
             self._print_verify(ctx)
             return ctx.module

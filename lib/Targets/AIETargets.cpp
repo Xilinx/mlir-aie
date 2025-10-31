@@ -12,8 +12,10 @@
 
 #include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
@@ -22,6 +24,7 @@
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Target/LLVMIR/Export.h"
@@ -33,6 +36,8 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
 
+#include <fstream>
+#include <iostream>
 #include <set>
 
 #define DEBUG_TYPE "aie-targets"
@@ -74,11 +79,14 @@ namespace xilinx::AIE {
 static void registerDialects(DialectRegistry &registry) {
   registry.insert<xilinx::AIE::AIEDialect>();
   registry.insert<xilinx::AIEX::AIEXDialect>();
+  registry.insert<xilinx::aievec::AIEVecDialect>();
   registry.insert<func::FuncDialect>();
   registry.insert<scf::SCFDialect>();
   registry.insert<cf::ControlFlowDialect>();
   registry.insert<DLTIDialect>();
   registry.insert<arith::ArithDialect>();
+  registry.insert<affine::AffineDialect>();
+  registry.insert<ub::UBDialect>();
   registry.insert<math::MathDialect>();
   registry.insert<memref::MemRefDialect>();
   registry.insert<VectorDialect>();
@@ -98,10 +106,11 @@ void writeBufferMap(raw_ostream &output, BufferOp buf, int offset) {
          << '\n';
 }
 
-LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output) {
+LogicalResult AIETranslateToTargetArch(ModuleOp module, raw_ostream &output,
+                                       llvm::StringRef deviceName) {
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
   AIEArch arch = AIEArch::AIE1;
-  if (!module.getOps<DeviceOp>().empty()) {
-    DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+  if (targetOp) {
     arch = targetOp.getTargetModel().getTargetArch();
   }
   if (arch == AIEArch::AIE1)
@@ -118,19 +127,6 @@ void registerAIETranslations() {
   static llvm::cl::opt<int> tileRow(
       "tilerow", llvm::cl::desc("row coordinate of core to translate"),
       llvm::cl::init(0));
-
-#ifdef AIE_ENABLE_AIRBIN
-  static llvm::cl::opt<std::string> outputFilename(
-      "airbin-output-filepath",
-      llvm::cl::desc("Output airbin file path (including filename)"),
-      llvm::cl::value_desc("airbin-output-filepath"),
-      llvm::cl::init("airbin.elf"));
-
-  static llvm::cl::opt<std::string> coreFilesDir(
-      "airbin-aux-core-dir-path",
-      llvm::cl::desc("Auxiliary core elf files dir path"),
-      llvm::cl::value_desc("airbin-aux-core-dir-path"), llvm::cl::init("."));
-#endif
 
   static llvm::cl::opt<std::string> workDirPath(
       "work-dir-path", llvm::cl::Optional,
@@ -159,7 +155,9 @@ void registerAIETranslations() {
       llvm::cl::desc(
           "Select binary (true) or text (false) output for supported "
           "translations. e.g. aie-npu-to-binary, aie-ctrlpkt-to-bin"));
-
+  static llvm::cl::opt<std::string> deviceName(
+      "aie-device-name", llvm::cl::init(""),
+      llvm::cl::desc("Specify which device to translate"));
   static llvm::cl::opt<std::string> sequenceName(
       "aie-sequence-name", llvm::cl::init(""),
       llvm::cl::desc(
@@ -171,10 +169,11 @@ void registerAIETranslations() {
         DenseMap<TileID, Operation *> tiles;
         DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-        if (module.getOps<DeviceOp>().empty()) {
+        DeviceOp targetOp =
+            AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+        if (!targetOp) {
           module.emitOpError("expected AIE.device operation at toplevel");
         }
-        DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
         collectTiles(targetOp, tiles);
         // sort the tiles for deterministic output
@@ -223,25 +222,28 @@ void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationShimDMAToJSON(
       "aie-generate-json", "Transform AIE shim DMA allocation info into JSON",
       [](ModuleOp module, raw_ostream &output) {
-        for (auto d : module.getOps<DeviceOp>()) {
-          llvm::json::Object moduleJSON;
-          for (auto shimDMAMeta : d.getOps<ShimDMAAllocationOp>()) {
-            llvm::json::Object shimJSON;
-            auto channelDir = shimDMAMeta.getChannelDirAttr();
-            shimJSON["channelDir"] = attrToJSON(channelDir);
-            auto channelIndex = shimDMAMeta.getChannelIndexAttr();
-            shimJSON["channelIndex"] = attrToJSON(channelIndex);
-            auto col = shimDMAMeta.getColAttr();
-            shimJSON["col"] = attrToJSON(col);
-            moduleJSON[shimDMAMeta.getSymName()] =
-                llvm::json::Value(std::move(shimJSON));
-          }
-          llvm::json::Value topv(std::move(moduleJSON));
-          std::string ret;
-          llvm::raw_string_ostream ss(ret);
-          ss << llvm::formatv("{0:2}", topv) << "\n";
-          output << ss.str();
+        DeviceOp d =
+            AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+        if (!d) {
+          return failure();
         }
+        llvm::json::Object moduleJSON;
+        for (auto shimDMAMeta : d.getOps<ShimDMAAllocationOp>()) {
+          llvm::json::Object shimJSON;
+          auto channelDir = shimDMAMeta.getChannelDirAttr();
+          shimJSON["channelDir"] = attrToJSON(channelDir);
+          auto channelIndex = shimDMAMeta.getChannelIndexAttr();
+          shimJSON["channelIndex"] = attrToJSON(channelIndex);
+          auto col = shimDMAMeta.getColAttr();
+          shimJSON["col"] = attrToJSON(col);
+          moduleJSON[shimDMAMeta.getSymName()] =
+              llvm::json::Value(std::move(shimJSON));
+        }
+        llvm::json::Value topv(std::move(moduleJSON));
+        std::string ret;
+        llvm::raw_string_ostream ss(ret);
+        ss << llvm::formatv("{0:2}", topv) << "\n";
+        output << ss.str();
         return success();
       },
       registerDialects);
@@ -249,28 +251,34 @@ void registerAIETranslations() {
   TranslateFromMLIRRegistration registrationLDScript(
       "aie-generate-ldscript", "Generate AIE loader script",
       [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToLdScript(module, output, tileCol, tileRow);
+        return AIETranslateToLdScript(module, output, tileCol, tileRow,
+                                      deviceName);
       },
       registerDialects);
 
   TranslateFromMLIRRegistration registrationBCF(
       "aie-generate-bcf", "Generate AIE bcf",
       [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToBCF(module, output, tileCol, tileRow);
+        return AIETranslateToBCF(module, output, tileCol, tileRow, deviceName);
       },
       registerDialects);
 
   TranslateFromMLIRRegistration registrationTargetArch(
       "aie-generate-target-arch", "Get the target architecture",
-      AIETranslateToTargetArch, registerDialects);
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToTargetArch(module, output, deviceName);
+      },
+      registerDialects);
 
   TranslateFromMLIRRegistration registrationCoreList(
       "aie-generate-corelist", "Generate python list of cores",
       [](ModuleOp module, raw_ostream &output) {
-        if (module.getOps<DeviceOp>().empty()) {
+        DeviceOp targetOp =
+            AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+        if (!targetOp) {
           module.emitOpError("expected AIE.device operation at toplevel");
+          return failure();
         }
-        DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
         output << "[";
         for (auto tileOp : targetOp.getOps<TileOp>()) {
@@ -294,40 +302,44 @@ void registerAIETranslations() {
         registry.insert<xilinx::ADF::ADFDialect>();
         registerDialects(registry);
       });
-#ifdef AIE_ENABLE_AIRBIN
-  TranslateFromMLIRRegistration registrationAirbin(
-      "aie-generate-airbin", "Generate configuration binary blob",
-      [](ModuleOp module, raw_ostream &) {
-        return AIETranslateToAirbin(module, outputFilename, coreFilesDir);
-      },
-      registerDialects);
-#endif
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie", "Generate libxaie configuration",
       [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToXAIEV2(module, output);
+        return AIETranslateToXAIEV2(module, output, deviceName);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationHSA(
       "aie-generate-hsa", "Generate hsa data movement configuration",
       [](ModuleOp module, raw_ostream &output) {
-        return AIETranslateToHSA(module, output);
+        return AIETranslateToHSA(module, output, deviceName);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationXJSON(
-      "aie-flows-to-json", "Translate AIE flows to JSON", AIEFlowsToJSON,
+      "aie-flows-to-json", "Translate AIE flows to JSON",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIEFlowsToJSON(module, output, deviceName);
+      },
       registerDialects);
   TranslateFromMLIRRegistration registrationXPE(
       "aie-mlir-to-xpe", "Translate AIE design to XPE file for simulation",
-      AIETranslateGraphXPE, registerDialects);
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateGraphXPE(module, output, deviceName);
+      },
+      registerDialects);
   TranslateFromMLIRRegistration registrationSCSimConfig(
       "aie-mlir-to-scsim-config",
       "Translate AIE design to SCSimConfig file for simulation",
-      AIETranslateSCSimConfig, registerDialects);
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateSCSimConfig(module, output, deviceName);
+      },
+      registerDialects);
   TranslateFromMLIRRegistration registrationShimSolution(
       "aie-mlir-to-shim-solution",
       "Translate AIE design to ShimSolution file for simulation",
-      AIETranslateShimSolution, registerDialects);
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateShimSolution(module, output, deviceName);
+      },
+      registerDialects);
   TranslateFromMLIRRegistration registrationCDODirect(
       "aie-generate-cdo", "Generate libxaie for CDO directly",
       [](ModuleOp module, raw_ostream &) {
@@ -339,16 +351,17 @@ void registerAIETranslations() {
         } else
           workDirPath_ = workDirPath.getValue();
         LLVM_DEBUG(llvm::dbgs() << "work-dir-path: " << workDirPath_ << "\n");
-        return AIETranslateToCDODirect(module, workDirPath_.c_str(), bigEndian,
-                                       cdoUnified, cdoDebug, cdoAieSim,
-                                       cdoXaieDebug, cdoEnableCores);
+        return AIETranslateToCDODirect(module, workDirPath_.c_str(), deviceName,
+                                       bigEndian, cdoUnified, cdoDebug,
+                                       cdoAieSim, cdoXaieDebug, cdoEnableCores);
       },
       registerDialects);
   TranslateFromMLIRRegistration registrationNPU(
       "aie-npu-to-binary", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
         std::vector<uint32_t> instructions;
-        auto r = AIETranslateNpuToBinary(module, instructions, sequenceName);
+        auto r = AIETranslateNpuToBinary(module, instructions, deviceName,
+                                         sequenceName);
         if (failed(r))
           return r;
         if (outputBinary) {
@@ -366,7 +379,7 @@ void registerAIETranslations() {
       [](ModuleOp module, raw_ostream &output) {
         std::vector<uint32_t> instructions;
         auto r = AIETranslateControlPacketsToUI32Vec(module, instructions,
-                                                     sequenceName);
+                                                     deviceName, sequenceName);
         if (failed(r))
           return r;
         if (outputBinary) {

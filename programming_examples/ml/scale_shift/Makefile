@@ -22,7 +22,6 @@ in3_size = 131072 # in bytes, should always be euqal to in1_size
 out_size = 131072 # in bytes, should always be equal to in1_size
 trace_size = 8192
 
-colshift ?= $(if $(filter npu,$(devicename)),1,0)
 data_size = in1_size
 aie_py_src=${targetname}.py
 
@@ -75,8 +74,8 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir --colshift ${colshift} > trace_eltwise_mul.json
-	${srcdir}/../../utils/get_trace_summary.py --filename trace_eltwise_mul.json
+	${srcdir}/../../../python/utils/parse_trace.py --filename trace.txt --mlir build/aie_trace.mlir  > trace_eltwise_mul.json
+	${srcdir}/../../../python/utils/get_trace_summary.py --filename trace_eltwise_mul.json
 
 clean:
 	rm -rf build _build ${targetname}.exe

@@ -1,18 +1,18 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-aie2_runtime_dir = ${AIEOPT_DIR}/aie_runtime_lib/AIE2
+aie2_runtime_dir = ${MLIR_AIE_DIR}/aie_runtime_lib/AIE2
 
 targetname = vector_exp
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
@@ -73,12 +73,12 @@ ${targetname}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
 run: ${targetname}.exe build/final.xclbin
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
-clean: 
-	rm -rf build _build ${targetname}.exe 
+clean:
+	rm -rf build _build ${targetname}.exe
 

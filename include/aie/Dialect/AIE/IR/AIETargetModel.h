@@ -60,11 +60,11 @@ public:
     TK_AIE1_Last,
     TK_AIE2_VE2302,
     TK_AIE2_VE2802,
-    TK_AIE2_NPU1,
     TK_AIE2_NPU1_1Col,
     TK_AIE2_NPU1_2Col,
     TK_AIE2_NPU1_3Col,
-    TK_AIE2_NPU1_4Col,
+    TK_AIE2_NPU1_4Col, // whole array must be last because of how we
+                       // cast/initialize the VirtualizedNPU1TargetModel class
     TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2 = TK_AIE2_NPU1_Last,
     TK_AIE2_NPU2_1Col,
@@ -249,11 +249,32 @@ public:
   virtual bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                                      int channel) const = 0;
 
+  /// Return the array address of the dma buffer descriptor for the given
+  /// col, row, buffer descriptor id, channel and direction. Not all
+  /// architecture variants will use channel and direction so these have default
+  /// values.
+  virtual uint64_t getDmaBdAddress(
+      int col, int row, uint32_t bd_id, int channel = -1,
+      AIE::DMAChannelDir direction = AIE::DMAChannelDir::MM2S) const = 0;
+
+  /// Return the offset of the base address field within the shim dma buffer
+  /// descriptor.
+  virtual uint32_t getDmaBdAddressOffset(int col, int row) const = 0;
+
+  /// Return the array address of the dma task queue register for the given
+  /// col, row, channel and direction
+  virtual uint32_t getDmaControlAddress(int col, int row, int channel,
+                                        AIE::DMAChannelDir direction) const = 0;
+
   virtual uint32_t getNumMemTileRows() const = 0;
   /// Return the size (in bytes) of a MemTile.
   virtual uint32_t getMemTileSize() const = 0;
   /// Return the number of memory banks of a given tile.
   virtual uint32_t getNumBanks(int col, int row) const = 0;
+
+  virtual uint32_t getMaxChannelNumForAdjacentMemTile(int col,
+                                                      int row) const = 0;
+
   /// Return the number of destinations of connections inside a switchbox. These
   /// are the targets of connect operations in the switchbox.
   virtual uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -301,6 +322,9 @@ public:
   // their corresponding lengths in bytes (second).
   virtual std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const = 0;
+
+  // Returns true if the target model supports the given block format.
+  virtual bool isSupportedBlockFormat(std::string const &format) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -350,9 +374,22 @@ public:
                              int channel) const override {
     return true;
   }
+
+  uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
+                           AIE::DMAChannelDir direction) const override;
+
+  uint32_t getDmaBdAddressOffset(int col, int row) const override;
+
+  uint32_t getDmaControlAddress(int col, int row, int channel,
+                                AIE::DMAChannelDir direction) const override;
+
   uint32_t getNumMemTileRows() const override { return 0; }
   uint32_t getMemTileSize() const override { return 0; }
   uint32_t getNumBanks(int col, int row) const override { return 4; }
+
+  uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
+    return 0;
+  }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
                                           WireBundle bundle) const override;
@@ -442,10 +479,22 @@ public:
     }
   }
 
+  uint64_t getDmaBdAddress(int col, int row, uint32_t bd_id, int channel,
+                           AIE::DMAChannelDir direction) const override;
+
+  uint32_t getDmaBdAddressOffset(int col, int row) const override;
+
+  uint32_t getDmaControlAddress(int col, int row, int channel,
+                                AIE::DMAChannelDir direction) const override;
+
   uint32_t getMemTileSize() const override { return 0x00080000; }
 
   uint32_t getNumBanks(int col, int row) const override {
     return isMemTile(col, row) ? 8 : 4;
+  }
+
+  uint32_t getMaxChannelNumForAdjacentMemTile(int col, int row) const override {
+    return 4;
   }
 
   uint32_t getNumDestSwitchboxConnections(int col, int row,
@@ -599,29 +648,8 @@ public:
   uint32_t getNumMemTileRows() const override { return 1; }
 
   static bool classof(const AIETargetModel *model) {
-    return model->getKind() >= TK_AIE2_NPU1 &&
+    return model->getKind() >= TK_AIE2_NPU1_1Col &&
            model->getKind() < TK_AIE2_NPU1_Last;
-  }
-};
-
-// The full Phoenix NPU
-class NPU1TargetModel : public BaseNPU1TargetModel {
-public:
-  NPU1TargetModel() : BaseNPU1TargetModel(TK_AIE2_NPU1) {}
-
-  int columns() const override { return 5; }
-
-  bool isShimNOCTile(int col, int row) const override {
-    return row == 0 && col > 0;
-  }
-
-  bool isShimPLTile(int col, int row) const override {
-    // This isn't useful because it's not connected to anything.
-    return row == 0 && col == 0;
-  }
-
-  static bool classof(const AIETargetModel *model) {
-    return model->getKind() == TK_AIE2_NPU1;
   }
 };
 
@@ -632,8 +660,9 @@ class VirtualizedNPU1TargetModel : public BaseNPU1TargetModel {
 public:
   VirtualizedNPU1TargetModel(int _cols)
       : BaseNPU1TargetModel(static_cast<TargetModelKind>(
-            static_cast<std::underlying_type_t<TargetModelKind>>(TK_AIE2_NPU1) +
-            _cols)),
+            static_cast<std::underlying_type_t<TargetModelKind>>(
+                TK_AIE2_NPU1_1Col) +
+            _cols - 1)),
         cols(_cols) {
     // Device properties initialization
     addModelProperty(AIETargetModel::IsVirtualized);
@@ -679,6 +708,8 @@ public:
 
   std::vector<std::pair<uint32_t, uint32_t>>
   getShimBurstEncodingsAndLengths() const override;
+
+  bool isSupportedBlockFormat(std::string const &format) const override;
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&

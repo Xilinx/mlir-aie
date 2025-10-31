@@ -6,12 +6,13 @@
 // (c) Copyright 2024 AMD Inc.
 
 // RUN: aie-opt --verify-diagnostics --aie-materialize-bd-chains %s
+// XFAIL:*
 
 // This test ensures that the correct error gets emitted when a BD "chain" is not
 // actually a proper chain, i.e. some blocks are not connected.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 

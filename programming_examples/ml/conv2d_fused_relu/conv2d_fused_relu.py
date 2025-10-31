@@ -7,7 +7,15 @@
 import numpy as np
 import sys
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker, WorkerRuntimeBarrier
+from aie.iron import (
+    GlobalBuffer,
+    Kernel,
+    ObjectFifo,
+    Program,
+    Runtime,
+    Worker,
+    WorkerRuntimeBarrier,
+)
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
@@ -65,7 +73,7 @@ def conv2dk1(dev):
     of_act_L2_02 = of_inOF_act_L3L2.cons().forward(name="act_L2_02", obj_type=actIn_ty)
 
     # wts
-    of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, default_depth=1, name="inOF_wts_0_L3L2")
+    of_inOF_wts_0_L3L2 = ObjectFifo(weights_ty, depth=1, name="inOF_wts_0_L3L2")
 
     # Output
     of_out_02_L2 = ObjectFifo(out_ty, name="out_02_L2")

@@ -234,12 +234,18 @@ class Runtime(Resolvable):
         trace_offset: int = None,
         workers: [] = None,
         ddr_id: int = None,
+        coretile_events: [] = None,
+        memtile_events: [] = None,
+        shimtile_events: [] = None,
     ):
         """Enable trace."""
         self._trace_size = trace_size
         self._trace_offset = trace_offset
         self._trace_workers = workers
         self._ddr_id = ddr_id
+        self._coretile_events = coretile_events
+        self._memtile_events = memtile_events
+        self._shimtile_events = shimtile_events
 
     def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
         """Set the value of a worker barrier.
@@ -305,6 +311,9 @@ class Runtime(Resolvable):
                         self._trace_offset if self._trace_offset is not None else 0
                     ),
                     ddr_id=self._ddr_id if self._ddr_id is not None else 4,
+                    coretile_events=self._coretile_events,
+                    memtile_events=self._memtile_events,
+                    shimtile_events=self._shimtile_events,
                 )
 
             for rt_data, rt_data_val in zip(self._rt_data, args):

@@ -137,7 +137,7 @@ public:
   void coalesceIntervals();
   // Constructors
   IntervalReuse(mlir::vector::TransferReadOp readOp, mlir::AffineExpr b)
-      : memref(readOp.getSource()), base(b) {}
+      : memref(readOp.getBase()), base(b) {}
   IntervalReuse() : memref(nullptr), base(nullptr) {}
 };
 

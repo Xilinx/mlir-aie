@@ -5,7 +5,7 @@
 
 from aie.iron import Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col4
+from aie.iron.device import NPU1
 
 # CHECK: {stack_size = 2048 : i32}
 
@@ -15,7 +15,7 @@ rt = Runtime()
 with rt.sequence():
     rt.start(my_worker)
 
-my_program = Program(NPU1Col4(), rt)
+my_program = Program(NPU1(), rt)
 
 module = my_program.resolve_program(SequentialPlacer())
 
@@ -26,6 +26,7 @@ print(module)
 
 from aie.dialects.aie import *
 from aie.extras.context import mlir_mod_ctx
+
 
 def mlir_aie_design():
 

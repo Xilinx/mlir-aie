@@ -28,7 +28,7 @@ def design():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        @device(AIEDevice.npu1)
         def device_body():
             matrix_ty = np.ndarray[(matrix_size,), np.dtype[np.int32]]
 

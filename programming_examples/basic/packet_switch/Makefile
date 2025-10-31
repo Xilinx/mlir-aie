@@ -1,157 +1,92 @@
-#
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+##===- Makefile -----------------------------------------------------------===##
+# 
+# This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# 
+##===----------------------------------------------------------------------===##
 
-DEVICE ?= npu1
-HOME_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-include ${HOME_DIR}/../../makefile-common
+srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
-# Kernel
-KERNEL_O_DIR := build/bitstream
+include ${srcdir}/../../makefile-common
 
-KERNEL_SRCS := $(wildcard ${HOME_DIR}/kernel/*.cc)
-KERNEL_OBJS := $(patsubst ${HOME_DIR}/kernel/%.cc, ${KERNEL_O_DIR}/%.o, $(KERNEL_SRCS))
-KERNEL_HEADERS := $(wildcard ${HOME_DIR}/kernel/*.h)
+# ---
 
-# MLIR stuff
-MLIR_O_DIR := build/mlir
+# The following environment variables that point to the Xilinx runtime (XRT)
+# should be set up by an environment setup script already.
+XILINX_XRT?=/opt/xilinx/xrt
 
-BITSTREAM_O_DIR := build/bitstream
-XCLBIN_MLIR_SRCS := ${HOME_DIR}/mlir/aie_add.mlir
-XCLBIN_MLIR_SRCS += ${HOME_DIR}/mlir/aie_mul.mlir
-INSTS_TARGET := ${BITSTREAM_O_DIR}/insts_mul.txt
-INSTS_TARGET += ${BITSTREAM_O_DIR}/insts_add.txt
-XCLBIN_TARGET := ${BITSTREAM_O_DIR}/final.xclbin
+# ---
+UTILS_INCLUDE := -I$(srcdir)/../../../runtime_lib/test_lib/
+UTILS_LIB=$(srcdir)/../../../runtime_lib/test_lib/test_utils.cpp
+XILINX_XRT_INCLUDE?=${XILINX_XRT}/include
+XILINX_XRT_LIB?=${XILINX_XRT}/lib
 
-# Host stuff
-HOST_SRCDIR := ${HOME_DIR}/host
-HOST_O_DIR := build/host
-HOST_C_TARGET := packet_switch.exe
+XRT_FLAGS=-I${XILINX_XRT_INCLUDE} -L${XILINX_XRT_LIB}
+XRT_LIBS=-lxrt_coreutil
+CXX=g++-13 -ggdb 
 
-HOST_HEADERS = $(wildcard ${HOST_SRCDIR}/*.hpp)
-HOST_SRCS = $(wildcard ${HOST_SRCDIR}/*.cpp)
-HOST_OBJS = $(patsubst $(HOST_SRCDIR)/%.cpp,$(HOST_O_DIR)/%.o,$(HOST_SRCS))
-HOST_OBJS += $(HOST_O_DIR)/test_utils.o
+mlir_aie_add?=build/aie_add.mlir
+mlir_aie_mul?=build/aie_mul.mlir
+add_xclbin_target?=build/add.xclbin
+mult_xclbin_target?=build/mult.xclbin
+add_insts_target?=build/add_insts.bin
+mult_insts_target?=build/mult_insts.bin
 
-CXX := g++-13
-CXXFLAGS += -c
-CXXFLAGS += -std=c++23
-CXXFLAGS += -ggdb
-CXXFLAGS += -I/opt/xilinx/xrt/include
-CXXFLAGS += -I${HOME_DIR}/host
-CXXFLAGS += -I${HOME_DIR}/../../../runtime_lib/test_lib
+host_target?=build/test
 
-LDFLAGS += -lm
-LDFLAGS += -L/opt/xilinx/xrt/lib
-LDFLAGS += -Wl,-rpath,/opt/xilinx/xrt/lib
-LDFLAGS += -lxrt_coreutil
+DEVICE ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
-.PHONY: all link bitstream host clean instructions
-all: ${XCLBIN_TARGET} ${INSTS_TARGET} ${HOST_C_TARGET}
+aie_add_placed_py=aie_add_placed.py
+aie_mul_placed_py=aie_mul_placed.py
 
+.PHONY: all
+all: ${add_xclbin_target} ${mult_xclbin_target} ${host_target}
+
+build/add_mul.o: ${srcdir}/add_mul.cc
+	mkdir -p ${@D}
+ifeq (${DEVICE}, npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -DDIM_m=$m -DDIM_n=$n -c $< -o ${@F}
+else
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DDIM_m=$m -DDIM_n=$n -c $< -o ${@F}
+endif
+
+${mlir_aie_add}: ${srcdir}/${aie_add_placed_py}
+	mkdir -p ${@D}
+	python3 $< -d ${DEVICE} > $@
+
+${mlir_aie_mul}: ${srcdir}/${aie_mul_placed_py}
+	mkdir -p ${@D}
+	python3 $< -d ${DEVICE} > $@
+
+
+
+${add_xclbin_target}: ${mlir_aie_add}  build/add_mul.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
+				--aie-generate-npu-insts --npu-insts-name=${add_insts_target:build/%=%} ${<:%=../%}
+
+${mult_xclbin_target}: ${mlir_aie_mul} build/add_mul.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
+				--aie-generate-npu-insts --npu-insts-name=${mult_insts_target:build/%=%} ${<:%=../%}
+
+
+${host_target}: ${srcdir}/test.cpp ${mult_xclbin_target} ${add_xclbin_target}
+	mkdir -p ${@D}
+	${CXX} ${XRT_FLAGS} ${UTILS_INCLUDE} ${UTILS_LIB}  -o $@ $< ${XRT_LIBS}
+
+.PHONY: run_mul run_add run
+run_mul: all
+	./$(host_target) 1 ${mult_insts_target} ${mult_xclbin_target}
+run_add: all
+	./$(host_target) 0 ${add_insts_target} ${add_xclbin_target}
+run: run_mul run_add
+
+.PHONY: clean
 clean:
-	-@rm -rf build
-	-@rm -rf log
-	-@rm -rf ${HOST_C_TARGET}
-	-@rm -rf trace*
-	-@rm -rf *.xclbin
-	-@rm -rf *.txt
-
-
-test:
-	echo "test"
-	echo ${AIEOPT_DIR}
-
-
-
-instructions: ${INSTS_TARGET}
-
-
-kernel: ${KERNEL_OBJS}
-
-
-link: ${MLIR_TARGET}
-
-
-bitstream: ${XCLBIN_TARGET}
-
-
-host: ${HOST_C_TARGET}
-
-
-# Build kernels
-${KERNEL_O_DIR}/%.o: ${HOME_DIR}/kernel/%.cc ${KERNEL_HEADERS}
-	mkdir -p ${@D}
-ifeq ($(DEVICE),npu1)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2_FLAGS} -c $< -o ${@F}
-else ifeq ($(DEVICE),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-else
-	echo "Device type not supported"
-endif
-
-# Build xclbin
-${XCLBIN_TARGET}: ${XCLBIN_MLIR_SRCS} ${KERNEL_OBJS}
-ifeq ($(DEVICE),npu1)
-	sed -i 's/npu2/npu1_1col/' $<
-else ifeq ($(DEVICE),npu2)
-	sed -i 's/npu1_1col/npu2/' $<
-else
-	echo "Device type not supported"
-endif
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host \
-		--xclbin-name=${@F} $(<:${HOME_DIR}/kernel/%=../../kernel/%)
-	cp ${XCLBIN_TARGET} ./final.xclbin
-
-
-# Build instructions
-${BITSTREAM_O_DIR}/insts_%.txt: ${HOME_DIR}/mlir/aie_%.mlir
-ifeq ($(DEVICE),npu1)
-	sed -i 's/npu2/npu1_1col/' $<
-else ifeq ($(DEVICE),npu2)
-	sed -i 's/npu1_1col/npu2/' $<
-else
-	echo "Device type not supported"
-endif
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-npu-insts --no-compile-host \
-		--npu-insts-name=${@:${BITSTREAM_O_DIR}/%=%} $(<:${HOME_DIR}/kernel/%=../../kernel/%)
-	cp $@ ./
-
-${HOST_C_TARGET}: ${HOST_OBJS}
-	mkdir -p ${HOST_O_DIR}
-	echo ${HOST_OBJS}
-	$(CXX) -o "$@" $(+) $(LDFLAGS)
-
-$(HOST_O_DIR)/test.o: $(HOST_SRCDIR)/test.cpp $(HOST_HEADERS)
-	-@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -o "$@" "$<"
-
-
-$(HOST_O_DIR)/test_utils.o: ${HOME_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
-	-@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -o "$@" "$<"
-
-.PHONY: run_mul
-run_mul: ${HOST_C_TARGET} ${XCLBIN_TARGET} ${INSTS_TARGET}
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 1
-
-.PHONY: run_add
-run_add: ${HOST_C_TARGET} ${XCLBIN_TARGET} ${INSTS_TARGET}
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 0
-
-.PHONY: run
-run: ${HOST_C_TARGET} ${XCLBIN_TARGET} ${INSTS_TARGET}
-	echo "run_mul"
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 1
-	echo "run_add"
-	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
-	./$< 0
-
+	-rm -rf build

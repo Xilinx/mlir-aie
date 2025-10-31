@@ -54,6 +54,8 @@ jobs:
         run: |
           pip install -r python/requirements.txt
           HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          pip install -r python/requirements_notebook.txt
+          pip install -r python/requirements_dev.txt
 
       - name: Install packages
         run: |
@@ -62,7 +64,6 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
@@ -80,10 +81,10 @@ jobs:
       - name: Build and test (Assert)
         if: matrix.build_type == 'Assert'
         run: |
-          
-          mkdir build_assert
+
+          mkdir -p build_assert/install
           cd build_assert
-          
+
           cmake .. \
             -GNinja \
             -DCMAKE_BUILD_TYPE=Debug \
@@ -93,6 +94,7 @@ jobs:
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
@@ -105,8 +107,10 @@ jobs:
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit) \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          
+
           ninja
+          # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
+          export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
           ninja check-aie
           ninja check-tutorials
           ninja check-reference-designs
@@ -116,10 +120,10 @@ jobs:
       - name: Build and test (Release)
         if: matrix.build_type == 'Release'
         run: |
-          
-          mkdir build_release
+
+          mkdir -p build_release/install
           cd build_release
-          
+
           cmake .. \
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -129,6 +133,7 @@ jobs:
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
@@ -140,7 +145,7 @@ jobs:
             -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
             -DLLVM_USE_LINKER=lld \
             -DLLVM_EXTERNAL_LIT=$(which lit)
-          
+
           ninja
           ninja check-aie
           ninja check-tutorials

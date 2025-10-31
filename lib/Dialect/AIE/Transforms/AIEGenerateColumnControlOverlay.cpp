@@ -363,13 +363,8 @@ struct AIEGenerateColumnControlOverlayPass
 
       builder.create<AIE::ShimDMAAllocationOp>(
           builder.getUnknownLoc(), StringRef(dma_name), dir,
-          rowToShimChanMap[tOp.rowIndex()], shimTile.colIndex(), false);
-      MemRefType memref_ty = MemRefType::get(
-          ArrayRef<int64_t>{2048}, IntegerType::get(builder.getContext(), 32),
-          nullptr, 0);
-      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), dma_name,
-                                       builder.getStringAttr("public"),
-                                       memref_ty, nullptr, false, nullptr);
+          rowToShimChanMap[tOp.rowIndex()], shimTile.colIndex(), false,
+          nullptr);
     }
   }
 

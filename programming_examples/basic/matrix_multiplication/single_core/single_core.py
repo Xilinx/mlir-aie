@@ -5,7 +5,6 @@
 #
 # (c) Copyright 2025 AMD Inc.
 import argparse
-from ml_dtypes import bfloat16
 import numpy as np
 import sys
 
@@ -15,13 +14,24 @@ from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
 from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.dtype import str_to_dtype
 
-dtype_map = {
-    "bf16": bfloat16,
-    "i8": np.int8,
-    "i16": np.int16,
-    "f32": np.float32,
-    "i32": np.int32,
+
+microkernel_mac_dim_map = {
+    "npu": {
+        "bf16": (4, 8, 4),
+        "i8": (4, 8, 8),
+        "i16": (4, 4, 4),
+    },
+    "npu2": {
+        "bf16": {
+            # emulate_bf16_mmul_with_bfp16
+            True: (8, 8, 8),
+            False: (4, 8, 8),
+        },
+        "i8": (8, 8, 8),
+        "i16": (4, 4, 8),
+    },
 }
 
 
@@ -47,6 +57,7 @@ def main():
         default="i32",
     )
     argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    argparser.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
     argparser.add_argument("--trace_size", type=int, default=0)
     args = argparser.parse_args()
     my_matmul(
@@ -60,6 +71,7 @@ def main():
         args.dtype_in,
         args.dtype_out,
         args.b_col_maj,
+        args.emulate_bf16_mmul_with_bfp16,
         args.trace_size,
     )
 
@@ -69,39 +81,30 @@ def ceildiv(a, b):
 
 
 def my_matmul(
-    dev, M, K, N, m, k, n, dtype_in_str, dtype_out_str, b_col_maj, trace_size
+    dev,
+    M,
+    K,
+    N,
+    m,
+    k,
+    n,
+    dtype_in_str,
+    dtype_out_str,
+    b_col_maj,
+    emulate_bf16_mmul_with_bfp16,
+    trace_size,
 ):
 
     assert M % m == 0
     assert K % k == 0
     assert N % n == 0
 
-    if dev == "npu":
-        if dtype_in_str == "bf16":
-            r = 4
-            s = 8
-            t = 4
-        elif dtype_in_str == "i8":
-            r = 4
-            s = 8
-            t = 8
-        elif dtype_in_str == "i16":
-            r = 4
-            s = 4
-            t = 4
+    # r, s, t are the dimensions required by the microkernel MAC instructions.
+    mac_dims = microkernel_mac_dim_map[dev][dtype_in_str]
+    if dev == "npu2" and dtype_in_str == "bf16":
+        r, s, t = mac_dims[emulate_bf16_mmul_with_bfp16]
     else:
-        if dtype_in_str == "bf16":
-            r = 8
-            s = 8
-            t = 8
-        elif dtype_in_str == "i8":
-            r = 8
-            s = 8
-            t = 8
-        elif dtype_in_str == "i16":
-            r = 4
-            s = 4
-            t = 8
+        r, s, t = mac_dims
 
     assert m % r == 0
     assert k % s == 0
@@ -110,8 +113,8 @@ def my_matmul(
     vectorized = True
     enable_tracing = True if trace_size > 0 else False
 
-    dtype_in = dtype_map[dtype_in_str]
-    dtype_out = dtype_map[dtype_out_str]
+    dtype_in = str_to_dtype(dtype_in_str)
+    dtype_out = str_to_dtype(dtype_out_str)
 
     assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
         dtype_out, np.integer
@@ -131,8 +134,6 @@ def my_matmul(
 
     with mlir_mod_ctx() as ctx:
 
-        C_sz_in_bytes = C_sz * np.dtype(dtype_out).itemsize
-
         if dev == "npu":
             dev_ty = AIEDevice.npu1_1col
         else:
@@ -147,11 +148,7 @@ def my_matmul(
             # AIE Core Function declarations
             func_type = "" if vectorized else "scalar_"
             zero = external_func(f"zero_{func_type}{dtype_out_str}", inputs=[c_ty])
-            matmul_func_name = (
-                f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
-                if not b_col_maj
-                else f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}_b_col_maj"
-            )
+            matmul_func_name = f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
             matmul = external_func(
                 matmul_func_name,
                 inputs=[a_ty, b_ty, c_ty],
@@ -242,10 +239,13 @@ def my_matmul(
             if trace_size > 0:
                 trace_utils.configure_packet_tracing_flow(tiles_to_trace, shim_tile)
 
-            # Set up compute tiles
-
-            # Compute tile 2
-            @core(compute_tile2, f"mm_{m}x{k}x{n}.o")
+            # The stack size choice is an important choice!
+            # The Peano compiler uses a stack size in this kernel greater than the default one
+            # (default is 0x400, chess' stack size is smaller).
+            # Exceding the stack size leads to wrong results from the kernel, but no error is triggered.
+            # Stack usage can be checked as explained here:
+            # https://github.com/Xilinx/llvm-aie/issues/487#issuecomment-2969438585
+            @core(compute_tile2, f"mm_{m}x{k}x{n}.o", stack_size=0xD00)
             def core_body():
                 for _ in range_(0xFFFFFFFF):
                     for _ in range_(tiles) if tiles > 1 else range(1):  # issue #1547

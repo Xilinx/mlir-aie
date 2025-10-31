@@ -30,7 +30,7 @@ This example does not contain a C++ kernel file. The kernel is expressed in Pyth
 
 ## Source Files Overview
 
-1. `vector_scalar_add.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_scalar_add.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `vector_scalar_add_placed.py`: An alternative version of the design in `vector_scalar_add.py`, that is expressed in a lower-level version of IRON.
 

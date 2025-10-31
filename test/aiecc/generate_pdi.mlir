@@ -16,19 +16,17 @@
 
 // RUN: ls | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
 
-// XCHESSCC: bootgen
-// XCHESSCC: copy{{.*}} to MlirAie0.pdi
+// XCHESSCC: bootgen {{.*}} MlirAie0.pdi
 // XCHESSCC-NOT: xclbinutil
 
-// PEANO: bootgen
-// PEANO: copy{{.*}} to MlirAie1.pdi
+// PEANO: bootgen {{.*}} MlirAie1.pdi
 // PEANO-NOT: xclbinutil
 
 // CHECK-FILE: MlirAie0.pdi
 // CHECK-FILE: MlirAie1.pdi
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
   %12 = aie.tile(1, 2)
   %buf = aie.buffer(%12) : memref<256xi32>
   %4 = aie.core(%12)  {

@@ -22,9 +22,7 @@
 // CHECK: aiex.npu.write32
 // CHECK-SAME: value = 0
 module  {
-  aie.device(npu1_4col) {
-    memref.global "public" @toMem : memref<16xi32>
-    memref.global "public" @fromMem : memref<16xi32>
+  aie.device(npu1) {
     aiex.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
         aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64, issue_token = true } : memref<16xi32>
         aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 16][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @fromMem, id = 0 : i64, issue_token = false } : memref<16xi32>

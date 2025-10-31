@@ -9,7 +9,7 @@ ninja 1.8.2
 Xilinx Vitis 2023.2
 python 3.8.x and pip
 virtualenv
-pip3 install psutil rich pybind11 numpy
+pip3 install rich pybind11 numpy
 clang/llvm 14+ from source https://github.com/llvm/llvm-project
 ```
 
@@ -43,8 +43,8 @@ When targetting the VCK5000 Versal device, you must build and install our experi
 
 2. Source `utils/setup_python_packages.sh` to setup the prerequisite python
     packages. This script creates and installs the python packages
-    listed in `utils/requirements.txt` in a virtual python environment
-    called 'sandbox', then it enters the sandbox:
+    listed in `utils/requirements.txt` and `utils/requirements_dev.txt` in
+    a virtual python environment called 'sandbox', then it enters the sandbox:
     ```
     source utils/setup_python_packages.sh
     ```

@@ -49,7 +49,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
     # Create the program from the device type and runtime
     my_program = Program(dev, rt)
 
-    # Place program components (assign them resources on the device) and generate an MLIR module
+    # Place program components (assign the resources on the device) and generate an MLIR module
     module = my_program.resolve_program(SequentialPlacer())
 
     # Print the generated MLIR

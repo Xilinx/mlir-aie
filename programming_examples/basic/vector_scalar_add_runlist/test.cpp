@@ -16,7 +16,11 @@
 #include <string>
 #include <vector>
 
-#include "experimental/xrt_kernel.h" // for xrt::runlist
+#include "xrt/experimental/xrt_elf.h"
+#include "xrt/experimental/xrt_ext.h"
+#include "xrt/experimental/xrt_kernel.h" // for xrt::runlist
+#include "xrt/experimental/xrt_module.h"
+
 #include "xrt/xrt_aie.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
@@ -41,12 +45,6 @@ int main(int argc, const char *argv[]) {
 
   constexpr int IN_SIZE = 1024;
   constexpr int OUT_SIZE = 1024;
-
-  // Load instruction sequence
-  std::vector<uint32_t> instr_v =
-      test_utils::load_instr_binary(vm["instr"].as<std::string>());
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
   // ------------------------------------------------------
   // Get device, load the xclbin & kernel and register them
@@ -83,6 +81,9 @@ int main(int argc, const char *argv[]) {
               << "\n";
   device.register_xclbin(xclbin);
 
+  xrt::elf elf(vm["instr"].as<std::string>());
+  xrt::module mod{elf};
+
   // Get a hardware context
   if (verbosity >= 1)
     std::cout << "Getting hardware context.\n";
@@ -91,55 +92,30 @@ int main(int argc, const char *argv[]) {
   // Get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << "\n";
-  auto kernel = xrt::kernel(context, kernelName);
+  auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
   // ------------------------------------------------------
 
-  auto bo_instr_0 = xrt::bo(device, instr_v.size() * sizeof(int),
-                            XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA_0 = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out_0 = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-
-  auto bo_instr_1 = xrt::bo(device, instr_v.size() * sizeof(int),
-                            XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA_1 = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out_1 = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  xrt::bo bo_inA_0 = xrt::ext::bo{device, IN_SIZE * sizeof(int32_t)};
+  xrt::bo bo_out_0 = xrt::ext::bo{device, OUT_SIZE * sizeof(int32_t)};
+  xrt::bo bo_out_1 = xrt::ext::bo{device, OUT_SIZE * sizeof(int32_t)};
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
 
   // Initializing the input vectors
   std::vector<uint32_t> srcVecA;
-  std::vector<uint32_t> srcVecA_1;
   for (int i = 0; i < IN_SIZE; i++)
     srcVecA.push_back(i + 1);
 
-  for (int i = 0; i < IN_SIZE; i++)
-    srcVecA_1.push_back(i + 2);
-
   // Getting handles to the input data BOs and copying input data to them
   uint32_t *bufInA_0 = bo_inA_0.map<uint32_t *>();
-  uint32_t *bufInA_1 = bo_inA_1.map<uint32_t *>();
   memcpy(bufInA_0, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
-  memcpy(bufInA_1, srcVecA_1.data(), (srcVecA_1.size() * sizeof(uint32_t)));
-
-  // Getting handles to the instruction sequence BOs and copy data to them
-  void *bufInstr_0 = bo_instr_0.map<void *>();
-  void *bufInstr_1 = bo_instr_1.map<void *>();
-  memcpy(bufInstr_0, instr_v.data(), instr_v.size() * sizeof(int));
-  memcpy(bufInstr_1, instr_v.data(), instr_v.size() * sizeof(int));
 
   // Synchronizing BOs
-  bo_instr_0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_instr_1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA_0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA_1.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   unsigned int opcode = 3;
 
@@ -149,24 +125,18 @@ int main(int argc, const char *argv[]) {
   // Creating the first run
   xrt::run run0 = xrt::run(kernel);
   run0.set_arg(0, opcode);
-  run0.set_arg(1, bo_instr_0);
-  run0.set_arg(2, instr_v.size());
+  run0.set_arg(1, 0);
+  run0.set_arg(2, 0);
   run0.set_arg(3, bo_inA_0);
   run0.set_arg(4, bo_out_0);
-  run0.set_arg(5, 0);
-  run0.set_arg(6, 0);
-  run0.set_arg(7, 0);
 
   // Creating the second run
   xrt::run run1 = xrt::run(kernel);
   run1.set_arg(0, opcode);
-  run1.set_arg(1, bo_instr_1);
-  run1.set_arg(2, instr_v.size());
-  run1.set_arg(3, bo_inA_1);
+  run1.set_arg(1, 0);
+  run1.set_arg(2, 0);
+  run1.set_arg(3, bo_out_0);
   run1.set_arg(4, bo_out_1);
-  run1.set_arg(5, 0);
-  run1.set_arg(6, 0);
-  run1.set_arg(7, 0);
 
   // Executing and waiting on the runlist
   runlist.add(run0);

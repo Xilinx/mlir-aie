@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T_in, typename T_out, const int N>
@@ -33,16 +34,17 @@ void eltwise_vadd(T_in *a, T_in *b, T_out *c) {
   T_in *__restrict pB1 = b;
   T_out *__restrict pC1 = c;
   const int F = N / vec_factor;
-  for (int i = 0; i < F; i++)
-    chess_prepare_for_pipelining chess_loop_range(16, ) {
-      aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
-      pA1 += vec_factor;
-      aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
-      pB1 += vec_factor;
-      aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
-      aie::store_v(pC1, cout);
-      pC1 += vec_factor;
-    }
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(16)
+  for (int i = 0; i < F; i++) {
+    aie::vector<T_in, vec_factor> A0 = aie::load_v<vec_factor>(pA1);
+    pA1 += vec_factor;
+    aie::vector<T_in, vec_factor> B0 = aie::load_v<vec_factor>(pB1);
+    pB1 += vec_factor;
+    aie::vector<T_out, vec_factor> cout = aie::add(A0, B0);
+    aie::store_v(pC1, cout);
+    pC1 += vec_factor;
+  }
   event1();
 }
 

@@ -37,24 +37,33 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
            int verbosity) {
 
   int errors = 0;
+  T max_val = A[0];
   std::vector<T> RefVec(size);
+
+  for (uint32_t i = 1; i < A.size(); i++) {
+    A[i] = (T)(A[i]);
+    T val = A[i];
+    if (val > max_val) {
+      max_val = val;
+    }
+  }
 
   for (uint32_t t = 0; t < size; t += tile_size) {
     float running = 0.0;
     for (uint32_t i = 0; i < tile_size; i++) {
-      float ez = (float)(exp(A[t + i]));
+      float ez = (float)(exp(A[t + i] - max_val));
       running += ez;
-      RefVec[t + i] = exp(A[t + i]);
+      RefVec[t + i] = (T)exp(A[t + i] - max_val);
     }
 
     for (uint32_t i = 0; i < tile_size; i++) {
-      RefVec[t + i] /= running;
+      RefVec[t + i] /= (T)running;
     }
   }
 
   for (uint32_t i = 0; i < size; i++) {
 
-    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04)) {
+    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04, 0.001)) {
       std::cout << "Error in output " << B[i] << " != " << RefVec[i]
                 << std::endl;
       errors++;
@@ -74,6 +83,9 @@ int main(int argc, const char *argv[]) {
   cxxopts::ParseResult vm;
   test_utils::add_default_options(options);
 
+  options.add_options()("npu", "Select NPU",
+                        cxxopts::value<int>()->default_value("2"));
+
   test_utils::parse_options(argc, argv, options, vm);
 
   int verbosity = vm["verbosity"].as<int>();
@@ -81,6 +93,7 @@ int main(int argc, const char *argv[]) {
   int n_iterations = vm["iters"].as<int>();
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
+  int dev = vm["npu"].as<int>();
 
   int TILE_SIZE = 1024;
   int INOUT0_VOLUME = 262144;        // Input
@@ -109,6 +122,8 @@ int main(int argc, const char *argv[]) {
                                    vm["xclbin"].as<std::string>(),
                                    vm["kernel"].as<std::string>());
 
+  std::cout << "Running with device: " << device << std::endl;
+
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
   // ------------------------------------------------------
@@ -132,8 +147,15 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                                            (std::bfloat16_t)-4.0);
+    if (dev == 1) {
+      // NPU1: Use bfloat16 values in range [4.0, 4.0]
+      AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
+                                              (std::bfloat16_t)-4.0);
+    } else if (dev == 2) {
+      // NPU2: Use bfloat16 values in range [-512.0, 512.0]
+      AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1024.0,
+                                              (std::bfloat16_t)-512.0);
+    }
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 

@@ -10,7 +10,7 @@
 // This test ensure that the burst_length property is properly lowered from the DMAConfigureTaskOp to the NPU writebd op.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 

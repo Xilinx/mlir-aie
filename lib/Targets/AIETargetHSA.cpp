@@ -42,28 +42,15 @@ const char *hsa_cpp_file_header = R"code(
 
 )code";
 
-std::optional<AIE::ShimDMAAllocationOp>
-getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
-  auto sym = dev.lookupSymbol(sym_name);
-  if (!sym)
-    return std::nullopt;
-
-  auto uses = SymbolTable::getSymbolUses(sym, dev);
-  for (auto use : *uses)
-    if (auto infoOp = dyn_cast<AIE::ShimDMAAllocationOp>(use.getUser()))
-      return infoOp;
-
-  return std::nullopt;
-}
-
-mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
+mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
+                                      llvm::StringRef deviceName) {
 
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  if (module.getOps<DeviceOp>().empty())
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  if (!targetOp)
     return module.emitOpError("expected AIE.device operation at toplevel");
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
 
   // Putting the standard header
   output << hsa_cpp_file_header;
@@ -117,17 +104,18 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
       return failure();
     }
 
-    auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
+    AIE::ShimDMAAllocationOp infoOp = AIE::ShimDMAAllocationOp::getForSymbol(
+        dev, op.getMetadata().getRootReference());
     if (!infoOp) {
       op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
     }
 
-    auto channelDir = infoOp->getChannelDir();
-    uint32_t ChannelId = infoOp->getChannelIndex();
+    auto channelDir = infoOp.getChannelDir();
+    uint32_t ChannelId = infoOp.getChannelIndex();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int col = infoOp->getCol();
-    bool isPlio = infoOp->getPlio();
+    int col = infoOp.getCol();
+    bool isPlio = infoOp.getPlio();
 
     llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
@@ -145,7 +133,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output) {
     BaseMemRefType my_memref = op.getMemref().getType();
     auto shape = my_memref.getShape();
     size_t R = shape.size();
-    size_t el_bit_width = my_memref.getElementTypeBitWidth();
+    size_t el_bit_width = op.getElementTypeBitwidth();
     assert(el_bit_width % 8 == 0 &&
            "Expected Memref element bitwidth to be multiple of 8.");
     size_t S = el_bit_width / 8;

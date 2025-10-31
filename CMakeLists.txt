@@ -13,8 +13,7 @@
 #  -DAIE_RUNTIME_TARGETS: list of targets (x86_64,aarch64) to build runtime libs for, default: x86_64; cross compilation for aarch64 against default Vitis Sysroot
 #  -DAIE_RUNTIME_TEST_TARGET: runtime test target (x86_64 or aarch64) used for running unit test and tutorials, default x86_64
 
-cmake_minimum_required(VERSION 3.23)
-
+cmake_minimum_required(VERSION 3.30)
 set(TOOLCHAINFILES_PATH ${CMAKE_SOURCE_DIR}/cmake/modulesXilinx)
 
 set(AIE_RUNTIME_TARGETS
@@ -71,8 +70,11 @@ set(HOST_COMPILER
     "NONE"
     CACHE STRING "Host program compiler selection")
 set(PEANO_INSTALL_DIR
-    "<unset>"
+    "$ENV{PEANO_INSTALL_DIR}"
     CACHE STRING "Location of Peano compiler")
+if(NOT PEANO_INSTALL_DIR OR PEANO_INSTALL_DIR STREQUAL "")
+    set(PEANO_INSTALL_DIR "<unset>" CACHE STRING "Location of Peano compiler" FORCE)
+endif()
 
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS
@@ -181,10 +183,6 @@ cmake_dependent_option(AIECC_COMPILE_WITH_XCHESSCC
 cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
   "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC" OFF)
 
-find_library(ELF_LIB elf)
-cmake_dependent_option(AIE_ENABLE_AIRBIN
-  "Enables emitting AIRBIN ELF binaries." OFF "ELF_LIB" OFF)
-
 # If we need runtime libs, then statically link them.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
@@ -283,6 +281,13 @@ if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     PATTERN "CMakeFiles" EXCLUDE
     PATTERN "config.h" EXCLUDE)
 
+  include("${AIE_SOURCE_DIR}/cmake/install_headers.cmake")
+  install_headers(${CMAKE_CURRENT_SOURCE_DIR}/aie_kernels
+          ${AIE_BINARY_DIR}/include
+          ${CMAKE_INSTALL_PREFIX}/include
+          "aie_kernels"
+  )
+
   if(NOT LLVM_ENABLE_IDE)
     add_llvm_install_targets(install-aie-headers DEPENDS aie-headers COMPONENT
                              aie-headers)
@@ -294,7 +299,7 @@ endif()
 add_subdirectory(programming_examples)
 add_subdirectory(programming_guide)
 add_subdirectory(test)
-add_subdirectory(mlir_tutorials)
+add_subdirectory(mlir_exercises)
 add_subdirectory(cmake/modules)
 
 get_filename_component(COMPILER_DIRECTORY ${CMAKE_CXX_COMPILER} DIRECTORY)

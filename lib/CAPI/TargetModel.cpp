@@ -154,6 +154,12 @@ uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
   return unwrap(targetModel).getNumBanks(col, row);
 }
 
+uint32_t
+aieTargetModelGetMaxChannelNumForAdjacentMemTile(AieTargetModel targetModel,
+                                                 int col, int row) {
+  return unwrap(targetModel).getMaxChannelNumForAdjacentMemTile(col, row);
+}
+
 uint32_t aieTargetModelGetNumDestSwitchboxConnections(
     AieTargetModel targetModel, int col, int row, uint32_t bundle) {
   xilinx::AIE::WireBundle wireBundle =

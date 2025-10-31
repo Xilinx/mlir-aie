@@ -8,8 +8,8 @@
 
 # REQUIRES: ryzen_ai_npu1, peano
 #
-# RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --no-xchesscc --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+# RUN: %python %S/aie2.py npu 0 > ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --no-xchesscc --no-xbridge --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 import numpy as np

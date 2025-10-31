@@ -45,14 +45,14 @@ static Value vectorizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   auto shapeTy = cast<ShapedType>(opTy);
   auto shape = shapeTy.getShape();
   auto elemTy = shapeTy.getElementType();
-  auto toMemRefOp = rewriter.create<bufferization::ToMemrefOp>(
+  auto ToBufferOp = rewriter.create<bufferization::ToBufferOp>(
       loc, MemRefType::get(shape, elemTy), tensor);
   auto rank = shape.size();
   auto newShape = shape.slice(0, rank - 2);
   auto opVecElemTy = VectorType::get(shape.slice(rank - 2, 2), elemTy);
   auto opMemrefVecTy = MemRefType::get(newShape, opVecElemTy);
   auto typeCastOp =
-      rewriter.create<vector::TypeCastOp>(loc, opMemrefVecTy, toMemRefOp);
+      rewriter.create<vector::TypeCastOp>(loc, opMemrefVecTy, ToBufferOp);
   auto toTensorOp = rewriter.create<bufferization::ToTensorOp>(
       loc, RankedTensorType::get(newShape, opVecElemTy), typeCastOp);
   toTensorOp.setRestrict(true);
@@ -69,7 +69,7 @@ static Value scalarizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   auto vecShape = shapeTy.getShape();
   auto vecElemTy = cast<VectorType>(shapeTy.getElementType());
   auto elemTy = vecElemTy.getElementType();
-  auto toMemRefVecTyOp = rewriter.create<bufferization::ToMemrefOp>(
+  auto toBufferVecTyOp = rewriter.create<bufferization::ToBufferOp>(
       loc, MemRefType::get(vecShape, vecElemTy), tensor);
 
   SmallVector<int64_t> scalShape;
@@ -79,7 +79,7 @@ static Value scalarizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
     scalShape.push_back(d);
   auto opMemrefScalTy = MemRefType::get(scalShape, elemTy);
   auto typeCastOp =
-      rewriter.create<vector::TypeCastOp>(loc, opMemrefScalTy, toMemRefVecTyOp);
+      rewriter.create<vector::TypeCastOp>(loc, opMemrefScalTy, toBufferVecTyOp);
 
   auto toTensorOp = rewriter.create<bufferization::ToTensorOp>(
       loc, RankedTensorType::get(scalShape, elemTy), typeCastOp);

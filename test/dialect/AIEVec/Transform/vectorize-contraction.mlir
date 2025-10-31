@@ -34,13 +34,13 @@ module attributes {transform.with_named_sequence} {
 // CHECK-SAME: %[[A:.*]]: tensor<16x24xf32>
 // CHECK-SAME: %[[B:.*]]: tensor<24x16xf32>
 // CHECK-SAME: %[[C:.*]]: tensor<16x16xf32>
-// CHECK: %[[AM:.*]] = bufferization.to_memref %[[A]] : tensor<16x24xf32> to memref<16x24xf32>
+// CHECK: %[[AM:.*]] = bufferization.to_buffer %[[A]] : tensor<16x24xf32> to memref<16x24xf32>
 // CHECK: %[[AVM:.*]] = vector.type_cast %[[AM]] : memref<16x24xf32> to memref<vector<16x24xf32>>
 // CHECK: %[[AV:.*]] = bufferization.to_tensor %[[AVM]] restrict : memref<vector<16x24xf32>>
-// CHECK: %[[BM:.*]] = bufferization.to_memref %[[B]] : tensor<24x16xf32> to memref<24x16xf32>
+// CHECK: %[[BM:.*]] = bufferization.to_buffer %[[B]] : tensor<24x16xf32> to memref<24x16xf32>
 // CHECK: %[[BVM:.*]] = vector.type_cast %[[BM]] : memref<24x16xf32> to memref<vector<24x16xf32>>
 // CHECK: %[[BV:.*]] = bufferization.to_tensor %[[BVM]] restrict : memref<vector<24x16xf32>>
-// CHECK: %[[CM:.*]] = bufferization.to_memref %[[C]] : tensor<16x16xf32> to memref<16x16xf32>
+// CHECK: %[[CM:.*]] = bufferization.to_buffer %[[C]] : tensor<16x16xf32> to memref<16x16xf32>
 // CHECK: %[[CVM:.*]] = vector.type_cast %[[CM]] : memref<16x16xf32> to memref<vector<16x16xf32>>
 // CHECK: %[[CV:.*]] = bufferization.to_tensor %[[CVM]] restrict : memref<vector<16x16xf32>>
 // CHECK: %[[RV:.*]] = linalg.generic {indexing_maps = [#[[NULLMAP]], #[[NULLMAP]], #[[NULLMAP]]],
@@ -54,7 +54,7 @@ module attributes {transform.with_named_sequence} {
 // CHECK-SAME:                                            : vector<16x24xf32>, vector<24x16xf32> into vector<16x16xf32>
 // CHECK:                   linalg.yield %[[RES]] : vector<16x16xf32>
 // CHECK:                  } -> tensor<vector<16x16xf32>>
-// CHECK: %[[RVM:.*]] = bufferization.to_memref %[[RV]] : tensor<vector<16x16xf32>> to memref<vector<16x16xf32>>
+// CHECK: %[[RVM:.*]] = bufferization.to_buffer %[[RV]] : tensor<vector<16x16xf32>> to memref<vector<16x16xf32>>
 // CHECK: %[[RM:.*]] = vector.type_cast %[[RVM]] : memref<vector<16x16xf32>> to memref<16x16xf32>
 // CHECK: %[[R:.*]] = bufferization.to_tensor %[[RM]] restrict : memref<16x16xf32>
 // CHECK: return %[[R]] : tensor<16x16xf32>
@@ -95,13 +95,13 @@ module attributes {transform.with_named_sequence} {
 // CHECK-SAME: %[[A:.*]]: tensor<8x8x16x24xf32>
 // CHECK-SAME: %[[B:.*]]: tensor<8x8x24x16xf32>
 // CHECK-SAME: %[[C:.*]]: tensor<8x8x16x16xf32>
-// CHECK: %[[AM:.*]] = bufferization.to_memref %[[A]] : tensor<8x8x16x24xf32> to memref<8x8x16x24xf32>
+// CHECK: %[[AM:.*]] = bufferization.to_buffer %[[A]] : tensor<8x8x16x24xf32> to memref<8x8x16x24xf32>
 // CHECK: %[[AVM:.*]] = vector.type_cast %[[AM]] : memref<8x8x16x24xf32> to memref<8x8xvector<16x24xf32>>
 // CHECK: %[[AV:.*]] = bufferization.to_tensor %[[AVM]] restrict : memref<8x8xvector<16x24xf32>>
-// CHECK: %[[BM:.*]] = bufferization.to_memref %[[B]] : tensor<8x8x24x16xf32> to memref<8x8x24x16xf32>
+// CHECK: %[[BM:.*]] = bufferization.to_buffer %[[B]] : tensor<8x8x24x16xf32> to memref<8x8x24x16xf32>
 // CHECK: %[[BVM:.*]] = vector.type_cast %[[BM]] : memref<8x8x24x16xf32> to memref<8x8xvector<24x16xf32>>
 // CHECK: %[[BV:.*]] = bufferization.to_tensor %[[BVM]] restrict : memref<8x8xvector<24x16xf32>>
-// CHECK: %[[CM:.*]] = bufferization.to_memref %[[C]] : tensor<8x8x16x16xf32> to memref<8x8x16x16xf32>
+// CHECK: %[[CM:.*]] = bufferization.to_buffer %[[C]] : tensor<8x8x16x16xf32> to memref<8x8x16x16xf32>
 // CHECK: %[[CVM:.*]] = vector.type_cast %[[CM]] : memref<8x8x16x16xf32> to memref<8x8xvector<16x16xf32>>
 // CHECK: %[[CV:.*]] = bufferization.to_tensor %[[CVM]] restrict : memref<8x8xvector<16x16xf32>>
 // CHECK: %[[RV:.*]] = linalg.generic {indexing_maps = [#[[PMAP]], #[[PMAP]], #[[PMAP]]],
@@ -115,7 +115,7 @@ module attributes {transform.with_named_sequence} {
 // CHECK-SAME:                                            : vector<16x24xf32>, vector<24x16xf32> into vector<16x16xf32>
 // CHECK:                   linalg.yield %[[RES]] : vector<16x16xf32>
 // CHECK:                  } -> tensor<8x8xvector<16x16xf32>>
-// CHECK: %[[RVM:.*]] = bufferization.to_memref %[[RV]] : tensor<8x8xvector<16x16xf32>> to memref<8x8xvector<16x16xf32>>
+// CHECK: %[[RVM:.*]] = bufferization.to_buffer %[[RV]] : tensor<8x8xvector<16x16xf32>> to memref<8x8xvector<16x16xf32>>
 // CHECK: %[[RM:.*]] = vector.type_cast %[[RVM]] : memref<8x8xvector<16x16xf32>> to memref<8x8x16x16xf32>
 // CHECK: %[[R:.*]] = bufferization.to_tensor %[[RM]] restrict : memref<8x8x16x16xf32>
 // CHECK: return %[[R]] : tensor<8x8x16x16xf32>
@@ -158,13 +158,13 @@ module attributes {transform.with_named_sequence} {
 // CHECK-SAME: %[[A:.*]]: tensor<16x8x4x8xbf16>
 // CHECK-SAME: %[[B:.*]]: tensor<8x16x8x4xbf16>
 // CHECK-SAME: %[[C:.*]]: tensor<16x16x4x4xf32>
-// CHECK: %[[AM:.*]] = bufferization.to_memref %[[A]] : tensor<16x8x4x8xbf16> to memref<16x8x4x8xbf16>
+// CHECK: %[[AM:.*]] = bufferization.to_buffer %[[A]] : tensor<16x8x4x8xbf16> to memref<16x8x4x8xbf16>
 // CHECK: %[[AVM:.*]] = vector.type_cast %[[AM]] : memref<16x8x4x8xbf16> to memref<16x8xvector<4x8xbf16>>
 // CHECK: %[[AV:.*]] = bufferization.to_tensor %[[AVM]] restrict : memref<16x8xvector<4x8xbf16>>
-// CHECK: %[[BM:.*]] = bufferization.to_memref %[[B]] : tensor<8x16x8x4xbf16> to memref<8x16x8x4xbf16>
+// CHECK: %[[BM:.*]] = bufferization.to_buffer %[[B]] : tensor<8x16x8x4xbf16> to memref<8x16x8x4xbf16>
 // CHECK: %[[BVM:.*]] = vector.type_cast %[[BM]] : memref<8x16x8x4xbf16> to memref<8x16xvector<8x4xbf16>>
 // CHECK: %[[BV:.*]] = bufferization.to_tensor %[[BVM]] restrict : memref<8x16xvector<8x4xbf16>>
-// CHECK: %[[CM:.*]] = bufferization.to_memref %[[C]] : tensor<16x16x4x4xf32> to memref<16x16x4x4xf32>
+// CHECK: %[[CM:.*]] = bufferization.to_buffer %[[C]] : tensor<16x16x4x4xf32> to memref<16x16x4x4xf32>
 // CHECK: %[[CVM:.*]] = vector.type_cast %[[CM]] : memref<16x16x4x4xf32> to memref<16x16xvector<4x4xf32>>
 // CHECK: %[[CV:.*]] = bufferization.to_tensor %[[CVM]] restrict : memref<16x16xvector<4x4xf32>>
 // CHECK: %[[RV:.*]] = linalg.generic {indexing_maps = [#[[AMAP]], #[[BMAP]], #[[CMAP]]],
@@ -180,7 +180,7 @@ module attributes {transform.with_named_sequence} {
 // CHECK-SAME:                                            : vector<4x8xf32>, vector<8x4xf32> into vector<4x4xf32>
 // CHECK:                   linalg.yield %[[RES]] : vector<4x4xf32>
 // CHECK:                  } -> tensor<16x16xvector<4x4xf32>>
-// CHECK: %[[RVM:.*]] = bufferization.to_memref %[[RV]] : tensor<16x16xvector<4x4xf32>> to memref<16x16xvector<4x4xf32>>
+// CHECK: %[[RVM:.*]] = bufferization.to_buffer %[[RV]] : tensor<16x16xvector<4x4xf32>> to memref<16x16xvector<4x4xf32>>
 // CHECK: %[[RM:.*]] = vector.type_cast %[[RVM]] : memref<16x16xvector<4x4xf32>> to memref<16x16x4x4xf32>
 // CHECK: %[[R:.*]] = bufferization.to_tensor %[[RM]] restrict : memref<16x16x4x4xf32>
 // CHECK: return %[[R]] : tensor<16x16x4x4xf32>

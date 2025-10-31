@@ -34,8 +34,8 @@ func.func @conv2d (%A: memref<2048x2048xi32>, %B: memref<3x3xi32>, %C: memref<20
     return
 }
 
-//CHECK-NEXT:    %c0 = arith.constant 0 : index
 //CHECK-NEXT:    %c0_i32 = arith.constant 0 : i32
+//CHECK-NEXT:    %c0 = arith.constant 0 : index
 //CHECK-NEXT:    %c0_0 = arith.constant 0 : index
 //CHECK-NEXT:    %c2046 = arith.constant 2046 : index
 //CHECK-NEXT:    %c1 = arith.constant 1 : index

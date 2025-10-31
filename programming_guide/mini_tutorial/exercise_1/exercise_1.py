@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
+from aie.iron import Program, Runtime, Worker, ObjectFifo, LocalBuffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
@@ -18,32 +18,31 @@ import aie.iron as iron
 
 @iron.jit(is_placed=False)
 def exercise_1(output):
-    num_elements = output.numel()
-    data_type = output.dtype
-    tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
+    data_size = output.numel()
+    element_type = output.dtype
+    data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
     # Dataflow with ObjectFifos
-    of_out = ObjectFifo(tile_ty, name="out")
-
-    buff = GlobalBuffer(
-        tile_ty,
-        name="buff",
-        initial_value=np.array(range(num_elements), dtype=data_type),
-    )
+    of_out = ObjectFifo(data_ty, name="out")
 
     # Task for the core to perform
-    def core_fn(buff_in, of_out):
+    def core_fn(of_out):
+        buff = LocalBuffer(
+            data_ty,
+            name="buff",
+            initial_value=np.array(range(data_size), dtype=element_type),
+        )
         elem_out = of_out.acquire(1)
-        for i in range_(num_elements):
-            elem_out[i] = buff_in[i]
+        for i in range_(data_size):
+            elem_out[i] = buff[i]
         of_out.release(1)
 
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [buff, of_out.prod()])
+    my_worker = Worker(core_fn, [of_out.prod()])
 
     # To/from AIE-array runtime data movement
     rt = Runtime()
-    with rt.sequence(tile_ty) as (c_out):
+    with rt.sequence(data_ty) as (c_out):
         rt.start(my_worker)
         rt.drain(of_out.cons(), c_out, wait=True)
 
@@ -56,12 +55,12 @@ def exercise_1(output):
 
 def main():
     # Define tensor shapes and data types
-    num_elements = 48
-    data_type = np.int32
+    data_size = 48
+    element_type = np.int32
 
     # Construct an input tensor and an output zeroed tensor
     # The two tensors are in memory accessible to the NPU
-    input0 = iron.arange(num_elements, dtype=data_type, device="npu")
+    input0 = iron.arange(data_size, dtype=element_type, device="npu")
     output = iron.zeros_like(input0)
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls

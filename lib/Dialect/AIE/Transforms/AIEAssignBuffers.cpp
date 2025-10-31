@@ -22,9 +22,8 @@ using namespace xilinx::AIE;
 //===----------------------------------------------------------------------===//
 // BasicAllocation : sequential alloc from largest to smallest
 //===----------------------------------------------------------------------===//
-LogicalResult checkAndPrintOverflow(TileOp tile, int address,
-                                    int maxDataMemorySize, int stacksize,
-                                    SmallVector<BufferOp> &buffers) {
+bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
+                           int stacksize, SmallVector<BufferOp> &buffers) {
   if (address > maxDataMemorySize) {
     InFlightDiagnostic error =
         tile.emitOpError("allocated buffers exceeded available memory\n");
@@ -46,15 +45,15 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int address,
       printbuffer(buffer.name(), buffer.getAddress().value(),
                   buffer.getAllocationSize());
     }
-    return failure();
+    return false;
   }
-  return success();
+  return true;
 }
 
-LogicalResult basicAllocation(TileOp tile) {
+bool basicAllocation(TileOp tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
-    return failure();
+    return false;
 
   const auto &targetModel = getTargetModel(tile);
   int maxDataMemorySize = 0;
@@ -214,7 +213,7 @@ checkAndAddBufferWithMemBank(BufferOp buffer, int numBanks,
 void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
                  SmallVector<BufferOp> &preAllocatedBuffers, int numBanks,
                  std::vector<BankLimits> &bankLimits, int stacksize) {
-  InFlightDiagnostic error = tile.emitOpError(
+  InFlightDiagnostic error = tile.emitWarning(
       "Not all requested buffers fit in the available memory.\n");
   auto &note = error.attachNote()
                << "Current configuration of buffers in bank(s) : ";
@@ -283,7 +282,7 @@ int setBufferAddress(BufferOp buffer, int numBanks, int &startBankIndex,
   }
   // If no bank has enough space, throws error
   if (!allocated) {
-    buffer.emitError("Failed to allocate buffer: ")
+    buffer.emitWarning("Failed to allocate buffer: ")
         << buffer.name() << " with size: " << buffer.getAllocationSize()
         << " bytes.";
     return false;
@@ -291,10 +290,10 @@ int setBufferAddress(BufferOp buffer, int numBanks, int &startBankIndex,
   return true;
 }
 
-LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
-                                    SmallVector<BufferOp> &allBuffers,
-                                    std::vector<int64_t> &nextAddrInBanks,
-                                    std::vector<BankLimits> &bankLimits) {
+bool checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
+                           SmallVector<BufferOp> &allBuffers,
+                           std::vector<int64_t> &nextAddrInBanks,
+                           std::vector<BankLimits> &bankLimits) {
   bool foundOverflow = false;
   std::vector<int> overflow_banks;
   for (int i = 0; i < numBanks; i++) {
@@ -305,7 +304,7 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
   }
   if (foundOverflow) {
     InFlightDiagnostic error =
-        tile.emitOpError("allocated buffers exceeded available memory\n");
+        tile.emitWarning("allocated buffers exceeded available memory\n");
     auto &note = error.attachNote() << "Error in bank(s) : ";
     for (auto bank : overflow_banks)
       note << bank << " ";
@@ -336,9 +335,9 @@ LogicalResult checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
           printbuffer(buffer.name(), addr, buffer.getAllocationSize());
       }
     }
-    return failure();
+    return false;
   }
-  return success();
+  return true;
 }
 
 // Function to deallocate attributes of buffers in case of a failure
@@ -349,10 +348,10 @@ void deAllocationBuffers(SmallVector<BufferOp> &buffers) {
   }
 }
 
-LogicalResult simpleBankAwareAllocation(TileOp tile) {
+bool simpleBankAwareAllocation(TileOp tile) {
   auto device = tile->getParentOfType<AIE::DeviceOp>();
   if (!device)
-    return failure();
+    return false;
 
   std::vector<int64_t>
       nextAddrInBanks; // each entry is the next address available for use
@@ -405,7 +404,7 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
       auto has_bank = checkAndAddBufferWithMemBank(buffer, numBanks,
                                                    nextAddrInBanks, bankLimits);
       if (failed(has_addr) || failed(has_bank))
-        return failure();
+        return false;
       if (!has_addr.value() && !has_bank.value())
         buffersToAlloc.push_back(buffer);
       else
@@ -433,7 +432,7 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
       printMemMap(tile, allocatedBuffers, preAllocatedBuffers, numBanks,
                   bankLimits, stacksize);
       deAllocationBuffers(allocatedBuffers);
-      return failure();
+      return false;
     } else {
       allocatedBuffers.push_back(buffer);
     }
@@ -450,6 +449,23 @@ LogicalResult simpleBankAwareAllocation(TileOp tile) {
                                nextAddrInBanks, bankLimits);
 }
 
+LogicalResult checkBufferScope(BufferOp buffer, DeviceOp device) {
+  // Buffers are not allowed to be inside the core without being statically
+  // initialized.
+  Operation *parent = buffer->getParentOp();
+  // Allowed to be in MemTile
+  if (!isa<DeviceOp>(parent) && !isa<MemTileDMAOp>(parent) &&
+      !buffer.getInitialValue().has_value()) {
+    auto tile = buffer.getTileOp();
+    tile->emitOpError("Buffer '")
+        << buffer.name()
+        << "' must be defined directly under the device scope. Currently it "
+           "is nested inside a core tile.";
+    return failure();
+  }
+  return success();
+}
+
 struct AIEAssignBufferAddressesPass
     : AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
 
@@ -461,6 +477,11 @@ struct AIEAssignBufferAddressesPass
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
+    // Ensure all BufferOps are globally defined at the device level.
+    device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
+      if (failed(checkBufferScope(buffer, device)))
+        return signalPassFailure();
+    });
     // Make sure all the buffers have a name
     int counter = 0;
     device.walk<WalkOrder::PreOrder>([&](BufferOp buffer) {
@@ -480,15 +501,23 @@ struct AIEAssignBufferAddressesPass
         tileAllocationScheme = clAllocScheme;
 
       if (tileAllocationScheme == "basic-sequential") {
-        if (auto res = basicAllocation(tile); res.failed())
+        if (!basicAllocation(tile)) {
+          tile.emitOpError("Basic sequential allocation failed.");
           return signalPassFailure();
+        }
       } else if (tileAllocationScheme == "bank-aware") {
-        if (auto res = simpleBankAwareAllocation(tile); res.failed())
+        if (!simpleBankAwareAllocation(tile)) {
+          tile.emitOpError("Bank-aware allocation failed.");
           return signalPassFailure();
+        }
       } else {
-        if (auto res = simpleBankAwareAllocation(tile); res.failed()) {
-          if (auto res2 = basicAllocation(tile); res2.failed())
+        if (!simpleBankAwareAllocation(tile)) {
+          tile.emitWarning("Bank-aware allocation failed, trying basic "
+                           "sequential allocation.");
+          if (!basicAllocation(tile)) {
+            tile.emitOpError("Basic sequential allocation also failed.");
             return signalPassFailure();
+          }
         }
       }
     }

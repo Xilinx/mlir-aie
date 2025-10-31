@@ -17,6 +17,7 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 template <typename T, int N>
@@ -31,21 +32,20 @@ template <typename T, int N>
 void bitwiseAND_aie(const T *src1, const T *src2, T *dst, const int32_t width,
                     const int32_t height) {
 
-  for (int j = 0; j < width * height; j += N)
-    chess_prepare_for_pipelining chess_loop_range(
-        14, ) // loop_range(14) - loop : 1 cycle
-    {
-      ::aie::vector<T, N> in1 = ::aie::load_v<N>(src1);
-      src1 += N;
-      ::aie::vector<T, N> in2 = ::aie::load_v<N>(src2);
-      src2 += N;
-      ::aie::vector<T, N> out;
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_MIN_ITERATION_COUNT(14) // loop_range(14) - loop : 1 cycle
+  for (int j = 0; j < width * height; j += N) {
+    ::aie::vector<T, N> in1 = ::aie::load_v<N>(src1);
+    src1 += N;
+    ::aie::vector<T, N> in2 = ::aie::load_v<N>(src2);
+    src2 += N;
+    ::aie::vector<T, N> out;
 
-      out = ::aie::bit_and(in1, in2);
+    out = ::aie::bit_and(in1, in2);
 
-      ::aie::store_v(dst, out);
-      dst += N;
-    }
+    ::aie::store_v(dst, out);
+    dst += N;
+  }
 }
 
 extern "C" {

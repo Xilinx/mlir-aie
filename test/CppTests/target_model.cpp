@@ -101,40 +101,12 @@ void test() {
     throw std::runtime_error("Failed xcve2802 rows");
   }
 
-  // AIEDevice::npu1
-  if (!AIE::getTargetModel(AIE::AIEDevice::npu1)
-           .hasProperty(AIE::AIETargetModel::UsesSemaphoreLocks)) {
-    throw std::runtime_error(
-        "Failed npu1 property check for 'UsesSemaphoreLocks' returns false");
-  }
-  if (!AIE::getTargetModel(AIE::AIEDevice::npu1)
-           .hasProperty(AIE::AIETargetModel::UsesMultiDimensionalBDs)) {
-    throw std::runtime_error("Failed npu1 property check for "
-                             "'UsesMultiDimensionalBDs' returns false");
-  }
-  if (!AIE::getTargetModel(AIE::AIEDevice::npu1)
-           .hasProperty(AIE::AIETargetModel::IsNPU)) {
-    throw std::runtime_error(
-        "Failed npu1 property check for 'IsNPU' returns false");
-  }
-  if (AIE::getTargetModel(AIE::AIEDevice::npu1)
-          .hasProperty(AIE::AIETargetModel::IsVirtualized)) {
-    throw std::runtime_error(
-        "Failed npu1 property check for 'IsVirtualized' returns true");
-  }
-  if (AIE::getTargetModel(AIE::AIEDevice::npu1).columns() != 5) {
-    throw std::runtime_error("Failed npu1 columns");
-  }
-  if (AIE::getTargetModel(AIE::AIEDevice::npu1).rows() != 6) {
-    throw std::runtime_error("Failed npu1 rows");
-  }
-
   // AIEDevice::npu_1col, npu_2col, npu_3col, npu_4col
   llvm::DenseMap<AIE::AIEDevice, int> npu1_devs;
   npu1_devs[AIE::AIEDevice::npu1_1col] = 1;
   npu1_devs[AIE::AIEDevice::npu1_2col] = 2;
   npu1_devs[AIE::AIEDevice::npu1_3col] = 3;
-  npu1_devs[AIE::AIEDevice::npu1_4col] = 4;
+  npu1_devs[AIE::AIEDevice::npu1] = 4;
   for (auto &[dev, cols] : npu1_devs) {
     if (!AIE::getTargetModel(dev).hasProperty(
             AIE::AIETargetModel::UsesSemaphoreLocks)) {

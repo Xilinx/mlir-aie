@@ -14,11 +14,11 @@ on:
   schedule:
     # At 04:00. (see https://crontab.guru)
     - cron: '0 4 * * *'
-    
+
 defaults:
   run:
     shell: bash
-    
+
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
@@ -50,6 +50,12 @@ jobs:
             ENABLE_RTTI: ON
 
           - python_version: "3.10"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.11"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.11"
             ENABLE_RTTI: OFF
 
           - python_version: "3.12"
@@ -85,7 +91,7 @@ jobs:
         with:
           distro: none
           arch: none
-          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.1
+          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.2
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --mac-address 02:42:ac:11:00:02
@@ -108,6 +114,7 @@ jobs:
             pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
             HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+            pip install -r python/requirements_dev.txt
 
             export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
 
@@ -149,8 +156,6 @@ jobs:
             popd
 
             auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
-            # WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
-            # mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
 
       - name: Upload mlir_aie
         uses: actions/upload-artifact@v4
@@ -164,8 +169,9 @@ jobs:
         with:
           artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: 'latest-wheels'
-          name: 'latest-wheels'
+          tag: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
+          name: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true
+          makeLatest: false

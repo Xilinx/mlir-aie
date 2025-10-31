@@ -18,6 +18,7 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 #ifdef SCALAR
@@ -266,36 +267,38 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
         for (int i = 0; i < NUM_ACC; i++) {
           acc_tmp[i] = aie::zeros<acc32, 32>();
         }
-        for (int ic = 0; ic < (input_channels / 16); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
-            aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
-            kernels += 64; // wts ic0..7(oc0..7)
+        AIE_PREPARE_FOR_PIPELINING
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
+        for (int ic = 0; ic < (input_channels / 16); ic++) {
+          aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
+          kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++) {
-              aie::vector<uint8, 32> in_a =
-                  aie::load_v<32>(input0 + input_offset1);
-              input_offset1 += 32; // act oc0..3(ic0..7)
-              acc_tmp[x8].mac(in_a, in_b);
-            }
-            input_offset1 +=
-                (iw * 8) -
-                256; // Move to next ic/8 position. 256 = 32 input * 8 ic
+          for (int x8 = 0; x8 < NUM_ACC; x8++) {
+            aie::vector<uint8, 32> in_a =
+                aie::load_v<32>(input0 + input_offset1);
+            input_offset1 += 32; // act oc0..3(ic0..7)
+            acc_tmp[x8].mac(in_a, in_b);
           }
-        for (int ic = 0; ic < (input_channels / 16); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
-            aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
-            kernels += 64; // wts ic0..7(oc0..7)
+          input_offset1 +=
+              (iw * 8) -
+              256; // Move to next ic/8 position. 256 = 32 input * 8 ic
+        }
+        AIE_PREPARE_FOR_PIPELINING
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
+        for (int ic = 0; ic < (input_channels / 16); ic++) {
+          aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
+          kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++) {
-              aie::vector<uint8, 32> in_a =
-                  aie::load_v<32>(input1 + input_offset2);
-              input_offset2 += 32; // act oc0..3(ic0..7)
-              acc_tmp[x8].mac(in_a, in_b);
-            }
-            input_offset2 +=
-                (iw * 8) -
-                256; // Move to next ic/8 position. 256 = 32 input * 8 ic
+          for (int x8 = 0; x8 < NUM_ACC; x8++) {
+            aie::vector<uint8, 32> in_a =
+                aie::load_v<32>(input1 + input_offset2);
+            input_offset2 += 32; // act oc0..3(ic0..7)
+            acc_tmp[x8].mac(in_a, in_b);
           }
+          input_offset2 +=
+              (iw * 8) -
+              256; // Move to next ic/8 position. 256 = 32 input * 8 ic
+        }
         // input ptr just moves to next section
         for (int x8 = 0; x8 < NUM_ACC; x8++) {
           aie::vector<int8, 32> skip1 = aie::load_v<32>(skip_ptr);
@@ -510,36 +513,38 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
         for (int i = 0; i < NUM_ACC; i++) {
           acc_tmp[i] = aie::zeros<acc32, 32>();
         }
-        for (int ic = 0; ic < (input_channels / 16); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
-            aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
-            kernels += 64; // wts ic0..7(oc0..7)
+        AIE_PREPARE_FOR_PIPELINING
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
+        for (int ic = 0; ic < (input_channels / 16); ic++) {
+          aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
+          kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++) {
-              aie::vector<uint8, 32> in_a =
-                  aie::load_v<32>(input0 + input_offset1);
-              input_offset1 += 32; // act oc0..3(ic0..7)
-              acc_tmp[x8].mac(in_a, in_b);
-            }
-            input_offset1 +=
-                (iw * 8) -
-                256; // Move to next ic/8 position. 256 = 32 input * 8 ic
+          for (int x8 = 0; x8 < NUM_ACC; x8++) {
+            aie::vector<uint8, 32> in_a =
+                aie::load_v<32>(input0 + input_offset1);
+            input_offset1 += 32; // act oc0..3(ic0..7)
+            acc_tmp[x8].mac(in_a, in_b);
           }
-        for (int ic = 0; ic < (input_channels / 16); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
-            aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
-            kernels += 64; // wts ic0..7(oc0..7)
+          input_offset1 +=
+              (iw * 8) -
+              256; // Move to next ic/8 position. 256 = 32 input * 8 ic
+        }
+        AIE_PREPARE_FOR_PIPELINING
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
+        for (int ic = 0; ic < (input_channels / 16); ic++) {
+          aie::vector<int8, 64> in_b = aie::load_v<64>(kernels);
+          kernels += 64; // wts ic0..7(oc0..7)
 
-            for (int x8 = 0; x8 < NUM_ACC; x8++) {
-              aie::vector<uint8, 32> in_a =
-                  aie::load_v<32>(input1 + input_offset2);
-              input_offset2 += 32; // act oc0..3(ic0..7)
-              acc_tmp[x8].mac(in_a, in_b);
-            }
-            input_offset2 +=
-                (iw * 8) -
-                256; // Move to next ic/8 position. 256 = 32 input * 8 ic
+          for (int x8 = 0; x8 < NUM_ACC; x8++) {
+            aie::vector<uint8, 32> in_a =
+                aie::load_v<32>(input1 + input_offset2);
+            input_offset2 += 32; // act oc0..3(ic0..7)
+            acc_tmp[x8].mac(in_a, in_b);
           }
+          input_offset2 +=
+              (iw * 8) -
+              256; // Move to next ic/8 position. 256 = 32 input * 8 ic
+        }
         // input ptr just moves to next section
         for (int x8 = 0; x8 < NUM_ACC; x8++) {
           aie::vector<uint8, 32> skip1 = aie::load_v<32>(skip_ptr);

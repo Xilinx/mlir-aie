@@ -19,7 +19,7 @@ For more low-level details regarding how the objects in the Object FIFO are tran
 Below is an example of the Object FIFO `of0` shown in the previous figure. It has a depth of `3` with one Worker running a producer process and three Workers running consumer processes:
 ```python
 # Dataflow with ObjectFifos
-of0 = ObjectFifo(line_type, name="objfifo0", default_depth=3)
+of0 = ObjectFifo(line_type, name="objfifo0", depth=3)
 
 # External, binary kernel definition
 # ...

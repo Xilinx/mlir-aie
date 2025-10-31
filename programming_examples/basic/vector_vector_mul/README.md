@@ -16,7 +16,7 @@ The kernel executes on AIE tile (`col`, 2). Both input vectors are brought into 
 
 ## Source Files Overview
 
-1. `vector_vector_mul.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_vector_mul.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `vector_vector_mul_placed.py`: An alternative version of the design in `vector_vector_mul.py`, that is expressed in a lower-level version of IRON.
 

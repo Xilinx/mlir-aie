@@ -12,8 +12,6 @@
     // CHECK: %{{.*}}tile_0_0 = aie.tile(0, 0)
     // CHECK: %{{.*}}tile_0_1 = aie.tile(0, 1)
     // CHECK: %{{.*}}tile_0_2 = aie.tile(0, 2)
-    // CHECK: %[[VAL_0:.*]] = aie.lock(%{{.*}}tile_0_0, 2) {init = 1 : i32, sym_name = "objFifo_out0_cons_prod_lock_0"}
-    // CHECK: %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_0, 3) {init = 0 : i32, sym_name = "objFifo_out0_cons_cons_lock_0"}
     // CHECK: %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "objFifo_out1_cons_buff_0"} : memref<64x64xi8>
     // CHECK: %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "objFifo_out1_cons_buff_1"} : memref<64x64xi8>
     // CHECK: %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_0_1, 2) {init = 2 : i32, sym_name = "objFifo_out1_cons_prod_lock_0"}
@@ -30,8 +28,6 @@
     // CHECK: %[[VAL_15:.*]] = aie.buffer(%{{.*}}tile_0_1) {sym_name = "objFifo_in1_buff_1"} : memref<64x64xi8>
     // CHECK: %[[VAL_16:.*]] = aie.lock(%{{.*}}tile_0_1, 0) {init = 2 : i32, sym_name = "objFifo_in1_prod_lock_0"}
     // CHECK: %[[VAL_17:.*]] = aie.lock(%{{.*}}tile_0_1, 1) {init = 0 : i32, sym_name = "objFifo_in1_cons_lock_0"}
-    // CHECK: %[[VAL_18:.*]] = aie.lock(%{{.*}}tile_0_0, 0) {init = 1 : i32, sym_name = "objFifo_in0_prod_lock_0"}
-    // CHECK: %[[VAL_19:.*]] = aie.lock(%{{.*}}tile_0_0, 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_lock_0"}
     // CHECK: aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_1, DMA : 0)
     // CHECK: aie.flow(%{{.*}}tile_0_1, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
     // CHECK: aie.flow(%{{.*}}tile_0_2, DMA : 0, %{{.*}}tile_0_1, DMA : 1)
@@ -55,11 +51,11 @@
     // CHECK:   aie.end
     // CHECK: }
     // CHECK: aiex.runtime_sequence(%arg0: memref<61x56xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
-    // CHECK:   aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 61, 56][0, 0, 56, 1]) {id = 0 : i64, metadata = @objFifo_in0} : memref<61x56xi8>
-    // CHECK:   aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0} : memref<64x64xi8>
-    // CHECK:   aiex.npu.dma_wait {symbol = @objFifo_out0}
+    // CHECK:   aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 61, 56][0, 0, 56, 1]) {id = 0 : i64, metadata = @objFifo_in0_shim_alloc} : memref<61x56xi8>
+    // CHECK:   aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0_shim_alloc} : memref<64x64xi8>
+    // CHECK:   aiex.npu.dma_wait {symbol = @objFifo_out0_shim_alloc}
     // CHECK: }
-    // CHECK: aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
+    // CHECK: aie.shim_dma_allocation @objFifo_in0_shim_alloc(MM2S, 0, 0)
     // CHECK: %memtile_dma_0_1 = aie.memtile_dma(%{{.*}}tile_0_1) {
     // CHECK:   %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     // CHECK: ^bb1:
@@ -138,7 +134,7 @@
     // CHECK: ^bb6:
     // CHECK:   aie.end
     // CHECK:   }
-    // CHECK: aie.shim_dma_allocation @objFifo_out0(S2MM, 0, 0)
+    // CHECK: aie.shim_dma_allocation @objFifo_out0_shim_alloc(S2MM, 0, 0)
 
 module {
   aie.device(npu1_1col) {

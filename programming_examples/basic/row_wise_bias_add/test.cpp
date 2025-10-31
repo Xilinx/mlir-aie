@@ -13,6 +13,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "test_utils.h"
+
 #ifndef XCLBIN
 #define XCLBIN "build/final.xclbin"
 #endif
@@ -25,9 +27,9 @@
 #define KERNEL_NAME "MLIR_AIE"
 #endif
 
-#define IN_SIZE (M * N * sizeof(float))  // in bytes
-#define BIAS_SIZE (N * sizeof(float))    // in bytes
-#define OUT_SIZE (M * N * sizeof(float)) // in bytes
+#define IN_SIZE (SIZE_M * SIZE_N * sizeof(float))  // in bytes
+#define BIAS_SIZE (SIZE_N * sizeof(float))         // in bytes
+#define OUT_SIZE (SIZE_M * SIZE_N * sizeof(float)) // in bytes
 
 void print_matrix(float *buf, int n_rows, int n_cols) {
   for (int row = 0; row < n_rows; row++) {
@@ -38,34 +40,9 @@ void print_matrix(float *buf, int n_rows, int n_cols) {
   }
 }
 
-std::vector<uint32_t> load_instr_binary(std::string instr_path) {
-  // Open file in binary mode
-  std::ifstream instr_file(instr_path, std::ios::binary);
-  if (!instr_file.is_open()) {
-    throw std::runtime_error("Unable to open instruction file\n");
-  }
-
-  // Get the size of the file
-  instr_file.seekg(0, std::ios::end);
-  std::streamsize size = instr_file.tellg();
-  instr_file.seekg(0, std::ios::beg);
-
-  // Check that the file size is a multiple of 4 bytes (size of uint32_t)
-  if (size % 4 != 0) {
-    throw std::runtime_error("File size is not a multiple of 4 bytes\n");
-  }
-
-  // Allocate vector and read the binary data
-  std::vector<uint32_t> instr_v(size / 4);
-  if (!instr_file.read(reinterpret_cast<char *>(instr_v.data()), size)) {
-    throw std::runtime_error("Failed to read instruction file\n");
-  }
-  return instr_v;
-}
-
 int main(int argc, const char *argv[]) {
 
-  std::vector<uint32_t> instr_v = load_instr_binary(INSTS_BIN);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(INSTS_BIN);
   assert(instr_v.size() > 0);
 
   // Get a device handle
@@ -73,7 +50,7 @@ int main(int argc, const char *argv[]) {
   xrt::device device = xrt::device(device_index);
 
   // Load the xclbin
-  xrt::xclbin xclbin = xrt::xclbin(XCLBIN);
+  xrt::xclbin xclbin = xrt::xclbin(std::string(XCLBIN));
 
   // Get the kernel from the xclbin
   std::vector<xrt::xclbin::kernel> xkernels = xclbin.get_kernels();
@@ -131,22 +108,22 @@ int main(int argc, const char *argv[]) {
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  float ref[M * N] = {};
-  for (int i = 0; i < M; i++) {
-    for (int j = 0; j < N; j++) {
-      ref[i * N + j] = buf_in[i * N + j] + buf_bias[j];
+  float ref[SIZE_M * SIZE_N] = {};
+  for (int i = 0; i < SIZE_M; i++) {
+    for (int j = 0; j < SIZE_N; j++) {
+      ref[i * SIZE_N + j] = buf_in[i * SIZE_N + j] + buf_bias[j];
     }
   }
 
-  if (M <= 64 && N <= 64) {
+  if (SIZE_M <= 64 && SIZE_N <= 64) {
     std::cout << "Input:" << std::endl;
-    print_matrix(buf_in, M, N);
+    print_matrix(buf_in, SIZE_M, SIZE_N);
     std::cout << "Bias:" << std::endl;
-    print_matrix(buf_bias, 1, N);
+    print_matrix(buf_bias, 1, SIZE_N);
     std::cout << "Expected:" << std::endl;
-    print_matrix(ref, M, N);
+    print_matrix(ref, SIZE_M, SIZE_N);
     std::cout << "Output:" << std::endl;
-    print_matrix(buf_out, M, N);
+    print_matrix(buf_out, SIZE_M, SIZE_N);
   }
 
   if (memcmp(ref, buf_out, sizeof(ref)) == 0) {

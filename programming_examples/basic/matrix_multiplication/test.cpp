@@ -67,6 +67,7 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
   int b_col_maj = vm["b_col_maj"].as<int>();
+  int c_col_maj = vm["c_col_maj"].as<int>();
 
   // Fix the seed to ensure reproducibility in CI.
   srand(1726250518); // srand(time(NULL));
@@ -160,8 +161,7 @@ int main(int argc, const char *argv[]) {
   A_DATATYPE *bufA = bo_a.map<A_DATATYPE *>();
   std::vector<A_DATATYPE> AVec(A_VOLUME);
   for (int i = 0; i < A_VOLUME; i++) {
-    // AVec[i] = matmul_common::get_random<A_DATATYPE>();
-    AVec[i] = i;
+    AVec[i] = matmul_common::get_random<A_DATATYPE>();
   }
   memcpy(bufA, AVec.data(), (AVec.size() * sizeof(A_DATATYPE)));
   B_DATATYPE *bufB = bo_b.map<B_DATATYPE *>();
@@ -256,10 +256,11 @@ int main(int argc, const char *argv[]) {
         errors = matmul_common::verify_stochastic<A_DATATYPE, C_DATATYPE,
                                                   ACC_DATATYPE>(
             M, N, K, AVec, BVec, CVec, verify_stochastic_n_samples, verbosity,
-            abs_tol, rel_tol, b_col_maj);
+            abs_tol, rel_tol, b_col_maj, c_col_maj);
       } else {
         errors = matmul_common::verify<A_DATATYPE, C_DATATYPE, ACC_DATATYPE>(
-            M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol, b_col_maj);
+            M, N, K, AVec, BVec, CVec, verbosity, abs_tol, rel_tol, b_col_maj,
+            c_col_maj);
       }
       auto vstop = std::chrono::system_clock::now();
       float vtime =

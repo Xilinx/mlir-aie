@@ -11,7 +11,9 @@
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.30)
+
+include(../../common.cmake)
 
 #set(CMAKE_CXX_STANDARD 23)
 #set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -26,6 +28,7 @@ else()
     set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
+    add_compile_options("/std:c++17")
 endif ()
 
 set(PASSTHROUGH_WIDTH 1920 CACHE STRING "image width")
@@ -51,20 +54,16 @@ message("opencv libs: ${OpenCV_LIBS}")
 
 add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
 target_compile_definitions(${currentTarget} PUBLIC
         PASSTHROUGH_WIDTH=${PASSTHROUGH_WIDTH}
         PASSTHROUGH_HEIGHT=${PASSTHROUGH_HEIGHT}
-        DISABLE_ABI_CHECK=1
-        )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
 )
@@ -79,3 +78,5 @@ target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil
     ${OpenCV_LIBS}
 )
+
+target_link_test_utils(${currentTarget})

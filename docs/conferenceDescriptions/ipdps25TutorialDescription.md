@@ -14,37 +14,39 @@ This tutorial will cover the following key topics:
 ## Agenda
 
 Tutorial repeated on two dates.  
-Dates: June 3rd and 4th, 2025 (exact times to follow)  
-Location: Milano, Italy  
+Dates: June 3rd and 4th, 2025  
+Location: Politecnico Di Milano, Edificio 3, Room 3.2.2, Milano, Italy  
 
 Prerequisites:
 - Please bring your laptop so that you can SSH into our Ryzen™ AI-enabled miniPCs for the hands-on exercises.
 - Knowledge in basic computer architecture, basic programming (Python), basic algorithms is required.
 - Knowledge of vision pipelines and ML is not necessary but a plus.
 
-### Contents and Timeline (tentative)
+### Contents and Timeline
 
-| Time | Topic | Presenter | Slides or Code |
-|------|-------|-----------|----------------|
-| 08:00am | Intro to spatial compute and explicit data movement | Kristof | [Programming Guide](../../programming_guide/) |
-| 08:15am | "Hello World" from Ryzen™ AI | Andra | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
-| 08:35am | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
-| 08:50am | Data movement on Ryzen™ AI with objectFIFOs | Andra | [Data Movement](../../programming_guide/section-2/) |
-| 09:10am | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
-| 09:20am | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
-| 09:50am | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 10:00am | Coffee Break | | |
-| 10:30am | Tracing and performance analysis | Gagan | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
-| 10:50am | Exercise 4: Tracing vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 11:00am | Vectorizing on AIE | Kristof | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
-| 11:20am | Exercise 5: Tracing vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
-| 11:30pm | Dataflow and larger designs | Gagan | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
-| 11:40pm | Exercise 6: More examples | All | [Programming Examples](../../programming_examples/) |
-| 11:50pm | Close Tutorial | All | |
+Location: Building 3, Room 3.2.2
+
+| Time June 3 | Time June 4 | Topic | Presenter | Slides or Code |
+|-------------|-------------|-------|-----------|----------------|
+| 14:00 | 08:30 | Intro to spatial compute and explicit data movement | Kristof | [Programming Guide](../../programming_guide/) |
+| 14:15 | 08:45 | "Hello World" from Ryzen™ AI | Andra | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
+| 14:35 | 09:05 | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
+| 14:50 | 09:20 | Data movement on Ryzen™ AI with objectFIFOs | Andra | [Data Movement](../../programming_guide/section-2/) |
+| 15:00 | 09:30 | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
+| 15:20 | 09:50 | Your First Program | Kristof | [My First Program](../../programming_guide/section-3) |
+| 15:50 | 10:20 | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 16:00 | 10:30 | Coffee Break | | |
+| 16:30 | 11:00 | Tracing and performance analysis | Gagan | [Timers](../../programming_guide/section-4/section-4a/) and [Tracing](../../programming_guide/section-4/section-4b/) |
+| 16:50 | 11:20 | Exercise 4: Tracing vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 17:00 | 11:30 | Vectorizing on AIE | Kristof | [Kernel Vectorization](../../programming_guide/section-4/section-4c/) |
+| 17:20 | 11:50 | Exercise 5: Tracing vectorized vector-scalar | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
+| 17:30 | 12:00 | Dataflow and larger designs | Gagan | [Example Vector Designs](../../programming_guide/section-5/) and [Large Example Designs](../../programming_guide/section-6/) |
+| 17:40 | 12:10 | Exercise 6: More examples | All | [Programming Examples](../../programming_examples/) |
+| 17:50 | 12:20 | Close Tutorial | All | |
 
 ## Organizers
 
-*Kristof Denolf* is a Fellow in AMD's Research and Advanced Development group where he is working on energy-efficient computer vision and video processing applications to shape future AMD devices. He earned an M.Eng. in electronics from the Katholieke Hogeschool Brugge-Oostende (1998), now part of KULeuven, an M.Sc. in electronic system design from Leeds Beckett University (2000), and a Ph.D. from the Technical University Eindhoven (2007). He has over 25 years of combined research and industry experience at IMEC, Philips, Barco, Apple, Xilinx, and AMD. His main research interests are all aspects of the cost-efficient and dataflow-oriented design of video, vision, and graphics systems.
+*Kristof Denolf* is a Fellow in AMD's Research and Advanced Development group where he is working on energy-efficient computer vision and video processing applications to shape future AMD devices. He earned an M.Eng. in electronics from the Katholieke Hogeschool Brugge-Oostende (1998), now part of KULeuven, an M.Sc. in electronic system design from Leeds Beckett University (2000), and a Ph.D. from the Technical University Eindhoven (2007). He has over 25 years of combined research and industry experience at IMEC, Philips, Barco, Apple, Xilinx, and AMD. His main research interests are all aspects of the cost-efficient and dataflow-oriented design of various set of workloads, ranging from vision processing to healthcare and life science applications.
 
 *Andra Bisca* is a Sr. Software Development Engineer in AMD's Research and Advanced Development group where she is working on MLIR compiler development for AMD's open-sourced compiler flow targeting AI Engines. She earned a Master's in Computer Science from École polytechnique fédérale de Lausanne in Switzerland (2022). Her main areas of industry experience and contribution are in the development of efficient data movement abstractions based in MLIR and up-leveled to Python for underlying spatial hardware architectures.
 

@@ -27,6 +27,8 @@ targetname = edge_detect
 aie_py_src=${targetname}.py
 use_placed?=0
 
+webcam ?= 0
+
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
 endif
@@ -73,5 +75,7 @@ endif
 run: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin
 	${powershell} ./$< -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
 
+run_live: ${targetname}.exe build/final_${EDGEDETECT_WIDTH}.xclbin
+	${powershell} ./$< -l -x build/final_${EDGEDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE -d ${webcam}
 clean:
 	rm -rf build _build ${targetname}.exe ${targetname}Out_test.jpg

@@ -55,6 +55,7 @@ struct AIEXToStandardPass : AIEXToStandardBase<AIEXToStandardPass> {
     removepatterns.add<AIEXOpRemoval<NpuSyncOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<NpuWriteBdOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<NpuAddressPatchOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<NpuPreemptOp>>(m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();

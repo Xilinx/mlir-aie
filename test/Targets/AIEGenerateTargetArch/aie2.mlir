@@ -11,7 +11,7 @@
 // RUN: echo 'aie.device(npu1){aie.end}' | aie-translate -aie-generate-target-arch | FileCheck --check-prefix=NPU10 --match-full-lines %s
 // NPU10: AIE2
 
-// RUN: echo 'aie.device(npu1_4col){aie.end}' | aie-translate -aie-generate-target-arch | FileCheck --check-prefix=NPU14 --match-full-lines %s
+// RUN: echo 'aie.device(npu1){aie.end}' | aie-translate -aie-generate-target-arch | FileCheck --check-prefix=NPU14 --match-full-lines %s
 // NPU14: AIE2
 
 // RUN: echo 'aie.device(npu2){aie.end}' | aie-translate -aie-generate-target-arch | FileCheck --check-prefix=NPU20 --match-full-lines %s

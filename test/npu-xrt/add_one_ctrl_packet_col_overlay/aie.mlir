@@ -9,15 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_4col) {
-    memref.global "public" @ctrlin0 : memref<8xi32>
-    memref.global "public" @ctrlin1 : memref<8xi32>
-    memref.global "public" @out0 : memref<8xi32>
-    memref.global "public" @out1 : memref<8xi32>
-    memref.global "public" @out2 : memref<8xi32>
-    memref.global "public" @out3 : memref<8xi32>
-    memref.global "public" @ctrl0 : memref<8xi32>
-
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_1_0 = aie.tile(1, 0)
     %tile_2_0 = aie.tile(2, 0)

@@ -10,7 +10,7 @@
 // This tests ensures that each `aie.dma_bd` operation below gets assigned a unique buffer descriptor ID.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 

@@ -1,6 +1,12 @@
+[project]
+name = "mlir-aie"
+description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
+readme = "README.md"
+dynamic = ["dependencies", "requires-python", "version"]
+
 [tool.cibuildwheel]
 build-verbosity = 3
-build = "cp310-*"
+build = "cp312-*"
 skip = ["*-manylinux_i686", "*-musllinux*"]
 manylinux-aarch64-image = "manylinux_2_28"
 manylinux-x86_64-image = "manylinux_2_28"
@@ -46,3 +52,18 @@ before-build = [
     "pip install -r requirements.txt",
     "bash {project}\\scripts\\download_mlir.sh",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0", "nanobind"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+aie-lsp-server = "aie.tools:aie_lsp_server"
+aie-opt = "aie.tools:aie_opt"
+aie-reset = "aie.tools:aie_reset"
+aie-translate = "aie.tools:aie_translate"
+aie-visualize = "aie.tools:aie_visualize"
+"aiecc.py" = "aie.compiler.aiecc.main:main"
+bootgen = "aie.tools:bootgen"
+"txn2mlir.py" = "aie.compiler.txn2mlir.main:main"
+xchesscc_wrapper = "aie.tools:xchesscc_wrapper"

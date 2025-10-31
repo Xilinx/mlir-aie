@@ -27,15 +27,12 @@ def my_vector_add():
     n = 16
     N_div_n = N // n
 
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         # AIE Core Function declarations
         tensor_ty_c = np.ndarray[(N,), np.dtype[np.int32]]
         tensor_ty = np.ndarray[(N // 2,), np.dtype[np.int32]]
         tensor_ty_s = np.ndarray[(n,), np.dtype[np.int32]]
-
-        memref.global_("out", T.memref(16, T.i32()), sym_visibility="public")
-        memref.global_("in1", T.memref(16, T.i32()), sym_visibility="public")
 
         # Tile declarations
         ShimTile = tile(0, 0)

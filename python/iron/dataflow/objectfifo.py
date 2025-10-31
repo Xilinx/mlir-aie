@@ -40,33 +40,33 @@ class ObjectFifo(Resolvable):
     def __init__(
         self,
         obj_type: type[np.ndarray],
-        default_depth: int | None = 2,
+        depth: int | None = 2,
         name: str | None = None,
         dims_to_stream: list[Sequence[int]] | None = None,
-        default_dims_from_stream_per_cons: list[Sequence[int]] | None = None,
+        dims_from_stream_per_cons: list[Sequence[int]] | None = None,
         plio: bool = False,
     ):
         """Construct an ObjectFifo.
 
         Args:
             obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
-            default_depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
+            depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated.. Defaults to None.
             dims_to_stream (list[Sequence[int]] | None, optional): _description_. Defaults to None.
-            default_dims_from_stream_per_cons (list[Sequence[int]] | None, optional): _description_. Defaults to None.
+            dims_from_stream_per_cons (list[Sequence[int]] | None, optional): _description_. Defaults to None.
             plio (bool, optional): _description_. Defaults to False.
 
         Raises:
             ValueError: _description_
         """
-        self._default_depth = default_depth
-        if isinstance(self._default_depth, int) and self._default_depth < 1:
+        self._depth = depth
+        if isinstance(self._depth, int) and self._depth < 1:
             raise ValueError(
-                f"Default ObjectFifo depth must be > 0, but got {self._default_depth}"
+                f"Default ObjectFifo depth must be > 0, but got {self._depth}"
             )
         self._obj_type = obj_type
         self._dims_to_stream = dims_to_stream
-        self._default_dims_from_stream_per_cons = default_dims_from_stream_per_cons
+        self._dims_from_stream_per_cons = dims_from_stream_per_cons
         self._plio = plio
         if name is None:
             self.name = f"of{ObjectFifo.__get_index()}"
@@ -84,14 +84,14 @@ class ObjectFifo(Resolvable):
         return idx
 
     @property
-    def default_depth(self) -> int:
+    def depth(self) -> int:
         """The default depth of the ObjectFifo. This may be overriden by an ObjectFifoHandle upon construction."""
-        return self._default_depth
+        return self._depth
 
     @property
-    def default_dims_from_stream_per_cons(self) -> list[Sequence[int]]:
+    def dims_from_stream_per_cons(self) -> list[Sequence[int]]:
         """The default dimensions from stream per consumer value. This may be overriden by an ObjectFifoHandle of type consumer."""
-        return self._default_dims_from_stream_per_cons
+        return self._dims_from_stream_per_cons
 
     @property
     def dims_to_stream(self) -> list[Sequence[int]]:
@@ -125,7 +125,7 @@ class ObjectFifo(Resolvable):
             prod_endpoint = self._prod.endpoint
         return (
             f"{self.__class__.__name__}({self._obj_type}, "
-            f"default_depth={self.default_depth}, name='{self.name}', "
+            f"depth={self.depth}, name='{self.name}', "
             f"prod={prod_endpoint}, cons={[c.endpoint for c in self._cons]})"
         )
 
@@ -138,19 +138,17 @@ class ObjectFifo(Resolvable):
 
         Raises:
             ValueError: Arguments are validated
-            ValueError: If default_depth was not specified on ObjectFifo construction, depth must be specified here.
+            ValueError: If depth was not specified on ObjectFifo construction, depth must be specified here.
 
         Returns:
             ObjectFifoHandle: The producer handle to this ObjectFifo.
         """
         if self._prod:
             if depth is None:
-                if self._default_depth is None:
-                    raise ValueError(
-                        f"If default_depth is None, then depth must be specified."
-                    )
+                if self._depth is None:
+                    raise ValueError(f"If depth is None, then depth must be specified.")
                 else:
-                    depth = self._default_depth
+                    depth = self._depth
             elif depth < 1:
                 raise ValueError(f"Depth must be > 1, but got {depth}")
         else:
@@ -176,15 +174,13 @@ class ObjectFifo(Resolvable):
             ObjectFifoHandle: A consumer handle to this ObjectFifo.
         """
         if depth is None:
-            if self._default_depth is None:
-                raise ValueError(
-                    f"If default_depth is None, then depth must be specified."
-                )
+            if self._depth is None:
+                raise ValueError(f"If depth is None, then depth must be specified.")
             else:
-                depth = self._default_depth
+                depth = self._depth
 
         if dims_from_stream is None:
-            dims_from_stream = self._default_dims_from_stream_per_cons
+            dims_from_stream = self._dims_from_stream_per_cons
         self._cons.append(
             ObjectFifoHandle(
                 self, is_prod=False, depth=depth, dims_from_stream=dims_from_stream
@@ -316,8 +312,8 @@ class ObjectFifoHandle(Resolvable):
             ValueError: Arguments are validated.
         """
         if depth is None:
-            if of.default_depth:
-                depth = of.default_depth
+            if of.depth:
+                depth = of.depth
             else:
                 raise ValueError(
                     "Must specify either ObjectFifoHandle depth or ObjectFifo default depth; both are None."
@@ -330,7 +326,7 @@ class ObjectFifoHandle(Resolvable):
         if is_prod and dims_from_stream:
             raise ValueError("Can only specify dims_from_stream for cons handles")
         elif not is_prod and not dims_from_stream:
-            dims_from_stream = of.default_dims_from_stream_per_cons
+            dims_from_stream = of.dims_from_stream_per_cons
 
         self._is_prod = is_prod
         self._object_fifo = of
@@ -518,7 +514,7 @@ class ObjectFifoHandle(Resolvable):
                 ObjectFifo(
                     obj_types[i],
                     name=names[i],
-                    default_depth=depths[i],
+                    depth=depths[i],
                     dims_to_stream=dims_to_stream[i],
                     plio=plio,
                 )
@@ -600,9 +596,9 @@ class ObjectFifoHandle(Resolvable):
                 ObjectFifo(
                     obj_types[i],
                     name=names[i],
-                    default_depth=depths[i],
+                    depth=depths[i],
                     dims_to_stream=dims_to_stream[i],
-                    default_dims_from_stream_per_cons=dims_from_stream[i],
+                    dims_from_stream_per_cons=dims_from_stream[i],
                     plio=plio,
                 )
             )

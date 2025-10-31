@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024-2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
 
@@ -35,20 +35,20 @@ def my_reduce_min():
     of_out = ObjectFifo(out_ty, name="out")
 
     # AIE Core Function declarations
-    reduce_add_vector = Kernel(
+    reduce_min_vector = Kernel(
         "reduce_min_vector", "reduce_min.cc.o", [in_ty, out_ty, np.int32]
     )
 
     # Define a task
-    def core_body(of_in, of_out, reduce_add_vector):
+    def core_body(of_in, of_out, reduce_min_vector):
         elem_out = of_out.acquire(1)
         elem_in = of_in.acquire(1)
-        reduce_add_vector(elem_in, elem_out, N)
+        reduce_min_vector(elem_in, elem_out, N)
         of_in.release(1)
         of_out.release(1)
 
     # Define a worker to run the task on a core
-    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), reduce_add_vector])
+    worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), reduce_min_vector])
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()

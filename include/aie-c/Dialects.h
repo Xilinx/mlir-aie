@@ -9,6 +9,7 @@
 #define AIE_C_DIALECTS_H
 
 #include "mlir-c/IR.h"
+#include <string>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,6 +32,14 @@ MLIR_CAPI_EXPORTED MlirType aieObjectFifoTypeGet(MlirType type);
 
 MLIR_CAPI_EXPORTED bool aieTypeIsObjectFifoSubviewType(MlirType type);
 MLIR_CAPI_EXPORTED MlirType aieObjectFifoSubviewTypeGet(MlirType type);
+
+//===---------------------------------------------------------------------===//
+// BlockFloatType
+//===---------------------------------------------------------------------===//
+
+MLIR_CAPI_EXPORTED bool aieTypeIsBlockFloatType(MlirType type);
+MLIR_CAPI_EXPORTED MlirType aieBlockFloatTypeGet(MlirContext ctx,
+                                                 const std::string &blockType);
 
 #ifdef __cplusplus
 }

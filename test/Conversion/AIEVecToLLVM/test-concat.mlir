@@ -123,8 +123,7 @@ func.func @v16i32_concat_v8i32(%arg0 : vector<8xi32>, %arg1 : vector<8xi32>) -> 
 // CHECK: %[[CONCAT:.*]] = "xllvm.intr.aie2.concat.I512.I256"(
 // CHECK-SAME: %[[ARG0]], %[[ARG1]]) : 
 // CHECK-SAME: (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
-// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<16xi32> to vector<16xi32>
-// CHECK-NEXT: return %[[RES]] : vector<16xi32>
+// CHECK-NEXT: return %[[CONCAT]] : vector<16xi32>
 
 // -----
 
@@ -139,8 +138,7 @@ func.func @v32i32_concat_v8i32(%arg0 : vector<8xi32>, %arg1 : vector<8xi32>,
 // CHECK: %[[CONCAT:.*]] = "xllvm.intr.aie2.concat.I1024.I256"(
 // CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[ARG2]], %[[ARG3]]) : 
 // CHECK-SAME: (vector<8xi32>, vector<8xi32>, vector<8xi32>, vector<8xi32>) -> vector<32xi32>
-// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<32xi32> to vector<32xi32>
-// CHECK-NEXT: return %[[RES]] : vector<32xi32>
+// CHECK-NEXT: return %[[CONCAT]] : vector<32xi32>
 
 // -----
 
@@ -155,8 +153,7 @@ func.func @v32i32_concat_v16i32(%arg0 : vector<16xi32>, %arg1 : vector<16xi32>) 
 // CHECK: %[[CONCAT:.*]] = "xllvm.intr.aie2.concat.I1024.I512"(
 // CHECK-SAME: %[[ARG0]], %[[ARG1]]) : 
 // CHECK-SAME: (vector<16xi32>, vector<16xi32>) -> vector<32xi32>
-// CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<32xi32> to vector<32xi32>
-// CHECK-NEXT: return %[[RES]] : vector<32xi32>
+// CHECK-NEXT: return %[[CONCAT]] : vector<32xi32>
 
 // -----
 

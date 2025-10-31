@@ -12,18 +12,10 @@
 
 // CHECK: module @init_join_input {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @of2_cons : memref<8xi32>
-// CHECK:     memref.global "public" @of2 : memref<8xi32>
-// CHECK:     memref.global "public" @of1_cons : memref<2x2xi32>
-// CHECK:     memref.global "public" @of1 : memref<2x2xi32>
-// CHECK:     memref.global "public" @of0_cons : memref<2x2xi32>
-// CHECK:     memref.global "public" @of0 : memref<2x2xi32>
 // CHECK:     %{{.*}}tile_1_0 = aie.tile(1, 0)
 // CHECK:     %{{.*}}tile_1_1 = aie.tile(1, 1)
 // CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:     %{{.*}}tile_2_3 = aie.tile(2, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.lock(%{{.*}}tile_1_0, 0) {init = 1 : i32, sym_name = "of2_cons_prod_lock_0"}
-// CHECK:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_1_0, 1) {init = 0 : i32, sym_name = "of2_cons_cons_lock_0"}
 // CHECK:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of2_buff_0"} : memref<8xi32> 
 // CHECK:     %[[VAL_3:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of2_buff_1"} : memref<8xi32> 
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_1_1, 0) {init = 2 : i32, sym_name = "of2_prod_lock_0"}
@@ -120,7 +112,7 @@
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of2(S2MM, 0, 1)
+// CHECK:     aie.shim_dma_allocation @of2_shim_alloc(S2MM, 0, 1)
 // CHECK:   }
 // CHECK: }
 

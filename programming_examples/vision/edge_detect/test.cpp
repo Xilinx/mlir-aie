@@ -14,6 +14,8 @@
 #include <sstream>
 
 #include "xrt/xrt_bo.h"
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_kernel.h"
 
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -69,19 +71,24 @@ int main(int argc, const char *argv[]) {
       cxxopts::value<std::string>()->default_value("edgeDetectOut_test.jpg"))(
       "live,l", "capture from webcam")("video,m",
                                        "optional video input file name",
-                                       cxxopts::value<std::string>());
+                                       cxxopts::value<std::string>())(
+      "device,d", "webcam device number",
+      cxxopts::value<std::string>()->default_value("0"));
+
   cxxopts::ParseResult vm;
   test_utils::parse_options(argc, argv, options, vm);
 
   std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;
 
+  int webcam_dev = std::stoi(vm["device"].as<std::string>());
+  std::cout << "webcam device is " << webcam_dev << std::endl;
   if (vm.count("live")) {
     std::cout << "Using live webcam input" << std::endl;
 
     cv::VideoCapture cap;
     try {
-      initializeVideoCapture(cap);
+      initializeVideoCapture(cap, webcam_dev);
     } catch (const std::exception &ex) {
       std::cerr << ex.what() << "\n\n";
       return 1;
@@ -256,7 +263,7 @@ int main(int argc, const char *argv[]) {
       cv::VideoCapture cap;
       try {
         if (vm.count("live"))
-          initializeVideoCapture(cap);
+          initializeVideoCapture(cap, webcam_dev);
         else
           initializeVideoFile(cap, vm["video"].as<std::string>());
       } catch (const std::exception &ex) {

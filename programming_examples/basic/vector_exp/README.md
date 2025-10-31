@@ -17,7 +17,7 @@ $e^x$ is typically used in machine learning applications with relatively small n
 
 ## Source Files Overview
 
-1. `vector_exp.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (i.e., XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_exp.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (i.e., XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
 1. `vector_exp_placed.py`: A functionally equivalent design to `vector_exp.py` that uses a lower-level IRON API than `vector_exp.py`
 

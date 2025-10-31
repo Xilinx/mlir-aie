@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 #define REL_WRITE 0
@@ -130,19 +131,20 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
 
     for (int oc = 0; oc < (output_channels / CHANNEL_FACTOR); oc++) {
       for (int iw_partialc = 0; iw_partialc < iw_partial; iw_partialc++) {
-        for (int ic = 0; ic < (input_channels / CHANNEL_FACTOR); ic++)
-          chess_prepare_for_pipelining chess_loop_range(2, ) {
-            aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
-            kernels += MMUL_KN; // wts ic0..7(oc0..7)
+        AIE_PREPARE_FOR_PIPELINING
+        AIE_LOOP_MIN_ITERATION_COUNT(2)
+        for (int ic = 0; ic < (input_channels / CHANNEL_FACTOR); ic++) {
+          aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
+          kernels += MMUL_KN; // wts ic0..7(oc0..7)
 
-            for (int x = 0; x < NUM_ACC; x++) { // 8 acc
-              aie::vector<int8, MMUL_MK> in_a = aie::load_v<MMUL_MK>(input);
-              input += MMUL_MK; // act oc0..3(ic0..7)
-              acc_tmp[x].mac(in_a, in_b);
-            }
-            // Move to next ic/8 position but in the same input range
-            input += (iw * CHANNEL_FACTOR) - MMUL_MK * NUM_ACC;
+          for (int x = 0; x < NUM_ACC; x++) { // 8 acc
+            aie::vector<int8, MMUL_MK> in_a = aie::load_v<MMUL_MK>(input);
+            input += MMUL_MK; // act oc0..3(ic0..7)
+            acc_tmp[x].mac(in_a, in_b);
           }
+          // Move to next ic/8 position but in the same input range
+          input += (iw * CHANNEL_FACTOR) - MMUL_MK * NUM_ACC;
+        }
         // input ptr just moves to next section
 
         for (int xx = 0; xx < NUM_ACC; xx++) {
@@ -172,19 +174,20 @@ void conv2dk1_i8_vector(int8_t *input, int8_t *kernels, int8_t *output,
     const int ics = input_channels;
 
     for (int oc = 0; oc < (ocs / CHANNEL_FACTOR); oc++) {
-      for (int ic = 0; ic < (ics / CHANNEL_FACTOR); ic++)
-        chess_prepare_for_pipelining chess_loop_range(2, ) {
-          aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
-          kernels += MMUL_KN; // wts ic0..7(oc0..7)
+      AIE_PREPARE_FOR_PIPELINING
+      AIE_LOOP_MIN_ITERATION_COUNT(2)
+      for (int ic = 0; ic < (ics / CHANNEL_FACTOR); ic++) {
+        aie::vector<int8, MMUL_KN> in_b = aie::load_v<MMUL_KN>(kernels);
+        kernels += MMUL_KN; // wts ic0..7(oc0..7)
 
-          for (int x = 0; x < iw_partial_rem; x++) {
-            aie::vector<int8, MMUL_MK> in_a = aie::load_v<MMUL_MK>(input);
-            input += MMUL_MK; // act oc0..3(ic0..7)
-            acc_tmp[x].mac(in_a, in_b);
-          }
-          input += (iw * CHANNEL_FACTOR) -
-                   (MMUL_MK * iw_partial_rem); // Move to next ic/8 position
+        for (int x = 0; x < iw_partial_rem; x++) {
+          aie::vector<int8, MMUL_MK> in_a = aie::load_v<MMUL_MK>(input);
+          input += MMUL_MK; // act oc0..3(ic0..7)
+          acc_tmp[x].mac(in_a, in_b);
         }
+        input += (iw * CHANNEL_FACTOR) -
+                 (MMUL_MK * iw_partial_rem); // Move to next ic/8 position
+      }
       // input ptr just moves to next section
       for (int xx = 0; xx < iw_partial_rem; xx++) {
         aie::vector<int8, MMUL_MN> o1 = acc_tmp[xx].to_vector<int8>(scaleT);
