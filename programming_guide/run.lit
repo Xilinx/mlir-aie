@@ -1,0 +1,3 @@
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile run
+// CHECK: Complete!
