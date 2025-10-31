@@ -138,3 +138,107 @@ func.func @test_truncf(%vf32_4_bf16 : vector<16xf32>) -> vector<16xbf16> {
     // CHECK: return %[[VE]]
     // AIE2P: return %[[VE]]
 }
+
+// CHECK-LABEL: func.func @test_scalar_extsi(
+// CHECK-SAME: %[[S:[a-zA-Z0-9]+]]: i8
+// AIE2P-LABEL: func.func @test_scalar_extsi(
+// AIE2P-SAME: %[[S:[a-zA-Z0-9]+]]: i8
+func.func @test_scalar_extsi(%s : i8) -> i32 {
+    %0 = arith.extsi %s : i8 to i32
+    // CHECK: %[[R:.*]] = arith.extsi %[[S]] : i8 to i32
+    // AIE2P: %[[R:.*]] = arith.extsi %[[S]] : i8 to i32
+    return %0 : i32
+    // CHECK: return %[[R]]
+    // AIE2P: return %[[R]]
+}
+
+// CHECK-LABEL: func.func @test_scalar_extf(
+// CHECK-SAME: %[[S:[a-zA-Z0-9]+]]: bf16
+// AIE2P-LABEL: func.func @test_scalar_extf(
+// AIE2P-SAME: %[[S:[a-zA-Z0-9]+]]: bf16
+func.func @test_scalar_extf(%s : bf16) -> f32 {
+    %0 = arith.extf %s : bf16 to f32
+    // CHECK: %[[R:.*]] = arith.extf %[[S]] : bf16 to f32
+    // AIE2P: %[[R:.*]] = arith.extf %[[S]] : bf16 to f32
+    return %0 : f32
+    // CHECK: return %[[R]]
+    // AIE2P: return %[[R]]
+}
+
+// CHECK-LABEL: func.func @test_scalar_trunci(
+// CHECK-SAME: %[[S:[a-zA-Z0-9]+]]: i32
+// AIE2P-LABEL: func.func @test_scalar_trunci(
+// AIE2P-SAME: %[[S:[a-zA-Z0-9]+]]: i32
+func.func @test_scalar_trunci(%s : i32) -> i8 {
+    %0 = arith.trunci %s : i32 to i8
+    // CHECK: %[[R:.*]] = arith.trunci %[[S]] : i32 to i8
+    // AIE2P: %[[R:.*]] = arith.trunci %[[S]] : i32 to i8
+    return %0 : i8
+    // CHECK: return %[[R]]
+    // AIE2P: return %[[R]]
+}
+
+// CHECK-LABEL: func.func @test_scalar_truncf(
+// CHECK-SAME: %[[S:[a-zA-Z0-9]+]]: f32
+// AIE2P-LABEL: func.func @test_scalar_truncf(
+// AIE2P-SAME: %[[S:[a-zA-Z0-9]+]]: f32
+func.func @test_scalar_truncf(%s : f32) -> bf16 {
+    %0 = arith.truncf %s : f32 to bf16
+    // CHECK: %[[R:.*]] = arith.truncf %[[S]] : f32 to bf16
+    // AIE2P: %[[R:.*]] = arith.truncf %[[S]] : f32 to bf16
+    return %0 : bf16
+    // CHECK: return %[[R]]
+    // AIE2P: return %[[R]]
+}
+
+// CHECK-LABEL: func.func @test_non_multiple_16_extsi(
+// CHECK-SAME: %[[V:[a-zA-Z0-9]+]]: vector<1xi8>
+// AIE2P-LABEL: func.func @test_non_multiple_16_extsi(
+// AIE2P-SAME: %[[V:[a-zA-Z0-9]+]]: vector<1xi8>
+func.func @test_non_multiple_16_extsi(%v : vector<1xi8>) -> vector<1xi32> {
+    %0 = arith.extsi %v : vector<1xi8> to vector<1xi32>
+    // CHECK: %[[R:.*]] = arith.extsi %[[V]] : vector<1xi8> to vector<1xi32>
+    // AIE2P: %[[R:.*]] = arith.extsi %[[V]] : vector<1xi8> to vector<1xi32>
+    return %0 : vector<1xi32>
+    // CHECK: return %[[R]]
+    // AIE2P: return %[[R]]
+}
+
+// CHECK-LABEL: func.func @test_non_multiple_16_extf(
+// CHECK-SAME: %[[V:[a-zA-Z0-9]+]]: vector<1xbf16>
+// AIE2P-LABEL: func.func @test_non_multiple_16_extf(
+// AIE2P-SAME: %[[V:[a-zA-Z0-9]+]]: vector<1xbf16>
+func.func @test_non_multiple_16_extf(%v : vector<1xbf16>) -> vector<1xf32> {
+    %0 = arith.extf %v : vector<1xbf16> to vector<1xf32>
+    // CHECK: %[[R:.*]] = arith.extf %[[V]] : vector<1xbf16> to vector<1xf32>
+    // AIE2P: %[[R:.*]] = arith.extf %[[V]] : vector<1xbf16> to vector<1xf32>
+    return %0 : vector<1xf32>
+    // CHECK: return %[[R]]
+    // AIE2P: return %[[R]]
+}
+
+// CHECK-LABEL: func.func @test_non_multiple_16_trunci(
+// CHECK-SAME: %[[V:[a-zA-Z0-9]+]]: vector<1xi32>
+// AIE2P-LABEL: func.func @test_non_multiple_16_trunci(
+// AIE2P-SAME: %[[V:[a-zA-Z0-9]+]]: vector<1xi32>
+func.func @test_non_multiple_16_trunci(%v : vector<1xi32>) -> vector<1xi8> {
+    %0 = arith.trunci %v : vector<1xi32> to vector<1xi8>
+    // CHECK: %[[R:.*]] = arith.trunci %[[V]] : vector<1xi32> to vector<1xi8>
+    // AIE2P: %[[R:.*]] = arith.trunci %[[V]] : vector<1xi32> to vector<1xi8>
+    return %0 : vector<1xi8>
+    // CHECK: return %[[R]]
+    // AIE2P: return %[[R]]
+}
+
+// CHECK-LABEL: func.func @test_non_multiple_16_truncf(
+// CHECK-SAME: %[[V:[a-zA-Z0-9]+]]: vector<1xf32>
+// AIE2P-LABEL: func.func @test_non_multiple_16_truncf(
+// AIE2P-SAME: %[[V:[a-zA-Z0-9]+]]: vector<1xf32>
+func.func @test_non_multiple_16_truncf(%v : vector<1xf32>) -> vector<1xbf16> {
+    %0 = arith.truncf %v : vector<1xf32> to vector<1xbf16>
+    // CHECK: %[[R:.*]] = arith.truncf %[[V]] : vector<1xf32> to vector<1xbf16>
+    // AIE2P: %[[R:.*]] = arith.truncf %[[V]] : vector<1xf32> to vector<1xbf16>
+    return %0 : vector<1xbf16>
+    // CHECK: return %[[R]]
+    // AIE2P: return %[[R]]
+}

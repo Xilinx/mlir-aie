@@ -9,7 +9,15 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(NPUDEVICE) {
+  aie.device(NPUDEVICE) @base {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_1 = aie.tile(0, 1)
+    %tile_0_2 = aie.tile(0, 2)
+    %tile_0_3 = aie.tile(0, 3)
+    %tile_0_4 = aie.tile(0, 4)
+    %tile_0_5 = aie.tile(0, 5)
+  }
+  aie.device(NPUDEVICE) @main {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
@@ -287,9 +295,11 @@ module {
       %c4_i64 = arith.constant 4 : i64
       %c4096_i64 = arith.constant 4096 : i64
       %c64_i64 = arith.constant 64 : i64
-      aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64], packet = <pkt_id = 0, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<4x64x64xi8>
-      aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<4x64x64xi8>
-      aiex.npu.dma_wait { symbol = @objFifo_out0 }
+      aiex.configure @main {
+        aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64], packet = <pkt_id = 0, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<4x64x64xi8>
+        aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c4_i64, %c64_i64, %c64_i64][%c0_i64, %c4096_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<4x64x64xi8>
+        aiex.npu.dma_wait { symbol = @objFifo_out0 }
+      }
     }
   }
 }
