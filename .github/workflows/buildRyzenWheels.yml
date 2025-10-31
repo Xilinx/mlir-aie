@@ -32,8 +32,8 @@ env:
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
 
 jobs:
-  build-repo:
-    name: Build and upload mlir_aie wheels
+  build-repo-linux:
+    name: Build and upload mlir_aie wheels (Linux)
 
     runs-on: ubuntu-latest
 
@@ -168,6 +168,126 @@ jobs:
         uses: ncipollo/release-action@v1.12.0
         with:
           artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
+          name: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: true
+          makeLatest: false
+
+  build-repo-windows:
+    name: Build and upload mlir_aie wheels (Windows)
+
+    runs-on: windows-2022
+
+    permissions:
+      id-token: write
+      contents: write
+      packages: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python_version: "3.10"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.10"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.11"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.11"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.12"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.12"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.13"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.13"
+            ENABLE_RTTI: OFF
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "true"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - name: Setup Cpp
+        uses: aminya/setup-cpp@1fd813945e55021261b381c59275db442da4082f
+        with:
+          compiler: msvc
+          vcvarsall: true
+          cmake: true
+          ninja: true
+
+      - name: Build mlir-aie wheel
+        shell: bash
+        run: |
+          git config --global --add safe.directory $PWD
+          MLIR_VERSION=$(git rev-parse --short HEAD)
+          echo "Building mlir-aie version $MLIR_VERSION"
+
+          pip install -r python/requirements.txt
+          pip install -r python/requirements_ml.txt
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          pip install -r python/requirements_dev.txt
+
+          export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
+
+          NO_RTTI=""
+          NO_RTTI_UNDERSCORE=""
+          if [ x"$ENABLE_RTTI" == x"OFF" ]; then
+            NO_RTTI="-no-rtti"
+            NO_RTTI_UNDERSCORE="_no_rtti"
+          fi
+
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir$NO_RTTI==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir*.whl
+          find mlir$NO_RTTI_UNDERSCORE -exec touch -a -m -t 201108231405.14 {} \;
+
+          export MLIR_INSTALL_ABS_PATH=$PWD/mlir$NO_RTTI_UNDERSCORE
+          export MLIR_AIE_SOURCE_DIR=$PWD
+          export WHEELHOUSE_DIR=$PWD/wheelhouse
+          export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
+          if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
+            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+          else
+            MLIR_VERSION="${{ inputs.AIE_COMMIT }}"
+            export AIE_PROJECT_COMMIT=${MLIR_VERSION:0:7}
+          fi
+          export DATETIME=$(date +"%Y%m%d%H")
+
+          pushd utils/mlir_aie_wheels
+
+          pip install wheel delvewheel importlib_metadata
+          CIBW_ARCHS=AMD64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
+
+          popd
+
+      - name: Upload mlir_aie
+        uses: actions/upload-artifact@v4
+        with:
+          path: wheelhouse/mlir_aie*whl
+          name: mlir_aie_windows_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
+
+      - name: Release current commit
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: wheelhouse/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
           tag: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
           name: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
