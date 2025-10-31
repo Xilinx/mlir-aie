@@ -59,6 +59,22 @@ rocm_config = LitConfigHelper.detect_rocm(
     config.hsa_dir, config.aieHostTarget, config.enable_board_tests
 )
 
+# Detect Peano backend first to get supported architectures
+peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
+peano_config = LitConfigHelper.detect_peano(
+    peano_tools_dir, config.peano_install_dir, llvm_config
+)
+
+# Add Peano-detected components to vitis_components if not already present
+peano_components_str = peano_config.substitutions.get("%peano_components%", "[]")
+try:
+    peano_components = eval(peano_components_str)
+    for comp in peano_components:
+        if comp not in config.vitis_components:
+            config.vitis_components.append(comp)
+except Exception:
+    pass
+
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 
@@ -99,18 +115,12 @@ if config.vitis_root:
 # Prepend path to XRT installation, which contains a more recent `aiebu-asm` than the Vitis installation.
 LitConfigHelper.prepend_path(llvm_config, config.xrt_bin_dir)
 
-peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
 LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, peano_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, config.aie_tools_dir)
 config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
 
 tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
-
-# Detect Peano backend
-peano_config = LitConfigHelper.detect_peano(
-    peano_tools_dir, config.peano_install_dir, llvm_config
-)
 
 # Detect Chess compiler
 chess_config = LitConfigHelper.detect_chess(
