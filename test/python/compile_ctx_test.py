@@ -63,7 +63,7 @@ module {
 
 
 def test_function_generator():
-    from .test_utils import _vector_vector_add_impl
+    from .utils import _vector_vector_add_impl
     import numpy as np
 
     compilable = iron.compileconfig(mlir_generator=_vector_vector_add_impl)

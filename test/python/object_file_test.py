@@ -11,7 +11,7 @@ import pytest
 import aie.iron as iron
 import numpy as np
 
-from .test_utils import _vector_vector_add_impl
+from .utils import _vector_vector_add_impl
 
 
 @pytest.mark.parametrize("num_elements", [16, 64])
