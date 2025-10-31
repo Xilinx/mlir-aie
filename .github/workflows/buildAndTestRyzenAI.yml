@@ -206,6 +206,8 @@ jobs:
       fail-fast: false
       matrix:
         runner_type: [ amd7940hs, amdhx370 ]
+    env:
+      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -284,6 +286,8 @@ jobs:
       fail-fast: false
       matrix:
         runner_type: [ amd7940hs, amdhx370 ]
+    env:
+      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
