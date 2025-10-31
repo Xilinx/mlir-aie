@@ -327,7 +327,9 @@ def compile_external_kernel(func, kernel_dir, target_arch):
                 if os.path.exists(f):
                     try:
                         shutil.copy2(f, kernel_dir)
-                        files_to_compile.append(os.path.join(kernel_dir, os.path.basename(f)))
+                        files_to_compile.append(
+                            os.path.join(kernel_dir, os.path.basename(f))
+                        )
                     except Exception as e:
                         raise
                 else:
@@ -348,7 +350,9 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             if os.path.exists(f):
                 try:
                     shutil.copy2(f, kernel_dir)
-                    object_files_to_link.append(os.path.join(kernel_dir, os.path.basename(f)))
+                    object_files_to_link.append(
+                        os.path.join(kernel_dir, os.path.basename(f))
+                    )
                 except Exception as e:
                     raise
             else:

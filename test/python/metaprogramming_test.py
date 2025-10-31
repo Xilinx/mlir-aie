@@ -10,9 +10,11 @@
 import pytest
 import aie.iron as iron
 
+
 def test_metaprogramming_context():
     with iron.metaprogramming_ctx(my_var=42):
         assert iron.get_metaprogram("my_var") == 42
+
 
 def test_nested_metaprogramming_context():
     with iron.metaprogramming_ctx(my_var=42):
@@ -21,12 +23,14 @@ def test_nested_metaprogramming_context():
             assert iron.get_metaprogram("my_other_var") == 10
         assert iron.get_metaprogram("my_other_var") is None
 
+
 def test_metaprogramming_in_jit():
     @iron.jit(metaprograms={"my_var": 42})
     def my_kernel():
         assert iron.get_metaprogram("my_var") == 42
 
     my_kernel()
+
 
 def test_metaprogramming_hash():
     @iron.compileconfig(metaprograms={"my_var": 42})

@@ -15,6 +15,7 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
+
 def _vector_vector_add_impl(input0, input1, output):
     if input0.shape != input1.shape:
         raise ValueError(

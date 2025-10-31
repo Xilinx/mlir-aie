@@ -11,8 +11,10 @@ import pytest
 import aie.iron as iron
 import json
 
+
 def my_func():
     pass
+
 
 def test_json_serialization():
     compilable = iron.compileconfig(
@@ -32,6 +34,7 @@ def test_json_serialization():
     assert data["aiecc_flags"] == ["--verbose"]
     assert data["metaprograms"] == {"my_var": 42}
     assert data["object_files"] == ["a.o", "b.o"]
+
 
 def test_json_deserialization():
     json_str = """

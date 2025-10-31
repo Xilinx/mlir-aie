@@ -200,6 +200,7 @@ def jit(function=None, **kwargs):
         except Exception as e:
             raise
 
+    decorator.compilable = compiled_func
     return decorator
 
 
