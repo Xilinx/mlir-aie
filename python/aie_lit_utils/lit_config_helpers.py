@@ -257,8 +257,11 @@ class LitConfigHelper:
                 run_on_npu = f"{aie_src_root}/utils/run_on_npu.sh"
 
                 # Map model to NPU generation and filter by available components
+                # Convert vitis_components to uppercase for case-insensitive comparison
+                vitis_components_upper = [c.upper() for c in vitis_components]
+
                 if model in LitConfigHelper.NPU_MODELS["npu1"]:
-                    if "aie2" in vitis_components:
+                    if "AIE2" in vitis_components_upper:
                         run_on_npu1 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
                         config.substitutions["%run_on_npu1%"] = run_on_npu1
@@ -266,7 +269,7 @@ class LitConfigHelper:
                     else:
                         print("NPU1 detected but aietools for aie2 not available")
                 elif model in LitConfigHelper.NPU_MODELS["npu2"]:
-                    if "aie2p" in vitis_components:
+                    if "AIE2P" in vitis_components_upper:
                         run_on_npu2 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
                         config.substitutions["%run_on_npu2%"] = run_on_npu2
@@ -352,7 +355,7 @@ class LitConfigHelper:
         peano_tools_dir: str, peano_install_dir: str, llvm_config
     ) -> HardwareConfig:
         """
-        Detect Peano backend availability.
+        Detect Peano backend availability and supported AIE architectures.
 
         Args:
             peano_tools_dir: Path to Peano tools directory
@@ -360,7 +363,9 @@ class LitConfigHelper:
             llvm_config: LLVM lit config object for environment setup
 
         Returns:
-            HardwareConfig with Peano detection results
+            HardwareConfig with Peano detection results including supported AIE architectures.
+            The supported architectures are stored in config.substitutions["%peano_components%"]
+            as a list that can be added to vitis_components.
         """
         config = HardwareConfig()
 
@@ -373,15 +378,49 @@ class LitConfigHelper:
                 timeout=5,
             )
 
-            if re.search(
-                "Xilinx AI Engine", result.stdout.decode("utf-8", errors="ignore")
-            ):
+            version_output = result.stdout.decode("utf-8", errors="ignore")
+            if re.search("Xilinx AI Engine", version_output):
                 config.found = True
                 config.features.append("peano")
                 config.substitutions["%PEANO_INSTALL_DIR"] = peano_install_dir
                 # Also set environment variable for tests that need it
                 llvm_config.with_environment("PEANO_INSTALL_DIR", peano_install_dir)
                 print(f"Peano found: {llc_path}")
+
+                # Detect supported AIE architectures by checking include directories
+                # llvm-aie installed via pip will have include dirs like:
+                # - aie2-none-unknown-elf/
+                # - aie2p-none-unknown-elf/
+                supported_components = []
+                peano_include_dir = os.path.join(peano_install_dir, "include")
+
+                if os.path.isdir(peano_include_dir):
+                    # Check for AIE2 support
+                    aie2_include = os.path.join(
+                        peano_include_dir, "aie2-none-unknown-elf"
+                    )
+                    if os.path.isdir(aie2_include):
+                        supported_components.append("AIE2")
+                        config.features.append("peano_aie2")
+                        print("  Peano supports AIE2")
+
+                    # Check for AIE2P support
+                    aie2p_include = os.path.join(
+                        peano_include_dir, "aie2p-none-unknown-elf"
+                    )
+                    if os.path.isdir(aie2p_include):
+                        supported_components.append("AIE2P")
+                        config.features.append("peano_aie2p")
+                        print("  Peano supports AIE2P")
+
+                # Store supported components as a Python list string for lit config
+                if supported_components:
+                    config.substitutions["%peano_components%"] = str(
+                        supported_components
+                    )
+                else:
+                    config.substitutions["%peano_components%"] = "[]"
+
                 return config
         except subprocess.TimeoutExpired:
             print(f"Peano detection timed out at {peano_tools_dir}")
@@ -391,6 +430,7 @@ class LitConfigHelper:
             print(f"Peano detection failed: {e}")
 
         print(f"Peano not found, but expected at {peano_tools_dir}")
+        config.substitutions["%peano_components%"] = "[]"
         return config
 
     @staticmethod
