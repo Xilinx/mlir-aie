@@ -6,15 +6,15 @@ from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
 from .dtype import str_to_dtype, dtype_to_str
-from .metaprogram import metaprogramming_ctx, get_metaprogram
+from .metaprogram import compile_ctx, get_compile_arg
 
 try:
     # The .jit module requires pyxrt which may not exist.
     # The try-except block tests if the module exists and
     # imports the .jit module.
     import pyxrt
-    from .jit import jit
-    from .compileconfig import compileconfig, Compilable
+    from .jit import jit, Callable
+    from .compileconfig import compileconfig, Compilable, PreCompiled
     from .config import set_current_device, get_current_device, detect_npu_device
 
     from .tensor import (

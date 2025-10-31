@@ -7,23 +7,41 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import contextvars
+from typing import Any
 
-_metaprograms = contextvars.ContextVar("metaprograms", default={})
+_compile_args = contextvars.ContextVar("compile_args", default={})
 
 
-class metaprogramming_ctx:
+class compile_ctx:
+    """A context manager for compile arguments."""
+
     def __init__(self, **kwargs):
-        self.metaprograms = kwargs
-        self._old_metaprograms = None
+        """Initializes the compile_ctx object.
+
+        Args:
+            **kwargs: The compile arguments.
+        """
+        self.metaargs = kwargs
+        self._old_metaargs = None
 
     def __enter__(self):
-        self._old_metaprograms = _metaprograms.get()
-        _metaprograms.set({**self._old_metaprograms, **self.metaprograms})
+        """Enters the context."""
+        self._old_metaargs = _compile_args.get()
+        _compile_args.set({**self._old_metaargs, **self.metaargs})
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        _metaprograms.set(self._old_metaprograms)
+        """Exits the context."""
+        _compile_args.set(self._old_metaargs)
 
 
-def get_metaprogram(key):
-    return _metaprograms.get().get(key)
+def get_compile_arg(key: str) -> Any:
+    """Gets a compile argument.
+
+    Args:
+        key (str): The key of the compile argument.
+
+    Returns:
+        Any: The value of the compile argument.
+    """
+    return _compile_args.get().get(key)

@@ -15,11 +15,12 @@ import contextlib
 import time
 import inspect
 import json
+from pathlib import Path
 
 from aie.extras.context import mlir_mod_ctx
 from .compile import compile_mlir_module
 from .compile.link import merge_object_files
-from .metaprogram import metaprogramming_ctx
+from .metaprogram import compile_ctx
 from .config import get_current_device
 from aie.dialects.aie import AIEDevice
 from .device import NPU1, NPU2, NPU1Col1, NPU2Col1
@@ -91,48 +92,110 @@ def file_lock(lock_file_path, timeout_seconds=60):
             lock_file.close()
 
 
+class PreCompiled:
+    """A class to hold pre-compiled artifacts."""
+
+    def __init__(self, xclbin_path: Path, insts_path: Path):
+        """Initializes the PreCompiled object.
+
+        Args:
+            xclbin_path (Path): The path to the xclbin file.
+            insts_path (Path): The path to the insts file.
+        """
+        self.xclbin_path = xclbin_path
+        self.insts_path = insts_path
+
+    def get_artifacts(self) -> tuple[Path, Path]:
+        """Returns the artifact paths.
+
+        Returns:
+            tuple[Path, Path]: A tuple containing the xclbin path and the insts path.
+        """
+        return self.xclbin_path, self.insts_path
+
+
 class Compilable:
+    """A class that encapsulates a function and its compilation configuration."""
+
     def __init__(
         self,
-        function,
-        use_cache=True,
-        compile_flags=None,
-        source_files=None,
-        include_paths=None,
-        aiecc_flags=None,
-        metaprograms=None,
-        object_files=None,
+        function: callable,
+        use_cache: bool = True,
+        compile_flags: list[str] | None = None,
+        source_files: list[Path] | None = None,
+        include_paths: list[Path] | None = None,
+        aiecc_flags: list[str] | None = None,
+        metaargs: dict[str, object] | None = None,
+        object_files: list[Path] | None = None,
     ):
         self.function = function
         self.use_cache = use_cache
         self.compile_flags = compile_flags
-        self.source_files = source_files
-        self.include_paths = include_paths
+        self.source_files = source_files if source_files else []
+        self.include_paths = include_paths if include_paths else []
         self.aiecc_flags = aiecc_flags
-        self.metaprograms = metaprograms if metaprograms is not None else {}
-        self.object_files = object_files
+        self.metaargs = metaargs if metaargs is not None else {}
+        self.object_files = object_files if object_files else []
+        self.xclbin_path: Path | None = None
+        self.insts_path: Path | None = None
         functools.update_wrapper(self, function)
 
-    def __call__(self, *args, **kwargs):
+        if self.source_files:
+            for f in self.source_files:
+                if not os.path.exists(f):
+                    raise FileNotFoundError(f"Source file not found: {f}")
+        if self.object_files:
+            for f in self.object_files:
+                if not os.path.exists(f):
+                    raise FileNotFoundError(f"Object file not found: {f}")
+
+    def __call__(self, *args, **kwargs) -> any:
+        """Calls the encapsulated function.
+
+        Returns:
+            any: The result of the function call.
+        """
         return self.function(*args, **kwargs)
 
-    def to_json(self):
+    def get_artifacts(self) -> tuple[Path, Path]:
+        """Returns the artifact paths.
+
+        Returns:
+            tuple[Path, Path]: A tuple containing the xclbin path and the insts path.
+        """
+        return self.xclbin_path, self.insts_path
+
+    def to_json(self) -> str:
+        """Serializes the Compilable object to a JSON string.
+
+        Returns:
+            str: The JSON string representation of the object.
+        """
         return json.dumps(
             {
                 "function": self.function.__name__,
                 "use_cache": self.use_cache,
                 "compile_flags": self.compile_flags,
-                "source_files": self.source_files,
-                "include_paths": self.include_paths,
+                "source_files": [str(f) for f in self.source_files],
+                "include_paths": [str(f) for f in self.include_paths],
                 "aiecc_flags": self.aiecc_flags,
-                "metaprograms": self.metaprograms,
-                "object_files": self.object_files,
+                "metaargs": self.metaargs,
+                "object_files": [str(f) for f in self.object_files],
             },
             indent=4,
         )
 
     @classmethod
-    def from_json(cls, json_str, func):
+    def from_json(cls, json_str: str, func: callable) -> "Compilable":
+        """Deserializes a Compilable object from a JSON string.
+
+        Args:
+            json_str (str): The JSON string representation of the object.
+            func (callable): The function to be encapsulated.
+
+        Returns:
+            Compilable: The deserialized Compilable object.
+        """
         data = json.loads(json_str)
         return cls(
             func,
@@ -141,11 +204,16 @@ class Compilable:
             source_files=data["source_files"],
             include_paths=data["include_paths"],
             aiecc_flags=data["aiecc_flags"],
-            metaprograms=data["metaprograms"],
+            metaargs=data["metaargs"],
             object_files=data["object_files"],
         )
 
-    def __hash__(self):
+    def __hash__(self) -> int:
+        """Computes the hash of the Compilable object.
+
+        Returns:
+            int: The hash of the object.
+        """
         func_name = self.function.__name__
         func_source_path = inspect.getsourcefile(self.function)
         hash_parts = [func_name, func_source_path]
@@ -156,8 +224,8 @@ class Compilable:
         if self.aiecc_flags:
             hash_parts.append(str(sorted(self.aiecc_flags)))
 
-        if self.metaprograms:
-            hash_parts.append(str(sorted(self.metaprograms.items())))
+        if self.metaargs:
+            hash_parts.append(str(sorted(self.metaargs.items())))
 
         if self.object_files:
             hash_parts.append(str(sorted(self.object_files)))
@@ -165,7 +233,12 @@ class Compilable:
         combined_str = "|".join(hash_parts)
         return int(hashlib.sha256(combined_str.encode("utf-8")).hexdigest()[:16], 16)
 
-    def compile(self, *args, **kwargs):
+    def compile(self, *args, **kwargs) -> tuple[Path, Path]:
+        """Compiles the encapsulated function.
+
+        Returns:
+            tuple[Path, Path]: A tuple containing the xclbin path and the insts path.
+        """
         from .kernel import ExternalFunction
 
         ExternalFunction._instances.clear()
@@ -179,7 +252,7 @@ class Compilable:
                 external_kernels.append(value)
 
         try:
-            with metaprogramming_ctx(**self.metaprograms):
+            with compile_ctx(**self.metaargs):
                 with mlir_mod_ctx() as ctx:
                     self.function(*args, **kwargs)
                     assert (
@@ -222,16 +295,16 @@ class Compilable:
         for kernel in external_kernels:
             module_hash += str(hash(kernel))
 
-        kernel_dir = os.path.join(IRON_CACHE_HOME, f"{module_hash}")
-        lock_file_path = os.path.join(kernel_dir, ".lock")
-        mlir_path = os.path.join(kernel_dir, "aie.mlir")
+        kernel_dir = Path(IRON_CACHE_HOME) / f"{module_hash}"
+        lock_file_path = kernel_dir / ".lock"
+        mlir_path = kernel_dir / "aie.mlir"
 
         with file_lock(lock_file_path):
             os.makedirs(kernel_dir, exist_ok=True)
             inst_filename = "insts.bin"
             xclbin_filename = "final.xclbin"
-            xclbin_path = os.path.join(kernel_dir, xclbin_filename)
-            inst_path = os.path.join(kernel_dir, inst_filename)
+            xclbin_path = kernel_dir / xclbin_filename
+            inst_path = kernel_dir / inst_filename
             xclbin_exists = os.path.exists(xclbin_path)
             inst_exists = os.path.exists(inst_path)
 
@@ -243,7 +316,7 @@ class Compilable:
                         compile_external_kernel(func, kernel_dir, target_arch)
                     compile_mlir_module(
                         mlir_module=mlir_module,
-                        insts_path=inst_path,
+                        insts_path=insts_path,
                         xclbin_path=xclbin_path,
                         work_dir=kernel_dir,
                         options=self.aiecc_flags,
@@ -251,20 +324,37 @@ class Compilable:
                 except Exception as e:
                     _cleanup_failed_compilation(kernel_dir)
                     raise e
+        self.xclbin_path = xclbin_path
+        self.insts_path = inst_path
         return xclbin_path, inst_path
 
 
 def compileconfig(
-    function=None,
-    use_cache=True,
-    compile_flags=None,
-    source_files=None,
-    include_paths=None,
-    aiecc_flags=None,
-    metaprograms=None,
-    object_files=None,
+    function: callable | None = None,
+    use_cache: bool = True,
+    compile_flags: list[str] | None = None,
+    source_files: list[str] | None = None,
+    include_paths: list[str] | None = None,
+    aiecc_flags: list[str] | None = None,
+    metaargs: dict[str, object] | None = None,
+    object_files: list[str] | None = None,
     **kwargs,
-):
+) -> Compilable:
+    """A decorator to create a Compilable object.
+
+    Args:
+        function (callable | None, optional): The function to be compiled. Defaults to None.
+        use_cache (bool, optional): Whether to use the cache. Defaults to True.
+        compile_flags (list[str] | None, optional): Additional compile flags. Defaults to None.
+        source_files (list[str] | None, optional): A list of source files to compile. Defaults to None.
+        include_paths (list[str] | None, optional): A list of include paths. Defaults to None.
+        aiecc_flags (list[str] | None, optional): Additional aiecc flags. Defaults to None.
+        metaargs (dict | None, optional): A dictionary of meta arguments. Defaults to None.
+        object_files (list[str] | None, optional): A list of pre-compiled object files. Defaults to None.
+
+    Returns:
+        Compilable: A Compilable object.
+    """
     if function is None:
         return functools.partial(
             compileconfig,
@@ -273,7 +363,7 @@ def compileconfig(
             source_files=source_files,
             include_paths=include_paths,
             aiecc_flags=aiecc_flags,
-            metaprograms=metaprograms,
+            metaargs=metaargs,
             object_files=object_files,
             **kwargs,
         )
@@ -284,7 +374,7 @@ def compileconfig(
         source_files,
         include_paths,
         aiecc_flags,
-        metaprograms,
+        metaargs,
         object_files,
     )
 

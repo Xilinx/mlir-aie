@@ -11,8 +11,9 @@ import numpy as np
 import pyxrt as xrt
 
 from ..utils.xrt import read_insts_binary
-from .compileconfig import Compilable
+from .compileconfig import Compilable, PreCompiled
 from aie.iron.tensor import Tensor
+from pathlib import Path
 from aie.iron.kernel import ExternalFunction
 
 
@@ -163,6 +164,58 @@ class NPUKernel_Error(Exception):
     pass
 
 
+class Callable:
+    def __init__(self, function, **kwargs):
+        if isinstance(function, (Compilable, PreCompiled)):
+            self.compilable = function
+        else:
+            self.compilable = Compilable(function, **kwargs)
+        functools.update_wrapper(self, function)
+
+    def to_json(self):
+        return self.compilable.to_json()
+
+    @classmethod
+    def from_json(cls, json_str, func):
+        import json
+
+        data = json.loads(json_str)
+        func_name = data.pop("function")
+        compilable = Compilable.from_json(json_str, func)
+
+        def new_func(*args, **kwargs):
+            return compilable.function(*args, **kwargs)
+
+        new_func.__name__ = func_name
+        return cls(new_func, **data)
+
+    def __call__(self, *args, **kwargs):
+        if isinstance(self.compilable, PreCompiled):
+            xclbin_path, inst_path = self.compilable.get_artifacts()
+            cache_key = (str(xclbin_path), str(inst_path))
+        else:
+            cache_key = _create_function_cache_key(
+                self.compilable.function, args, kwargs
+            )
+        if cache_key in _compiled_kernels:
+            cached_kernel = _compiled_kernels[cache_key]
+            return cached_kernel(*args, **kwargs)
+
+        if not isinstance(self.compilable, PreCompiled):
+            xclbin_path, inst_path = self.compilable.compile(*args, **kwargs)
+        else:
+            xclbin_path, inst_path = self.compilable.get_artifacts()
+
+        kernel_name = "MLIR_AIE"
+        try:
+            kernel = NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
+            _compiled_kernels[cache_key] = kernel
+            result = kernel(*args, **kwargs)
+            return result
+        except Exception as e:
+            raise
+
+
 def jit(function=None, **kwargs):
     """
     Decorator to JIT compile and run an IRON kernel on the NPU.
@@ -171,37 +224,7 @@ def jit(function=None, **kwargs):
     if function is None:
         return functools.partial(jit, **kwargs)
 
-    if isinstance(function, Compilable):
-        compiled_func = function
-    else:
-        # Apply the compileconfig decorator to the function
-        compiled_func = Compilable(function, **kwargs)
-
-    @functools.wraps(function)
-    def decorator(*args, **kwargs):
-        # Check if we already have a compiled kernel for this function signature
-        cache_key = _create_function_cache_key(function, args, kwargs)
-        if cache_key in _compiled_kernels:
-            cached_kernel = _compiled_kernels[cache_key]
-            return cached_kernel(*args, **kwargs)
-
-        # Get the compiled artifacts
-        xclbin_path, inst_path = compiled_func.compile(*args, **kwargs)
-
-        kernel_name = "MLIR_AIE"
-        try:
-            kernel = NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
-
-            # Cache the kernel for this function signature
-            _compiled_kernels[cache_key] = kernel
-
-            result = kernel(*args, **kwargs)
-            return result
-        except Exception as e:
-            raise
-
-    decorator.compilable = compiled_func
-    return decorator
+    return Callable(function, **kwargs)
 
 
 def _create_function_cache_key(function, args, kwargs):

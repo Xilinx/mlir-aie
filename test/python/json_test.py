@@ -22,7 +22,7 @@ def test_json_serialization():
         compile_flags=["-O3"],
         source_files=["a.cpp", "b.cpp"],
         aiecc_flags=["--verbose"],
-        metaprograms={"my_var": 42},
+        metaargs={"my_var": 42},
         object_files=["a.o", "b.o"],
     )
     json_str = compilable.to_json()
@@ -32,7 +32,7 @@ def test_json_serialization():
     assert data["compile_flags"] == ["-O3"]
     assert data["source_files"] == ["a.cpp", "b.cpp"]
     assert data["aiecc_flags"] == ["--verbose"]
-    assert data["metaprograms"] == {"my_var": 42}
+    assert data["metaargs"] == {"my_var": 42}
     assert data["object_files"] == ["a.o", "b.o"]
 
 
@@ -45,7 +45,7 @@ def test_json_deserialization():
         "source_files": ["a.cpp", "b.cpp"],
         "include_paths": null,
         "aiecc_flags": ["--verbose"],
-        "metaprograms": {
+        "metaargs": {
             "my_var": 42
         },
         "object_files": ["a.o", "b.o"]
@@ -56,5 +56,46 @@ def test_json_deserialization():
     assert compilable.compile_flags == ["-O3"]
     assert compilable.source_files == ["a.cpp", "b.cpp"]
     assert compilable.aiecc_flags == ["--verbose"]
-    assert compilable.metaprograms == {"my_var": 42}
+    assert compilable.metaargs == {"my_var": 42}
     assert compilable.object_files == ["a.o", "b.o"]
+
+
+def test_compilable_round_trip():
+    compilable1 = iron.compileconfig(
+        my_func,
+        compile_flags=["-O3"],
+        source_files=["a.cpp", "b.cpp"],
+        aiecc_flags=["--verbose"],
+        metaargs={"my_var": 42},
+        object_files=["a.o", "b.o"],
+    )
+    json_str = compilable1.to_json()
+    compilable2 = iron.Compilable.from_json(json_str, my_func)
+    assert compilable1.to_json() == compilable2.to_json()
+
+
+def test_iron_callable_round_trip():
+    callable1 = iron.jit(
+        my_func,
+        compile_flags=["-O3"],
+        source_files=["a.cpp", "b.cpp"],
+        aiecc_flags=["--verbose"],
+        metaargs={"my_var": 42},
+        object_files=["a.o", "b.o"],
+    )
+    json_str = callable1.to_json()
+    callable2 = iron.Callable.from_json(json_str, my_func)
+    assert callable1.to_json() == callable2.to_json()
+
+
+def test_file_not_found():
+    with pytest.raises(FileNotFoundError):
+        iron.compileconfig(
+            my_func,
+            source_files=["non_existent_file.cpp"],
+        )
+    with pytest.raises(FileNotFoundError):
+        iron.compileconfig(
+            my_func,
+            object_files=["non_existent_file.o"],
+        )
