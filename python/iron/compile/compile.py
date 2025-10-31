@@ -12,7 +12,7 @@ import aie.utils.config as config
 
 
 def compile_cxx_core_function(
-    source_path: str,
+    source_paths: list[str],
     target_arch: str,
     output_path: str,
     include_dirs: list[str] | None = None,
@@ -26,7 +26,7 @@ def compile_cxx_core_function(
     This function supports only the Peano compiler.
 
     Parameters:
-        source_path (str): Path to C++ source.
+        source_paths (list[str]): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
         output_path (str): Output object file path.
         include_dirs (list[str], optional): List of include directories to add with -I.
@@ -36,7 +36,7 @@ def compile_cxx_core_function(
     """
     cmd = [
         config.peano_cxx_path(),
-        source_path,
+        *source_paths,
         "-c",
         "-o",
         f"{output_path}",
