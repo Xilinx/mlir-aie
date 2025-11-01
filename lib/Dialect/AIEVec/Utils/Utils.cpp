@@ -48,8 +48,56 @@ static std::optional<int64_t> getLowerBoundValue(Value idx) {
       })
       .Case<affine::AffineApplyOp>([](auto applyOp) {
         if (applyOp.getAffineMap().getNumResults() == 1) {
+          auto affineMap = applyOp.getAffineMap();
+
+          // Check if the map has symbols - if so, try symbol-aware evaluation
+          if (affineMap.getNumSymbols() > 0) {
+            auto operands = applyOp.getMapOperands();
+            unsigned numDims = affineMap.getNumDims();
+
+            SmallVector<int64_t, 4> dimValues;
+            SmallVector<int64_t, 4> symbolValues;
+
+            // Collect dimension values
+            for (unsigned i = 0; i < numDims; i++) {
+              std::optional<int64_t> lbv = getLowerBoundValue(operands[i]);
+              if (!lbv && !isa<BlockArgument>(operands[i]))
+                return std::optional<int64_t>();
+              dimValues.push_back(lbv.value_or(0L));
+            }
+
+            // Collect symbol values
+            for (unsigned i = numDims; i < operands.size(); i++) {
+              std::optional<int64_t> lbv = getLowerBoundValue(operands[i]);
+              if (!lbv && !isa<BlockArgument>(operands[i]))
+                return std::optional<int64_t>();
+              symbolValues.push_back(lbv.value_or(0L));
+            }
+
+            // Manually replace and constant fold
+            auto expr = affineMap.getResult(0);
+            auto ctx = affineMap.getContext();
+
+            // Convert int64_t values to AffineConstantExpr
+            SmallVector<AffineExpr, 4> dimExprs;
+            SmallVector<AffineExpr, 4> symbolExprs;
+            for (auto val : dimValues)
+              dimExprs.push_back(getAffineConstantExpr(val, ctx));
+            for (auto val : symbolValues)
+              symbolExprs.push_back(getAffineConstantExpr(val, ctx));
+
+            expr = expr.replaceDimsAndSymbols(dimExprs, symbolExprs);
+            if (auto constExpr = dyn_cast<AffineConstantExpr>(expr)) {
+              return std::optional<int64_t>(constExpr.getValue());
+            }
+
+            // If expression couldn't be constant-folded, return nullopt
+            return std::optional<int64_t>();
+          }
+
+          auto operands = applyOp.getMapOperands();
           SmallVector<int64_t, 4> srcIndices;
-          for (auto index : applyOp.getMapOperands()) {
+          for (auto index : operands) {
             std::optional<int64_t> lbv = getLowerBoundValue(index);
             // XXX: We assume block arguments to either have well-defined
             // XXX: compile-time values, or to be aligned.
@@ -57,8 +105,7 @@ static std::optional<int64_t> getLowerBoundValue(Value idx) {
               return std::optional<int64_t>();
             srcIndices.push_back(lbv.value_or(0L));
           }
-          return std::optional<int64_t>(
-              applyOp.getAffineMap().compose(srcIndices)[0]);
+          return std::optional<int64_t>(affineMap.compose(srcIndices)[0]);
         }
         return std::optional<int64_t>();
       })
