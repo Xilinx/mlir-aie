@@ -388,7 +388,7 @@ def my_matmul(
         tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
         # Collect every n_aie_cols row at a time (mirroring how we sent in B data)
         tile_group_steps=(1, n_aie_cols),
-            prune_step=False,
+        prune_step=False,
     )
     c_index = 0
 

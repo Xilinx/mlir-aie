@@ -1,7 +1,7 @@
 from copy import deepcopy
 from functools import partial
 import numpy as np
-from typing import Optional, Sequence
+from typing import Sequence
 
 from .tas import TensorAccessSequence
 from .utils import ceildiv, validate_and_clean_sizes_strides, validate_tensor_dims
@@ -29,7 +29,7 @@ class TensorTiler2D:
         tile_col_major: bool = False,
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
-        prune_step: Optional[bool] = True,
+        prune_step: bool = True,
     ) -> TensorAccessSequence:
         """The simple_tiler is a special case of the group_tiler. The simple_tiler produces a TensorAccessSequence
         with one TensorAccessPattern per tile.
@@ -40,6 +40,7 @@ class TensorTiler2D:
             tile_col_major (bool, optional): Iterate column major within each tile. Defaults to False.
             iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
             pattern_repeat (int, optional): Access a tile n times per TensorAccessPattern. Defaults to 1.
+            prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Returns:
             TensorAccessSequence: A TensorAccessSequence with one TensorAccessPattern per tile
@@ -67,7 +68,7 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
         allow_partial: bool = False,
-        prune_step: Optional[bool] = True,
+        prune_step: bool = True,
     ) -> TensorAccessSequence:
         """The group_tiler is a special case of the step_tiler. The group_tiler produces a TensorAccessSequence
         with a group of tiles per TensorAccesspattern in the sequence.
@@ -83,6 +84,7 @@ class TensorTiler2D:
             pattern_repeat (int, optional): Apply a pattern n times within a single TensorAccessPattern. Defaults to 1.
             allow_partial (bool, optional): While a tensor must decompose into tiles easily, a tensor may not decompose into tile groups evenly.
                 If True, uneven groups are allowed. If false, an exception will be thrown. Defaults to False.
+            prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Returns:
             TensorAccessSequence: A TensorAccessSequence with one tile grouping per TensorAccessPattern
@@ -114,7 +116,7 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         allow_partial: bool = False,
         pattern_repeat: int = 1,
-        prune_step: Optional[bool] = True,
+        prune_step: bool = True,
     ) -> TensorAccessSequence:
         """
 
@@ -128,6 +130,7 @@ class TensorTiler2D:
             iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
             allow_partial (bool, optional): _description_. Defaults to False.
             pattern_repeat (int, optional): _description_. Defaults to 1.
+            prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Raises:
             ValueError: The parameters are validated
@@ -342,7 +345,7 @@ class TensorTiler2D:
         tile_col_major: bool,
         tile_group_col_major: bool,
         pattern_repeat: int,
-        prune_step: Optional[bool] = True,
+        prune_step: bool = True,
     ) -> tuple[Sequence[int], Sequence[int]]:
         # TODO: this code is still specific to two dimensions
         # TODO: this code assumes sizes/strides of len 4
