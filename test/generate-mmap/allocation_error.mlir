@@ -17,30 +17,22 @@
 // executable that aren't visibla at the MLIR level, so the
 // assign-buffer-addresses pass can't generate a good error message.
 module @example0 {
-  aie.device(xcvc1902) {
-    memref.global @x : memref<4xi8> =
-        uninitialized func.func @test(%i
-                                      : index, %v
-                                      : i8)
-            ->i8 {
-      %x = memref.get_global @x : memref<4xi8> memref.store %v,
-        %x[%i] : memref<4xi8> %r =
-            memref.load %x[%i] : memref<4xi8> func.return %r : i8
+  aie.device(npu1) {
+    memref.global @x : memref<4xi8> = uninitialized
+    func.func @test(%arg0: index, %arg1: i8) -> i8 {
+      %0 = memref.get_global @x : memref<4xi8>
+      memref.store %arg1, %0[%arg0] : memref<4xi8>
+      %1 = memref.load %0[%arg0] : memref<4xi8>
+      return %1 : i8
     }
-
-    %t33 = aie.tile(3, 3)
-
-            // Use all the local memory for buffers, combined with the 1024 byte
-            // stack size.
-            %buf33 = aie.buffer(%t33)
-        : memref<31744xi8>
-
-                      %c33 = aie.core(%t33) {
-      %idx1 = arith.constant 3 : index %val1 =
-                   arith.constant 7 : i8 memref.store %val1,
-        %buf33[%idx1] : memref<31744xi8>
-                              func.call @test(%idx1, %val1)
-          : (index, i8)->i8 aie.end
+    %tile_3_3 = aie.tile(3, 3)
+    %buffer_3_3 = aie.buffer(%tile_3_3) : memref<64510xi8> 
+    %core_3_3 = aie.core(%tile_3_3) {
+      %c3 = arith.constant 3 : index
+      %c7_i8 = arith.constant 7 : i8
+      memref.store %c7_i8, %buffer_3_3[%c3] : memref<64510xi8>
+      %0 = func.call @test(%c3, %c7_i8) : (index, i8) -> i8
+      aie.end
     }
   }
 }
