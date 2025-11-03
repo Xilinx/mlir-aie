@@ -19,6 +19,7 @@ def test_tensor_creation(dtype):
     assert np.allclose(t, expected)
     assert t.shape == (2, 2)
     assert str(t.device) == "npu"
+    raise Exception("THIS IS A FAILURE")
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
