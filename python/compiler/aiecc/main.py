@@ -1377,6 +1377,7 @@ class FlowRunner:
             "-L" + xaiengine_lib_path,
             "-lxaienginecdo",
             "-L" + opts.aietools_path + "/lib/lnx64.o",
+            "-L" + opts.aietools_path + "/lib/lnx64.o/Ubuntu",
             "-L" + opts.aietools_path + "/data/osci_systemc/lib/lnx64",
             "-Wl,--as-needed",
             "-lsystemc",
