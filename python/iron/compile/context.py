@@ -16,7 +16,7 @@ class CompileContext:
     """A context manager for compile arguments."""
 
     def __init__(self, **kwargs):
-        """Initializes the compile_ctx object.
+        """Initializes the CompileContext object.
 
         Args:
             **kwargs: The compile arguments.

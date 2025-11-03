@@ -1,4 +1,3 @@
-from .compile import utils
 from .globalbuffer import GlobalBuffer
 from .kernel import ExternalFunction, Kernel
 from .localbuffer import LocalBuffer
@@ -7,7 +6,7 @@ from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
 from .dtype import str_to_dtype, dtype_to_str
-from .compile.context import compile_ctx, get_compile_arg
+from .compile.context import CompileContext, get_compile_arg
 from .compile.compileconfig import compileconfig
 
 try:

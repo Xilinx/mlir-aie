@@ -17,8 +17,7 @@ from typing import Callable
 
 from aie.extras.context import mlir_mod_ctx
 from . import compile_mlir_module
-from .link import merge_object_files
-from .context import compile_ctx
+from .context import CompileContext
 from ..config import get_current_device
 from aie.dialects.aie import AIEDevice
 from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
@@ -202,7 +201,7 @@ class CompilableDesign:
 
         if callable(self.mlir_generator):
             try:
-                with compile_ctx(**self.metaargs):
+                with CompileContext(**self.metaargs):
                     with mlir_mod_ctx() as ctx:
                         self.mlir_generator(*args, **kwargs)
                         assert (

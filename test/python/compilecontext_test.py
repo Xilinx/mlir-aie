@@ -10,16 +10,18 @@
 import pytest
 import aie.iron as iron
 from pathlib import Path
+from util import _vector_vector_add_impl
+import numpy as np
 
 
-def test_compile_ctx():
-    with iron.compile_ctx(my_var=42):
+def test_compile_context():
+    with iron.CompileContext(my_var=42):
         assert iron.get_compile_arg("my_var") == 42
 
 
-def test_nested_compile_ctx():
-    with iron.compile_ctx(my_var=42):
-        with iron.compile_ctx(my_other_var=10):
+def test_nested_compile_context():
+    with iron.CompileContext(my_var=42):
+        with iron.CompileContext(my_other_var=10):
             assert iron.get_compile_arg("my_var") == 42
             assert iron.get_compile_arg("my_other_var") == 10
         assert iron.get_compile_arg("my_other_var") is None
@@ -63,9 +65,6 @@ module {
 
 
 def test_function_generator():
-    from .utils import _vector_vector_add_impl
-    import numpy as np
-
     compilable = iron.compileconfig(mlir_generator=_vector_vector_add_impl)
     assert compilable.mlir_generator == _vector_vector_add_impl
     # This should not raise an error

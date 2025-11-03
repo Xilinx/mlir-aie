@@ -9,12 +9,6 @@
 import functools
 
 from .callabledesign import CallableDesign
-from ..compile.cache import CircularCache
-
-# Global cache for compiled kernels at the function level
-# Key: (function_name, args_signature) -> NPUKernel instance
-# There is a limit on the number of kernels we have in cache
-_compiled_kernels = CircularCache(max_size=1)
 
 
 def jit(mlir_generator=None, **kwargs):

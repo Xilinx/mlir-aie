@@ -12,7 +12,7 @@ import numpy as np
 import aie.iron as iron
 import os
 
-from .utils import _vector_vector_add_impl
+from util import _vector_vector_add_impl
 
 
 @iron.jit()
@@ -23,7 +23,7 @@ def vector_vector_add(input0, input1, output):
 @pytest.mark.parametrize("num_elements", [16, 64])
 @pytest.mark.parametrize("dtype", [np.int32])
 def test_jit_return_type(num_elements, dtype):
-    assert isinstance(vector_vector_add, iron.IronCallable)
+    assert isinstance(vector_vector_add, iron.CallableDesign)
 
 
 @iron.compileconfig()

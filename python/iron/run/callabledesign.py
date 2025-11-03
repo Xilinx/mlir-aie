@@ -10,8 +10,13 @@ import functools
 from typing import Callable
 from pathlib import Path
 from ..compile.compilabledesign import CompilableDesign, PreCompiled
-from ..compile.cache import _create_function_cache_key, _compiled_kernels
+from ..compile.cache import _create_function_cache_key, CircularCache
 from .kernelrunner import NPUKernel
+
+# Global cache for compiled kernels at the function level
+# Key: (function_name, args_signature) -> NPUKernel instance
+# There is a limit on the number of kernels we have in cache
+_compiled_kernels = CircularCache(max_size=1)
 
 
 class CallableDesign:

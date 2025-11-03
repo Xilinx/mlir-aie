@@ -51,7 +51,7 @@ def test_json_deserialization():
         "object_files": ["a.o", "b.o"]
     }
     """
-    compilable = iron.Compilable.from_json(json_str, my_func)
+    compilable = iron.CompilableDesign.from_json(json_str, my_func)
     assert compilable.mlir_generator.__name__ == "my_func"
     assert compilable.compile_flags == ["-O3"]
     assert compilable.source_files == ["a.cpp", "b.cpp"]
@@ -70,7 +70,7 @@ def test_compilable_round_trip():
         object_files=["a.o", "b.o"],
     )
     json_str = compilable1.to_json()
-    compilable2 = iron.Compilable.from_json(json_str, my_func)
+    compilable2 = iron.CompilableDesign.from_json(json_str, my_func)
     assert compilable1.to_json() == compilable2.to_json()
 
 
@@ -84,12 +84,12 @@ def test_iron_callable_round_trip():
         object_files=["a.o", "b.o"],
     )
     json_str = callable1.to_json()
-    callable2 = iron.Callable.from_json(json_str, my_func)
+    callable2 = iron.CallableDesign.from_json(json_str, my_func)
     assert callable1.to_json() == callable2.to_json()
 
 
 def test_get_json_schema():
-    schema_str = iron.Callable.get_json_schema()
+    schema_str = iron.CallableDesign.get_json_schema()
     schema = json.loads(schema_str)
     assert schema["type"] == "object"
     assert "properties" in schema
