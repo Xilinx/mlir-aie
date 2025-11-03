@@ -16,6 +16,7 @@ import time
 import inspect
 import json
 from pathlib import Path
+from typing import Callable
 
 from aie.extras.context import mlir_mod_ctx
 from .compile import compile_mlir_module
@@ -114,12 +115,12 @@ class PreCompiled:
         return self.xclbin_path, self.insts_path
 
 
-class Compilable:
+class CompilableDesign:
     """A class that encapsulates a function and its compilation configuration."""
 
     def __init__(
         self,
-        mlir_generator: callable | Path,
+        mlir_generator: Callable | Path,
         use_cache: bool = True,
         compile_flags: list[str] | None = None,
         source_files: list[Path] | None = None,
@@ -171,7 +172,7 @@ class Compilable:
         return self.xclbin_path, self.insts_path
 
     def to_json(self) -> str:
-        """Serializes the Compilable object to a JSON string.
+        """Serializes the CompilableDesign object to a JSON string.
 
         Returns:
             str: The JSON string representation of the object.
@@ -196,7 +197,7 @@ class Compilable:
 
     @classmethod
     def get_json_schema(cls) -> str:
-        """Gets the JSON schema for the Compilable object.
+        """Gets the JSON schema for the CompilableDesign object.
 
         Returns:
             str: The JSON schema.
@@ -217,15 +218,17 @@ class Compilable:
         return json.dumps(schema, indent=4)
 
     @classmethod
-    def from_json(cls, json_str: str, func: callable | None = None) -> "Compilable":
-        """Deserializes a Compilable object from a JSON string.
+    def from_json(
+        cls, json_str: str, func: Callable | None = None
+    ) -> "CompilableDesign":
+        """Deserializes a CompilableDesign object from a JSON string.
 
         Args:
             json_str (str): The JSON string representation of the object.
             func (callable): The function to be encapsulated.
 
         Returns:
-            Compilable: The deserialized Compilable object.
+            CompilableDesign: The deserialized CompilableDesign object.
         """
         data = json.loads(json_str)
         mlir_generator = data["mlir_generator"]
@@ -243,7 +246,7 @@ class Compilable:
         )
 
     def __hash__(self) -> int:
-        """Computes the hash of the Compilable object.
+        """Computes the hash of the CompilableDesign object.
 
         Returns:
             int: The hash of the object.
@@ -371,7 +374,7 @@ class Compilable:
 
 
 def compileconfig(
-    mlir_generator: callable | Path,
+    mlir_generator: Callable | Path,
     use_cache: bool = True,
     compile_flags: list[str] | None = None,
     source_files: list[str] | None = None,
@@ -380,8 +383,8 @@ def compileconfig(
     metaargs: dict[str, object] | None = None,
     object_files: list[str] | None = None,
     **kwargs,
-) -> Compilable:
-    """A decorator to create a Compilable object.
+) -> CompilableDesign:
+    """A decorator to create a CompilableDesign object.
 
     Args:
         mlir_generator (callable | Path): The function to be compiled or the path to the MLIR file.
@@ -394,7 +397,7 @@ def compileconfig(
         object_files (list[str] | None, optional): A list of pre-compiled object files. Defaults to None.
 
     Returns:
-        Compilable: A Compilable object.
+        CompilableDesign: A CompilableDesign object.
     """
     if mlir_generator is None:
         return functools.partial(
@@ -408,7 +411,7 @@ def compileconfig(
             object_files=object_files,
             **kwargs,
         )
-    return Compilable(
+    return CompilableDesign(
         mlir_generator,
         use_cache,
         compile_flags,

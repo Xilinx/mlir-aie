@@ -9,9 +9,10 @@
 import functools
 import numpy as np
 import pyxrt as xrt
+from typing import Callable
 
 from ..utils.xrt import read_insts_binary
-from .compileconfig import Compilable, PreCompiled
+from .compileconfig import CompilableDesign, PreCompiled
 from aie.iron.tensor import Tensor
 from pathlib import Path
 from aie.iron.kernel import ExternalFunction
@@ -164,14 +165,14 @@ class NPUKernel_Error(Exception):
     pass
 
 
-class Callable:
+class CallableDesign:
     def __init__(
-        self, mlir_generator: callable | Path | Compilable | PreCompiled, **kwargs
+        self, mlir_generator: Callable | Path | CompilableDesign | PreCompiled, **kwargs
     ):
-        if isinstance(mlir_generator, (Compilable, PreCompiled)):
+        if isinstance(mlir_generator, (CompilableDesign, PreCompiled)):
             self.compilable = mlir_generator
         else:
-            self.compilable = Compilable(mlir_generator, **kwargs)
+            self.compilable = CompilableDesign(mlir_generator, **kwargs)
         if callable(mlir_generator):
             functools.update_wrapper(self, mlir_generator)
 
@@ -180,12 +181,12 @@ class Callable:
 
     @classmethod
     def get_json_schema(cls) -> str:
-        """Gets the JSON schema for the Callable object.
+        """Gets the JSON schema for the CallableDesign object.
 
         Returns:
             str: The JSON schema.
         """
-        return Compilable.get_json_schema()
+        return CompilableDesign.get_json_schema()
 
     @classmethod
     def from_json(cls, json_str, func=None):
@@ -195,7 +196,7 @@ class Callable:
         mlir_generator = data.pop("mlir_generator")
         if func:
             mlir_generator = func
-        compilable = Compilable.from_json(json_str, mlir_generator)
+        compilable = CompilableDesign.from_json(json_str, mlir_generator)
 
         def new_func(*args, **kwargs):
             return compilable.mlir_generator(*args, **kwargs)
@@ -241,7 +242,7 @@ def jit(mlir_generator=None, **kwargs):
     if mlir_generator is None:
         return functools.partial(jit, **kwargs)
 
-    return Callable(mlir_generator, **kwargs)
+    return CallableDesign(mlir_generator, **kwargs)
 
 
 def _create_function_cache_key(function, args, kwargs):

@@ -13,8 +13,8 @@ try:
     # The try-except block tests if the module exists and
     # imports the .jit module.
     import pyxrt
-    from .jit import jit, Callable
-    from .compileconfig import compileconfig, Compilable, PreCompiled
+    from .jit import jit, CallableDesign
+    from .compileconfig import compileconfig, CompilableDesign, PreCompiled
     from .config import set_current_device, get_current_device, detect_npu_device
 
     from .tensor import (
