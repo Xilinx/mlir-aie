@@ -109,7 +109,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 	* All drain tasks begin concurrently
 	* Runtime waits for **all drains to complete together**, preserving parallel execution
 
-	HINT: If you're stuck wondering where to use task groups, see ```programming_examples/getting_started/00_memcpy```.
+	HINT: If you're stuck wondering where to use task groups, see [programming_examples/getting_started/00_memcpy/memcpy.py](../../getting_started/00_memcpy/memcpy.py).
 
 5. **Report Your Findings:**
 
