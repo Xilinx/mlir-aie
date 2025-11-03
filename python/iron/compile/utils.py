@@ -5,10 +5,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
-
+import os
+import shutil
 import subprocess
 import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
+from .link import merge_object_files
 
 
 def compile_cxx_core_function(

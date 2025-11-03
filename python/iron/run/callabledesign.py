@@ -9,8 +9,9 @@
 import functools
 from typing import Callable
 from pathlib import Path
-from ..compile.compilabledesign import CompilableDesign, PreCompiled
-from ..compile.cache import _create_function_cache_key, CircularCache
+from ..compile.compilabledesign import CompilableDesign
+from ..compile.cache.circularcache import CircularCache
+from ..compile.cache.utils import _create_function_cache_key
 from .kernelrunner import NPUKernel
 
 # Global cache for compiled kernels at the function level
@@ -20,10 +21,8 @@ _compiled_kernels = CircularCache(max_size=1)
 
 
 class CallableDesign:
-    def __init__(
-        self, mlir_generator: Callable | Path | CompilableDesign | PreCompiled, **kwargs
-    ):
-        if isinstance(mlir_generator, (CompilableDesign, PreCompiled)):
+    def __init__(self, mlir_generator: Callable | Path | CompilableDesign, **kwargs):
+        if isinstance(mlir_generator, CompilableDesign):
             self.compilable = mlir_generator
         else:
             self.compilable = CompilableDesign(mlir_generator, **kwargs)
@@ -62,21 +61,13 @@ class CallableDesign:
         return cls(new_func, **data)
 
     def __call__(self, *args, **kwargs):
-        if isinstance(self.compilable, PreCompiled):
-            xclbin_path, inst_path = self.compilable.get_artifacts()
-            cache_key = (str(xclbin_path), str(inst_path))
-        else:
-            cache_key = _create_function_cache_key(
-                self.compilable.mlir_generator, args, kwargs
-            )
+        cache_key = _create_function_cache_key(
+            self.compilable.mlir_generator, args, kwargs
+        )
         if cache_key in _compiled_kernels:
             cached_kernel = _compiled_kernels[cache_key]
             return cached_kernel(*args, **kwargs)
-
-        if not isinstance(self.compilable, PreCompiled):
-            xclbin_path, inst_path = self.compilable.compile(*args, **kwargs)
-        else:
-            xclbin_path, inst_path = self.compilable.get_artifacts()
+        xclbin_path, inst_path = self.compilable.get_artifacts()
 
         kernel_name = "MLIR_AIE"
         try:

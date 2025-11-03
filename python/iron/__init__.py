@@ -8,24 +8,23 @@ from .dataflow import ObjectFifo
 from .dtype import str_to_dtype, dtype_to_str
 from .compile.context import CompileContext, get_compile_arg
 from .compile.compileconfig import compileconfig
+from .tensor import (
+    tensor,
+    ones,
+    zeros,
+    randint,
+    rand,
+    arange,
+    zeros_like,
+)
 
-try:
-    # The .jit module requires pyxrt which may not exist.
-    # The try-except block tests if the module exists and
-    # imports the .jit module.
-    import pyxrt
-    from .run.jit import jit, CallableDesign
-    from .compile.compilabledesign import CompilableDesign, PreCompiled
-    from .config import set_current_device, get_current_device, detect_npu_device
+# The .jit module requires pyxrt which may not exist.
+# The try-except block tests if the module exists and
+# imports the .jit module.
+import pyxrt
+from .run.jit import jit, CallableDesign
+from .compile.compilabledesign import CompilableDesign
+from .config import set_current_device, get_current_device, detect_npu_device
 
-    from .tensor import (
-        tensor,
-        ones,
-        zeros,
-        randint,
-        rand,
-        arange,
-        zeros_like,
-    )
-except ImportError:
-    pass  # silently ignore if pyxrt or .jit can't be imported
+# except ImportError:
+#    pass  # silently ignore if pyxrt or .jit can't be imported

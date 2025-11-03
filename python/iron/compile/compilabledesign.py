@@ -9,18 +9,20 @@
 import os
 import functools
 import hashlib
-import shutil
 import inspect
 import json
 from pathlib import Path
 from typing import Callable
 
 from aie.extras.context import mlir_mod_ctx
-from . import compile_mlir_module
+from . import compile_mlir_module, IRON_CACHE_HOME
 from .context import CompileContext
 from ..config import get_current_device
 from aie.dialects.aie import AIEDevice
 from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
+from .cache.utils import file_lock
+from .utils import compile_external_kernel, _cleanup_failed_compilation
+from ..kernel import ExternalFunction
 
 
 class CompilableDesign:
@@ -187,8 +189,6 @@ class CompilableDesign:
         Returns:
             tuple[Path, Path]: A tuple containing the xclbin path and the insts path.
         """
-        from ..kernel import ExternalFunction
-
         ExternalFunction._instances.clear()
 
         external_kernels = []

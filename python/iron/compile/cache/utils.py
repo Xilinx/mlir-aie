@@ -5,6 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
+import contextlib
+import fcntl
+import os
+import time
+
+from ...tensor import Tensor
+from ...kernel import ExternalFunction
 
 
 def _create_function_cache_key(function, args, kwargs):

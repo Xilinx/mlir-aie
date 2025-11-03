@@ -5,20 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
-
-import os
-from pathlib import Path
-import shutil
-import fcntl
-import contextlib
-import time
-
-# The `iron.compiledesign` decorator below caches compiled kenrels inside the `IRON_CACHE_HOME` directory.
-# Kernels are cached based on their hash value of the MLIR module string. If during compilation,
-# we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
-IRON_CACHE_HOME = os.environ.get("IRON_CACHE_HOME", Path.home() / ".iron" / "cache")
-
-
 class CircularCache:
     def __init__(self, max_size):
         self.max_size = max_size
