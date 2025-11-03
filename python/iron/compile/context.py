@@ -12,7 +12,7 @@ from typing import Any
 _compile_args = contextvars.ContextVar("compile_args", default={})
 
 
-class compile_ctx:
+class CompileContext:
     """A context manager for compile arguments."""
 
     def __init__(self, **kwargs):

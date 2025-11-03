@@ -1,3 +1,4 @@
+from .compile import utils
 from .globalbuffer import GlobalBuffer
 from .kernel import ExternalFunction, Kernel
 from .localbuffer import LocalBuffer
@@ -6,15 +7,16 @@ from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
 from .dtype import str_to_dtype, dtype_to_str
-from .metaprogram import compile_ctx, get_compile_arg
+from .compile.context import compile_ctx, get_compile_arg
+from .compile.compileconfig import compileconfig
 
 try:
     # The .jit module requires pyxrt which may not exist.
     # The try-except block tests if the module exists and
     # imports the .jit module.
     import pyxrt
-    from .jit import jit, CallableDesign
-    from .compileconfig import compileconfig, CompilableDesign, PreCompiled
+    from .run.jit import jit, CallableDesign
+    from .compile.compilabledesign import CompilableDesign, PreCompiled
     from .config import set_current_device, get_current_device, detect_npu_device
 
     from .tensor import (
