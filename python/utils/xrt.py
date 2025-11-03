@@ -6,7 +6,6 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import numpy as np
-import copy
 import time
 import pyxrt as xrt
 import os

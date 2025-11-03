@@ -17,14 +17,6 @@ from .tensor import (
     arange,
     zeros_like,
 )
-
-# The .jit module requires pyxrt which may not exist.
-# The try-except block tests if the module exists and
-# imports the .jit module.
-import pyxrt
 from .run.jit import jit, CallableDesign
 from .compile.compilabledesign import CompilableDesign
 from .config import set_current_device, get_current_device, detect_npu_device
-
-# except ImportError:
-#    pass  # silently ignore if pyxrt or .jit can't be imported
