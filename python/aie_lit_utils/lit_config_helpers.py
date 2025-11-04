@@ -258,7 +258,8 @@ class LitConfigHelper:
 
                 # Map model to NPU generation and filter by available components
                 if model in LitConfigHelper.NPU_MODELS["npu1"]:
-                    if "aie2" in vitis_components:
+                    print (vitis_components)
+                    if "AIE2" in vitis_components:
                         run_on_npu1 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
                         config.substitutions["%run_on_npu1%"] = run_on_npu1
@@ -266,7 +267,7 @@ class LitConfigHelper:
                     else:
                         print("NPU1 detected but aietools for aie2 not available")
                 elif model in LitConfigHelper.NPU_MODELS["npu2"]:
-                    if "aie2p" in vitis_components:
+                    if "AIE2P" in vitis_components:
                         run_on_npu2 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
                         config.substitutions["%run_on_npu2%"] = run_on_npu2
