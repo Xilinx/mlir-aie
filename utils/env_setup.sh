@@ -27,7 +27,7 @@ if [ "$#" -ge 1 ]; then
     export MLIR_AIE_INSTALL_DIR=`realpath $1`
     export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH}
     export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
-    export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
+    export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}:/usr/lib/python3
     FORCE_INSTALL=0
 else
     export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie 2>/dev/null | grep ^Location: | awk '{print $2}')/mlir_aie"
@@ -54,6 +54,7 @@ fi
 
 XRTSMI=`which xrt-smi`
 if ! test -f "$XRTSMI"; then
+  # TODO(erika): should this be removed? 
   source /opt/xilinx/xrt/setup.sh
 fi
 NPU=`xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`

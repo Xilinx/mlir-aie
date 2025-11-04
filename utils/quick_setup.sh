@@ -22,7 +22,7 @@ if [ -z "${WSL_DISTRO_NAME-}" ]; then
     echo "XRT is not installed"
     return 1
   fi
-  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
+  NPU=`$XRTSMI examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
   if echo "$NPU" | grep -qE "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"; then
     echo "AMD XDNA NPU found: "
     echo $NPU
