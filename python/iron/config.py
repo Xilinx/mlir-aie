@@ -10,6 +10,7 @@ import subprocess
 
 from .device import NPU1, NPU2
 
+
 def detect_npu_device():
     """Detects the current device in the system.
        This assumes XRT and XDNA driver is installed
