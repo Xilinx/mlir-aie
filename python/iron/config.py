@@ -24,7 +24,7 @@ def is_wsl() -> bool:
 def xrt_smi_path() -> str:
     if is_wsl():
         return "/mnt/c/Windows/System32/AMD/xrt-smi.exe"
-    return "/opt/xilinx/xrt/bin/xrt-smi"
+    return "/usr/bin/xrt-smi"
 
 
 def detect_npu_device():
