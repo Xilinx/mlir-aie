@@ -258,7 +258,6 @@ class LitConfigHelper:
 
                 # Map model to NPU generation and filter by available components
                 if model in LitConfigHelper.NPU_MODELS["npu1"]:
-                    print (vitis_components)
                     if "AIE2" in vitis_components:
                         run_on_npu1 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
