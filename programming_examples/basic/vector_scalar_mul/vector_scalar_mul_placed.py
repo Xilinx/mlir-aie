@@ -173,7 +173,7 @@ p.add_argument(
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu":
-    dev = AIEDevice.npu1_1col
+    dev = AIEDevice.npu1
 elif opts.device == "npu2":
     dev = AIEDevice.npu2
 else:
