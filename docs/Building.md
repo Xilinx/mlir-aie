@@ -111,7 +111,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Setup a virtual environment:
    ```bash
-   python3 -m venv --system-site-packages ironenv
+   python3 -m venv ironenv
    source ironenv/bin/activate
    python3 -m pip install --upgrade pip
    ```
