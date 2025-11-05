@@ -482,7 +482,7 @@ def setup_and_run_aie(
             enable_trace,
             enable_ctrl_pkts,
             trace_after_output,
-            opt.verbosity,
+            opts.verbosity,
         )
 
     print("npu_time: ", npu_time / 1000.0, " us")
