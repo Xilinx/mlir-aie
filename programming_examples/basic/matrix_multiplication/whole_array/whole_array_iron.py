@@ -358,6 +358,7 @@ def my_matmul(
         (1, K // k),  # Size of "group" of tiles
         # Repeat data so can distribute across whole column
         pattern_repeat=N // n // n_aie_cols,
+        prune_step=False,
     )
     if b_col_maj:
         B_tiles = TensorTiler2D.step_tiler(
@@ -367,6 +368,7 @@ def my_matmul(
             tile_group_repeats=(N // n // n_aie_cols, K // k),
             # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
             tile_group_steps=(n_aie_cols, 1),
+            prune_step=False,
         )
     else:
         B_tiles = TensorTiler2D.step_tiler(
@@ -377,6 +379,7 @@ def my_matmul(
             # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
             tile_group_steps=(1, n_aie_cols),
             tile_group_col_major=True,  # Send all tiles in column before moving on to next column
+            prune_step=False,
         )
     C_tiles = TensorTiler2D.step_tiler(
         (M, N),  # Size of C matrix
@@ -385,6 +388,7 @@ def my_matmul(
         tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
         # Collect every n_aie_cols row at a time (mirroring how we sent in B data)
         tile_group_steps=(1, n_aie_cols),
+        prune_step=False,
     )
     c_index = 0
 
