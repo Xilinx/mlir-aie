@@ -336,10 +336,10 @@ def return_buffer_results(
     if trace_after_output or not enable_trace:
         if not (input_two is None):
             # return app.buffers[5].read(), 0
-            return app.buffers[5].read()
+            return (app.buffers[5].read(),)
         else:
             # return app.buffers[4].read(), 0
-            return app.buffers[4].read()
+            return (app.buffers[4].read(),)
     else:
 
         if not (input_two is None):
