@@ -335,11 +335,9 @@ def return_buffer_results(
 ):
     if trace_after_output or not enable_trace:
         if not (input_two is None):
-            # return app.buffers[5].read(), 0
-            return (app.buffers[5].read(),)
+            return app.buffers[5].read()
         else:
-            # return app.buffers[4].read(), 0
-            return (app.buffers[4].read(),)
+            return app.buffers[4].read()
     else:
 
         if not (input_two is None):
@@ -389,7 +387,10 @@ def execute_timed(
     ret = return_buffer_results(
         app, input_one, input_two, enable_trace, trace_after_output
     )
-    return ret + (npu_time,)
+    if enable_trace:
+        return ret + (npu_time,)
+    else:
+        return (ret, npu_time)
 
 
 # Wrapper function to separate output data and trace data from a single output buffer stream
