@@ -7,6 +7,6 @@
 
 add_aie_runtime_libs(AIE2P)
 
-if(AIETools_AIE2P_FOUND)
+if(AIETools_AIE2P_FOUND OR Peano_AIE2P_FOUND)
     compile_aie_runtime_libs(AIE2P)
 endif()

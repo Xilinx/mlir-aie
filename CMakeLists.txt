@@ -104,6 +104,7 @@ set(AIE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
+find_package(Peano COMPONENTS ${AIE_VITIS_COMPONENTS})
 find_package(XRT)
 find_package(hsa-runtime64)
 
