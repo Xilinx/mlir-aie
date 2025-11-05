@@ -19,10 +19,10 @@ echo "Setting up RyzenAI developement tools..."
 if [ -z "${WSL_DISTRO_NAME-}" ]; then
   XRTSMI=`which xrt-smi`
   if ! test -f "$XRTSMI"; then 
-    echo "XRT is not installed"
+    echo "xrt-smi not found. Is XRT installed?"
     return 1
   fi
-  NPU=`$XRTSMI examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
+  NPU=`xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
   if echo "$NPU" | grep -qE "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"; then
     echo "AMD XDNA NPU found: "
     echo $NPU
