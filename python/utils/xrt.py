@@ -295,6 +295,7 @@ def setup_buffer_data(
     input_two=None,
     enable_trace=False,
     enable_ctrl_pkts=False,
+    verbosity=False,
 ):
     if not (input_one is None):
         app.buffers[3].write(input_one)
@@ -319,7 +320,8 @@ def setup_buffer_data(
                 ],
                 dtype=np.uint32,
             )
-            print("header", [hex(x) for x in header])
+            if verbosity:
+                print("header", [hex(x) for x in header])
             app.buffers[6].write(header)
 
         app.buffers[7].write(init_trace_data)
@@ -355,8 +357,11 @@ def execute(
     enable_trace=False,
     enable_ctrl_pkts=False,
     trace_after_output=False,
+    verbosity=False,
 ):
-    setup_buffer_data(app, input_one, input_two, enable_trace, enable_ctrl_pkts)
+    setup_buffer_data(
+        app, input_one, input_two, enable_trace, enable_ctrl_pkts, verbosity
+    )
     app.run()
     return return_buffer_results(
         app, input_one, input_two, enable_trace, trace_after_output
@@ -372,8 +377,11 @@ def execute_timed(
     enable_trace=False,
     enable_ctrl_pkts=False,
     trace_after_output=False,
+    verbosity=False,
 ):
-    setup_buffer_data(app, input_one, input_two, enable_trace, enable_ctrl_pkts)
+    setup_buffer_data(
+        app, input_one, input_two, enable_trace, enable_ctrl_pkts, verbosity
+    )
     start = time.time_ns()
     app.run()
     stop = time.time_ns()
@@ -458,11 +466,23 @@ def setup_and_run_aie(
 
     if enable_trace:
         full_output, trace_and_ctrl_buffer, npu_time = execute_timed(
-            app, in1_data, in2_data, enable_trace, enable_ctrl_pkts, trace_after_output
+            app,
+            in1_data,
+            in2_data,
+            enable_trace,
+            enable_ctrl_pkts,
+            trace_after_output,
+            opts.verbosity,
         )
     else:
         full_output, npu_time = execute_timed(
-            app, in1_data, in2_data, enable_trace, enable_ctrl_pkts, trace_after_output
+            app,
+            in1_data,
+            in2_data,
+            enable_trace,
+            enable_ctrl_pkts,
+            trace_after_output,
+            opt.verbosity,
         )
 
     print("npu_time: ", npu_time / 1000.0, " us")
