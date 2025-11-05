@@ -86,7 +86,7 @@ def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
             trace_utils.configure_packet_ctrl_flow([ComputeTile2], CtrlShimTile)
 
-        trace_size_int32 = trace_size // 4
+        trace_size_int32 = trace_size // np.dtype(np.int32).itemsize
 
         # To/from AIE-array data movement
         # @runtime_sequence(tensor_ty, scalar_ty, tensor_ty, ctrl_pkt_ty, trace_ty)

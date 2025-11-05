@@ -205,19 +205,13 @@ def setup_aie(
     if in_0_shape and in_0_dtype:
         if verbosity >= 1:
             print(
-                "register 1st input to group_id 3: size: "
-                + str(in_0_shape)
-                + ", dtype: "
-                + str(in_0_dtype)
+                f"register 1st input to group_id 3: size: {in_0_shape}, dtype: {in_0_dtype}"
             )
         app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
     if in_1_shape and in_1_dtype:
         if verbosity >= 1:
             print(
-                "register 2nd input to group_id 4: size: "
-                + str(in_1_shape)
-                + ", dtype: "
-                + str(in_1_dtype)
+                f"register 2nd input to group_id 4: size: {in_1_shape}, dtype: {in_1_dtype}"
             )
         app.register_buffer(4, shape=in_1_shape, dtype=in_1_dtype)
 
@@ -232,19 +226,13 @@ def setup_aie(
     if in_1_shape and in_1_dtype:
         if verbosity >= 1:
             print(
-                "register output to group_id 5: size: "
-                + str(out_buf_shape)
-                + ", dtype: "
-                + str(out_buf_dtype)
+                f"register output to group_id 5: size: {out_buf_shape}, dtype: {out_buf_dtype}"
             )
         app.register_buffer(5, shape=out_buf_shape, dtype=out_buf_dtype)
     else:
         if verbosity >= 1:
             print(
-                "register output to group_id 4: size: "
-                + str(out_buf_shape)
-                + ", dtype: "
-                + str(out_buf_dtype)
+                f"register output to group_id 4: size: {out_buf_shape}, dtype: {out_buf_dtype}"
             )
         app.register_buffer(4, shape=out_buf_shape, dtype=out_buf_dtype)
         if verbosity >= 1:
@@ -276,10 +264,7 @@ def setup_aie(
 
             if verbosity >= 1:
                 print(
-                    "register trace on 7: size: "
-                    + str(trace_buf_shape)
-                    + ", dtype:"
-                    + str(trace_buf_dtype)
+                    f"register trace on 7: size: {trace_buf_shape}, dtype: {trace_buf_dtype}"
                 )
             app.register_buffer(7, shape=trace_buf_shape, dtype=trace_buf_dtype)
 
@@ -445,7 +430,7 @@ def setup_and_run_aie(
     ref,
     opts,
     trace_after_output=False,
-    enable_ctrl_pkts=True,
+    enable_ctrl_pkts=False,
 ):
     enable_trace = opts.trace_size > 0
     if opts.verbosity >= 1:
@@ -514,11 +499,7 @@ def setup_and_run_aie(
                 overflow = True if (ctrl_buffer[i * 2 + 1] >> 8) == 3 else False
                 if overflow:
                     print(
-                        "WARNING: Trace overflow detected in tile(",
-                        row,
-                        ",",
-                        col,
-                        "). Trace results may be invalid.",
+                        f"WARNING: Trace overflow detected in tile({row},{col}). Trace results may be invalid."
                     )
 
     # Copy output results and verify they are correct
