@@ -122,28 +122,21 @@ class SequentialPlacer(Placer):
                 buffer.place(worker.tile)
 
         # Account for channels used by Workers, which are already placed
-        allow_neighbor_fifos = (
-            True  # TODO: make this placer condition? Check is allowed by device?
-        )
         for worker in workers:
             prod_fifos = [of for of in worker.fifos if of._is_prod]
             cons_fifos = [of for of in worker.fifos if not of._is_prod]
 
-            if allow_neighbor_fifos:
-                non_neighbor_prod_fifos = 0
-                for of in prod_fifos:
-                    neighbor = True
-                    for c in of._object_fifo._get_endpoint(is_prod=False):
-                        if isinstance(c, Worker) and not worker.tile.is_neighbor(
-                            c.tile
-                        ):
-                            neighbor = False
-                            break
-                    if neighbor:
-                        non_neighbor_prod_fifos += 1
-            else:
-                non_neighbor_prod_fifos = len(prod_fifos)
-
+            non_neighbor_prod_fifos = 0
+            for p in prod_fifos:
+                endpoint_tiles = [
+                    t.tile for t in p.all_of_endpoints() if isinstance(t.tile, Tile)
+                ]
+                # If all endpoints are tiles, e.g., already placed, and those tiles do not have shared memory
+                # according to the device, we need to take into account the channels used by this fifo
+                if len(endpoint_tiles) != len(
+                    p.all_of_endpoints()
+                ) or not device.has_common_mem(endpoint_tiles):
+                    non_neighbor_prod_fifos += 1
             if non_neighbor_prod_fifos > 0:
                 self._update_channels(
                     worker,
@@ -155,23 +148,17 @@ class SequentialPlacer(Placer):
                     device,
                 )
 
-            if allow_neighbor_fifos:
-                non_neighbor_cons_fifos = 0
-                for of in cons_fifos:
-                    neighbor = True
-                    for c in of._object_fifo._get_endpoint(is_prod=False):
-                        if isinstance(c, Worker) and (
-                            c == of or not worker.tile.is_neighbor(c.tile)
-                        ):
-                            neighbor = False
-                            break
-                    p = of._object_fifo._get_endpoint(is_prod=True)
-                    if isinstance(p, Worker) and not worker.tile.is_neighbor(p.tile):
-                        neighbor = False
-                    if neighbor:
-                        non_neighbor_prod_fifos += 1
-            else:
-                non_neighbor_cons_fifos = len(cons_fifos)
+            non_neighbor_cons_fifos = 0
+            for c in cons_fifos:
+                endpoint_tiles = [
+                    t.tile for t in c.all_of_endpoints() if isinstance(t.tile, Tile)
+                ]
+                # If all endpoints are tiles, e.g., already placed, and those tiles do not have shared memory
+                # according to the device, we need to take into account the channels used by this fifo
+                if len(endpoint_tiles) != len(
+                    c.all_of_endpoints()
+                ) or not device.has_common_mem(endpoint_tiles):
+                    non_neighbor_cons_fifos += 1
             if non_neighbor_cons_fifos > 0:
                 self._update_channels(
                     worker,

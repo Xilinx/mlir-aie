@@ -21,8 +21,6 @@ import re
 class Device(Resolvable):
     """
     A base class for representations of a device of a specific type.
-
-    Note: this class is abstract because it does not implement Resolve
     """
 
     class __DeviceTile(Resolvable):
@@ -200,14 +198,35 @@ class Device(Resolvable):
             src_tile.col, src_tile.row, dst_tile.col, dst_tile.rol
         )
 
-    def resolve_tile(
-        self,
-        tile: Tile,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        self._tiles[tile.col][tile.row].resolve(loc, ip, tile.allocation_scheme)
-        tile.op = self._tiles[tile.col][tile.row].op
+    def has_common_mem(self, tiles: list[Tile]) -> bool:
+        """Returns if there is a tile in the list that is a neighbor of all other tiles.
+        Warning: this function is slow for large sets of tiles.
+
+        Returns:
+            bool: True if there was a common neighbor found
+        """
+        tiles = set(tiles)
+        if self.CAN_SHARE_MEM:
+            # all tiles must be compute tiles
+            cs = self.get_compute_tiles()
+            for t in tiles:
+                if not t in cs:
+                    return False
+            if len(tiles) < 2:
+                return True
+
+            # All tiles
+            for t1 in tiles:
+                all_neighbors = True
+                for t2 in tiles:
+                    if t1 != t2 and not t1.is_neighbor(t2):
+                        all_neighbors = False
+                        break
+                if all_neighbors:
+                    return True
+            return False
+        else:
+            return False
 
 
 def create_class(class_name, device):
