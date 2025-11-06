@@ -1,4 +1,4 @@
-name: Build and Test with AIE tools on Ryzen AI
+name: Build and Test with Vitis 2025.1
 
 on:
   push:
