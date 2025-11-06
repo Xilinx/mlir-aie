@@ -107,30 +107,28 @@ def shim_two_in_one_out(module):
     return module
 
 
-# CHECK-LABEL: TEST: compute_three_in
+# CHECK-LABEL: TEST: compute_two_in
 # CHECK: %[[tile_0_2:.+]] = aie.tile(0, 2)
 # CHECK-NOT: %[[tile_0_3:.+]] = aie.tile(0, 3)
 @construct_and_print_module
-def compute_three_in(module):
+def compute_two_in(module):
     n = 1024
 
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
     of_0 = ObjectFifo(n_ty, name="of0")
     of_1 = ObjectFifo(n_ty, name="of1")
-    of_2 = ObjectFifo(n_ty, name="iof2")
 
-    def core_fn(of_0, of_1, of_2):
+    def core_fn(of_0, of_1):
         pass
 
-    worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.cons()])
+    worker = Worker(core_fn, [of_0.cons(), of_1.cons()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+    with rt.sequence(n_ty, n_ty) as (A, B):
         rt.start(worker)
         rt.fill(of_0.prod(), A)
         rt.fill(of_1.prod(), B)
-        rt.fill(of_2.prod(), C)
 
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module

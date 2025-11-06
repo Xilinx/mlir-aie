@@ -66,6 +66,7 @@ class SequentialPlacer(Placer):
         workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
     ):
+
         # Keep track of tiles available for placement based
         # on number of available input / output DMA channels
         shims_in = device.get_shim_tiles()
@@ -247,14 +248,12 @@ class SequentialPlacer(Placer):
             used_channels += c
 
         max_tile_channels = device.get_num_connections(tile, output)
-        """
         if used_channels > max_tile_channels:
             raise ValueError(
                 f"Ran out of channels for tile {tile}: attempted to use output={output} {used_channels}/{max_tile_channels} available; last endpoint placed is {str(ofe)}."
             )
         elif used_channels == max_tile_channels:
-        """
-        if used_channels >= max_tile_channels:
+            # if used_channels >= max_tile_channels:
             if tile not in tiles:
                 # This should not happen.
                 raise Exception(f"Placer logic error -- Tile {tile} not in {tiles}")
