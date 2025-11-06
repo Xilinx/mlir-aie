@@ -294,8 +294,16 @@ class SequentialPlacer(Placer):
         used_channels = 0
         for _, c in channels[tile]:
             used_channels += c
+
         max_tile_channels = device.get_num_connections(tile, output)
-        if used_channels >= max_tile_channels:
+        if used_channels > max_tile_channels:
+            raise ValueError(
+                f"Ran out of channels for tile {tile}: attempted to use output={output} {used_channels}/{max_tile_channels} available; last endpoint placed is {str(ofe)}."
+            )
+        elif used_channels == max_tile_channels:
+            if tile not in tiles:
+                # This should not happen.
+                raise Exception(f"Placer logic error -- Tile {tile} not in {tiles}")
             tiles.remove(tile)
 
     def _place_endpoint(
