@@ -120,7 +120,6 @@ class SequentialPlacer(Placer):
             for buffer in worker.buffers:
                 buffer.place(worker.tile)
 
-            """
             # Account for channels used by Workers, which are already placed
             prod_fifos = [of for of in worker.fifos if of._is_prod]
             cons_fifos = [of for of in worker.fifos if not of._is_prod]
@@ -142,7 +141,6 @@ class SequentialPlacer(Placer):
                 computes_in,
                 device,
             )
-            """
 
         # Prepare to loop
         if len(computes) > 0:
