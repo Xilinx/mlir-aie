@@ -154,10 +154,6 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                 else:
                     fifo_args.append(out_fifos[j + 1].cons())
             fifo_args.extend([reduce_max_vector, compute_max])
-
-            print(
-                f"For worker {i}, sending in fifos ({len(fifo_args[:-2])}): {fifo_args[:-2]}"
-            )
             workers.append(
                 Worker(
                     core_body,

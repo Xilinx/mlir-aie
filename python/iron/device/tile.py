@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+from __future__ import annotations
 
 from ...dialects.aie import TileOp
 
@@ -30,6 +31,11 @@ class Tile:
         if self._op and self._op != op:
             raise ValueError("Cannot change operation once it is set.")
         self._op = op
+
+    def is_neighbor(self, other: Tile) -> bool:
+        return (self.col == other.col and abs(self.row - other.row) == 1) or (
+            self.row == other.row and abs(self.col - other.col) == 1
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Tile):

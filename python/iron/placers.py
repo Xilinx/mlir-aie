@@ -121,27 +121,67 @@ class SequentialPlacer(Placer):
             for buffer in worker.buffers:
                 buffer.place(worker.tile)
 
-            # Account for channels used by Workers, which are already placed
+        # Account for channels used by Workers, which are already placed
+        allow_neighbor_fifos = (
+            True  # TODO: make this placer condition? Check is allowed by device?
+        )
+        for worker in workers:
             prod_fifos = [of for of in worker.fifos if of._is_prod]
             cons_fifos = [of for of in worker.fifos if not of._is_prod]
-            self._update_channels(
-                worker,
-                worker.tile,
-                True,
-                len(prod_fifos),
-                channels_out,
-                computes_out,
-                device,
-            )
-            self._update_channels(
-                worker,
-                worker.tile,
-                False,
-                len(cons_fifos),
-                channels_in,
-                computes_in,
-                device,
-            )
+
+            if allow_neighbor_fifos:
+                non_neighbor_prod_fifos = 0
+                for of in prod_fifos:
+                    neighbor = True
+                    for c in of._object_fifo._get_endpoint(is_prod=False):
+                        if isinstance(c, Worker) and not worker.tile.is_neighbor(
+                            c.tile
+                        ):
+                            neighbor = False
+                            break
+                    if neighbor:
+                        non_neighbor_prod_fifos += 1
+            else:
+                non_neighbor_prod_fifos = len(prod_fifos)
+
+            if non_neighbor_prod_fifos > 0:
+                self._update_channels(
+                    worker,
+                    worker.tile,
+                    True,
+                    non_neighbor_prod_fifos,
+                    channels_out,
+                    computes_out,
+                    device,
+                )
+
+            if allow_neighbor_fifos:
+                non_neighbor_cons_fifos = 0
+                for of in cons_fifos:
+                    neighbor = True
+                    for c in of._object_fifo._get_endpoint(is_prod=False):
+                        if isinstance(c, Worker) and (
+                            c == of or not worker.tile.is_neighbor(c.tile)
+                        ):
+                            neighbor = False
+                            break
+                    p = of._object_fifo._get_endpoint(is_prod=True)
+                    if isinstance(p, Worker) and not worker.tile.is_neighbor(p.tile):
+                        neighbor = False
+                    if neighbor:
+                        non_neighbor_prod_fifos += 1
+            else:
+                non_neighbor_cons_fifos = len(cons_fifos)
+            if non_neighbor_cons_fifos > 0:
+                self._update_channels(
+                    worker,
+                    worker.tile,
+                    False,
+                    non_neighbor_cons_fifos,
+                    channels_in,
+                    computes_in,
+                    device,
+                )
 
         # Prepare to loop
         if len(computes) > 0:
