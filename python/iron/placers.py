@@ -55,7 +55,7 @@ class SequentialPlacer(Placer):
     tiles in a row-wise direction up to the defined limit then move to the next column for subsequent placement.
     """
 
-    def __init__(self, cores_per_col: Optional[int] = None):
+    def __init__(self, cores_per_col: int | None = None):
         super().__init__()
         self.cores_per_col = cores_per_col
 
@@ -266,7 +266,7 @@ class SequentialPlacer(Placer):
         common_col: int,
         channels: dict[Tile, tuple[ObjectFifoEndpoint, int]],
         device: Device,
-        output=False,
+        output: bool = False,
     ):
         """
         A utility function that places a given endpoint based on available DMA channels.
