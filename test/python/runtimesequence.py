@@ -50,9 +50,9 @@ def task_group_drain_sequence(module):
 # CHECK: aiex.dma_start_task(%0)
 # CHECK: aiex.dma_start_task(%1)
 # CHECK: aiex.dma_await_task(%1)
-# CHECK: aiex.dma_free_task(%0)
 # CHECK: aiex.dma_start_task(%2)
 # CHECK: aiex.dma_await_task(%2)
+# CHECK: aiex.dma_free_task(%0)
 @construct_and_print_module
 def default_rt_drain_sequence(module):
     n = 1024

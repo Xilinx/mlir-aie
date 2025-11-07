@@ -319,36 +319,36 @@ class Runtime(Resolvable):
             for rt_data, rt_data_val in zip(self._rt_data, args):
                 rt_data.op = rt_data_val
 
-            no_waits = []
+            def finish_task_group(tg, task_group_actions):
+                actions = task_group_actions[tg]
+                for fn, args in actions:
+                    if fn == dma_await_task:
+                        fn(*args)
+                for fn, args in actions:
+                    if fn != dma_await_task:
+                        fn(*args)
+                task_group_actions[tg] = None
+
+            default_task_group = self.task_group()
             for task in self._tasks:
                 task.resolve()
+                current_task_group = (
+                    task.task_group if task.task_group else default_task_group
+                )
                 if isinstance(task, DMATask):
                     if task.will_wait():
-                        if task.task_group:
-                            task_group_actions[task.task_group].append(
-                                (dma_await_task, [task.task])
-                            )
-                        else:
-                            dma_await_task(task.task)
-                            for t in no_waits:
-                                dma_free_task(t.task)
-                            no_waits = []
+                        task_group_actions[default_task_group].append(
+                            (dma_await_task, [task.task])
+                        )
                     else:
-                        if task.task_group:
-                            task_group_actions[task.task_group].append(
-                                (dma_free_task, [task.task])
-                            )
-                        else:
-                            no_waits.append(task)
+                        task_group_actions[default_task_group].append(
+                            (dma_free_task, [task.task])
+                        )
                 if isinstance(task, FinishTaskGroupTask):
-                    actions = task_group_actions[task.task_group]
-                    for fn, args in actions:
-                        if fn == dma_await_task:
-                            fn(*args)
-                    for fn, args in actions:
-                        if fn != dma_await_task:
-                            fn(*args)
-                    task_group_actions[task.task_group] = None
+                    finish_task_group(task.task_group, task_group_actions)
+
+            if task_group_actions[default_task_group]:
+                finish_task_group(default_task_group, task_group_actions)
 
             if self._trace_size is not None:
                 trace_utils.gen_trace_done_aie2(trace_shim_tile)
