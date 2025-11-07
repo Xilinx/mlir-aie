@@ -57,7 +57,7 @@ config.aieInstallPrefix = "@CMAKE_INSTALL_PREFIX@"
 config.vitis_components = []
 if lit.util.pythonize_bool("@AIETools_AIE_FOUND@"):
     config.vitis_components.append("AIE")
-if lit.util.pythonize_bool("@AIETools_AIE2_FOUND@"):
+if lit.util.pythonize_bool("@AIETools_AIE2_FOUND@") or lit.util.pythonize_bool("@Peano_AIE2_FOUND@"):
     config.vitis_components.append("AIE2")
 
 # Support substitution of the tools_dir with user parameters. This is
