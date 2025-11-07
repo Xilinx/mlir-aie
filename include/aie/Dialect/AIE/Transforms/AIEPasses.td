@@ -177,6 +177,23 @@ def AIEVectorOpt : Pass<"aie-vector-opt", "mlir::func::FuncOp"> {
   let constructor = "xilinx::AIE::createAIEVectorOptPass()";
 }
 
+def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "mlir::func::FuncOp"> {
+  let summary = "Lower vector.transfer_read/write to vector.load/store for AIE";
+  let description = [{
+    This pass lowers vector.transfer_read operations to vector.load + vector.broadcast
+    and vector.transfer_write operations to vector.store, when applicable.
+    It's a wrapper for the upstream `populateVectorTransferLoweringPatterns`.
+    TODO: Deprecate this pass once `populateVectorTransferLoweringPatterns` is included in 
+    `convert-to-llvm`.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEVectorTransferLoweringPass()";
+  let options = [
+    Option<"maxTransferRank", "max-transfer-rank", "unsigned",
+           /*default=*/"-1", "Maximum vector rank to lower. -1 means no limit.">,
+  ];
+}
+
 def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {
   let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
   let description = [{
