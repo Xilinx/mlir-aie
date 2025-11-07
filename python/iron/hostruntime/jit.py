@@ -17,9 +17,9 @@ import contextlib
 import time
 
 from aie.extras.context import mlir_mod_ctx
-from ..utils.xrt import read_insts_binary
-from .device import NPU1, NPU2, NPU1Col1, NPU2Col1
-from .compile import compile_mlir_module
+from ...utils.xrt import read_insts_binary
+from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
+from ..compile import compile_mlir_module
 from .config import get_current_device
 from aie.dialects.aie import AIEDevice
 

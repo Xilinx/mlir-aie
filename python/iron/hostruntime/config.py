@@ -8,7 +8,7 @@
 import shutil
 import subprocess
 
-from .device import NPU1, NPU2
+from ..device import NPU1, NPU2
 
 
 def detect_npu_device():
