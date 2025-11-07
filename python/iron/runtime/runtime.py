@@ -332,10 +332,10 @@ class Runtime(Resolvable):
             default_task_group = self.task_group()
             for task in self._tasks:
                 task.resolve()
-                current_task_group = (
-                    task.task_group if task.task_group else default_task_group
-                )
                 if isinstance(task, DMATask):
+                    current_task_group = (
+                        task.task_group if task.task_group else default_task_group
+                    )
                     if task.will_wait():
                         task_group_actions[default_task_group].append(
                             (dma_await_task, [task.task])
