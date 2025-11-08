@@ -16,9 +16,11 @@ include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 include "aie/Dialect/AIE/IR/AIETypes.td"
 
+include "mlir/Dialect/DLTI/DLTIBase.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/DataLayoutInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -32,7 +34,9 @@ def AIE_DeviceOp: AIE_Op<"device", [
     HasParent<"mlir::ModuleOp">,
     SymbolTable, 
     SingleBlockImplicitTerminator<"EndOp">, 
-    IsolatedFromAbove
+    IsolatedFromAbove,
+    DataLayoutOpInterface,
+    HasDefaultDLTIDataLayout
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
