@@ -5,13 +5,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
-
+from abc import ABC
 import numpy as np
 import ctypes
-import pyxrt as xrt
 
 
-class Tensor:
+class Tensor(ABC):
     """
     Tensor object backed by NPU or CPU memory.
 
@@ -19,18 +18,6 @@ class Tensor:
     filling with values, and accessing data.
 
     """
-
-    def __repr__(self):
-        """
-        Return a string representation of the tensor.
-
-        Note: For NPU tensors, this method causes implicit data synchronization from device to host
-        to ensure the string representation reflects the current device state.
-        """
-        if self.device == "npu":
-            self.__sync_from_device()
-        array_str = np.array2string(self.data, separator=",")
-        return f"tensor({array_str}, device='{self.device}')"
 
     def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
         """
@@ -51,34 +38,12 @@ class Tensor:
         if isinstance(shape_or_data, tuple):
             self.shape = shape_or_data
             self.dtype = dtype
-            self.data = np.zeros(self.shape, dtype=self.dtype)
         else:
             np_data = np.array(shape_or_data, dtype=dtype)
             self.shape = np_data.shape
             self.dtype = np_data.dtype
-            self.data = np_data.copy()
 
         self.len_bytes = np.prod(self.shape) * np.dtype(self.dtype).itemsize
-        device_index = 0
-        self.xrt_device = xrt.device(device_index)
-
-        # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currenty.
-        # Eventually, xrt:ext::bo uses the 0 magic number that shall be fixed in the future.
-        # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
-        group_id = 0
-        self.bo = xrt.bo(
-            self.xrt_device,
-            self.len_bytes,
-            xrt.bo.host_only,
-            group_id,
-        )
-        ptr = self.bo.map()
-        self.data = np.frombuffer(ptr, dtype=self.dtype).reshape(self.shape)
-
-        if not isinstance(shape_or_data, tuple):
-            np.copyto(self.data, np_data)
-            if self.device == "npu":
-                self.__sync_to_device()
 
     def __array__(self, dtype=None):
         """
@@ -147,7 +112,10 @@ class Tensor:
         Returns:
            The tensor object on the target device.
         """
-        if target_device == "npu":
+        if target_device == self.device:
+            # nothing to do
+            pass
+        elif target_device == "npu":
             self.__sync_to_device()
             self.device = "npu"
             return self
@@ -158,26 +126,41 @@ class Tensor:
         else:
             raise ValueError(f"Unknown device '{target_device}'")
 
+    @abstractmethod
     def __sync_to_device(self):
         """
         Syncs the tensor data from the host to the device memory.
         """
-        return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+        ...
 
+    @abstractmethod
     def __sync_from_device(self):
         """
         Syncs the tensor data from the device to the host memory.
         """
-        return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
+        ...
 
-    def buffer_object(self):
-        """
-        Returns the XRT buffer object associated with this tensor.
+    @classmethod
+    def __check_or_create(cls, *size, out=None, dtype=None, device=None, **kwargs):
+        # Normalize shape
+        if len(size) == 1 and isinstance(size[0], (tuple, list)):
+            shape = tuple(size[0])
+        else:
+            shape = tuple(size)
 
-        Returns:
-           xrt.bo: The XRT buffer object associated with this tensor.
-        """
-        return self.bo
+        dtype = dtype or np.float32
+        device = device or "npu"
+
+        t = None
+        if out is not None:
+            if out.shape != shape or out.dtype != dtype or out.device != device:
+                raise ValueError(
+                    "Provided `out` tensor must match shape, dtype, and device"
+                )
+            t = out
+        else:
+            t = cls(shape, dtype=dtype, device=device, **kwargs)
+        return t
 
     def numpy(self):
         """
@@ -196,7 +179,7 @@ class Tensor:
             self.__sync_from_device()
         return self.data
 
-    def fill_(self, value):
+    def fill(self, value):
         """
         Fills the tensor with a scalar value (in-place operation).
 
@@ -209,6 +192,8 @@ class Tensor:
         if self.device == "npu":
             self.__sync_to_device()
 
+    '''
+    TODO(erika): this should probably be moved to be a utility function, e.g., dtype??
     @staticmethod
     def _ctype_from_dtype(dtype):
         """
@@ -227,6 +212,7 @@ class Tensor:
             return ctypes.c_float
         else:
             raise NotImplementedError(f"Unsupported dtype: {dtype}")
+    '''
 
     def numel(self):
         """
@@ -254,28 +240,8 @@ class Tensor:
         Returns:
             Tensor: A one-filled tensor.
         """
-        if len(size) == 1 and isinstance(size[0], (tuple, list)):
-            shape = tuple(size[0])
-        else:
-            shape = tuple(size)
-
-        dtype = dtype or np.float32
-        device = device or "npu"
-
-        if out is not None:
-            if out.shape != shape or out.dtype != dtype or out.device != device:
-                raise ValueError(
-                    "Provided `out` tensor must match shape, dtype, and device"
-                )
-            out.data.fill(1)
-            if device == "npu":
-                out.__sync_to_device()
-            return out
-
-        t = cls(shape, dtype=dtype, device=device, **kwargs)
-        t.data.fill(1)
-        if device == "npu":
-            t.__sync_to_device()
+        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
+        t.fill(1)
         return t
 
     @classmethod
@@ -295,29 +261,8 @@ class Tensor:
         Returns:
             Tensor: A zero-filled tensor.
         """
-        # Normalize shape
-        if len(size) == 1 and isinstance(size[0], (tuple, list)):
-            shape = tuple(size[0])
-        else:
-            shape = tuple(size)
-
-        dtype = dtype or np.float32
-        device = device or "npu"
-
-        if out is not None:
-            if out.shape != shape or out.dtype != dtype or out.device != device:
-                raise ValueError(
-                    "Provided `out` tensor must match shape, dtype, and device"
-                )
-            out.data.fill(0)
-            if device == "npu":
-                out.__sync_to_device()
-            return out
-
-        t = cls(shape, dtype=dtype, device=device, **kwargs)
-        t.data.fill(0)
-        if device == "npu":
-            t.__sync_to_device()
+        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
+        t.fill(0)
         return t
 
     @classmethod
@@ -342,20 +287,8 @@ class Tensor:
         dtype = dtype or np.int64
         device = device or "npu"
 
-        data = np.random.randint(low, high, size=size, dtype=dtype)
-
-        if out is not None:
-            if out.shape != size or out.dtype != dtype or out.device != device:
-                raise ValueError(
-                    "Provided `out` tensor must match shape, dtype, and device"
-                )
-            out.data[...] = data
-            if device == "npu":
-                out.__sync_to_device()
-            return out
-
-        t = cls(size, dtype=dtype, device=device, **kwargs)
-        t.data[...] = data
+        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
+        t.data[:] = np.random.randint(low, high, size=size, dtype=dtype)
         if device == "npu":
             t.__sync_to_device()
         return t
@@ -377,29 +310,11 @@ class Tensor:
         Returns:
             Tensor: A tensor with random values in [0, 1).
         """
-
-        if len(size) == 1 and isinstance(size[0], (tuple, list)):
-            shape = tuple(size[0])
-        else:
-            shape = tuple(size)
-
         dtype = dtype or np.float32
         device = device or "npu"
 
-        data = np.random.uniform(0.0, 1.0, size=shape).astype(dtype)
-
-        if out is not None:
-            if out.shape != shape or out.dtype != dtype or out.device != device:
-                raise ValueError(
-                    "Provided `out` tensor must match shape, dtype, and device"
-                )
-            out.data[...] = data
-            if device == "npu":
-                out.__sync_to_device()
-            return out
-
-        t = cls(shape, dtype=dtype, device=device, **kwargs)
-        t.data[...] = data
+        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
+        t.data[:] = np.random.uniform(0.0, 1.0, size=shape).astype(dtype)
         if device == "npu":
             t.__sync_to_device()
         return t
@@ -478,15 +393,28 @@ class Tensor:
 
         return t
 
+    @abstractmethod
     def __del__(self):
         """
         Destructor for Tensor.
-
-        Releases associated device memory (e.g., XRT buffer object).
         """
-        if hasattr(self, "bo"):
-            del self.bo
-            self.bo = None
+        ...
+
+
+try:
+    # TODO: could check for other runtimes here
+    from .xrtruntime.tensor import XRTTensor, xrt_tensor
+
+    IRON_RUNTIME_TENSOR = XRTTensor
+except ImportError:
+    IRON_RUNTIME_TENSOR = np.ndarray
+
+ones = runtime_class.ones
+zeros = runtime_class.zeros
+randint = runtime_class.randint
+rand = runtime_class.rand
+arange = runtime_class.arange
+zeros_like = runtime_class.zeros_like
 
 
 def tensor(data, dtype=np.float32, device="npu"):
@@ -501,12 +429,4 @@ def tensor(data, dtype=np.float32, device="npu"):
     Returns:
         Tensor: A new Tensor instance.
     """
-    return Tensor(data, dtype=dtype, device=device)
-
-
-ones = Tensor.ones
-zeros = Tensor.zeros
-randint = Tensor.randint
-rand = Tensor.rand
-arange = Tensor.arange
-zeros_like = Tensor.zeros_like
+    return IRON_RUNTIME_TENSOR(data, dtype=dtype, device=device)
