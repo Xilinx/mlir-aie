@@ -46,16 +46,19 @@ struct AIEInlineTraceConfigPass : AIEInlineTraceConfigBase<AIEInlineTraceConfigP
         return signalPassFailure();
       }
       
+      auto tile = configOp.getTile();
+      
       // Clone all register write ops from config to call site
       for (auto &op : configOp.getBody().getOps()) {
         if (auto regOp = dyn_cast<TraceRegOp>(op)) {
-          // Create new reg op at call site
+          // Create new reg op at call site with tile reference
           builder.create<TraceRegOp>(
             regOp.getLoc(),
             regOp.getRegNameAttr(),
             regOp.getFieldAttr(),
             regOp.getValueAttr(),
-            regOp.getCommentAttr()
+            regOp.getCommentAttr(),
+            tile  // Pass tile reference
           );
         }
       }
