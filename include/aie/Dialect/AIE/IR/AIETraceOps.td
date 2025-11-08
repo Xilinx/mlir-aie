@@ -270,7 +270,7 @@ def AIE_TraceConfigOp : AIE_Op<"trace.config", [
 //===----------------------------------------------------------------------===//
 
 def AIE_TraceRegOp : AIE_Op<"trace.reg", [
-    HasParent<"TraceConfigOp">
+    ParentOneOf<["TraceConfigOp", "DeviceOp"]>
   ]> {
   let summary = "Specify a trace register field write by logical name";
   
