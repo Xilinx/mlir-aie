@@ -14,12 +14,17 @@ module {
     }
     
     // CHECK: aie.trace.config @test_trace_config
-    aie.trace.start_config @test_trace
     
-    // After inlining with aiex-inline-trace-config, npu.write32 is generated
-    // CHECK-NOT: aie.trace.start_config
-    // CHECK: aiex.npu.write32
-    // CHECK-SAME: column = 0 : i32
-    // CHECK-SAME: row = 2 : i32
+    // Runtime sequence with trace configuration
+    aiex.runtime_sequence @seq(%arg0: memref<32xi32>) {
+      // CHECK: aiex.runtime_sequence
+      aie.trace.start_config @test_trace
+      
+      // After inlining with aiex-inline-trace-config, npu.write32 is generated
+      // CHECK-NOT: aie.trace.start_config
+      // CHECK: aiex.npu.write32
+      // CHECK-SAME: column = 0 : i32
+      // CHECK-SAME: row = 2 : i32
+    }
   }
 }
