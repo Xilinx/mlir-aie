@@ -12,6 +12,7 @@
 #define AIE_ATTRS
 
 include "aie/Dialect/AIE/IR/AIE.td"
+include "aie/Dialect/AIE/IR/AIETraceAttrs.td"
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
