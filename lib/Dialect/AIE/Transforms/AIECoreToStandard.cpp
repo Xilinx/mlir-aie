@@ -16,6 +16,7 @@
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -622,6 +623,11 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
       return signalPassFailure();
     }
     const auto &targetModel = deviceOp.getTargetModel();
+
+    // Copy data layout attribute from DeviceOp to ModuleOp if present
+    if (auto dlAttr = deviceOp->getAttr(DLTIDialect::kDataLayoutAttrName)) {
+      m->setAttr(DLTIDialect::kDataLayoutAttrName, dlAttr);
+    }
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
