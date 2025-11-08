@@ -1324,6 +1324,7 @@ def configure_packet_tracing_aie2(
         MemEvent.EDGE_DETECTION_EVENT_1,
     ],
     packet_id=16,
+    enable_packet_id=False,
     shim_burst_length=64,
 ):
 
@@ -1386,6 +1387,12 @@ def configure_packet_tracing_aie2(
 
     exist_core_tile_traces = []
     for i in range(len(tiles_to_trace)):
+
+        if enable_packet_id:
+            p_id = packet_id
+        else:
+            p_id = i + 1
+
         if isShimTile(tiles_to_trace[i]):
             if tiles_to_trace[i] == shim:
                 configure_shimtile_tracing_aie2(
@@ -1394,8 +1401,7 @@ def configure_packet_tracing_aie2(
                     stop=stop_user_event,
                     events=shimtile_events,
                     enable_packet=1,
-                    # packet_id=i + 1, # DEPRECATED - auto incrementing packet_id assignment
-                    packet_id=packet_id,
+                    packet_id=p_id,
                     packet_type=PacketType.SHIMTILE,
                 )
                 configure_timer_ctrl_shimtile_aie2(tiles_to_trace[i], start_user_event)
@@ -1406,8 +1412,7 @@ def configure_packet_tracing_aie2(
                     stop=stop_shimtile_broadcast_event,
                     events=shimtile_events,
                     enable_packet=1,
-                    # packet_id=i + 1, # DEPRECATED - auto incrementing packet_id assignment
-                    packet_id=packet_id,
+                    packet_id=p_id,
                     packet_type=PacketType.SHIMTILE,
                 )
                 configure_timer_ctrl_shimtile_aie2(
@@ -1420,8 +1425,7 @@ def configure_packet_tracing_aie2(
                 stop=stop_memtile_broadcast_event,
                 events=memtile_events,
                 enable_packet=1,
-                # packet_id=i + 1, # DEPRECATED - auto incrementing packet_id assignment
-                packet_id=packet_id,
+                packet_id=p_id,
                 packet_type=PacketType.MEMTILE,
             )
             configure_timer_ctrl_memtile_aie2(
@@ -1435,8 +1439,7 @@ def configure_packet_tracing_aie2(
                     stop=stop_core_broadcast_event,
                     events=coretile_events,
                     enable_packet=1,
-                    # packet_id=i + 1, # DEPRECATED - auto incrementing packet_id assignment
-                    packet_id=packet_id,
+                    packet_id=p_id,
                     packet_type=PacketType.CORE,
                 )
                 configure_timer_ctrl_coretile_aie2(
@@ -1450,8 +1453,7 @@ def configure_packet_tracing_aie2(
                     stop=stop_core_mem_broadcast_event,
                     events=coremem_events,
                     enable_packet=1,
-                    # packet_id=i + 1, # DEPRECATED - auto incrementing packet_id assignment
-                    packet_id=packet_id,
+                    packet_id=p_id,
                     packet_type=PacketType.MEM,
                 )
                 configure_timer_ctrl_coremem_aie2(
