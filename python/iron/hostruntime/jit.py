@@ -19,10 +19,11 @@ import time
 from aie.extras.context import mlir_mod_ctx
 from ...utils.xrt import read_insts_binary
 from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
-from ..compile import compile_mlir_module
+from ..compile import compile_mlir_module, compile_cxx_core_function
+from ..kernel import ExternalFunction
 from .config import get_current_device
+from .tensor import Tensor
 from aie.dialects.aie import AIEDevice
-
 
 # The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_HOME` directory.
 # Kernels are cached based on their hash value of the MLIR module string. If during compilation,
@@ -251,8 +252,6 @@ def jit(function=None, is_placed=True, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
-        from .kernel import ExternalFunction
-
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
         if cache_key in _compiled_kernels:
@@ -408,8 +407,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    from .compile.compile import compile_cxx_core_function
-
     try:
         compile_cxx_core_function(
             source_path=source_file,
@@ -457,9 +454,6 @@ def _hash_argument(arg, prefix=""):
     Helper function to hash supported argument types (tensors and callables).
     Returns a string representation for cache key generation.
     """
-    from aie.iron.tensor import Tensor
-    from aie.iron.kernel import ExternalFunction
-
     if isinstance(arg, Tensor):
         # Tensor argument - include shape and dtype
         return f"{prefix}tensor_{arg.shape}_{arg.dtype}"
