@@ -21,18 +21,19 @@ module {
       aie.trace.stop broadcast=14
     }
     
-    // Invocation point (would be in runtime_sequence in real code)
-    aie.trace.start_config @my_trace
-    
     // After Pass 1 (TraceToConfig): aie.trace → aie.trace.config
     // CHECK: aie.trace.config @my_trace_config(%[[TILE]]) {
     
-    // After Pass 2 (AIEXInlineTraceConfig): generates npu.write32 with col/row
-    // CHECK-NOT: aie.trace.start_config
-    
-    // Verify npu.write32 is generated with col/row preserved
-    // CHECK: aiex.npu.write32
-    // CHECK-SAME: column = 0 : i32
-    // CHECK-SAME: row = 2 : i32
+    // Runtime sequence with trace invocation
+    aiex.runtime_sequence @seq(%arg0: memref<32xi32>) {
+      // CHECK: aiex.runtime_sequence
+      aie.trace.start_config @my_trace
+      
+      // After Pass 2 (AIEXInlineTraceConfig): generates npu.write32 with col/row
+      // CHECK-NOT: aie.trace.start_config
+      // CHECK: aiex.npu.write32
+      // CHECK-SAME: column = 0 : i32
+      // CHECK-SAME: row = 2 : i32
+    }
   }
 }
