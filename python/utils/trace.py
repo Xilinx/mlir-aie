@@ -1180,17 +1180,19 @@ def configure_shimtile_packet_tracing_aie2(
 # * `tiles to trace` - array of tiles to trace
 # * `shim tile` - Single shim tile to configure for writing trace packets to DDR
 def configure_packet_tracing_flow(
-    tiles_to_trace,
-    shim,
-    packet_id=16,
+    tiles_to_trace, shim, packet_id=16, use_packet_id=False
 ):
 
     exist_traces = []
     for i in range(len(tiles_to_trace)):
+        if use_packet_id:
+            p_id = packet_id
+        else:
+            p_id = i + 1
 
         if tiles_to_trace[i] not in exist_traces:
             packetflow(
-                packet_id,
+                p_id,
                 tiles_to_trace[i],
                 WireBundle.Trace,
                 0,
@@ -1203,7 +1205,7 @@ def configure_packet_tracing_flow(
         else:
             # Ct's memory trace?
             packetflow(
-                packet_id,
+                p_id,
                 tiles_to_trace[i],
                 WireBundle.Trace,
                 1,
