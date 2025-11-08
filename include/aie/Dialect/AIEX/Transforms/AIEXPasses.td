@@ -254,4 +254,41 @@ def AIELegalizeControlPacket : Pass<"aie-legalize-ctrl-packet", "AIE::DeviceOp">
     "xilinx::AIEX::AIEXDialect",
   ];
 }
+
+def AIEXInlineTraceConfig : Pass<"aiex-inline-trace-config", "AIE::DeviceOp"> {
+  let summary = "Inline trace configuration and generate NPU writes";
+  let description = [{
+    Replaces aie.trace.start_config operations by:
+    1. Looking up the referenced trace.config symbol
+    2. Resolving register/field names using RegisterDatabase
+    3. Encoding bitfield values
+    4. Merging multiple field writes to same register
+    5. Generating aiex.npu.write32 operations with col/row preserved
+    
+    This pass integrates RegisterDatabase and generates NPU writes directly,
+    preserving col/row information from the tile operation.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEXInlineTraceConfigPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIEXConfigToNPU : Pass<"aiex-config-to-npu", "AIE::DeviceOp"> {
+  let summary = "Lower trace register ops to NPU write operations (stub)";
+  let description = [{
+    This pass is currently a no-op stub.
+    NPU write generation for trace configuration happens in AIEXInlineTraceConfig.
+    Kept for future extensibility.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEXConfigToNPUPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 #endif

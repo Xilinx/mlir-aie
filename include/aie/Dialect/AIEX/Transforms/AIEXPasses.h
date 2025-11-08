@@ -50,6 +50,10 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETxnToControlPacketPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELegalizeControlPacketPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEXInlineTraceConfigPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEXConfigToNPUPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

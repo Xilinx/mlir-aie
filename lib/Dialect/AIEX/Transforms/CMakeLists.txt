@@ -22,6 +22,8 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerSetLock.cpp
   AIETransformBfpTypes.cpp
   AIETxnToControlPacket.cpp
+  AIEInlineTraceConfig.cpp
+  AIEConfigToNPU.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
