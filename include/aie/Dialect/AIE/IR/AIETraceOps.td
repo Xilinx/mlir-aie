@@ -281,8 +281,8 @@ def AIE_TraceRegOp : AIE_Op<"trace.reg", [
     
     Example:
     ```mlir
-    aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15
-    aie.trace.reg register="Trace_Control0" field="Mode" value="Event-Time"
+    aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15 for %tile
+    aie.trace.reg register="Trace_Control0" field="Mode" value="Event-Time" for %tile
     ```
   }];
   
@@ -290,12 +290,15 @@ def AIE_TraceRegOp : AIE_Op<"trace.reg", [
     StrAttr:$reg_name,
     StrAttr:$field,
     AnyAttr:$value,
-    OptionalAttr<StrAttr>:$comment
+    OptionalAttr<StrAttr>:$comment,
+    Optional<Index>:$tile
   );
   
   let assemblyFormat = [{
     `register` `=` $reg_name `field` `=` $field `value` `=` $value
-    (`comment` `=` $comment^)? attr-dict
+    (`comment` `=` $comment^)?
+    (`for` $tile^)?
+    attr-dict
   }];
 }
 
