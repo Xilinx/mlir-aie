@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
-from abc import ABC
+from abc import ABC, abstractmethod
 import numpy as np
 import ctypes
 
@@ -62,7 +62,7 @@ class Tensor(ABC):
         to ensure the returned array reflects the current device state.
         """
         if self.device == "npu":
-            self.__sync_from_device()
+            self._sync_from_device()
         if dtype:
             return self.data.astype(dtype)
         return self.data
@@ -81,7 +81,7 @@ class Tensor(ABC):
         to ensure the retrieved value reflects the current device state.
         """
         if self.device == "npu":
-            self.__sync_from_device()
+            self._sync_from_device()
         return self.data[index]
 
     def __setitem__(self, index, value):
@@ -97,10 +97,10 @@ class Tensor(ABC):
         data consistency across device and host memory.
         """
         if self.device == "npu":
-            self.__sync_from_device()
+            self._sync_from_device()
         self.data[index] = value
         if self.device == "npu":
-            self.__sync_to_device()
+            self._sync_to_device()
 
     def to(self, target_device: str):
         """
@@ -116,25 +116,25 @@ class Tensor(ABC):
             # nothing to do
             pass
         elif target_device == "npu":
-            self.__sync_to_device()
+            self._sync_to_device()
             self.device = "npu"
             return self
         elif target_device == "cpu":
-            self.__sync_from_device()
+            self._sync_from_device()
             self.device = "cpu"
             return self
         else:
             raise ValueError(f"Unknown device '{target_device}'")
 
     @abstractmethod
-    def __sync_to_device(self):
+    def _sync_to_device(self):
         """
         Syncs the tensor data from the host to the device memory.
         """
         ...
 
     @abstractmethod
-    def __sync_from_device(self):
+    def _sync_from_device(self):
         """
         Syncs the tensor data from the device to the host memory.
         """
@@ -176,7 +176,7 @@ class Tensor(ABC):
         to ensure the returned array reflects the current device state.
         """
         if self.device == "npu":
-            self.__sync_from_device()
+            self._sync_from_device()
         return self.data
 
     def fill(self, value):
@@ -190,7 +190,7 @@ class Tensor(ABC):
         """
         self.data.fill(value)
         if self.device == "npu":
-            self.__sync_to_device()
+            self._sync_to_device()
 
     '''
     TODO(erika): this should probably be moved to be a utility function, e.g., dtype??
@@ -290,7 +290,7 @@ class Tensor(ABC):
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.data[:] = np.random.randint(low, high, size=size, dtype=dtype)
         if device == "npu":
-            t.__sync_to_device()
+            t._sync_to_device()
         return t
 
     @classmethod
@@ -314,9 +314,9 @@ class Tensor(ABC):
         device = device or "npu"
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
-        t.data[:] = np.random.uniform(0.0, 1.0, size=shape).astype(dtype)
+        t.data[:] = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
         if device == "npu":
-            t.__sync_to_device()
+            t._sync_to_device()
         return t
 
     @classmethod
@@ -360,13 +360,13 @@ class Tensor(ABC):
                 )
             out.data[...] = data
             if device == "npu":
-                out.__sync_to_device()
+                out._sync_to_device()
             return out
 
         t = cls((data.size,), dtype=dtype, device=device, **kwargs)
         t.data[...] = data
         if device == "npu":
-            t.__sync_to_device()
+            t._sync_to_device()
         return t
 
     @classmethod
@@ -389,44 +389,26 @@ class Tensor(ABC):
         t.data.fill(0)
 
         if device == "npu":
-            t.__sync_to_device()
+            t._sync_to_device()
 
         return t
 
-    @abstractmethod
-    def __del__(self):
-        """
-        Destructor for Tensor.
-        """
-        ...
 
+# try:
+# TODO: could check for other runtimes here
+from .xrtruntime.tensor import XRTTensor
 
-try:
-    # TODO: could check for other runtimes here
-    from .xrtruntime.tensor import XRTTensor, xrt_tensor
-
-    IRON_RUNTIME_TENSOR = XRTTensor
+IRON_RUNTIME_TENSOR = XRTTensor
+tensor = IRON_RUNTIME_TENSOR
+"""
 except ImportError:
-    IRON_RUNTIME_TENSOR = np.ndarray
+    IRON_RUNTIME_TENSOR = np
+    tensor = IRON_RUNTIME_TENSOR
+"""
 
-ones = runtime_class.ones
-zeros = runtime_class.zeros
-randint = runtime_class.randint
-rand = runtime_class.rand
-arange = runtime_class.arange
-zeros_like = runtime_class.zeros_like
-
-
-def tensor(data, dtype=np.float32, device="npu"):
-    """
-    Creates a Tensor from array-like input with the specified dtype and device.
-
-    Parameters:
-        data (array-like): Input data (list, tuple, or  NumPy array.).
-        dtype (np.dtype, optional): Desired data type. Defaults to np.float32.
-        device (str, optional): Target device (e.g., "npu", "cpu"). Defaults to "npu".
-
-    Returns:
-        Tensor: A new Tensor instance.
-    """
-    return IRON_RUNTIME_TENSOR(data, dtype=dtype, device=device)
+ones = IRON_RUNTIME_TENSOR.ones
+zeros = IRON_RUNTIME_TENSOR.zeros
+randint = IRON_RUNTIME_TENSOR.randint
+rand = IRON_RUNTIME_TENSOR.rand
+arange = IRON_RUNTIME_TENSOR.arange
+zeros_like = IRON_RUNTIME_TENSOR.zeros_like

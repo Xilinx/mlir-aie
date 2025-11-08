@@ -406,7 +406,7 @@ def test_caching_same_source():
     transform(input_tensor, output_tensor, add_one_1)
     result1 = output_tensor.numpy().copy()
 
-    output_tensor.fill_(0)
+    output_tensor.fill(0)
     transform(input_tensor, output_tensor, add_one_2)
     result2 = output_tensor.numpy()
 
@@ -647,7 +647,7 @@ def test_caching_different_flags():
     transform(input_tensor, output_tensor, add_value_5)
     result_5 = output_tensor.numpy().copy()
 
-    output_tensor.fill_(0)
+    output_tensor.fill(0)
     transform(input_tensor, output_tensor, add_value_10)
     result_10 = output_tensor.numpy()
 

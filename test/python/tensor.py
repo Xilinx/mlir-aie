@@ -64,12 +64,12 @@ def test_arange_floats():
 
 @pytest.mark.parametrize("dtype", [np.int32, np.float32])
 def test_fill(dtype):
-    """Test the fill_ method for in-place tensor filling."""
+    """Test the fill method for in-place tensor filling."""
     t = iron.zeros((2, 3), dtype=dtype, device="npu")
 
     # Fill with a specific value
     fill_value = 42 if dtype == np.int32 else 42.5
-    t.fill_(fill_value)
+    t.fill(fill_value)
 
     # Verify the tensor is filled with the correct value
     expected = np.full((2, 3), fill_value, dtype=dtype)
@@ -77,7 +77,7 @@ def test_fill(dtype):
 
     # Test with different value
     new_fill_value = 99 if dtype == np.int32 else 99.9
-    t.fill_(new_fill_value)
+    t.fill(new_fill_value)
     expected = np.full((2, 3), new_fill_value, dtype=dtype)
     assert np.allclose(t.numpy(), expected)
 
@@ -85,7 +85,7 @@ def test_fill(dtype):
 def test_fill_cpu_tensor():
     """Test fill_ method on CPU tensors."""
     t = iron.zeros((2, 2), dtype=np.int32, device="cpu")
-    t.fill_(123)
+    t.fill(123)
     expected = np.full((2, 2), 123, dtype=np.int32)
     assert np.array_equal(t.numpy(), expected)
 

@@ -23,7 +23,7 @@ class XRTTensor(Tensor):
     """
 
     def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
-        self.__init__(shape_or_data, dtype=dtype, device=device)
+        super().__init__(shape_or_data, dtype=dtype, device=device)
         device_index = 0
         self.xrt_device = xrt.device(device_index)
 
@@ -41,12 +41,12 @@ class XRTTensor(Tensor):
         self.data = np.frombuffer(ptr, dtype=self.dtype).reshape(self.shape)
 
         if not isinstance(shape_or_data, tuple):
-            np.copyto(self.data, np_data)
+            np.copyto(self.data, shape_or_data)
         else:
             self.data.fill(0)
 
         if self.device == "npu":
-            self.__sync_to_device()
+            self._sync_to_device()
 
     def __repr__(self):
         """
@@ -56,14 +56,14 @@ class XRTTensor(Tensor):
         to ensure the string representation reflects the current device state.
         """
         if self.device == "npu":
-            self.__sync_from_device()
+            self._sync_from_device()
         array_str = np.array2string(self.data, separator=",")
         return f"tensor({array_str}, device='{self.device}')"
 
-    def __sync_to_device(self):
+    def _sync_to_device(self):
         return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
-    def __sync_from_device(self):
+    def _sync_from_device(self):
         return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):
