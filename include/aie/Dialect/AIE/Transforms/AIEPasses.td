@@ -374,4 +374,50 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
   ];
 }
 
+def AIETraceToConfig : Pass<"aie-trace-to-config", "DeviceOp"> {
+  let summary = "Lower high-level trace ops to register configuration ops";
+  let description = [{
+    Converts aie.trace operations to aie.trace.config operations with
+    aie.trace.reg operations that specify register field writes.
+    
+    This pass transforms declarative trace configurations into register-level
+    specifications that can be further lowered to NPU register writes.
+  }];
+
+  let constructor = "xilinx::AIE::createAIETraceToConfigPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEInlineTraceConfig : Pass<"aie-inline-trace-config", "DeviceOp"> {
+  let summary = "Inline trace configuration symbols into runtime sequence";
+  let description = [{
+    Replaces aie.trace.start_config operations with the actual aie.trace.reg
+    operations from the referenced trace configuration symbol.
+    
+    This inlining happens within the runtime sequence context.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEInlineTraceConfigPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+def AIEConfigToNPU : Pass<"aie-config-to-npu", "DeviceOp"> {
+  let summary = "Lower trace register ops to NPU write operations";
+  let description = [{
+    Converts aie.trace.reg operations to aiex.npu.write32 operations.
+    
+    This pass resolves logical register/field names to absolute addresses
+    and encoded bitfield values, then generates the final NPU register writes.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEConfigToNPUPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 #endif

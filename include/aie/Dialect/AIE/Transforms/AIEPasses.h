@@ -56,6 +56,9 @@ createAIEAssignBufferDescriptorIDsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEGenerateColumnControlOverlayPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignTileCtrlIDsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIETraceToConfigPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInlineTraceConfigPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEConfigToNPUPass();
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION
