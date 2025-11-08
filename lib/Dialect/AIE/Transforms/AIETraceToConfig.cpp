@@ -67,8 +67,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             builder.getStringAttr("Trace_Control0"),
             builder.getStringAttr("Trace_Start_Event"),
             builder.getI32IntegerAttr(startEvent),
-            builder.getStringAttr("start event"),
-            nullptr  // No tile - parent trace.config has it
+            builder.getStringAttr("start event")
           );
         }
         
@@ -86,8 +85,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             builder.getStringAttr("Trace_Control0"),
             builder.getStringAttr("Trace_Stop_Event"),
             builder.getI32IntegerAttr(stopEvent),
-            builder.getStringAttr("stop event"),
-            nullptr
+            builder.getStringAttr("stop event")
           );
         }
         
@@ -98,8 +96,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             builder.getStringAttr("Trace_Control0"),
             builder.getStringAttr("Mode"),
             builder.getI32IntegerAttr(static_cast<uint32_t>(modeOp.getMode())),
-            builder.getStringAttr("trace mode"),
-            nullptr
+            builder.getStringAttr("trace mode")
           );
         }
         
@@ -110,8 +107,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             builder.getStringAttr("Trace_Control1"),
             builder.getStringAttr("ID"),
             builder.getI32IntegerAttr(packetOp.getId()),
-            builder.getStringAttr("packet ID"),
-            nullptr
+            builder.getStringAttr("packet ID")
           );
           
           configBuilder.create<TraceRegOp>(
@@ -119,8 +115,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             builder.getStringAttr("Trace_Control1"),
             builder.getStringAttr("Packet_Type"),
             builder.getI32IntegerAttr(static_cast<uint32_t>(packetOp.getType())),
-            builder.getStringAttr("packet type"),
-            nullptr
+            builder.getStringAttr("packet type")
           );
         }
       }
@@ -147,8 +142,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           builder.getStringAttr(registerName),
           builder.getStringAttr(fieldName),
           builder.getStringAttr(eventName),
-          builder.getStringAttr("event slot " + std::to_string(i)),
-          nullptr
+          builder.getStringAttr("event slot " + std::to_string(i))
         );
       }
       

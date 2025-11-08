@@ -270,7 +270,7 @@ def AIE_TraceConfigOp : AIE_Op<"trace.config", [
 //===----------------------------------------------------------------------===//
 
 def AIE_TraceRegOp : AIE_Op<"trace.reg", [
-    ParentOneOf<["TraceConfigOp", "DeviceOp"]>
+    HasParent<"TraceConfigOp">
   ]> {
   let summary = "Specify a trace register field write by logical name";
   
@@ -281,8 +281,8 @@ def AIE_TraceRegOp : AIE_Op<"trace.reg", [
     
     Example:
     ```mlir
-    aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15 for %tile
-    aie.trace.reg register="Trace_Control0" field="Mode" value="Event-Time" for %tile
+    aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15
+    aie.trace.reg register="Trace_Control0" field="Mode" value=0
     ```
   }];
   
@@ -290,14 +290,12 @@ def AIE_TraceRegOp : AIE_Op<"trace.reg", [
     StrAttr:$reg_name,
     StrAttr:$field,
     AnyAttr:$value,
-    OptionalAttr<StrAttr>:$comment,
-    Optional<Index>:$tile
+    OptionalAttr<StrAttr>:$comment
   );
   
   let assemblyFormat = [{
     `register` `=` $reg_name `field` `=` $field `value` `=` $value
     (`comment` `=` $comment^)?
-    (`for` $tile^)?
     attr-dict
   }];
 }
