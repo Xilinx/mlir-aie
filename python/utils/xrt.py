@@ -204,11 +204,15 @@ def setup_aie(
 
     if in_0_shape and in_0_dtype:
         if verbosity >= 1:
-            print("register 1st input to group_id 3")
+            print(
+                f"register 1st input to group_id 3: size: {in_0_shape}, dtype: {in_0_dtype}"
+            )
         app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
     if in_1_shape and in_1_dtype:
         if verbosity >= 1:
-            print("register 2nd input to group_id 4")
+            print(
+                f"register 2nd input to group_id 4: size: {in_1_shape}, dtype: {in_1_dtype}"
+            )
         app.register_buffer(4, shape=in_1_shape, dtype=in_1_dtype)
 
     if enable_trace:
@@ -221,65 +225,172 @@ def setup_aie(
 
     if in_1_shape and in_1_dtype:
         if verbosity >= 1:
-            print("register output to group_id 5")
+            print(
+                f"register output to group_id 5: size: {out_buf_shape}, dtype: {out_buf_dtype}"
+            )
         app.register_buffer(5, shape=out_buf_shape, dtype=out_buf_dtype)
     else:
         if verbosity >= 1:
-            print("register output to group_id 4")
+            print(
+                f"register output to group_id 4: size: {out_buf_shape}, dtype: {out_buf_dtype}"
+            )
         app.register_buffer(4, shape=out_buf_shape, dtype=out_buf_dtype)
         if verbosity >= 1:
-            print("register placeholder buffer (32b) to group_id 5")
+            print(
+                "register placeholder buffer (32b) to group_id 5: size: 1, dtype: uint32"
+            )
         app.register_buffer(
             5, shape=(1,), dtype=np.uint32
         )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
 
     if enable_trace:
         if not trace_after_output:
-            trace_buf_shape = (
-                trace_size * 4,
-            )  # 4x as workaround to avoid driver corruption
+            # trace_buf_shape = (trace_size,)
+            # trace_buf_shape = (trace_size+8,)
+            trace_buf_shape = (trace_size * 4,)
             trace_buf_dtype = np.uint8
+
             if verbosity >= 1:
-                print("register placeholder buffer (32b) to group_id 6")
+                # print("register placeholder buffer (32b) to group_id 6")
+                # print("register 2x 32b words for ctrl packets to group_id 6")
+                print("register for ctrl packets to group_id 6: size: 8, dtype: uint32")
             app.register_buffer(
-                6, shape=(1,), dtype=np.uint32
+                # 6, shape=(1,), dtype=np.uint32
+                # 6, shape=(2,), dtype=np.uint32
+                6,
+                shape=(8,),
+                dtype=np.uint32,
             )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
+
             if verbosity >= 1:
                 print(
-                    "register trace on 7: size: "
-                    + str(trace_buf_shape)
-                    + ", dtype:"
-                    + str(trace_buf_dtype)
+                    f"register trace on 7: size: {trace_buf_shape}, dtype: {trace_buf_dtype}"
                 )
             app.register_buffer(7, shape=trace_buf_shape, dtype=trace_buf_dtype)
 
     return app
 
 
-# Wrapper function to write buffer arguments into registered input buffers, then call
-# `run` function for AIE Application, and finally return the output buffer data.
-def execute(
-    app, input_one=None, input_two=None, enable_trace=False, trace_after_output=False
+# checks # of bits. Odd number returns a 1. Even returns 0.
+def parity(x):
+    return x.bit_count() & 1
+
+
+# create control packet
+def create_ctrl_pkt(
+    operation,
+    beats,
+    addr,
+    ctrl_pkt_read_id=28,  # global id used for all ctrl packet reads
+    # WARNING: this needs to match the packet id used in packetflow/.py
+):
+    header = (ctrl_pkt_read_id << 24) | (operation << 22) | (beats << 20) | addr
+    header |= (0x1 ^ parity(header)) << 31
+    return header
+
+
+def setup_buffer_data(
+    app,
+    input_one=None,
+    input_two=None,
+    enable_trace=False,
+    enable_ctrl_pkts=False,
+    verbosity=False,
 ):
     if not (input_one is None):
         app.buffers[3].write(input_one)
     if not (input_two is None):
         app.buffers[4].write(input_two)
 
-    app.run()
+    deadbeef_string = "EFBEADDE" * 10
 
+    # Convert the hex string to a bytes object
+    byte_data = bytes.fromhex(deadbeef_string)
+
+    # Create the NumPy array from the bytes object
+    init_trace_data = np.frombuffer(byte_data, dtype=np.uint32)
+
+    if enable_trace:
+        if enable_ctrl_pkts:
+            # write ctrl packets
+            header = np.array(
+                [
+                    create_ctrl_pkt(1, 0, 0x32004),  # core status
+                    create_ctrl_pkt(1, 0, 0x340D8),  # trace status
+                ],
+                dtype=np.uint32,
+            )
+            if verbosity:
+                print("header", [hex(x) for x in header])
+            app.buffers[6].write(header)
+
+        app.buffers[7].write(init_trace_data)
+
+    # print("ctrl, buffers[6]: ", [hex(x) for x in app.buffers[6].read()])
+    # print("init, buffers[7]: ", [hex(x) for x in app.buffers[7].read()])
+
+
+def return_buffer_results(
+    app, input_one=None, input_two=None, enable_trace=False, trace_after_output=False
+):
     if trace_after_output or not enable_trace:
         if not (input_two is None):
-            # return app.buffers[5].read(), 0
             return app.buffers[5].read()
         else:
-            # return app.buffers[4].read(), 0
             return app.buffers[4].read()
     else:
+
         if not (input_two is None):
             return app.buffers[5].read(), app.buffers[7].read()
         else:
             return app.buffers[4].read(), app.buffers[7].read()
+
+
+# Wrapper function to write buffer arguments into registered input buffers, then call
+# `run` function for AIE Application, and finally return the output buffer data.
+def execute(
+    app,
+    input_one=None,
+    input_two=None,
+    enable_trace=False,
+    enable_ctrl_pkts=False,
+    trace_after_output=False,
+    verbosity=False,
+):
+    setup_buffer_data(
+        app, input_one, input_two, enable_trace, enable_ctrl_pkts, verbosity
+    )
+    app.run()
+    return return_buffer_results(
+        app, input_one, input_two, enable_trace, trace_after_output
+    )
+
+
+# Wrapper for execute but we do the host time delta directly around the app.run() call
+# so buffer init and read are not included
+def execute_timed(
+    app,
+    input_one=None,
+    input_two=None,
+    enable_trace=False,
+    enable_ctrl_pkts=False,
+    trace_after_output=False,
+    verbosity=False,
+):
+    setup_buffer_data(
+        app, input_one, input_two, enable_trace, enable_ctrl_pkts, verbosity
+    )
+    start = time.time_ns()
+    app.run()
+    stop = time.time_ns()
+    npu_time = stop - start
+    ret = return_buffer_results(
+        app, input_one, input_two, enable_trace, trace_after_output
+    )
+    if enable_trace:
+        return ret + (npu_time,)
+    else:
+        return (ret, npu_time)
 
 
 # Wrapper function to separate output data and trace data from a single output buffer stream
@@ -291,6 +402,14 @@ def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
     )
     trace_suffix = out_buf_flat[-trace_size_words:]
     return output_prefix, trace_suffix
+
+
+def extract_tile(data):
+    col = (data >> 21) & 0x7F
+    row = (data >> 16) & 0x1F
+    pkt_type = (data >> 12) & 0x3
+    pkt_id = data & 0x1F
+    return (col, row, pkt_type, pkt_id)
 
 
 # Wrapper function to write trace buffer values to a text file
@@ -320,6 +439,7 @@ def setup_and_run_aie(
     ref,
     opts,
     trace_after_output=False,
+    enable_ctrl_pkts=False,
 ):
     enable_trace = opts.trace_size > 0
     if opts.verbosity >= 1:
@@ -345,29 +465,63 @@ def setup_and_run_aie(
     if opts.verbosity >= 1:
         print("out_size: " + str(out_size))
 
-    start = time.time_ns()
     if enable_trace:
-        full_output, trace_buffer = execute(
-            app, in1_data, in2_data, enable_trace, trace_after_output
+        full_output, trace_and_ctrl_buffer, npu_time = execute_timed(
+            app,
+            in1_data,
+            in2_data,
+            enable_trace,
+            enable_ctrl_pkts,
+            trace_after_output,
+            opts.verbosity,
         )
     else:
-        full_output = execute(app, in1_data, in2_data, enable_trace, trace_after_output)
-    stop = time.time_ns()
-    npu_time = stop - start
-    print("npu_time: ", npu_time)
+        full_output, npu_time = execute_timed(
+            app,
+            in1_data,
+            in2_data,
+            enable_trace,
+            enable_ctrl_pkts,
+            trace_after_output,
+            opts.verbosity,
+        )
+
+    print("npu_time: ", npu_time / 1000.0, " us")
 
     aie_output = full_output[:out_size].view(out_dtype)
     if enable_trace:
+        # trace_size_words = opts.trace_size // 4
+
         if trace_after_output:
             trace_buffer = full_output[out_size:].view(np.uint32)
         else:
-            trace_buffer = trace_buffer.view(np.uint32)
+            if opts.verbosity >= 1:
+                print("trace_and_ctrl_buffer shape: ", trace_and_ctrl_buffer.shape)
+                print("trace_and_ctrl_buffer dtype: ", trace_and_ctrl_buffer.dtype)
+            trace_buffer = trace_and_ctrl_buffer[: opts.trace_size].view(np.uint32)
+            if enable_ctrl_pkts:
+                ctrl_buffer = trace_and_ctrl_buffer[opts.trace_size :].view(np.uint32)
 
     if enable_trace:
         if opts.verbosity >= 1:
             print("trace_buffer shape: ", trace_buffer.shape)
             print("trace_buffer dtype: ", trace_buffer.dtype)
+            if enable_ctrl_pkts:
+                print("ctrl_buffer shape: ", ctrl_buffer.shape)
+                print("ctrl_buffer dtype: ", ctrl_buffer.dtype)
+                print("ctrl buffer: ", [hex(d) for d in ctrl_buffer])
+                # [hex(ctrl_buffer[0]), hex(ctrl_buffer[1])])
+
         write_out_trace(trace_buffer, str(opts.trace_file))
+
+        if enable_ctrl_pkts:
+            for i in range(ctrl_buffer.size // 2):
+                col, row, pkt_type, pkt_id = extract_tile(ctrl_buffer[i * 2])
+                overflow = True if (ctrl_buffer[i * 2 + 1] >> 8) == 3 else False
+                if overflow:
+                    print(
+                        f"WARNING: Trace overflow detected in tile({row},{col}). Trace results may be invalid."
+                    )
 
     # Copy output results and verify they are correct
     errors = 0
