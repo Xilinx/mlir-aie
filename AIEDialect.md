@@ -365,9 +365,9 @@ aie.device(xcvc1902) {
 }
 ```
 
-Traits: `HasParent<mlir::ModuleOp>`, `IsolatedFromAbove`, `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`, `SymbolTable`
+Traits: `HasDefaultDLTIDataLayout`, `HasParent<mlir::ModuleOp>`, `IsolatedFromAbove`, `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`, `SymbolTable`
 
-Interfaces: `AIETarget`, `Symbol`
+Interfaces: `AIETarget`, `DataLayoutOpInterface`, `Symbol`
 
 #### Attributes:
 

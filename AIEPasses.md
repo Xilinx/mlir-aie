@@ -184,3 +184,19 @@ _Optimize vector instructions for AIE_
 
 After super-vectorization, some additional optimizations are important
 for improving QOR and enabling lowering to LLVM.
+
+### `-aie-vector-transfer-lowering`
+
+_Lower vector.transfer_read/write to vector.load/store for AIE_
+
+This pass lowers vector.transfer_read operations to vector.load + vector.broadcast
+and vector.transfer_write operations to vector.store, when applicable.
+It's a wrapper for the upstream `populateVectorTransferLoweringPatterns`.
+TODO: Deprecate this pass once `populateVectorTransferLoweringPatterns` is included in 
+`convert-to-llvm`.
+
+#### Options
+
+```
+-max-transfer-rank : Maximum vector rank to lower. -1 means no limit.
+```

@@ -151,14 +151,86 @@ Classes</h2></td></tr>
 Functions</h2></td></tr>
 <tr class="memitem:a35de4aab2e8a00c81532bffb96f1e69a" id="r_a35de4aab2e8a00c81532bffb96f1e69a"><td class="memItemLeft" align="right" valign="top">struct <a class="el" href="structargs.html">args</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="xrt__test__wrapper_8h.html#a35de4aab2e8a00c81532bffb96f1e69a">parse_args</a> (int argc, const char *argv[])</td></tr>
 <tr class="separator:a35de4aab2e8a00c81532bffb96f1e69a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ae200aeede626221f0466fecc85e90e61" id="r_ae200aeede626221f0466fecc85e90e61"><td class="memTemplParams" colspan="2">template&lt;typename T1 , typename T2 , typename T3 , void(*)(T1 *, int) init_bufIn1, void(*)(T2 *, int) init_bufIn2, void(*)(T3 *, int) init_bufOut, int(*)(T1 *, T2 *, T3 *, int, int) verify_results&gt; </td></tr>
-<tr class="memitem:ae200aeede626221f0466fecc85e90e61"><td class="memTemplItemLeft" align="right" valign="top">int&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="xrt__test__wrapper_8h.html#ae200aeede626221f0466fecc85e90e61">setup_and_run_aie</a> (int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME, struct <a class="el" href="structargs.html">args</a> myargs)</td></tr>
-<tr class="separator:ae200aeede626221f0466fecc85e90e61"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2e424bf75c0b2afabe2f8618b506bb4e" id="r_a2e424bf75c0b2afabe2f8618b506bb4e"><td class="memTemplParams" colspan="2">template&lt;typename T1 , typename T3 , void(*)(T1 *, int) init_bufIn1, void(*)(T3 *, int) init_bufOut, int(*)(T1 *, T3 *, int, int) verify_results&gt; </td></tr>
-<tr class="memitem:a2e424bf75c0b2afabe2f8618b506bb4e"><td class="memTemplItemLeft" align="right" valign="top">int&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="xrt__test__wrapper_8h.html#a2e424bf75c0b2afabe2f8618b506bb4e">setup_and_run_aie</a> (int IN1_VOLUME, int OUT_VOLUME, struct <a class="el" href="structargs.html">args</a> myargs)</td></tr>
-<tr class="separator:a2e424bf75c0b2afabe2f8618b506bb4e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a50d8fef5837d0446024a5f2e5c39d1ec" id="r_a50d8fef5837d0446024a5f2e5c39d1ec"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="xrt__test__wrapper_8h.html#a50d8fef5837d0446024a5f2e5c39d1ec">getParity</a> (uint32_t n)</td></tr>
+<tr class="separator:a50d8fef5837d0446024a5f2e5c39d1ec"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a01e8da386f482fb671d10c2083e894a1" id="r_a01e8da386f482fb671d10c2083e894a1"><td class="memItemLeft" align="right" valign="top">uint32_t&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="xrt__test__wrapper_8h.html#a01e8da386f482fb671d10c2083e894a1">create_ctrl_pkt</a> (int operation, int beats, int addr, int ctrl_pkt_read_id=28)</td></tr>
+<tr class="separator:a01e8da386f482fb671d10c2083e894a1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a053f67d7dd53dfb06b48846efc0352bc" id="r_a053f67d7dd53dfb06b48846efc0352bc"><td class="memTemplParams" colspan="2">template&lt;typename T1 , typename T2 , typename T3 , void(*)(T1 *, int) init_bufIn1, void(*)(T2 *, int) init_bufIn2, void(*)(T3 *, int) init_bufOut, int(*)(T1 *, T2 *, T3 *, int, int) verify_results&gt; </td></tr>
+<tr class="memitem:a053f67d7dd53dfb06b48846efc0352bc"><td class="memTemplItemLeft" align="right" valign="top">int&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="xrt__test__wrapper_8h.html#a053f67d7dd53dfb06b48846efc0352bc">setup_and_run_aie</a> (int IN1_VOLUME, int IN2_VOLUME, int OUT_VOLUME, struct <a class="el" href="structargs.html">args</a> myargs, <a class="el" href="classbool.html">bool</a> enable_ctrl_pkts=false)</td></tr>
+<tr class="separator:a053f67d7dd53dfb06b48846efc0352bc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:acb8c7a0c2704a648114bf15f0a640246" id="r_acb8c7a0c2704a648114bf15f0a640246"><td class="memTemplParams" colspan="2">template&lt;typename T1 , typename T3 , void(*)(T1 *, int) init_bufIn1, void(*)(T3 *, int) init_bufOut, int(*)(T1 *, T3 *, int, int) verify_results&gt; </td></tr>
+<tr class="memitem:acb8c7a0c2704a648114bf15f0a640246"><td class="memTemplItemLeft" align="right" valign="top">int&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="xrt__test__wrapper_8h.html#acb8c7a0c2704a648114bf15f0a640246">setup_and_run_aie</a> (int IN1_VOLUME, int OUT_VOLUME, struct <a class="el" href="structargs.html">args</a> myargs, <a class="el" href="classbool.html">bool</a> enable_ctrl_pkts=false)</td></tr>
+<tr class="separator:acb8c7a0c2704a648114bf15f0a640246"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
+<a id="a01e8da386f482fb671d10c2083e894a1" name="a01e8da386f482fb671d10c2083e894a1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a01e8da386f482fb671d10c2083e894a1">&#9670;&#160;</a></span>create_ctrl_pkt()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">uint32_t create_ctrl_pkt </td>
+          <td>(</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>operation</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>beats</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>addr</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>ctrl_pkt_read_id</em> = <code>28</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="xrt__test__wrapper_8h_source.html#l00060">60</a> of file <a class="el" href="xrt__test__wrapper_8h_source.html">xrt_test_wrapper.h</a>.</p>
+
+<p class="reference">References <a class="el" href="xrt__test__wrapper_8h_source.html#l00049">getParity()</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="xrt__test__wrapper_8h_source.html#l00077">setup_and_run_aie()</a>, and <a class="el" href="xrt__test__wrapper_8h_source.html#l00296">setup_and_run_aie()</a>.</p>
+
+</div>
+</div>
+<a id="a50d8fef5837d0446024a5f2e5c39d1ec" name="a50d8fef5837d0446024a5f2e5c39d1ec"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a50d8fef5837d0446024a5f2e5c39d1ec">&#9670;&#160;</a></span>getParity()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">uint32_t getParity </td>
+          <td>(</td>
+          <td class="paramtype">uint32_t&#160;</td>
+          <td class="paramname"><em>n</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="xrt__test__wrapper_8h_source.html#l00049">49</a> of file <a class="el" href="xrt__test__wrapper_8h_source.html">xrt_test_wrapper.h</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="xrt__test__wrapper_8h_source.html#l00060">create_ctrl_pkt()</a>.</p>
+
+</div>
+</div>
 <a id="a35de4aab2e8a00c81532bffb96f1e69a" name="a35de4aab2e8a00c81532bffb96f1e69a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a35de4aab2e8a00c81532bffb96f1e69a">&#9670;&#160;</a></span>parse_args()</h2>
 
@@ -191,8 +263,8 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="ae200aeede626221f0466fecc85e90e61" name="ae200aeede626221f0466fecc85e90e61"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae200aeede626221f0466fecc85e90e61">&#9670;&#160;</a></span>setup_and_run_aie() <span class="overload">[1/2]</span></h2>
+<a id="a053f67d7dd53dfb06b48846efc0352bc" name="a053f67d7dd53dfb06b48846efc0352bc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a053f67d7dd53dfb06b48846efc0352bc">&#9670;&#160;</a></span>setup_and_run_aie() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -221,7 +293,13 @@ template&lt;typename T1 , typename T2 , typename T3 , void(*)(T1 *, int) init_bu
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">struct <a class="el" href="structargs.html">args</a>&#160;</td>
-          <td class="paramname"><em>myargs</em>&#160;</td>
+          <td class="paramname"><em>myargs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
+          <td class="paramname"><em>enable_ctrl_pkts</em> = <code>false</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -231,14 +309,14 @@ template&lt;typename T1 , typename T2 , typename T3 , void(*)(T1 *, int) init_bu
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="xrt__test__wrapper_8h_source.html#l00057">57</a> of file <a class="el" href="xrt__test__wrapper_8h_source.html">xrt_test_wrapper.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="xrt__test__wrapper_8h_source.html#l00077">77</a> of file <a class="el" href="xrt__test__wrapper_8h_source.html">xrt_test_wrapper.h</a>.</p>
 
-<p class="reference">References <a class="el" href="xrt__test__wrapper_8h_source.html#l00015">args::do_verify</a>, <a class="el" href="namespacetest__utils.html#a44edea607bd2cae91855f3b78c8117bd">test_utils::init_xrt_load_kernel()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00019">args::instr</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00021">args::kernel</a>, <a class="el" href="test__utils_8cpp_source.html#l00101">test_utils::load_instr_binary()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00016">args::n_iterations</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00017">args::n_warmup_iterations</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00022">args::trace_file</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00018">args::trace_size</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00014">args::verbosity</a>, <a class="el" href="test__utils_8cpp_source.html#l00207">test_utils::write_out_trace()</a>, and <a class="el" href="xrt__test__wrapper_8h_source.html#l00020">args::xclbin</a>.</p>
+<p class="reference">References <a class="el" href="xrt__test__wrapper_8h_source.html#l00060">create_ctrl_pkt()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00015">args::do_verify</a>, <a class="el" href="namespacetest__utils.html#a44edea607bd2cae91855f3b78c8117bd">test_utils::init_xrt_load_kernel()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00019">args::instr</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00021">args::kernel</a>, <a class="el" href="test__utils_8cpp_source.html#l00101">test_utils::load_instr_binary()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00016">args::n_iterations</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00017">args::n_warmup_iterations</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00022">args::trace_file</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00018">args::trace_size</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00014">args::verbosity</a>, <a class="el" href="test__utils_8cpp_source.html#l00207">test_utils::write_out_trace()</a>, and <a class="el" href="xrt__test__wrapper_8h_source.html#l00020">args::xclbin</a>.</p>
 
 </div>
 </div>
-<a id="a2e424bf75c0b2afabe2f8618b506bb4e" name="a2e424bf75c0b2afabe2f8618b506bb4e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2e424bf75c0b2afabe2f8618b506bb4e">&#9670;&#160;</a></span>setup_and_run_aie() <span class="overload">[2/2]</span></h2>
+<a id="acb8c7a0c2704a648114bf15f0a640246" name="acb8c7a0c2704a648114bf15f0a640246"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acb8c7a0c2704a648114bf15f0a640246">&#9670;&#160;</a></span>setup_and_run_aie() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -261,7 +339,13 @@ template&lt;typename T1 , typename T3 , void(*)(T1 *, int) init_bufIn1, void(*)(
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">struct <a class="el" href="structargs.html">args</a>&#160;</td>
-          <td class="paramname"><em>myargs</em>&#160;</td>
+          <td class="paramname"><em>myargs</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
+          <td class="paramname"><em>enable_ctrl_pkts</em> = <code>false</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -271,16 +355,16 @@ template&lt;typename T1 , typename T3 , void(*)(T1 *, int) init_bufIn1, void(*)(
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="xrt__test__wrapper_8h_source.html#l00242">242</a> of file <a class="el" href="xrt__test__wrapper_8h_source.html">xrt_test_wrapper.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="xrt__test__wrapper_8h_source.html#l00296">296</a> of file <a class="el" href="xrt__test__wrapper_8h_source.html">xrt_test_wrapper.h</a>.</p>
 
-<p class="reference">References <a class="el" href="xrt__test__wrapper_8h_source.html#l00015">args::do_verify</a>, <a class="el" href="namespacetest__utils.html#a44edea607bd2cae91855f3b78c8117bd">test_utils::init_xrt_load_kernel()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00019">args::instr</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00021">args::kernel</a>, <a class="el" href="test__utils_8cpp_source.html#l00101">test_utils::load_instr_binary()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00016">args::n_iterations</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00017">args::n_warmup_iterations</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00022">args::trace_file</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00018">args::trace_size</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00014">args::verbosity</a>, <a class="el" href="test__utils_8cpp_source.html#l00207">test_utils::write_out_trace()</a>, and <a class="el" href="xrt__test__wrapper_8h_source.html#l00020">args::xclbin</a>.</p>
+<p class="reference">References <a class="el" href="xrt__test__wrapper_8h_source.html#l00060">create_ctrl_pkt()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00015">args::do_verify</a>, <a class="el" href="namespacetest__utils.html#a44edea607bd2cae91855f3b78c8117bd">test_utils::init_xrt_load_kernel()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00019">args::instr</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00021">args::kernel</a>, <a class="el" href="test__utils_8cpp_source.html#l00101">test_utils::load_instr_binary()</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00016">args::n_iterations</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00017">args::n_warmup_iterations</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00022">args::trace_file</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00018">args::trace_size</a>, <a class="el" href="xrt__test__wrapper_8h_source.html#l00014">args::verbosity</a>, <a class="el" href="test__utils_8cpp_source.html#l00207">test_utils::write_out_trace()</a>, and <a class="el" href="xrt__test__wrapper_8h_source.html#l00020">args::xclbin</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Nov 6 2025 16:34:49 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Nov 10 2025 14:56:45 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
