@@ -7,6 +7,8 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from abc import abstractmethod
+from typing import Generator
+
 from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import WireBundle  # type: ignore
 from ...dialects.aie import AIEDevice, tile, TileOp, get_target_model  # type: ignore
@@ -71,169 +73,114 @@ class Device(Resolvable):
         """
         self._device = device
         self._tiles: list[list[Device.__DeviceTile]] = []
-
-        # Create all "physical" tiles belonging to the device at initialization to
-        # ensure only one "physical" tile object is ever created corresponding to the same
-        # coordinates.
-        tm = get_target_model(device)
-        for c in range(tm.columns()):
+        self._tm = get_target_model(device)
+        for c in range(self._tm.columns()):
             self._tiles.append([])
-            for r in range(tm.rows()):
+            for r in range(self._tm.rows()):
                 self._tiles[c].append(Device.__DeviceTile(c, r))
+
+    def tile_iterator(self) -> Generator[Tile, None, None]:
+        """
+        Iterates over the device tiles deterministically
+        """
+        for c in range(self._tm.columns()):
+            for r in range(self._tm.rows()):
+                yield self._tiles[c][r]
+        return None
 
     @property
     def rows(self) -> int:
-        return get_target_model(self._device).rows()
+        return self._tm.rows()
 
     @property
     def cols(self) -> int:
-        return get_target_model(self._device).columns()
+        return self._tm.columns()
 
-    @abstractmethod
     def get_shim_tiles(self) -> list[Tile]:
         """Returns a list of all shim tiles on the device.
 
         Returns:
             list[Tile]: A list of shim tiles.
         """
-        ...
+        return [
+            Tile(t._col, t._row)
+            for t in self.tile_iterator()
+            if self._tm.is_shim_noc_or_pl_tile(t._col, t._row)
+        ]
 
-    @abstractmethod
     def get_mem_tiles(self) -> list[Tile]:
         """Returns a list of all mem tiles on the device.
 
         Returns:
             list[Tile]: A list of mem tiles.
         """
-        ...
+        return [
+            Tile(t._col, t._row)
+            for t in self.tile_iterator()
+            if self._tm.is_mem_tile(t._col, t._row)
+        ]
 
-    @abstractmethod
     def get_compute_tiles(self) -> list[Tile]:
         """Returns a list of all compute tiles on the device.
 
         Returns:
             list[Tile]: A list of compute tiles.
         """
-        # TODO: should this be shaped?
-        ...
+        return [
+            Tile(t._col, t._row)
+            for t in self.tile_iterator()
+            if self._tm.is_core_tile(t._col, t._row)
+        ]
 
-    @abstractmethod
     def get_num_source_switchbox_connections(self, t: Tile) -> int:
         """Returns number of DMA source ports in the switchbox for the given tile on the device.
 
         Returns:
             int: Number of DMA source ports.
         """
-        ...
+        col = t.col
+        row = t.row
+        bundle = WireBundle.DMA
+        return self._tm.get_num_source_switchbox_connections(col, row, bundle)
 
-    @abstractmethod
     def get_num_dest_switchbox_connections(self, t: Tile) -> int:
         """Returns number of DMA dest ports in the switchbox for the given tile on the device.
 
         Returns:
             int: Number of DMA dest ports.
         """
-        ...
+        col = t.col
+        row = t.row
+        bundle = WireBundle.DMA
+        return self._tm.get_num_dest_switchbox_connections(col, row, bundle)
 
-    @abstractmethod
     def get_num_source_shim_mux_connections(self, t: Tile) -> int:
         """Returns number of DMA source ports in the shim mux for the given tile on the device.
 
         Returns:
             int: Number of DMA source ports.
         """
-        ...
+        col = t.col
+        row = t.row
+        bundle = WireBundle.DMA
+        return self._tm.get_num_source_shim_mux_connections(col, row, bundle)
 
-    @abstractmethod
     def get_num_dest_shim_mux_connections(self, t: Tile) -> int:
         """Returns number of DMA dest ports in the shim mux for the given tile on the device.
 
         Returns:
             int: Number of DMA dest ports.
         """
-        ...
-
-    def resolve_tile(
-        self,
-        tile: Tile,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        self._tiles[tile.col][tile.row].resolve(loc, ip, tile.allocation_scheme)
-        tile.op = self._tiles[tile.col][tile.row].op
-
-
-class NPUBase(Device):
-    """A base class which can be used to create other device specific classes.
-    This class is abstract because it does not implement resolve()
-
-    This class makes some assumptions:
-    * The 0th tile in each column is a shim tile
-    * The 1st tile in each column is a mem tile
-    * The 2nd+ tiles in each column are compute tiles
-    """
-
-    def __init__(self, device: AIEDevice) -> None:
-        """Initialize a device based on the AIEDevice.
-
-        Args:
-            device (AIEDevice): aie device
-        """
-        super().__init__(device=device)
-
-    def get_shim_tiles(self) -> list[Tile]:
-        shim_tiles = []
-        for col in range(self.cols):
-            shim_tiles.append(Tile(col, 0))
-        return shim_tiles
-
-    def get_mem_tiles(self) -> list[Tile]:
-        mem_tiles = []
-        for col in range(self.cols):
-            mem_tiles.append(Tile(col, 1))
-        return mem_tiles
-
-    def get_compute_tiles(self) -> list[Tile]:
-        compute_tiles = []
-        mem_tile_rows = get_target_model(self._device).get_num_mem_tile_rows()
-        for col in range(self.cols):
-            for row in range(1 + mem_tile_rows, self.rows):
-                compute_tiles.append(Tile(col, row))
-        return compute_tiles
-
-    def get_num_source_switchbox_connections(self, t: Tile) -> int:
         col = t.col
         row = t.row
         bundle = WireBundle.DMA
-        return get_target_model(self._device).get_num_source_switchbox_connections(
-            col, row, bundle
-        )
-
-    def get_num_dest_switchbox_connections(self, t: Tile) -> int:
-        col = t.col
-        row = t.row
-        bundle = WireBundle.DMA
-        return get_target_model(self._device).get_num_dest_switchbox_connections(
-            col, row, bundle
-        )
-
-    def get_num_source_shim_mux_connections(self, t: Tile) -> int:
-        col = t.col
-        row = t.row
-        bundle = WireBundle.DMA
-        return get_target_model(self._device).get_num_source_shim_mux_connections(
-            col, row, bundle
-        )
-
-    def get_num_dest_shim_mux_connections(self, t: Tile) -> int:
-        col = t.col
-        row = t.row
-        bundle = WireBundle.DMA
-        return get_target_model(self._device).get_num_dest_shim_mux_connections(
-            col, row, bundle
-        )
+        return self._tm.get_num_dest_shim_mux_connections(col, row, bundle)
 
     def get_num_connections(self, tile: Tile, output: bool) -> int:
+        """Returns number of DMA input or output "channels" available on the tile.
+        Returns:
+            int: Number of connections (channels) available on the tile
+        """
         if tile.row == 0:
             if output:
                 return self.get_num_source_shim_mux_connections(tile)
@@ -243,6 +190,24 @@ class NPUBase(Device):
             return self.get_num_source_switchbox_connections(tile)
         else:
             return self.get_num_dest_switchbox_connections(tile)
+
+    def is_legal_mem_affinity(self, src_tile: Tile, dst_tile: Tile) -> bool:
+        """Returns whether memory on a destination can be accessed by a source.
+        Returns:
+            int: Number of connections (channels) available on the tile
+        """
+        return self._tm.is_legal_mem_affinity(
+            src_tile.col, src_tile.row, dst_tile.col, dst_tile.rol
+        )
+
+    def resolve_tile(
+        self,
+        tile: Tile,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        self._tiles[tile.col][tile.row].resolve(loc, ip, tile.allocation_scheme)
+        tile.op = self._tiles[tile.col][tile.row].op
 
 
 def create_class(class_name, device):
@@ -257,10 +222,9 @@ def create_class(class_name, device):
     ) -> None:
         return device
 
-    base = NPUBase if "NPU" in class_name else Device
     globals()[class_name] = type(
         class_name,
-        (base,),
+        (Device,),
         {
             "__init__": _device__init__,
             "resolve": _device_resolve,
