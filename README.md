@@ -76,6 +76,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    >  [0000:66:00.1]  :  NPU Strix
    >  ```
 
+   IRON requires that `xrt-smi` be in your path.
+
 ### Install IRON and MLIR-AIE Prerequisites
 
 1. Install the following packages needed for MLIR-AIE:
