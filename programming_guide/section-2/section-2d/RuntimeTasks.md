@@ -21,7 +21,7 @@
 
 -----
 
-IRON provides a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch `Worker` and fill and drain Object FIFOs with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
+IRON provides a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch one or more `Worker`s and fill and drain Object FIFOs with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
 
 To create a `Runtime` `sequence` users can write:
 ```python
