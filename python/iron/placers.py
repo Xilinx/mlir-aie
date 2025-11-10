@@ -76,11 +76,9 @@ class SequentialPlacer(Placer):
         mems_out = device.get_mem_tiles()
 
         computes = device.get_compute_tiles()
-        computes_in = device.get_compute_tiles()
-        computes_out = device.get_compute_tiles()
         compute_idx = 0
 
-        # For each tile keep track of how many input and output endpoints there are
+        # For each Shim tile keep track of how many input and output endpoints there are
         # Note: defaultdict(list) automatically assigns an empty list as the default value for
         # keys that don’t exist
         channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
@@ -107,10 +105,13 @@ class SequentialPlacer(Placer):
             computes = []
             for col, tiles in unused_computes_at_col.items():
                 if len(tiles) < self.cores_per_col:
-                    raise ValueError(f"Not enough compute tiles at column {col}!")
+                    raise ValueError(
+                        f"Not enough compute tiles at column {col} to satisfy {self.cores_per_col} cores per column!"
+                    )
                 else:
                     computes.extend(tiles[: self.cores_per_col])
 
+        # Place worker tiles
         for worker in workers:
             if worker.tile == AnyComputeTile:
                 if compute_idx >= len(computes):
@@ -151,17 +152,14 @@ class SequentialPlacer(Placer):
                             shims_out,
                         ]
                     elif ofe.tile == AnyComputeTile:
-                        tiletype_channels_in, tiletype_channels_out = [
-                            computes_in,
-                            computes_out,
-                        ]
+                        tiletype_channels_in, tiletype_channels_out = (None, None)
 
                     if ofh._is_prod:
                         self._place_endpoint(
                             ofe,
                             tiletype_channels_out,
                             common_col,
-                            channels_out,
+                            tiletype_channels_out,
                             device,
                             output=True,
                         )
@@ -170,7 +168,7 @@ class SequentialPlacer(Placer):
                             ofe,
                             tiletype_channels_in,
                             common_col,
-                            channels_in,
+                            tiletype_channels_in,
                             device,
                         )
 
