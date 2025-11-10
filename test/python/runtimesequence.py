@@ -3,7 +3,7 @@
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2, AnyComputeTile, Tile
+from aie.iron.device import NPU2
 from aie.helpers.util import np_ndarray_type_get_shape
 from util import construct_and_print_module
 
