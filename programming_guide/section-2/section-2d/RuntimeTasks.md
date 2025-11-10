@@ -178,7 +178,7 @@ It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of th
 
 To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroup`s which can be created using the `task_group()` function as defined in [runtime.py](../../../python/iron/runtime/runtime.py).
 
-`RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The `finish_task_group()` operation is used to mark the end of a task group, i.e., after this operation all of the tasks in the group will be waited on for completion after which they will be freed at the same time.
+`RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The `finish_task_group()` operation is used to mark the end of a task group. This call waits for tasks in the group annotated with `wait=True` to complete, and then frees _all_ resources used by the task.
 If a `RuntimeTask` group is not explicitly defined for DMA tasks defined in a `Runtime`'s `sequence`, then a single default task group is used.
 
 > **NOTE:**  A call to  `finish_task_group()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
