@@ -481,6 +481,7 @@ class object_fifo(ObjectFifoCreateOp):
         self.attributes["aie_stream"] = int_stream_end
         self.attributes["aie_stream_port"] = int_stream_port
 
+
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):
     """Specialize ObjectFifoLinkOp class constructor to take python variables"""
