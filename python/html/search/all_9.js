@@ -39,5 +39,5 @@ var searchData=
   ['iron_3a_3atensor_36',['tensor',['../namespaceiron_1_1tensor.html',1,'iron']]],
   ['iron_3a_3aworker_37',['worker',['../namespaceiron_1_1worker.html',1,'iron']]],
   ['iron_5fcache_5fhome_38',['IRON_CACHE_HOME',['../namespaceiron_1_1jit.html#a6a5f2a73bad3c66b6879742b072cb8f1',1,'iron::jit']]],
-  ['is_5fwsl_39',['is_wsl',['../namespaceiron_1_1config.html#a9978cfa92363e7bc5682bc2be37c4d24',1,'iron::config']]]
+  ['is_5flegal_5fmem_5faffinity_39',['is_legal_mem_affinity',['../classiron_1_1device_1_1device_1_1Device.html#a54f229c7c941e51070c09345cbbc07e2',1,'iron::device::device::Device']]]
 ];
