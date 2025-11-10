@@ -10,7 +10,7 @@ import typing
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.dialects.aie import get_target_model
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace_events.aie2 import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 from enum import IntEnum
 
 
