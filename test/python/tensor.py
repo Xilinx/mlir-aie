@@ -6,26 +6,32 @@
 
 # RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s
+# REQUIRES: xrt_python_bindings
 
 import pytest
 import numpy as np
 import aie.iron as iron
+from aie.iron.hostruntime.config import CPU_DEVICE, NPU_DEVICE
+from aie.iron.hostruntime.tensor import CPUOnlyTensor, XRTTensor
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
-def test_tensor_creation(dtype):
-    t = iron.tensor((2, 2), dtype=dtype, device="npu")
-    expected = np.zeros((2, 2), dtype=dtype)
-    assert np.allclose(t, expected)
-    assert t.shape == (2, 2)
-    assert str(t.device) == "npu"
+@pytest.mark.parametrize("tensorclass", [XRTTensor, CPUOnlyTensor, iron.tensor])
+def test_tensor_creation(dtype, tensorclass):
+    for d in tensorclass.DEVICES:
+        t = tensorclass((2, 2), dtype=dtype, device=d)
+        assert isinstance(t, iron.hostruntime.tensor.Tensor)
+        expected = np.zeros((2, 2), dtype=dtype)
+        assert np.allclose(t, expected)
+        assert t.shape == (2, 2)
+        assert str(t.device) == d
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
 def test_to_device(dtype):
-    t = iron.ones((2, 2), dtype=dtype, device="cpu")
-    t.to("npu")
-    t.to("cpu")
+    t = iron.ones((2, 2), dtype=dtype, device=NPU_DEVICE)
+    t.to(NPU_DEVICE)
+    t.to(CPU_DEVICE)
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
