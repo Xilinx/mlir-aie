@@ -93,17 +93,16 @@ LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
     .canonicalize()
     .cse()
-    .convert_ub_to_llvm()
-    .convert_vector_to_llvm()
+    .Nested(
+        "func.func",
+        Pipeline().add_pass("aie-vector-transfer-lowering", max_transfer_rank=1),
+    )
     .expand_strided_metadata()
     .lower_affine()
-    .convert_math_to_llvm()
-    .convert_index_to_llvm()
     .arith_expand()
-    .convert_arith_to_llvm()
     .finalize_memref_to_llvm()
     .convert_func_to_llvm(use_bare_ptr_memref_call_conv=True)
-    .convert_cf_to_llvm()
+    .convert_to_llvm(dynamic=True)
     .canonicalize()
     .cse()
 )
