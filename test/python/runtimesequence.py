@@ -78,3 +78,67 @@ def default_rt_drain_sequence(module):
 
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module
+
+
+# CHECK-LABEL: TEST: default_rt_basic_sequence
+# CHECK: aiex.dma_start_task(%0)
+# CHECK: aiex.dma_start_task(%1)
+# CHECK: aiex.dma_await_task(%1)
+# CHECK: aiex.dma_free_task(%0)
+@construct_and_print_module
+def default_rt_basic_sequence(module):
+    n = 1024
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+
+    def core_fn(of_0, of_1):
+        pass
+
+    worker = Worker(core_fn, [of_0.cons(), of_1.prod()])
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+        rt.start(worker)
+
+        rt.fill(of_0.prod(), A)
+        rt.drain(of_1.cons(), B, wait=True)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
+
+
+# CHECK-LABEL: TEST: default_rt_fill_sequence
+# CHECK: aiex.dma_start_task(%0)
+# CHECK: aiex.dma_start_task(%1)
+# CHECK: aiex.dma_start_task(%2)
+# CHECK: aiex.dma_await_task(%2)
+# CHECK: aiex.dma_free_task(%0)
+# CHECK: aiex.dma_free_task(%1)
+@construct_and_print_module
+def default_rt_fill_sequence(module):
+    n = 1024
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+    of_2 = ObjectFifo(n_ty, name="iof2")
+
+    def core_fn(of_0, of_1, of_2):
+        pass
+
+    worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+        rt.start(worker)
+
+        rt.fill(of_0.prod(), A)
+        rt.fill(of_1.prod(), B)
+        rt.drain(of_2.cons(), C, wait=True)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return module
