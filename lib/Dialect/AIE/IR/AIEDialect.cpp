@@ -382,32 +382,26 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`repeat_count` unavailable for shim tiles");
   }
 
-  
   if (getAieStreamPort().has_value()) {
     if (!getAieStream().has_value())
-      return emitError(
-          "`aie_stream` must be defined");
+      return emitError("`aie_stream` must be defined");
   }
 
   if (getAieStream().has_value()) {
     if (getConsumerTiles().size() > 1)
-      return emitError(
-          "`aie_stream` can only be used in 1-to-1 object FIFOs");
+      return emitError("`aie_stream` can only be used in 1-to-1 object FIFOs");
 
     if (!getAieStreamPort().has_value())
-      return emitError(
-          "`aie_stream_port` must be defined");
+      return emitError("`aie_stream_port` must be defined");
 
     if (getAieStream().value() == 0 || getAieStream().value() == 2)
-        if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
-          return emitError(
-            "`aie_stream` is not available for shim tiles");
+      if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
+        return emitError("`aie_stream` is not available for shim tiles");
 
     if (getAieStream().value() == 1 || getAieStream().value() == 2)
-        if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile()
-            || getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
-          return emitError(
-            "`aie_stream` is not available for shim tiles");
+      if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile() ||
+          getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
+        return emitError("`aie_stream` is not available for shim tiles");
   }
 
   if (getInitValues().has_value()) {
