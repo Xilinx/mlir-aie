@@ -321,12 +321,28 @@ class Runtime(Resolvable):
 
             def finish_task_group(tg, task_group_actions):
                 actions = task_group_actions[tg]
-                for fn, args in actions:
-                    if fn == dma_await_task:
-                        fn(*args)
-                for fn, args in actions:
-                    if fn != dma_await_task:
-                        fn(*args)
+
+                # We want to keep order, EXCEPT do waits before frees
+                wait_tasks = [
+                    (fn, args) for (fn, args) in actions if fn == dma_await_task
+                ]
+                free_tasks = [
+                    (fn, args) for (fn, args) in actions if fn == dma_free_task
+                ]
+
+                # Check for anything known -- this shouldn't happen, but we'll catch it gracefully anyways.
+                if len(wait_tasks) + len(free_tasks) != len(actions):
+                    unknown_actions = [
+                        (fn, args)
+                        for (fn, args) in actions
+                        if fn != dma_await_task and fn != dma_free_task
+                    ]
+                    raise Exception(
+                        f"Unknown action type detected: {','.join(unknown_actions)}"
+                    )
+
+                for fn, args in wait_tasks + free_tasks:
+                    fn(*args)
                 task_group_actions[tg] = None
 
             default_task_group = self.task_group()
