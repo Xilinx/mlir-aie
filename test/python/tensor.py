@@ -14,9 +14,11 @@ import aie.iron as iron
 from aie.iron.hostruntime.config import CPU_DEVICE, NPU_DEVICE
 from aie.iron.hostruntime.tensor import CPUOnlyTensor, XRTTensor
 
+TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
+
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
-@pytest.mark.parametrize("tensorclass", [XRTTensor, CPUOnlyTensor, iron.tensor])
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_tensor_creation(dtype, tensorclass):
     for d in tensorclass.DEVICES:
         t = tensorclass((2, 2), dtype=dtype, device=d)
@@ -29,6 +31,9 @@ def test_tensor_creation(dtype, tensorclass):
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
 def test_to_device(dtype):
+
+    for tensorclass in TENSOR_CLASSES:
+        air.iron.hostruntime.tensor.IRON_RUNTIME_TENSOR = tensorclass
     t = iron.ones((2, 2), dtype=dtype, device=NPU_DEVICE)
     t.to(NPU_DEVICE)
     t.to(CPU_DEVICE)
