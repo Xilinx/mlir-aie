@@ -1839,8 +1839,8 @@ struct AIEObjectFifoStatefulTransformPass
         if (createOp.getDisableSynchronization())
           consumerFifo.setDisableSynchronization(true);
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
-        if (createOp.getie4Stream()) {
-          int streamEnd = createOp.getie4Stream().value();
+        if (createOp.getaieStream()) {
+          int streamEnd = createOp.getaieStream().value();
           if (streamEnd > 0) {
             consumerFifo->setAttr("aie_stream",
                                   builder.getI32IntegerAttr(streamEnd));
