@@ -106,7 +106,7 @@ def test_tensor_repr():
     # Get string representation (should sync from device)
     repr_str = repr(t)
     print(repr_str)
-    assert "tensor(" in repr_str
+    assert f"{t.__class__.__name__}(" in repr_str
     assert "device='npu'" in repr_str
     # Check that the data values are present
     assert "1" in repr_str and "2" in repr_str and "3" in repr_str and "4" in repr_str

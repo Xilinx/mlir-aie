@@ -58,7 +58,7 @@ class Tensor(ABC):
         if self.device == NPU_DEVICE:
             self._sync_from_device()
         array_str = np.array2string(self.data, separator=",")
-        return f"{self.__class__.__name__}nsor({array_str}, device='{self.device}')"
+        return f"{self.__class__.__name__}({array_str}, device='{self.device}')"
 
     def __array__(self, dtype=None):
         """
