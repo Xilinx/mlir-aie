@@ -11,6 +11,7 @@ import ctypes
 import pyxrt as xrt
 
 from ..tensor import Tensor
+from ..config import NPU_DEVICE
 
 
 class XRTTensor(Tensor):
@@ -22,7 +23,7 @@ class XRTTensor(Tensor):
 
     """
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
+    def __init__(self, shape_or_data, dtype=np.uint32, device=NPU_DEVICE):
         super().__init__(shape_or_data, dtype=dtype, device=device)
         device_index = 0
         self.xrt_device = xrt.device(device_index)
@@ -45,20 +46,8 @@ class XRTTensor(Tensor):
         else:
             self.data.fill(0)
 
-        if self.device == "npu":
+        if self.device == NPU_DEVICE:
             self._sync_to_device()
-
-    def __repr__(self):
-        """
-        Return a string representation of the tensor.
-
-        Note: For NPU tensors, this method causes implicit data synchronization from device to host
-        to ensure the string representation reflects the current device state.
-        """
-        if self.device == "npu":
-            self._sync_from_device()
-        array_str = np.array2string(self.data, separator=",")
-        return f"tensor({array_str}, device='{self.device}')"
 
     def _sync_to_device(self):
         return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)

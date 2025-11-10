@@ -10,6 +10,9 @@ import subprocess
 
 from ..device import NPU1, NPU2
 
+NPU_DEVICE = "npu"
+CPU_DEVICE = "cpu"
+
 
 def detect_npu_device():
     """Detects the current device in the system.

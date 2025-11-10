@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 import ctypes
 
+from .config import CPU_DEVICE, NPU_DEVICE
+
 
 class Tensor(ABC):
     """
@@ -19,7 +21,9 @@ class Tensor(ABC):
 
     """
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
+    DEVICES = [CPU_DEVICE, NPU_DEVICE]
+
+    def __init__(self, shape_or_data, dtype=np.uint32, device=NPU_DEVICE):
         """
         Initialize the tensor.
 
@@ -30,7 +34,7 @@ class Tensor(ABC):
             dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
-        if device not in ("npu", "cpu"):
+        if device not in Tensor.DEVICES:
             raise ValueError(f"Unsupported device: {device}")
 
         self.device = device
@@ -44,6 +48,17 @@ class Tensor(ABC):
             self.dtype = np_data.dtype
 
         self.len_bytes = np.prod(self.shape) * np.dtype(self.dtype).itemsize
+
+    def __repr__(self):
+        """
+        Return a string representation of the tensor.
+
+        Note: This method may implicitly trigger data synchronization to devices.
+        """
+        if self.device == NPU_DEVICE:
+            self._sync_from_device()
+        array_str = np.array2string(self.data, separator=",")
+        return f"{self.__class__.__name__}nsor({array_str}, device='{self.device}')"
 
     def __array__(self, dtype=None):
         """
@@ -61,7 +76,7 @@ class Tensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        if self.device == "npu":
+        if self.device == NPU_DEVICE:
             self._sync_from_device()
         if dtype:
             return self.data.astype(dtype)
@@ -80,7 +95,7 @@ class Tensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the retrieved value reflects the current device state.
         """
-        if self.device == "npu":
+        if self.device == NPU_DEVICE:
             self._sync_from_device()
         return self.data[index]
 
@@ -96,18 +111,18 @@ class Tensor(ABC):
         before modification and back to device after modification to ensure
         data consistency across device and host memory.
         """
-        if self.device == "npu":
+        if self.device == NPU_DEVICE:
             self._sync_from_device()
         self.data[index] = value
-        if self.device == "npu":
+        if self.device == NPU_DEVICE:
             self._sync_to_device()
 
     def to(self, target_device: str):
         """
-        Moves the tensor to a specified target device (either "npu" or "cpu").
+        Moves the tensor to a specified target device.
 
         Parameters:
-            target_device (str): The target device ("npu" or "cpu").
+            target_device (str): The target device.
 
         Returns:
            The tensor object on the target device.
@@ -115,13 +130,13 @@ class Tensor(ABC):
         if target_device == self.device:
             # nothing to do
             pass
-        elif target_device == "npu":
+        elif target_device == NPU_DEVICE:
             self._sync_to_device()
-            self.device = "npu"
+            self.device = NPU_DEVICE
             return self
-        elif target_device == "cpu":
+        elif target_device == CPU_DEVICE:
             self._sync_from_device()
-            self.device = "cpu"
+            self.device = CPU_DEVICE
             return self
         else:
             raise ValueError(f"Unknown device '{target_device}'")
@@ -149,7 +164,7 @@ class Tensor(ABC):
             shape = tuple(size)
 
         dtype = dtype or np.float32
-        device = device or "npu"
+        device = device or NPU_DEVICE
 
         t = None
         if out is not None:
@@ -175,7 +190,7 @@ class Tensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        if self.device == "npu":
+        if self.device == NPU_DEVICE:
             self._sync_from_device()
         return self.data
 
@@ -189,30 +204,8 @@ class Tensor(ABC):
         Note: For NPU tensors, this method syncs the filled data to device after modification.
         """
         self.data.fill(value)
-        if self.device == "npu":
+        if self.device == NPU_DEVICE:
             self._sync_to_device()
-
-    '''
-    TODO(erika): this should probably be moved to be a utility function, e.g., dtype??
-    @staticmethod
-    def _ctype_from_dtype(dtype):
-        """
-        Converts a NumPy data type to its corresponding ctypes type.
-        Parameters:
-            dtype (np.dtype): A NumPy data type (or a convertible type like np.float32).
-
-        Returns:
-            A ctypes type (e.g., ctypes.c_float).
-        """
-        if dtype == np.uint32:
-            return ctypes.c_uint32
-        elif dtype == np.int32:
-            return ctypes.c_int32
-        elif dtype == np.float32:
-            return ctypes.c_float
-        else:
-            raise NotImplementedError(f"Unsupported dtype: {dtype}")
-    '''
 
     def numel(self):
         """
@@ -234,7 +227,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to "npu".
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
             **kwargs: Additional keyword args.
 
         Returns:
@@ -255,7 +248,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to "npu".
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
             **kwargs: Additional keyword args.
 
         Returns:
@@ -278,18 +271,18 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional tensor to write the result into.
             dtype (np.dtype, optional): Data type. Defaults to np.int64.
-            device (str, optional): Target device. Defaults to "npu".
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
             Tensor: A tensor with random integers.
         """
         dtype = dtype or np.int64
-        device = device or "npu"
+        device = device or NPU_DEVICE
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.data[:] = np.random.randint(low, high, size=size, dtype=dtype)
-        if device == "npu":
+        if device == NPU_DEVICE:
             t._sync_to_device()
         return t
 
@@ -304,18 +297,18 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Output tensor to write into.
             dtype (np.dtype, optional): Desired data type. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to "npu".
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
             **kwargs: Additional arguments passed to constructor.
 
         Returns:
             Tensor: A tensor with random values in [0, 1).
         """
         dtype = dtype or np.float32
-        device = device or "npu"
+        device = device or NPU_DEVICE
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.data[:] = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
-        if device == "npu":
+        if device == NPU_DEVICE:
             t._sync_to_device()
         return t
 
@@ -334,7 +327,7 @@ class Tensor(ABC):
         Keyword Arguments:
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
             out (Tensor, optional): Optional tensor to write output to (must match shape and dtype).
-            device (str, optional): Target device (e.g., "npu", "cpu"). Defaults to "npu".
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
 
         Returns:
             Tensor: 1-D tensor containing the sequence.
@@ -349,7 +342,7 @@ class Tensor(ABC):
             else:
                 dtype = np.int64
 
-        device = device or "npu"
+        device = device or NPU_DEVICE
 
         data = np.arange(start, end, step, dtype=dtype)
 
@@ -359,13 +352,13 @@ class Tensor(ABC):
                     "Provided `out` tensor must match shape, dtype, and device"
                 )
             out.data[...] = data
-            if device == "npu":
+            if device == NPU_DEVICE:
                 out._sync_to_device()
             return out
 
         t = cls((data.size,), dtype=dtype, device=device, **kwargs)
         t.data[...] = data
-        if device == "npu":
+        if device == NPU_DEVICE:
             t._sync_to_device()
         return t
 
@@ -388,24 +381,51 @@ class Tensor(ABC):
         t = cls(other.shape, dtype=dtype, device=device, **kwargs)
         t.data.fill(0)
 
-        if device == "npu":
+        if device == NPU_DEVICE:
             t._sync_to_device()
 
         return t
 
 
-# try:
-# TODO: could check for other runtimes here
-from .xrtruntime.tensor import XRTTensor
+class CPUOnlyTensor(Tensor):
+    """
+    This class exists primarily for testing purposes, to test tensor operations without assuming
+    access to a host runtime (e.g., xrt).
+    """
 
-IRON_RUNTIME_TENSOR = XRTTensor
-tensor = IRON_RUNTIME_TENSOR
-"""
+    DEVICES = [CPU_DEVICE]
+
+    def __init__(self, shape_or_data, dtype=np.uint32, device=CPU_DEVICE):
+        super().__init__(shape_or_data, dtype=dtype, device=device)
+        if not device in CPUOnlyTensor.DEVICES:
+            raise ValueError(
+                f"The CPUONlyTensor only supports on {CPUOnlyTensor.DEVICES}, not {device}"
+            )
+
+    def to(self, target_device: str):
+        if not (target_device in self.DEVICES):
+            raise ValueError(
+                f"The CPUONlyTensor only supports on {CPUOnlyTensor.DEVICES}, not {device}"
+            )
+        super().to(target_device)
+
+    def _sync_to_device(self):
+        # Nothing to do for CPU only
+        pass
+
+    def _sync_from_device(self):
+        # Nothing to do for CPU only
+        pass
+
+
+try:
+    from .xrtruntime.tensor import XRTTensor
+
+    IRON_RUNTIME_TENSOR = XRTTensor
 except ImportError:
-    IRON_RUNTIME_TENSOR = np
-    tensor = IRON_RUNTIME_TENSOR
-"""
+    IRON_RUNTIME_TENSOR = CPUONlyTensor
 
+tensor = IRON_RUNTIME_TENSOR
 ones = IRON_RUNTIME_TENSOR.ones
 zeros = IRON_RUNTIME_TENSOR.zeros
 randint = IRON_RUNTIME_TENSOR.randint
