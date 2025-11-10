@@ -337,11 +337,11 @@ class Runtime(Resolvable):
                         task.task_group if task.task_group else default_task_group
                     )
                     if task.will_wait():
-                        task_group_actions[default_task_group].append(
+                        task_group_actions[current_task_group].append(
                             (dma_await_task, [task.task])
                         )
                     else:
-                        task_group_actions[default_task_group].append(
+                        task_group_actions[current_task_group].append(
                             (dma_free_task, [task.task])
                         )
                 if isinstance(task, FinishTaskGroupTask):
