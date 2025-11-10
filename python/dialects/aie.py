@@ -475,6 +475,11 @@ class object_fifo(ObjectFifoCreateOp):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["repeat_count"] = int_num
 
+    def set_aie_stream(self, stream_end, stream_port):
+        int_stream_end = IntegerAttr.get(T.i32(), stream_end)
+        int_stream_port = IntegerAttr.get(T.i32(), stream_port)
+        self.attributes["aie_stream"] = int_stream_end
+        self.attributes["aie_stream_port"] = int_stream_port
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):

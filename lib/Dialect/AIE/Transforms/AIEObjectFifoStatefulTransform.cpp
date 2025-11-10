@@ -73,6 +73,7 @@ public:
 //===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
   DenseMap<std::tuple<Value, DMAChannelDir, int>, int> channelsPerTile;
+  DenseMap<std::tuple<Value, DMAChannelDir, int>, int> aiestreamsPerTile;
 
 public:
   DMAChannelAnalysis(DeviceOp &device) {
@@ -103,6 +104,14 @@ public:
                            op.getChannelIndex()}] = 1;
         }
       }
+    }
+    for (auto flowOp : device.getOps<FlowOp>()) {
+      if (flowOp.getSourceBundle() == WireBundle::Core)
+        aiestreamsPerTile[{flowOp.getSource(), DMAChannelDir::MM2S,
+                            flowOp.getSourceChannel()}] = 1;
+      if (flowOp.getDestBundle() == WireBundle::Core)
+        aiestreamsPerTile[{flowOp.getDest(), DMAChannelDir::S2MM,
+                            flowOp.getDestChannel()}] = 1;
     }
   }
 
@@ -136,6 +145,22 @@ public:
     }
     return -1;
   }
+
+  /// Given a tile and DMAChannel, adds entry to aie4StreamsPerTile or 
+  /// throws an error if the stream is already used.
+  void checkAIEStreamIndex(TileOp tileOp, DMAChannel chan) {
+    if (aiestreamsPerTile.find(
+        {tileOp.getResult(), chan.direction, chan.channel})
+        == aiestreamsPerTile.end()) {
+      aiestreamsPerTile[{tileOp.getResult(), chan.direction,
+                          chan.channel}] = 1;
+    } else {
+      if (chan.direction == DMAChannelDir::MM2S)
+        tileOp.emitOpError("number of output Core channels exceeded!");
+      else
+        tileOp.emitOpError("number of input Core channels exceeded!");
+    }
+  }  
 };
 
 //===----------------------------------------------------------------------===//
@@ -234,6 +259,9 @@ struct AIEObjectFifoStatefulTransformPass
       return true;
 
     if (createOp.getRepeatCount().has_value())
+      return true;
+
+    if (createOp.getAieStream())
       return true;
 
     if (createOp.getConsumerTiles().size() == 1 &&
@@ -541,6 +569,9 @@ struct AIEObjectFifoStatefulTransformPass
   void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
                                 ObjectFifoCreateOp op, int share_direction) {
     if (!op.size())
+      return;
+
+    if (op.getAieStream())
       return;
 
     std::vector<BufferOp> buffers;

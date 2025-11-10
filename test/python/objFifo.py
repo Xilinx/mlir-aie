@@ -56,6 +56,9 @@ def objFifo_example():
         of2 = object_fifo("of2", T_, C_, 2, np.ndarray[(256,), np.dtype[np.int32]])
         of2.allocate(C_)
 
+        of3 = object_fifo("of3", S, C_, 2, np.ndarray[(256,), np.dtype[np.int32]])
+        of3.set_stream(stream_end=1, stream_port=1)
+
         C = Core(T_)
         bb = Block.create_at_start(C.body)
         with InsertionPoint(bb):
