@@ -32,11 +32,6 @@ class Tile:
             raise ValueError("Cannot change operation once it is set.")
         self._op = op
 
-    def is_neighbor(self, other: Tile) -> bool:
-        return (self.col == other.col and abs(self.row - other.row) == 1) or (
-            self.row == other.row and abs(self.col - other.col) == 1
-        )
-
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Tile):
             return NotImplemented
