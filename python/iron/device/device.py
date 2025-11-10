@@ -198,6 +198,15 @@ class Device(Resolvable):
             src_tile.col, src_tile.row, dst_tile.col, dst_tile.row
         )
 
+    def resolve_tile(
+        self,
+        tile: Tile,
+        loc: ir.Location | None = None,
+        ip: ir.InsertionPoint | None = None,
+    ) -> None:
+        self._tiles[tile.col][tile.row].resolve(loc, ip, tile.allocation_scheme)
+        tile.op = self._tiles[tile.col][tile.row].op
+
 
 def create_class(class_name, device):
 
