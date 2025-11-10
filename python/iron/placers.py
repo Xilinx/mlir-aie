@@ -68,21 +68,15 @@ class SequentialPlacer(Placer):
     ):
 
         # Keep track of tiles available for placement based
-        # on number of available input / output DMA channels
-        shims_in = device.get_shim_tiles()
-        shims_out = device.get_shim_tiles()
+        # on number of available input / output DMA channel
+        shims = defaultdict(list)
+        for s in device.get_shim_tiles():
+            shims[s] = [0, 0]  # [inputs, outputs]
 
-        mems_in = device.get_mem_tiles()
-        mems_out = device.get_mem_tiles()
+        mems = device.get_mem_tiles()
 
         computes = device.get_compute_tiles()
         compute_idx = 0
-
-        # For each Shim tile keep track of how many input and output endpoints there are
-        # Note: defaultdict(list) automatically assigns an empty list as the default value for
-        # keys that don’t exist
-        channels_in: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
-        channels_out: dict[Tile, tuple[ObjectFifoEndpoint, int]] = {}
 
         # If some workers are already taken, remove them from the available set
         for worker in workers:
@@ -142,35 +136,14 @@ class SequentialPlacer(Placer):
                     or ofe.tile == AnyComputeTile
                 ):
                     if ofe.tile == AnyMemTile:
-                        tiletype_channels_in, tiletype_channels_out = [
-                            mems_in,
-                            mems_out,
-                        ]
-                    elif ofe.tile == AnyShimTile:
-                        tiletype_channels_in, tiletype_channels_out = [
-                            shims_in,
-                            shims_out,
-                        ]
+                        memtile = self._find_col_match(common_col, mems)
+                        ofe.place(memtile)
                     elif ofe.tile == AnyComputeTile:
-                        tiletype_channels_in, tiletype_channels_out = (None, None)
-
-                    if ofh._is_prod:
-                        self._place_endpoint(
-                            ofe,
-                            tiletype_channels_out,
-                            common_col,
-                            tiletype_channels_out,
-                            device,
-                            output=True,
-                        )
-                    else:
-                        self._place_endpoint(
-                            ofe,
-                            tiletype_channels_in,
-                            common_col,
-                            tiletype_channels_in,
-                            device,
-                        )
+                        computetile = self._find_col_match(common_col, computes)
+                        ofe.place(computetile)
+                    elif ofe.tile == AnyShimTile:
+                        shimtile = self._find_col_match(common_col, shims)
+                        ofe.place(shimtile)
 
     def _get_common_col(self, tiles: list[Tile]) -> int:
         """
@@ -189,91 +162,13 @@ class SequentialPlacer(Placer):
         The column is increased until a tile is found in the device, or an error is signaled.
         """
         new_col = col
-        while new_col < device.cols:
+        cols_checked = 0
+        while cols_checked < device.cols:
             for t in tiles:
                 if t.col == new_col:
                     return t
-            new_col += 1
+            new_col = (new_col + 1) % device.cols  # Loop around
+            cols_checked += 1
         raise ValueError(
             f"Failed to find a tile matching column {col}: tried until column {new_col}. Try using a device with more columns."
-        )
-
-    def _update_channels(
-        self,
-        ofe: ObjectFifoEndpoint,
-        tile: Tile,
-        output: bool,
-        num_required_channels: int,
-        channels: dict[Tile, tuple[ObjectFifoEndpoint, int]],
-        tiles: list[Tile],
-        device: Device,
-    ):
-        """
-        A utility function that updates given channel and tile lists. It appends a new
-        (endpoint, num_required_channels) entry to the channels dict for the given tile key, then
-        verifies whether the total entries for that tile surpass the maximum number of available
-        channels. If so, it removes the tile from the list of available tiles.
-        """
-        if num_required_channels == 0:
-            return
-        if tile not in channels:
-            channels[tile] = []
-        channels[tile].append((ofe, num_required_channels))
-        used_channels = 0
-        for _, c in channels[tile]:
-            used_channels += c
-
-        max_tile_channels = device.get_num_connections(tile, output)
-        if used_channels > max_tile_channels:
-            raise ValueError(
-                f"Ran out of channels for tile {tile}: attempted to use output={output} {used_channels}/{max_tile_channels} available; last endpoint placed is {str(ofe)}."
-            )
-        elif used_channels == max_tile_channels:
-            # if used_channels >= max_tile_channels:
-            if tile not in tiles:
-                # This should not happen.
-                raise Exception(f"Placer logic error -- Tile {tile} not in {tiles}")
-            tiles.remove(tile)
-
-    def _place_endpoint(
-        self,
-        ofe: ObjectFifoEndpoint,
-        tiles: list[Tile],
-        common_col: int,
-        channels: dict[Tile, tuple[ObjectFifoEndpoint, int]],
-        device: Device,
-        output: bool = False,
-    ):
-        """
-        A utility function that places a given endpoint based on available DMA channels.
-        Calls _update_channels() to update channel dictionaries and tile lists.
-        """
-        is_shim = False
-        num_required_channels = 1
-
-        # Check if placing is possible
-        test_tiles = tiles.copy()
-        while True:
-            tile = self._find_col_match(common_col, test_tiles, device)
-            total_channels = num_required_channels
-            if tile in channels:
-                for _, c in channels[tile]:
-                    total_channels += c
-            max_tile_channels = device.get_num_connections(tile, output)
-            if total_channels <= max_tile_channels:
-                break
-            test_tiles.remove(tile)
-
-        # If no error was signaled by _find_col_match(), placement is possible
-        ofe.place(tile)
-
-        # Account for channels that were used by this placement
-        self._update_channels(
-            ofe,
-            tile,
-            output,
-            num_required_channels,
-            channels,
-            tiles,
-            device,
         )
