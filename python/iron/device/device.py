@@ -195,38 +195,8 @@ class Device(Resolvable):
             int: Number of connections (channels) available on the tile
         """
         return self._tm.is_legal_mem_affinity(
-            src_tile.col, src_tile.row, dst_tile.col, dst_tile.rol
+            src_tile.col, src_tile.row, dst_tile.col, dst_tile.row
         )
-
-    def has_common_mem(self, tiles: list[Tile]) -> bool:
-        """Returns if there is a tile in the list that is a neighbor of all other tiles.
-        Warning: this function is slow for large sets of tiles.
-
-        Returns:
-            bool: True if there was a common neighbor found
-        """
-        tiles = set(tiles)
-        if self.CAN_SHARE_MEM:
-            # all tiles must be compute tiles
-            cs = self.get_compute_tiles()
-            for t in tiles:
-                if not t in cs:
-                    return False
-            if len(tiles) < 2:
-                return True
-
-            # All tiles
-            for t1 in tiles:
-                all_neighbors = True
-                for t2 in tiles:
-                    if t1 != t2 and not t1.is_neighbor(t2):
-                        all_neighbors = False
-                        break
-                if all_neighbors:
-                    return True
-            return False
-        else:
-            return False
 
 
 def create_class(class_name, device):
