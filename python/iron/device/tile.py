@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-from __future__ import annotations
-
 from ...dialects.aie import TileOp
 
 

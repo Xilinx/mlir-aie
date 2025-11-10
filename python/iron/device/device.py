@@ -84,7 +84,6 @@ class Device(Resolvable):
         for c in range(self._tm.columns()):
             for r in range(self._tm.rows()):
                 yield self._tiles[c][r]
-        return None
 
     @property
     def rows(self) -> int:

@@ -7,6 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 from typing import Optional
 import statistics
 
@@ -67,15 +68,20 @@ class SequentialPlacer(Placer):
         object_fifos: list[ObjectFifoHandle],
     ):
 
-        # Keep track of tiles available for placement based
-        # on number of available input / output DMA channel
-        shims = defaultdict(list)
-        for s in device.get_shim_tiles():
-            shims[s] = [0, 0]  # [inputs, outputs]
-
+        # Keep track of tiles available for placement
+        shims = device.get_shim_tiles()
         mems = device.get_mem_tiles()
-
         computes = device.get_compute_tiles()
+
+        # For shims and memtiles, we try to avoid overloading channels
+        # by keeping tracks of [input_channels, output_channels] for each tile of that type.
+        shim_endpoint_counts = defaultdict(list)
+        for s in shims:
+            shim_endpoint_counts[s] = [0, 0]
+        mem_endpoint_counts = defaultdict(list)
+        for m in mems:
+            mem_endpoint_counts[m] = [0, 0]
+
         compute_idx = 0
 
         # If some workers are already taken, remove them from the available set
@@ -122,28 +128,46 @@ class SequentialPlacer(Placer):
 
         for ofh in object_fifos:
             of_endpoints = ofh.all_of_endpoints()
-            of_handle_endpoints = ofh._object_fifo._get_endpoint(is_prod=ofh._is_prod)
             of_compute_endpoints_tiles = [
                 ofe.tile for ofe in of_endpoints if ofe.tile in computes
             ]
+            # Place "closest" to the compute endpoints
             common_col = self._get_common_col(of_compute_endpoints_tiles)
 
-            # Place "closest" to the compute endpoints
-            for ofe in of_handle_endpoints:
-                if (
-                    ofe.tile == AnyMemTile
-                    or ofe.tile == AnyShimTile
-                    or ofe.tile == AnyComputeTile
-                ):
-                    if ofe.tile == AnyMemTile:
-                        memtile = self._find_col_match(common_col, mems)
-                        ofe.place(memtile)
-                    elif ofe.tile == AnyComputeTile:
-                        computetile = self._find_col_match(common_col, computes)
-                        ofe.place(computetile)
-                    elif ofe.tile == AnyShimTile:
-                        shimtile = self._find_col_match(common_col, shims)
-                        ofe.place(shimtile)
+            for ofe in of_endpoints:
+                if isinstance(ofe, Worker):
+                    continue
+                endpoint_type = 1 if ofe.is_prod() else 0
+
+                if ofe.tile == AnyMemTile:
+                    candidate_tiles = []
+                    for m in mems:
+                        # Only mark as candidate if there is a "connection" available
+                        if mem_endpoint_counts[m][
+                            endpoint_type
+                        ] < device.get_num_connections(m, ofe.is_prod()):
+                            candidate_tiles.append(m)
+                elif ofe.tile == AnyShimTile:
+                    candidate_tiles = []
+                    for s in shims:
+                        # Only mark as candidate if there is a "connection" available
+                        if shim_endpoint_counts[s][
+                            endpoint_type
+                        ] < device.get_num_connections(s, ofe.is_prod()):
+                            candidate_tiles.append(s)
+                elif ofe.tile == AnyComputeTile:
+                    candidate_tiles = computes
+                else:
+                    pass
+
+                placement_tile = self._find_col_match(common_col, candidate_tiles)
+                ofe.place(placement_tile)
+
+                # Once placement tile is chosen, update the counts
+                if ofe.tile == AnyMemTile:
+                    mem_endpoint_counts[placement_tile][endpoint_type] += 1
+                elif ofe.tile == AnyShimTile:
+                    shim_endpoint_counts[placement_tile][endpoint_type] += 1
 
     def _get_common_col(self, tiles: list[Tile]) -> int:
         """
