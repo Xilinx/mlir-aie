@@ -1839,8 +1839,8 @@ struct AIEObjectFifoStatefulTransformPass
         if (createOp.getDisableSynchronization())
           consumerFifo.setDisableSynchronization(true);
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
-        if (createOp.getaieStream()) {
-          int streamEnd = createOp.getaieStream().value();
+        if (createOp.getAieStream()) {
+          int streamEnd = createOp.getAieStream().value();
           if (streamEnd > 0) {
             consumerFifo->setAttr("aie_stream",
                                   builder.getI32IntegerAttr(streamEnd));
@@ -2003,13 +2003,13 @@ struct AIEObjectFifoStatefulTransformPass
         // if not aie4 stream, create consumer tile DMA
         int consumerChanIndex = -1;
         DMAChannel consumerChan;
-        if (consumer.getAie4Stream()) {
-          int consStreamEnd = consumer.getAie4Stream().value();
+        if (consumer.getAieStream()) {
+          int consStreamEnd = consumer.getAieStream().value();
           if (consStreamEnd == 1 || consStreamEnd == 2) {
-            consumerChanIndex = consumer.getAie4StreamPort().value();
+            consumerChanIndex = consumer.getAieStreamPort().value();
             consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
-            dmaAnalysis.checkAIE4StreamIndex(consumer.getProducerTileOp(),
-                                             consumerChan);
+            dmaAnalysis.checkAIEStreamIndex(consumer.getProducerTileOp(),
+                                            consumerChan);
           }
         } else {
           consumerChanIndex = fifo_dma_channel_index[consumer];
