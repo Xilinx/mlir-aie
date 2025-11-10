@@ -181,7 +181,13 @@ To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroup`s whi
 `RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The `finish_task_group()` operation is used to mark the end of a task group, i.e., after this operation all of the tasks in the group will be waited on for completion after which they will be freed at the same time.
 If a `RuntimeTask` group is not explicitly defined for DMA tasks defined in a `Runtime`'s `sequence`, then a single default task group is used.
 
-> **NOTE:**  Because of their ability to wait on runtime tasks until completion and free all the resources at the same time, task groups are well-placed to handle the asynchronous nature of runtime data movement tasks.
+> **NOTE:**  A call to  `finish_task_group()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
+> 
+> To avoid race conditions, any unawaited tasks in the group should form a dependency of an awaited task.
+> It is only safe to remove a `wait=True` if you can reason that another, awaited task in the same group can only complete if the awaited task also completed.
+> For example, you may choose to set `wait=False` on an input fill if you can guarantee that a later (awaited) output drain depends on the input and completes only if the input fill completed as well.
+>
+> If you suspect a race condition, the safest (but possibly slower) solution is to annotated _all_ tasks (including inputs) with `wait=True`.
 
 The `Runtime` `sequence` in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
 ```python
