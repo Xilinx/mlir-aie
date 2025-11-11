@@ -16,4 +16,5 @@ from .hostruntime.tensor import (
     rand,
     arange,
     zeros_like,
+    set_iron_tensor_class,
 )

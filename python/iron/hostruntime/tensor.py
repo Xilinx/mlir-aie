@@ -34,7 +34,7 @@ class Tensor(ABC):
             dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
-        if device not in Tensor.DEVICES:
+        if device not in self.__class__.DEVICES:
             raise ValueError(f"Unsupported device: {device}")
 
         self.device = device
@@ -397,17 +397,10 @@ class CPUOnlyTensor(Tensor):
 
     def __init__(self, shape_or_data, dtype=np.uint32, device=CPU_DEVICE):
         super().__init__(shape_or_data, dtype=dtype, device=device)
-        if not device in CPUOnlyTensor.DEVICES:
-            raise ValueError(
-                f"The CPUOnlyTensor only supports on {CPUOnlyTensor.DEVICES}, not {device}"
-            )
-
-    def to(self, target_device: str):
-        if not (target_device in self.DEVICES):
-            raise ValueError(
-                f"The CPUOnlyTensor only supports on {CPUOnlyTensor.DEVICES}, not {device}"
-            )
-        super().to(target_device)
+        if not isinstance(shape_or_data, tuple):
+            self.data = np.copy(shape_or_data)
+        else:
+            self.data = np.zeros(shape_or_data, dtype=dtype)
 
     def _sync_to_device(self):
         # Nothing to do for CPU only
@@ -418,17 +411,47 @@ class CPUOnlyTensor(Tensor):
         pass
 
 
+# Set default tensor class
 try:
     from .xrtruntime.tensor import XRTTensor
 
-    IRON_RUNTIME_TENSOR = XRTTensor
+    DEFAULT_IRON_TENSOR_CLASS = XRTTensor
 except ImportError:
-    IRON_RUNTIME_TENSOR = CPUOnlyTensor
+    DEFAULT_IRON_TENSOR_CLASS = CPUOnlyTensor
 
-tensor = IRON_RUNTIME_TENSOR
-ones = IRON_RUNTIME_TENSOR.ones
-zeros = IRON_RUNTIME_TENSOR.zeros
-randint = IRON_RUNTIME_TENSOR.randint
-rand = IRON_RUNTIME_TENSOR.rand
-arange = IRON_RUNTIME_TENSOR.arange
-zeros_like = IRON_RUNTIME_TENSOR.zeros_like
+
+def tensor(*args, **kwargs):
+    return DEFAULT_IRON_TENSOR_CLASS(*args, **kwargs)
+
+
+def ones(*args, **kwargs):
+    return DEFAULT_IRON_TENSOR_CLASS.ones(*args, **kwargs)
+
+
+def zeros(*args, **kwargs):
+    return DEFAULT_IRON_TENSOR_CLASS.zeros(*args, **kwargs)
+
+
+def randint(*args, **kwargs):
+    return DEFAULT_IRON_TENSOR_CLASS.randint(*args, **kwargs)
+
+
+def rand(*args, **kwargs):
+    return DEFAULT_IRON_TENSOR_CLASS.rand(*args, **kwargs)
+
+
+def arange(*args, **kwargs):
+    return DEFAULT_IRON_TENSOR_CLASS.arange(*args, **kwargs)
+
+
+def zeros_like(*args, **kwargs):
+    return DEFAULT_IRON_TENSOR_CLASS.zeros_like(*args, **kwargs)
+
+
+def set_iron_tensor_class(cls):
+    if not issubclass(cls, Tensor):
+        raise ValueError(
+            f"IRON Tensors must inherit from the Tensor class but {cls} does not."
+        )
+    global DEFAULT_IRON_TENSOR_CLASS
+    DEFAULT_IRON_TENSOR_CLASS = cls

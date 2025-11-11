@@ -22,6 +22,7 @@ TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
 def test_tensor_creation(dtype, tensorclass):
     for d in tensorclass.DEVICES:
         t = tensorclass((2, 2), dtype=dtype, device=d)
+        assert t.dtype == dtype
         assert isinstance(t, iron.hostruntime.tensor.Tensor)
         expected = np.zeros((2, 2), dtype=dtype)
         assert np.allclose(t, expected)
@@ -30,13 +31,16 @@ def test_tensor_creation(dtype, tensorclass):
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
-def test_to_device(dtype):
-
-    for tensorclass in TENSOR_CLASSES:
-        air.iron.hostruntime.tensor.IRON_RUNTIME_TENSOR = tensorclass
-    t = iron.ones((2, 2), dtype=dtype, device=NPU_DEVICE)
-    t.to(NPU_DEVICE)
-    t.to(CPU_DEVICE)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_to_device(dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
+    for d in tensorclass.DEVICES:
+        t = iron.ones((2, 2), dtype=dtype, device=d)
+        assert isinstance(t, iron.hostruntime.tensor.Tensor)
+        assert isinstance(t, tensorclass)
+        assert t.dtype == dtype
+        for d2 in tensorclass.DEVICES:
+            t.to(d2)
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
