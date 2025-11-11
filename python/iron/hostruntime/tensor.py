@@ -399,13 +399,13 @@ class CPUOnlyTensor(Tensor):
         super().__init__(shape_or_data, dtype=dtype, device=device)
         if not device in CPUOnlyTensor.DEVICES:
             raise ValueError(
-                f"The CPUONlyTensor only supports on {CPUOnlyTensor.DEVICES}, not {device}"
+                f"The CPUOnlyTensor only supports on {CPUOnlyTensor.DEVICES}, not {device}"
             )
 
     def to(self, target_device: str):
         if not (target_device in self.DEVICES):
             raise ValueError(
-                f"The CPUONlyTensor only supports on {CPUOnlyTensor.DEVICES}, not {device}"
+                f"The CPUOnlyTensor only supports on {CPUOnlyTensor.DEVICES}, not {device}"
             )
         super().to(target_device)
 
@@ -423,7 +423,7 @@ try:
 
     IRON_RUNTIME_TENSOR = XRTTensor
 except ImportError:
-    IRON_RUNTIME_TENSOR = CPUONlyTensor
+    IRON_RUNTIME_TENSOR = CPUOnlyTensor
 
 tensor = IRON_RUNTIME_TENSOR
 ones = IRON_RUNTIME_TENSOR.ones
