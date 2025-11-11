@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIERegisterDatabase.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
@@ -24,32 +25,33 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder(device);
-    
+
+    // Load register database for event lookup
+    auto regDB = RegisterDatabase::loadAIE2();
+    if (!regDB) {
+      device.emitError("Failed to load register database");
+      return signalPassFailure();
+    }
+
     // Collect all trace operations
     SmallVector<TraceOp> traces;
     device.walk([&](TraceOp trace) { traces.push_back(trace); });
-    
+
     for (auto trace : traces) {
       // Create config symbol name
       std::string configName = (trace.getSymName().str() + "_config");
-      auto tile = trace.getTile();
-      
+      auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
+
       // Insert trace.config after trace declaration
       builder.setInsertionPointAfter(trace);
       auto configOp = builder.create<TraceConfigOp>(
-        trace.getLoc(),
-        tile,
-        builder.getStringAttr(configName)
-      );
-      
+          trace.getLoc(), trace.getTile(), builder.getStringAttr(configName));
+
       // Build register writes inside config body
-      Block* configBody = new Block();
+      Block *configBody = new Block();
       configOp.getBody().push_back(configBody);
       OpBuilder configBuilder = OpBuilder::atBlockEnd(configBody);
-      
-      // For prototype: emit simplified register writes
-      // We'll emit placeholder values that will be refined later
-      
+
       // 1. Emit Trace_Control0 fields
       // Check for start/stop events
       for (auto &op : trace.getBody().getOps()) {
@@ -57,69 +59,75 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           uint32_t startEvent = 0;
           if (startOp.getBroadcast()) {
             startEvent = *startOp.getBroadcast();
-          } else if (startOp.getEvent()) {
-            // For prototype, use placeholder value
-            startEvent = 1;  // TRUE event
+          } else if (auto eventAttr = startOp.getEvent()) {
+            // Look up event number from database
+            std::string eventName = eventAttr->getName().str();
+            auto eventNum = regDB->lookupEvent(eventName, tile);
+            if (eventNum) {
+              startEvent = *eventNum;
+            } else {
+              trace.emitWarning("Unknown event: ") << eventName;
+              startEvent = 1; // Fallback to TRUE event
+            }
           }
-          
+
           configBuilder.create<TraceRegOp>(
-            trace.getLoc(),
-            builder.getStringAttr("Trace_Control0"),
-            builder.getStringAttr("Trace_Start_Event"),
-            builder.getI32IntegerAttr(startEvent),
-            builder.getStringAttr("start event")
-          );
+              trace.getLoc(), builder.getStringAttr("Trace_Control0"),
+              builder.getStringAttr("Trace_Start_Event"),
+              builder.getI32IntegerAttr(startEvent),
+              /*mask=*/nullptr, builder.getStringAttr("start event"));
         }
-        
+
         if (auto stopOp = dyn_cast<TraceStopEventOp>(op)) {
           uint32_t stopEvent = 0;
           if (stopOp.getBroadcast()) {
             stopEvent = *stopOp.getBroadcast();
-          } else if (stopOp.getEvent()) {
-            // For prototype, use placeholder value
-            stopEvent = 0;  // NONE event
+          } else if (auto eventAttr = stopOp.getEvent()) {
+            // Look up event number from database
+            std::string eventName = eventAttr->getName().str();
+            auto eventNum = regDB->lookupEvent(eventName, tile);
+            if (eventNum) {
+              stopEvent = *eventNum;
+            } else {
+              trace.emitWarning("Unknown event: ") << eventName;
+              stopEvent = 0; // Fallback to NONE event
+            }
           }
-          
+
           configBuilder.create<TraceRegOp>(
-            trace.getLoc(),
-            builder.getStringAttr("Trace_Control0"),
-            builder.getStringAttr("Trace_Stop_Event"),
-            builder.getI32IntegerAttr(stopEvent),
-            builder.getStringAttr("stop event")
-          );
+              trace.getLoc(), builder.getStringAttr("Trace_Control0"),
+              builder.getStringAttr("Trace_Stop_Event"),
+              builder.getI32IntegerAttr(stopEvent),
+              /*mask=*/nullptr, builder.getStringAttr("stop event"));
         }
-        
+
         // Emit mode if present
         if (auto modeOp = dyn_cast<TraceModeOp>(op)) {
           configBuilder.create<TraceRegOp>(
-            trace.getLoc(),
-            builder.getStringAttr("Trace_Control0"),
-            builder.getStringAttr("Mode"),
-            builder.getI32IntegerAttr(static_cast<uint32_t>(modeOp.getMode())),
-            builder.getStringAttr("trace mode")
-          );
+              trace.getLoc(), builder.getStringAttr("Trace_Control0"),
+              builder.getStringAttr("Mode"),
+              builder.getI32IntegerAttr(
+                  static_cast<uint32_t>(modeOp.getMode())),
+              /*mask=*/nullptr, builder.getStringAttr("trace mode"));
         }
-        
+
         // Emit packet config if present
         if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
           configBuilder.create<TraceRegOp>(
-            trace.getLoc(),
-            builder.getStringAttr("Trace_Control1"),
-            builder.getStringAttr("ID"),
-            builder.getI32IntegerAttr(packetOp.getId()),
-            builder.getStringAttr("packet ID")
-          );
-          
+              trace.getLoc(), builder.getStringAttr("Trace_Control1"),
+              builder.getStringAttr("ID"),
+              builder.getI32IntegerAttr(packetOp.getId()),
+              /*mask=*/nullptr, builder.getStringAttr("packet ID"));
+
           configBuilder.create<TraceRegOp>(
-            trace.getLoc(),
-            builder.getStringAttr("Trace_Control1"),
-            builder.getStringAttr("Packet_Type"),
-            builder.getI32IntegerAttr(static_cast<uint32_t>(packetOp.getType())),
-            builder.getStringAttr("packet type")
-          );
+              trace.getLoc(), builder.getStringAttr("Trace_Control1"),
+              builder.getStringAttr("Packet_Type"),
+              builder.getI32IntegerAttr(
+                  static_cast<uint32_t>(packetOp.getType())),
+              /*mask=*/nullptr, builder.getStringAttr("packet type"));
         }
       }
-      
+
       // 2. Emit event slots (Trace_Event0 / Trace_Event1)
       SmallVector<TraceEventOp> events;
       for (auto &op : trace.getBody().getOps()) {
@@ -127,37 +135,41 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           events.push_back(eventOp);
         }
       }
-      
+
       for (size_t i = 0; i < events.size() && i < 8; ++i) {
-        auto eventName = events[i].getEvent().getName();
-        
+        std::string eventName = events[i].getEvent().getName().str();
+
+        // Look up event number from database
+        auto eventNum = regDB->lookupEvent(eventName, tile);
+        if (!eventNum) {
+          trace.emitWarning("Unknown event: ") << eventName;
+          continue;
+        }
+
         // Determine which register and field
         StringRef registerName = (i < 4) ? "Trace_Event0" : "Trace_Event1";
-        std::string fieldName = "Trace_Event" + std::to_string(i % 4);
-        
-        // For prototype: use event name as string value
-        // The next pass will resolve this to event code
+        std::string fieldName = "Trace_Event" + std::to_string(i);
+
+        // Emit register write with event number as integer
         configBuilder.create<TraceRegOp>(
-          trace.getLoc(),
-          builder.getStringAttr(registerName),
-          builder.getStringAttr(fieldName),
-          builder.getStringAttr(eventName),
-          builder.getStringAttr("event slot " + std::to_string(i))
-        );
+            trace.getLoc(), builder.getStringAttr(registerName),
+            builder.getStringAttr(fieldName),
+            builder.getI32IntegerAttr(*eventNum),
+            /*mask=*/nullptr,
+            builder.getStringAttr("event slot " + std::to_string(i)));
       }
-      
+
       // Add terminator
       configBuilder.create<EndOp>(trace.getLoc());
-      
+
       // Update all trace.start_config references
       device.walk([&](TraceStartConfigOp startConfig) {
         if (startConfig.getTraceConfig() == trace.getSymName()) {
           startConfig.setTraceConfigAttr(
-            SymbolRefAttr::get(builder.getContext(), configName)
-          );
+              SymbolRefAttr::get(builder.getContext(), configName));
         }
       });
-      
+
       // Remove original trace op
       trace.erase();
     }
@@ -167,4 +179,159 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIETraceToConfigPass() {
   return std::make_unique<AIETraceToConfigPass>();
+}
+
+//===----------------------------------------------------------------------===//
+// AIETraceRegPackWritesPass - Pack multiple register field writes
+//===----------------------------------------------------------------------===//
+
+struct AIETraceRegPackWritesPass
+    : AIETraceRegPackWritesBase<AIETraceRegPackWritesPass> {
+  void runOnOperation() override {
+    DeviceOp device = getOperation();
+
+    // Load register database for field information
+    auto regDB = RegisterDatabase::loadAIE2();
+    if (!regDB) {
+      device.emitError("Failed to load register database");
+      return signalPassFailure();
+    }
+
+    // Process each trace config
+    device.walk([&](TraceConfigOp configOp) {
+      // Determine module based on tile type
+      auto tile = cast<TileOp>(configOp.getTile().getDefiningOp());
+
+      // Phase 1: Convert field+value to mask+shifted_value
+      SmallVector<TraceRegOp> regsToConvert;
+      for (auto &op : configOp.getBody().front()) {
+        if (auto regOp = dyn_cast<TraceRegOp>(op)) {
+          if (regOp.getField() && !regOp.getMask()) {
+            regsToConvert.push_back(regOp);
+          }
+        }
+      }
+
+      OpBuilder builder(&configOp.getBody().front(),
+                        configOp.getBody().front().begin());
+
+      for (auto regOp : regsToConvert) {
+        // Look up register and field information
+        const RegisterInfo *regInfo =
+            regDB->lookupRegister(regOp.getRegName(), tile);
+
+        if (!regInfo) {
+          regOp.emitError("Register not found in database: ")
+              << regOp.getRegName();
+          return signalPassFailure();
+        }
+
+        const BitFieldInfo *fieldInfo = regInfo->getField(*regOp.getField());
+        if (!fieldInfo) {
+          regOp.emitError("Field not found in register: ")
+              << *regOp.getField() << " in " << regOp.getRegName();
+          return signalPassFailure();
+        }
+
+        // Get the value as integer
+        uint32_t value = 0;
+        if (auto intAttr = dyn_cast<IntegerAttr>(regOp.getValue())) {
+          value = intAttr.getInt();
+        } else {
+          regOp.emitError("Non-integer value not supported in pack pass");
+          return signalPassFailure();
+        }
+
+        // Compute mask and shifted value
+        uint32_t mask = ((1u << fieldInfo->getWidth()) - 1)
+                        << fieldInfo->bit_start;
+        uint32_t shiftedValue = regDB->encodeFieldValue(*fieldInfo, value);
+        // Create new operation with mask
+        builder.setInsertionPoint(regOp);
+        builder.create<TraceRegOp>(regOp.getLoc(), regOp.getRegNameAttr(),
+                                   nullptr, // no field
+                                   builder.getI32IntegerAttr(shiftedValue),
+                                   builder.getI32IntegerAttr(mask),
+                                   regOp.getCommentAttr());
+
+        // Remove old operation
+        regOp.erase();
+      }
+
+      // Phase 2: Merge writes to same register with non-overlapping masks
+      bool changed = true;
+      while (changed) {
+        changed = false;
+
+        // Collect all register writes
+        SmallVector<TraceRegOp> regWrites;
+        for (TraceRegOp op : configOp.getBody().front().getOps<TraceRegOp>()) {
+          if (op.getMask()) {
+            regWrites.push_back(op);
+          }
+        }
+
+        // Try to merge pairs
+        for (size_t i = 0; i < regWrites.size() && !changed; ++i) {
+          for (size_t j = i + 1; j < regWrites.size() && !changed; ++j) {
+            TraceRegOp reg1 = regWrites[i];
+            TraceRegOp reg2 = regWrites[j];
+
+            // Must be same register
+            if (reg1.getRegName() != reg2.getRegName())
+              continue;
+
+            auto mask1Attr = reg1.getMask();
+            auto mask2Attr = reg2.getMask();
+            if (!mask1Attr || !mask2Attr)
+              continue;
+
+            uint32_t mask1 = *mask1Attr;
+            uint32_t mask2 = *mask2Attr;
+
+            // Check for overlap
+            if (mask1 & mask2) {
+              reg1.emitError("Overlapping masks for register ")
+                  << reg1.getRegName() << ": mask1=" << mask1
+                  << " mask2=" << mask2;
+              return signalPassFailure();
+            }
+
+            // Merge the two writes
+            uint32_t value1 = dyn_cast<IntegerAttr>(reg1.getValue()).getInt();
+            uint32_t value2 = dyn_cast<IntegerAttr>(reg2.getValue()).getInt();
+            uint32_t mergedValue = value1 | value2;
+            uint32_t mergedMask = mask1 | mask2;
+
+            // Create merged operation
+            builder.setInsertionPoint(reg1);
+            std::string comment;
+            if (reg1.getComment())
+              comment += reg1.getComment()->str();
+            if (reg2.getComment()) {
+              if (!comment.empty())
+                comment += " + ";
+              comment += reg2.getComment()->str();
+            }
+
+            builder.create<TraceRegOp>(
+                reg1.getLoc(), reg1.getRegNameAttr(), nullptr,
+                builder.getI32IntegerAttr(mergedValue),
+                builder.getI32IntegerAttr(mergedMask),
+                comment.empty() ? nullptr : builder.getStringAttr(comment));
+
+            // Remove both old operations
+            reg1.erase();
+            reg2.erase();
+            changed = true;
+          }
+        }
+      }
+    });
+  }
+};
+
+std::unique_ptr<OperationPass<DeviceOp>>
+xilinx::AIE::createAIETraceRegPackWritesPass() {
+  return std::make_unique<AIETraceRegPackWritesPass>();
 }
