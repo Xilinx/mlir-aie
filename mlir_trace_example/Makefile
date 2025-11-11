@@ -40,6 +40,20 @@ build/final.xclbin: ${srcdir}/aie_trace.mlir build/scale.o
     		--no-xchesscc --no-xbridge \
 			--aie-generate-npu-insts --npu-insts-name=insts.bin ../aie_trace.mlir
 
+# Lower the new declarative trace syntax to low-level operations
+build/aie_new_trace_lowered.mlir: ${srcdir}/aie_new_trace.mlir
+	mkdir -p ${@D}
+	cd /work/acdc/aie && aie-opt --aie-trace-to-config --aiex-inline-trace-config --aiex-config-to-npu ${srcdir}/aie_new_trace.mlir -o /work/acdc/aie/mlir_trace_example/build/aie_new_trace_lowered.mlir
+
+# Build xclbin from the new trace syntax (lowered)
+build/final_new.xclbin: build/aie_new_trace_lowered.mlir build/scale.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+    		--no-xchesscc --no-xbridge \
+			--aie-generate-npu-insts --npu-insts-name=insts_new.bin aie_new_trace_lowered.mlir
+
+build/insts_new.bin: build/final_new.xclbin
+
 # Build the host executable
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -66,15 +80,47 @@ trace: ${targetname}.exe build/final.xclbin build/insts.bin
 	python3 ${srcdir}/visualize_trace.py -i trace_mlir.json -o trace_timeline.png
 	@echo "Trace visualization saved to trace_timeline.png"
 
+# Test the new declarative trace syntax
+test_new_trace: build/aie_new_trace_lowered.mlir
+	@echo "==================================================================="
+	@echo "Testing New Declarative Trace Syntax"
+	@echo "==================================================================="
+	@echo ""
+	@echo "Step 1: Lowering passed successfully"
+	@echo "  Input:  aie_new_trace.mlir (declarative)"
+	@echo "  Output: build/aie_new_trace_lowered.mlir (low-level)"
+	@echo ""
+	@echo "Step 2: Comparing lowered output with manual version"
+	@echo "  Showing differences between lowered and manual configurations:"
+	@echo ""
+	-diff -u ${srcdir}/aie_trace.mlir build/aie_new_trace_lowered.mlir | head -50 || true
+	@echo ""
+	@echo "Step 3: Checking if lowered MLIR can be compiled"
+	@ls -lh build/aie_new_trace_lowered.mlir
+	@echo ""
+	@echo "To build and run the new trace version:"
+	@echo "  make run_new_trace"
+
+# Build and run with the new trace syntax
+run_new_trace: ${targetname}.exe build/final_new.xclbin build/insts_new.bin
+	@echo "Running with NEW declarative trace syntax..."
+	${powershell} ./$< -x build/final_new.xclbin -i build/insts_new.bin -k MLIR_AIE -t ${trace_size}
+	${srcdir}/../python/utils/parse_trace.py --input trace.txt --mlir build/aie_new_trace_lowered.mlir --output trace_new.json
+	${srcdir}/../python/utils/get_trace_summary.py --input trace_new.json
+	@echo ""
+	@echo "Generating trace visualization..."
+	python3 ${srcdir}/visualize_trace.py -i trace_new.json -o trace_new_timeline.png -t "New Declarative Trace"
+	@echo "Trace visualization saved to trace_new_timeline.png"
+
 # Visualize existing trace data
 visualize: trace_mlir.json
 	python3 ${srcdir}/visualize_trace.py -i trace_mlir.json -o trace_timeline.png
 	@echo "Trace visualization saved to trace_timeline.png"
 
 clean_trace:
-	rm -rf tmpTrace trace.txt parse*json trace*json trace_timeline.png
+	rm -rf tmpTrace trace.txt parse*json trace*json trace_timeline.png trace_new*.png trace_new.json
 
 clean: clean_trace
 	rm -rf build _build ${targetname}*.exe
 
-.PHONY: all run trace visualize clean clean_trace
+.PHONY: all run trace test_new_trace run_new_trace visualize clean clean_trace

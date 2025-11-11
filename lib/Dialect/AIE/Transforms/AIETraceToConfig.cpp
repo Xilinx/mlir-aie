@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/IR/AIERegisterDatabase.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
@@ -20,10 +21,28 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+// Helper function to determine module name based on tile type
+static StringRef getModuleForTile(TileOp tile) {
+  if (tile.isShimTile()) {
+    return "pl"; // Shim tiles use PL module events
+  } else if (tile.isMemTile()) {
+    return "mem_tile";
+  } else {
+    return "core";
+  }
+}
+
 struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder(device);
+
+    // Load register database for event lookup
+    auto regDB = RegisterDatabase::loadAIE2();
+    if (!regDB) {
+      device.emitError("Failed to load register database");
+      return signalPassFailure();
+    }
 
     // Collect all trace operations
     SmallVector<TraceOp> traces;
@@ -32,20 +51,18 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
     for (auto trace : traces) {
       // Create config symbol name
       std::string configName = (trace.getSymName().str() + "_config");
-      auto tile = trace.getTile();
+      auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
+      StringRef module = getModuleForTile(tile);
 
       // Insert trace.config after trace declaration
       builder.setInsertionPointAfter(trace);
       auto configOp = builder.create<TraceConfigOp>(
-          trace.getLoc(), tile, builder.getStringAttr(configName));
+          trace.getLoc(), trace.getTile(), builder.getStringAttr(configName));
 
       // Build register writes inside config body
       Block *configBody = new Block();
       configOp.getBody().push_back(configBody);
       OpBuilder configBuilder = OpBuilder::atBlockEnd(configBody);
-
-      // For prototype: emit simplified register writes
-      // We'll emit placeholder values that will be refined later
 
       // 1. Emit Trace_Control0 fields
       // Check for start/stop events
@@ -54,9 +71,16 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           uint32_t startEvent = 0;
           if (startOp.getBroadcast()) {
             startEvent = *startOp.getBroadcast();
-          } else if (startOp.getEvent()) {
-            // For prototype, use placeholder value
-            startEvent = 1; // TRUE event
+          } else if (auto eventAttr = startOp.getEvent()) {
+            // Look up event number from database
+            StringRef eventName = eventAttr->getName();
+            auto eventNum = regDB->lookupEvent(eventName, module);
+            if (eventNum) {
+              startEvent = *eventNum;
+            } else {
+              trace.emitWarning("Unknown event: ") << eventName;
+              startEvent = 1; // Fallback to TRUE event
+            }
           }
 
           configBuilder.create<TraceRegOp>(
@@ -70,9 +94,16 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           uint32_t stopEvent = 0;
           if (stopOp.getBroadcast()) {
             stopEvent = *stopOp.getBroadcast();
-          } else if (stopOp.getEvent()) {
-            // For prototype, use placeholder value
-            stopEvent = 0; // NONE event
+          } else if (auto eventAttr = stopOp.getEvent()) {
+            // Look up event number from database
+            StringRef eventName = eventAttr->getName();
+            auto eventNum = regDB->lookupEvent(eventName, module);
+            if (eventNum) {
+              stopEvent = *eventNum;
+            } else {
+              trace.emitWarning("Unknown event: ") << eventName;
+              stopEvent = 0; // Fallback to NONE event
+            }
           }
 
           configBuilder.create<TraceRegOp>(
@@ -118,17 +149,25 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
       }
 
       for (size_t i = 0; i < events.size() && i < 8; ++i) {
-        auto eventName = events[i].getEvent().getName();
+        // getName() returns const std::string&
+        const std::string &eventName = events[i].getEvent().getName();
+
+        // Look up event number from database
+        auto eventNum = regDB->lookupEvent(eventName, module);
+        if (!eventNum) {
+          trace.emitWarning("Unknown event: ") << eventName;
+          continue;
+        }
 
         // Determine which register and field
         StringRef registerName = (i < 4) ? "Trace_Event0" : "Trace_Event1";
         std::string fieldName = "Trace_Event" + std::to_string(i % 4);
 
-        // For prototype: use event name as string value
-        // The next pass will resolve this to event code
+        // Emit register write with event number as integer
         configBuilder.create<TraceRegOp>(
             trace.getLoc(), builder.getStringAttr(registerName),
-            builder.getStringAttr(fieldName), builder.getStringAttr(eventName),
+            builder.getStringAttr(fieldName),
+            builder.getI32IntegerAttr(*eventNum),
             builder.getStringAttr("event slot " + std::to_string(i)));
       }
 

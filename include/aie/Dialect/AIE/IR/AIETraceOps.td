@@ -277,12 +277,14 @@ def AIE_TraceRegOp : AIE_Op<"trace.reg", [
   let description = [{
     Specifies a single register field write needed to configure trace hardware.
     Uses logical register names (e.g., "Trace_Control0"), field names
-    (e.g., "Trace_Start_Event"), and values (integers or event names).
+    (e.g., "Trace_Start_Event"), and values (integers or event names). If field
+    is omitted, entire register is written.
     
     Example:
     ```mlir
     aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15
     aie.trace.reg register="Trace_Control0" field="Mode" value=0
+    aie.trace.reg register="Trace_Control0" value=0x12345678
     ```
   }];
   

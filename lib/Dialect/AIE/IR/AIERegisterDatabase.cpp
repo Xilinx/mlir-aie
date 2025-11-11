@@ -149,8 +149,12 @@ bool RegisterDatabase::loadFromJSON(StringRef registerPath, StringRef eventPath)
   auto* eventRoot = eventJSON->getAsObject();
   if (!eventRoot) return false;
   
+  // Use "aieml" for AIE2 architecture
   auto* aieml = eventRoot->getObject("aieml");
-  if (!aieml) return false;
+  if (!aieml) {
+    llvm::errs() << "Failed to find 'aieml' architecture in event database\n";
+    return false;
+  }
   
   auto* eventModules = aieml->getObject("modules");
   if (!eventModules) return false;

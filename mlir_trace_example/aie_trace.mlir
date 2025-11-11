@@ -99,13 +99,12 @@ module {
       // Configures which events to trace (events 4-7)
       aiex.npu.write32 {address = 213220 : ui32, column = 0 : i32, row = 2 : i32, value = 439168079 : ui32}
       
-      // Address 261888 (0x3FF00): Packet switch configuration
-      // Enables packet routing for trace
+      // Address 261888 (0x3FF00): Stream_Switch_Event_Port_Selection_0
+      // Select Stream Switch Ports for event generation
       aiex.npu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32}
       aiex.npu.write32 {address = 261892 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
       
-      // Address 212992 (0x34000): Stream switch configuration
-      // Routes trace packets through the interconnect
+      // Address 212992 (0x34000): Timer_Control
       aiex.npu.write32 {address = 212992 : ui32, column = 0 : i32, row = 2 : i32, value = 31232 : ui32}
       
       // Configure trace unit for shim tile (0,0)

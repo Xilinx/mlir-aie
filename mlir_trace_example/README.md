@@ -17,6 +17,32 @@ This directory contains two MLIR files to illustrate what trace adds to a design
 
 Use `diff aie_no_trace.mlir aie_trace.mlir` to see exactly what changes.
 
+## Prototype: New Declarative Trace API
+
+**`aie_new_trace.mlir`** demonstrates a new high-level trace API (prototype) that provides:
+- ✅ **Semantic event names** instead of magic register values
+- ✅ **Compile-time verification** of event names and configuration
+- ✅ **Automatic register encoding** from event database
+- ✅ **Self-documenting** trace specifications
+
+**Example comparison:**
+
+```mlir
+// Old manual approach (aie_trace.mlir)
+aiex.npu.write32 {address = 213216, column = 0, row = 2, value = 1260724769}
+
+// New declarative approach (aie_new_trace.mlir)
+aie.trace @core_trace(%tile_0_2) {
+  aie.trace.event<"INSTR_EVENT_0">
+  aie.trace.event<"LOCK_STALL">
+}
+aie.trace.start_config @core_trace  // Generates npu.write32 automatically
+```
+
+See **`TRACE_COMPARISON.md`** for a detailed side-by-side comparison of all three approaches.
+
+**Status:** Prototype syntax - requires compiler passes from the events proposal branch.
+
 ## Overview
 
 This example shows how to write trace configuration directly in MLIR without using Python wrapper utilities. It's useful for understanding the low-level trace mechanisms and for creating custom trace configurations.
@@ -70,14 +96,16 @@ aiex.npu.write32 {address = 213000 : ui32, column = 0 : i32, row = 0 : i32, valu
 
 ## Files
 
-- `aie_trace.mlir` - Main MLIR file with trace configuration
+- `aie_trace.mlir` - Main MLIR file with manual low-level trace configuration
 - `aie_no_trace.mlir` - Same design WITHOUT trace (for comparison)
+- `aie_new_trace.mlir` - NEW: Declarative high-level trace API (prototype)
 - `vector_scalar_mul.cc` - AIE kernel that multiplies a vector by a scalar
 - `test.cpp` - Host application to run the design
 - `Makefile` - Build system
 - `CMakeLists.txt` - CMake configuration for building the host application
 - `test.sh` - Automated test script
 - `visualize_trace.py` - Python script to visualize trace data as PNG timeline
+- `TRACE_COMPARISON.md` - Detailed comparison of all three trace approaches
 
 ## Trace Output Files
 
