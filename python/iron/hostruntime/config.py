@@ -67,8 +67,6 @@ def detect_npu_device():
 
 config = {}
 
-config["device"] = detect_npu_device()
-
 
 def set_current_device(device):
     """Sets the current device.
