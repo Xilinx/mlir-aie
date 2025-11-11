@@ -45,6 +45,8 @@ config.substitutions.append(
     ("%aie_runtime_lib%", os.path.join(config.aie_obj_root, "aie_runtime_lib"))
 )
 config.substitutions.append(("%aietools", config.vitis_aietools_dir))
+# Show only failures
+config.substitutions.append(("%pytest", "pytest -rA"))
 
 # Setup test library substitutions
 LitConfigHelper.setup_test_lib_substitutions(
@@ -152,6 +154,16 @@ if config.enable_board_tests:
 
 # Concurrency tests control their own parallelism, so run them serially
 lit_config.parallelism_groups["concurrency"] = 1
+
+if config.python_passes:
+    config.available_features.add("python_passes")
+
+if config.xrt_python_bindings:
+    config.available_features.add("xrt_python_bindings")
+
+if config.has_mlir_runtime_libraries:
+    config.available_features.add("has_mlir_runtime_libraries")
+
 
 if "LIT_AVAILABLE_FEATURES" in os.environ:
     for feature in os.environ["LIT_AVAILABLE_FEATURES"].split():

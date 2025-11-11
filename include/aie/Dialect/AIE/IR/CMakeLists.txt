@@ -7,7 +7,7 @@
 
 # Use a simplified version AIEDocs.td to generate the AIEDialect.md ending up as
 # https://xilinx.github.io/mlir-aie/AIEDialect.html
-add_mlir_doc(AIEDocs AIEDialect ./ -gen-dialect-doc)
+add_mlir_doc(AIEDocs AIEDialect ./ -gen-dialect-doc -dialect=aie)
 
 # Add AIE dialect
 set(LLVM_TARGET_DEFINITIONS AIE.td)

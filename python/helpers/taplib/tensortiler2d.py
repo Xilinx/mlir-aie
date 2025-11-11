@@ -29,6 +29,7 @@ class TensorTiler2D:
         tile_col_major: bool = False,
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
+        prune_step: bool = True,
     ) -> TensorAccessSequence:
         """The simple_tiler is a special case of the group_tiler. The simple_tiler produces a TensorAccessSequence
         with one TensorAccessPattern per tile.
@@ -39,6 +40,7 @@ class TensorTiler2D:
             tile_col_major (bool, optional): Iterate column major within each tile. Defaults to False.
             iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
             pattern_repeat (int, optional): Access a tile n times per TensorAccessPattern. Defaults to 1.
+            prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Returns:
             TensorAccessSequence: A TensorAccessSequence with one TensorAccessPattern per tile
@@ -52,6 +54,7 @@ class TensorTiler2D:
             tile_col_major=tile_col_major,
             iter_col_major=iter_col_major,
             pattern_repeat=pattern_repeat,
+            prune_step=prune_step,
         )
 
     @classmethod
@@ -65,6 +68,7 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         pattern_repeat: int = 1,
         allow_partial: bool = False,
+        prune_step: bool = True,
     ) -> TensorAccessSequence:
         """The group_tiler is a special case of the step_tiler. The group_tiler produces a TensorAccessSequence
         with a group of tiles per TensorAccesspattern in the sequence.
@@ -80,6 +84,7 @@ class TensorTiler2D:
             pattern_repeat (int, optional): Apply a pattern n times within a single TensorAccessPattern. Defaults to 1.
             allow_partial (bool, optional): While a tensor must decompose into tiles easily, a tensor may not decompose into tile groups evenly.
                 If True, uneven groups are allowed. If false, an exception will be thrown. Defaults to False.
+            prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Returns:
             TensorAccessSequence: A TensorAccessSequence with one tile grouping per TensorAccessPattern
@@ -96,6 +101,7 @@ class TensorTiler2D:
             iter_col_major=iter_col_major,
             pattern_repeat=pattern_repeat,
             allow_partial=allow_partial,
+            prune_step=prune_step,
         )
 
     @classmethod
@@ -110,6 +116,7 @@ class TensorTiler2D:
         iter_col_major: bool = False,
         allow_partial: bool = False,
         pattern_repeat: int = 1,
+        prune_step: bool = True,
     ) -> TensorAccessSequence:
         """
 
@@ -123,6 +130,7 @@ class TensorTiler2D:
             iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
             allow_partial (bool, optional): _description_. Defaults to False.
             pattern_repeat (int, optional): _description_. Defaults to 1.
+            prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Raises:
             ValueError: The parameters are validated
@@ -228,6 +236,7 @@ class TensorTiler2D:
                 tile_col_major,
                 tile_group_col_major,
                 pattern_repeat=pattern_repeat,
+                prune_step=prune_step,
             )
             if is_sizes:
                 return iter_sizes
@@ -336,6 +345,7 @@ class TensorTiler2D:
         tile_col_major: bool,
         tile_group_col_major: bool,
         pattern_repeat: int,
+        prune_step: bool = True,
     ) -> tuple[Sequence[int], Sequence[int]]:
         # TODO: this code is still specific to two dimensions
         # TODO: this code assumes sizes/strides of len 4
@@ -367,24 +377,25 @@ class TensorTiler2D:
         if tile_step_width > tiles_remaining_width:
             tile_step_width = 1
 
-        if (
-            tile_group_col_major
-            and tile_step_height == 1
-            and tile_repeat_height > 1
-            and not tile_col_major
-        ):
-            # Can combine into one big tile vertically
-            tile_height *= tile_repeat_height
-            tile_repeat_height = 1
-        elif (
-            not tile_group_col_major
-            and tile_step_width == 1
-            and tile_repeat_width > 1
-            and tile_col_major
-        ):
-            # Can combine into one big tile horizontally
-            tile_width *= tile_repeat_width
-            tile_repeat_width = 1
+        if prune_step:
+            if (
+                tile_group_col_major
+                and tile_step_height == 1
+                and tile_repeat_height > 1
+                and not tile_col_major
+            ):
+                # Can combine into one big tile vertically
+                tile_height *= tile_repeat_height
+                tile_repeat_height = 1
+            elif (
+                not tile_group_col_major
+                and tile_step_width == 1
+                and tile_repeat_width > 1
+                and tile_col_major
+            ):
+                # Can combine into one big tile horizontally
+                tile_width *= tile_repeat_width
+                tile_repeat_width = 1
 
         # Create basic tiling scheme, we can modify this later to fit details
         if not tile_col_major:
