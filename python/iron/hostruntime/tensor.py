@@ -279,7 +279,7 @@ class Tensor(ABC):
             Tensor: A tensor with random integers.
         """
         dtype = dtype or np.int64
-        device = device or NPU_DEVICE
+        device = device or cls.DEFAULT_DEVICE
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.data[:] = np.random.randint(low, high, size=size, dtype=dtype)
@@ -305,7 +305,7 @@ class Tensor(ABC):
             Tensor: A tensor with random values in [0, 1).
         """
         dtype = dtype or np.float32
-        device = device or NPU_DEVICE
+        device = device or cls.DEFAULT_DEVICE
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.data[:] = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
@@ -343,7 +343,7 @@ class Tensor(ABC):
             else:
                 dtype = np.int64
 
-        device = device or NPU_DEVICE
+        device = device or cls.DEFAULT_DEVICE
 
         data = np.arange(start, end, step, dtype=dtype)
 
