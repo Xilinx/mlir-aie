@@ -22,6 +22,7 @@ class Tensor(ABC):
     """
 
     DEVICES = [CPU_DEVICE, NPU_DEVICE]
+    DEFAULT_DEVICE = NPU_DEVICE
 
     def __init__(self, shape_or_data, dtype=np.uint32, device=NPU_DEVICE):
         """
@@ -164,7 +165,7 @@ class Tensor(ABC):
             shape = tuple(size)
 
         dtype = dtype or np.float32
-        device = device or NPU_DEVICE
+        device = device or cls.DEFAULT_DEVICE
 
         t = None
         if out is not None:
@@ -394,6 +395,7 @@ class CPUOnlyTensor(Tensor):
     """
 
     DEVICES = [CPU_DEVICE]
+    DEFAULT_DEVICE = CPU_DEVICE
 
     def __init__(self, shape_or_data, dtype=np.uint32, device=CPU_DEVICE):
         super().__init__(shape_or_data, dtype=dtype, device=device)

@@ -44,7 +44,9 @@ def test_to_device(dtype, tensorclass):
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
-def test_zeros(dtype):
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_zeros(dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
     assert np.allclose(iron.zeros(2, 3, dtype=dtype), np.zeros((2, 3), dtype=dtype))
 
 
