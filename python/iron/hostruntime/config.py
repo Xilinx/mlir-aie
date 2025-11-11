@@ -90,4 +90,7 @@ def get_current_device():
         The currently set device.
     """
     global config
+    if "device" not in config:
+        detect_npu_device()
+
     return config["device"]
