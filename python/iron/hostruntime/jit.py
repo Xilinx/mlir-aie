@@ -10,14 +10,12 @@ import os
 import functools
 import hashlib
 import numpy as np
-import pyxrt as xrt
 import shutil
 import fcntl
 import contextlib
 import time
 
 from aie.extras.context import mlir_mod_ctx
-from ...utils.xrt import read_insts_binary
 from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from ..compile import compile_mlir_module, compile_cxx_core_function
 from ..kernel import ExternalFunction
@@ -129,6 +127,9 @@ class NPUKernel:
     """
     NPUKernel class wrapper for NPU kernels.
     """
+
+    import pyxrt as xrt
+    from ...utils.xrt import read_insts_binary
 
     def __init__(
         self, xclbin_path, insts_path, device_index=0, kernel_name="PP_FD_PRE"
@@ -246,6 +247,7 @@ def jit(function=None, is_placed=True, use_cache=True):
     - is_placed (bool): Whether the kernel is using explicit or implicit placement Defaults to True.
     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
     """
+    import pyxrt as xrt
 
     if function is None:
         return functools.partial(jit, is_placed=is_placed, use_cache=use_cache)
