@@ -8,7 +8,7 @@ Takes the xaie_events_*.h header files from aie-rt and generates:
 The generated files are used by trace utilities for event decoding and analysis.
 """
 
-import sys, re, argparse, collections, json, glob, os
+import sys, re, argparse, collections, json, os
 from pathlib import Path
 
 py_template = """# Enumeration of {arch_name} trace events
@@ -115,16 +115,15 @@ def write_enum_items(dict):
         return "    pass  # No events defined"
 
     # Fill gaps with rsvd_XX placeholders
-    if dict:
-        min_val = min(dict.keys())
-        max_val = max(dict.keys())
-        filled_dict = {}
-        for val in range(min_val, max_val + 1):
-            if val in dict:
-                filled_dict[val] = dict[val]
-            else:
-                filled_dict[val] = f"rsvd_{val}"
-        dict = filled_dict
+    min_val = min(dict.keys())
+    max_val = max(dict.keys())
+    filled_dict = {}
+    for val in range(min_val, max_val + 1):
+        if val in dict:
+            filled_dict[val] = dict[val]
+        else:
+            filled_dict[val] = f"rsvd_{val}"
+    dict = filled_dict
 
     return "\n".join("    {} = {}".format(name, num) for num, name in dict.items())
 
