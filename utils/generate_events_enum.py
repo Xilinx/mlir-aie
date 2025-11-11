@@ -78,7 +78,9 @@ def parse_event_declaration(regex, dict, line):
         return
     name, num = match.group(1), int(match.group(2))
     if num in dict:
-        sys.stderr.write(f"Error: Duplicate event number {num} for {name} (already used by {dict[num]})\n")
+        sys.stderr.write(
+            f"Error: Duplicate event number {num} for {name} (already used by {dict[num]})\n"
+        )
         sys.exit(1)
     dict[num] = name
 
