@@ -128,9 +128,6 @@ class NPUKernel:
     NPUKernel class wrapper for NPU kernels.
     """
 
-    import pyxrt as xrt
-    from ...utils.xrt import read_insts_binary
-
     def __init__(
         self, xclbin_path, insts_path, device_index=0, kernel_name="PP_FD_PRE"
     ):
@@ -142,6 +139,8 @@ class NPUKernel:
             device_index (int, optional): Index of the device. Defaults to 0.
             kernel_name (str, optional): Name of the kernel. Defaults to "PP_FD_PRE".
         """
+        import pyxrt as xrt
+        from ...utils.xrt import read_insts_binary
 
         self.__device = xrt.device(device_index)
 
@@ -191,6 +190,7 @@ class NPUKernel:
         Parameters:
             args (IRON Tensors): Arguments to pass to the kernel.
         """
+        import pyxrt as xrt
 
         opcode = 3
         kernel_args = []
