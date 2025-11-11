@@ -22,23 +22,19 @@ using namespace mlir;
 
 void test_load_database() {
   std::cout << "Test: Load AIE2 Register Database\n";
-
   auto db = RegisterDatabase::loadAIE2();
   if (!db) {
     throw std::runtime_error("Failed to load AIE2 register database");
   }
-
   std::cout << "  ✓ Database loaded successfully\n";
 }
 
 void test_lookup_core_events() {
   std::cout << "Test: Lookup Core Events\n";
-
   auto db = RegisterDatabase::loadAIE2();
   if (!db) {
     throw std::runtime_error("Failed to load database");
   }
-
   // Test INSTR_EVENT_0 in core module
   auto instr0 = db->lookupEvent("INSTR_EVENT_0", "core");
   if (!instr0) {
@@ -49,7 +45,6 @@ void test_lookup_core_events() {
 
 void test_lookup_pl_events() {
   std::cout << "Test: Lookup PL (Shim) Events\n";
-
   auto db = RegisterDatabase::loadAIE2();
   if (!db) {
     throw std::runtime_error("Failed to load database");
@@ -66,12 +61,10 @@ void test_lookup_pl_events() {
 
 void test_nonexistent_event() {
   std::cout << "Test: Lookup Non-existent Event\n";
-
   auto db = RegisterDatabase::loadAIE2();
   if (!db) {
     throw std::runtime_error("Failed to load database");
   }
-
   // Should return nullopt for non-existent event
   auto result = db->lookupEvent("NONEXISTENT_EVENT", "core");
   if (result.has_value()) {
@@ -82,7 +75,6 @@ void test_nonexistent_event() {
 
 void test_wrong_module() {
   std::cout << "Test: Lookup Event in Wrong Module\n";
-
   auto db = RegisterDatabase::loadAIE2();
   if (!db) {
     throw std::runtime_error("Failed to load database");
@@ -289,7 +281,6 @@ int main() {
     std::cout << "==============================================\n";
     std::cout << "Register Database Unit Tests\n";
     std::cout << "==============================================\n\n";
-
     test_load_database();
     test_lookup_core_events();
     test_lookup_pl_events();
