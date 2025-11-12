@@ -84,7 +84,8 @@ def _create_input_with_addresses_pipeline(
                 "aie-generate-column-control-overlay",
                 route_shim_to_tile_ctrl=ctrl_pkt_overlay,
             )
-            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
+            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme)
+            .add_pass("aie-vector-transfer-lowering", max_transfer_rank=1),
         )
         .convert_scf_to_cf()
     )
@@ -96,10 +97,6 @@ LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
     .canonicalize()
     .cse()
-    .Nested(
-        "func.func",
-        Pipeline().add_pass("aie-vector-transfer-lowering", max_transfer_rank=1),
-    )
     .expand_strided_metadata()
     .lower_affine()
     .arith_expand()
