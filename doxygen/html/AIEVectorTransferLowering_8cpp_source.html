@@ -107,40 +107,38 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>  }</div>
 <div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
 <div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    func::FuncOp funcOp = getOperation();</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    DeviceOp deviceOp = getOperation();</div>
 <div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    MLIRContext *context = &amp;getContext();</div>
 <div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span> </div>
 <div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    std::optional&lt;unsigned&gt; maxRank = std::nullopt;</div>
 <div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    <span class="keywordflow">if</span> (maxTransferRank != <span class="keyword">static_cast&lt;</span><span class="keywordtype">unsigned</span><span class="keyword">&gt;</span>(-1))</div>
 <div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>      maxRank = maxTransferRank;</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    {</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>      RewritePatternSet patterns(context);</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span> </div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>      vector::populateVectorTransferLoweringPatterns(patterns, maxRank);</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span> </div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>      <span class="keywordflow">if</span> (failed(applyPatternsGreedily(funcOp, std::move(patterns))))</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>        signalPassFailure();</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    }</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>  }</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>};</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>} <span class="comment">// namespace</span></div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span> </div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>std::unique_ptr&lt;OperationPass&lt;func::FuncOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00069" data-start="{" data-end="}">
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#a5d16c29358b1481429badd0d094207a0">   69</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#a5d16c29358b1481429badd0d094207a0">AIE::createAIEVectorTransferLoweringPass</a>() {</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEVectorTransferLoweringPass&gt;();</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>}</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span> </div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    RewritePatternSet patterns(context);</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    vector::populateVectorTransferLoweringPatterns(patterns, maxRank);</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span> </div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    <span class="keywordflow">if</span> (failed(applyPatternsGreedily(deviceOp, std::move(patterns))))</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>      signalPassFailure();</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>  }</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>};</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>} <span class="comment">// namespace</span></div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00067" data-start="{" data-end="}">
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#af106b8b8fb6260d09fc62ff81514fae0">   67</a></span><a class="code hl_function" href="namespacexilinx_1_1AIE.html#af106b8b8fb6260d09fc62ff81514fae0">AIE::createAIEVectorTransferLoweringPass</a>() {</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEVectorTransferLoweringPass&gt;();</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_a5d16c29358b1481429badd0d094207a0"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a5d16c29358b1481429badd0d094207a0">xilinx::AIE::createAIEVectorTransferLoweringPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::func::FuncOp &gt; &gt; createAIEVectorTransferLoweringPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEVectorTransferLowering_8cpp_source.html#l00069">AIEVectorTransferLowering.cpp:69</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_af106b8b8fb6260d09fc62ff81514fae0"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#af106b8b8fb6260d09fc62ff81514fae0">xilinx::AIE::createAIEVectorTransferLoweringPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEVectorTransferLoweringPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEVectorTransferLowering_8cpp_source.html#l00067">AIEVectorTransferLowering.cpp:67</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Nov 12 2025 20:10:34 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Nov 12 2025 20:18:56 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -223,8 +223,10 @@ Functions</h2></td></tr>
 <tr class="separator:a99504fa16f7e6d19dd231d3a3b47a814"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a074b5916228e1ee9e0b6bb9efab24999" id="r_a074b5916228e1ee9e0b6bb9efab24999"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::func::FuncOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a074b5916228e1ee9e0b6bb9efab24999">createAIEVectorOptPass</a> ()</td></tr>
 <tr class="separator:a074b5916228e1ee9e0b6bb9efab24999"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5d16c29358b1481429badd0d094207a0" id="r_a5d16c29358b1481429badd0d094207a0"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::func::FuncOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a5d16c29358b1481429badd0d094207a0">createAIEVectorTransferLoweringPass</a> ()</td></tr>
-<tr class="separator:a5d16c29358b1481429badd0d094207a0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af106b8b8fb6260d09fc62ff81514fae0" id="r_af106b8b8fb6260d09fc62ff81514fae0"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#af106b8b8fb6260d09fc62ff81514fae0">createAIEVectorTransferLoweringPass</a> ()</td></tr>
+<tr class="separator:af106b8b8fb6260d09fc62ff81514fae0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a113c2bf641d674cf1f3e100b85a14f6c" id="r_a113c2bf641d674cf1f3e100b85a14f6c"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a113c2bf641d674cf1f3e100b85a14f6c">createAIEHoistVectorTransferPointersPass</a> ()</td></tr>
+<tr class="separator:a113c2bf641d674cf1f3e100b85a14f6c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aebcf56adce24e361f0fb030b53d8adbf" id="r_aebcf56adce24e361f0fb030b53d8adbf"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">createAIEPathfinderPass</a> ()</td></tr>
 <tr class="separator:aebcf56adce24e361f0fb030b53d8adbf"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5459b0bd5290b07e027e71f964e7cee8" id="r_a5459b0bd5290b07e027e71f964e7cee8"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a5459b0bd5290b07e027e71f964e7cee8">createAIEObjectFifoStatefulTransformPass</a> ()</td></tr>
@@ -1616,6 +1618,25 @@ Variables</h2></td></tr>
 
 </div>
 </div>
+<a id="a113c2bf641d674cf1f3e100b85a14f6c" name="a113c2bf641d674cf1f3e100b85a14f6c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a113c2bf641d674cf1f3e100b85a14f6c">&#9670;&#160;</a></span>createAIEHoistVectorTransferPointersPass()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; ModuleOp &gt; &gt; xilinx::AIE::createAIEHoistVectorTransferPointersPass </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEHoistVectorTransferPointers_8cpp_source.html#l00487">487</a> of file <a class="el" href="AIEHoistVectorTransferPointers_8cpp_source.html">AIEHoistVectorTransferPointers.cpp</a>.</p>
+
+</div>
+</div>
 <a id="abc7dbd01bf01668e2dde85edfe95e65f" name="abc7dbd01bf01668e2dde85edfe95e65f"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#abc7dbd01bf01668e2dde85edfe95e65f">&#9670;&#160;</a></span>createAIELocalizeLocksPass()</h2>
 
@@ -1766,14 +1787,14 @@ Variables</h2></td></tr>
 
 </div>
 </div>
-<a id="a5d16c29358b1481429badd0d094207a0" name="a5d16c29358b1481429badd0d094207a0"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5d16c29358b1481429badd0d094207a0">&#9670;&#160;</a></span>createAIEVectorTransferLoweringPass()</h2>
+<a id="af106b8b8fb6260d09fc62ff81514fae0" name="af106b8b8fb6260d09fc62ff81514fae0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af106b8b8fb6260d09fc62ff81514fae0">&#9670;&#160;</a></span>createAIEVectorTransferLoweringPass()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">std::unique_ptr&lt; OperationPass&lt; func::FuncOp &gt; &gt; xilinx::AIE::createAIEVectorTransferLoweringPass </td>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; DeviceOp &gt; &gt; xilinx::AIE::createAIEVectorTransferLoweringPass </td>
           <td>(</td>
           <td class="paramname"></td><td>)</td>
           <td></td>
@@ -1781,7 +1802,7 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEVectorTransferLowering_8cpp_source.html#l00069">69</a> of file <a class="el" href="AIEVectorTransferLowering_8cpp_source.html">AIEVectorTransferLowering.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEVectorTransferLowering_8cpp_source.html#l00067">67</a> of file <a class="el" href="AIEVectorTransferLowering_8cpp_source.html">AIEVectorTransferLowering.cpp</a>.</p>
 
 </div>
 </div>
@@ -4142,7 +4163,7 @@ Variables</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Nov 12 2025 20:10:34 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Nov 12 2025 20:18:56 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
