@@ -71,6 +71,9 @@ static bool dependsOnLoopIVForHoist(Value val, Value loopIV) {
 /// loop IV
 static Value cloneOpAndOperands(Operation *op, Value loopIV, OpBuilder &builder,
                                 IRMapping &mapping) {
+  // Only handle operations with exactly one result
+  if (op->getNumResults() != 1)
+    return Value();
   // If we've already cloned this operation, return the mapped result
   if (mapping.contains(op->getResult(0)))
     return mapping.lookup(op->getResult(0));
