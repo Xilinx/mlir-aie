@@ -6,7 +6,6 @@ func.func @hoist_vector_transfer_read(%arg0: memref<256xf32>, %arg1: memref<256x
   %c1 = arith.constant 1 : index
   %c64 = arith.constant 64 : index
   %cst = arith.constant 0.0 : f32
-  
   // CHECK: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[PTR0:.*]] = %{{.*}}, %[[PTR1:.*]] = %{{.*}})
   scf.for %i = %c0 to %c64 step %c1 {
     // CHECK: vector.transfer_read %{{.*}}[%[[PTR0]]]{{.*}}{in_bounds = [true]}
@@ -27,7 +26,6 @@ func.func @hoist_vector_transfer_write(%arg0: memref<256xf32>, %arg1: vector<16x
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c64 = arith.constant 64 : index
-  
   // CHECK: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%[[PTR:.*]] = %{{.*}})
   scf.for %i = %c0 to %c64 step %c1 {
     // CHECK: vector.transfer_write %{{.*}}, %{{.*}}[%[[PTR]]] {in_bounds = [true]}

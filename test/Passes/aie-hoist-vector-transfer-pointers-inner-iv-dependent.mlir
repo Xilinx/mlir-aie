@@ -20,18 +20,15 @@ module {
     %c2 = arith.constant 2 : index
     %c16 = arith.constant 16 : index
     %cst = arith.constant 0 : i32
-    
     // Outer loop over %arg2
     scf.for %arg2 = %c0 to %c16 step %c2 {
       // Inner loop over %arg3 - addresses depend on THIS IV
       scf.for %arg3 = %c0 to %c16 step %c2 {
         // First read uses %arg3 directly
         %v1 = vector.transfer_read %buf[%arg3, %arg2], %cst {in_bounds = [true]} : memref<16x16xi32>, vector<2xi32>
-        
         // Second read uses %arg3 + 1
         %arg3_plus_1 = affine.apply #map()[%arg3]
         %v2 = vector.transfer_read %buf[%arg3_plus_1, %arg2], %cst {in_bounds = [true]} : memref<16x16xi32>, vector<2xi32>
-        
         // Use the values
         %sum = arith.addi %v1, %v2 : vector<2xi32>
         vector.transfer_write %sum, %buf[%arg3, %arg2] {in_bounds = [true]} : vector<2xi32>, memref<16x16xi32>
