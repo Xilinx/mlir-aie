@@ -67,6 +67,12 @@ struct AIEInlineTraceConfigPass
       int col = tileOp.getCol();
       int row = tileOp.getRow();
 
+      // Determine if we're accessing memory module from packet type
+      bool isMem = false;
+      if (configOp.getPacketType()) {
+        isMem = (*configOp.getPacketType() == TracePacketType::Mem);
+      }
+
       // Process all trace.reg operations in the config
       for (auto &op : configOp.getBody().getOps()) {
         auto regOp = dyn_cast<TraceRegOp>(op);
@@ -83,7 +89,7 @@ struct AIEInlineTraceConfigPass
         // Look up register to get offset
         auto regName = regOp.getRegName().str();
         const RegisterInfo *regInfo =
-            regDb->lookupRegister(regName, tileOp, /*isMem=*/false);
+            regDb->lookupRegister(regName, tileOp, isMem);
         if (!regInfo) {
           regOp.emitError("Register '") << regName << "' not found for tile ("
                                         << col << ", " << row << ")";
