@@ -48,15 +48,7 @@ static bool dependsOnLoopIVForHoist(Value val, Value loopIV) {
   if (val == loopIV)
     return true;
 
-  // Check if the value is defined by an affine.apply that uses the loop IV
-  if (auto affineOp = val.getDefiningOp<affine::AffineApplyOp>()) {
-    for (Value operand : affineOp.getMapOperands()) {
-      if (dependsOnLoopIVForHoist(operand, loopIV))
-        return true;
-    }
-  }
-
-  // Check for arithmetic operations
+  // Check for operations that use the loop IV in their operands
   if (auto defOp = val.getDefiningOp()) {
     for (Value operand : defOp->getOperands()) {
       if (dependsOnLoopIVForHoist(operand, loopIV))
