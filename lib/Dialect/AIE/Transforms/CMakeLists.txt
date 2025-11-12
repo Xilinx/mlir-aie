@@ -20,6 +20,7 @@ add_mlir_dialect_library(
   AIEVectorOpt.cpp
   AIEVectorTransferLowering.cpp
   AIELLVMLoopOpt.cpp
+  AIEHoistVectorTransferPointers.cpp
   AIEObjectFifoStatefulTransform.cpp
   AIEObjectFifoRegisterProcess.cpp
   AIELowerCascadeFlows.cpp

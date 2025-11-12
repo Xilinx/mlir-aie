@@ -47,25 +47,23 @@ struct AIEVectorTransferLoweringPass
   }
 
   void runOnOperation() override {
-    func::FuncOp funcOp = getOperation();
+    DeviceOp deviceOp = getOperation();
     MLIRContext *context = &getContext();
 
     std::optional<unsigned> maxRank = std::nullopt;
     if (maxTransferRank != static_cast<unsigned>(-1))
       maxRank = maxTransferRank;
-    {
-      RewritePatternSet patterns(context);
 
-      vector::populateVectorTransferLoweringPatterns(patterns, maxRank);
+    RewritePatternSet patterns(context);
+    vector::populateVectorTransferLoweringPatterns(patterns, maxRank);
 
-      if (failed(applyPatternsGreedily(funcOp, std::move(patterns))))
-        signalPassFailure();
-    }
+    if (failed(applyPatternsGreedily(deviceOp, std::move(patterns))))
+      signalPassFailure();
   }
 };
 } // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>>
+std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEVectorTransferLoweringPass() {
   return std::make_unique<AIEVectorTransferLoweringPass>();
 }
