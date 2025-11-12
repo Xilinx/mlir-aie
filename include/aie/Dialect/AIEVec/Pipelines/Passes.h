@@ -186,6 +186,10 @@ std::unique_ptr<::mlir::Pass> createDynamicSizeNoImplicitBroadcastPass();
 // `dynamic-size-no-implicit-broadcast`
 void buildDynamicSizeNoImplicitBroadcastPass(mlir::OpPassManager &pm);
 
+/// Create a pass that splits vector.load + aievec.ups chains to reduce shuffle
+/// operations for AIE2p targets.
+std::unique_ptr<::mlir::Pass> createSplitVectorLoadUpsChainsPass();
+
 } // namespace aievec
 } // namespace xilinx
 

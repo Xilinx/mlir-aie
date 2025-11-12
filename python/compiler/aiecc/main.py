@@ -53,6 +53,9 @@ def _create_input_with_addresses_pipeline(
     # Only add convert-vector-to-aievec for AIE2 and later targets
     # AIE1 ("aie") does not support target_backend="llvmir"
     if aie_target.lower() in ["aie2", "aieml", "aie2p"]:
+        # Hoist vector transfer pointers before scf-to-cf conversion
+        # This runs on the module and walks into aie.core regions
+        pipeline.add_pass("aie-hoist-vector-transfer-pointers")
         pipeline.add_pass(
             "convert-vector-to-aievec",
             aie_target=aie_target.lower(),
@@ -81,7 +84,8 @@ def _create_input_with_addresses_pipeline(
                 "aie-generate-column-control-overlay",
                 route_shim_to_tile_ctrl=ctrl_pkt_overlay,
             )
-            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
+            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme)
+            .add_pass("aie-vector-transfer-lowering", max_transfer_rank=1),
         )
         .convert_scf_to_cf()
     )
@@ -93,10 +97,6 @@ LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
     .canonicalize()
     .cse()
-    .Nested(
-        "func.func",
-        Pipeline().add_pass("aie-vector-transfer-lowering", max_transfer_rank=1),
-    )
     .expand_strided_metadata()
     .lower_affine()
     .arith_expand()
