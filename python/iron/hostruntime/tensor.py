@@ -167,7 +167,7 @@ class Tensor(ABC):
         ...
 
     @classmethod
-    def __check(cls, *size, out=None, dtype=None, device=None, **kwargs):
+    def __check(cls, size, out=None, dtype=None, device=None, **kwargs):
         if out is not None:
             if len(size) == 1 and isinstance(size[0], (tuple, list)):
                 shape = tuple(size[0])
@@ -232,12 +232,12 @@ class Tensor(ABC):
         return self.data.nbytes
 
     @classmethod
-    def ones(cls, *size, out=None, dtype=None, device=None, **kwargs):
+    def ones(cls, size, out=None, dtype=None, device=None, **kwargs):
         """
         Returns a tensor filled with ones, with shape defined by size.
 
         Parameters:
-            *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
+            size (int | tuple[int]): Shape of the tensor, given as an int or tuple of ints.
 
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
@@ -248,19 +248,18 @@ class Tensor(ABC):
         Returns:
             Tensor: A one-filled tensor.
         """
-        data = cls.__check(*size, dtype=dtype, device=device, **kwargs)
+        data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
-            data = np.ones(*size, dtype=dtype)
-        cls(data, dtype=dtype, device=device, copy=False)
-        return t
+            data = np.ones(size, dtype=dtype)
+        return cls(data, dtype=dtype, device=device, copy=False)
 
     @classmethod
-    def zeros(cls, *size, out=None, dtype=None, device=None, **kwargs):
+    def zeros(cls, size, out=None, dtype=None, device=None, **kwargs):
         """
         Returns a tensor filled with zeros, with shape defined by size.
 
         Parameters:
-            *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
+            size (int | tuple[int]): Shape of the tensor, given as an int or tuple of ints.
 
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
@@ -271,14 +270,13 @@ class Tensor(ABC):
         Returns:
             Tensor: A zero-filled tensor.
         """
-        data = cls.__check(*size, dtype=dtype, device=device, **kwargs)
+        data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
-            data = np.zeros(*size, dtype=dtype)
-        cls(data, dtype=dtype, device=device, copy=False)
-        return t
+            data = np.zeros(size, dtype=dtype)
+        return cls(data, dtype=dtype, device=device, copy=False)
 
     @classmethod
-    def randint(cls, low, high, size, *, out=None, dtype=None, device=None, **kwargs):
+    def randint(cls, low, high, size, out=None, dtype=None, device=None, **kwargs):
         """
         Returns a tensor filled with random integers uniformly sampled from [low, high).
 
@@ -296,19 +294,18 @@ class Tensor(ABC):
         Returns:
             Tensor: A tensor with random integers.
         """
-        data = cls.__check(*size, dtype=dtype, device=device, **kwargs)
+        data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
             data = np.random.randint(low, high, size=size, dtype=dtype)
-        cls(data, dtype=dtype, device=device, copy=False)
-        return t
+        return cls(data, dtype=dtype, device=device, copy=False)
 
     @classmethod
-    def rand(cls, *size, out=None, dtype=None, device=None, **kwargs):
+    def rand(cls, size, out=None, dtype=None, device=None, **kwargs):
         """
         Returns a tensor filled with random numbers from a uniform distribution on [0, 1).
 
         Parameters:
-            *size (int...): Variable number of integers or a single tuple defining the shape.
+            size (int | tuple[int]): Shape of the tensor, given as an int or tuple of ints.
 
         Keyword Arguments:
             out (Tensor, optional): Output tensor to write into.
@@ -320,11 +317,10 @@ class Tensor(ABC):
             Tensor: A tensor with random values in [0, 1).
         """
         dtype = dtype or np.float32
-        data = cls.__check(*size, dtype=dtype, device=device, **kwargs)
+        data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
-            data = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
-        cls(data, dtype=dtype, device=device, copy=False)
-        return t
+            data = np.random.uniform(0.0, 1.0, size=size).astype(dtype)
+        return cls(data, dtype=dtype, device=device, copy=False)
 
     @classmethod
     def arange(
