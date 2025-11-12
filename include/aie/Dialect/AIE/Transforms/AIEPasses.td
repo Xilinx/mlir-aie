@@ -177,7 +177,7 @@ def AIEVectorOpt : Pass<"aie-vector-opt", "mlir::func::FuncOp"> {
   let constructor = "xilinx::AIE::createAIEVectorOptPass()";
 }
 
-def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "mlir::func::FuncOp"> {
+def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
   let summary = "Lower vector.transfer_read/write to vector.load/store for AIE";
   let description = [{
     This pass lowers vector.transfer_read operations to vector.load + vector.broadcast
@@ -192,6 +192,30 @@ def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "mlir::func
     Option<"maxTransferRank", "max-transfer-rank", "unsigned",
            /*default=*/"-1", "Maximum vector rank to lower. -1 means no limit.">,
   ];
+}
+
+def AIEHoistVectorTransferPointers : Pass<"aie-hoist-vector-transfer-pointers", "mlir::ModuleOp"> {
+  let summary = "Hoist vector transfer pointer computations out of scf.for loops in aie.core regions";
+  let description = [{
+    This pass optimizes vector transfer operations inside scf.for loops by hoisting
+    pointer computations. It operates on aie.core regions within aie.device operations.
+    When vector transfer operations have indices that depend on the loop induction variable,
+    the pass:
+    
+    1. Flattens multi-dimensional memrefs to 1D
+    2. Computes a base pointer before the loop
+    3. Adds the pointer as a loop iter_arg
+    4. Updates the pointer by a constant stride each iteration
+    5. Replaces the transfer operations to use the iter_arg pointer
+    
+    This eliminates redundant index computation and affine.apply operations within
+    the loop body, replacing them with simple pointer arithmetic.
+    
+    This pass must run before scf-to-cf conversion and before cores are outlined
+    to functions, since it operates on scf.for loops within aie.core regions.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEHoistVectorTransferPointersPass()";
 }
 
 def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {
