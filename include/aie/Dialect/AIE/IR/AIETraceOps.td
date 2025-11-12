@@ -255,13 +255,14 @@ def AIE_TraceConfigOp : AIE_Op<"trace.config", [
   
   let arguments = (ins
     Index:$tile,
-    SymbolNameAttr:$sym_name
+    SymbolNameAttr:$sym_name,
+    OptionalAttr<TracePacketTypeAttr>:$packet_type
   );
   
   let regions = (region SizedRegion<1>:$body);
   
   let assemblyFormat = [{
-    $sym_name `(` $tile `)` $body attr-dict
+    $sym_name `(` $tile `)` (`packet_type` `=` $packet_type^)? $body attr-dict
   }];
 }
 

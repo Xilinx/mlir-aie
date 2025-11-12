@@ -42,15 +42,27 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
       std::string configName = (trace.getSymName().str() + "_config");
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
 
+      // Find packet type (if any)
+      TracePacketType packetType = TracePacketType::Core; // default
+      for (auto &op : trace.getBody().getOps()) {
+        if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
+          packetType = packetOp.getType();
+          break;
+        }
+      }
+
       // Insert trace.config after trace declaration
       builder.setInsertionPointAfter(trace);
       auto configOp = builder.create<TraceConfigOp>(
-          trace.getLoc(), trace.getTile(), builder.getStringAttr(configName));
+          trace.getLoc(), trace.getTile(), builder.getStringAttr(configName),
+          TracePacketTypeAttr::get(builder.getContext(), packetType));
 
       // Build register writes inside config body
       Block *configBody = new Block();
       configOp.getBody().push_back(configBody);
       OpBuilder configBuilder = OpBuilder::atBlockEnd(configBody);
+
+      bool isMem = (packetType == TracePacketType::Mem);
 
       // 1. Emit Trace_Control0 fields
       // Check for start/stop events
@@ -62,7 +74,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           } else if (auto eventAttr = startOp.getEvent()) {
             // Look up event number from database
             std::string eventName = eventAttr->getName().str();
-            auto eventNum = regDB->lookupEvent(eventName, tile);
+            auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
             if (eventNum) {
               startEvent = *eventNum;
             } else {
@@ -85,7 +97,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           } else if (auto eventAttr = stopOp.getEvent()) {
             // Look up event number from database
             std::string eventName = eventAttr->getName().str();
-            auto eventNum = regDB->lookupEvent(eventName, tile);
+            auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
             if (eventNum) {
               stopEvent = *eventNum;
             } else {
@@ -140,7 +152,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
         std::string eventName = events[i].getEvent().getName().str();
 
         // Look up event number from database
-        auto eventNum = regDB->lookupEvent(eventName, tile);
+        auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
         if (!eventNum) {
           trace.emitWarning("Unknown event: ") << eventName;
           continue;
