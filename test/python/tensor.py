@@ -77,10 +77,9 @@ def test_zeros(dtype, tensorclass, shape):
     assert isinstance(t, tensorclass)
     assert t.shape == ref.shape
     assert t.dtype == ref.dtype
-    assert bfloat16_safe_allclose(dtype, t, ref)
+    assert bfloat16_safe_allclose(t.dtype, t, ref)
 
 
-'''
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 @pytest.mark.parametrize("shape", SAMPLE_SHAPES)
@@ -91,9 +90,10 @@ def test_ones(dtype, tensorclass, shape):
     assert isinstance(t, tensorclass)
     assert t.shape == ref.shape
     assert t.dtype == ref.dtype
-    assert bfloat16_safe_allclose(dtype, t, ref)
+    assert bfloat16_safe_allclose(t.dtype, t, ref)
 
 
+'''
 @pytest.mark.parametrize(
     "dtype", [d for d in TEST_DTYPES if np.issubdtype(d, np.integer)]
 )

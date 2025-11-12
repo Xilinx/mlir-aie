@@ -7,7 +7,6 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import numpy as np
-import ctypes
 import pyxrt as xrt
 
 from ..tensor import Tensor
@@ -23,8 +22,20 @@ class XRTTensor(Tensor):
 
     """
 
-    def __init__(self, data, dtype=None, device=None, copy=True):
-        super().__init__(data, dtype=dtype, device=device)
+    def __init__(self, data, dtype=None, device=None, copy=True, shape=None):
+        if data is None and not shape:
+            raise ValueError("Must provide data OR shape")
+
+        dtype = dtype or self.DEFAULT_INT_DTYPE
+        itemsize = np.dtype(dtype).itemsize
+        if data is None:
+            nbytes = np.prod(shape) * itemsize
+        else:
+            if copy == False:
+                raise ValueError("Must be able to copy data to create a XRTTensor")
+            nbytes = np.size(data) * itemsize
+            shape = np.shape(data)
+
         device_index = 0
         self.xrt_device = xrt.device(device_index)
 
@@ -34,12 +45,18 @@ class XRTTensor(Tensor):
         group_id = 0
         self.bo = xrt.bo(
             self.xrt_device,
-            self.data.nbytes,
+            nbytes,
             xrt.bo.host_only,
             group_id,
         )
         ptr = self.bo.map()
-        self.data = np.frombuffer(ptr, dtype=self.data.dtype).reshape(self.data.shape)
+        npdata = np.frombuffer(ptr, dtype=dtype).reshape(shape)
+
+        if data is not None and nbytes > 0:
+            np.copyto(npdata, data)
+
+        super().__init__(npdata, dtype=dtype, device=device, copy=False)
+
         if self.device == NPU_DEVICE:
             self._sync_to_device()
 

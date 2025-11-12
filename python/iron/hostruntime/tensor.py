@@ -233,7 +233,7 @@ class Tensor(ABC):
         return self.data.nbytes
 
     @classmethod
-    def ones(cls, size, out=None, dtype=None, device=None, **kwargs):
+    def ones(cls, size, dtype=None, device=None, **kwargs):
         """
         Returns a tensor filled with ones, with shape defined by size.
 
@@ -253,10 +253,10 @@ class Tensor(ABC):
         data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
             data = np.ones(size, dtype=dtype)
-        return cls(data, dtype=dtype, device=device, copy=False)
+        return cls(data, dtype=dtype, device=device)
 
     @classmethod
-    def zeros(cls, size, out=None, dtype=None, device=None, **kwargs):
+    def zeros(cls, size, dtype=None, device=None, **kwargs):
         """
         Returns a tensor filled with zeros, with shape defined by size.
 
@@ -276,10 +276,10 @@ class Tensor(ABC):
         data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
             data = np.zeros(size, dtype=dtype)
-        return cls(data, dtype=dtype, device=device, copy=False)
+        return cls(data, dtype=dtype, device=device)
 
     @classmethod
-    def randint(cls, low, high, size, out=None, dtype=None, device=None, **kwargs):
+    def randint(cls, low, high, size, dtype=None, device=None, **kwargs):
         """
         Returns a tensor filled with random integers uniformly sampled from [low, high).
 
