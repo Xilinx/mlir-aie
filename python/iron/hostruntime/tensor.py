@@ -61,7 +61,7 @@ class Tensor(ABC):
         array_str = np.array2string(self.data, separator=",")
         return f"{self.__class__.__name__}({array_str}, device='{self.device}')"
 
-    def __array__(self, dtype=None):
+    def __array__(self, dtype=None, copy=None):
         """
         NumPy protocol method to convert the tensor to a NumPy array.
 
@@ -70,7 +70,6 @@ class Tensor(ABC):
         Parameters:
             dtype (np.dtype, optional): Desired NumPy dtype for the resulting array.
                                          If None, returns with the tensor's current dtype.
-
         Returns:
             np.ndarray: A NumPy array containing the tensor's data.
 
@@ -79,8 +78,10 @@ class Tensor(ABC):
         """
         if self.device == NPU_DEVICE:
             self._sync_from_device()
-        if dtype:
-            return self.data.astype(dtype)
+        if dtype and dtype != self.dtype:
+            return self.data.astype(dtype, copy=copy)
+        if copy:
+            np.copy(self.data)
         return self.data
 
     def __getitem__(self, index):
@@ -117,6 +118,23 @@ class Tensor(ABC):
         self.data[index] = value
         if self.device == NPU_DEVICE:
             self._sync_to_device()
+
+    """
+    # TODO(erika): the constructor should take data and not shape, that is the problem with this I think
+    @property
+    def __array_interface__(self):
+        if self.device == NPU_DEVICE:
+            self._sync_from_device()
+        return {
+            "shape": self.shape,
+            "typestr": np.dtype(self.dtype).str,
+            "data": (
+                self.data.__array_interface__["data"][0],
+                False,
+            ),  # address and writable flag
+            "version": 3,
+        }
+    """
 
     def to(self, target_device: str):
         """
