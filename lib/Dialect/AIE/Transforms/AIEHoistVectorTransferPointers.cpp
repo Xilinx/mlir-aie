@@ -171,14 +171,23 @@ struct HoistVectorTransferPointersPattern
 
           // Calculate the stride for this dimension
           int64_t dimStride = 1;
+          bool hasDynamicStride = false;
           for (size_t j = dimIdx + 1;
                j < static_cast<size_t>(memrefType.getRank()); ++j) {
-            dimStride *= memrefType.getShape()[j];
+            int64_t dimSize = memrefType.getShape()[j];
+            if (dimSize == ShapedType::kDynamic) {
+              hasDynamicStride = true;
+              break;
+            }
+            dimStride *= dimSize;
           }
 
           // Multiply by loop step - the stride per iteration is:
           // (elements per dimension) * (loop step)
-          constantStride += dimStride * loopStep;
+          if (!hasDynamicStride)
+            constantStride += dimStride * loopStep;
+          else
+            hasIVDependentIndices = false; // Can't hoist if stride is dynamic
         }
       }
 
