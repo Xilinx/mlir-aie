@@ -276,19 +276,4 @@ def AIEXInlineTraceConfig : Pass<"aiex-inline-trace-config", "AIE::DeviceOp"> {
   ];
 }
 
-def AIEXConfigToNPU : Pass<"aiex-config-to-npu", "AIE::DeviceOp"> {
-  let summary = "Lower trace register ops to NPU write operations (stub)";
-  let description = [{
-    This pass is currently a no-op stub.
-    NPU write generation for trace configuration happens in AIEXInlineTraceConfig.
-    Kept for future extensibility.
-  }];
-
-  let constructor = "xilinx::AIEX::createAIEXConfigToNPUPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
-  ];
-}
-
 #endif
