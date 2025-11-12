@@ -289,13 +289,18 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span><span class="comment">// Build a pipeline for CLI access to the pass</span></div>
 <div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span><span class="comment">// `dynamic-size-no-implicit-broadcast`</span></div>
 <div class="line"><a id="l00187" name="l00187"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#ad0e14340d9c12bb5a81e14698069e82f">  187</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#ad0e14340d9c12bb5a81e14698069e82f">buildDynamicSizeNoImplicitBroadcastPass</a>(mlir::OpPassManager &amp;pm);</div>
-<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span> </div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>} <span class="comment">// namespace aievec</span></div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>} <span class="comment">// namespace xilinx</span></div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span> </div>
-<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span><span class="preprocessor">#endif </span><span class="comment">// AIE_DIALECT_AIEVEC_PIPELINES_PASSES_H</span></div>
+<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span><span class="comment"></span> </div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span><span class="comment">/// Create a pass that splits vector.load + aievec.ups chains to reduce shuffle</span></div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span><span class="comment">/// operations for AIE2p targets.</span></div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span><span class="comment"></span>std::unique_ptr&lt;::mlir::Pass&gt; <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a3f3413b8720b2041cfc10dce14a65a69">createSplitVectorLoadUpsChainsPass</a>();</div>
+<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span> </div>
+<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>} <span class="comment">// namespace aievec</span></div>
+<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>} <span class="comment">// namespace xilinx</span></div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span> </div>
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span><span class="preprocessor">#endif </span><span class="comment">// AIE_DIALECT_AIEVEC_PIPELINES_PASSES_H</span></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a08e10e9ce17701762137bac3e6c99b03"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a08e10e9ce17701762137bac3e6c99b03">xilinx::aievec::createCopyRemovalPass</a></div><div class="ttdeci">std::unique_ptr&lt;::mlir::Pass &gt; createCopyRemovalPass()</div><div class="ttdoc">Create a pass that removes unnecessary Copy operations.</div><div class="ttdef"><b>Definition</b> <a href="CopyRemoval_8cpp_source.html#l00244">CopyRemoval.cpp:244</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a20482353e968ec35d619519a20531f2d"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a20482353e968ec35d619519a20531f2d">xilinx::aievec::registerAIEVecPipelines</a></div><div class="ttdeci">void registerAIEVecPipelines()</div><div class="ttdoc">Register all pipelines for the AIE Vector dialect.</div><div class="ttdef"><b>Definition</b> <a href="ConvertVectorToAIEVec_8cpp_source.html#l00146">ConvertVectorToAIEVec.cpp:146</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1aievec_html_a3f3413b8720b2041cfc10dce14a65a69"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a3f3413b8720b2041cfc10dce14a65a69">xilinx::aievec::createSplitVectorLoadUpsChainsPass</a></div><div class="ttdeci">std::unique_ptr&lt;::mlir::Pass &gt; createSplitVectorLoadUpsChainsPass()</div><div class="ttdoc">Create a pass that splits vector.load + aievec.ups chains to reduce shuffle operations for AIE2p targ...</div><div class="ttdef"><b>Definition</b> <a href="SplitVectorLoadUpsChains_8cpp_source.html#l00337">SplitVectorLoadUpsChains.cpp:337</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a61b0f68c7f7c71a7e07f4dca2d292149"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a61b0f68c7f7c71a7e07f4dca2d292149">xilinx::aievec::buildLowerVectorToAIEVec</a></div><div class="ttdeci">void buildLowerVectorToAIEVec(mlir::OpPassManager &amp;pm, const LowerVectorToAIEVecOptions &amp;options)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a9689126f79f4333273366bda678a2764"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a9689126f79f4333273366bda678a2764">xilinx::aievec::createDynamicSizeNoImplicitBroadcastPass</a></div><div class="ttdeci">std::unique_ptr&lt;::mlir::Pass &gt; createDynamicSizeNoImplicitBroadcastPass()</div><div class="ttdef"><b>Definition</b> <a href="DynamicSizeNoImplicitBroadcast_8cpp_source.html#l00121">DynamicSizeNoImplicitBroadcast.cpp:121</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_ab1f8999b97003cad3c4ec8b406953395"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#ab1f8999b97003cad3c4ec8b406953395">xilinx::aievec::buildCanonicalizeVectorForAIEVec</a></div><div class="ttdeci">void buildCanonicalizeVectorForAIEVec(mlir::OpPassManager &amp;pm, const CanonicalizeVectorForAIEVecOptions &amp;options)</div></div>
@@ -334,7 +339,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Nov 12 2025 00:12:20 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Nov 12 2025 20:10:34 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

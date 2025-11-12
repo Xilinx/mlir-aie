@@ -13,3 +13,13 @@ _Vectorize the output of affine supervectorizer to AIE vector abstraction_
 -unaligned-loads-check : Enable the unaligned loads check.
 -aieml                 : 
 ```
+
+### `-aievec-split-load-ups-chains`
+
+_Split vector.load + aievec.ups chains to reduce shuffle operations_
+
+This pass optimizes chains of vector.load followed by aievec.ups operations
+for AIE2p targets. Instead of loading a 1024-bit vector and then shuffling
+it into two halves for separate UPS operations (3 shuffles total), it splits
+both the load and UPS into two 512-bit halves, requiring only 1 shuffle for
+concatenation.
