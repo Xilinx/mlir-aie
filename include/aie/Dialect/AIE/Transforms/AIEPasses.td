@@ -177,7 +177,7 @@ def AIEVectorOpt : Pass<"aie-vector-opt", "mlir::func::FuncOp"> {
   let constructor = "xilinx::AIE::createAIEVectorOptPass()";
 }
 
-def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "mlir::func::FuncOp"> {
+def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
   let summary = "Lower vector.transfer_read/write to vector.load/store for AIE";
   let description = [{
     This pass lowers vector.transfer_read operations to vector.load + vector.broadcast
