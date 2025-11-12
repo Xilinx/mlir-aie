@@ -206,6 +206,34 @@ _Optimize vector instructions for AIE_
 After super-vectorization, some additional optimizations are important
 for improving QOR and enabling lowering to LLVM.
 
+### `-aie-vector-to-pointer-loops`
+
+_Transform vector load/store loops to use ptr dialect for explicit pointer arithmetic_
+
+This pass transforms scf.for loops containing vector.load/store operations
+with loop-carried index arguments to use ptr dialect operations.
+
+The transformation makes pointer increment patterns explicit to help the
+LLVM backend generate efficient post-increment addressing modes (GEP fusion).
+
+Example transformation:
+  Before:
+    scf.for iter_args(%idx = %0) {
+      %v = vector.load %memref[%idx]
+      %next = arith.addi %idx, %stride
+      scf.yield %next
+    }
+
+  After:
+    %ptr = ptr.to_ptr %memref
+    %init_ptr = ptr.ptr_add %ptr, %0
+    scf.for iter_args(%p = %init_ptr) {
+      %m = ptr.from_ptr %p
+      %v = vector.load %m[%c0]
+      %next_p = ptr.ptr_add %p, %stride
+      scf.yield %next_p
+    }
+
 ### `-aie-vector-transfer-lowering`
 
 _Lower vector.transfer_read/write to vector.load/store for AIE_
