@@ -23,8 +23,8 @@ class XRTTensor(Tensor):
 
     """
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device=NPU_DEVICE):
-        super().__init__(shape_or_data, dtype=dtype, device=device)
+    def __init__(self, data, dtype=None, device=None, copy=True):
+        super().__init__(data, dtype=dtype, device=device)
         device_index = 0
         self.xrt_device = xrt.device(device_index)
 
@@ -34,18 +34,12 @@ class XRTTensor(Tensor):
         group_id = 0
         self.bo = xrt.bo(
             self.xrt_device,
-            self.len_bytes,
+            self.data.nbytes,
             xrt.bo.host_only,
             group_id,
         )
         ptr = self.bo.map()
-        self.data = np.frombuffer(ptr, dtype=self.dtype).reshape(self.shape)
-
-        if not isinstance(shape_or_data, tuple):
-            np.copyto(self.data, shape_or_data)
-        else:
-            self.data.fill(0)
-
+        self.data = np.frombuffer(ptr, dtype=self.data.dtype).reshape(self.data.shape)
         if self.device == NPU_DEVICE:
             self._sync_to_device()
 

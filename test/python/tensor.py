@@ -34,14 +34,28 @@ def bfloat16_safe_allclose(dtype, arr1, arr2):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_tensor_creation(dtype, tensorclass):
     for d in tensorclass.DEVICES:
-        t = tensorclass((2, 2), dtype=dtype, device=d)
-        assert t.dtype == dtype
+        t = tensorclass(((0, 0), (0, 0)), dtype=dtype, device=d)
         assert isinstance(t, iron.hostruntime.tensor.Tensor)
         assert isinstance(t, tensorclass)
-        expected = np.zeros((2, 2), dtype=dtype)
-        assert bfloat16_safe_allclose(dtype, t, expected)
         assert t.shape == (2, 2)
-        assert str(t.device) == d
+        assert t.dtype == dtype
+        assert t.device == d
+
+        expected = np.zeros((2, 2), dtype=dtype)
+        assert t.shape == expected.shape
+        assert t.dtype == expected.dtype
+        assert t.nbytes == expected.nbytes
+        assert t.size == expected.size
+        assert t.dtype == expected.dtype
+        assert bfloat16_safe_allclose(dtype, t, expected)
+        
+        expected2 = np.array(((0, 0), (0, 0)), dtype=dtype)
+        assert t.shape == expected2.shape
+        assert t.dtype == expected2.dtype
+        assert t.nbytes == expected2.nbytes
+        assert t.size == expected2.size
+        assert t.dtype == expected2.dtype
+        assert bfloat16_safe_allclose(dtype, t, expected2)
 
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)

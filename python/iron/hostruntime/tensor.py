@@ -23,32 +23,24 @@ class Tensor(ABC):
 
     DEVICES = [CPU_DEVICE, NPU_DEVICE]
     DEFAULT_DEVICE = NPU_DEVICE
+    DEFAULT_DTYPE = np.uint32
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device=NPU_DEVICE):
+    def __init__(self, data, dtype=None, device=None, copy=True):
         """
         Initialize the tensor.
 
         Parameters:
-            shape_or_data (tuple or array-like):
-                - If a tuple, creates a new tensor with the given shape and dtype.
-                - If array-like, wraps the data into a tensor with optional dtype casting.
+            data (array-like): data to populate the tensor with.
             dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
+        device = device or self.DEFAULT_DEVICE
+        dtype = dtype or self.DEFAULT_DTYPE
         if device not in self.__class__.DEVICES:
             raise ValueError(f"Unsupported device: {device}")
 
         self.device = device
-
-        if isinstance(shape_or_data, tuple):
-            self.shape = shape_or_data
-            self.dtype = dtype
-        else:
-            np_data = np.array(shape_or_data, dtype=dtype)
-            self.shape = np_data.shape
-            self.dtype = np_data.dtype
-
-        self.len_bytes = np.prod(self.shape) * np.dtype(self.dtype).itemsize
+        self.data = np.array(data, dtype=dtype, copy=copy)
 
     def __repr__(self):
         """
@@ -78,7 +70,7 @@ class Tensor(ABC):
         """
         if self.device == NPU_DEVICE:
             self._sync_from_device()
-        if dtype and dtype != self.dtype:
+        if dtype and dtype != self.data.dtype:
             return self.data.astype(dtype, copy=copy)
         if copy:
             np.copy(self.data)
@@ -126,8 +118,8 @@ class Tensor(ABC):
         if self.device == NPU_DEVICE:
             self._sync_from_device()
         return {
-            "shape": self.shape,
-            "typestr": np.dtype(self.dtype).str,
+            "shape": self.data.shape,
+            "typestr": np.dtype(self.data.dtype).str,
             "data": (
                 self.data.__array_interface__["data"][0],
                 False,
@@ -175,26 +167,19 @@ class Tensor(ABC):
         ...
 
     @classmethod
-    def __check_or_create(cls, *size, out=None, dtype=None, device=None, **kwargs):
-        # Normalize shape
-        if len(size) == 1 and isinstance(size[0], (tuple, list)):
-            shape = tuple(size[0])
-        else:
-            shape = tuple(size)
-
-        dtype = dtype or np.float32
-        device = device or cls.DEFAULT_DEVICE
-
-        t = None
+    def __check(cls, *size, out=None, dtype=None, device=None, **kwargs):
         if out is not None:
+            if len(size) == 1 and isinstance(size[0], (tuple, list)):
+                shape = tuple(size[0])
+            else:
+                shape = tuple(size)
+
             if out.shape != shape or out.dtype != dtype or out.device != device:
                 raise ValueError(
                     "Provided `out` tensor must match shape, dtype, and device"
                 )
-            t = out
-        else:
-            t = cls(shape, dtype=dtype, device=device, **kwargs)
-        return t
+            return np.asarray(out, dtype=dtype)
+        return None
 
     def numpy(self):
         """
@@ -209,9 +194,7 @@ class Tensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        if self.device == NPU_DEVICE:
-            self._sync_from_device()
-        return self.data
+        return self.__array__()
 
     def fill(self, value):
         """
@@ -226,14 +209,27 @@ class Tensor(ABC):
         if self.device == NPU_DEVICE:
             self._sync_to_device()
 
-    def numel(self):
+    @property
+    def size(self):
         """
         Calculates the number of elements in the tensor.
 
         Returns:
             int: The total number of elements in the tensor.
         """
-        return int(np.prod(self.shape))
+        return self.data.size
+
+    @property
+    def dtype(self):
+        return self.data.dtype
+
+    @property
+    def shape(self):
+        return self.data.shape
+
+    @property
+    def nbytes(self):
+        return self.data.nbytes
 
     @classmethod
     def ones(cls, *size, out=None, dtype=None, device=None, **kwargs):
@@ -252,8 +248,10 @@ class Tensor(ABC):
         Returns:
             Tensor: A one-filled tensor.
         """
-        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
-        t.fill(1)
+        data = cls.__check(*size, dtype=dtype, device=device, **kwargs)
+        if data is None:
+            data = np.ones(*size, dtype=dtype)
+        cls(data, dtype=dtype, device=device, copy=False)
         return t
 
     @classmethod
@@ -273,8 +271,10 @@ class Tensor(ABC):
         Returns:
             Tensor: A zero-filled tensor.
         """
-        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
-        t.fill(0)
+        data = cls.__check(*size, dtype=dtype, device=device, **kwargs)
+        if data is None:
+            data = np.zeros(*size, dtype=dtype)
+        cls(data, dtype=dtype, device=device, copy=False)
         return t
 
     @classmethod
@@ -296,13 +296,10 @@ class Tensor(ABC):
         Returns:
             Tensor: A tensor with random integers.
         """
-        dtype = dtype or np.int64
-        device = device or cls.DEFAULT_DEVICE
-
-        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
-        t.data[:] = np.random.randint(low, high, size=size, dtype=dtype)
-        if device == NPU_DEVICE:
-            t._sync_to_device()
+        data = cls.__check(*size, dtype=dtype, device=device, **kwargs)
+        if data is None:
+            data = np.random.randint(low, high, size=size, dtype=dtype)
+        cls(data, dtype=dtype, device=device, copy=False)
         return t
 
     @classmethod
@@ -323,12 +320,10 @@ class Tensor(ABC):
             Tensor: A tensor with random values in [0, 1).
         """
         dtype = dtype or np.float32
-        device = device or cls.DEFAULT_DEVICE
-
-        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
-        t.data[:] = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
-        if device == NPU_DEVICE:
-            t._sync_to_device()
+        data = cls.__check(*size, dtype=dtype, device=device, **kwargs)
+        if data is None:
+            data = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
+        cls(data, dtype=dtype, device=device, copy=False)
         return t
 
     @classmethod
@@ -397,9 +392,7 @@ class Tensor(ABC):
         """
         dtype = dtype or other.dtype
         device = device or other.device
-        t = cls(other.shape, dtype=dtype, device=device, **kwargs)
-        t.data.fill(0)
-
+        t = cls(np.zeros(other.shape), dtype=dtype, device=device, **kwargs)
         if device == NPU_DEVICE:
             t._sync_to_device()
 
@@ -415,12 +408,9 @@ class CPUOnlyTensor(Tensor):
     DEVICES = [CPU_DEVICE]
     DEFAULT_DEVICE = CPU_DEVICE
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device=CPU_DEVICE):
-        super().__init__(shape_or_data, dtype=dtype, device=device)
-        if not isinstance(shape_or_data, tuple):
-            self.data = np.copy(shape_or_data)
-        else:
-            self.data = np.zeros(shape_or_data, dtype=dtype)
+    def __init__(self, data, dtype=None, device=None, copy=True):
+        device = device or self.DEFAULT_DEVICE
+        super().__init__(data, dtype=dtype, device=device)
 
     def _sync_to_device(self):
         # Nothing to do for CPU only
