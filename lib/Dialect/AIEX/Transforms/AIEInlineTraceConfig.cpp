@@ -67,68 +67,41 @@ struct AIEInlineTraceConfigPass
       int col = tileOp.getCol();
       int row = tileOp.getRow();
 
-      // Determine module based on tile row
-      std::string module = "CORE_MODULE";
-      if (row == 0)
-        module = "PL_MODULE";
-      else if (row == 1)
-        module = "MEM_TILE_MODULE";
-
-      // Group register writes by offset for merging
-      std::map<uint32_t, uint32_t> mergedValues;
-      std::map<uint32_t, TraceRegOp> firstRegOp;
-
       // Process all trace.reg operations in the config
       for (auto &op : configOp.getBody().getOps()) {
         auto regOp = dyn_cast<TraceRegOp>(op);
         if (!regOp)
           continue;
 
-        // Look up register
+        // After packing, field should not be present
+        if (regOp.getField()) {
+          regOp.emitError("aie.trace.reg still has field attribute - run "
+                          "-aie-trace-pack-reg-writes pass first");
+          return signalPassFailure();
+        }
+
+        // Look up register to get offset
         auto regName = regOp.getRegName().str();
-        auto *regInfo = regDb->lookupRegister(regName, module);
+        const RegisterInfo *regInfo =
+            regDb->lookupRegister(regName, tileOp, /*isMem=*/false);
         if (!regInfo) {
-          regOp.emitWarning("Register '")
-              << regName << "' not found in module " << module;
-          continue;
+          regOp.emitError("Register '") << regName << "' not found for tile ("
+                                        << col << ", " << row << ")";
+          return signalPassFailure();
         }
 
-        // Look up field
-        auto fieldName = regOp.getField().str();
-        auto *fieldInfo = regInfo->getField(fieldName);
-        if (!fieldInfo) {
-          regOp.emitWarning("Field '")
-              << fieldName << "' not found in register " << regName;
-          continue;
+        // Extract value (mask is discarded)
+        uint32_t value = 0;
+        if (auto intAttr = llvm::dyn_cast<IntegerAttr>(regOp.getValue())) {
+          value = intAttr.getInt();
+        } else {
+          regOp.emitError("value must be an integer after packing");
+          return signalPassFailure();
         }
 
-        // Encode value
-        uint32_t encodedValue = 0;
-        auto value = regOp.getValue();
-
-        if (auto intAttr = llvm::dyn_cast<IntegerAttr>(value)) {
-          // Integer value
-          encodedValue = regDb->encodeFieldValue(*fieldInfo, intAttr.getInt());
-        } else if (auto strAttr = llvm::dyn_cast<StringAttr>(value)) {
-          // String value - resolve as event
-          std::string strVal = strAttr.getValue().str();
-          auto eventCode = regDb->lookupEvent(strVal, "core");
-          if (eventCode) {
-            encodedValue = regDb->encodeFieldValue(*fieldInfo, *eventCode);
-          }
-        }
-
-        // Merge into accumulated value
-        mergedValues[regInfo->offset] |= encodedValue;
-        if (firstRegOp.find(regInfo->offset) == firstRegOp.end()) {
-          firstRegOp[regInfo->offset] = regOp;
-        }
-      }
-
-      // Generate aiex.npu.write32 operations with col/row
-      for (auto &[offset, value] : mergedValues) {
+        // Generate aiex.npu.write32 operation with col/row
         builder.create<AIEX::NpuWrite32Op>(
-            firstRegOp[offset].getLoc(), builder.getUI32IntegerAttr(offset),
+            regOp.getLoc(), builder.getUI32IntegerAttr(regInfo->offset),
             builder.getUI32IntegerAttr(value),
             nullptr,                        // buffer
             builder.getI32IntegerAttr(col), // column
