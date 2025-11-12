@@ -16,7 +16,18 @@ from aie.iron.hostruntime.tensor import CPUOnlyTensor, XRTTensor, Tensor
 from ml_dtypes import bfloat16
 
 TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
-TEST_DTYPES = [np.float32, np.int32, bfloat16]
+TEST_DTYPES = set(
+    [
+        None,
+        Tensor.DEFAULT_INT_DTYPE,
+        Tensor.DEFAULT_FLOAT_DTYPE,
+        np.float32,
+        np.int32,
+        bfloat16,
+    ]
+)
+SAMPLE_SHAPES = [1, (1,), [1], (1, 2), (1, 2, 3), [1, 2], [3, 2, 1]]
+SAMPLE_DATA = SAMPLE_SHAPES + [[[1, 2], [3, 4]]]
 
 
 def bfloat16_safe_allclose(dtype, arr1, arr2):
@@ -32,75 +43,55 @@ def bfloat16_safe_allclose(dtype, arr1, arr2):
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-@pytest.mark.parametrize(
-    "samplearray",
-    [
-        np.zeros((2, 2)),
-        np.zeros(1),
-        np.zeros((2, 2, 2)),
-        np.zeros([1]),
-        np.zeros([1, 2]),
-        np.zeros([2, 1]),
-        np.zeros([3, 2, 1]),
-    ],
-)
-def test_tensor_creation(dtype, tensorclass, samplearray):
+@pytest.mark.parametrize("data", SAMPLE_DATA)
+def test_tensor_creation(dtype, tensorclass, data):
     for d in tensorclass.DEVICES:
-        t = tensorclass((samplearray.tolist()), dtype=dtype, device=d)
+        ref = np.array(data, dtype=dtype)
+        t = tensorclass(data, dtype=dtype, device=d)
         assert isinstance(t, iron.hostruntime.tensor.Tensor)
         assert isinstance(t, tensorclass)
-        assert t.shape == samplearray.shape
-        assert t.dtype == dtype
+        assert t.shape == ref.shape
+        assert t.dtype == ref.dtype
         assert t.device == d
-
-        expected = np.zeros(samplearray.shape, dtype=dtype)
-        assert t.shape == expected.shape
-        assert t.dtype == expected.dtype
-        assert t.nbytes == expected.nbytes
-        assert t.size == expected.size
-        assert t.dtype == expected.dtype
-        assert bfloat16_safe_allclose(dtype, t, expected)
-
-        expected2 = np.array(samplearray.tolist(), dtype=dtype)
-        assert t.shape == expected2.shape
-        assert t.dtype == expected2.dtype
-        assert t.nbytes == expected2.nbytes
-        assert t.size == expected2.size
-        assert t.dtype == expected2.dtype
-        assert bfloat16_safe_allclose(dtype, t, expected2)
+        assert t.nbytes == ref.nbytes
 
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-@pytest.mark.parametrize("shape", [1, (1,), [1], [1, 2], (2, 1)])
-def test_to_device(dtype, tensorclass, shape):
+@pytest.mark.parametrize("data", SAMPLE_DATA)
+def test_to_device(dtype, tensorclass, data):
     iron.set_iron_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
-        t = iron.ones(shape, dtype=dtype, device=d)
-        assert isinstance(t, iron.hostruntime.tensor.Tensor)
-        assert isinstance(t, tensorclass)
-        assert t.dtype == dtype
+        t = tensorclass(data, dtype=dtype, device=d)
         for d2 in tensorclass.DEVICES:
             t.to(d2)
+
+
+@pytest.mark.parametrize("dtype", TEST_DTYPES)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+@pytest.mark.parametrize("shape", SAMPLE_SHAPES)
+def test_zeros(dtype, tensorclass, shape):
+    iron.set_iron_tensor_class(tensorclass)
+    t = iron.zeros(shape, dtype=dtype)
+    ref = np.zeros(shape, dtype=dtype)
+    assert isinstance(t, tensorclass)
+    assert t.shape == ref.shape
+    assert t.dtype == ref.dtype
+    assert bfloat16_safe_allclose(dtype, t, ref)
 
 
 '''
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_zeros(dtype, tensorclass):
+@pytest.mark.parametrize("shape", SAMPLE_SHAPES)
+def test_ones(dtype, tensorclass, shape):
     iron.set_iron_tensor_class(tensorclass)
-    t = iron.zeros(2, 3, dtype=dtype)
+    t = iron.ones(shape, dtype=dtype)
+    ref = np.ones(shape, dtype=dtype)
     assert isinstance(t, tensorclass)
-    assert bfloat16_safe_allclose(dtype, t, np.zeros((2, 3), dtype=dtype))
-
-
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_ones(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
-    t = iron.ones((2, 2), dtype=dtype)
-    assert isinstance(t, tensorclass)
-    assert bfloat16_safe_allclose(dtype, t, np.ones((2, 2), dtype=dtype))
+    assert t.shape == ref.shape
+    assert t.dtype == ref.dtype
+    assert bfloat16_safe_allclose(dtype, t, ref)
 
 
 @pytest.mark.parametrize(

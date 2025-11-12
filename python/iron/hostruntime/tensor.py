@@ -23,7 +23,8 @@ class Tensor(ABC):
 
     DEVICES = [CPU_DEVICE, NPU_DEVICE]
     DEFAULT_DEVICE = NPU_DEVICE
-    DEFAULT_DTYPE = np.uint32
+    DEFAULT_INT_DTYPE = np.int64
+    DEFAULT_FLOAT_DTYPE = np.float64
 
     def __init__(self, data, dtype=None, device=None, copy=True):
         """
@@ -35,12 +36,12 @@ class Tensor(ABC):
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
         device = device or self.DEFAULT_DEVICE
-        dtype = dtype or self.DEFAULT_DTYPE
+        dtype = dtype or self.DEFAULT_INT_DTYPE
         if device not in self.__class__.DEVICES:
             raise ValueError(f"Unsupported device: {device}")
 
         self.device = device
-        self.data = np.array(data, dtype=dtype, copy=copy)
+        self.data = np.array(data, copy=copy, dtype=dtype)
 
     def __repr__(self):
         """
@@ -241,13 +242,14 @@ class Tensor(ABC):
 
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
-            dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
+            dtype (np.dtype, optional): Desired dtype.
             device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
             **kwargs: Additional keyword args.
 
         Returns:
             Tensor: A one-filled tensor.
         """
+        dtype = dtype or cls.DEFAULT_FLOAT_DTYPE
         data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
             data = np.ones(size, dtype=dtype)
@@ -263,13 +265,14 @@ class Tensor(ABC):
 
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
-            dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
+            dtype (np.dtype, optional): Desired dtype.
             device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
             **kwargs: Additional keyword args.
 
         Returns:
             Tensor: A zero-filled tensor.
         """
+        dtype = dtype or cls.DEFAULT_FLOAT_DTYPE
         data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
             data = np.zeros(size, dtype=dtype)
@@ -316,7 +319,7 @@ class Tensor(ABC):
         Returns:
             Tensor: A tensor with random values in [0, 1).
         """
-        dtype = dtype or np.float32
+        dtype = dtype or cls.DEFAULT_FLOAT_DTYPE
         data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
             data = np.random.uniform(0.0, 1.0, size=size).astype(dtype)
