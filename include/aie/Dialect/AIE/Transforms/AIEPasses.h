@@ -39,6 +39,8 @@ std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createAIEVectorOptPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createAIEVectorTransferLoweringPass();
+std::unique_ptr<mlir::OperationPass<mlir::LLVM::LLVMFuncOp>>
+createAIELLVMLoopOptPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();

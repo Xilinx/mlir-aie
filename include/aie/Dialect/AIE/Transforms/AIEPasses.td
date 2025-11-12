@@ -194,6 +194,34 @@ def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "mlir::func
   ];
 }
 
+def AIELLVMLoopOpt : Pass<"aie-llvm-loop-opt", "mlir::LLVM::LLVMFuncOp"> {
+  let summary = "Optimize LLVM dialect loops for AIE (index-to-pointer transformation)";
+  let description = [{
+    Performs loop strength reduction on LLVM dialect code by converting
+    index-carried loops to pointer-carried loops. This optimization identifies
+    loop-carried integer indices that are only used for getelementptr operations
+    and transforms them to carry pointers instead, eliminating redundant address
+    computations in each iteration.
+    
+    Pattern detected:
+    - Loop header carries i64 index
+    - Index used in: ptr = getelementptr base[index]
+    - Index incremented: new_index = add index, stride
+    - New index passed to next iteration
+    
+    Transformed to:
+    - Loop header carries !llvm.ptr pointer
+    - Pointer used directly for loads
+    - Pointer incremented: new_ptr = getelementptr ptr[stride]
+    - New pointer passed to next iteration
+  }];
+
+  let constructor = "xilinx::AIE::createAIELLVMLoopOptPass()";
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+  ];
+}
+
 def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "DeviceOp"> {
   let summary = "Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations";
   let description = [{
