@@ -20,18 +20,24 @@
 #include <string>
 #include <vector>
 
+namespace mlir {
+class Operation;
+}
+
 namespace xilinx {
 namespace AIE {
+
+class TileOp;
 
 /// Bit field information for a register
 struct BitFieldInfo {
   std::string name;
-  uint32_t bit_start;  // LSB position
-  uint32_t bit_end;    // MSB position
+  uint32_t bit_start; // LSB position
+  uint32_t bit_end;   // MSB position
   std::string type;
   std::string reset;
   std::string description;
-  
+
   uint32_t getWidth() const { return bit_end - bit_start + 1; }
 };
 
@@ -45,15 +51,15 @@ struct RegisterInfo {
   std::string reset;
   std::string description;
   std::vector<BitFieldInfo> bit_fields;
-  
-  const BitFieldInfo* getField(llvm::StringRef fieldName) const;
+
+  const BitFieldInfo *getField(llvm::StringRef fieldName) const;
 };
 
 /// Event information
 struct EventInfo {
   std::string name;
   uint32_t number;
-  std::string module;  // core, memory, pl, mem_tile
+  std::string module; // core, memory, pl, mem_tile
 };
 
 /// Register and event database for a specific architecture
@@ -61,23 +67,38 @@ class RegisterDatabase {
 public:
   /// Load database for AIE2 architecture
   static std::unique_ptr<RegisterDatabase> loadAIE2();
-  
+
   /// Lookup register by name and module
-  const RegisterInfo* lookupRegister(llvm::StringRef name, 
+  const RegisterInfo *lookupRegister(llvm::StringRef name,
                                      llvm::StringRef module) const;
-  
+
+  /// Lookup register by name, determining module from tile
+  const RegisterInfo *lookupRegister(llvm::StringRef name, TileOp tile,
+                                     bool isMem = false) const;
+
   /// Lookup event by name and module
   std::optional<uint32_t> lookupEvent(llvm::StringRef name,
                                       llvm::StringRef module) const;
-  
+
+  /// Lookup event by name, determining module from tile
+  std::optional<uint32_t> lookupEvent(llvm::StringRef name, TileOp tile,
+                                      bool isMem = false) const;
+
   /// Encode a value for a specific bitfield
-  uint32_t encodeFieldValue(const BitFieldInfo& field, uint32_t value) const;
-  
+  uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
+
+  /// Get register module name for a tile (CORE_MODULE, PL_MODULE, etc.)
+  static llvm::StringRef getRegisterModuleForTile(TileOp tile,
+                                                  bool isMem = false);
+
+  /// Get event module name for a tile (core, pl, memory, etc.)
+  static llvm::StringRef getEventModuleForTile(TileOp tile, bool isMem = false);
+
 private:
   RegisterDatabase() = default;
-  
+
   bool loadFromJSON(llvm::StringRef registerPath, llvm::StringRef eventPath);
-  
+
   llvm::StringMap<RegisterInfo> registers_;
   llvm::StringMap<EventInfo> events_;
 };

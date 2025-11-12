@@ -280,23 +280,31 @@ def AIE_TraceRegOp : AIE_Op<"trace.reg", [
     (e.g., "Trace_Start_Event"), and values (integers or event names). If field
     is omitted, entire register is written.
     
+    The mask field (optional) allows partial writes. When present, only the bits
+    set in the mask are written, and the value is assumed to already be shifted.
+    This enables combining multiple field writes into a single register write.
+    
     Example:
     ```mlir
     aie.trace.reg register="Trace_Control0" field="Trace_Start_Event" value=15
     aie.trace.reg register="Trace_Control0" field="Mode" value=0
-    aie.trace.reg register="Trace_Control0" value=0x12345678
+    aie.trace.reg register="Trace_Control0" value=0x12345678 mask=0xFF00
     ```
   }];
   
   let arguments = (ins
     StrAttr:$reg_name,
-    StrAttr:$field,
+    OptionalAttr<StrAttr>:$field,
     AnyAttr:$value,
+    OptionalAttr<AIEI32Attr>:$mask,
     OptionalAttr<StrAttr>:$comment
   );
   
   let assemblyFormat = [{
-    `register` `=` $reg_name `field` `=` $field `value` `=` $value
+    `register` `=` $reg_name
+    (`field` `=` $field^)?
+    `value` `=` $value
+    (`mask` `=` $mask^)?
     (`comment` `=` $comment^)?
     attr-dict
   }];

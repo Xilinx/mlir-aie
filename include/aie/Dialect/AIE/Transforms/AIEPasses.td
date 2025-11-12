@@ -365,4 +365,34 @@ def AIETraceToConfig : Pass<"aie-trace-to-config", "DeviceOp"> {
   ];
 }
 
+def AIETraceRegPackWrites : Pass<"aie-trace-pack-reg-writes", "DeviceOp"> {
+  let summary = "Pack multiple register field writes into single register writes";
+  let description = [{
+    Packs multiple aie.trace.reg operations that write to the same register
+    into a single aie.trace.reg operation with a combined mask and value.
+
+    This pass operates in two phases:
+    1. Convert field+value pairs to mask+shifted_value using register database
+    2. Merge multiple writes to the same register with non-overlapping masks
+    
+    Example transformation:
+    ```mlir
+    // Before:
+    aie.trace.reg register="Trace_Event0" field="Trace_Event0" value=33
+    aie.trace.reg register="Trace_Event0" field="Trace_Event1" value=34
+    
+    // After:
+    aie.trace.reg register="Trace_Event0" value=0x22210000 mask=0xFFFF0000
+    ```
+    
+    It is an error for two aie.trace.reg in the same aie.trace block to have
+    overlapping masks for the same register.
+  }];
+
+  let constructor = "xilinx::AIE::createAIETraceRegPackWritesPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
 #endif

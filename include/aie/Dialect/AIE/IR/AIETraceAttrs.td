@@ -88,16 +88,10 @@ def TraceEventAttr : AttrDef<AIE_Dialect, "TraceEvent"> {
   }];
   
   let parameters = (ins
-    "std::string":$name
+    StringRefParameter<>:$name
   );
   
   let assemblyFormat = "`<` $name `>`";
-  
-  let builders = [
-    AttrBuilder<(ins "llvm::StringRef":$name), [{
-      return $_get($_ctxt, name.str());
-    }]>
-  ];
 }
 
 #endif // AIE_TRACE_ATTRS
