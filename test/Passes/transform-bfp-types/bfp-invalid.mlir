@@ -52,7 +52,7 @@ module {
   aie.device(npu2) {
     %tile_0_0 = aie.tile(2, 2)
 
-    aiex.runtime_sequence(%arg0: memref<8x!aiex.bfp<"v32bfp16ebz8">>, %arg1: memref<10x!aiex.bfp<"v8bfp16ebs8">>) {
+    aie.runtime_sequence(%arg0: memref<8x!aiex.bfp<"v32bfp16ebz8">>, %arg1: memref<10x!aiex.bfp<"v8bfp16ebs8">>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8x!aiex.bfp<"v8bfp16ebs8">>, 0, 8) {bd_id = 7 : i32}
         aie.end
