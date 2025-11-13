@@ -82,10 +82,10 @@ module {
       aie.trace.event<"MEMORY_STALL">         // Memory access stalls
       aie.trace.event<"STREAM_STALL">         // Stream buffer stalls
       aie.trace.event<"LOCK_STALL">           // Lock acquisition stalls
-      aie.trace.event<"PORT_RUNNING_0">       // DMA:0 slave port running
-      aie.trace.event<"PORT_RUNNING_1">       // DMA:1 master port running
-      aie.trace.port<0> port=DMA channel=0 master=false
-      aie.trace.port<1> port=DMA channel=0 master=true
+      aie.trace.event<"PORT_RUNNING_1">       // DMA:0 slave port running
+      aie.trace.event<"PORT_IDLE_1">       // DMA:1 master port running
+      aie.trace.port<0> port=DMA channel=0 direction=S2MM
+      aie.trace.port<1> port=DMA channel=0 direction=MM2S
 
       // Specify start/stop control (broadcast events)
       aie.trace.start event=<"BROADCAST_15">

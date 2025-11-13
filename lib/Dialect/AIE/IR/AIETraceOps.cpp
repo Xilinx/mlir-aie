@@ -100,10 +100,13 @@ LogicalResult TracePortOp::verify() {
   auto device = trace->getParentOfType<DeviceOp>();
   const auto &targetModel = device.getTargetModel();
 
+  // Convert DMAChannelDir to master flag: S2MM=master, MM2S=slave
+  bool isMaster = (getDirection() == DMAChannelDir::S2MM);
+
   // Verify port is valid for this tile
   if (!targetModel.isValidStreamSwitchPort(tileOp.getCol(), tileOp.getRow(),
                                            getPort(), getChannel(),
-                                           getMaster())) {
+                                           isMaster)) {
     return emitOpError("invalid stream switch port configuration for tile (")
            << tileOp.getCol() << ", " << tileOp.getRow() << ")";
   }

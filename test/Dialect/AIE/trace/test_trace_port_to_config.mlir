@@ -7,8 +7,8 @@ module {
     aie.trace @port_trace(%tile_0_2) {
       aie.trace.mode "Event-Time"
       aie.trace.packet id=1 type="core"
-      aie.trace.port<0> port=North channel=1 master=true
-      aie.trace.port<1> port=DMA channel=0 master=false
+      aie.trace.port<0> port=North channel=1 direction=S2MM
+      aie.trace.port<1> port=DMA channel=0 direction=MM2S
       aie.trace.event<"PORT_RUNNING_0">
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
