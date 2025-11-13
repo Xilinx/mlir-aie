@@ -91,6 +91,7 @@ def my_eltwise_add(dev, num_elements, trace_size):
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
         rt.start(*my_workers)
 
+        # Initialize a group for parallel drain tasks, with fill resources free'd when drains complete.
         tg = rt.task_group()
 
         # Fill the input objectFIFOs with data

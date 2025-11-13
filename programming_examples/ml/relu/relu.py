@@ -92,7 +92,7 @@ def my_relu(dev, size, num_columns, num_channels):
         rt.start(*my_workers)
 
         # Initialize a group for parallel drain tasks, with fill resources free'd when drains complete.
-        tg = rt.task_group()  # Initialize a group for parallel drain tasks
+        tg = rt.task_group()
 
         # Fill the input objectFIFOs with data
         for i in range(num_columns):
