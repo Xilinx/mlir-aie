@@ -114,6 +114,7 @@ def my_swiglu(dev, size, num_columns):
                 of_wts[i].prod(),
                 w_in,
                 taps_wts[i],
+                task_group=tg,
             )
         # Drain the output objectFIFOs with data
         for i in range(num_columns):

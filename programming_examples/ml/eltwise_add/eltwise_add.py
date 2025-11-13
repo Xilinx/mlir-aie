@@ -100,6 +100,7 @@ def my_eltwise_add(dev, num_elements, trace_size):
                 of_in1s[i].prod(),
                 A,
                 taps[i],
+                task_group=tg,
             )
             rt.fill(of_in2s[i].prod(), B, taps[i], task_group=tg)
         # Drain the output objectFIFOs with data
