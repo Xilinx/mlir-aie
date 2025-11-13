@@ -83,7 +83,7 @@ jobs:
           pip install -r python/requirements_dev.txt
 
       - name: Setup Cpp
-        uses: aminya/setup-cpp@1fd813945e55021261b381c59275db442da4082f
+        uses: aminya/setup-cpp@c08b75129664adcdc73941d2bc88206143c1fb47
         with:
           compiler: ${{ matrix.COMPILER }}
           vcvarsall: ${{ contains(matrix.OS, 'windows') }}
