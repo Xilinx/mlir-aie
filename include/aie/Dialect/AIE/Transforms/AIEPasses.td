@@ -194,6 +194,64 @@ def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp">
   ];
 }
 
+def AIELLVMLoopOpt : Pass<"aie-llvm-loop-opt", "mlir::LLVM::LLVMFuncOp"> {
+  let summary = "Optimize LLVM dialect loops for AIE (index-to-pointer transformation)";
+  let description = [{
+    Performs loop strength reduction on LLVM dialect code by converting
+    index-carried loops to pointer-carried loops. This optimization identifies
+    loop-carried integer indices that are only used for getelementptr operations
+    and transforms them to carry pointers instead, eliminating redundant address
+    computations in each iteration.
+    
+    Pattern detected:
+    - Loop header carries i64 index
+    - Index used in: ptr = getelementptr base[index]
+    - Index incremented: new_index = add index, stride
+    - New index passed to next iteration
+    
+    Transformed to:
+    - Loop header carries !llvm.ptr pointer
+    - Pointer used directly for loads
+    - Pointer incremented: new_ptr = getelementptr ptr[stride]
+    - New pointer passed to next iteration
+  }];
+
+  let constructor = "xilinx::AIE::createAIELLVMLoopOptPass()";
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+  ];
+}
+
+def AIEVectorToPointerLoops : Pass<"aie-vector-to-pointer-loops", "DeviceOp"> {
+  let summary = "Transform vector load/store loops to use ptr dialect for explicit pointer arithmetic";
+  let description = [{
+    This pass transforms scf.for loops containing vector.load/store operations
+    with loop-carried index arguments to use ptr dialect operations.
+    
+    The transformation makes pointer increment patterns explicit to help the
+    LLVM backend generate efficient post-increment addressing modes (GEP fusion).
+    
+    Example transformation:
+      Before:
+        scf.for iter_args(%idx = %0) {
+          %v = vector.load %memref[%idx]
+          %next = arith.addi %idx, %stride
+          scf.yield %next
+        }
+      
+      After:
+        %ptr = ptr.to_ptr %memref
+        %init_ptr = ptr.ptr_add %ptr, %0
+        scf.for iter_args(%p = %init_ptr) {
+          %m = ptr.from_ptr %p
+          %v = vector.load %m[%c0]
+          %next_p = ptr.ptr_add %p, %stride
+          scf.yield %next_p
+        }
+  }];
+  let constructor = "xilinx::AIE::createAIEVectorToPointerLoopsPass()";
+}
+
 def AIEHoistVectorTransferPointers : Pass<"aie-hoist-vector-transfer-pointers", "mlir::ModuleOp"> {
   let summary = "Hoist vector transfer pointer computations out of scf.for loops in aie.core regions";
   let description = [{
