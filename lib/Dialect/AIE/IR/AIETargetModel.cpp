@@ -346,6 +346,55 @@ AIE1TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
   return std::nullopt;
 }
 
+std::optional<uint32_t>
+AIE1TargetModel::getStreamSwitchPortIndex(int col, int row, WireBundle bundle,
+                                          int channel, bool master) const {
+  // TODO: Replace with actual lookup table
+  // For now, return a placeholder that will be filled in later
+  llvm::errs() << "WARNING: getStreamSwitchPortIndex not yet implemented for "
+                  "AIE1, returning placeholder value\n";
+
+  // Temporary placeholder mapping (will be replaced)
+  switch (bundle) {
+  case WireBundle::DMA:
+    return channel + 1;
+  case WireBundle::FIFO:
+    return channel + 1;
+  case WireBundle::North:
+    return channel + 14;
+  case WireBundle::South:
+    return channel + 10;
+  case WireBundle::East:
+    return channel + 18;
+  case WireBundle::West:
+    return channel + 22;
+  default:
+    return std::nullopt;
+  }
+}
+
+bool AIE1TargetModel::isValidStreamSwitchPort(int col, int row,
+                                              WireBundle bundle, int channel,
+                                              bool master) const {
+  // TODO: Add proper validation
+  // For now, accept reasonable-looking configurations
+  if (channel < 0 || channel > 7)
+    return false;
+
+  // Accept common port types
+  switch (bundle) {
+  case WireBundle::DMA:
+  case WireBundle::FIFO:
+  case WireBundle::North:
+  case WireBundle::South:
+  case WireBundle::East:
+  case WireBundle::West:
+    return true;
+  default:
+    return false;
+  }
+}
+
 ///
 /// AIE2 TargetModel
 ///
@@ -779,6 +828,55 @@ AIE2TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
     return shimTileBaseAddress + lockAddrOffset * lockId;
 
   return std::nullopt;
+}
+
+std::optional<uint32_t>
+AIE2TargetModel::getStreamSwitchPortIndex(int col, int row, WireBundle bundle,
+                                          int channel, bool master) const {
+  // TODO: Replace with actual lookup table
+  // For now, return a placeholder that will be filled in later
+  llvm::errs() << "WARNING: getStreamSwitchPortIndex not yet implemented for "
+                  "AIE2, returning placeholder value\n";
+
+  // Temporary placeholder mapping (will be replaced)
+  switch (bundle) {
+  case WireBundle::DMA:
+    return channel + 1;
+  case WireBundle::FIFO:
+    return channel + 1;
+  case WireBundle::North:
+    return channel + 14;
+  case WireBundle::South:
+    return channel + 10;
+  case WireBundle::East:
+    return channel + 18;
+  case WireBundle::West:
+    return channel + 22;
+  default:
+    return std::nullopt;
+  }
+}
+
+bool AIE2TargetModel::isValidStreamSwitchPort(int col, int row,
+                                              WireBundle bundle, int channel,
+                                              bool master) const {
+  // TODO: Add proper validation
+  // For now, accept reasonable-looking configurations
+  if (channel < 0 || channel > 7)
+    return false;
+
+  // Accept common port types
+  switch (bundle) {
+  case WireBundle::DMA:
+  case WireBundle::FIFO:
+  case WireBundle::North:
+  case WireBundle::South:
+  case WireBundle::East:
+  case WireBundle::West:
+    return true;
+  default:
+    return false;
+  }
 }
 
 void AIETargetModel::validate() const {
