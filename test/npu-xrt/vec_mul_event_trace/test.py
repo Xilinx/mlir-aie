@@ -23,7 +23,6 @@
 import argparse
 import numpy as np
 import sys
-import json
 from pathlib import Path
 import pyxrt as xrt
 from aie.utils.parse_trace import parse_trace
@@ -94,11 +93,6 @@ def load_instr_binary(instr_file):
 
 def generate_trace_json(trace_buffer, mlir_file, verbosity=0):
     """Generate trace json from trace buffer using parse_trace API"""
-    if parse_trace is None:
-        if verbosity >= 1:
-            print("Skipping trace.json generation (parse_trace not available)")
-        return False
-
     try:
         # Read MLIR file
         if not Path(mlir_file).exists():
@@ -270,16 +264,22 @@ def main():
         trace_buffer, args.mlir, verbosity=args.verbosity
     )
 
-    instr_event_0_count = sum(
-        1
-        for event in trace_events
-        if event.get("name") == "INSTR_EVENT_0" and event.get("ph") == "B"
-    )
-    instr_event_1_count = sum(
-        1
-        for event in trace_events
-        if event.get("name") == "INSTR_EVENT_1" and event.get("ph") == "B"
-    )
+    if not trace_events:
+        print("ERROR: Failed to generate trace events (empty or False returned).")
+        errors += 1
+        instr_event_0_count = 0
+        instr_event_1_count = 0
+    else:
+        instr_event_0_count = sum(
+            1
+            for event in trace_events
+            if event.get("name") == "INSTR_EVENT_0" and event.get("ph") == "B"
+        )
+        instr_event_1_count = sum(
+            1
+            for event in trace_events
+            if event.get("name") == "INSTR_EVENT_1" and event.get("ph") == "B"
+        )
 
     if args.verbosity >= 1:
         print(f"INSTR_EVENT_0 count: {instr_event_0_count}")

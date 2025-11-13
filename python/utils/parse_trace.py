@@ -1018,7 +1018,7 @@ def main():
         with open(opts.input, "r") as f:
             # Create array of trace packets
             trace_pkts = f.read().split("\n")
-    except:
+    except Exception:
         print(
             "ERROR:",
             opts.input,
@@ -1036,7 +1036,7 @@ def main():
 
     try:
         of = open(opts.output, "w")
-    except:
+    except Exception:
         print(
             "ERROR:",
             opts.mlir,
