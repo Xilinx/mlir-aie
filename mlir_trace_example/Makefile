@@ -70,6 +70,11 @@ endif
 run: ${targetname}.exe build/final.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
+# Run the Python version
+run_py: build/final.xclbin build/insts.bin
+	@echo "Running Python test..."
+	python3 ${srcdir}/test.py --xclbin build/final.xclbin --instr build/insts.bin --kernel MLIR_AIE --verbosity 1
+
 # Run with trace enabled
 trace: ${targetname}.exe build/final.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
@@ -92,6 +97,17 @@ run_new_trace: ${targetname}.exe build/final_new.xclbin build/insts_new.bin
 	python3 ${srcdir}/visualize_trace.py -i trace_new.json -o trace_new_timeline.png -t "New Declarative Trace"
 	@echo "Trace visualization saved to trace_new_timeline.png"
 
+# Run Python version with new trace syntax
+run_new_trace_py: build/final_new.xclbin build/insts_new.bin
+	@echo "Running Python test with NEW declarative trace syntax..."
+	python3 ${srcdir}/test.py --xclbin build/final_new.xclbin --instr build/insts_new.bin --kernel MLIR_AIE --verbosity 1 --trace-sz ${trace_size} --trace-file trace.txt
+	${srcdir}/../python/utils/parse_trace.py --input trace.txt --mlir build/aie_new_trace.mlir.prj/input_physical_with_elfs.mlir --output trace_new.json
+	${srcdir}/../python/utils/get_trace_summary.py --input trace_new.json
+	@echo ""
+	@echo "Generating trace visualization..."
+	python3 ${srcdir}/visualize_trace.py -i trace_new.json -o trace_new_timeline.png -t "New Declarative Trace (Python)"
+	@echo "Trace visualization saved to trace_new_timeline.png"
+
 # Visualize existing trace data
 visualize: trace_mlir.json
 	python3 ${srcdir}/visualize_trace.py -i trace_mlir.json -o trace_timeline.png
@@ -103,4 +119,4 @@ clean_trace:
 clean: clean_trace
 	rm -rf build _build ${targetname}*.exe
 
-.PHONY: all run trace test_new_trace run_new_trace visualize clean clean_trace
+.PHONY: all run run_py trace test_new_trace run_new_trace run_new_trace_py visualize clean clean_trace

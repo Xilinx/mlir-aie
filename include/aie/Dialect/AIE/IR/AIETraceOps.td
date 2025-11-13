@@ -159,6 +159,54 @@ def AIE_TracePacketOp : AIE_Op<"trace.packet", [
 }
 
 //===----------------------------------------------------------------------===//
+// AIE_TracePortOp - Stream Switch Port Event Configuration
+//===----------------------------------------------------------------------===//
+
+def AIE_TracePortOp : AIE_Op<"trace.port", [
+    HasParent<"TraceOp">
+  ]> {
+  let summary = "Configure stream switch port for event monitoring";
+  
+  let description = [{
+    Configures a stream switch port monitoring slot (0-7) to track events
+    from a specific port. The port is specified by type (NORTH, DMA, etc.),
+    channel number, and direction (S2MM=master, MM2S=slave).
+    
+    Direction semantics:
+    - S2MM (Stream-to-Memory-Mapped) = master port (receiving from stream)
+    - MM2S (Memory-Mapped-to-Stream) = slave port (sending to stream)
+    
+    After configuration, the port can be monitored using:
+    - PORT_RUNNING_<slot>
+    - PORT_IDLE_<slot>
+    - PORT_STALLED_<slot>
+    - PORT_TLAST_<slot>
+    
+    Example:
+    ```mlir
+    aie.trace.port<0> port = North channel = 1 direction = S2MM
+    aie.trace.port<1> port = DMA channel = 0 direction = MM2S
+    aie.trace.event<"PORT_RUNNING_0">  // Monitor NORTH:1 (S2MM/master)
+    aie.trace.event<"PORT_IDLE_1">     // Monitor DMA:0 (MM2S/slave)
+    ```
+  }];
+  
+  let arguments = (ins
+    ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<7>]>:$slot,
+    WireBundle:$port,
+    AIEI32Attr:$channel,
+    DMAChannelDir:$direction
+  );
+  
+  let assemblyFormat = [{
+    `<` $slot `>` `port` `=` $port `channel` `=` $channel `direction` `=` $direction
+    attr-dict
+  }];
+  
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // AIE_TraceStartEventOp - Trace Start Event Configuration
 //===----------------------------------------------------------------------===//
 
