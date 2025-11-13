@@ -2427,8 +2427,7 @@ RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,
 RuntimeSequenceOp
 RuntimeSequenceOp::getForSymbolInDeviceOrError(DeviceOp deviceOp,
                                                llvm::StringRef symbol) {
-  RuntimeSequenceOp runtimeSequenceOp =
-      getForSymbolInDevice(deviceOp, symbol);
+  RuntimeSequenceOp runtimeSequenceOp = getForSymbolInDevice(deviceOp, symbol);
   if (!runtimeSequenceOp) {
     if (!symbol.empty()) {
       deviceOp.emitError("No such runtime sequence: ") << symbol;
