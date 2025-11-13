@@ -288,3 +288,56 @@ std::optional<uint32_t>
 RegisterDatabase::lookupEvent(StringRef name, TileOp tile, bool isMem) const {
   return lookupEvent(name, getEventModuleForTile(tile, isMem));
 }
+
+std::optional<uint32_t> RegisterDatabase::resolvePortValue(StringRef value,
+                                                           TileOp tile,
+                                                           bool master) const {
+  // Parse "PORT:CHANNEL" format
+  auto colonPos = value.find(':');
+  if (colonPos == StringRef::npos) {
+    return std::nullopt; // Not a port value
+  }
+
+  StringRef portName = value.substr(0, colonPos);
+  StringRef channelStr = value.substr(colonPos + 1);
+
+  // Parse channel number
+  int channel;
+  if (channelStr.getAsInteger(10, channel)) {
+    return std::nullopt; // Invalid channel number
+  }
+
+  // Convert port name to WireBundle enum
+  WireBundle bundle;
+  if (portName == "North" || portName == "NORTH") {
+    bundle = WireBundle::North;
+  } else if (portName == "South" || portName == "SOUTH") {
+    bundle = WireBundle::South;
+  } else if (portName == "East" || portName == "EAST") {
+    bundle = WireBundle::East;
+  } else if (portName == "West" || portName == "WEST") {
+    bundle = WireBundle::West;
+  } else if (portName == "DMA") {
+    bundle = WireBundle::DMA;
+  } else if (portName == "FIFO") {
+    bundle = WireBundle::FIFO;
+  } else if (portName == "Core" || portName == "CORE") {
+    bundle = WireBundle::Core;
+  } else if (portName == "CTRL") {
+    bundle = WireBundle::Core; // or TileControl?
+  } else {
+    return std::nullopt; // Unknown port type
+  }
+
+  // Get device and target model
+  auto device = tile->getParentOfType<DeviceOp>();
+  if (!device) {
+    return std::nullopt;
+  }
+
+  const auto &targetModel = device.getTargetModel();
+
+  // Look up port index from target model
+  return targetModel.getStreamSwitchPortIndex(tile.getCol(), tile.getRow(),
+                                              bundle, channel, master);
+}

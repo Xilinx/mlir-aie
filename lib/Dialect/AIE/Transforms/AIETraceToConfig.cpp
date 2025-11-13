@@ -140,7 +140,46 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
         }
       }
 
-      // 2. Emit event slots (Trace_Event0 / Trace_Event1)
+      // 2. Emit port configurations (Stream_Switch_Event_Port_Selection_0/1)
+      for (auto &op : trace.getBody().getOps()) {
+        if (auto portOp = dyn_cast<TracePortOp>(op)) {
+          uint32_t slot = portOp.getSlot();
+
+          // Determine which register based on slot
+          StringRef registerName = (slot < 4)
+                                       ? "Stream_Switch_Event_Port_Selection_0"
+                                       : "Stream_Switch_Event_Port_Selection_1";
+
+          // Generate field names
+          std::string idFieldName = "Port_" + std::to_string(slot) + "_ID";
+          std::string masterSlaveFieldName =
+              "Port_" + std::to_string(slot) + "_Master_Slave";
+
+          // Generate port value string "PORT:CHANNEL"
+          std::string portValue =
+              stringifyWireBundle(portOp.getPort()).str() + ":" +
+              std::to_string(portOp.getChannel());
+
+          // Emit Port_N_ID field
+          configBuilder.create<TraceRegOp>(
+              portOp.getLoc(), builder.getStringAttr(registerName),
+              builder.getStringAttr(idFieldName),
+              builder.getStringAttr(portValue), // "NORTH:1" format
+              /*mask=*/nullptr,
+              builder.getStringAttr("port " + std::to_string(slot) + " ID"));
+
+          // Emit Port_N_Master_Slave field
+          configBuilder.create<TraceRegOp>(
+              portOp.getLoc(), builder.getStringAttr(registerName),
+              builder.getStringAttr(masterSlaveFieldName),
+              builder.getI32IntegerAttr(portOp.getMaster() ? 1 : 0),
+              /*mask=*/nullptr,
+              builder.getStringAttr("port " + std::to_string(slot) +
+                                    " master/slave"));
+        }
+      }
+
+      // 3. Emit event slots (Trace_Event0 / Trace_Event1)
       SmallVector<TraceEventOp> events;
       for (auto &op : trace.getBody().getOps()) {
         if (auto eventOp = dyn_cast<TraceEventOp>(op)) {
@@ -245,12 +284,57 @@ struct AIETraceRegPackWritesPass
           return signalPassFailure();
         }
 
-        // Get the value as integer
+        // Get the value - handle both integers and port strings
         uint32_t value = 0;
+
         if (auto intAttr = dyn_cast<IntegerAttr>(regOp.getValue())) {
+          // Integer value
           value = intAttr.getInt();
+        } else if (auto strAttr = dyn_cast<StringAttr>(regOp.getValue())) {
+          // String value - check if it's a port specification
+          StringRef valueStr = strAttr.getValue();
+
+          // Determine master/slave from field name
+          // If field name contains "Master_Slave", this is not a port ID field
+          // Port ID fields are named "Port_N_ID"
+          bool isMasterSlaveField =
+              fieldInfo->name.find("Master_Slave") != std::string::npos;
+
+          if (!isMasterSlaveField && valueStr.contains(':')) {
+            // This looks like "PORT:CHANNEL" format
+            // We need master/slave info - look for corresponding Master_Slave
+            // field
+            bool master = false; // Default to slave
+
+            // Search for companion Master_Slave field in same register
+            for (auto &siblingOp : configOp.getBody().front()) {
+              if (auto siblingReg = dyn_cast<TraceRegOp>(siblingOp)) {
+                if (siblingReg.getRegName() == regOp.getRegName() &&
+                    siblingReg.getField() &&
+                    siblingReg.getField()->contains("Master_Slave")) {
+                  // Found companion field - extract master flag
+                  if (auto siblingInt =
+                          dyn_cast<IntegerAttr>(siblingReg.getValue())) {
+                    master = (siblingInt.getInt() != 0);
+                  }
+                  break;
+                }
+              }
+            }
+
+            // Resolve port value
+            auto portIndex = regDB->resolvePortValue(valueStr, tile, master);
+            if (!portIndex) {
+              regOp.emitError("Failed to resolve port value: ") << valueStr;
+              return signalPassFailure();
+            }
+            value = *portIndex;
+          } else {
+            regOp.emitError("Unsupported string value: ") << valueStr;
+            return signalPassFailure();
+          }
         } else {
-          regOp.emitError("Non-integer value not supported in pack pass");
+          regOp.emitError("Unsupported value type in pack pass");
           return signalPassFailure();
         }
 
