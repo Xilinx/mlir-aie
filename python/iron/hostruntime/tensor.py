@@ -26,7 +26,7 @@ class Tensor(ABC):
     DEFAULT_INT_DTYPE = np.int64
     DEFAULT_FLOAT_DTYPE = np.float64
 
-    def __init__(self, data, dtype=None, device=None, copy=True):
+    def __init__(self, data, dtype=None, device=None):
         """
         Initialize the tensor.
 
@@ -35,13 +35,17 @@ class Tensor(ABC):
             dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
             device (str, optional): Device string identifier (e.g., 'npu', 'cpu'). Defaults to 'npu'.
         """
+        if data is None:
+            raise ValueError("Must provide data")
+
         device = device or self.DEFAULT_DEVICE
         dtype = dtype or self.DEFAULT_INT_DTYPE
+        self.data = np.array(data, dtype=dtype)
+
         if device not in self.__class__.DEVICES:
             raise ValueError(f"Unsupported device: {device}")
 
         self.device = device
-        self.data = np.array(data, copy=copy, dtype=dtype)
 
     def __repr__(self):
         """
@@ -54,7 +58,7 @@ class Tensor(ABC):
         array_str = np.array2string(self.data, separator=",")
         return f"{self.__class__.__name__}({array_str}, device='{self.device}')"
 
-    def __array__(self, dtype=None, copy=None):
+    def __array__(self, dtype=None):
         """
         NumPy protocol method to convert the tensor to a NumPy array.
 
@@ -72,10 +76,8 @@ class Tensor(ABC):
         if self.device == NPU_DEVICE:
             self._sync_from_device()
         if dtype and dtype != self.data.dtype:
-            return self.data.astype(dtype, copy=copy)
-        if copy:
-            np.copy(self.data)
-        return self.data
+            return self.data.astype(dtype)
+        return np.copy(self.data)
 
     def __getitem__(self, index):
         """
@@ -167,36 +169,6 @@ class Tensor(ABC):
         """
         ...
 
-    @classmethod
-    def __check(cls, size, out=None, dtype=None, device=None, **kwargs):
-        if out is not None:
-            if len(size) == 1 and isinstance(size[0], (tuple, list)):
-                shape = tuple(size[0])
-            else:
-                shape = tuple(size)
-
-            if out.shape != shape or out.dtype != dtype or out.device != device:
-                raise ValueError(
-                    "Provided `out` tensor must match shape, dtype, and device"
-                )
-            return np.asarray(out, dtype=dtype)
-        return None
-
-    def numpy(self):
-        """
-        Returns a NumPy view of the tensor data on host memory.
-
-        This method ensures that data is first synchronized from the device
-        (e.g., NPU) to the host before returning the array.
-
-        Returns:
-            np.ndarray: The tensor's data as a NumPy array.
-
-        Note: For NPU tensors, this method causes implicit data synchronization from device to host
-        to ensure the returned array reflects the current device state.
-        """
-        return self.__array__()
-
     def fill(self, value):
         """
         Fills the tensor with a scalar value (in-place operation).
@@ -233,35 +205,32 @@ class Tensor(ABC):
         return self.data.nbytes
 
     @classmethod
-    def ones(cls, size, dtype=None, device=None, **kwargs):
+    def ones(cls, shape, dtype=None, device=None):
         """
-        Returns a tensor filled with ones, with shape defined by size.
+        Returns a tensor filled with ones, with shape defined by shape.
 
         Parameters:
-            size (int | tuple[int]): Shape of the tensor, given as an int or tuple of ints.
+            shape (int | tuple[int]): Shape of the tensor.
 
         Keyword Arguments:
-            out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype.
             device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
-            **kwargs: Additional keyword args.
 
         Returns:
             Tensor: A one-filled tensor.
         """
         dtype = dtype or cls.DEFAULT_FLOAT_DTYPE
-        data = cls.__check(size, dtype=dtype, device=device, **kwargs)
-        if data is None:
-            data = np.ones(size, dtype=dtype)
-        return cls(data, dtype=dtype, device=device)
+        t = cls(None, dtype=dtype, device=device, shape=shape)
+        t.fill(1)
+        return t
 
     @classmethod
-    def zeros(cls, size, dtype=None, device=None, **kwargs):
+    def zeros(cls, shape, dtype=None, device=None):
         """
         Returns a tensor filled with zeros, with shape defined by size.
 
         Parameters:
-            size (int | tuple[int]): Shape of the tensor, given as an int or tuple of ints.
+            shape (int | tuple[int]): Shape of the tensor.
 
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
@@ -273,57 +242,51 @@ class Tensor(ABC):
             Tensor: A zero-filled tensor.
         """
         dtype = dtype or cls.DEFAULT_FLOAT_DTYPE
-        data = cls.__check(size, dtype=dtype, device=device, **kwargs)
-        if data is None:
-            data = np.zeros(size, dtype=dtype)
-        return cls(data, dtype=dtype, device=device)
+        t = cls(None, dtype=dtype, device=device, shape=shape)
+        t.fill(0)
+        return t
 
     @classmethod
-    def randint(cls, low, high, size, dtype=None, device=None, **kwargs):
+    def randint(cls, low, high, shape, dtype=None, device=None):
         """
         Returns a tensor filled with random integers uniformly sampled from [low, high).
 
         Parameters:
             low (int): Lowest integer to be drawn (inclusive).
             high (int): One above the highest integer to be drawn (exclusive).
-            size (tuple): Shape of the returned tensor.
+            shape (tuple): Shape of the returned tensor.
 
         Keyword Arguments:
             out (Tensor, optional): Optional tensor to write the result into.
-            dtype (np.dtype, optional): Data type. Defaults to np.int64.
+            dtype (np.dtype, optional): Data type.
             device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
-            **kwargs: Additional arguments passed to the constructor.
 
         Returns:
             Tensor: A tensor with random integers.
         """
-        data = cls.__check(size, dtype=dtype, device=device, **kwargs)
-        if data is None:
-            data = np.random.randint(low, high, size=size, dtype=dtype)
-        return cls(data, dtype=dtype, device=device, copy=False)
+        dtype = dtype or cls.DEFAULT_FLOAT_DTYPE
+        data = np.random.randint(low, high, shape=shape, dtype=dtype)
+        return cls(data, dtype=dtype, device=device)
 
     @classmethod
-    def rand(cls, size, out=None, dtype=None, device=None, **kwargs):
+    def rand(cls, shape, dtype=None, device=None):
         """
         Returns a tensor filled with random numbers from a uniform distribution on [0, 1).
 
         Parameters:
-            size (int | tuple[int]): Shape of the tensor, given as an int or tuple of ints.
+            shape (int | tuple[int]): Shape of the tensor.
 
         Keyword Arguments:
-            out (Tensor, optional): Output tensor to write into.
-            dtype (np.dtype, optional): Desired data type. Defaults to np.float32.
+            dtype (np.dtype, optional): Desired data type.
             device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
-            **kwargs: Additional arguments passed to constructor.
 
         Returns:
             Tensor: A tensor with random values in [0, 1).
         """
         dtype = dtype or cls.DEFAULT_FLOAT_DTYPE
-        data = cls.__check(size, dtype=dtype, device=device, **kwargs)
         if data is None:
-            data = np.random.uniform(0.0, 1.0, size=size).astype(dtype)
-        return cls(data, dtype=dtype, device=device, copy=False)
+            data = np.random.uniform(0.0, 1.0, size=shape).astype(dtype)
+        return cls(data, dtype=dtype, device=device)
 
     @classmethod
     def arange(
@@ -407,8 +370,10 @@ class CPUOnlyTensor(Tensor):
     DEVICES = [CPU_DEVICE]
     DEFAULT_DEVICE = CPU_DEVICE
 
-    def __init__(self, data, dtype=None, device=None, copy=True):
+    def __init__(self, data, dtype=None, device=None, shape=None):
         device = device or self.DEFAULT_DEVICE
+        if data is None:
+            data = np.zeros(shape, dtype=dtype)
         super().__init__(data, dtype=dtype, device=device)
 
     def _sync_to_device(self):

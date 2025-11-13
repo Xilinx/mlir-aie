@@ -22,7 +22,7 @@ class XRTTensor(Tensor):
 
     """
 
-    def __init__(self, data, dtype=None, device=None, copy=True, shape=None):
+    def __init__(self, data, dtype=None, device=None, shape=None):
         if data is None and not shape:
             raise ValueError("Must provide data OR shape")
 
@@ -31,8 +31,6 @@ class XRTTensor(Tensor):
         if data is None:
             nbytes = np.prod(shape) * itemsize
         else:
-            if copy == False:
-                raise ValueError("Must be able to copy data to create a XRTTensor")
             nbytes = np.size(data) * itemsize
             shape = np.shape(data)
 
@@ -55,7 +53,7 @@ class XRTTensor(Tensor):
         if data is not None and nbytes > 0:
             np.copyto(npdata, data)
 
-        super().__init__(npdata, dtype=dtype, device=device, copy=False)
+        super().__init__(npdata, dtype=dtype, device=device)
 
         if self.device == NPU_DEVICE:
             self._sync_to_device()
