@@ -179,7 +179,8 @@ def rt_drain_then_fill_sequence(module):
 
 # CHECK-LABEL: TEST: rt_default_mixed_sequence
 # CHECK: success!
-def rt_default_mixed_sequence():
+@construct_and_print_module
+def rt_default_mixed_sequence(module):
     n = 1024
 
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
@@ -207,9 +208,7 @@ def rt_default_mixed_sequence():
         Program(NPU2(), rt).resolve_program(SequentialPlacer())
     except Exception as e:
         print("success!")
-
-
-rt_default_mixed_sequence()
+    return module
 
 
 # CHECK-LABEL: TEST: rt_two_task_group_sequence
