@@ -43,291 +43,210 @@ def bfloat16_safe_allclose(dtype, arr1, arr2):
     return np.allclose(arr1, arr2)
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-@pytest.mark.parametrize("data", SAMPLE_DATA)
-def test_tensor_creation(dtype, tensorclass, data):
-    for d in tensorclass.DEVICES:
-        ref = np.array(data, dtype=dtype)
-        t = tensorclass(data, dtype=dtype, device=d)
-        assert isinstance(t, iron.hostruntime.tensor.Tensor)
-        assert isinstance(t, tensorclass)
-        assert t.shape == ref.shape
-        assert t.dtype == ref.dtype
-        assert t.device == d
-        assert t.nbytes == ref.nbytes
+@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+def test_tensor_creation(dtype):
+    t = iron.tensor((2, 2), dtype=dtype, device="npu")
+    expected = np.zeros((2, 2), dtype=dtype)
+    assert np.allclose(t, expected)
+    assert t.shape == (2, 2)
+    assert str(t.device) == "npu"
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-@pytest.mark.parametrize("data", SAMPLE_DATA)
-def test_to_device(dtype, tensorclass, data):
-    iron.set_iron_tensor_class(tensorclass)
-    for d in tensorclass.DEVICES:
-        t = tensorclass(data, dtype=dtype, device=d)
-        for d2 in tensorclass.DEVICES:
-            t.to(d2)
+@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+def test_to_device(dtype):
+    t = iron.ones((2, 2), dtype=dtype, device="cpu")
+    t.to("npu")
+    t.to("cpu")
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-@pytest.mark.parametrize("shape", SAMPLE_SHAPES)
-def test_zeros(dtype, tensorclass, shape):
-    iron.set_iron_tensor_class(tensorclass)
-    t = iron.zeros(shape, dtype=dtype)
-    ref = np.zeros(shape, dtype=dtype)
-    assert isinstance(t, tensorclass)
-    assert t.shape == ref.shape
-    assert t.dtype == ref.dtype
-    assert bfloat16_safe_allclose(t.dtype, t, ref)
+@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+def test_zeros(dtype):
+    assert np.allclose(iron.zeros(2, 3, dtype=dtype), np.zeros((2, 3), dtype=dtype))
 
 
-'''
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-@pytest.mark.parametrize("shape", SAMPLE_SHAPES)
-def test_ones(dtype, tensorclass, shape):
-    iron.set_iron_tensor_class(tensorclass)
-    t = iron.ones(shape, dtype=dtype)
-    ref = np.ones(shape, dtype=dtype)
-    assert isinstance(t, tensorclass)
-    assert t.shape == ref.shape
-    assert t.dtype == ref.dtype
-    assert bfloat16_safe_allclose(t.dtype, t, ref)
+@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+def test_ones(dtype):
+    assert np.allclose(iron.ones((2, 2), dtype=dtype), np.ones((2, 2), dtype=dtype))
 
 
-@pytest.mark.parametrize(
-    "dtype", [d for d in TEST_DTYPES if np.issubdtype(d, np.integer)]
-)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_random_with_bounds(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
-    for d in tensorclass.DEVICES:
-        t = iron.randint(0, 32, (2, 4), dtype=dtype, device=d)
-        assert t.shape == (2, 4)
-        arr = t.numpy()
-        assert np.all((arr >= 0) & (arr < 32))
+@pytest.mark.parametrize("dtype", [np.int32, np.uint32])
+def test_random_with_bounds(dtype):
+    t = iron.randint(0, 32, (2, 4), dtype=dtype, device="npu")
+    assert t.shape == (2, 4)
+    arr = t.numpy()
+    assert np.all((arr >= 0) & (arr < 32))
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_rand(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
-    for d in tensorclass.DEVICES:
-        t = iron.rand(2, 2, dtype=dtype, device=d)
-        arr = t.numpy()
-        assert np.all((arr >= 0) & (arr < 1.0))
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_rand(dtype):
+    t = iron.rand(2, 2, dtype=dtype, device="npu")
+    arr = t.numpy()
+    assert np.all((arr >= 0) & (arr < 1.0))
 
 
-@pytest.mark.parametrize(
-    "dtype", [d for d in TEST_DTYPES if np.issubdtype(d, np.integer)]
-)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_arange_integer(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+@pytest.mark.parametrize("dtype", [np.int32, np.uint32])
+def test_arange_integer(dtype):
     assert np.array_equal(iron.arange(3, 9, dtype=dtype), np.arange(3, 9, dtype=dtype))
 
 
-@pytest.mark.parametrize(
-    "dtype", [d for d in TEST_DTYPES if np.issubdtype(d, np.floating)]
-)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_arange_floats(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
-    assert bfloat16_safe_allclose(
-        dtype,
-        iron.arange(1.0, 5.0, 1.5, dtype=dtype),
-        np.arange(1.0, 5.0, 1.5, dtype=dtype),
-    )
+def test_arange_floats():
+    assert np.allclose(iron.arange(1.0, 5.0, 1.5), np.arange(1.0, 5.0, 1.5))
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_fill(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+@pytest.mark.parametrize("dtype", [np.int32, np.float32])
+def test_fill(dtype):
+    """Test the fill_ method for in-place tensor filling."""
+    t = iron.zeros((2, 3), dtype=dtype, device="npu")
 
-    """Test the fill method for in-place tensor filling."""
-    for d in tensorclass.DEVICES:
-        t = iron.zeros((2, 3), dtype=dtype, device=d)
+    # Fill with a specific value
+    fill_value = 42 if dtype == np.int32 else 42.5
+    t.fill_(fill_value)
 
-        # Fill with a specific value
-        fill_value = 42 if np.issubdtype(dtype, np.integer) else 42.5
-        t.fill(fill_value)
+    # Verify the tensor is filled with the correct value
+    expected = np.full((2, 3), fill_value, dtype=dtype)
+    assert np.allclose(t.numpy(), expected)
 
-        # Verify the tensor is filled with the correct value
-        expected = np.full((2, 3), fill_value, dtype=dtype)
-        assert bfloat16_safe_allclose(dtype, t.numpy(), expected)
-
-        # Test with different value
-        new_fill_value = 99 if np.issubdtype(dtype, np.integer) else 99.9
-        t.fill(new_fill_value)
-        expected = np.full((2, 3), new_fill_value, dtype=dtype)
-        assert bfloat16_safe_allclose(dtype, t.numpy(), expected)
+    # Test with different value
+    new_fill_value = 99 if dtype == np.int32 else 99.9
+    t.fill_(new_fill_value)
+    expected = np.full((2, 3), new_fill_value, dtype=dtype)
+    assert np.allclose(t.numpy(), expected)
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_zeros_like(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+def test_fill_cpu_tensor():
+    """Test fill_ method on CPU tensors."""
+    t = iron.zeros((2, 2), dtype=np.int32, device="cpu")
+    t.fill_(123)
+    expected = np.full((2, 2), 123, dtype=np.int32)
+    assert np.array_equal(t.numpy(), expected)
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.float32])
+def test_zeros_like(dtype):
     t = iron.tensor([[1, 2], [3, 4]], dtype=dtype)
     z = iron.zeros_like(t)
     expected = np.zeros_like(t)
     assert np.array_equal(z, expected)
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_tensor_repr(dtype, tensorclass):
+def test_tensor_repr():
     """Test that __repr__ properly syncs from device and shows correct data."""
-    iron.set_iron_tensor_class(tensorclass)
-    for d in tensorclass.DEVICES:
-        t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=d)
-        # Modify data on device
-        t.to(d)
-        # Get string representation (should sync from device)
-        repr_str = repr(t)
-        assert f"{t.__class__.__name__}(" in repr_str
-        assert f"device='{d}'" in repr_str
-        # Check that the data values are present
-        assert (
-            "1" in repr_str and "2" in repr_str and "3" in repr_str and "4" in repr_str
-        )
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="npu")
+    # Modify data on device
+    t.to("npu")
+    # Get string representation (should sync from device)
+    repr_str = repr(t)
+    print(repr_str)
+    assert "tensor(" in repr_str
+    assert "device='npu'" in repr_str
+    # Check that the data values are present
+    assert "1" in repr_str and "2" in repr_str and "3" in repr_str and "4" in repr_str
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_tensor_getitem(dtype, tensorclass):
+def test_tensor_getitem():
     """Test that __getitem__ properly syncs from device."""
-    iron.set_iron_tensor_class(tensorclass)
-    for d in tensorclass.DEVICES:
-        t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=d)
-        # Modify data on device
-        t.to(d)
-        # Get item (should sync from device)
-        value = t[0, 1]
-        assert value == 2
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="npu")
+    # Modify data on device
+    t.to("npu")
+    # Get item (should sync from device)
+    value = t[0, 1]
+    assert value == 2
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_tensor_setitem(dtype, tensorclass):
+def test_tensor_setitem():
     """Test that __setitem__ properly syncs to and from device."""
-    iron.set_iron_tensor_class(tensorclass)
-    for d in tensorclass.DEVICES:
-        t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=d)
-        t[0, 1] = 42
-        # Verify the change is reflected
-        assert t[0, 1] == 42
-        # Verify other elements are unchanged
-        assert t[0, 0] == 1
-        assert t[1, 0] == 3
-        assert t[1, 1] == 4
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="npu")
+    t[0, 1] = 42
+    # Verify the change is reflected
+    assert t[0, 1] == 42
+    # Verify other elements are unchanged
+    assert t[0, 0] == 1
+    assert t[1, 0] == 3
+    assert t[1, 1] == 4
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_tensor_getitem_setitem_consistency(dtype, tensorclass):
+def test_tensor_getitem_setitem_consistency():
     """Test that getitem and setitem work consistently with device sync."""
-    iron.set_iron_tensor_class(tensorclass)
-    for d in tensorclass.DEVICES:
-        t = iron.zeros((2, 2), dtype=dtype, device=d)
-        # Set values
-        t[0, 0] = 10
-        t[0, 1] = 20
-        t[1, 0] = 30
-        t[1, 1] = 40
-        # Get values back
-        assert t[0, 0] == 10
-        assert t[0, 1] == 20
-        assert t[1, 0] == 30
-        assert t[1, 1] == 40
-        # Verify the entire tensor
-        expected = np.array([[10, 20], [30, 40]], dtype=dtype)
-        assert np.array_equal(t.numpy(), expected)
+    t = iron.zeros((2, 2), dtype=np.int32, device="npu")
+    # Set values
+    t[0, 0] = 10
+    t[0, 1] = 20
+    t[1, 0] = 30
+    t[1, 1] = 40
+    # Get values back
+    assert t[0, 0] == 10
+    assert t[0, 1] == 20
+    assert t[1, 0] == 30
+    assert t[1, 1] == 40
+    # Verify the entire tensor
+    expected = np.array([[10, 20], [30, 40]], dtype=np.int32)
+    assert np.array_equal(t.numpy(), expected)
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize(
-    "tensorclass", [t for t in TENSOR_CLASSES if CPU_DEVICE in t.DEVICES]
-)
-def test_cpu_tensor_no_sync(dtype, tensorclass):
+def test_cpu_tensor_no_sync():
     """Test that CPU tensors operations."""
-    iron.set_iron_tensor_class(tensorclass)
-    t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=CPU_DEVICE)
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="cpu")
     assert t[0, 1] == 2
     t[0, 1] = 42
     assert t[0, 1] == 42
-    assert f"device='{CPU_DEVICE}'" in repr(t)
+    assert "device='cpu'" in repr(t)
     arr = t.numpy()
-    assert np.array_equal(arr, np.array([[1, 42], [3, 4]], dtype=dtype))
+    assert np.array_equal(arr, np.array([[1, 42], [3, 4]], dtype=np.int32))
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-def test_device_attribute_update(dtype):
+def test_device_attribute_update():
     """Test that to() method properly updates the device attribute."""
-    t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=CPU_DEVICE)
-    assert isinstance(t, XRTTensor)
-    assert t.device == CPU_DEVICE
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="cpu")
+    assert t.device == "cpu"
 
     # Move to NPU
-    t.to(NPU_DEVICE)
-    assert t.device == NPU_DEVICE
-    assert f"device='{NPU_DEVICE}'" in repr(t)
+    t.to("npu")
+    assert t.device == "npu"
+    assert "device='npu'" in repr(t)
 
     # Move back to CPU
-    t.to(CPU_DEVICE)
-    assert t.device == CPU_DEVICE
-    assert f"device='{CPU_DEVICE}'" in repr(t)
+    t.to("cpu")
+    assert t.device == "cpu"
+    assert "device='cpu'" in repr(t)
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
-def test_npu_tensor_sync_behavior(dtype, tensorclass):
+def test_npu_tensor_sync_behavior():
     """Test that NPU tensors when implicit sync is required."""
-    iron.set_iron_tensor_class(tensorclass)
-    for d in tensorclass.DEVICES:
-        t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=d)
-        assert t.device == d
+    t = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="npu")
+    assert t.device == "npu"
 
-        # Test that accessing data works correctly
-        assert t[0, 1] == 2
-        t[0, 1] = 42
-        assert t[0, 1] == 42
+    # Test that accessing data works correctly
+    assert t[0, 1] == 2
+    t[0, 1] = 42
+    assert t[0, 1] == 42
 
-        # Test that numpy() returns correct data
-        arr = t.numpy()
-        expected = np.array([[1, 42], [3, 4]], dtype=dtype)
-        assert bfloat16_safe_allclose(dtype, arr, expected)
+    # Test that numpy() returns correct data
+    arr = t.numpy()
+    expected = np.array([[1, 42], [3, 4]], dtype=np.int32)
+    assert np.array_equal(arr, expected)
 
-        # Test that __array__ protocol works
-        np_arr = np.array(t)
-        assert bfloat16_safe_allclose(dtype, np_arr, expected)
-
-        # TODO(erika): re-enable this
-        # Test that __array__ protocol works
-        # np_handle = np.asarray(t)
-        # assert np.allclose(np_handle, expected)
+    # Test that __array__ protocol works
+    np_arr = np.array(t)
+    assert np.array_equal(np_arr, expected)
 
 
-@pytest.mark.parametrize("dtype", TEST_DTYPES)
-def test_mixed_device_operations(dtype):
+def test_mixed_device_operations():
     """Test operations between CPU and NPU tensors."""
     # Create tensors on different devices
-    cpu_tensor = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=CPU_DEVICE)
-    npu_tensor = iron.tensor([[5, 6], [7, 8]], dtype=dtype, device=NPU_DEVICE)
+    cpu_tensor = iron.tensor([[1, 2], [3, 4]], dtype=np.int32, device="cpu")
+    npu_tensor = iron.tensor([[5, 6], [7, 8]], dtype=np.int32, device="npu")
 
     # Test device attributes
-    assert cpu_tensor.device == CPU_DEVICE
-    assert npu_tensor.device == NPU_DEVICE
+    assert cpu_tensor.device == "cpu"
+    assert npu_tensor.device == "npu"
 
     # Test that both can be accessed without issues
     assert cpu_tensor[0, 0] == 1
     assert npu_tensor[0, 0] == 5
 
     # Test moving between devices
-    cpu_tensor = cpu_tensor.to(NPU_DEVICE)
-    assert cpu_tensor.device == NPU_DEVICE
+    cpu_tensor = cpu_tensor.to("npu")
+    assert cpu_tensor.device == "npu"
 
-    npu_tensor = npu_tensor.to(CPU_DEVICE)
-    assert npu_tensor.device == CPU_DEVICE
-'''
+    npu_tensor = npu_tensor.to("cpu")
+    assert npu_tensor.device == "cpu"
