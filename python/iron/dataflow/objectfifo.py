@@ -76,6 +76,7 @@ class ObjectFifo(Resolvable):
         self._prod: ObjectFifoHandle | None = None
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
+        self._iter_count: int | None = None
 
     @classmethod
     def __get_index(cls) -> int:
@@ -118,6 +119,26 @@ class ObjectFifo(Resolvable):
     def obj_type(self) -> type[np.ndarray]:
         """The tensor type of each buffer belonging to the ObjectFifo"""
         return self._obj_type
+
+    def set_iter_count(self, iter_count: int = None):
+        """Set iteration count for DMA BD (Buffer Descriptor) chaining on MemTile for the ObjectFifo.
+
+        Args:
+            iter_count (int): Number of forward chain iterations.
+                - Must be in range [1, 256]: Forward chain with specified number of iterations
+
+        Raises:
+            ValueError: If iter_count is not provided or is outside the valid range [1, 256]
+        """
+        if iter_count is None:
+            raise ValueError(
+                "iter_count is required. Provide a value between 1 and 256."
+            )
+
+        if iter_count < 1 or iter_count > 256:
+            raise ValueError("Iter count must be in [1, 256] range.")
+
+        self._iter_count = iter_count
 
     def __str__(self) -> str:
         prod_endpoint = None
@@ -254,16 +275,31 @@ class ObjectFifo(Resolvable):
                 con.dims_from_stream if con.dims_from_stream else []
                 for con in self._cons
             ]
-            self._op = object_fifo(
-                self.name,
-                self._prod_tile_op(),
-                self._cons_tiles_ops(),
-                self._get_depths(),
-                np_ndarray_type_to_memref_type(self._obj_type),
-                dimensionsToStream=self._dims_to_stream,
-                dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
-                plio=self._plio,
-            )
+
+            # Pass iter_count if set_iter_count() was explicitly called
+            if self._iter_count is not None:
+                self._op = object_fifo(
+                    self.name,
+                    self._prod_tile_op(),
+                    self._cons_tiles_ops(),
+                    self._get_depths(),
+                    np_ndarray_type_to_memref_type(self._obj_type),
+                    dimensionsToStream=self._dims_to_stream,
+                    dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
+                    plio=self._plio,
+                    iter_count=self._iter_count,
+                )
+            else:
+                self._op = object_fifo(
+                    self.name,
+                    self._prod_tile_op(),
+                    self._cons_tiles_ops(),
+                    self._get_depths(),
+                    np_ndarray_type_to_memref_type(self._obj_type),
+                    dimensionsToStream=self._dims_to_stream,
+                    dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
+                    plio=self._plio,
+                )
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
                 self._prod.endpoint.resolve()
