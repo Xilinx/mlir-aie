@@ -85,7 +85,8 @@ def _create_input_with_addresses_pipeline(
                 route_shim_to_tile_ctrl=ctrl_pkt_overlay,
             )
             .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme)
-            .add_pass("aie-vector-transfer-lowering", max_transfer_rank=1),
+            .add_pass("aie-vector-transfer-lowering", max_transfer_rank=1)
+            .add_pass("aie-vector-to-pointer-loops"),
         )
         .convert_scf_to_cf()
     )
@@ -119,6 +120,7 @@ AIE_LOWER_TO_LLVM = (
         )
         .add_pass("aie-standard-lowering", device=device_name, tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
+        .add_pass("aievec-split-load-ups-chains")
         .add_pass("convert-aievec-to-llvm", aie_target=aie_target.lower())
     )
     + LOWER_TO_LLVM_PIPELINE
