@@ -81,6 +81,47 @@ LogicalResult TracePacketOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// TracePortOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TracePortOp::verify() {
+  // Get parent trace and tile
+  auto trace = (*this)->getParentOfType<TraceOp>();
+  if (!trace) {
+    return emitOpError("must be nested in aie.trace");
+  }
+
+  auto tileOp = dyn_cast<TileOp>(trace.getTile().getDefiningOp());
+  if (!tileOp) {
+    return emitOpError("trace tile must be a TileOp");
+  }
+
+  // Get target model
+  auto device = trace->getParentOfType<DeviceOp>();
+  const auto &targetModel = device.getTargetModel();
+
+  // Verify port is valid for this tile
+  if (!targetModel.isValidStreamSwitchPort(tileOp.getCol(), tileOp.getRow(),
+                                           getPort(), getChannel(),
+                                           getMaster())) {
+    return emitOpError("invalid stream switch port configuration for tile (")
+           << tileOp.getCol() << ", " << tileOp.getRow() << ")";
+  }
+
+  // Check for duplicate slots within same trace
+  for (auto &op : trace.getBody().getOps()) {
+    if (auto otherPort = dyn_cast<TracePortOp>(op)) {
+      if (otherPort != *this && otherPort.getSlot() == getSlot()) {
+        return emitOpError("duplicate port slot ")
+               << getSlot() << " in trace " << trace.getSymName();
+      }
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TraceStartEventOp
 //===----------------------------------------------------------------------===//
 
