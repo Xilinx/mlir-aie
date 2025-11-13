@@ -57,7 +57,7 @@ def custom_loop_type(loop_dtype):
     return module
 
 
-# CHECK-LABEL: TEST: range_with_int32
+# CHECK-LABEL: range_with_int32
 # CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
 def range_with_int32():
     print("range_with_int32")
@@ -67,7 +67,7 @@ def range_with_int32():
 range_with_int32()
 
 
-# CHECK-LABEL: TEST: range_with_int64
+# CHECK-LABEL: range_with_int64
 # CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
 def range_with_int64():
     print("range_with_int64")
