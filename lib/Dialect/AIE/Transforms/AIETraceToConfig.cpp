@@ -160,6 +160,10 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
               stringifyWireBundle(portOp.getPort()).str() + ":" +
               std::to_string(portOp.getChannel());
 
+          // Convert DMAChannelDir to master flag: S2MM=master(1), MM2S=slave(0)
+          int masterSlaveValue =
+              (portOp.getDirection() == DMAChannelDir::S2MM) ? 1 : 0;
+
           // Emit Port_N_ID field
           configBuilder.create<TraceRegOp>(
               portOp.getLoc(), builder.getStringAttr(registerName),
@@ -172,7 +176,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           configBuilder.create<TraceRegOp>(
               portOp.getLoc(), builder.getStringAttr(registerName),
               builder.getStringAttr(masterSlaveFieldName),
-              builder.getI32IntegerAttr(portOp.getMaster() ? 1 : 0),
+              builder.getI32IntegerAttr(masterSlaveValue),
               /*mask=*/nullptr,
               builder.getStringAttr("port " + std::to_string(slot) +
                                     " master/slave"));

@@ -170,7 +170,11 @@ def AIE_TracePortOp : AIE_Op<"trace.port", [
   let description = [{
     Configures a stream switch port monitoring slot (0-7) to track events
     from a specific port. The port is specified by type (NORTH, DMA, etc.),
-    channel number, and direction (master/slave).
+    channel number, and direction (S2MM=master, MM2S=slave).
+    
+    Direction semantics:
+    - S2MM (Stream-to-Memory-Mapped) = master port (receiving from stream)
+    - MM2S (Memory-Mapped-to-Stream) = slave port (sending to stream)
     
     After configuration, the port can be monitored using:
     - PORT_RUNNING_<slot>
@@ -180,10 +184,10 @@ def AIE_TracePortOp : AIE_Op<"trace.port", [
     
     Example:
     ```mlir
-    aie.trace.port<0> port = North channel = 1 master = true
-    aie.trace.port<1> port = DMA channel = 0 master = false
-    aie.trace.event<"PORT_RUNNING_0">  // Monitor NORTH:1 master
-    aie.trace.event<"PORT_IDLE_1">     // Monitor DMA:0 slave
+    aie.trace.port<0> port = North channel = 1 direction = S2MM
+    aie.trace.port<1> port = DMA channel = 0 direction = MM2S
+    aie.trace.event<"PORT_RUNNING_0">  // Monitor NORTH:1 (S2MM/master)
+    aie.trace.event<"PORT_IDLE_1">     // Monitor DMA:0 (MM2S/slave)
     ```
   }];
   
@@ -191,11 +195,11 @@ def AIE_TracePortOp : AIE_Op<"trace.port", [
     ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<7>]>:$slot,
     WireBundle:$port,
     AIEI32Attr:$channel,
-    BoolAttr:$master
+    DMAChannelDir:$direction
   );
   
   let assemblyFormat = [{
-    `<` $slot `>` `port` `=` $port `channel` `=` $channel `master` `=` $master
+    `<` $slot `>` `port` `=` $port `channel` `=` $channel `direction` `=` $direction
     attr-dict
   }];
   
