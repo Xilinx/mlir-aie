@@ -178,14 +178,8 @@ def rt_drain_then_fill_sequence(module):
 
 
 # CHECK-LABEL: TEST: rt_default_mixed_sequence
-# CHECK: aiex.dma_start_task(%0)
-# CHECK: aiex.dma_start_task(%1)
-# CHECK: aiex.dma_start_task(%2)
-# CHECK: aiex.dma_await_task(%0)
-# CHECK: aiex.dma_free_task(%1)
-# CHECK: aiex.dma_free_task(%2)
-@construct_and_print_module
-def rt_default_mixed_sequence(module):
+# CHECK: success!
+def rt_default_mixed_sequence():
     n = 1024
 
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
@@ -209,8 +203,13 @@ def rt_default_mixed_sequence(module):
         rt.fill(of_1.prod(), B)
         rt.finish_task_group(tg)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
-    return module
+    try:
+        Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    except Exception as e:
+        print("success!")
+
+
+rt_default_mixed_sequence()
 
 
 # CHECK-LABEL: TEST: rt_two_task_group_sequence

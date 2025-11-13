@@ -12,7 +12,6 @@ from contextlib import contextmanager
 import numpy as np
 from typing import Callable
 
-# import aie.utils.trace as trace_utils
 from ...utils import trace as trace_utils
 
 from ... import ir  # type: ignore
@@ -346,12 +345,18 @@ class Runtime(Resolvable):
                 task_group_actions[tg] = None
 
             default_task_group = self.task_group()
+            default_tasks = False
+            task_group_tasks = False
             for task in self._tasks:
+
                 task.resolve()
                 if isinstance(task, DMATask):
-                    current_task_group = (
-                        task.task_group if task.task_group else default_task_group
-                    )
+                    if task.task_group:
+                        task_group_tasks = True
+                        current_task_group = task.task_group
+                    else:
+                        default_tasks = True
+                        current_task_group = default_task_group
                     if task.will_wait():
                         task_group_actions[current_task_group].append(
                             (dma_await_task, [task.task])
@@ -362,6 +367,12 @@ class Runtime(Resolvable):
                         )
                 if isinstance(task, FinishTaskGroupTask):
                     finish_task_group(task.task_group, task_group_actions)
+
+            if default_tasks and task_group_tasks:
+                raise Exception(
+                    f"Mixing explicit task groups and the default task group is prohibitted. "
+                    f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
+                )
 
             if task_group_actions[default_task_group]:
                 finish_task_group(default_task_group, task_group_actions)
