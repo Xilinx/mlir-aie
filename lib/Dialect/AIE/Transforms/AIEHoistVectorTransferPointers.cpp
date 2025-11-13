@@ -219,9 +219,24 @@ struct HoistVectorTransferPointersPattern
           totalSize *= dim;
         }
 
-        MemRefType flatMemrefType =
-            MemRefType::get({totalSize}, info.memrefType.getElementType(),
-                            AffineMap(), info.memrefType.getMemorySpace());
+        // Preserve strided layout if present
+        MemRefType flatMemrefType;
+        if (auto stridedLayout = dyn_cast_or_null<StridedLayoutAttr>(
+                info.memrefType.getLayout())) {
+          // The collapsed stride is the innermost stride (last element)
+          int64_t collapsedStride = stridedLayout.getStrides().back();
+          int64_t offset = stridedLayout.getOffset();
+
+          auto newLayout = StridedLayoutAttr::get(rewriter.getContext(), offset,
+                                                  {collapsedStride});
+          flatMemrefType =
+              MemRefType::get({totalSize}, info.memrefType.getElementType(),
+                              newLayout, info.memrefType.getMemorySpace());
+        } else {
+          flatMemrefType =
+              MemRefType::get({totalSize}, info.memrefType.getElementType(),
+                              AffineMap(), info.memrefType.getMemorySpace());
+        }
 
         SmallVector<ReassociationIndices> reassociation;
         ReassociationIndices allDims;
@@ -310,26 +325,44 @@ struct HoistVectorTransferPointersPattern
       if (!needsFlattening)
         return failure();
 
-      // Process all transfers without using iter_args
+      // First, create flattened memrefs outside the loop for bases not defined
+      // inside
+      DenseMap<Value, Value> baseFlatMemrefs;
+      rewriter.setInsertionPoint(forOp);
       for (const auto &info : transferOps) {
-        rewriter.setInsertionPoint(info.op);
+        if (baseFlatMemrefs.count(info.base))
+          continue;
 
-        // Flatten vector type
-        int64_t numElements = getVectorNumElements(info.vectorType);
-        VectorType flatVectorType =
-            VectorType::get({numElements}, info.vectorType.getElementType());
+        // Skip if base is defined inside the loop (e.g., a subview)
+        if (info.base.getDefiningOp() &&
+            forOp->isProperAncestor(info.base.getDefiningOp()))
+          continue;
 
-        // Use the base directly
-        rewriter.setInsertionPoint(forOp);
         Value flatMemref = info.base;
         if (info.memrefType.getRank() > 1) {
           int64_t totalSize = 1;
           for (int64_t dim : info.memrefType.getShape()) {
             totalSize *= dim;
           }
-          MemRefType flatMemrefType =
-              MemRefType::get({totalSize}, info.memrefType.getElementType(),
-                              AffineMap(), info.memrefType.getMemorySpace());
+
+          // Preserve strided layout if present
+          MemRefType flatMemrefType;
+          if (auto stridedLayout = dyn_cast_or_null<StridedLayoutAttr>(
+                  info.memrefType.getLayout())) {
+            int64_t collapsedStride = stridedLayout.getStrides().back();
+            int64_t offset = stridedLayout.getOffset();
+
+            auto newLayout = StridedLayoutAttr::get(rewriter.getContext(),
+                                                    offset, {collapsedStride});
+            flatMemrefType =
+                MemRefType::get({totalSize}, info.memrefType.getElementType(),
+                                newLayout, info.memrefType.getMemorySpace());
+          } else {
+            flatMemrefType =
+                MemRefType::get({totalSize}, info.memrefType.getElementType(),
+                                AffineMap(), info.memrefType.getMemorySpace());
+          }
+
           SmallVector<ReassociationIndices> reassociation;
           ReassociationIndices allDims;
           for (size_t i = 0; i < static_cast<size_t>(info.memrefType.getRank());
@@ -340,6 +373,30 @@ struct HoistVectorTransferPointersPattern
           flatMemref = rewriter.create<memref::CollapseShapeOp>(
               loc, flatMemrefType, info.base, reassociation);
         }
+        baseFlatMemrefs[info.base] = flatMemref;
+      }
+
+      // Process all transfers without using iter_args
+      bool madeChanges = false;
+      for (const auto &info : transferOps) {
+        // Skip if base is defined inside the loop
+        if (info.base.getDefiningOp() &&
+            forOp->isProperAncestor(info.base.getDefiningOp()))
+          continue;
+
+        // Skip if we don't have a flattened version
+        if (!baseFlatMemrefs.count(info.base))
+          continue;
+
+        rewriter.setInsertionPoint(info.op);
+
+        // Flatten vector type
+        int64_t numElements = getVectorNumElements(info.vectorType);
+        VectorType flatVectorType =
+            VectorType::get({numElements}, info.vectorType.getElementType());
+
+        // Get the flattened memref
+        Value flatMemref = baseFlatMemrefs[info.base];
 
         // Compute pointer from indices
         int64_t rank = info.memrefType.getRank();
@@ -352,7 +409,6 @@ struct HoistVectorTransferPointersPattern
         }
         auto linearMap = AffineMap::get(rank, 0, linearExpr);
 
-        rewriter.setInsertionPoint(info.op);
         Value currentPointer = rewriter.create<affine::AffineApplyOp>(
             loc, linearMap, info.indices);
 
@@ -369,6 +425,7 @@ struct HoistVectorTransferPointersPattern
           Value shapedRead = rewriter.create<vector::ShapeCastOp>(
               loc, info.vectorType, flatRead);
           rewriter.replaceOp(readOp, shapedRead);
+          madeChanges = true;
         } else if (auto writeOp = dyn_cast<vector::TransferWriteOp>(info.op)) {
           Value flatValue = rewriter.create<vector::ShapeCastOp>(
               loc, flatVectorType, writeOp.getVector());
@@ -376,9 +433,10 @@ struct HoistVectorTransferPointersPattern
               writeOp, flatValue, flatMemref, ValueRange{currentPointer},
               AffineMapAttr::get(identityMap1D), /*mask=*/Value(),
               inBoundsAttr);
+          madeChanges = true;
         }
       }
-      return success();
+      return madeChanges ? success() : failure();
     }
 
     // Use replaceWithAdditionalYields to add pointer iter_args
