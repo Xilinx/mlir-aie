@@ -19,9 +19,6 @@ import aie.dialects.aiex as aiexdialect
 NumTraceTypes = 4
 NUM_EVENTS = 8  # number of events we can view per trace
 
-# DEBUG = False
-# DEBUG = True
-
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -42,8 +39,8 @@ def parse_args():
 # Check for valid trace packets data
 # 1) if only 1 trace packet
 # 2) if first trace packet is all 0's
-def check_for_valid_trace(filename, trace_pkts, of):
-    if DEBUG:
+def check_for_valid_trace(filename, trace_pkts, of=None, debug=False):
+    if debug and of:
         print("len(trace_pkts): ", str(len(trace_pkts)), file=of)
         print("trace_pkts[0]:", trace_pkts[0], file=of)
     if len(trace_pkts) < 2 or trace_pkts[0] == "00000000":
@@ -407,7 +404,15 @@ def lookupEventNameInStr(event, pid, pid_events):
 # loc -
 # pid_events -
 def deactivate_events(
-    multiples, active_events, timer, cycles, pid, trace_type, loc, pid_events
+    multiples,
+    active_events,
+    timer,
+    cycles,
+    pid,
+    trace_type,
+    loc,
+    pid_events,
+    trace_events,
 ):
     for k in active_events.keys():  # an active event
         if cycles > 0 or (cycles == 0 and not k in multiples):
@@ -450,7 +455,7 @@ def activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_
 #
 # commands:  list (idx = trace type, value = byte_stream_dict)
 # byte_stream_dict: dict (key = row,col, value = list of commands)
-def convert_commands_to_json(trace_events, commands, pid_events, of):
+def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=False):
     # byte_stream_dict for each trace type.
     for [tt, byte_stream_dict] in enumerate(commands):  # tt = trace type
 
@@ -458,7 +463,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
             timer = 0  # TODO Some way to set this or sync this between trace types and row,col
             # timer on each execution is the time for the last execution
             # so we by default will increment it by 1 for each event
-            if DEBUG:
+            if debug and of:
                 print(
                     "tt: "
                     + str(tt)
@@ -493,7 +498,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
             for i in range(8):  # 8 max events at a time
                 active_events[i] = 0
 
-            if DEBUG:
+            if debug and of:
                 print("num commands:", len(command), file=of)
             for c in command:
                 t = c["type"]
@@ -512,6 +517,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                         tt,
                         loc,
                         pid_events,
+                        trace_events,
                     )
                     timer = timer + cycles
                     activate_event(
@@ -541,6 +547,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                         tt,
                         loc,
                         pid_events,
+                        trace_events,
                     )
                     timer = timer + cycles
 
@@ -574,6 +581,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of):
                                 tt,
                                 loc,
                                 pid_events,
+                                trace_events,
                             )
                             timer = timer + cycles
                             if len(multiple_list) > 1:
@@ -930,108 +938,184 @@ def align_column_start_index(events, commands):
 
 
 # ------------------------------------------------------------------------------
+# Library API
+# ------------------------------------------------------------------------------
+
+
+def parse_trace(trace_buffer, mlir_module_str, colshift=None, debug=False):
+    """
+    Parse AIE trace buffer and return trace events as list in Trace Event Format
+
+    Args:
+        trace_buffer: numpy array containing trace data (uint32 words)
+        mlir_module_str: string containing MLIR module with trace configuration
+        colshift: optional column shift adjustment (int or None for auto-align)
+        debug: enable debug output (default: False)
+
+    Returns:
+        list: trace events in Trace Event Format
+    """
+
+    # Convert numpy array to list of hex strings (format expected by existing functions)
+    trace_pkts = []
+    for word in trace_buffer:
+        # Convert uint32 to 8-character hex string (lowercase, no '0x' prefix)
+        hex_str = f"{int(word):08x}"
+        trace_pkts.append(hex_str)
+
+    # Parse MLIR to extract event configuration
+    pid_events = parse_mlir_trace_events(mlir_module_str, colshift)
+
+    # Check for valid trace
+    if not check_for_valid_trace("<numpy_array>", trace_pkts, of=None, debug=debug):
+        raise ValueError("Invalid trace data: empty or all zeros")
+
+    # Trim trailing empty packets
+    trimmed_trace_pkts = trim_trace_pkts(trace_pkts)
+
+    # De-interleave packets by type and location
+    trace_pkts_sorted = trace_pkts_de_interleave(trimmed_trace_pkts)
+
+    # Convert to byte streams
+    byte_streams = convert_to_byte_stream(trace_pkts_sorted)
+
+    # Convert byte streams to command dictionaries
+    commands = convert_to_commands(byte_streams, False)
+
+    # Auto-align column indices if colshift not provided
+    if colshift is None:
+        pid_events = align_column_start_index(pid_events, commands)
+
+    # Initialize trace events list
+    trace_events = []
+
+    # Setup metadata (process names, thread names, assign PIDs)
+    setup_trace_metadata(trace_events, pid_events)
+
+    # Convert commands to Chrome Trace Event Format
+    convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=debug)
+
+    return trace_events
+
+
+# ------------------------------------------------------------------------------
 # Script execution start - Open trace file and convert to commands
 # ------------------------------------------------------------------------------
 
-opts = parse_args()
 
-DEBUG = opts.debug
-if DEBUG:
-    print("Debug mode enable\n")
+def main():
+    """Command-line interface entry point"""
+    opts = parse_args()
 
-# set colshift based on optional argument
-colshift = int(opts.colshift) if opts.colshift else None
+    DEBUG = opts.debug
+    if DEBUG:
+        print("Debug mode enable\n")
 
-try:
-    with open(opts.input, "r") as f:
-        # Create array of trace packets
-        trace_pkts = f.read().split("\n")
-except:
-    print(
-        "ERROR:", opts.input, "could not be opened. Check for valid trace source file."
-    )
-    sys.exit(1)
+    # set colshift based on optional argument
+    colshift = int(opts.colshift) if opts.colshift else None
 
-try:
-    with open(opts.mlir, "r") as mf:
-        mlir_module_str = mf.read()
-    pid_events = parse_mlir_trace_events(mlir_module_str, colshift)
-except Exception as e:
-    print("ERROR:", opts.mlir, "could not be opened. Check for valid MLIR file.", e)
-    exit(1)
+    try:
+        with open(opts.input, "r") as f:
+            # Create array of trace packets
+            trace_pkts = f.read().split("\n")
+    except:
+        print(
+            "ERROR:",
+            opts.input,
+            "could not be opened. Check for valid trace source file.",
+        )
+        sys.exit(1)
 
-try:
-    of = open(opts.output, "w")
-except:
-    print("ERROR:", opts.mlir, "could not be opened. Check for valid output JSON file.")
-    exit(1)
+    try:
+        with open(opts.mlir, "r") as mf:
+            mlir_module_str = mf.read()
+        pid_events = parse_mlir_trace_events(mlir_module_str, colshift)
+    except Exception as e:
+        print("ERROR:", opts.mlir, "could not be opened. Check for valid MLIR file.", e)
+        sys.exit(1)
 
-if DEBUG:
-    print("DEBUG mode enabled:", file=of)
-    print("pkt type 0: core tile", file=of)
-    print("pkt type 1: core mem tile", file=of)
-    print("pkt type 2: shim tile", file=of)
-    print("pkt type 3: mem tile", file=of)
-    print("", file=of)
-    print("DEBUG: trace_pkts", file=of)
-    print(trace_pkts, file=of)
-    print("", file=of)
+    try:
+        of = open(opts.output, "w")
+    except:
+        print(
+            "ERROR:",
+            opts.mlir,
+            "could not be opened. Check for valid output JSON file.",
+        )
+        sys.exit(1)
 
-    print("DEBUG: pid events\n", file=of)
-    # print(pid_events, file=of)
-    for idx, dict_i in enumerate(pid_events):
-        print("pkt type", idx, ":", file=of)
-        for key, value in dict_i.items():
-            print(key, value, file=of)
-    print("", file=of)
+    if DEBUG:
+        print("DEBUG mode enabled:", file=of)
+        print("pkt type 0: core tile", file=of)
+        print("pkt type 1: core mem tile", file=of)
+        print("pkt type 2: shim tile", file=of)
+        print("pkt type 3: mem tile", file=of)
+        print("", file=of)
+        print("DEBUG: trace_pkts", file=of)
+        print(trace_pkts, file=of)
+        print("", file=of)
 
-if not check_for_valid_trace(opts.input, trace_pkts, of):
-    sys.exit(1)
+        print("DEBUG: pid events\n", file=of)
+        # print(pid_events, file=of)
+        for idx, dict_i in enumerate(pid_events):
+            print("pkt type", idx, ":", file=of)
+            for key, value in dict_i.items():
+                print(key, value, file=of)
+        print("", file=of)
 
-trimmed_trace_pkts = trim_trace_pkts(trace_pkts)
-if DEBUG:
-    lines_removed = len(trace_pkts) - len(trimmed_trace_pkts)
-    print("DEBUG: trimmed ", lines_removed, " lines", file=of)
+    if not check_for_valid_trace(opts.input, trace_pkts, of, DEBUG):
+        sys.exit(1)
 
-trace_pkts_sorted = trace_pkts_de_interleave(trimmed_trace_pkts)
+    trimmed_trace_pkts = trim_trace_pkts(trace_pkts)
+    if DEBUG:
+        lines_removed = len(trace_pkts) - len(trimmed_trace_pkts)
+        print("DEBUG: trimmed ", lines_removed, " lines", file=of)
 
-if DEBUG:
-    print("DEBUG: trace_pkts_sorted", file=of)
-    for idx, dict_i in enumerate(trace_pkts_sorted):
-        print("pkt type", idx, ":", file=of)
-        for key, value in dict_i.items():
-            print(key, value, file=of)
-    print("", file=of)
+    trace_pkts_sorted = trace_pkts_de_interleave(trimmed_trace_pkts)
 
-byte_streams = convert_to_byte_stream(trace_pkts_sorted)
+    if DEBUG:
+        print("DEBUG: trace_pkts_sorted", file=of)
+        for idx, dict_i in enumerate(trace_pkts_sorted):
+            print("pkt type", idx, ":", file=of)
+            for key, value in dict_i.items():
+                print(key, value, file=of)
+        print("", file=of)
 
-if DEBUG:
-    print("DEBUG: byte stream", file=of)
-    for idx, dict_i in enumerate(byte_streams):
-        print("pkt type", idx, ":", file=of)
-        for key, value in dict_i.items():
-            print(key, value, file=of)
-    print("", file=of)
+    byte_streams = convert_to_byte_stream(trace_pkts_sorted)
 
-commands_0 = convert_to_commands(byte_streams, False)
+    if DEBUG:
+        print("DEBUG: byte stream", file=of)
+        for idx, dict_i in enumerate(byte_streams):
+            print("pkt type", idx, ":", file=of)
+            for key, value in dict_i.items():
+                print(key, value, file=of)
+        print("", file=of)
 
-if DEBUG:
-    print("DEBUG: commands_0", file=of)
-    for idx, dict_i in enumerate(commands_0):
-        print("pkt type", idx, ":", file=of)
-        for key, commands in dict_i.items():
-            print(key, file=of)
-            for i in commands:
-                print("\t", i, file=of)
-    print("", file=of)
+    commands_0 = convert_to_commands(byte_streams, False)
 
-if colshift is None:
-    pid_events = align_column_start_index(pid_events, commands_0)
+    if DEBUG:
+        print("DEBUG: commands_0", file=of)
+        for idx, dict_i in enumerate(commands_0):
+            print("pkt type", idx, ":", file=of)
+            for key, commands in dict_i.items():
+                print(key, file=of)
+                for i in commands:
+                    print("\t", i, file=of)
+        print("", file=of)
 
-trace_events = list()
+    if colshift is None:
+        pid_events = align_column_start_index(pid_events, commands_0)
 
-setup_trace_metadata(trace_events, pid_events)
+    trace_events = list()
 
-convert_commands_to_json(trace_events, commands_0, pid_events, of)
+    setup_trace_metadata(trace_events, pid_events)
 
-print(json.dumps(trace_events).replace("'", '"').replace(", {", ",\n{"), file=of)
+    convert_commands_to_json(trace_events, commands_0, pid_events, of, DEBUG)
+
+    print(json.dumps(trace_events).replace("'", '"').replace(", {", ",\n{"), file=of)
+
+    of.close()
+
+
+if __name__ == "__main__":
+    main()
