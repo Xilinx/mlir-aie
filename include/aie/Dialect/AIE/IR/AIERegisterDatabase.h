@@ -87,6 +87,14 @@ public:
   /// Encode a value for a specific bitfield
   uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
 
+  /// Resolve "PORT:CHANNEL" value to stream switch port index
+  /// @param value String in format "PORT:CHANNEL" (e.g., "NORTH:1", "DMA:0")
+  /// @param tile Tile operation (for context)
+  /// @param master True for master port, false for slave
+  /// @return Port index, or nullopt if invalid/unsupported
+  std::optional<uint32_t> resolvePortValue(llvm::StringRef value, TileOp tile,
+                                           bool master) const;
+
   /// Get register module name for a tile (CORE_MODULE, PL_MODULE, etc.)
   static llvm::StringRef getRegisterModuleForTile(TileOp tile,
                                                   bool isMem = false);
