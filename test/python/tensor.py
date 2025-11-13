@@ -12,11 +12,11 @@ import pytest
 import numpy as np
 import aie.iron as iron
 from aie.iron.hostruntime.config import CPU_DEVICE, NPU_DEVICE
-from aie.iron.hostruntime.tensor import CPUOnlyTensor, XRTTensor
+from aie.iron.hostruntime.tensor import CPUOnlyTensor, XRTTensor, Tensor
 from ml_dtypes import bfloat16
 
 TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
-TEST_DTYPES = [np.float32, np.int32]  # TODO: , bfloat16]
+TEST_DTYPES = [np.float32, np.int32, bfloat16]
 
 
 def bfloat16_safe_allclose(dtype, arr1, arr2):
@@ -41,7 +41,7 @@ def test_tensor_creation(dtype, tensorclass):
         assert isinstance(t, iron.hostruntime.tensor.Tensor)
         assert isinstance(t, tensorclass)
         expected = np.zeros((2, 2), dtype=dtype)
-        assert np.allclose(t, expected)
+        assert bfloat16_safe_allclose(dtype, t, expected)
         assert t.shape == (2, 2)
         assert str(t.device) == d
 
@@ -65,7 +65,7 @@ def test_zeros(dtype, tensorclass):
     iron.set_iron_tensor_class(tensorclass)
     t = iron.zeros(2, 3, dtype=dtype)
     assert isinstance(t, tensorclass)
-    assert np.allclose(t, np.zeros((2, 3), dtype=dtype))
+    assert bfloat16_safe_allclose(dtype, t, np.zeros((2, 3), dtype=dtype))
 
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
@@ -74,7 +74,7 @@ def test_ones(dtype, tensorclass):
     iron.set_iron_tensor_class(tensorclass)
     t = iron.ones((2, 2), dtype=dtype)
     assert isinstance(t, tensorclass)
-    assert np.allclose(t, np.ones((2, 2), dtype=dtype))
+    assert bfloat16_safe_allclose(dtype, t, np.ones((2, 2), dtype=dtype))
 
 
 @pytest.mark.parametrize(
@@ -115,8 +115,10 @@ def test_arange_integer(dtype, tensorclass):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_arange_floats(dtype, tensorclass):
     iron.set_iron_tensor_class(tensorclass)
-    assert np.allclose(
-        iron.arange(1.0, 5.0, 1.5, dtype=dtype), np.arange(1.0, 5.0, 1.5, dtype=dtype)
+    assert bfloat16_safe_allclose(
+        dtype,
+        iron.arange(1.0, 5.0, 1.5, dtype=dtype),
+        np.arange(1.0, 5.0, 1.5, dtype=dtype),
     )
 
 
@@ -135,13 +137,13 @@ def test_fill(dtype, tensorclass):
 
         # Verify the tensor is filled with the correct value
         expected = np.full((2, 3), fill_value, dtype=dtype)
-        assert np.allclose(t.numpy(), expected)
+        assert bfloat16_safe_allclose(dtype, t.numpy(), expected)
 
         # Test with different value
         new_fill_value = 99 if np.issubdtype(dtype, np.integer) else 99.9
         t.fill_(new_fill_value)
         expected = np.full((2, 3), new_fill_value, dtype=dtype)
-        assert np.allclose(t.numpy(), expected)
+        assert bfloat16_safe_allclose(dtype, t.numpy(), expected)
 
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
