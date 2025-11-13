@@ -5,7 +5,6 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.dialects.ext.func import func
-from util import construct_and_print_module
 
 # RUN: %python %s | FileCheck %s
 
@@ -60,13 +59,19 @@ def custom_loop_type(loop_dtype):
 
 # CHECK-LABEL: TEST: range_with_int32
 # CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
-@construct_and_print_module
 def range_with_int32():
-    return custom_loop_type(np.int32)
+    print("range_with_int32")
+    print(custom_loop_type(np.int32))
+
+
+range_with_int32()
 
 
 # CHECK-LABEL: TEST: range_with_int64
 # CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
-@construct_and_print_module
 def range_with_int64():
-    return custom_loop_type(np.int64)
+    print("range_with_int64")
+    print(custom_loop_type(np.int64))
+
+
+range_with_int64()
