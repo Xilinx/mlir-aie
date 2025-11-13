@@ -46,8 +46,15 @@ class Runtime(Resolvable):
 
     def __init__(
         self,
+        strict_task_groups: bool = True,
     ) -> Runtime:
-        """Initialize a runtime object."""
+        """Initialize a runtime object.
+
+        Args:
+            check_task_groups: Disallows mixing the default group and explicit task groups during resolution.
+                This can catch common errors, but can be set to False to disable the checks.
+
+        """
         self._rt_data = []
         self._tasks: list[RuntimeTask] = []
         self._fifos = set()
@@ -56,6 +63,7 @@ class Runtime(Resolvable):
         self._trace_size = None
         self._trace_offset = None
         self._trace_workers = None
+        self._strict_task_groups = strict_task_groups
         self.ddr_id = None
 
     @contextmanager
@@ -368,7 +376,7 @@ class Runtime(Resolvable):
                 if isinstance(task, FinishTaskGroupTask):
                     finish_task_group(task.task_group, task_group_actions)
 
-            if default_tasks and task_group_tasks:
+            if self._strict_task_groups and default_tasks and task_group_tasks:
                 raise Exception(
                     f"Mixing explicit task groups and the default task group is prohibitted. "
                     f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
