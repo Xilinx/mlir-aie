@@ -260,7 +260,7 @@ def jit(function=None, is_placed=True, use_cache=True):
             return cached_kernel(*args, **kwargs)
 
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
-        ExternalFunction._instances.clear()
+        ExternalFunction.clear()
 
         # Find ExternalFunction instances in arguments and kwargs
         external_kernels = []
@@ -287,10 +287,7 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         # Compile all ExternalFunction instances that were created during this JIT compilation
         for func in ExternalFunction._instances:
-            if (
-                not hasattr(func, "_compiled") or not func._compiled
-            ):  # Don't compile if already compiled
-                external_kernels.append(func)
+            external_kernels.append(func)
 
         # Determine target architecture based on device type
         try:
@@ -375,9 +372,47 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         kernel_dir: Directory to place the compiled object file
         target_arch: Target architecture (e.g., "aie2" or "aie2p")
     """
-    # Skip if already compiled
-    if hasattr(func, "_compiled") and func._compiled:
-        return
+    # Check if we can reuse a cached object file
+    if (
+        hasattr(func, "_cache_key")
+        and func._cache_key
+        and func._cache_key in func._cache
+    ):
+        cached_info = func._cache[func._cache_key]
+        cached_object_file = cached_info["object_file_name"]
+
+        # Check if object file already exists in current kernel directory
+        current_output_path = os.path.join(kernel_dir, cached_object_file)
+        if os.path.exists(current_output_path):
+            # Object file already exists locally, just use it
+            func._object_file_name = cached_object_file
+            return
+
+        # Copy the cached object file to the current kernel directory
+        # This happens when we have a code object that is already cached from previous
+        # runs. The issue is that ExternalFunction objects get resolved during MLIR
+        # generation, but each JIT call creates different MLIR modules (different hashes),
+        # so they end up in different cache directories. However, the ExternalFunction
+        # cache is global and contains object files from previous directories. We can't
+        # just reference the old path because the linker runs in the new directory,
+        # so we must copy the cached object file to the current kernel directory.
+        # We also can't simply clear the code object cache between JIT compilations
+        # because ExternalFunctions get resolved when the worker gets resolved during
+        # MLIR generation. If we clear the instances, they no longer exist and we
+        # don't see the ExternalFunction anymore, breaking the compilation pipeline.
+        cached_source_dir = cached_info.get("source_dir", kernel_dir)
+        cached_source_path = os.path.join(cached_source_dir, cached_object_file)
+
+        if os.path.exists(cached_source_path):
+            # Copy object file to current kernel directory
+            shutil.copy2(cached_source_path, current_output_path)
+
+            # Update the function to use the local copy
+            func._object_file_name = cached_object_file
+            return
+        else:
+            # Cached object file doesn't exist, remove from cache and recompile
+            del func._cache[func._cache_key]
 
     # Check if object file already exists in kernel directory
     output_file = os.path.join(kernel_dir, func._object_file_name)
@@ -387,26 +422,13 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     # Create source file in kernel directory
     source_file = os.path.join(kernel_dir, f"{func._name}.cc")
 
-    # Handle both source_string and source_file cases
-    if func._source_string is not None:
-        # Use source_string (write to file)
-        try:
-            with open(source_file, "w") as f:
-                f.write(func._source_string)
-        except Exception as e:
-            raise
-    elif func._source_file is not None:
-        # Use source_file (copy existing file)
-        # Check if source file exists before copying
-        if os.path.exists(func._source_file):
-            try:
-                shutil.copy2(func._source_file, source_file)
-            except Exception as e:
-                raise
-        else:
-            return
-    else:
-        raise ValueError("Neither source_string nor source_file is provided")
+    # Get source content
+    try:
+        source_content = func._get_source_content()
+        with open(source_file, "w") as f:
+            f.write(source_content)
+    except Exception as e:
+        raise
 
     from .compile.compile import compile_cxx_core_function
 
@@ -420,11 +442,15 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             cwd=kernel_dir,
             verbose=False,
         )
-    except Exception as e:
-        raise
 
-    # Mark the function as compiled
-    func._compiled = True
+        # Only add to cache after successful compilation
+        if hasattr(func, "_cache_key") and func._cache_key:
+            # Store both object file name and source directory for future copying
+            func.add_to_cache(func._cache_key, func._object_file_name, kernel_dir)
+
+    except Exception as e:
+        # Don't add to cache if compilation failed
+        raise
 
 
 def hash_module(module, external_kernels=None, target_arch=None):
