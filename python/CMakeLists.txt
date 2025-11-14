@@ -39,7 +39,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/xrt.py
     utils/ml.py
     utils/trace.py
-    utils/trace_events_enum.py
     utils/config.py
     utils/parse_trace.py
     utils/parse_eventIR.py
@@ -352,6 +351,103 @@ else ()
     COMMON_CAPI_LINK_LIBS
       AIEAggregateCAPI
   )
+
+  ################################################################################
+  # Copy generated trace events enum files to Python package directories
+  ################################################################################
+
+  # Input header files from aie-rt
+  set(AIE_RT_EVENTS_DIR "${AIE_SOURCE_DIR}/third_party/aie-rt/driver/src/events")
+  set(EVENTS_HEADER_FILES
+    "${AIE_RT_EVENTS_DIR}/xaie_events_aie.h"
+    "${AIE_RT_EVENTS_DIR}/xaie_events_aieml.h"
+    "${AIE_RT_EVENTS_DIR}/xaie_events_aie2p.h"
+  )
+
+  # Output directory for generated files in build directory
+  set(GENERATED_EVENTS_DIR "${CMAKE_CURRENT_BINARY_DIR}/regdb")
+
+  # Generated Python enum files (one per architecture) with new naming scheme
+  set(GENERATED_EVENTS_ENUM_FILES
+    "${GENERATED_EVENTS_DIR}/aie.py"
+    "${GENERATED_EVENTS_DIR}/aie2.py"
+    "${GENERATED_EVENTS_DIR}/aie2p.py"
+  )
+
+  # Generated JSON database
+  set(GENERATED_EVENTS_JSON_FILENAME "events.json")
+  set(GENERATED_EVENTS_JSON "${GENERATED_EVENTS_DIR}/${GENERATED_EVENTS_JSON_FILENAME}")
+
+  # Add custom command to generate the event enum files
+  add_custom_command(
+    OUTPUT ${GENERATED_EVENTS_ENUM_FILES} ${GENERATED_EVENTS_JSON}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${GENERATED_EVENTS_DIR}
+    COMMAND ${Python3_EXECUTABLE} 
+      ${AIE_SOURCE_DIR}/utils/generate_events_enum.py
+      -i ${EVENTS_HEADER_FILES}
+      -o ${GENERATED_EVENTS_DIR}
+      --json ${GENERATED_EVENTS_JSON_FILENAME}
+      --python-prefix ""
+    DEPENDS 
+      ${AIE_SOURCE_DIR}/utils/generate_events_enum.py
+      ${EVENTS_HEADER_FILES}
+    COMMENT "Generating trace events enum files from aie-rt headers"
+    VERBATIM
+  )
+
+  # Create a custom target for the generated files
+  add_custom_target(GenerateTraceEventsEnum ALL
+    DEPENDS ${GENERATED_EVENTS_ENUM_FILES} ${GENERATED_EVENTS_JSON}
+  )
+
+  # Ensure AIEPythonModules depends on GenerateTraceEventsEnum
+  add_dependencies(AIEPythonModules GenerateTraceEventsEnum)
+
+  # Copy generated files to build Python package directory as a package
+  foreach(_file ${GENERATED_EVENTS_ENUM_FILES})
+    get_filename_component(_filename ${_file} NAME)
+    add_custom_command(
+      TARGET AIEPythonModules POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace_events
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${_file}
+        ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace_events/${_filename}
+      COMMENT "Copying ${_filename} to build Python package"
+    )
+  endforeach()
+
+  # Copy the checked-in files to build Python package directory
+  set(_source_files
+    __init__.py
+  )
+  foreach(_file ${_source_files})
+    add_custom_command(
+      TARGET AIEPythonModules POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace_events
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/utils/trace_events/${_file}
+        ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace_events/${_file}
+      COMMENT "Copying ${_file} to build Python package"
+    )
+  endforeach()
+
+  # Install generated files as a package
+  install(
+    FILES 
+      ${GENERATED_EVENTS_ENUM_FILES}
+    DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils/trace_events
+    COMPONENT aie-python
+  )
+
+  # Install the checked-in files
+  foreach(_file ${_source_files})
+    install(
+      FILES 
+        ${CMAKE_CURRENT_SOURCE_DIR}/utils/trace_events/${_file}
+      DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils/trace_events
+      COMPONENT aie-python
+    )
+  endforeach()
 
 endif ()
 
