@@ -18,7 +18,7 @@ class XRTTensor(Tensor):
     """
     Tensor object backed by NPU or CPU memory, fulfilled using PyXRT runtime operations.
 
-    The class provides commom tensor operations such as creation,
+    The class provides common tensor operations such as creation,
     filling with values, and accessing data.
 
     """
