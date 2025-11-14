@@ -15,9 +15,5 @@ var searchData=
   ['anyshimtile_12',['AnyShimTile',['../classiron_1_1device_1_1tile_1_1AnyShimTile.html',1,'iron::device::tile']]],
   ['arange_13',['arange',['../classiron_1_1tensor_1_1Tensor.html#a4e199b33ae831b645e85792b13ea206b',1,'iron.tensor.Tensor.arange()'],['../namespaceiron_1_1tensor.html#a1edd7e95f73f6d524723cded3668bb5f',1,'iron.tensor.arange']]],
   ['arg_5ftypes_14',['arg_types',['../classiron_1_1kernel_1_1ExternalFunction.html#a4f5fc776cd2b7e3f6719d40cfaeedc6e',1,'iron::kernel::ExternalFunction']]],
-  ['arr_5ftype_15',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a2ee9c4ee18ed6ce13ddc946ed5d3d357',1,'iron::runtime::data::RuntimeData']]],
-  ['array_16',['array',['../classiron_1_1experimental_1_1array_1_1array.html',1,'iron::experimental::array']]],
-  ['array_2epy_17',['array.py',['../array_8py.html',1,'']]],
-  ['asarray_18',['asarray',['../namespaceiron_1_1experimental_1_1array.html#aede5167fbdb66f0c2c97547f778b6efc',1,'iron::experimental::array']]],
-  ['asnumpy_19',['asnumpy',['../classiron_1_1experimental_1_1array_1_1array.html#acd48c986e81bd772280538edec51b794',1,'iron::experimental::array::array']]]
+  ['arr_5ftype_15',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a2ee9c4ee18ed6ce13ddc946ed5d3d357',1,'iron::runtime::data::RuntimeData']]]
 ];

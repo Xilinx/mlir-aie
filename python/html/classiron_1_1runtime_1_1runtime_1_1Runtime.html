@@ -109,8 +109,8 @@ Collaboration diagram for iron.runtime.runtime.Runtime:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:ab0e51b88479ce3a9598a4ae158f37c58" id="r_ab0e51b88479ce3a9598a4ae158f37c58"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html">Runtime</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ab0e51b88479ce3a9598a4ae158f37c58">__init__</a> (self)</td></tr>
-<tr class="separator:ab0e51b88479ce3a9598a4ae158f37c58"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab7bd94548354847d86278c8d3b80067f" id="r_ab7bd94548354847d86278c8d3b80067f"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html">Runtime</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ab7bd94548354847d86278c8d3b80067f">__init__</a> (self, bool strict_task_groups=True)</td></tr>
+<tr class="separator:ab7bd94548354847d86278c8d3b80067f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a89ee95b190f7d7efe866c1d6ef794d1a" id="r_a89ee95b190f7d7efe866c1d6ef794d1a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a89ee95b190f7d7efe866c1d6ef794d1a">sequence</a> (self, *type[np.ndarray] input_types)</td></tr>
 <tr class="separator:a89ee95b190f7d7efe866c1d6ef794d1a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4901bd9f703d35e870af35a39baf1fa5" id="r_a4901bd9f703d35e870af35a39baf1fa5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1runtime_1_1taskgroup_1_1RuntimeTaskGroup.html">RuntimeTaskGroup</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a4901bd9f703d35e870af35a39baf1fa5">task_group</a> (self)</td></tr>
@@ -159,6 +159,8 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:ad82274cfc9218f999fe84a13a65d52e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a82d7df3e6c606fc3ed6ce41831e3111d" id="r_a82d7df3e6c606fc3ed6ce41831e3111d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a82d7df3e6c606fc3ed6ce41831e3111d">_trace_workers</a></td></tr>
 <tr class="separator:a82d7df3e6c606fc3ed6ce41831e3111d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a57f55b7ceaf4584dce8a8338bd15a186" id="r_a57f55b7ceaf4584dce8a8338bd15a186"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a57f55b7ceaf4584dce8a8338bd15a186">_strict_task_groups</a></td></tr>
+<tr class="separator:a57f55b7ceaf4584dce8a8338bd15a186"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a61f9d2cac5d21a4e48431918ac54796a" id="r_a61f9d2cac5d21a4e48431918ac54796a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a61f9d2cac5d21a4e48431918ac54796a">_ddr_id</a></td></tr>
 <tr class="separator:a61f9d2cac5d21a4e48431918ac54796a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a247187b6cdffa02f117cdbf2638fbf67" id="r_a247187b6cdffa02f117cdbf2638fbf67"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a247187b6cdffa02f117cdbf2638fbf67">_coretile_events</a></td></tr>
@@ -177,8 +179,8 @@ Static Private Attributes</h2></td></tr>
 <div class="textblock"><pre class="fragment">A Runtime contains that operations and structure of all operations that
 need to be taken care of by the host/runtime in order to run a program.
 </pre><pre class="fragment">This is used to generate unique task group ids</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="ab0e51b88479ce3a9598a4ae158f37c58" name="ab0e51b88479ce3a9598a4ae158f37c58"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab0e51b88479ce3a9598a4ae158f37c58">&#9670;&#160;</a></span>__init__()</h2>
+<a id="ab7bd94548354847d86278c8d3b80067f" name="ab7bd94548354847d86278c8d3b80067f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab7bd94548354847d86278c8d3b80067f">&#9670;&#160;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -187,12 +189,26 @@ need to be taken care of by the host/runtime in order to run a program.
           <td class="memname"> <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html">Runtime</a> iron.runtime.runtime.Runtime.__init__ </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>self</em></td><td>)</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">bool &#160;</td>
+          <td class="paramname"><em>strict_task_groups</em> = <code>True</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Initialize a runtime object.</pre> 
+<pre class="fragment">Initialize a runtime object.
+
+Args:
+    check_task_groups: Disallows mixing the default group and explicit task groups during resolution.
+        This can catch common errors, but can be set to False to disable the checks.</pre> 
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
@@ -877,6 +893,28 @@ Returns:
       <table class="memname">
         <tr>
           <td class="memname">iron.runtime.runtime.Runtime._shimtile_events</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a57f55b7ceaf4584dce8a8338bd15a186" name="a57f55b7ceaf4584dce8a8338bd15a186"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a57f55b7ceaf4584dce8a8338bd15a186">&#9670;&#160;</a></span>_strict_task_groups</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.runtime.runtime.Runtime._strict_task_groups</td>
         </tr>
       </table>
   </td>

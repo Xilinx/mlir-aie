@@ -10,7 +10,5 @@ var searchData=
   ['animate_5ffrom_5faccesses_7',['animate_from_accesses',['../namespacetaplib_1_1visualization2d.html#affeb22effce76577f9435c2cab032a03',1,'taplib::visualization2d']]],
   ['arange_8',['arange',['../classiron_1_1tensor_1_1Tensor.html#a4e199b33ae831b645e85792b13ea206b',1,'iron::tensor::Tensor']]],
   ['arg_5ftypes_9',['arg_types',['../classiron_1_1kernel_1_1ExternalFunction.html#a4f5fc776cd2b7e3f6719d40cfaeedc6e',1,'iron::kernel::ExternalFunction']]],
-  ['arr_5ftype_10',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a2ee9c4ee18ed6ce13ddc946ed5d3d357',1,'iron::runtime::data::RuntimeData']]],
-  ['asarray_11',['asarray',['../namespaceiron_1_1experimental_1_1array.html#aede5167fbdb66f0c2c97547f778b6efc',1,'iron::experimental::array']]],
-  ['asnumpy_12',['asnumpy',['../classiron_1_1experimental_1_1array_1_1array.html#acd48c986e81bd772280538edec51b794',1,'iron::experimental::array::array']]]
+  ['arr_5ftype_10',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a2ee9c4ee18ed6ce13ddc946ed5d3d357',1,'iron::runtime::data::RuntimeData']]]
 ];
