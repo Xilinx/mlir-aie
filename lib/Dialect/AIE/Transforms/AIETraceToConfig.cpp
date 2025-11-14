@@ -64,6 +64,139 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
 
       bool isMem = (packetType == TracePacketType::Mem);
 
+      // Process combo/edge events FIRST (before other trace config)
+      // This ensures COMBO_EVENT_*/EDGE_DETECTION_EVENT_* are configured
+      // before they can be referenced in trace.event operations
+
+      // 0a. Emit combo event configurations
+      for (auto &op : trace.getBody().getOps()) {
+        if (auto comboOp = dyn_cast<TraceComboEventOp>(op)) {
+          uint32_t slot = comboOp.getSlot();
+
+          // Get input events
+          std::string eventAName = comboOp.getEventA().getName().str();
+          std::string eventBName = comboOp.getEventB().getName().str();
+          ComboLogic logic = comboOp.getLogic();
+
+          // Lookup event numbers
+          auto eventANum = regDB->lookupEvent(eventAName, tile, isMem);
+          auto eventBNum = regDB->lookupEvent(eventBName, tile, isMem);
+
+          if (!eventANum) {
+            comboOp.emitError("unknown event: ") << eventAName;
+            return signalPassFailure();
+          }
+          if (!eventBNum) {
+            comboOp.emitError("unknown event: ") << eventBName;
+            return signalPassFailure();
+          }
+
+          // Map slot to input event fields
+          StringRef eventAField, eventBField, controlField;
+          if (slot == 0) {
+            eventAField = "eventA";
+            eventBField = "eventB";
+            controlField = "combo0";
+          } else if (slot == 1) {
+            eventAField = "eventC";
+            eventBField = "eventD";
+            controlField = "combo1";
+          } else if (slot == 2) {
+            // Combo2 is hierarchical - reuses eventA/B fields but represents
+            // combo0/combo1
+            eventAField = "eventA";
+            eventBField = "eventB";
+            controlField = "combo2";
+          }
+
+          // Emit Combo_event_inputs register fields
+          configBuilder.create<TraceRegOp>(
+              comboOp.getLoc(), builder.getStringAttr("Combo_event_inputs"),
+              builder.getStringAttr(eventAField),
+              builder.getI32IntegerAttr(*eventANum),
+              /*mask=*/nullptr,
+              builder.getStringAttr("combo" + std::to_string(slot) +
+                                    " eventA"));
+
+          configBuilder.create<TraceRegOp>(
+              comboOp.getLoc(), builder.getStringAttr("Combo_event_inputs"),
+              builder.getStringAttr(eventBField),
+              builder.getI32IntegerAttr(*eventBNum),
+              /*mask=*/nullptr,
+              builder.getStringAttr("combo" + std::to_string(slot) +
+                                    " eventB"));
+
+          // Emit Combo_event_control register field
+          configBuilder.create<TraceRegOp>(
+              comboOp.getLoc(), builder.getStringAttr("Combo_event_control"),
+              builder.getStringAttr(controlField),
+              builder.getI32IntegerAttr(static_cast<uint32_t>(logic)),
+              /*mask=*/nullptr,
+              builder.getStringAttr("combo" + std::to_string(slot) +
+                                    " logic"));
+        }
+      }
+
+      // 0b. Emit edge detection configurations
+      for (auto &op : trace.getBody().getOps()) {
+        if (auto edgeOp = dyn_cast<TraceEdgeEventOp>(op)) {
+          uint32_t slot = edgeOp.getSlot();
+          std::string eventName = edgeOp.getEvent().getName().str();
+          EdgeTrigger trigger = edgeOp.getTrigger();
+
+          // Lookup event number
+          auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+          if (!eventNum) {
+            edgeOp.emitError("unknown event: ") << eventName;
+            return signalPassFailure();
+          }
+
+          // Map slot to field names
+          StringRef eventField = (slot == 0) ? "Edge_Detection_Event_0"
+                                             : "Edge_Detection_Event_1";
+          StringRef risingField = (slot == 0)
+                                      ? "Edge_Detection_0_Trigger_Rising"
+                                      : "Edge_Detection_1_Trigger_Rising";
+          StringRef fallingField = (slot == 0)
+                                       ? "Edge_Detection_0_Trigger_Falling"
+                                       : "Edge_Detection_1_Trigger_Falling";
+
+          // Source event
+          configBuilder.create<TraceRegOp>(
+              edgeOp.getLoc(),
+              builder.getStringAttr("Edge_Detection_event_control"),
+              builder.getStringAttr(eventField),
+              builder.getI32IntegerAttr(*eventNum),
+              /*mask=*/nullptr,
+              builder.getStringAttr("edge" + std::to_string(slot) +
+                                    " source"));
+
+          // Trigger mode
+          bool rising = (trigger == EdgeTrigger::RISING ||
+                         trigger == EdgeTrigger::BOTH);
+          bool falling = (trigger == EdgeTrigger::FALLING ||
+                          trigger == EdgeTrigger::BOTH);
+
+          configBuilder.create<TraceRegOp>(
+              edgeOp.getLoc(),
+              builder.getStringAttr("Edge_Detection_event_control"),
+              builder.getStringAttr(risingField),
+              builder.getI32IntegerAttr(rising ? 1 : 0),
+              /*mask=*/nullptr,
+              builder.getStringAttr("edge" + std::to_string(slot) +
+                                    " rising"));
+
+          configBuilder.create<TraceRegOp>(
+              edgeOp.getLoc(),
+              builder.getStringAttr("Edge_Detection_event_control"),
+              builder.getStringAttr(fallingField),
+              builder.getI32IntegerAttr(falling ? 1 : 0),
+              /*mask=*/nullptr,
+              builder.getStringAttr("edge" + std::to_string(slot) +
+                                    " falling"));
+        }
+      }
+
       // 1. Emit Trace_Control0 fields
       // Check for start/stop events
       for (auto &op : trace.getBody().getOps()) {
