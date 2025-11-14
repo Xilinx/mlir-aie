@@ -125,7 +125,7 @@ class Tensor(ABC):
         """
         Number of bytes consumed by elements in the tensor
         """
-        return self.numel * self.element_size
+        return self.numel() * self.element_size
 
     @cached_property
     def element_size(self) -> int:
@@ -223,7 +223,6 @@ class Tensor(ABC):
         if self.device == "npu":
             self._sync_to_device()
 
-    @cached_property
     def numel(self):
         """
         Calculates the number of elements in the tensor.
