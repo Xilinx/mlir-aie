@@ -205,6 +205,14 @@ def parse_args(args=None):
         help="Compile cores independently in separate processes",
     )
     parser.add_argument(
+        "-O",
+        "--opt-level",
+        dest="opt_level",
+        default="2",
+        choices=["0", "1", "2", "3"],
+        help="Optimization level for AIE core compilation (default: 2)",
+    )
+    parser.add_argument(
         "-n",
         dest="execute",
         default=True,
