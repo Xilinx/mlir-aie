@@ -8,8 +8,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
 
-from .config import CPU_DEVICE, NPU_DEVICE
-
 
 class Tensor(ABC):
     """
@@ -20,12 +18,12 @@ class Tensor(ABC):
 
     """
 
-    DEVICES = [CPU_DEVICE, NPU_DEVICE]
-    DEFAULT_DEVICE = NPU_DEVICE
+    DEVICES = ["cpu", "npu"]
+    DEFAULT_DEVICE = "npu"
     DEFAULT_INT_DTYPE = np.int64  # torch has default int64
     DEFAULT_FLOAT_DTYPE = np.float32  # torch has default float32
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device=NPU_DEVICE):
+    def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
         """
         Initialize the tensor.
 
@@ -57,7 +55,7 @@ class Tensor(ABC):
 
         Note: This method may implicitly trigger data synchronization to devices.
         """
-        if self.device == NPU_DEVICE:
+        if self.device == "npu":
             self._sync_from_device()
         array_str = np.array2string(self.data, separator=",")
         return f"{self.__class__.__name__}({array_str}, device='{self.device}')"
@@ -78,7 +76,7 @@ class Tensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        if self.device == NPU_DEVICE:
+        if self.device == "npu":
             self._sync_from_device()
         if dtype:
             return self.data.astype(dtype)
@@ -97,7 +95,7 @@ class Tensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the retrieved value reflects the current device state.
         """
-        if self.device == NPU_DEVICE:
+        if self.device == "npu":
             self._sync_from_device()
         return self.data[index]
 
@@ -113,10 +111,10 @@ class Tensor(ABC):
         before modification and back to device after modification to ensure
         data consistency across device and host memory.
         """
-        if self.device == NPU_DEVICE:
+        if self.device == "npu":
             self._sync_from_device()
         self.data[index] = value
-        if self.device == NPU_DEVICE:
+        if self.device == "npu":
             self._sync_to_device()
 
     def to(self, target_device: str):
@@ -132,16 +130,15 @@ class Tensor(ABC):
         if target_device == self.device:
             # nothing to do
             pass
-        elif target_device == NPU_DEVICE:
+        elif target_device == "npu":
             self._sync_to_device()
-            self.device = NPU_DEVICE
-            return self
-        elif target_device == CPU_DEVICE:
+            self.device = "npu"
+        elif target_device == "cpu":
             self._sync_from_device()
-            self.device = CPU_DEVICE
-            return self
+            self.device = "cpu"
         else:
             raise ValueError(f"Unknown device '{target_device}'")
+        return self
 
     @abstractmethod
     def _sync_to_device(self):
@@ -192,7 +189,7 @@ class Tensor(ABC):
         Note: For NPU tensors, this method causes implicit data synchronization from device to host
         to ensure the returned array reflects the current device state.
         """
-        if self.device == NPU_DEVICE:
+        if self.device == "npu":
             self._sync_from_device()
         return self.data
 
@@ -206,7 +203,7 @@ class Tensor(ABC):
         Note: For NPU tensors, this method syncs the filled data to device after modification.
         """
         self.data.fill(value)
-        if self.device == NPU_DEVICE:
+        if self.device == "npu":
             self._sync_to_device()
 
     def numel(self):
@@ -229,7 +226,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
+            device (str, optional): Target device. Defaults to 'npu'.
             **kwargs: Additional keyword args.
 
         Returns:
@@ -250,7 +247,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
+            device (str, optional): Target device. Defaults to 'npu'.
             **kwargs: Additional keyword args.
 
         Returns:
@@ -273,7 +270,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional tensor to write the result into.
             dtype (np.dtype, optional): Data type. Defaults to np.int64.
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
+            device (str, optional): Target device. Defaults to 'npu'.
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
@@ -284,7 +281,7 @@ class Tensor(ABC):
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.data[:] = np.random.randint(low, high, size=size, dtype=dtype)
-        if device == NPU_DEVICE:
+        if device == "npu":
             t._sync_to_device()
         return t
 
@@ -299,7 +296,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Output tensor to write into.
             dtype (np.dtype, optional): Desired data type. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
+            device (str, optional): Target device. Defaults to 'npu'.
             **kwargs: Additional arguments passed to constructor.
 
         Returns:
@@ -310,7 +307,7 @@ class Tensor(ABC):
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         t.data[:] = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
-        if device == NPU_DEVICE:
+        if device == "npu":
             t._sync_to_device()
         return t
 
@@ -329,7 +326,7 @@ class Tensor(ABC):
         Keyword Arguments:
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
             out (Tensor, optional): Optional tensor to write output to (must match shape and dtype).
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
+            device (str, optional): Target device. Defaults to 'npu'.
 
         Returns:
             Tensor: 1-D tensor containing the sequence.
@@ -354,13 +351,13 @@ class Tensor(ABC):
                     "Provided `out` tensor must match shape, dtype, and device"
                 )
             out.data[...] = data
-            if device == NPU_DEVICE:
+            if device == "npu":
                 out._sync_to_device()
             return out
 
         t = cls((data.size,), dtype=dtype, device=device, **kwargs)
         t.data[...] = data
-        if device == NPU_DEVICE:
+        if device == "npu":
             t._sync_to_device()
         return t
 
@@ -383,7 +380,7 @@ class Tensor(ABC):
         t = cls(other.shape, dtype=dtype, device=device, **kwargs)
         t.data.fill(0)
 
-        if device == NPU_DEVICE:
+        if device == "npu":
             t._sync_to_device()
 
         return t
@@ -395,10 +392,10 @@ class CPUOnlyTensor(Tensor):
     access to a host runtime (e.g., xrt).
     """
 
-    DEVICES = [CPU_DEVICE]
-    DEFAULT_DEVICE = CPU_DEVICE
+    DEVICES = ["cpu"]
+    DEFAULT_DEVICE = "cpu"
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device=CPU_DEVICE):
+    def __init__(self, shape_or_data, dtype=np.uint32, device="cpu"):
         super().__init__(shape_or_data, dtype=dtype, device=device)
         if not isinstance(shape_or_data, tuple):
             self.data = np.copy(shape_or_data)

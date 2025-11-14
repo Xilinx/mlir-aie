@@ -10,7 +10,6 @@ import numpy as np
 import pyxrt as xrt
 
 from ..tensor import Tensor
-from ..config import NPU_DEVICE
 
 
 class XRTTensor(Tensor):
@@ -22,7 +21,7 @@ class XRTTensor(Tensor):
 
     """
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device=NPU_DEVICE):
+    def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
         super().__init__(shape_or_data, dtype=dtype, device=device)
         device_index = 0
         self.xrt_device = xrt.device(device_index)
@@ -45,7 +44,7 @@ class XRTTensor(Tensor):
         else:
             self.data.fill(0)
 
-        if self.device == NPU_DEVICE:
+        if self.device == "npu":
             self._sync_to_device()
 
     def _sync_to_device(self):

@@ -11,7 +11,6 @@
 import pytest
 import numpy as np
 import aie.iron as iron
-from aie.iron.hostruntime.config import CPU_DEVICE, NPU_DEVICE
 from aie.iron.hostruntime.tensor import CPUOnlyTensor, XRTTensor, Tensor
 from ml_dtypes import bfloat16
 
@@ -229,16 +228,16 @@ def test_tensor_getitem_setitem_consistency(dtype, tensorclass):
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize(
-    "tensorclass", [t for t in TENSOR_CLASSES if CPU_DEVICE in t.DEVICES]
+    "tensorclass", [t for t in TENSOR_CLASSES if "cpu" in t.DEVICES]
 )
 def test_cpu_tensor_no_sync(dtype, tensorclass):
     """Test that CPU tensors operations."""
     iron.set_iron_tensor_class(tensorclass)
-    t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=CPU_DEVICE)
+    t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device="cpu")
     assert t[0, 1] == 2
     t[0, 1] = 42
     assert t[0, 1] == 42
-    assert f"device='{CPU_DEVICE}'" in repr(t)
+    assert f"device='cpu'" in repr(t)
     arr = t.numpy()
     assert np.array_equal(arr, np.array([[1, 42], [3, 4]], dtype=dtype))
 
@@ -246,19 +245,19 @@ def test_cpu_tensor_no_sync(dtype, tensorclass):
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 def test_device_attribute_update(dtype):
     """Test that to() method properly updates the device attribute."""
-    t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=CPU_DEVICE)
+    t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device="cpu")
     assert isinstance(t, XRTTensor)
-    assert t.device == CPU_DEVICE
+    assert t.device == "cpu"
 
     # Move to NPU
-    t.to(NPU_DEVICE)
-    assert t.device == NPU_DEVICE
-    assert f"device='{NPU_DEVICE}'" in repr(t)
+    t.to("npu")
+    assert t.device == "npu"
+    assert f"device='npu'" in repr(t)
 
     # Move back to CPU
-    t.to(CPU_DEVICE)
-    assert t.device == CPU_DEVICE
-    assert f"device='{CPU_DEVICE}'" in repr(t)
+    t.to("cpu")
+    assert t.device == "cpu"
+    assert f"device='cpu'" in repr(t)
 
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
@@ -289,20 +288,20 @@ def test_npu_tensor_sync_behavior(dtype, tensorclass):
 def test_mixed_device_operations(dtype):
     """Test operations between CPU and NPU tensors."""
     # Create tensors on different devices
-    cpu_tensor = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=CPU_DEVICE)
-    npu_tensor = iron.tensor([[5, 6], [7, 8]], dtype=dtype, device=NPU_DEVICE)
+    cpu_tensor = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device="cpu")
+    npu_tensor = iron.tensor([[5, 6], [7, 8]], dtype=dtype, device="npu")
 
     # Test device attributes
-    assert cpu_tensor.device == CPU_DEVICE
-    assert npu_tensor.device == NPU_DEVICE
+    assert cpu_tensor.device == "cpu"
+    assert npu_tensor.device == "npu"
 
     # Test that both can be accessed without issues
     assert cpu_tensor[0, 0] == 1
     assert npu_tensor[0, 0] == 5
 
     # Test moving between devices
-    cpu_tensor = cpu_tensor.to(NPU_DEVICE)
-    assert cpu_tensor.device == NPU_DEVICE
+    cpu_tensor = cpu_tensor.to("npu")
+    assert cpu_tensor.device == "npu"
 
-    npu_tensor = npu_tensor.to(CPU_DEVICE)
-    assert npu_tensor.device == CPU_DEVICE
+    npu_tensor = npu_tensor.to("cpu")
+    assert npu_tensor.device == "cpu"
