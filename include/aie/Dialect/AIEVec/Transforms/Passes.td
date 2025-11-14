@@ -43,4 +43,23 @@ def AIEVectorize : Pass<"aie-vectorize", "mlir::ModuleOp"> {
   ];
 }
 
+def SplitVectorLoadUpsChains : Pass<"aievec-split-load-ups-chains"> {
+  let summary = "Split vector.load + aievec.ups chains to reduce shuffle operations";
+  let description = [{
+    This pass optimizes chains of vector.load followed by aievec.ups operations
+    for AIE2p targets. Instead of loading a 1024-bit vector and then shuffling
+    it into two halves for separate UPS operations (3 shuffles total), it splits
+    both the load and UPS into two 512-bit halves, requiring only 1 shuffle for
+    concatenation.
+  }];
+  let constructor = "xilinx::aievec::createSplitVectorLoadUpsChainsPass()";
+  let dependentDialects = [
+    "mlir::vector::VectorDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::affine::AffineDialect",
+    "xilinx::aievec::AIEVecDialect"
+  ];
+}
+
 #endif // AIE_DIALECT_AIEVEC_TRANSFORMS_PASSES

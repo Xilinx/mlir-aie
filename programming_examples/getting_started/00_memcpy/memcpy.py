@@ -138,6 +138,9 @@ def my_memcpy(input0, output):
         # Start the workers
         rt.start(*my_workers)
 
+        # Initialize a group for parallel drain tasks, with fill resources free'd when drains complete.
+        tg = rt.task_group()
+
         # Fill the input objectFIFOs with data
         for i in range(num_columns):
             for j in range(num_channels):
@@ -145,10 +148,10 @@ def my_memcpy(input0, output):
                     of_ins[i * num_channels + j].prod(),
                     a_in,
                     taps[i * num_channels + j],
+                    task_group=tg,
                 )
 
         # Drain the output objectFIFOs with data
-        tg_out = rt.task_group()  # Initialize a group for parallel drain tasks
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.drain(
@@ -156,9 +159,9 @@ def my_memcpy(input0, output):
                     b_out,
                     taps[i * num_channels + j],
                     wait=True,  # Wait for the transfer to complete and data to be available
-                    task_group=tg_out,  # Add task to the group
+                    task_group=tg,  # Add task to the group
                 )
-        rt.finish_task_group(tg_out)  # Wait for all drain tasks together
+        rt.finish_task_group(tg)  # Wait for all drain tasks together
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
