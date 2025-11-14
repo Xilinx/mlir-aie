@@ -27,7 +27,7 @@ class XRTTensor(Tensor):
         device_index = 0
         self.xrt_device = xrt.device(device_index)
 
-        # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currenty.
+        # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currently.
         # Eventually, xrt:ext::bo uses the 0 magic number that shall be fixed in the future.
         # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
         group_id = 0
