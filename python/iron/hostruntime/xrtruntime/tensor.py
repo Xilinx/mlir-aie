@@ -7,7 +7,6 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 import numpy as np
-import ctypes
 import pyxrt as xrt
 
 from ..tensor import Tensor
