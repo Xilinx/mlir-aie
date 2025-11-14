@@ -125,9 +125,8 @@ def test_arange_floats(dtype, tensorclass):
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_fill(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
-
     """Test the fill method for in-place tensor filling."""
+    iron.set_iron_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.zeros((2, 3), dtype=dtype, device=d)
 
