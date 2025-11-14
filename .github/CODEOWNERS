@@ -18,11 +18,11 @@ lib/Conversion/AIEVecToLLVM/  @jsetoain
 **/Targets/**       @fifield @jgmelber @AndraBisca
 mlir_exercises/**   @denolf @jackl-xilinx @AndraBisca @fifield
 platforms/**        @jackl-xilinx @eddierichter-amd
-programming_examples/** @denolf @jgmelber @fifield @jackl-xilinx @andrej @pvasireddy-amd
-programming_guide/**  @denolf @jgmelber @AndraBisca @jackl-xilinx @andrej
-python/**           @AndraBisca @jackl-xilinx @andrej @pvasireddy-amd @jgmelber
+programming_examples/** @denolf @jgmelber @fifield @jackl-xilinx @andrej @pvasireddy-amd @hunhoffe
+programming_guide/**  @denolf @jgmelber @AndraBisca @jackl-xilinx @andrej @hunhoffe
+python/**           @AndraBisca @jackl-xilinx @andrej @pvasireddy-amd @jgmelber @hunhoffe
 runtime_lib/**      @stephenneuendorffer @jackl-xilinx
-test/**             @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @AndraBisca
+test/**             @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @AndraBisca @hunhoffe
 test/aievec/        @jsetoain
 test/objectFifo*/** @AndraBisca @denolf
-utils/**            @jackl-xilinx @jgmelber @andrej @AndraBisca @erwei-xilinx
+utils/**            @jackl-xilinx @jgmelber @andrej @AndraBisca @erwei-xilinx @hunhoffe
