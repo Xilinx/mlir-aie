@@ -206,5 +206,12 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 def InitValuesArrayAttr
   : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
 
+//===----------------------------------------------------------------------===//
+// Generated AIE event enumerations
+//===----------------------------------------------------------------------===//
+
+include "AIEEvents.td.inc"
+include "AIEEventsAIE2.td.inc"
+include "AIEEventsAIE2P.td.inc"
 
 #endif // AIE_ATTRS
