@@ -15,7 +15,7 @@ from ....helpers.util import np_ndarray_type_get_shape
 
 class XRTTensor(Tensor):
     """
-    Tensor object backed by NPU or CPU memory, fulfilled using PyXRT runtime operations.
+    Tensor object backed by memory accessble from the 'npu' and 'cpu' devices, managed using PyXRT.
 
     The class provides common tensor operations such as creation,
     filling with values, and accessing data.
