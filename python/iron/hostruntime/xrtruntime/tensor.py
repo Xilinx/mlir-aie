@@ -10,6 +10,7 @@ import numpy as np
 import pyxrt as xrt
 
 from ..tensor import Tensor
+from ....helpers.util import np_ndarray_type_get_shape
 
 
 class XRTTensor(Tensor):
@@ -26,26 +27,48 @@ class XRTTensor(Tensor):
         device_index = 0
         self.xrt_device = xrt.device(device_index)
 
+        # Extract the shape
+        if isinstance(shape_or_data, tuple):
+            # If this is a shape, check for it "ShapeLike"-ness using numpy ndarray types.
+            np_type = np.ndarray[shape_or_data, np.dtype[dtype]]
+            self._shape = np_ndarray_type_get_shape(np_type)
+        elif hasattr(shape_or_data, "shape"):
+            # If this is a shaped thing, we will trust it.
+            self._shape = shape_or_data.shape
+        else:
+            # TODO(efficiency): Extra data copy here (when necessary)
+            # so we can borrow verification of array-like things from numpy.
+            np_data = np.array(shape_or_data, dtype=dtype, copy=False)
+            self._shape = np_data.shape
+
         # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currently.
         # Eventually, xrt:ext::bo uses the 0 magic number that shall be fixed in the future.
         # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
         group_id = 0
         self.bo = xrt.bo(
             self.xrt_device,
-            self.len_bytes,
+            np.prod(self._shape) * np.dtype(self.dtype).itemsize,
             xrt.bo.host_only,
             group_id,
         )
         ptr = self.bo.map()
-        self.data = np.frombuffer(ptr, dtype=self.dtype).reshape(self.shape)
+        self._data = np.frombuffer(ptr, dtype=self.dtype).reshape(self._shape)
 
         if not isinstance(shape_or_data, tuple):
-            np.copyto(self.data, shape_or_data)
+            np.copyto(self._data, np_data)
         else:
-            self.data.fill(0)
+            self._data.fill(0)
 
         if self.device == "npu":
             self._sync_to_device()
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def shape(self):
+        return self._shape
 
     def _sync_to_device(self):
         return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)

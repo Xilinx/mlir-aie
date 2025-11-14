@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 from abc import ABC, abstractmethod
+from functools import cached_property
 import numpy as np
 
 
@@ -36,18 +37,20 @@ class Tensor(ABC):
         """
         if device not in self.__class__.DEVICES:
             raise ValueError(f"Unsupported device: {device}")
-
         self.device = device
+        self.dtype = dtype
 
-        if isinstance(shape_or_data, tuple):
-            self.shape = shape_or_data
-            self.dtype = dtype
-        else:
-            np_data = np.array(shape_or_data, dtype=dtype)
-            self.shape = np_data.shape
-            self.dtype = np_data.dtype
+    @property
+    @abstractmethod
+    def data(self):
+        """Subclasses must implement a data property."""
+        pass
 
-        self.len_bytes = np.prod(self.shape) * np.dtype(self.dtype).itemsize
+    @property
+    @abstractmethod
+    def shape(self):
+        """Subclasses must implement a shape property."""
+        pass
 
     def __repr__(self):
         """
@@ -116,6 +119,20 @@ class Tensor(ABC):
         self.data[index] = value
         if self.device == "npu":
             self._sync_to_device()
+
+    @cached_property
+    def nbytes(self) -> int:
+        """
+        Number of bytes consumed by elements in the tensor
+        """
+        return self.numel * self.element_size
+
+    @cached_property
+    def element_size(self) -> int:
+        """
+        Number of bytes per element
+        """
+        return np.dtype(self.dtype).itemsize
 
     def to(self, target_device: str):
         """
@@ -206,6 +223,7 @@ class Tensor(ABC):
         if self.device == "npu":
             self._sync_to_device()
 
+    @cached_property
     def numel(self):
         """
         Calculates the number of elements in the tensor.
@@ -398,9 +416,18 @@ class CPUOnlyTensor(Tensor):
     def __init__(self, shape_or_data, dtype=np.uint32, device="cpu"):
         super().__init__(shape_or_data, dtype=dtype, device=device)
         if not isinstance(shape_or_data, tuple):
-            self.data = np.copy(shape_or_data)
+            self._data = np.array(shape_or_data, dtype=dtype)
         else:
-            self.data = np.zeros(shape_or_data, dtype=dtype)
+            self._data = np.zeros(shape_or_data, dtype=dtype)
+        self._shape = self._data.shape
+
+    @property
+    def data(self):
+        return self._data
+
+    @property
+    def shape(self):
+        return self._shape
 
     def _sync_to_device(self):
         # Nothing to do for CPU only
