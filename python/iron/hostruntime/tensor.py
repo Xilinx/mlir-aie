@@ -7,7 +7,6 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 from abc import ABC, abstractmethod
 import numpy as np
-import ctypes
 
 from .config import CPU_DEVICE, NPU_DEVICE
 
