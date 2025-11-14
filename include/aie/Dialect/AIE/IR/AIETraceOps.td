@@ -360,6 +360,116 @@ def AIE_TraceRegOp : AIE_Op<"trace.reg", [
 }
 
 //===----------------------------------------------------------------------===//
+// AIE_TraceComboEventOp - Combo Event Configuration (within trace)
+//===----------------------------------------------------------------------===//
+
+def AIE_TraceComboEventOp : AIE_Op<"trace.combo_event", [
+    HasParent<"TraceOp">
+  ]> {
+  let summary = "Configure a combo event for logical event combinations";
+  
+  let description = [{
+    Configures a combo event that creates a derived event from logical
+    combinations of other events. Combo events are evaluated by hardware
+    Event Logic and produce new events (COMBO_EVENT_0/1/2/3) that can be
+    traced using aie.trace.event operations.
+    
+    The combo event is configured with two input events and a logic function
+    (AND, AND_NOT, OR, OR_NOT). AIE2 supports hierarchical combinations
+    through slot 2 (combo of combo0 and combo1 results).
+    
+    Slots:
+    - Slot 0 (combo0): uses eventA, eventB
+    - Slot 1 (combo1): uses eventC, eventD  
+    - Slot 2 (combo2): hierarchical, uses COMBO_EVENT_0 and COMBO_EVENT_1
+    - Slot 3 (combo3): architecture-specific state machine (no configuration)
+    
+    Example:
+    ```mlir
+    aie.trace @my_trace(%tile02) {
+      // Combo 0: lock stalled AND NOT DMA active
+      aie.trace.combo_event<0> "LOCK_STALL" AND_NOT "DMA_S2MM_0_STALLED"
+      
+      // Combo 1: instruction event OR vector operation
+      aie.trace.combo_event<1> "INSTR_EVENT_0" OR "INSTR_VECTOR"
+      
+      // Combo 2: (combo0) AND (combo1)
+      aie.trace.combo_event<2> "COMBO_EVENT_0" AND "COMBO_EVENT_1"
+      
+      // Trace the combo results
+      aie.trace.event<"COMBO_EVENT_0">
+      aie.trace.event<"COMBO_EVENT_1">
+      aie.trace.event<"COMBO_EVENT_2">
+      ...
+    }
+    ```
+  }];
+  
+  let arguments = (ins
+    AIEI32Attr:$slot,           // 0, 1, or 2
+    TraceEventAttr:$eventA,     // First input event
+    ComboLogicAttr:$logic,      // Logic function
+    TraceEventAttr:$eventB      // Second input event
+  );
+  
+  let assemblyFormat = [{
+    `<` $slot `>` $eventA $logic $eventB attr-dict
+  }];
+  
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// AIE_TraceEdgeEventOp - Edge Detection Event Configuration (within trace)
+//===----------------------------------------------------------------------===//
+
+def AIE_TraceEdgeEventOp : AIE_Op<"trace.edge_event", [
+    HasParent<"TraceOp">
+  ]> {
+  let summary = "Configure an edge detection event";
+  
+  let description = [{
+    Configures an edge detection event that triggers on signal transitions
+    (rising edge, falling edge, or both) rather than signal levels.
+    
+    Edge detection is useful for counting event occurrences rather than
+    measuring duration. For example, counting the number of lock stalls
+    vs. the total cycles spent stalled.
+    
+    Each module has 2 edge detectors producing EDGE_DETECTION_EVENT_0/1
+    that can be traced using aie.trace.event operations.
+    
+    Example:
+    ```mlir
+    aie.trace @my_trace(%tile02) {
+      // Edge detector 0: count lock stalls (rising edges)
+      aie.trace.edge_event<0> event="LOCK_STALL" trigger=RISING
+      
+      // Edge detector 1: count DMA transitions (both edges)
+      aie.trace.edge_event<1> event="DMA_MM2S_0_FINISHED_BD" trigger=BOTH
+      
+      // Trace the edge-detected events
+      aie.trace.event<"EDGE_DETECTION_EVENT_0">
+      aie.trace.event<"EDGE_DETECTION_EVENT_1">
+      ...
+    }
+    ```
+  }];
+  
+  let arguments = (ins
+    AIEI32Attr:$slot,           // 0 or 1
+    TraceEventAttr:$event,      // Source event to monitor
+    EdgeTriggerAttr:$trigger    // RISING, FALLING, or BOTH
+  );
+  
+  let assemblyFormat = [{
+    `<` $slot `>` `event` `=` $event `trigger` `=` $trigger attr-dict
+  }];
+  
+  let hasVerifier = 1;
+}
+
+//===----------------------------------------------------------------------===//
 // AIE_TraceStartConfigOp - Runtime Configuration Invocation
 //===----------------------------------------------------------------------===//
 
