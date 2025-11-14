@@ -94,4 +94,55 @@ def TraceEventAttr : AttrDef<AIE_Dialect, "TraceEvent"> {
   let assemblyFormat = "`<` $name `>`";
 }
 
+//===----------------------------------------------------------------------===//
+// Combo Event Logic Enumeration
+//===----------------------------------------------------------------------===//
+
+def ComboLogicAND     : I32EnumAttrCase<"AND", 0, "AND">;
+def ComboLogicAND_NOT : I32EnumAttrCase<"AND_NOT", 1, "AND_NOT">;
+def ComboLogicOR      : I32EnumAttrCase<"OR", 2, "OR">;
+def ComboLogicOR_NOT  : I32EnumAttrCase<"OR_NOT", 3, "OR_NOT">;
+
+def ComboLogicAttr : I32EnumAttr<"ComboLogic",
+    "Combo event logic function",
+    [
+      ComboLogicAND,
+      ComboLogicAND_NOT,
+      ComboLogicOR,
+      ComboLogicOR_NOT
+    ]> {
+  let cppNamespace = "::xilinx::AIE";
+  let description = [{
+    Logical operation for combining two events:
+    - AND (00): eventA AND eventB
+    - AND_NOT (01): eventA AND NOT eventB
+    - OR (10): eventA OR eventB
+    - OR_NOT (11): eventA OR NOT eventB
+  }];
+}
+
+//===----------------------------------------------------------------------===//
+// Edge Detection Trigger Mode Enumeration
+//===----------------------------------------------------------------------===//
+
+def EdgeTriggerRISING  : I32EnumAttrCase<"RISING", 1, "RISING">;
+def EdgeTriggerFALLING : I32EnumAttrCase<"FALLING", 2, "FALLING">;
+def EdgeTriggerBOTH    : I32EnumAttrCase<"BOTH", 3, "BOTH">;
+
+def EdgeTriggerAttr : I32EnumAttr<"EdgeTrigger",
+    "Edge detection trigger mode",
+    [
+      EdgeTriggerRISING,
+      EdgeTriggerFALLING,
+      EdgeTriggerBOTH
+    ]> {
+  let cppNamespace = "::xilinx::AIE";
+  let description = [{
+    Edge detection trigger mode:
+    - RISING (01): Trigger on rising edge (0→1 transition)
+    - FALLING (10): Trigger on falling edge (1→0 transition)
+    - BOTH (11): Trigger on both edges
+  }];
+}
+
 #endif // AIE_TRACE_ATTRS
