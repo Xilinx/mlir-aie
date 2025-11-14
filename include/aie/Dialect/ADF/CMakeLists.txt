@@ -6,5 +6,5 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 add_mlir_dialect(ADF ADF)
-add_mlir_doc(ADF ADFDialect ./ -gen-dialect-doc)
+add_mlir_doc(ADF ADFDialect ./ -gen-dialect-doc -dialect=ADF)
 set(LLVM_TARGET_DEFINITIONS ADF.td)

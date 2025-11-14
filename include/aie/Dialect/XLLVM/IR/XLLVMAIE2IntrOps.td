@@ -93,7 +93,65 @@ def MacConfBF16IntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
         AIE2BF16MACConf;
 
-// ----- MSC ----- 
+def MacConfBF16I1024ACC2048AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I1024.I1024.ACC2048.bf.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[64], [BF16]>:$rhs,
+                   VectorOfLengthAndType<[64], [F32]>:$acc,
+                   I32:$conf)>;
+
+def MacConfBF16I512ACC2048AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC2048.bf.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   VectorOfLengthAndType<[64], [F32]>:$acc,
+                   I32:$conf)>;
+
+def MacConfBF16I512ACC1024AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC1024.bf.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   VectorOfLengthAndType<[32], [F32]>:$acc,
+                   I32:$conf)>;
+
+def MacConfBF16I512ACC512AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC512.bf.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   VectorOfLengthAndType<[16], [F32]>:$acc,
+                   I32:$conf)>;
+
+def MacConfI512ACC2048AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC2048.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[32], [I16]>:$rhs,
+                   VectorOfLengthAndType<[32], [I64]>:$acc,
+                   I32:$conf)>;
+
+def MacConfI1024ACC2048AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I1024.I1024.ACC2048.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I32]>:$lhs,
+                   VectorOfLengthAndType<[64], [I16]>:$rhs,
+                   VectorOfLengthAndType<[32], [I64]>:$acc,
+                   I32:$conf)>;
+
+def MacConfBFP576ACC2048AIE2pIntrOp :
+    AIEVec2p_IntrOp<"BFP576.BFP576.ACC2048.mac.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$lhs_data,
+                   VectorOfLengthAndType<[8], [I8]>:$lhs_exp,
+                   VectorOfLengthAndType<[64], [I8]>:$rhs_data,
+                   VectorOfLengthAndType<[8], [I8]>:$rhs_exp,
+                   VectorOfLengthAndType<[64], [I32]>:$acc,
+                   I32:$conf)>;
+
+// ----- MSC -----
 
 def MscConfBF16IntrOp :
     AIEVec2_IntrOp<"bf.msc16.conf",
@@ -119,6 +177,13 @@ def MulConfAcc64IntrOp :
 def MulConfBF16IntrOp :
     AIEVec2_IntrOp<"bf.mul16.conf",
         [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   I32:$conf)>;
+
+def MulConfBF16I512ACC1024AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC1024.bf.mul.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [F32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
                    VectorOfLengthAndType<[32], [BF16]>:$rhs,
                    I32:$conf)>;
@@ -238,6 +303,20 @@ def I512V32Acc32SrsAIE2pIntrOp :
                    I32:$shift,
                    I32:$sign)>;
 
+def I512V32Acc64SrsAIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.v32.acc64.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I64]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def I512V64Acc32SrsAIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.v64.acc32.srs",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I32]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
 def Vector16AccFloatToV16BF16AIE2IntrOp :
     AIEVec2_IntrOp<"v16accfloat.to.v16bf16",
         [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
@@ -252,6 +331,15 @@ def Vector32AccFloatToV32BF16AIE2pIntrOp :
     AIEVec2p_IntrOp<"v32accfloat.to.v32bf16",
         [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[32], [F32]>:$src)>;
+
+def Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp :
+    AIEVec2p_IntrOp<"v64accfloat.to.v64bfp16ebs8",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[64], [I8]>,
+                VectorOfLengthAndType<[8], [I8]>]>
+        >], /*numResults=*/2>,
+    Arguments<(ins VectorOfLengthAndType<[64], [F32]>:$src)>;
 
 // ----- BROADCAST -----
 
@@ -336,7 +424,14 @@ def VectorShuffleIntrOp :
                    VectorOfLengthAndType<[16], [I32]>:$rhs,
                    I32:$mode)>;
 
-// ----- UNDEF ----- 
+def VectorShuffleAIE2pIntrOp :
+    AIEVec2p_IntrOp<"vshuffle",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$mode)>;
+
+// ----- UNDEF -----
 
 def UndefV16I32IntrOp :
     AIEVec2_IntrOp<"v16int32",
@@ -395,6 +490,13 @@ def Acc32V32I512UpsAIE2pIntrOp :
                    I32:$shift,
                    I32:$sign)>;
 
+def Acc32V64I512UpsAIE2pIntrOp :
+    AIEVec2p_IntrOp<"acc32.v64.I512.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [I8]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
 def Acc64V16I256UpsAIE2IntrOp :
     AIEVec2_IntrOp<"acc64.v16.I256.ups",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
@@ -420,6 +522,13 @@ def Acc64V16I512UpsAIE2pIntrOp :
     AIEVec2p_IntrOp<"acc64.v16.I512.ups",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src,
+                   I32:$shift,
+                   I32:$sign)>;
+
+def Acc64V32I512UpsAIE2pIntrOp :
+    AIEVec2p_IntrOp<"acc64.v32.I512.ups",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$src,
                    I32:$shift,
                    I32:$sign)>;
 

@@ -1,3 +1,4 @@
+import numpy as np
 from typing import Sequence
 
 from ....ir import InsertionPoint, Value
@@ -24,7 +25,18 @@ def _for(
     The insert_yield parameter defaults to True; if left as True, the user no longer needs to manually insert
     yield operations (```yield_([])```). If the user wishes to specify yield directly (such as if there is
     a return value from the loop body), insert_yield should be set to False.
+
+    I also added some handling of numpy data types for the loop variable
     """
+    if not (
+        isinstance(start, int)
+        or isinstance(start, np.integer)
+        or isinstance(start, Value)
+    ):
+        raise ValueError(
+            f"MLIR SCF for loops can only use integer types, not {type(start)}"
+        )
+
     if step is None:
         step = 1
     if stop is None:
@@ -32,9 +44,11 @@ def _for(
         start = 0
     params = [start, stop, step]
     for i, p in enumerate(params):
-        if isinstance(p, int):
+        if isinstance(p, np.integer):
+            p = p.item()
+        if isinstance(p, np.integer) or isinstance(p, int):
             p = constant(p, index=True)
-        if not _is_index_type(p.type):
+        elif not _is_index_type(p.type):
             p = index_cast(p, to=T.index())
         params[i] = p
 

@@ -9,7 +9,9 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(NPUDEVICE) {
+
+  aie.device(NPUDEVICE) @main {
+
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
@@ -45,7 +47,7 @@ module {
       %c8 = arith.constant 8 : index
       %c0 = arith.constant 0 : index
       %c1 = arith.constant 1 : index
-      %c12_i8 = arith.constant 12 : i8
+      %c3_i8 = arith.constant 3 : i8
       %c2 = arith.constant 2 : index
       %c64 = arith.constant 64 : index
       aie.use_lock(%objFifo_in1_cons_cons_lock, AcquireGreaterEqual, 1)
@@ -53,7 +55,7 @@ module {
       scf.for %arg1 = %c0 to %c64 step %c1 {
         scf.for %arg2 = %c0 to %c64 step %c1 {
           %0 = memref.load %objFifo_in1_cons_buff_0[%arg1, %arg2] : memref<64x64xi8>
-          %1 = arith.addi %0, %c12_i8 : i8
+          %1 = arith.addi %0, %c3_i8 : i8
           memref.store %1, %objFifo_out1_buff_0[%arg1, %arg2] : memref<64x64xi8>
         }
       }
@@ -64,15 +66,17 @@ module {
 
     aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
 
-    aiex.runtime_sequence @run(%arg0: memref<?xi8>, %arg1: memref<64x64xi8>, %arg2: memref<64x64xi8>) {
+    aiex.runtime_sequence @run(%arg0: memref<64x64xi8>, %arg1: memref<64x64xi8>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c56_i64 = arith.constant 56 : i64
       %c61_i64 = arith.constant 61 : i64
       %c64_i64 = arith.constant 64 : i64
-      aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64], packet = <pkt_id = 3, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<64x64xi8>
-      aiex.npu.dma_memcpy_nd (%arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<64x64xi8>
-      aiex.npu.dma_wait { symbol = @objFifo_out0 }
+      aiex.configure @main {
+        aiex.npu.dma_memcpy_nd (%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64], packet = <pkt_id = 3, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<64x64xi8>
+        aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<64x64xi8>
+        aiex.npu.dma_wait { symbol = @objFifo_out0 }
+      }
     }
 
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
@@ -122,5 +126,11 @@ module {
       }]
       aie.end
     }
+  }
+  // FIXME: if this is not last, it breaks
+  aie.device(NPUDEVICE) @base {
+    %tile_0_0 = aie.tile(0, 0)
+    %tile_0_1 = aie.tile(0, 1)
+    %tile_0_2 = aie.tile(0, 2)
   }
 }

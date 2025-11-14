@@ -1,4 +1,4 @@
-//===- global_generation_test.mlir ------------------------------*- MLIR -*-===//
+//===- onelargefifo_on_2memtile.mlir ----------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -130,6 +130,3 @@ module {
     aie.objectfifo.link [@out1] -> [@out0]([] [])
   }
 }
-
-
-

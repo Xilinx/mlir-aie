@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
+#include "mlir/Dialect/Ptr/IR/PtrOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -24,9 +25,16 @@ using namespace xilinx::AIE;
 
 Type memRefToDefaultAddressSpace(Type t) {
   if (auto memRefType = llvm::dyn_cast<MemRefType>(t);
-      memRefType && memRefType.getMemorySpace() != nullptr)
+      memRefType && memRefType.getMemorySpace() != nullptr) {
+    // Preserve ptr::GenericSpaceAttr - it's needed for ptr dialect
+    // transformations
+    if (llvm::isa<ptr::GenericSpaceAttr>(memRefType.getMemorySpace()))
+      return t; // Keep as-is
+
+    // Remove other memory spaces
     return MemRefType::get(memRefType.getShape(), memRefType.getElementType(),
                            memRefType.getLayout(), nullptr /* Address Space */);
+  }
   return t;
 }
 

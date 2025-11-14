@@ -70,26 +70,6 @@ add_mlir_library(AIETargets
   ADF
 )
 
-if(AIE_ENABLE_AIRBIN)
-  add_mlir_library(AIETargetAirbin
-    AIETargetAirbin.cpp
-
-    PARTIAL_SOURCES_INTENDED
-
-    LINK_COMPONENTS
-    Support
-
-    LINK_LIBS PRIVATE
-    elf
-
-    LINK_LIBS PUBLIC
-    AIE
-    AIEX
-  )
-  target_link_libraries(AIETargets PUBLIC AIETargetAirbin)
-  target_compile_definitions(obj.AIETargets PRIVATE AIE_ENABLE_AIRBIN)
-endif()
-
 target_link_libraries(AIETargets PRIVATE xaienginecdo_static)
 target_include_directories(AIETargets SYSTEM PRIVATE
   ${BOOTGEN_SOURCE_DIR}

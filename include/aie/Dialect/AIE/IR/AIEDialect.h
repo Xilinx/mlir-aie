@@ -15,6 +15,7 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
+#include "mlir/Dialect/DLTI/Traits.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/BuiltinAttributes.h"
