@@ -247,8 +247,6 @@ def jit(function=None, is_placed=True, use_cache=True):
     - is_placed (bool): Whether the kernel is using explicit or implicit placement Defaults to True.
     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
     """
-    import pyxrt as xrt
-
     if function is None:
         return functools.partial(jit, is_placed=is_placed, use_cache=use_cache)
 
