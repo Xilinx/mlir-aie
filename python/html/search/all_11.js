@@ -1,7 +1,7 @@
 var searchData=
 [
-  ['rand_0',['rand',['../namespaceiron_1_1tensor.html#a381c6b18bbcd10bec59a9c8a9271edb8',1,'iron.tensor.rand'],['../classiron_1_1tensor_1_1Tensor.html#ad9c25ffad6d74c7bb1ec0d8eaba5d6d6',1,'iron.tensor.Tensor.rand()']]],
-  ['randint_1',['randint',['../namespaceiron_1_1tensor.html#a741ddee9d382a0a71b32c6d65c99c0f0',1,'iron.tensor.randint'],['../classiron_1_1tensor_1_1Tensor.html#a8c4059737ea447a2aec107757b63bdbb',1,'iron.tensor.Tensor.randint()']]],
+  ['rand_0',['rand',['../namespacetensor.html#a87bcee2358e4a50576f185d61e83b533',1,'tensor.rand()'],['../classtensor_1_1Tensor.html#a56af607ef58da86bb90cdc2c432d6241',1,'tensor.Tensor.rand()']]],
+  ['randint_1',['randint',['../namespacetensor.html#abdf162482cc1f8f10e93cab0a17b1087',1,'tensor.randint()'],['../classtensor_1_1Tensor.html#acfa48d9c39dfd5f429def6ca7efe7cad',1,'tensor.Tensor.randint()']]],
   ['release_2',['release',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a7b5944c451e2451915dcff97d65d7484',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
   ['release_5fwith_5fvalue_3',['release_with_value',['../classiron_1_1worker_1_1WorkerRuntimeBarrier.html#a285aceb8d39e9a898c60da6d6b1d48e3',1,'iron::worker::WorkerRuntimeBarrier']]],
   ['resolvable_4',['Resolvable',['../classiron_1_1resolvable_1_1Resolvable.html',1,'iron::resolvable']]],

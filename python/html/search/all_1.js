@@ -13,7 +13,7 @@ var searchData=
   ['anycomputetile_10',['AnyComputeTile',['../classiron_1_1device_1_1tile_1_1AnyComputeTile.html',1,'iron::device::tile']]],
   ['anymemtile_11',['AnyMemTile',['../classiron_1_1device_1_1tile_1_1AnyMemTile.html',1,'iron::device::tile']]],
   ['anyshimtile_12',['AnyShimTile',['../classiron_1_1device_1_1tile_1_1AnyShimTile.html',1,'iron::device::tile']]],
-  ['arange_13',['arange',['../classiron_1_1tensor_1_1Tensor.html#a4e199b33ae831b645e85792b13ea206b',1,'iron.tensor.Tensor.arange()'],['../namespaceiron_1_1tensor.html#a1edd7e95f73f6d524723cded3668bb5f',1,'iron.tensor.arange']]],
+  ['arange_13',['arange',['../classtensor_1_1Tensor.html#a09c7366b3897fcc0459478c26f25a45a',1,'tensor.Tensor.arange()'],['../namespacetensor.html#ad0cc690d353ba39883933063e1366d80',1,'tensor.arange()']]],
   ['arg_5ftypes_14',['arg_types',['../classiron_1_1kernel_1_1ExternalFunction.html#a4f5fc776cd2b7e3f6719d40cfaeedc6e',1,'iron::kernel::ExternalFunction']]],
   ['arr_5ftype_15',['arr_type',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a2ee9c4ee18ed6ce13ddc946ed5d3d357',1,'iron::runtime::data::RuntimeData']]]
 ];
