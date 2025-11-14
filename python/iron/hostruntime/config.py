@@ -8,7 +8,7 @@
 import shutil
 import subprocess
 
-from .device import NPU1, NPU2
+from ..device import NPU1, NPU2
 
 
 def detect_npu_device():
@@ -64,8 +64,6 @@ def detect_npu_device():
 
 config = {}
 
-config["device"] = detect_npu_device()
-
 
 def set_current_device(device):
     """Sets the current device.
@@ -89,4 +87,7 @@ def get_current_device():
         The currently set device.
     """
     global config
+    if "device" not in config:
+        config["device"] = detect_npu_device()
+
     return config["device"]
