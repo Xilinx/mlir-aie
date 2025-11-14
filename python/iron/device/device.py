@@ -21,8 +21,6 @@ import re
 class Device(Resolvable):
     """
     A base class for representations of a device of a specific type.
-
-    Note: this class is abstract because it does not implement Resolve
     """
 
     class __DeviceTile(Resolvable):
@@ -86,7 +84,6 @@ class Device(Resolvable):
         for c in range(self._tm.columns()):
             for r in range(self._tm.rows()):
                 yield self._tiles[c][r]
-        return None
 
     @property
     def rows(self) -> int:
@@ -197,7 +194,7 @@ class Device(Resolvable):
             int: Number of connections (channels) available on the tile
         """
         return self._tm.is_legal_mem_affinity(
-            src_tile.col, src_tile.row, dst_tile.col, dst_tile.rol
+            src_tile.col, src_tile.row, dst_tile.col, dst_tile.row
         )
 
     def resolve_tile(
