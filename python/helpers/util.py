@@ -1,8 +1,6 @@
 from collections import defaultdict
 import numpy as np
-import sys
-from typing import Sequence, get_args, get_origin, TypeVar
-
+from typing import Sequence, get_args, get_origin
 from aie._mlir_libs import _aie as CustomTypes
 
 from ..extras import types as T
