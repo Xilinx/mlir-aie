@@ -49,6 +49,26 @@ LogicalResult TraceOp::verify() {
     return emitOpError("tile operand must be a TileOp");
   }
 
+  // Track combo/edge slot usage within this trace
+  llvm::DenseSet<uint32_t> comboSlots;
+  llvm::DenseSet<uint32_t> edgeSlots;
+
+  for (auto &op : getBody().getOps()) {
+    if (auto comboOp = dyn_cast<TraceComboEventOp>(op)) {
+      uint32_t slot = comboOp.getSlot();
+      if (!comboSlots.insert(slot).second) {
+        return comboOp.emitOpError("combo event slot ")
+               << slot << " already in use in this trace";
+      }
+    } else if (auto edgeOp = dyn_cast<TraceEdgeEventOp>(op)) {
+      uint32_t slot = edgeOp.getSlot();
+      if (!edgeSlots.insert(slot).second) {
+        return edgeOp.emitOpError("edge detection slot ")
+               << slot << " already in use in this trace";
+      }
+    }
+  }
+
   return success();
 }
 
@@ -159,6 +179,80 @@ LogicalResult TraceStopEventOp::verify() {
 
   if (hasBroadcast && hasEvent) {
     return emitOpError("cannot specify both broadcast and event");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TraceComboEventOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TraceComboEventOp::verify() {
+  uint32_t slot = getSlot();
+
+  // Check slot is valid (0, 1, or 2)
+  if (slot > 2) {
+    return emitOpError("combo event slot must be 0, 1, or 2, got ") << slot;
+  }
+
+  // Validate event selection based on slot
+  std::string eventAName = getEventA().getName().str();
+  std::string eventBName = getEventB().getName().str();
+
+  if (slot == 0) {
+    // Combo 0: should not use eventC/D or combo results
+    if (eventAName.find("COMBO_EVENT") != std::string::npos ||
+        eventBName.find("COMBO_EVENT") != std::string::npos) {
+      return emitOpError("combo slot 0 should use regular events, not "
+                         "COMBO_EVENT_* (uses eventA/B)");
+    }
+  } else if (slot == 1) {
+    // Combo 1: should not use combo results
+    if (eventAName.find("COMBO_EVENT") != std::string::npos ||
+        eventBName.find("COMBO_EVENT") != std::string::npos) {
+      return emitOpError("combo slot 1 should use regular events, not "
+                         "COMBO_EVENT_* (uses eventC/D)");
+    }
+  } else if (slot == 2) {
+    // Combo 2 is hierarchical - must use COMBO_EVENT_0 and COMBO_EVENT_1
+    if (eventAName != "COMBO_EVENT_0") {
+      return emitOpError("combo slot 2 first event must be COMBO_EVENT_0 "
+                         "(hierarchical), got ")
+             << eventAName;
+    }
+    if (eventBName != "COMBO_EVENT_1") {
+      return emitOpError("combo slot 2 second event must be COMBO_EVENT_1 "
+                         "(hierarchical), got ")
+             << eventBName;
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TraceEdgeEventOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TraceEdgeEventOp::verify() {
+  uint32_t slot = getSlot();
+
+  // Check slot is valid (0 or 1)
+  if (slot > 1) {
+    return emitOpError("edge detection slot must be 0 or 1, got ") << slot;
+  }
+
+  // Edge events should not be other edge/combo events
+  std::string eventName = getEvent().getName().str();
+  if (eventName.find("EDGE_DETECTION_EVENT") != std::string::npos) {
+    return emitOpError("edge detection source should be a regular event, not "
+                       "another EDGE_DETECTION_EVENT");
+  }
+  if (eventName.find("COMBO_EVENT") != std::string::npos) {
+    return emitOpError("edge detection source should be a regular event, not "
+                       "a COMBO_EVENT (combo events can be used but may have "
+                       "unexpected behavior)");
   }
 
   return success();
