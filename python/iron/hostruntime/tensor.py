@@ -230,7 +230,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
             **kwargs: Additional keyword args.
 
         Returns:
@@ -251,7 +251,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
             **kwargs: Additional keyword args.
 
         Returns:
@@ -274,7 +274,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Optional tensor to write the result into.
             dtype (np.dtype, optional): Data type. Defaults to np.int64.
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
@@ -300,7 +300,7 @@ class Tensor(ABC):
         Keyword Arguments:
             out (Tensor, optional): Output tensor to write into.
             dtype (np.dtype, optional): Desired data type. Defaults to np.float32.
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
             **kwargs: Additional arguments passed to constructor.
 
         Returns:
@@ -330,7 +330,7 @@ class Tensor(ABC):
         Keyword Arguments:
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
             out (Tensor, optional): Optional tensor to write output to (must match shape and dtype).
-            device (str, optional): Target device. Defaults to iron.config.NPU_DEVCE.
+            device (str, optional): Target device. Defaults to iron.config.NPU_DEVICE.
 
         Returns:
             Tensor: 1-D tensor containing the sequence.
