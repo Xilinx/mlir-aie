@@ -106,12 +106,14 @@ def AIE_TraceEventOp : AIE_Op<"trace.event", [
     Adds an event to be monitored by the trace unit. Each tile type
     (core/mem/memtile/shimtile) has architecture-specific events.
     
+    Events can be specified as strings or enum values.
+    
     Maximum 8 events per trace unit (verified at compile time).
     
     Example:
     ```mlir
-    aie.trace.event<INSTR_EVENT_0>
-    aie.trace.event<LOCK_STALL>
+    aie.trace.event<"INSTR_EVENT_0">  // String
+    aie.trace.event<COMBO_EVENT_0>    // Enum value
     ```
   }];
   
@@ -120,9 +122,7 @@ def AIE_TraceEventOp : AIE_Op<"trace.event", [
     OptionalAttr<StrAttr>:$label
   );
   
-  let assemblyFormat = [{
-    $event (`label` `=` $label^)? attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
   
   let hasVerifier = 1;
 }
@@ -231,12 +231,7 @@ def AIE_TraceStartEventOp : AIE_Op<"trace.start", [
     OptionalAttr<TraceEventAttr>:$event
   );
   
-  let assemblyFormat = [{
-    (`broadcast` `=` $broadcast^)?
-    (`event` `=` $event^)?
-    attr-dict
-  }];
-  
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
 
@@ -265,12 +260,7 @@ def AIE_TraceStopEventOp : AIE_Op<"trace.stop", [
     OptionalAttr<TraceEventAttr>:$event
   );
   
-  let assemblyFormat = [{
-    (`broadcast` `=` $broadcast^)?
-    (`event` `=` $event^)?
-    attr-dict
-  }];
-  
+  let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
 
@@ -378,6 +368,8 @@ def AIE_TraceComboEventOp : AIE_Op<"trace.combo_event", [
     (AND, AND_NOT, OR, OR_NOT). AIE2 supports hierarchical combinations
     through slot 2 (combo of combo0 and combo1 results).
     
+    Events can be specified as strings or typed enums.
+    
     Slots:
     - Slot 0 (combo0): uses eventA, eventB
     - Slot 1 (combo1): uses eventC, eventD  
@@ -388,13 +380,13 @@ def AIE_TraceComboEventOp : AIE_Op<"trace.combo_event", [
     ```mlir
     aie.trace @my_trace(%tile02) {
       // Combo 0: lock stalled AND NOT DMA active
-      aie.trace.combo_event<0> "LOCK_STALL" AND_NOT "DMA_S2MM_0_STALLED"
+      aie.trace.combo_event<0> <"LOCK_STALL"> AND_NOT <"DMA_S2MM_0_STALLED">
       
       // Combo 1: instruction event OR vector operation
-      aie.trace.combo_event<1> "INSTR_EVENT_0" OR "INSTR_VECTOR"
+      aie.trace.combo_event<1> <CoreEventAIE2::INSTR_EVENT_0> OR <CoreEventAIE2::INSTR_VECTOR>
       
       // Combo 2: (combo0) AND (combo1)
-      aie.trace.combo_event<2> "COMBO_EVENT_0" AND "COMBO_EVENT_1"
+      aie.trace.combo_event<2> <"COMBO_EVENT_0"> AND <"COMBO_EVENT_1">
       
       // Trace the combo results
       aie.trace.event<"COMBO_EVENT_0">
@@ -412,9 +404,7 @@ def AIE_TraceComboEventOp : AIE_Op<"trace.combo_event", [
     TraceEventAttr:$eventB      // Second input event
   );
   
-  let assemblyFormat = [{
-    `<` $slot `>` $eventA $logic $eventB attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
   
   let hasVerifier = 1;
 }
@@ -436,6 +426,8 @@ def AIE_TraceEdgeEventOp : AIE_Op<"trace.edge_event", [
     measuring duration. For example, counting the number of lock stalls
     vs. the total cycles spent stalled.
     
+    Events can be specified as strings or typed enums.
+    
     Each module has 2 edge detectors producing EDGE_DETECTION_EVENT_0/1
     that can be traced using aie.trace.event operations.
     
@@ -443,10 +435,10 @@ def AIE_TraceEdgeEventOp : AIE_Op<"trace.edge_event", [
     ```mlir
     aie.trace @my_trace(%tile02) {
       // Edge detector 0: count lock stalls (rising edges)
-      aie.trace.edge_event<0> event="LOCK_STALL" trigger=RISING
+      aie.trace.edge_event<0> event=<"LOCK_STALL"> trigger=RISING
       
       // Edge detector 1: count DMA transitions (both edges)
-      aie.trace.edge_event<1> event="DMA_MM2S_0_FINISHED_BD" trigger=BOTH
+      aie.trace.edge_event<1> event=<MemEventAIE2::DMA_MM2S_0_FINISHED_BD> trigger=BOTH
       
       // Trace the edge-detected events
       aie.trace.event<"EDGE_DETECTION_EVENT_0">
@@ -457,14 +449,12 @@ def AIE_TraceEdgeEventOp : AIE_Op<"trace.edge_event", [
   }];
   
   let arguments = (ins
-    AIEI32Attr:$slot,           // 0 or 1
-    TraceEventAttr:$event,      // Source event to monitor
-    EdgeTriggerAttr:$trigger    // RISING, FALLING, or BOTH
+    AIEI32Attr:$slot,                    // 0 or 1
+    TraceEventAttr:$event,               // Event to monitor
+    EdgeTriggerAttr:$trigger             // RISING, FALLING, or BOTH
   );
   
-  let assemblyFormat = [{
-    `<` $slot `>` `event` `=` $event `trigger` `=` $trigger attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
   
   let hasVerifier = 1;
 }

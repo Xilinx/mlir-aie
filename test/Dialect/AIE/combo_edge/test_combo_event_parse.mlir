@@ -1,3 +1,10 @@
+//===- test_combo_event_parse.mlir -----------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt %s | FileCheck %s
 
 aie.device(npu1_1col) {
@@ -11,7 +18,7 @@ aie.device(npu1_1col) {
     // CHECK: aie.trace.combo_event<1> <"INSTR_EVENT_0"> OR <"INSTR_VECTOR">
     aie.trace.combo_event<1> <"INSTR_EVENT_0"> OR <"INSTR_VECTOR">
     
-    // CHECK: aie.trace.event <"COMBO_EVENT_0">
+    // CHECK: aie.trace.event<"COMBO_EVENT_0">
     aie.trace.event<"COMBO_EVENT_0">
   }
   
@@ -23,7 +30,7 @@ aie.device(npu1_1col) {
     // CHECK: aie.trace.edge_event<1> event = <"DMA_MM2S_0_FINISHED_BD"> trigger = BOTH
     aie.trace.edge_event<1> event=<"DMA_MM2S_0_FINISHED_BD"> trigger=BOTH
     
-    // CHECK: aie.trace.event <"EDGE_DETECTION_EVENT_0">
+    // CHECK: aie.trace.event<"EDGE_DETECTION_EVENT_0">
     aie.trace.event<"EDGE_DETECTION_EVENT_0">
   }
   
@@ -38,7 +45,7 @@ aie.device(npu1_1col) {
     // CHECK: aie.trace.combo_event<2> <"COMBO_EVENT_0"> AND <"COMBO_EVENT_1">
     aie.trace.combo_event<2> <"COMBO_EVENT_0"> AND <"COMBO_EVENT_1">
     
-    // CHECK: aie.trace.event <"COMBO_EVENT_2">
+    // CHECK: aie.trace.event<"COMBO_EVENT_2">
     aie.trace.event<"COMBO_EVENT_2">
   }
   
