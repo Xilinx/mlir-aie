@@ -237,73 +237,77 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 struct AIEMaterializeRuntimeSequencesPass
     : AIEMaterializeRuntimeSequencesBase<AIEMaterializeRuntimeSequencesPass> {
   void runOnOperation() override {
-    AIE::DeviceOp deviceOp = getOperation();
+    ModuleOp moduleOp = getOperation();
 
-    // Turn aie.configure to aie.run @configure
-    for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
-      AnalysisManager am = getAnalysisManager().nest(runtimeSequenceOp);
-      RuntimeCallGraphCyclicityAnalysis cyclicity = am.getAnalysis<RuntimeCallGraphCyclicityAnalysis>();
-      if (!cyclicity.isValid) {
-        return signalPassFailure();
+    // Process each device in the module
+    for (AIE::DeviceOp deviceOp : moduleOp.getOps<AIE::DeviceOp>()) {
+
+      // Turn aie.configure to aie.run @configure
+      for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
+        AnalysisManager am = getAnalysisManager().nest(deviceOp).nest(runtimeSequenceOp);
+        RuntimeCallGraphCyclicityAnalysis cyclicity = am.getAnalysis<RuntimeCallGraphCyclicityAnalysis>();
+        if (!cyclicity.isValid) {
+          return signalPassFailure();
+        }
+        if (cyclicity.isCyclic) {
+          runtimeSequenceOp.emitError("Runtime sequence contains a cycle");
+          return signalPassFailure();
+        }
+        RewritePatternSet patterns(&getContext());
+        patterns.insert<InsertLoadPdiForConfigurePattern>(&getContext());
+        walkAndApplyPatterns(runtimeSequenceOp, std::move(patterns));
       }
-      if (cyclicity.isCyclic) {
-        runtimeSequenceOp.emitError("Runtime sequence contains a cycle");
-        return signalPassFailure();
+
+      // Greedily inline all runtime sequences that can be inlined;
+      // this will start with runtime sequences that do not call other runtime
+      // sequences (leaves); once their callers inline them, the callers can
+      // be inlined as well, and so on
+      MLIRContext *ctx = &getContext();
+      GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
+      rewriter_config.setRegionSimplificationLevel(
+          GreedySimplifyRegionLevel::Disabled);
+
+      RewritePatternSet patterns(ctx);
+      patterns.insert<InlineRuntimeCallsPattern>(ctx);
+      if (failed(applyPatternsGreedily(deviceOp, std::move(patterns), rewriter_config))) {
+        signalPassFailure();
       }
-      RewritePatternSet patterns(&getContext());
-      patterns.insert<InsertLoadPdiForConfigurePattern>(&getContext());
-      walkAndApplyPatterns(runtimeSequenceOp, std::move(patterns));
-    }
 
-    // Greedily inline all runtime sequences that can be inlined;
-    // this will start with runtime sequences that do not call other runtime
-    // sequences (leaves); once their callers inline them, the callers can
-    // be inlined as well, and so on
-    MLIRContext *ctx = &getContext();
-    AIE::DeviceOp device = getOperation();
-    GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
-    rewriter_config.setRegionSimplificationLevel(
-        GreedySimplifyRegionLevel::Disabled);
-
-    RewritePatternSet patterns(ctx);
-    patterns.insert<InlineRuntimeCallsPattern>(ctx);
-    if (failed(applyPatternsGreedily(device, std::move(patterns), rewriter_config))) {
-      signalPassFailure();
-    }
-
-    // Flatten the IR: hoist all operations inside aiex.configure to be direct
-    // children of the runtime sequence, preserving order
-    for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
-      SmallVector<ConfigureOp> configureOps;
-      for (ConfigureOp configureOp : runtimeSequenceOp.getOps<ConfigureOp>()) {
-        configureOps.push_back(configureOp);
-      }
-      
-      IRRewriter rewriter(ctx);
-      for (ConfigureOp configureOp : configureOps) {
-        Block &configureBlock = configureOp.getBody().front();
-        
-        // Collect all operations in the configure block
-        SmallVector<Operation *> opsToHoist;
-        for (Operation &op : configureBlock) {
-          opsToHoist.push_back(&op);
+      // Flatten the IR: hoist all operations inside aiex.configure to be direct
+      // children of the runtime sequence, preserving order
+      for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
+        SmallVector<ConfigureOp> configureOps;
+        for (ConfigureOp configureOp : runtimeSequenceOp.getOps<ConfigureOp>()) {
+          configureOps.push_back(configureOp);
         }
         
-        // Hoist operations to be right before the configure op
-        rewriter.setInsertionPoint(configureOp);
-        for (Operation *op : opsToHoist) {
-          op->moveBefore(configureOp);
+        IRRewriter rewriter(ctx);
+        for (ConfigureOp configureOp : configureOps) {
+          Block &configureBlock = configureOp.getBody().front();
+          
+          // Collect all operations in the configure block
+          SmallVector<Operation *> opsToHoist;
+          for (Operation &op : configureBlock) {
+            opsToHoist.push_back(&op);
+          }
+          
+          // Hoist operations to be right before the configure op
+          rewriter.setInsertionPoint(configureOp);
+          for (Operation *op : opsToHoist) {
+            op->moveBefore(configureOp);
+          }
+          
+          // Erase the now-empty configure op
+          rewriter.eraseOp(configureOp);
         }
-        
-        // Erase the now-empty configure op
-        rewriter.eraseOp(configureOp);
       }
-    }
+
+    } // end for each device
 
   }
 };
 
-std::unique_ptr<OperationPass<AIE::DeviceOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 AIEX::createAIEMaterializeRuntimeSequencesPass() {
   return std::make_unique<AIEMaterializeRuntimeSequencesPass>();
 }
