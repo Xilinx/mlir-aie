@@ -18,9 +18,11 @@
 
 #include <iostream>
 #include <memory>
-#include <mutex>
 
 namespace xilinx::AIE {
+
+// Forward declarations  
+class TileOp;
 
 using TileID = struct TileID {
   // friend definition (will define the function as a non-member function in the

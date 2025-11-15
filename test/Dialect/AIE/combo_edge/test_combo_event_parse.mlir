@@ -1,3 +1,10 @@
+//===- test_combo_event_parse.mlir -----------------------------*- MLIR -*-===//
+//
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt %s | FileCheck %s
 
 aie.device(npu1_1col) {
@@ -12,7 +19,8 @@ aie.device(npu1_1col) {
     aie.trace.combo_event<1> <"INSTR_EVENT_0"> OR <"INSTR_VECTOR">
     
     // CHECK: aie.trace.event <"COMBO_EVENT_0">
-    aie.trace.event<"COMBO_EVENT_0">
+    aie.trace.event <"COMBO_EVENT_0">
+    aie.trace.event <CoreEventAIE2::COMBO_EVENT_1>
   }
   
   // CHECK-LABEL: @test_edge_basic

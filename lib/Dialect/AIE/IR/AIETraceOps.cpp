@@ -15,10 +15,113 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
+
+//===----------------------------------------------------------------------===//
+// TraceEventAttr Helper Methods
+//===----------------------------------------------------------------------===//
+
+std::string TraceEventAttr::getEventName() const {
+  if (auto strAttr = llvm::dyn_cast<StringAttr>(getValue())) {
+    // If the string is fully qualified (contains '::'), extract just the name
+    StringRef strValue = strAttr.getValue();
+    size_t pos = strValue.find("::");
+    if (pos != StringRef::npos) {
+      return strValue.substr(pos + 2).str();
+    }
+    return strAttr.getValue().str();
+  }
+
+  // // Check for typed enum attributes and use stringify functions
+  // Attribute value = getValue();
+  // if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(value)) {
+  //   return stringifyCoreEventAIE2(coreEvt.getValue()).str();
+  // }
+  // if (auto memEvt = llvm::dyn_cast<MemEventAIE2Attr>(value)) {
+  //   return stringifyMemEventAIE2(memEvt.getValue()).str();
+  // }
+  // if (auto shimEvt = llvm::dyn_cast<ShimTileEventAIE2Attr>(value)) {
+  //   return stringifyShimTileEventAIE2(shimEvt.getValue()).str();
+  // }
+  // if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2Attr>(value)) {
+  //   return stringifyMemTileEventAIE2(memTileEvt.getValue()).str();
+  // }
+
+  // Fallback: shouldn't reach here for well-formed IR
+  return "42";
+}
+
+bool TraceEventAttr::isStringAttr() const {
+  return llvm::isa<StringAttr>(getValue());
+}
+
+std::optional<int64_t> TraceEventAttr::getEnumValue() const {
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(getValue())) {
+    return intAttr.getInt();
+  }
+  // String values don't have enum values - they're event names
+  return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
+// Tile Type Validation Helper
+//===----------------------------------------------------------------------===//
+
+static bool isValidEventForTile(TileOp tile, Attribute eventAttr) {
+  int row = tile.getRow();
+
+  // Determine tile type
+  bool isShimTile = (row == 0);
+  bool isMemTile = (row == 1);  // Mem tiles are at row 1
+  bool isCoreTile = (row >= 2); // Core tiles are at row 2 and above
+
+  // If eventAttr is a TraceEventAttr, extract the inner attribute
+  Attribute innerAttr = eventAttr;
+  if (auto traceEvent = llvm::dyn_cast<TraceEventAttr>(eventAttr)) {
+    innerAttr = traceEvent.getValue();
+  }
+
+  // If it's a string, we'll validate later during lowering
+  // (requires event database lookup)
+  if (llvm::isa<StringAttr>(innerAttr)) {
+    return true;
+  }
+
+  // For typed enums, check the attribute type directly
+  if (isCoreTile) {
+    // Core tiles can use CoreEventAIE, CoreEventAIE2, CoreEventAIE2P
+    if (llvm::isa<CoreEventAIEAttr>(innerAttr) ||
+        llvm::isa<CoreEventAIE2Attr>(innerAttr) ||
+        llvm::isa<CoreEventAIE2PAttr>(innerAttr)) {
+      return true;
+    }
+    // Also allow MemEvent for memory module of core tile
+    if (llvm::isa<MemEventAIEAttr>(innerAttr) ||
+        llvm::isa<MemEventAIE2Attr>(innerAttr) ||
+        llvm::isa<MemEventAIE2PAttr>(innerAttr)) {
+      return true;
+    }
+  } else if (isMemTile) {
+    // Mem tiles use MemTileEventAIE2, MemTileEventAIE2P
+    if (llvm::isa<MemTileEventAIE2Attr>(innerAttr) ||
+        llvm::isa<MemTileEventAIE2PAttr>(innerAttr)) {
+      return true;
+    }
+  } else if (isShimTile) {
+    // Shim tiles use ShimTileEventAIE, ShimTileEventAIE2, ShimTileEventAIE2P
+    if (llvm::isa<ShimTileEventAIEAttr>(innerAttr) ||
+        llvm::isa<ShimTileEventAIE2Attr>(innerAttr) ||
+        llvm::isa<ShimTileEventAIE2PAttr>(innerAttr)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 //===----------------------------------------------------------------------===//
 // TraceOp
@@ -73,13 +176,214 @@ LogicalResult TraceOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// Helper function for parsing event values (string or typed enum)
+// Made available in xilinx::AIE namespace for reuse in AIEDialect.cpp
+//===----------------------------------------------------------------------===//
+
+ParseResult xilinx::AIE::parseTraceEvent(AsmParser &parser, Attribute &result) {
+  MLIRContext *ctx = parser.getContext();
+
+  // Try to parse as string first
+  std::string strValue;
+  if (succeeded(parser.parseOptionalString(&strValue))) {
+    result = StringAttr::get(ctx, strValue);
+    return success();
+  }
+
+  // Try to parse as enum (EnumType::VALUE)
+  StringRef enumTypeName;
+  llvm::SMLoc loc = parser.getCurrentLocation();
+
+  if (failed(parser.parseKeyword(&enumTypeName))) {
+    return parser.emitError(loc, "expected string or enum event");
+  }
+
+  if (failed(parser.parseColon()) || failed(parser.parseColon())) {
+    return parser.emitError(loc, "expected '::' after enum type name");
+  }
+
+  StringRef caseName;
+  if (failed(parser.parseKeyword(&caseName))) {
+    return parser.emitError(parser.getCurrentLocation(),
+                            "expected enum case name");
+  }
+  // Validate the enum and convert to string to avoid ambiguity between
+  // AIE2 and AIE2P enums which have identical integer values
+
+  // Define a helper struct for enum validation
+  struct EnumValidator {
+    StringRef name;
+    std::function<std::optional<uint32_t>(StringRef)> symbolizer;
+  };
+
+  // Table of supported enum types and their symbolizer functions
+  static const EnumValidator validators[] = {
+      // AIE2 event enums
+      {"CoreEventAIE2",
+       [](StringRef s) { return symbolizeCoreEventAIE2(s).has_value(); }},
+      {"MemEventAIE2",
+       [](StringRef s) {
+         auto result = symbolizeMemEventAIE2(s);
+         return result.has_value();
+       }},
+      {"MemTileEventAIE2",
+       [](StringRef s) {
+         auto result = symbolizeMemTileEventAIE2(s);
+         return result.has_value();
+       }},
+      {"ShimTileEventAIE2",
+       [](StringRef s) {
+         auto result = symbolizeShimTileEventAIE2(s);
+         return result.has_value();
+       }},
+      // AIE event enums
+      {"CoreEventAIE",
+       [](StringRef s) {
+         auto result = symbolizeCoreEventAIE(s);
+         return result.has_value();
+       }},
+      {"MemEventAIE",
+       [](StringRef s) {
+         auto result = symbolizeMemEventAIE(s);
+         return result.has_value();
+       }},
+      {"ShimTileEventAIE",
+       [](StringRef s) {
+         auto result = symbolizeShimTileEventAIE(s);
+         return result.has_value();
+       }},
+      // AIE2P event enums
+      {"CoreEventAIE2P",
+       [](StringRef s) {
+         auto result = symbolizeCoreEventAIE2P(s);
+         return result.has_value();
+       }},
+      {"MemEventAIE2P",
+       [](StringRef s) {
+         auto result = symbolizeMemEventAIE2P(s);
+         return result.has_value();
+       }},
+      {"MemTileEventAIE2P",
+       [](StringRef s) {
+         auto result = symbolizeMemTileEventAIE2P(s);
+         return result.has_value();
+       }},
+      {"ShimTileEventAIE2P",
+       [](StringRef s) {
+         auto result = symbolizeShimTileEventAIE2P(s);
+         return result.has_value();
+       }},
+  };
+
+  // Look up and validate the enum type
+  for (const auto &validator : validators) {
+    if (enumTypeName != validator.name)
+      continue;
+    if (!validator.symbolizer(caseName))
+      return parser.emitError(loc, "unknown ")
+             << enumTypeName << " value: " << caseName;
+    result = StringAttr::get(ctx, enumTypeName + "::" + caseName);
+    return success();
+  }
+
+  return parser.emitError(loc, "unknown event enum type: ") << enumTypeName;
+}
+
+void xilinx::AIE::printTraceEventEnum(AsmPrinter &printer, Attribute attr) {
+  if (auto traceAttr = llvm::dyn_cast<TraceEventAttr>(attr)) {
+    printTraceEventEnum(printer, traceAttr.getValue());
+    return;
+  }
+  if (auto strAttr = llvm::dyn_cast<StringAttr>(attr)) {
+    // If string contains "::" (enum format), print without quotes
+    if (strAttr.getValue().contains("::")) {
+      printer << strAttr.getValue();
+      return;
+    }
+    printer << "\"" << strAttr.getValue() << "\"";
+  }
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
+    printer << intAttr.getInt();
+    return;
+  }
+  // // AIE2 event enums
+  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(attr)) {
+  //   printer << "CoreEventAIE2::" <<
+  //   stringifyCoreEventAIE2(coreEvt.getValue());
+  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIE2Attr>(attr)) {
+  //   printer << "MemEventAIE2::" << stringifyMemEventAIE2(memEvt.getValue());
+  // } else if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2Attr>(attr)) {
+  //   printer << "MemTileEventAIE2::"
+  //           << stringifyMemTileEventAIE2(memTileEvt.getValue());
+  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIE2Attr>(attr))
+  // {
+  //   printer << "ShimTileEventAIE2::"
+  //           << stringifyShimTileEventAIE2(shimTileEvt.getValue());
+  // }
+  // // AIE event enums
+  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIEAttr>(attr)) {
+  //   printer << "CoreEventAIE::" << stringifyCoreEventAIE(coreEvt.getValue());
+  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIEAttr>(attr)) {
+  //   printer << "MemEventAIE::" << stringifyMemEventAIE(memEvt.getValue());
+  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIEAttr>(attr)) {
+  //   printer << "ShimTileEventAIE::"
+  //           << stringifyShimTileEventAIE(shimTileEvt.getValue());
+  // }
+  // // AIE2P event enums
+  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2PAttr>(attr)) {
+  //   printer << "CoreEventAIE2P::"
+  //           << stringifyCoreEventAIE2P(coreEvt.getValue());
+  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIE2PAttr>(attr)) {
+  //   printer << "MemEventAIE2P::" <<
+  //   stringifyMemEventAIE2P(memEvt.getValue());
+  // } else if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2PAttr>(attr)) {
+  //   printer << "MemTileEventAIE2P::"
+  //           << stringifyMemTileEventAIE2P(memTileEvt.getValue());
+  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIE2PAttr>(attr))
+  // {
+  //   printer << "ShimTileEventAIE2P::"
+  //           << stringifyShimTileEventAIE2P(shimTileEvt.getValue());
+  // }
+}
+
+//===----------------------------------------------------------------------===//
 // TraceEventOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult TraceEventOp::verify() {
-  // Basic validation - event name should not be empty
-  if (getEvent().getName().empty()) {
+  // Get event name/value
+  auto eventAttr = getEvent();
+
+  // Basic validation - event should not be empty
+  std::string eventName = eventAttr.getEventName();
+  if (eventName.empty()) {
     return emitOpError("event name cannot be empty");
+  }
+
+  // Validate event type matches tile type
+  auto trace = (*this)->getParentOfType<TraceOp>();
+  if (!trace) {
+    return emitOpError("must be nested in aie.trace");
+  }
+
+  auto tileOp = dyn_cast<TileOp>(trace.getTile().getDefiningOp());
+  if (!tileOp) {
+    return emitOpError("trace tile must be a TileOp");
+  }
+
+  if (!isValidEventForTile(tileOp, eventAttr.getValue())) {
+    int row = tileOp.getRow();
+    std::string tileTypeStr;
+    if (row == 0)
+      tileTypeStr = "shim tile";
+    else if (row == 1)
+      tileTypeStr = "mem tile";
+    else
+      tileTypeStr = "core tile";
+
+    return emitOpError("event '")
+           << eventName << "' is not valid for " << tileTypeStr << " at ("
+           << tileOp.getCol() << ", " << row << ")";
   }
 
   return success();
@@ -125,8 +429,7 @@ LogicalResult TracePortOp::verify() {
 
   // Verify port is valid for this tile
   if (!targetModel.isValidStreamSwitchPort(tileOp.getCol(), tileOp.getRow(),
-                                           getPort(), getChannel(),
-                                           isMaster)) {
+                                           getPort(), getChannel(), isMaster)) {
     return emitOpError("invalid stream switch port configuration for tile (")
            << tileOp.getCol() << ", " << tileOp.getRow() << ")";
   }
@@ -184,6 +487,144 @@ LogicalResult TraceStopEventOp::verify() {
   return success();
 }
 
+// void TraceEventOp::print(OpAsmPrinter &p) {
+//   p << "<";
+//   printTraceEventEnum(p, getEvent().getValue());
+//   p << ">";
+//   if (auto label = getLabel()) {
+//     p << " label = " << label;
+//   }
+//   p.printOptionalAttrDict((*this)->getAttrs(),
+//                           /*elidedAttrs=*/{"event", "label"});
+// }
+
+// ParseResult TraceEventOp::parse(OpAsmParser &parser, OperationState &result)
+// {
+//   Attribute innerValue;
+
+//   if (parser.parseLess())
+//     return failure();
+
+//   if (failed(parseTraceEvent(parser, innerValue)))
+//     return failure();
+
+//   // Wrap in TraceEventAttr
+//   auto traceEvent = TraceEventAttr::get(parser.getContext(), innerValue);
+//   result.attributes.set("event", traceEvent);
+
+//   if (parser.parseGreater())
+//     return failure();
+
+//   // Parse optional label
+//   if (succeeded(parser.parseOptionalKeyword("label"))) {
+//     StringAttr label;
+//     if (parser.parseEqual() ||
+//         parser.parseAttribute(label, "label", result.attributes))
+//       return failure();
+//   }
+
+//   if (parser.parseOptionalAttrDict(result.attributes))
+//     return failure();
+
+//   return success();
+// }
+
+//===----------------------------------------------------------------------===//
+// TraceStartEventOp and TraceStopEventOp
+//===----------------------------------------------------------------------===//
+
+void TraceStartEventOp::print(OpAsmPrinter &p) {
+  if (auto broadcast = getBroadcast()) {
+    p << " broadcast = " << broadcast.value();
+  }
+  if (auto event = getEvent()) {
+    p << " event = <";
+    printTraceEventEnum(p, event->getValue());
+    p << ">";
+  }
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{"broadcast", "event"});
+}
+
+ParseResult TraceStartEventOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+  // Parse optional broadcast
+  if (succeeded(parser.parseOptionalKeyword("broadcast"))) {
+    IntegerAttr broadcast;
+    if (parser.parseEqual() ||
+        parser.parseAttribute(broadcast, parser.getBuilder().getI32Type(),
+                              "broadcast", result.attributes))
+      return failure();
+  }
+
+  // Parse optional event
+  if (succeeded(parser.parseOptionalKeyword("event"))) {
+    if (parser.parseEqual() || parser.parseLess())
+      return failure();
+
+    Attribute innerValue;
+    if (failed(parseTraceEvent(parser, innerValue)))
+      return failure();
+
+    auto traceEvent = TraceEventAttr::get(parser.getContext(), innerValue);
+    result.attributes.set("event", traceEvent);
+
+    if (parser.parseGreater())
+      return failure();
+  }
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  return success();
+}
+
+void TraceStopEventOp::print(OpAsmPrinter &p) {
+  if (auto broadcast = getBroadcast()) {
+    p << " broadcast = " << broadcast.value();
+  }
+  if (auto event = getEvent()) {
+    p << " event = <";
+    printTraceEventEnum(p, event->getValue());
+    p << ">";
+  }
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{"broadcast", "event"});
+}
+
+ParseResult TraceStopEventOp::parse(OpAsmParser &parser,
+                                    OperationState &result) {
+  // Parse optional broadcast
+  if (succeeded(parser.parseOptionalKeyword("broadcast"))) {
+    IntegerAttr broadcast;
+    if (parser.parseEqual() ||
+        parser.parseAttribute(broadcast, parser.getBuilder().getI32Type(),
+                              "broadcast", result.attributes))
+      return failure();
+  }
+
+  // Parse optional event
+  if (succeeded(parser.parseOptionalKeyword("event"))) {
+    if (parser.parseEqual() || parser.parseLess())
+      return failure();
+
+    Attribute innerValue;
+    if (failed(parseTraceEvent(parser, innerValue)))
+      return failure();
+
+    auto traceEvent = TraceEventAttr::get(parser.getContext(), innerValue);
+    result.attributes.set("event", traceEvent);
+
+    if (parser.parseGreater())
+      return failure();
+  }
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // TraceComboEventOp
 //===----------------------------------------------------------------------===//
@@ -196,9 +637,28 @@ LogicalResult TraceComboEventOp::verify() {
     return emitOpError("combo event slot must be 0, 1, or 2, got ") << slot;
   }
 
+  // Get parent trace and tile for validation
+  auto trace = (*this)->getParentOfType<TraceOp>();
+  if (!trace) {
+    return emitOpError("must be nested in aie.trace");
+  }
+
+  auto tileOp = dyn_cast<TileOp>(trace.getTile().getDefiningOp());
+  if (!tileOp) {
+    return emitOpError("trace tile must be a TileOp");
+  }
+
+  // Validate event types match tile
+  if (!isValidEventForTile(tileOp, getEventA().getValue())) {
+    return emitOpError("eventA is not valid for this tile type");
+  }
+  if (!isValidEventForTile(tileOp, getEventB().getValue())) {
+    return emitOpError("eventB is not valid for this tile type");
+  }
+
   // Validate event selection based on slot
-  std::string eventAName = getEventA().getName().str();
-  std::string eventBName = getEventB().getName().str();
+  std::string eventAName = getEventA().getEventName();
+  std::string eventBName = getEventB().getEventName();
 
   if (slot == 0) {
     // Combo 0: should not use eventC/D or combo results
@@ -231,6 +691,74 @@ LogicalResult TraceComboEventOp::verify() {
   return success();
 }
 
+// void TraceComboEventOp::print(OpAsmPrinter &p) {
+//   auto printEvent = [&](TraceEventAttr evt) {
+//     printTraceEventEnum(p, evt.getValue());
+//   };
+
+//   p << "<" << getSlot() << "> <";
+//   printEvent(getEventA());
+//   p << "> " << getLogic() << " <";
+//   printEvent(getEventB());
+//   p << ">";
+//   p.printOptionalAttrDict(
+//       (*this)->getAttrs(),
+//       /*elidedAttrs=*/{"slot", "eventA", "logic", "eventB"});
+// }
+
+// ParseResult TraceComboEventOp::parse(OpAsmParser &parser,
+//                                      OperationState &result) {
+//   IntegerAttr slot;
+//   Attribute eventAValue, eventBValue;
+//   ComboLogicAttr logic;
+
+//   if (parser.parseLess() ||
+//       parser.parseAttribute(slot, parser.getBuilder().getI32Type(), "slot",
+//                             result.attributes) ||
+//       parser.parseGreater() || parser.parseLess())
+//     return failure();
+
+//   if (failed(parseTraceEvent(parser, eventAValue)))
+//     return failure();
+
+//   auto eventA = TraceEventAttr::get(parser.getContext(), eventAValue);
+//   result.attributes.set("eventA", eventA);
+
+//   if (parser.parseGreater())
+//     return failure();
+
+//   // Parse logic as keyword (AND, OR, etc.)
+//   StringRef logicStr;
+//   if (failed(parser.parseKeyword(&logicStr)))
+//     return failure();
+
+//   auto logicEnum = symbolizeComboLogic(logicStr);
+//   if (!logicEnum) {
+//     return parser.emitError(parser.getCurrentLocation(),
+//                             "unknown combo logic: ")
+//            << logicStr;
+//   }
+//   logic = ComboLogicAttr::get(parser.getContext(), *logicEnum);
+//   result.attributes.set("logic", logic);
+
+//   if (parser.parseLess())
+//     return failure();
+
+//   if (failed(parseTraceEvent(parser, eventBValue)))
+//     return failure();
+
+//   auto eventB = TraceEventAttr::get(parser.getContext(), eventBValue);
+//   result.attributes.set("eventB", eventB);
+
+//   if (parser.parseGreater())
+//     return failure();
+
+//   if (parser.parseOptionalAttrDict(result.attributes))
+//     return failure();
+
+//   return success();
+// }
+
 //===----------------------------------------------------------------------===//
 // TraceEdgeEventOp
 //===----------------------------------------------------------------------===//
@@ -243,8 +771,24 @@ LogicalResult TraceEdgeEventOp::verify() {
     return emitOpError("edge detection slot must be 0 or 1, got ") << slot;
   }
 
+  // Get parent trace and tile for validation
+  auto trace = (*this)->getParentOfType<TraceOp>();
+  if (!trace) {
+    return emitOpError("must be nested in aie.trace");
+  }
+
+  auto tileOp = dyn_cast<TileOp>(trace.getTile().getDefiningOp());
+  if (!tileOp) {
+    return emitOpError("trace tile must be a TileOp");
+  }
+
+  // Validate event type matches tile
+  if (!isValidEventForTile(tileOp, getEvent().getValue())) {
+    return emitOpError("event is not valid for this tile type");
+  }
+
   // Edge events should not be other edge/combo events
-  std::string eventName = getEvent().getName().str();
+  std::string eventName = getEvent().getEventName();
   if (eventName.find("EDGE_DETECTION_EVENT") != std::string::npos) {
     return emitOpError("edge detection source should be a regular event, not "
                        "another EDGE_DETECTION_EVENT");
@@ -254,6 +798,58 @@ LogicalResult TraceEdgeEventOp::verify() {
                        "a COMBO_EVENT (combo events can be used but may have "
                        "unexpected behavior)");
   }
+
+  return success();
+}
+
+void TraceEdgeEventOp::print(OpAsmPrinter &p) {
+  p << "<" << getSlot() << "> event = <";
+  printTraceEventEnum(p, getEvent().getValue());
+  p << "> trigger = " << getTrigger();
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{"slot", "event", "trigger"});
+}
+
+ParseResult TraceEdgeEventOp::parse(OpAsmParser &parser,
+                                    OperationState &result) {
+  IntegerAttr slot;
+  Attribute eventValue;
+  EdgeTriggerAttr trigger;
+
+  if (parser.parseLess() ||
+      parser.parseAttribute(slot, parser.getBuilder().getI32Type(), "slot",
+                            result.attributes) ||
+      parser.parseGreater() || parser.parseKeyword("event") ||
+      parser.parseEqual() || parser.parseLess())
+    return failure();
+
+  // Parse event value (string or enum)
+  if (failed(parseTraceEvent(parser, eventValue)))
+    return failure();
+
+  auto event = TraceEventAttr::get(parser.getContext(), eventValue);
+  result.attributes.set("event", event);
+
+  if (parser.parseGreater() || parser.parseKeyword("trigger") ||
+      parser.parseEqual())
+    return failure();
+
+  // Parse trigger as keyword (RISING, FALLING, BOTH)
+  StringRef triggerStr;
+  if (failed(parser.parseKeyword(&triggerStr)))
+    return failure();
+
+  auto triggerEnum = symbolizeEdgeTrigger(triggerStr);
+  if (!triggerEnum) {
+    return parser.emitError(parser.getCurrentLocation(),
+                            "unknown edge trigger: ")
+           << triggerStr;
+  }
+  trigger = EdgeTriggerAttr::get(parser.getContext(), *triggerEnum);
+  result.attributes.set("trigger", trigger);
+
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
 
   return success();
 }

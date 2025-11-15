@@ -11,7 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/IR/AIERegisterDatabase.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 
 #include "mlir/IR/Attributes.h"
@@ -25,13 +24,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
     OpBuilder builder(device);
-
-    // Load register database for event lookup
-    auto regDB = RegisterDatabase::loadAIE2();
-    if (!regDB) {
-      device.emitError("Failed to load register database");
-      return signalPassFailure();
-    }
+    const auto &targetModel = device.getTargetModel();
 
     // Collect all trace operations
     SmallVector<TraceOp> traces;
@@ -73,14 +66,25 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
         if (auto comboOp = dyn_cast<TraceComboEventOp>(op)) {
           uint32_t slot = comboOp.getSlot();
 
-          // Get input events
-          std::string eventAName = comboOp.getEventA().getName().str();
-          std::string eventBName = comboOp.getEventB().getName().str();
+          // Get input events - use getEventName() helper
+          std::string eventAName = comboOp.getEventA().getEventName();
+          std::string eventBName = comboOp.getEventB().getEventName();
           ComboLogic logic = comboOp.getLogic();
 
-          // Lookup event numbers
-          auto eventANum = regDB->lookupEvent(eventAName, tile, isMem);
-          auto eventBNum = regDB->lookupEvent(eventBName, tile, isMem);
+          // If enum, use enum value directly; otherwise lookup by name
+          std::optional<uint32_t> eventANum, eventBNum;
+
+          if (auto enumValA = comboOp.getEventA().getEnumValue()) {
+            eventANum = static_cast<uint32_t>(*enumValA);
+          } else {
+            eventANum = targetModel.lookupEvent(eventAName, tile, isMem);
+          }
+
+          if (auto enumValB = comboOp.getEventB().getEnumValue()) {
+            eventBNum = static_cast<uint32_t>(*enumValB);
+          } else {
+            eventBNum = targetModel.lookupEvent(eventBName, tile, isMem);
+          }
 
           if (!eventANum) {
             comboOp.emitError("unknown event: ") << eventAName;
@@ -112,16 +116,14 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           // Emit Combo_event_inputs register fields
           configBuilder.create<TraceRegOp>(
               comboOp.getLoc(), builder.getStringAttr("Combo_event_inputs"),
-              builder.getStringAttr(eventAField),
-              builder.getI32IntegerAttr(*eventANum),
+              builder.getStringAttr(eventAField), comboOp.getEventA(),
               /*mask=*/nullptr,
               builder.getStringAttr("combo" + std::to_string(slot) +
                                     " eventA"));
 
           configBuilder.create<TraceRegOp>(
               comboOp.getLoc(), builder.getStringAttr("Combo_event_inputs"),
-              builder.getStringAttr(eventBField),
-              builder.getI32IntegerAttr(*eventBNum),
+              builder.getStringAttr(eventBField), comboOp.getEventB(),
               /*mask=*/nullptr,
               builder.getStringAttr("combo" + std::to_string(slot) +
                                     " eventB"));
@@ -132,8 +134,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
               builder.getStringAttr(controlField),
               builder.getI32IntegerAttr(static_cast<uint32_t>(logic)),
               /*mask=*/nullptr,
-              builder.getStringAttr("combo" + std::to_string(slot) +
-                                    " logic"));
+              builder.getStringAttr("combo" + std::to_string(slot) + " logic"));
         }
       }
 
@@ -141,19 +142,26 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
       for (auto &op : trace.getBody().getOps()) {
         if (auto edgeOp = dyn_cast<TraceEdgeEventOp>(op)) {
           uint32_t slot = edgeOp.getSlot();
-          std::string eventName = edgeOp.getEvent().getName().str();
+          std::string eventName = edgeOp.getEvent().getEventName();
           EdgeTrigger trigger = edgeOp.getTrigger();
 
-          // Lookup event number
-          auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+          // If enum, use enum value directly; otherwise lookup by name
+          std::optional<uint32_t> eventNum;
+
+          if (auto enumVal = edgeOp.getEvent().getEnumValue()) {
+            eventNum = static_cast<uint32_t>(*enumVal);
+          } else {
+            eventNum = targetModel.lookupEvent(eventName, tile, isMem);
+          }
+
           if (!eventNum) {
             edgeOp.emitError("unknown event: ") << eventName;
             return signalPassFailure();
           }
 
           // Map slot to field names
-          StringRef eventField = (slot == 0) ? "Edge_Detection_Event_0"
-                                             : "Edge_Detection_Event_1";
+          StringRef eventField =
+              (slot == 0) ? "Edge_Detection_Event_0" : "Edge_Detection_Event_1";
           StringRef risingField = (slot == 0)
                                       ? "Edge_Detection_0_Trigger_Rising"
                                       : "Edge_Detection_1_Trigger_Rising";
@@ -166,16 +174,15 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
               edgeOp.getLoc(),
               builder.getStringAttr("Edge_Detection_event_control"),
               builder.getStringAttr(eventField),
-              builder.getI32IntegerAttr(*eventNum),
+              builder.getStringAttr(eventName),
               /*mask=*/nullptr,
-              builder.getStringAttr("edge" + std::to_string(slot) +
-                                    " source"));
+              builder.getStringAttr("edge" + std::to_string(slot) + " source"));
 
           // Trigger mode
-          bool rising = (trigger == EdgeTrigger::RISING ||
-                         trigger == EdgeTrigger::BOTH);
-          bool falling = (trigger == EdgeTrigger::FALLING ||
-                          trigger == EdgeTrigger::BOTH);
+          bool rising =
+              (trigger == EdgeTrigger::RISING || trigger == EdgeTrigger::BOTH);
+          bool falling =
+              (trigger == EdgeTrigger::FALLING || trigger == EdgeTrigger::BOTH);
 
           configBuilder.create<TraceRegOp>(
               edgeOp.getLoc(),
@@ -183,8 +190,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
               builder.getStringAttr(risingField),
               builder.getI32IntegerAttr(rising ? 1 : 0),
               /*mask=*/nullptr,
-              builder.getStringAttr("edge" + std::to_string(slot) +
-                                    " rising"));
+              builder.getStringAttr("edge" + std::to_string(slot) + " rising"));
 
           configBuilder.create<TraceRegOp>(
               edgeOp.getLoc(),
@@ -205,9 +211,16 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           if (startOp.getBroadcast()) {
             startEvent = *startOp.getBroadcast();
           } else if (auto eventAttr = startOp.getEvent()) {
-            // Look up event number from database
-            std::string eventName = eventAttr->getName().str();
-            auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+            // Use getEventName() helper and check for enum
+            std::string eventName = eventAttr->getEventName();
+
+            std::optional<uint32_t> eventNum;
+            if (auto enumVal = eventAttr->getEnumValue()) {
+              eventNum = static_cast<uint32_t>(*enumVal);
+            } else {
+              eventNum = targetModel.lookupEvent(eventName, tile, isMem);
+            }
+
             if (eventNum) {
               startEvent = *eventNum;
             } else {
@@ -228,9 +241,16 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           if (stopOp.getBroadcast()) {
             stopEvent = *stopOp.getBroadcast();
           } else if (auto eventAttr = stopOp.getEvent()) {
-            // Look up event number from database
-            std::string eventName = eventAttr->getName().str();
-            auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+            // Use getEventName() helper and check for enum
+            std::string eventName = eventAttr->getEventName();
+
+            std::optional<uint32_t> eventNum;
+            if (auto enumVal = eventAttr->getEnumValue()) {
+              eventNum = static_cast<uint32_t>(*enumVal);
+            } else {
+              eventNum = targetModel.lookupEvent(eventName, tile, isMem);
+            }
+
             if (eventNum) {
               stopEvent = *eventNum;
             } else {
@@ -289,9 +309,8 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
               "Port_" + std::to_string(slot) + "_Master_Slave";
 
           // Generate port value string "PORT:CHANNEL"
-          std::string portValue =
-              stringifyWireBundle(portOp.getPort()).str() + ":" +
-              std::to_string(portOp.getChannel());
+          std::string portValue = stringifyWireBundle(portOp.getPort()).str() +
+                                  ":" + std::to_string(portOp.getChannel());
 
           // Convert DMAChannelDir to master flag: S2MM=master(1), MM2S=slave(0)
           int masterSlaveValue =
@@ -325,10 +344,17 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
       }
 
       for (size_t i = 0; i < events.size() && i < 8; ++i) {
-        std::string eventName = events[i].getEvent().getName().str();
+        std::string eventName = events[i].getEvent().getEventName();
 
-        // Look up event number from database
-        auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+        // If enum, use enum value directly; otherwise lookup by name
+        std::optional<uint32_t> eventNum;
+
+        if (auto enumVal = events[i].getEvent().getEnumValue()) {
+          eventNum = static_cast<uint32_t>(*enumVal);
+        } else {
+          eventNum = targetModel.lookupEvent(eventName, tile, isMem);
+        }
+
         if (!eventNum) {
           trace.emitWarning("Unknown event: ") << eventName;
           continue;
@@ -342,9 +368,8 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
         configBuilder.create<TraceRegOp>(
             trace.getLoc(), builder.getStringAttr(registerName),
             builder.getStringAttr(fieldName),
-            builder.getI32IntegerAttr(*eventNum),
-            /*mask=*/nullptr,
-            builder.getStringAttr("event slot " + std::to_string(i)));
+            events[i].getEvent(), // builder.getI32IntegerAttr(*eventNum),
+            /*mask=*/nullptr, builder.getStringAttr(eventName));
       }
 
       // Add terminator
@@ -377,13 +402,7 @@ struct AIETraceRegPackWritesPass
     : AIETraceRegPackWritesBase<AIETraceRegPackWritesPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
-
-    // Load register database for field information
-    auto regDB = RegisterDatabase::loadAIE2();
-    if (!regDB) {
-      device.emitError("Failed to load register database");
-      return signalPassFailure();
-    }
+    const auto &targetModel = device.getTargetModel();
 
     // Process each trace config
     device.walk([&](TraceConfigOp configOp) {
@@ -406,7 +425,7 @@ struct AIETraceRegPackWritesPass
       for (auto regOp : regsToConvert) {
         // Look up register and field information
         const RegisterInfo *regInfo =
-            regDB->lookupRegister(regOp.getRegName(), tile);
+            targetModel.lookupRegister(regOp.getRegName(), tile);
 
         if (!regInfo) {
           regOp.emitError("Register not found in database: ")
@@ -423,11 +442,26 @@ struct AIETraceRegPackWritesPass
 
         // Get the value - handle both integers and port strings
         uint32_t value = 0;
-
-        if (auto intAttr = dyn_cast<IntegerAttr>(regOp.getValue())) {
+        Attribute valAttr = regOp.getValue();
+        if (auto traceEventAttr = dyn_cast<TraceEventAttr>(valAttr)) {
+          valAttr = traceEventAttr.getValue();
+          // if it's a string, lookup the enum value
+          if (auto strAttr = dyn_cast<StringAttr>(valAttr)) {
+            std::string eventName = strAttr.getValue().str();
+            std::optional<uint32_t> eventNum =
+                targetModel.lookupEvent(eventName, tile, false);
+            if (!eventNum) {
+              regOp.emitError("Unknown event: ") << eventName;
+              return signalPassFailure();
+            }
+            value = *eventNum;
+            valAttr = builder.getI32IntegerAttr(value);
+          }
+        }
+        if (auto intAttr = dyn_cast<IntegerAttr>(valAttr)) {
           // Integer value
           value = intAttr.getInt();
-        } else if (auto strAttr = dyn_cast<StringAttr>(regOp.getValue())) {
+        } else if (auto strAttr = dyn_cast<StringAttr>(valAttr)) {
           // String value - check if it's a port specification
           StringRef valueStr = strAttr.getValue();
 
@@ -460,7 +494,8 @@ struct AIETraceRegPackWritesPass
             }
 
             // Resolve port value
-            auto portIndex = regDB->resolvePortValue(valueStr, tile, master);
+            auto portIndex =
+                targetModel.resolvePortValue(valueStr, tile, master);
             if (!portIndex) {
               regOp.emitError("Failed to resolve port value: ") << valueStr;
               return signalPassFailure();
@@ -478,7 +513,7 @@ struct AIETraceRegPackWritesPass
         // Compute mask and shifted value
         uint32_t mask = ((1u << fieldInfo->getWidth()) - 1)
                         << fieldInfo->bit_start;
-        uint32_t shiftedValue = regDB->encodeFieldValue(*fieldInfo, value);
+        uint32_t shiftedValue = targetModel.encodeFieldValue(*fieldInfo, value);
         // Create new operation with mask
         builder.setInsertionPoint(regOp);
         builder.create<TraceRegOp>(regOp.getLoc(), regOp.getRegNameAttr(),
