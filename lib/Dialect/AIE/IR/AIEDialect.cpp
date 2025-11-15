@@ -25,163 +25,6 @@
 using namespace mlir;
 using namespace xilinx::AIE;
 
-//===----------------------------------------------------------------------===//
-// Custom parsers/printers for TraceEventAttr
-//===----------------------------------------------------------------------===//
-
-// Custom parser for TraceEventAttr value (allows both string and enum)
-static ParseResult parseTraceEventValue(AsmParser &parser, Attribute &value) {
-  // Try to parse as a string first
-  std::string strValue;
-  if (succeeded(parser.parseOptionalString(&strValue))) {
-    value = StringAttr::get(parser.getContext(), strValue);
-    return success();
-  }
-  
-  // Try to parse as enum with :: syntax (e.g., CoreEventAIE2::LOCK_STALL)
-  // First, try to get an identifier for the enum type
-  llvm::SMLoc loc = parser.getCurrentLocation();
-  StringRef enumTypeName;
-  if (failed(parser.parseOptionalKeyword(&enumTypeName))) {
-    return parser.emitError(loc, "expected string or enum event");
-  }
-  
-  // Check if next token is ::
-  if (failed(parser.parseOptionalColon()) || failed(parser.parseOptionalColon())) {
-    return parser.emitError(loc, "expected '::' after enum type name");
-  }
-  
-  // Parse the enum case name
-  StringRef caseName;
-  if (failed(parser.parseKeyword(&caseName))) {
-    return parser.emitError(parser.getCurrentLocation(), "expected enum case name");
-  }
-  
-  // Map enum type names to their enum parsing functions
-  // AIE (gen1) events
-  if (enumTypeName == "CoreEventAIE") {
-    auto enumVal = xilinx::AIE::symbolizeCoreEventAIE(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown CoreEventAIE value: ") << caseName;
-    }
-    value = xilinx::AIE::CoreEventAIEAttr::get(parser.getContext(), *enumVal);
-    return success();
-  } else if (enumTypeName == "MemEventAIE") {
-    auto enumVal = xilinx::AIE::symbolizeMemEventAIE(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown MemEventAIE value: ") << caseName;
-    }
-    value = xilinx::AIE::MemEventAIEAttr::get(parser.getContext(), *enumVal);
-    return success();
-  } else if (enumTypeName == "ShimTileEventAIE") {
-    auto enumVal = xilinx::AIE::symbolizeShimTileEventAIE(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown ShimTileEventAIE value: ") << caseName;
-    }
-    value = xilinx::AIE::ShimTileEventAIEAttr::get(parser.getContext(), *enumVal);
-    return success();
-  }
-  // AIE2 events
-  else if (enumTypeName == "CoreEventAIE2") {
-    auto enumVal = xilinx::AIE::symbolizeCoreEventAIE2(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown CoreEventAIE2 value: ") << caseName;
-    }
-    value = xilinx::AIE::CoreEventAIE2Attr::get(parser.getContext(), *enumVal);
-    return success();
-  } else if (enumTypeName == "MemEventAIE2") {
-    auto enumVal = xilinx::AIE::symbolizeMemEventAIE2(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown MemEventAIE2 value: ") << caseName;
-    }
-    value = xilinx::AIE::MemEventAIE2Attr::get(parser.getContext(), *enumVal);
-    return success();
-  } else if (enumTypeName == "MemTileEventAIE2") {
-    auto enumVal = xilinx::AIE::symbolizeMemTileEventAIE2(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown MemTileEventAIE2 value: ") << caseName;
-    }
-    value = xilinx::AIE::MemTileEventAIE2Attr::get(parser.getContext(), *enumVal);
-    return success();
-  } else if (enumTypeName == "ShimTileEventAIE2") {
-    auto enumVal = xilinx::AIE::symbolizeShimTileEventAIE2(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown ShimTileEventAIE2 value: ") << caseName;
-    }
-    value = xilinx::AIE::ShimTileEventAIE2Attr::get(parser.getContext(), *enumVal);
-    return success();
-  }
-  // AIE2P events
-  else if (enumTypeName == "CoreEventAIE2P") {
-    auto enumVal = xilinx::AIE::symbolizeCoreEventAIE2P(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown CoreEventAIE2P value: ") << caseName;
-    }
-    value = xilinx::AIE::CoreEventAIE2PAttr::get(parser.getContext(), *enumVal);
-    return success();
-  } else if (enumTypeName == "MemEventAIE2P") {
-    auto enumVal = xilinx::AIE::symbolizeMemEventAIE2P(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown MemEventAIE2P value: ") << caseName;
-    }
-    value = xilinx::AIE::MemEventAIE2PAttr::get(parser.getContext(), *enumVal);
-    return success();
-  } else if (enumTypeName == "MemTileEventAIE2P") {
-    auto enumVal = xilinx::AIE::symbolizeMemTileEventAIE2P(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown MemTileEventAIE2P value: ") << caseName;
-    }
-    value = xilinx::AIE::MemTileEventAIE2PAttr::get(parser.getContext(), *enumVal);
-    return success();
-  } else if (enumTypeName == "ShimTileEventAIE2P") {
-    auto enumVal = xilinx::AIE::symbolizeShimTileEventAIE2P(caseName);
-    if (!enumVal) {
-      return parser.emitError(loc, "unknown ShimTileEventAIE2P value: ") << caseName;
-    }
-    value = xilinx::AIE::ShimTileEventAIE2PAttr::get(parser.getContext(), *enumVal);
-    return success();
-  }
-  
-  return parser.emitError(loc, "unknown event enum type: ") << enumTypeName;
-}
-
-// Custom printer for TraceEventAttr value
-static void printTraceEventValue(AsmPrinter &printer, Attribute value) {
-  if (auto strAttr = llvm::dyn_cast<StringAttr>(value)) {
-    printer << "\"" << strAttr.getValue() << "\"";
-  }
-  // AIE (gen1) events
-  else if (auto coreEvent = llvm::dyn_cast<xilinx::AIE::CoreEventAIEAttr>(value)) {
-    printer << "CoreEventAIE::" << stringifyCoreEventAIE(coreEvent.getValue());
-  } else if (auto memEvent = llvm::dyn_cast<xilinx::AIE::MemEventAIEAttr>(value)) {
-    printer << "MemEventAIE::" << stringifyMemEventAIE(memEvent.getValue());
-  } else if (auto shimTileEvent = llvm::dyn_cast<xilinx::AIE::ShimTileEventAIEAttr>(value)) {
-    printer << "ShimTileEventAIE::" << stringifyShimTileEventAIE(shimTileEvent.getValue());
-  }
-  // AIE2 events
-  else if (auto coreEvent = llvm::dyn_cast<xilinx::AIE::CoreEventAIE2Attr>(value)) {
-    printer << "CoreEventAIE2::" << stringifyCoreEventAIE2(coreEvent.getValue());
-  } else if (auto memEvent = llvm::dyn_cast<xilinx::AIE::MemEventAIE2Attr>(value)) {
-    printer << "MemEventAIE2::" << stringifyMemEventAIE2(memEvent.getValue());
-  } else if (auto memTileEvent = llvm::dyn_cast<xilinx::AIE::MemTileEventAIE2Attr>(value)) {
-    printer << "MemTileEventAIE2::" << stringifyMemTileEventAIE2(memTileEvent.getValue());
-  } else if (auto shimTileEvent = llvm::dyn_cast<xilinx::AIE::ShimTileEventAIE2Attr>(value)) {
-    printer << "ShimTileEventAIE2::" << stringifyShimTileEventAIE2(shimTileEvent.getValue());
-  }
-  // AIE2P events
-  else if (auto coreEvent = llvm::dyn_cast<xilinx::AIE::CoreEventAIE2PAttr>(value)) {
-    printer << "CoreEventAIE2P::" << stringifyCoreEventAIE2P(coreEvent.getValue());
-  } else if (auto memEvent = llvm::dyn_cast<xilinx::AIE::MemEventAIE2PAttr>(value)) {
-    printer << "MemEventAIE2P::" << stringifyMemEventAIE2P(memEvent.getValue());
-  } else if (auto memTileEvent = llvm::dyn_cast<xilinx::AIE::MemTileEventAIE2PAttr>(value)) {
-    printer << "MemTileEventAIE2P::" << stringifyMemTileEventAIE2P(memTileEvent.getValue());
-  } else if (auto shimTileEvent = llvm::dyn_cast<xilinx::AIE::ShimTileEventAIE2PAttr>(value)) {
-    printer << "ShimTileEventAIE2P::" << stringifyShimTileEventAIE2P(shimTileEvent.getValue());
-  } else {
-    printer.printAttribute(value);
-  }
-}
-
 // Add TableGen'erated dialect definitions (including constructor)
 // We implement the initialize() function further below
 #include "aie/Dialect/AIE/IR/AIEDialect.cpp.inc"
@@ -2787,6 +2630,20 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TraceEventAttr
+//===----------------------------------------------------------------------===//
+
+// Custom parser for TraceEventAttr value (uses shared helper)
+static ParseResult parseTraceEventValue(AsmParser &parser, Attribute &value) {
+  return xilinx::AIE::parseTraceEvent(parser, value);
+}
+
+// Custom printer for TraceEventAttr value (uses shared helper)
+static void printTraceEventValue(AsmPrinter &printer, Attribute value) {
+  xilinx::AIE::printTraceEventEnum(printer, value);
 }
 
 // Include implementations for custom attributes
