@@ -73,14 +73,25 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
         if (auto comboOp = dyn_cast<TraceComboEventOp>(op)) {
           uint32_t slot = comboOp.getSlot();
 
-          // Get input events
-          std::string eventAName = comboOp.getEventA().getName().str();
-          std::string eventBName = comboOp.getEventB().getName().str();
+          // Get input events - use getEventName() helper
+          std::string eventAName = comboOp.getEventA().getEventName();
+          std::string eventBName = comboOp.getEventB().getEventName();
           ComboLogic logic = comboOp.getLogic();
 
-          // Lookup event numbers
-          auto eventANum = regDB->lookupEvent(eventAName, tile, isMem);
-          auto eventBNum = regDB->lookupEvent(eventBName, tile, isMem);
+          // If enum, use enum value directly; otherwise lookup by name
+          std::optional<uint32_t> eventANum, eventBNum;
+          
+          if (auto enumValA = comboOp.getEventA().getEnumValue()) {
+            eventANum = static_cast<uint32_t>(*enumValA);
+          } else {
+            eventANum = regDB->lookupEvent(eventAName, tile, isMem);
+          }
+          
+          if (auto enumValB = comboOp.getEventB().getEnumValue()) {
+            eventBNum = static_cast<uint32_t>(*enumValB);
+          } else {
+            eventBNum = regDB->lookupEvent(eventBName, tile, isMem);
+          }
 
           if (!eventANum) {
             comboOp.emitError("unknown event: ") << eventAName;
@@ -141,11 +152,18 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
       for (auto &op : trace.getBody().getOps()) {
         if (auto edgeOp = dyn_cast<TraceEdgeEventOp>(op)) {
           uint32_t slot = edgeOp.getSlot();
-          std::string eventName = edgeOp.getEvent().getName().str();
+          std::string eventName = edgeOp.getEvent().getEventName();
           EdgeTrigger trigger = edgeOp.getTrigger();
 
-          // Lookup event number
-          auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+          // If enum, use enum value directly; otherwise lookup by name
+          std::optional<uint32_t> eventNum;
+          
+          if (auto enumVal = edgeOp.getEvent().getEnumValue()) {
+            eventNum = static_cast<uint32_t>(*enumVal);
+          } else {
+            eventNum = regDB->lookupEvent(eventName, tile, isMem);
+          }
+
           if (!eventNum) {
             edgeOp.emitError("unknown event: ") << eventName;
             return signalPassFailure();
@@ -205,9 +223,16 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           if (startOp.getBroadcast()) {
             startEvent = *startOp.getBroadcast();
           } else if (auto eventAttr = startOp.getEvent()) {
-            // Look up event number from database
-            std::string eventName = eventAttr->getName().str();
-            auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+            // Use getEventName() helper and check for enum
+            std::string eventName = eventAttr->getEventName();
+            
+            std::optional<uint32_t> eventNum;
+            if (auto enumVal = eventAttr->getEnumValue()) {
+              eventNum = static_cast<uint32_t>(*enumVal);
+            } else {
+              eventNum = regDB->lookupEvent(eventName, tile, isMem);
+            }
+            
             if (eventNum) {
               startEvent = *eventNum;
             } else {
@@ -228,9 +253,16 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           if (stopOp.getBroadcast()) {
             stopEvent = *stopOp.getBroadcast();
           } else if (auto eventAttr = stopOp.getEvent()) {
-            // Look up event number from database
-            std::string eventName = eventAttr->getName().str();
-            auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+            // Use getEventName() helper and check for enum
+            std::string eventName = eventAttr->getEventName();
+            
+            std::optional<uint32_t> eventNum;
+            if (auto enumVal = eventAttr->getEnumValue()) {
+              eventNum = static_cast<uint32_t>(*enumVal);
+            } else {
+              eventNum = regDB->lookupEvent(eventName, tile, isMem);
+            }
+            
             if (eventNum) {
               stopEvent = *eventNum;
             } else {
@@ -325,10 +357,17 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
       }
 
       for (size_t i = 0; i < events.size() && i < 8; ++i) {
-        std::string eventName = events[i].getEvent().getName().str();
+        std::string eventName = events[i].getEvent().getEventName();
 
-        // Look up event number from database
-        auto eventNum = regDB->lookupEvent(eventName, tile, isMem);
+        // If enum, use enum value directly; otherwise lookup by name
+        std::optional<uint32_t> eventNum;
+        
+        if (auto enumVal = events[i].getEvent().getEnumValue()) {
+          eventNum = static_cast<uint32_t>(*enumVal);
+        } else {
+          eventNum = regDB->lookupEvent(eventName, tile, isMem);
+        }
+
         if (!eventNum) {
           trace.emitWarning("Unknown event: ") << eventName;
           continue;
