@@ -26,25 +26,30 @@ using namespace xilinx::AIE;
 //===----------------------------------------------------------------------===//
 
 std::string TraceEventAttr::getEventName() const {
-  // If it's a string attribute, return the string directly
   if (auto strAttr = llvm::dyn_cast<StringAttr>(getValue())) {
+    // If the string is fully qualified (contains '::'), extract just the name
+    StringRef strValue = strAttr.getValue();
+    size_t pos = strValue.find("::");
+    if (pos != StringRef::npos) {
+      return strValue.substr(pos + 2).str();
+    }
     return strAttr.getValue().str();
   }
 
-  // Check for typed enum attributes and use stringify functions
-  Attribute value = getValue();
-  if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(value)) {
-    return stringifyCoreEventAIE2(coreEvt.getValue()).str();
-  }
-  if (auto memEvt = llvm::dyn_cast<MemEventAIE2Attr>(value)) {
-    return stringifyMemEventAIE2(memEvt.getValue()).str();
-  }
-  if (auto shimEvt = llvm::dyn_cast<ShimTileEventAIE2Attr>(value)) {
-    return stringifyShimTileEventAIE2(shimEvt.getValue()).str();
-  }
-  if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2Attr>(value)) {
-    return stringifyMemTileEventAIE2(memTileEvt.getValue()).str();
-  }
+  // // Check for typed enum attributes and use stringify functions
+  // Attribute value = getValue();
+  // if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(value)) {
+  //   return stringifyCoreEventAIE2(coreEvt.getValue()).str();
+  // }
+  // if (auto memEvt = llvm::dyn_cast<MemEventAIE2Attr>(value)) {
+  //   return stringifyMemEventAIE2(memEvt.getValue()).str();
+  // }
+  // if (auto shimEvt = llvm::dyn_cast<ShimTileEventAIE2Attr>(value)) {
+  //   return stringifyShimTileEventAIE2(shimEvt.getValue()).str();
+  // }
+  // if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2Attr>(value)) {
+  //   return stringifyMemTileEventAIE2(memTileEvt.getValue()).str();
+  // }
 
   // Fallback: shouldn't reach here for well-formed IR
   return "";
@@ -201,93 +206,82 @@ ParseResult xilinx::AIE::parseTraceEvent(AsmParser &parser, Attribute &result) {
     return parser.emitError(parser.getCurrentLocation(),
                             "expected enum case name");
   }
+  // Validate the enum and convert to string to avoid ambiguity between
+  // AIE2 and AIE2P enums which have identical integer values
 
-  // AIE2 event enums
-  if (enumTypeName == "CoreEventAIE2") {
-    auto enumVal = symbolizeCoreEventAIE2(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown CoreEventAIE2 value: ") << caseName;
-    result = CoreEventAIE2Attr::get(ctx, *enumVal);
-    return success();
-  }
-  if (enumTypeName == "MemEventAIE2") {
-    auto enumVal = symbolizeMemEventAIE2(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown MemEventAIE2 value: ") << caseName;
-    result = MemEventAIE2Attr::get(ctx, *enumVal);
-    return success();
-  }
-  if (enumTypeName == "MemTileEventAIE2") {
-    auto enumVal = symbolizeMemTileEventAIE2(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown MemTileEventAIE2 value: ")
-             << caseName;
-    result = MemTileEventAIE2Attr::get(ctx, *enumVal);
-    return success();
-  }
-  if (enumTypeName == "ShimTileEventAIE2") {
-    auto enumVal = symbolizeShimTileEventAIE2(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown ShimTileEventAIE2 value: ")
-             << caseName;
-    result = ShimTileEventAIE2Attr::get(ctx, *enumVal);
-    return success();
-  }
+  // Define a helper struct for enum validation
+  struct EnumValidator {
+    StringRef name;
+    std::function<std::optional<uint32_t>(StringRef)> symbolizer;
+  };
 
-  // AIE event enums
-  if (enumTypeName == "CoreEventAIE") {
-    auto enumVal = symbolizeCoreEventAIE(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown CoreEventAIE value: ") << caseName;
-    result = CoreEventAIEAttr::get(ctx, *enumVal);
-    return success();
-  }
-  if (enumTypeName == "MemEventAIE") {
-    auto enumVal = symbolizeMemEventAIE(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown MemEventAIE value: ") << caseName;
-    result = MemEventAIEAttr::get(ctx, *enumVal);
-    return success();
-  }
-  if (enumTypeName == "ShimTileEventAIE") {
-    auto enumVal = symbolizeShimTileEventAIE(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown ShimTileEventAIE value: ")
-             << caseName;
-    result = ShimTileEventAIEAttr::get(ctx, *enumVal);
-    return success();
-  }
+  // Table of supported enum types and their symbolizer functions
+  static const EnumValidator validators[] = {
+      // AIE2 event enums
+      {"CoreEventAIE2",
+       [](StringRef s) { return symbolizeCoreEventAIE2(s).has_value(); }},
+      {"MemEventAIE2",
+       [](StringRef s) {
+         auto result = symbolizeMemEventAIE2(s);
+         return result.has_value();
+       }},
+      {"MemTileEventAIE2",
+       [](StringRef s) {
+         auto result = symbolizeMemTileEventAIE2(s);
+         return result.has_value();
+       }},
+      {"ShimTileEventAIE2",
+       [](StringRef s) {
+         auto result = symbolizeShimTileEventAIE2(s);
+         return result.has_value();
+       }},
+      // AIE event enums
+      {"CoreEventAIE",
+       [](StringRef s) {
+         auto result = symbolizeCoreEventAIE(s);
+         return result.has_value();
+       }},
+      {"MemEventAIE",
+       [](StringRef s) {
+         auto result = symbolizeMemEventAIE(s);
+         return result.has_value();
+       }},
+      {"ShimTileEventAIE",
+       [](StringRef s) {
+         auto result = symbolizeShimTileEventAIE(s);
+         return result.has_value();
+       }},
+      // AIE2P event enums
+      {"CoreEventAIE2P",
+       [](StringRef s) {
+         auto result = symbolizeCoreEventAIE2P(s);
+         return result.has_value();
+       }},
+      {"MemEventAIE2P",
+       [](StringRef s) {
+         auto result = symbolizeMemEventAIE2P(s);
+         return result.has_value();
+       }},
+      {"MemTileEventAIE2P",
+       [](StringRef s) {
+         auto result = symbolizeMemTileEventAIE2P(s);
+         return result.has_value();
+       }},
+      {"ShimTileEventAIE2P",
+       [](StringRef s) {
+         auto result = symbolizeShimTileEventAIE2P(s);
+         return result.has_value();
+       }},
+  };
 
-  // AIE2P event enums
-  if (enumTypeName == "CoreEventAIE2P") {
-    auto enumVal = symbolizeCoreEventAIE2P(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown CoreEventAIE2P value: ")
-             << caseName;
-    result = CoreEventAIE2PAttr::get(ctx, *enumVal);
-    return success();
-  }
-  if (enumTypeName == "MemEventAIE2P") {
-    auto enumVal = symbolizeMemEventAIE2P(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown MemEventAIE2P value: ") << caseName;
-    result = MemEventAIE2PAttr::get(ctx, *enumVal);
-    return success();
-  }
-  if (enumTypeName == "MemTileEventAIE2P") {
-    auto enumVal = symbolizeMemTileEventAIE2P(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown MemTileEventAIE2P value: ")
-             << caseName;
-    result = MemTileEventAIE2PAttr::get(ctx, *enumVal);
-    return success();
-  }
-  if (enumTypeName == "ShimTileEventAIE2P") {
-    auto enumVal = symbolizeShimTileEventAIE2P(caseName);
-    if (!enumVal)
-      return parser.emitError(loc, "unknown ShimTileEventAIE2P value: ")
-             << caseName;
-    result = ShimTileEventAIE2PAttr::get(ctx, *enumVal);
+  // Look up and validate the enum type
+  for (const auto &validator : validators) {
+    if (enumTypeName != validator.name)
+      continue;
+    if (!validator.symbolizer(caseName))
+      return parser.emitError(loc, "unknown ")
+             << enumTypeName << " value: " << caseName;
+    result = StringAttr::get(ctx, enumTypeName + "::" + caseName);
     return success();
   }
 
@@ -296,42 +290,51 @@ ParseResult xilinx::AIE::parseTraceEvent(AsmParser &parser, Attribute &result) {
 
 void xilinx::AIE::printTraceEventEnum(AsmPrinter &printer, Attribute attr) {
   if (auto strAttr = llvm::dyn_cast<StringAttr>(attr)) {
+    // If string contains "::" (enum format), print without quotes
+    if (strAttr.getValue().contains("::")) {
+      printer << strAttr.getValue();
+      return;
+    }
     printer << "\"" << strAttr.getValue() << "\"";
   }
-  // AIE2 event enums
-  else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(attr)) {
-    printer << "CoreEventAIE2::" << stringifyCoreEventAIE2(coreEvt.getValue());
-  } else if (auto memEvt = llvm::dyn_cast<MemEventAIE2Attr>(attr)) {
-    printer << "MemEventAIE2::" << stringifyMemEventAIE2(memEvt.getValue());
-  } else if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2Attr>(attr)) {
-    printer << "MemTileEventAIE2::"
-            << stringifyMemTileEventAIE2(memTileEvt.getValue());
-  } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIE2Attr>(attr)) {
-    printer << "ShimTileEventAIE2::"
-            << stringifyShimTileEventAIE2(shimTileEvt.getValue());
-  }
-  // AIE event enums
-  else if (auto coreEvt = llvm::dyn_cast<CoreEventAIEAttr>(attr)) {
-    printer << "CoreEventAIE::" << stringifyCoreEventAIE(coreEvt.getValue());
-  } else if (auto memEvt = llvm::dyn_cast<MemEventAIEAttr>(attr)) {
-    printer << "MemEventAIE::" << stringifyMemEventAIE(memEvt.getValue());
-  } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIEAttr>(attr)) {
-    printer << "ShimTileEventAIE::"
-            << stringifyShimTileEventAIE(shimTileEvt.getValue());
-  }
-  // AIE2P event enums
-  else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2PAttr>(attr)) {
-    printer << "CoreEventAIE2P::"
-            << stringifyCoreEventAIE2P(coreEvt.getValue());
-  } else if (auto memEvt = llvm::dyn_cast<MemEventAIE2PAttr>(attr)) {
-    printer << "MemEventAIE2P::" << stringifyMemEventAIE2P(memEvt.getValue());
-  } else if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2PAttr>(attr)) {
-    printer << "MemTileEventAIE2P::"
-            << stringifyMemTileEventAIE2P(memTileEvt.getValue());
-  } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIE2PAttr>(attr)) {
-    printer << "ShimTileEventAIE2P::"
-            << stringifyShimTileEventAIE2P(shimTileEvt.getValue());
-  }
+  // // AIE2 event enums
+  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(attr)) {
+  //   printer << "CoreEventAIE2::" <<
+  //   stringifyCoreEventAIE2(coreEvt.getValue());
+  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIE2Attr>(attr)) {
+  //   printer << "MemEventAIE2::" << stringifyMemEventAIE2(memEvt.getValue());
+  // } else if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2Attr>(attr)) {
+  //   printer << "MemTileEventAIE2::"
+  //           << stringifyMemTileEventAIE2(memTileEvt.getValue());
+  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIE2Attr>(attr))
+  // {
+  //   printer << "ShimTileEventAIE2::"
+  //           << stringifyShimTileEventAIE2(shimTileEvt.getValue());
+  // }
+  // // AIE event enums
+  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIEAttr>(attr)) {
+  //   printer << "CoreEventAIE::" << stringifyCoreEventAIE(coreEvt.getValue());
+  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIEAttr>(attr)) {
+  //   printer << "MemEventAIE::" << stringifyMemEventAIE(memEvt.getValue());
+  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIEAttr>(attr)) {
+  //   printer << "ShimTileEventAIE::"
+  //           << stringifyShimTileEventAIE(shimTileEvt.getValue());
+  // }
+  // // AIE2P event enums
+  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2PAttr>(attr)) {
+  //   printer << "CoreEventAIE2P::"
+  //           << stringifyCoreEventAIE2P(coreEvt.getValue());
+  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIE2PAttr>(attr)) {
+  //   printer << "MemEventAIE2P::" <<
+  //   stringifyMemEventAIE2P(memEvt.getValue());
+  // } else if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2PAttr>(attr)) {
+  //   printer << "MemTileEventAIE2P::"
+  //           << stringifyMemTileEventAIE2P(memTileEvt.getValue());
+  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIE2PAttr>(attr))
+  // {
+  //   printer << "ShimTileEventAIE2P::"
+  //           << stringifyShimTileEventAIE2P(shimTileEvt.getValue());
+  // }
 }
 
 //===----------------------------------------------------------------------===//

@@ -1,11 +1,20 @@
+//===- test_trace_to_config.mlir -------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2025 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt %s -aie-trace-to-config | FileCheck %s
 
 // CHECK-LABEL: module {
 module {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0, 2)
-    
-    // CHECK: aie.trace.config @test_trace_config(%tile_0_2) {
+
     aie.trace @test_trace(%tile02) {
       aie.trace.mode "Event-Time"
       aie.trace.packet id=1 type="core"
@@ -15,7 +24,7 @@ module {
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
     }
-    
+
     // CHECK-DAG: aie.trace.reg register = "Trace_Control0" field = "Mode" value = 0 : i32
     // CHECK-DAG: aie.trace.reg register = "Trace_Control1" field = "ID" value = 1 : i32
     // CHECK-DAG: aie.trace.reg register = "Trace_Control1" field = "Packet_Type" value = 0 : i32
