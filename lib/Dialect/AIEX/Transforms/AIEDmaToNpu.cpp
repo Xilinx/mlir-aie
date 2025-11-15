@@ -284,24 +284,40 @@ public:
       return failure();
     }
 
-    // arg_idx
-    AIE::RuntimeSequenceOp seq_op =
-        op->getParentOfType<AIE::RuntimeSequenceOp>();
+    // arg_idx and offset handling for memref or arg_slice
+    AIEX::RuntimeSequenceOp seq_op =
+        op->getParentOfType<AIEX::RuntimeSequenceOp>();
     if (!seq_op) {
       op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp parent at "
                       "time of lowering.");
       return failure();
     }
+    
+    // Handle both direct block arguments and arg_slice operations
+    mlir::Value rootMemref = memref;
+    int64_t argSliceOffset = 0;
+    
+    if (auto argSliceOp = memref.getDefiningOp<AIEX::ArgSliceOp>()) {
+      // Trace back through arg_slice chain to find root argument and cumulative offset
+      auto [root, cumulativeOffset] = argSliceOp.getRootArgumentAndOffset();
+      rootMemref = root;
+      argSliceOffset = cumulativeOffset;
+    }
+    
+    // Find the argument index of the root memref
     Block &entryBB = seq_op.getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
-      if (entryBB.getArgument(i) == memref) {
+      if (entryBB.getArgument(i) == rootMemref) {
         arg_idx = i;
         break;
       }
     }
     if (arg_idx < 0)
       return failure();
+    
+    // Add the arg_slice offset to the existing offset
+    offset += argSliceOffset;
 
     // bd_id
     bd_id = IntegerAttr::get(i32ty, op.getId());
