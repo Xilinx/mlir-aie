@@ -74,24 +74,38 @@ def TracePacketTypeAttr : I32EnumAttr<"TracePacketType",
 
 def TraceEventAttr : AttrDef<AIE_Dialect, "TraceEvent"> {
   let mnemonic = "trace_event";
-  let summary = "Reference to a trace event by name";
+  let summary = "Reference to a trace event by name or enum";
   
   let description = [{
-    References an event by name. Event code is looked up from the
-    architecture-specific event database (utils/events_database.json).
+    References an event by name string or typed enum. Strings are used for
+    generic references that are resolved during lowering. Enums provide
+    compile-time type checking.
     
     Validated against:
     - Tile type (core events only valid for core tiles, etc.)
     - Architecture (AIE/AIE2/AIE2P/AIE4)
     
-    Examples: INSTR_EVENT_0, LOCK_STALL, PORT_RUNNING_0
+    Examples: 
+      "INSTR_EVENT_0"  // String (resolved during lowering)
+      INSTR_EVENT_0    // Enum (CoreEventAIE2::INSTR_EVENT_0)
   }];
   
   let parameters = (ins
-    StringRefParameter<>:$name
+    "Attribute":$value  // Can be StringAttr, IntegerAttr (for enums), etc.
   );
   
-  let assemblyFormat = "`<` $name `>`";
+  let assemblyFormat = "custom<TraceEventValue>($value)";
+  
+  let extraClassDeclaration = [{
+    // Helper to get event name as string for lookups
+    std::string getEventName() const;
+    
+    // Check if this is a string attribute (needs promotion)
+    bool isStringAttr() const;
+    
+    // Get the underlying enum value if this is an enum
+    std::optional<int64_t> getEnumValue() const;
+  }];
 }
 
 //===----------------------------------------------------------------------===//
