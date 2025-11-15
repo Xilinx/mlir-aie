@@ -160,7 +160,7 @@ def AIEMaterializeBDChains : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> 
   ];
 }
 
-def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "AIE::DeviceOp"> {
+def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "mlir::ModuleOp"> {
   let summary = "Turn `aiex.configure` into configuration primitives and inline `aiex.run` calls";
   let description = [{
     Turns top-level `aiex.configure` into load PDI firmware instructions that set up the requested configuration.
