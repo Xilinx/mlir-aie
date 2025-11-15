@@ -579,6 +579,62 @@ def AIE_RunOp: AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
   }];
 }
 
+def AIE_ArgSliceOp: AIEX_Op<"arg_slice", [
+  Pure,
+  ParentOneOf<["RuntimeSequenceOp", "ConfigureOp"]>
+]>, Results<(outs AnyMemRef:$result)> {
+  let summary = "Create a slice of a runtime sequence argument with an offset";
+  let description = [{
+    The `arg_slice` operation creates a reference to a slice of a runtime sequence argument,
+    or another `arg_slice`, with a specified offset and length.
+    
+    This operation is used to handle cases where runtime sequences are called from other
+    runtime sequences, and their argument indices need to be tracked back to the original
+    firmware call argument indices. It also allows adding offsets to these arguments.
+    
+    The offset and length are specified as multiples of the input memref's element type.
+    
+    The operation verifies that:
+    - The slice (offset + length) does not exceed the size of the input memref
+    - The result memref has the same total number of bytes as the slice length
+    - Element types can differ between input and result as long as the byte sizes match
+    - Both input and result memrefs have static shapes
+    
+    Example:
+    ```mlir
+      // Create a slice from element 4 to 8 (bytes 16-32) of a 4x4xi32 memref
+      // Results in a 2x2xi32 memref (4 elements * 4 bytes = 16 bytes)
+      %slice = aiex.arg_slice %input_arg[4:8] : memref<4x4xi32> -> memref<2x2xi32>
+      
+      // Chain slices together - offsets are relative to the immediate input
+      %slice2 = aiex.arg_slice %slice[0:2] : memref<2x2xi32> -> memref<2xi32>
+    ```
+  }];
+  
+  let arguments = (
+    ins AnyMemRef:$input,
+        I64Attr:$offset,
+        I64Attr:$length
+  );
+  
+  let results = (outs AnyMemRef:$result);
+  
+  let assemblyFormat = [{
+    $input custom<ArgSliceRange>($offset, $length) attr-dict `:` type($input) `->` type($result)
+  }];
+  
+  let extraClassDeclaration = [{
+    // Get the end offset in bytes (converts element offset to bytes)
+    int64_t getEndOffset();
+    
+    // Trace back through the chain of arg_slices to find the original argument
+    // and compute the cumulative offset in bytes
+    std::pair<mlir::Value, int64_t> getRootArgumentAndOffset();
+  }];
+  
+  let hasVerifier = 1;
+}
+
 def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     AttrSizedOperandSegments,
     MyOffsetSizeAndStrideOpInterface

@@ -52,6 +52,43 @@ void AIEXDialect::initialize() {
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
 
+// Custom parser for ArgSliceOp range syntax: [offset:end]
+// Offsets are in element counts (multiples of input element type)
+ParseResult xilinx::AIEX::parseArgSliceRange(AsmParser &parser,
+                                               IntegerAttr &offset,
+                                               IntegerAttr &length) {
+  int64_t offsetValue, endValue;
+  
+  if (parser.parseLSquare() ||
+      parser.parseInteger(offsetValue) ||
+      parser.parseColon() ||
+      parser.parseInteger(endValue) ||
+      parser.parseRSquare())
+    return failure();
+  
+  if (offsetValue < 0) {
+    return parser.emitError(parser.getCurrentLocation(),
+                            "offset must be non-negative");
+  }
+  
+  if (endValue <= offsetValue) {
+    return parser.emitError(parser.getCurrentLocation(),
+                            "end must be greater than offset");
+  }
+  
+  int64_t lengthValue = endValue - offsetValue;
+  offset = parser.getBuilder().getI64IntegerAttr(offsetValue);
+  length = parser.getBuilder().getI64IntegerAttr(lengthValue);
+  return success();
+}
+
+// Custom printer for ArgSliceOp range syntax: [offset:end]
+void xilinx::AIEX::printArgSliceRange(AsmPrinter &printer, Operation *op,
+                                       IntegerAttr offset, IntegerAttr length) {
+  int64_t endValue = offset.getInt() + length.getInt();
+  printer << "[" << offset.getInt() << ":" << endValue << "]";
+}
+
 /* Return the correct values to write to the hardware registers to configure
   strides and wraps given the input user-facing strides and wraps.
 
@@ -984,4 +1021,110 @@ LogicalResult AIEX::RunOp::verify() {
     return success();
   }
   return failure();
+}
+
+//===----------------------------------------------------------------------===//
+// ArgSliceOp
+//===----------------------------------------------------------------------===//
+
+int64_t AIEX::ArgSliceOp::getEndOffset() {
+  // Convert element offset to bytes
+  auto inputType = cast<MemRefType>(getInput().getType());
+  unsigned elemSizeInBits = inputType.getElementType().getIntOrFloatBitWidth();
+  int64_t elemSizeInBytes = elemSizeInBits / 8;
+  
+  int64_t endOffsetInElements = getOffset() + getLength();
+  return endOffsetInElements * elemSizeInBytes;
+}
+
+std::pair<mlir::Value, int64_t> AIEX::ArgSliceOp::getRootArgumentAndOffset() {
+  mlir::Value current = getInput();
+  int64_t cumulativeOffsetInBytes = 0;
+
+  auto currentInputType = cast<MemRefType>(current.getType());
+  unsigned elemSizeInBytes = currentInputType.getElementType().getIntOrFloatBitWidth() / 8;
+  cumulativeOffsetInBytes = getOffset() * elemSizeInBytes;
+
+  // Trace back through the chain of arg_slices
+  while (auto parentSlice = current.getDefiningOp<AIEX::ArgSliceOp>()) {
+    auto parentInputType = cast<MemRefType>(parentSlice.getInput().getType());
+    unsigned parentElemSizeInBytes = parentInputType.getElementType().getIntOrFloatBitWidth() / 8;
+    cumulativeOffsetInBytes += parentSlice.getOffset() * parentElemSizeInBytes;
+    current = parentSlice.getInput();
+  }
+
+  return {current, cumulativeOffsetInBytes};
+}
+
+LogicalResult AIEX::ArgSliceOp::verify() {
+  if (getLength() <= 0) {
+    return emitOpError("length must be positive, got ") << getLength();
+  }
+
+  // Verify that the input is either a block argument or another arg_slice
+  mlir::Value input = getInput();
+  if (!isa<mlir::BlockArgument>(input) &&
+      !input.getDefiningOp<AIEX::ArgSliceOp>()) {
+    return emitOpError(
+        "input must be either a runtime sequence argument or another arg_slice");
+  }
+
+  // If input is a block argument, verify it belongs to a RuntimeSequenceOp
+  if (auto blockArg = dyn_cast<mlir::BlockArgument>(input)) {
+    auto *parentOp = blockArg.getOwner()->getParentOp();
+    if (!isa<AIEX::RuntimeSequenceOp>(parentOp)) {
+      return emitOpError(
+          "input block argument must belong to a RuntimeSequenceOp");
+    }
+  }
+
+  // Verify memref constraints
+  auto inputType = dyn_cast<mlir::MemRefType>(input.getType());
+  auto resultType = dyn_cast<mlir::MemRefType>(getResult().getType());
+  
+  if (!inputType || !resultType) {
+    return emitOpError("input and result must be memref types");
+  }
+
+  // Calculate sizes
+  auto inputElemType = inputType.getElementType();
+  auto resultElemType = resultType.getElementType();
+  
+  int64_t inputElemSizeInBytes = inputElemType.getIntOrFloatBitWidth() / 8;
+  int64_t resultElemSizeInBytes = resultElemType.getIntOrFloatBitWidth() / 8;
+  
+  // Calculate total sizes
+  if (!inputType.hasStaticShape()) {
+    return emitOpError("input memref must have static shape");
+  }
+  if (!resultType.hasStaticShape()) {
+    return emitOpError("result memref must have static shape");
+  }
+  
+  int64_t inputNumElements = inputType.getNumElements();
+  int64_t resultNumElements = resultType.getNumElements();
+  
+  int64_t resultSizeInBytes = resultNumElements * resultElemSizeInBytes;
+  
+  // Note: offset and length are stored as element counts relative to input element type
+  
+  // Verify that slice does not exceed input bounds (in elements)
+  int64_t endOffset = getOffset() + getLength();
+  if (endOffset > inputNumElements) {
+    return emitOpError("slice end (offset + length = ")
+           << endOffset << " elements) exceeds input memref size ("
+           << inputNumElements << " elements)";
+  }
+  
+  // Verify that result size in bytes matches the slice length in bytes
+  // length is in input elements, so convert to bytes
+  int64_t sliceSizeInBytes = getLength() * inputElemSizeInBytes;
+  if (resultSizeInBytes != sliceSizeInBytes) {
+    return emitOpError("result memref size (")
+           << resultSizeInBytes << " bytes) must match slice length ("
+           << sliceSizeInBytes << " bytes = " << getLength() 
+           << " elements * " << inputElemSizeInBytes << " bytes/element)";
+  }
+
+  return success();
 }

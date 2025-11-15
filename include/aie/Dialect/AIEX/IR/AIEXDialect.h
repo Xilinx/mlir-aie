@@ -49,6 +49,13 @@ verifyStridesWraps(mlir::Operation *forOp,
                    llvm::SmallVector<int64_t, 4> hardwareStrides,
                    bool skipTransformationChecks = false);
 
+mlir::ParseResult parseArgSliceRange(mlir::AsmParser &parser,
+                                      mlir::IntegerAttr &offset,
+                                      mlir::IntegerAttr &length);
+
+void printArgSliceRange(mlir::AsmPrinter &printer, mlir::Operation *op,
+                        mlir::IntegerAttr offset, mlir::IntegerAttr length);
+
 } // namespace AIEX
 } // namespace xilinx
 
