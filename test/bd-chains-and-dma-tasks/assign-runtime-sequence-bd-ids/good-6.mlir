@@ -16,7 +16,7 @@ module {
 
     aie.shim_dma_allocation @alloc0 (MM2S, 0, 0, <pkt_type = 0, pkt_id = 2>)
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>) {
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%{{.*}}tile_0_0, MM2S, 0, <pkt_type = 0, pkt_id = 2>)
       %t1 = aiex.dma_configure_task_for @alloc0 {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)

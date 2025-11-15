@@ -18,7 +18,7 @@
 module {
   aie.device(npu2) {
     %12 = aie.tile(1, 2)
-    aiex.runtime_sequence @seq(%buf : memref<1xi32>) {
+    aie.runtime_sequence @seq(%buf : memref<1xi32>) {
         aiex.npu.sync { channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32 }
     }
   }

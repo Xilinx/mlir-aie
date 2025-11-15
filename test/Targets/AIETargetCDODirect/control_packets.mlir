@@ -24,7 +24,7 @@
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
       aiex.control_packet {address = 126976 : ui32, data = array<i32: 2>, opcode = 0 : i32, stream_id = 0 : i32}
       aiex.control_packet {address = 127008 : ui32, data = array<i32: 3, 4, 5, 6>, opcode = 2 : i32, stream_id = 9 : i32}
       aiex.control_packet {address = 1024 : ui32, length = 4 : i32, opcode = 1 : i32, stream_id = 2 : i32}

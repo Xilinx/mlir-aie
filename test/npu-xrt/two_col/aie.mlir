@@ -128,7 +128,7 @@ module {
       }
       aie.end
     } {link_with = "threshold.o"}
-    aiex.runtime_sequence(%in : memref<2048xi32>, %buf : memref<32xi32>, %out : memref<2048xi32>) {
+    aie.runtime_sequence(%in : memref<2048xi32>, %buf : memref<32xi32>, %out : memref<2048xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2048 = arith.constant 2048 : i64

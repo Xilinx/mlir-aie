@@ -13,7 +13,7 @@
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%in : memref<1920x1080xi32>, %buf : memref<32xi32>, %out : memref<1920x1080xi32>) {
+    aie.runtime_sequence(%in : memref<1920x1080xi32>, %buf : memref<32xi32>, %out : memref<1920x1080xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c1920 = arith.constant 1920 : i64
@@ -29,7 +29,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
+    aie.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -49,7 +49,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%in : memref<8388608xi32>, %buf : memref<32xi32>, %out : memref<8388608xi32>) {
+    aie.runtime_sequence(%in : memref<8388608xi32>, %buf : memref<32xi32>, %out : memref<8388608xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -67,7 +67,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi8>) {
+    aie.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -85,7 +85,7 @@ module {
   
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi8>) {
+    aie.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -104,7 +104,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi16>) {
+    aie.runtime_sequence(%a : memref<8xi16>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -125,7 +125,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi8>) {
+    aie.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64  // Stride of 2 i8s = 2 bytes < 4 byte granularity, should not be possible
@@ -141,7 +141,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi8>) {
+    aie.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -160,7 +160,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi8>) {
+    aie.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -179,7 +179,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi16>) {
+    aie.runtime_sequence(%a : memref<8xi16>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c3 = arith.constant 3 : i64
@@ -197,7 +197,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi32>) {
+    aie.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -218,7 +218,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi32>) {
+    aie.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
@@ -238,7 +238,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%a : memref<8xi32>) {
+    aie.runtime_sequence(%a : memref<8xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64

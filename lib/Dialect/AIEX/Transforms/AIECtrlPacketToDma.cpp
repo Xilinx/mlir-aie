@@ -33,7 +33,7 @@ struct AIECtrlPacketInferTilesPass
     const auto &targetModel = device.getTargetModel();
     OpBuilder devBuilder = OpBuilder::atBlockBegin(device.getBody());
 
-    auto sequenceOps = device.getOps<AIEX::RuntimeSequenceOp>();
+    auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
       auto ctrlPktOps = f.getOps<AIEX::NpuControlPacketOp>();
       for (auto ctrlPktOp : ctrlPktOps) {
@@ -64,7 +64,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
       return; // Disable this pass for AIE1; AIE1 support NYI.
 
     SmallVector<Operation *> erased;
-    auto sequenceOps = device.getOps<AIEX::RuntimeSequenceOp>();
+    auto sequenceOps = device.getOps<AIE::RuntimeSequenceOp>();
     for (auto f : sequenceOps) {
 
       auto controlPacketOps = f.getOps<AIEX::NpuControlPacketOp>();
@@ -76,7 +76,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
       IRMapping mapping;
 
       auto newSeq =
-          builder.create<AIEX::RuntimeSequenceOp>(loc, f.getSymNameAttr());
+          builder.create<AIE::RuntimeSequenceOp>(loc, f.getSymNameAttr());
       newSeq.getBody().push_back(new Block);
 
       // Copy the arguments from the old sequence to the new one.

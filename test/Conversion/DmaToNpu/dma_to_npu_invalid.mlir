@@ -12,7 +12,7 @@
 
 module  {
   aie.device(npu1) {
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
       // expected-error@+1 {{couldn't find symbol in parent device}}
       aiex.npu.dma_wait {symbol = @toMem}
     }

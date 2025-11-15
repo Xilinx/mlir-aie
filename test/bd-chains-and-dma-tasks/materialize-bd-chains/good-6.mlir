@@ -21,7 +21,7 @@ module {
             aie.end
     }
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<12xi16>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<12xi16>) {
       %t1 = aiex.dma_start_bd_chain_for @simple_chain(%arg0, %arg1) : (memref<8xi16>, memref<12xi16>)
                                         for @alloc0
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%{{.*}}tile_0_0, MM2S, 0) {

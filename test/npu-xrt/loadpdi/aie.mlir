@@ -34,7 +34,7 @@ module {
             aie.end
         }
 
-        aiex.runtime_sequence @sequence(%a : memref<512xi32>) {
+        aie.runtime_sequence @sequence(%a : memref<512xi32>) {
             
             // The "ID" attribute must match the ID given in "config.json".
             // During compilation, aiebu will package the PDI for this core together with this runtime sequence into a ELF file.

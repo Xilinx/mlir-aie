@@ -19,7 +19,7 @@ module {
       aie.end
     }
 
-    aiex.runtime_sequence(%buf: memref<8xi16>) {
+    aie.runtime_sequence(%buf: memref<8xi16>) {
       // expected-error@+1 {{Argument 1 types mismatch}}
       %t1 = aiex.dma_start_bd_chain @simple_chain(%buf) : (memref<8xi16>) 
                                     on (%tile_0_0, MM2S, 0) 

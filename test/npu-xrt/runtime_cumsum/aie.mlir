@@ -89,7 +89,7 @@ module {
             aie.end
         } {link_with = "sum.o"}
 
-        aiex.runtime_sequence @sequence(%xy: memref<128xi32>) {
+        aie.runtime_sequence @sequence(%xy: memref<128xi32>) {
             aiex.npu.rtp_write(@rtp2, 0, 1)
             // read first row and write to second row
             aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>

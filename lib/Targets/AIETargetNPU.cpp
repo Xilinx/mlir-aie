@@ -228,9 +228,9 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   words[0] = (numRows << 24) | (devGen << 16) | (minor << 8) | major;
   words[1] = (numMemTileRows << 8) | numCols;
 
-  AIEX::RuntimeSequenceOp seq =
-      AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
-                                                           sequenceName);
+  AIE::RuntimeSequenceOp seq =
+      AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                          sequenceName);
   if (!seq) {
     return failure();
   }
@@ -283,9 +283,9 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     return failure();
   }
   OpBuilder builder = OpBuilder::atBlockBegin(deviceOp.getBody());
-  AIEX::RuntimeSequenceOp seq =
-      AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
-                                                           sequenceName);
+  AIE::RuntimeSequenceOp seq =
+      AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                          sequenceName);
   if (!seq) {
     return failure();
   }

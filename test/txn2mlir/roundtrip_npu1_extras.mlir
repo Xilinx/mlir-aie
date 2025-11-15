@@ -22,7 +22,7 @@
 module {
   aie.device(npu1_1col) {
     memref.global "private" constant @blockwrite_data : memref<2xi32> = dense<[1, 2]>
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
       aiex.npu.sync {column = 0 : i32, row = 0 : i32, direction = 1 : i32, channel = 2 : i32, column_num = 1 : i32, row_num = 1 : i32}
       aiex.npu.load_pdi {id = 7 : i32, size = 4096 : i32, address = 305419896 : ui64}
       aiex.npu.address_patch {addr = 123456 : ui32, arg_idx = 3 : i32, arg_plus = 4 : i32}

@@ -33,7 +33,7 @@ module @test_simple_lock_set {
     aie.shim_dma_allocation @in0(S2MM, 0, 0)
     aie.shim_dma_allocation @out0(MM2S, 0, 0)
 
-    aiex.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
+    aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
         // Set some runtime parameters before starting execution
 
         // 126976 = 0x0001F000 (lock 0 address in a compute tile's local address space)

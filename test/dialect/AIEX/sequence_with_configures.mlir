@@ -13,13 +13,13 @@
 
 module {
     aie.device(npu1) @dev_a {
-        aiex.runtime_sequence @run_a (%x: memref<1xi32>) {
+        aie.runtime_sequence @run_a (%x: memref<1xi32>) {
         }
-        aiex.runtime_sequence @run_b () {
+        aie.runtime_sequence @run_b () {
         }
     }
     aie.device(npu1) { // main
-        aiex.runtime_sequence (%x : memref<1xi32>) {
+        aie.runtime_sequence (%x : memref<1xi32>) {
             aiex.configure @dev_a {
                 aiex.run @run_a (%x) : (memref<1xi32>)
             }

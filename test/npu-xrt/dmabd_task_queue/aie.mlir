@@ -180,7 +180,7 @@ module {
     aie.shim_dma_allocation @airMemcpyId12(S2MM, 0, 2)
     aie.shim_dma_allocation @airMemcpyId4(MM2S, 0, 0)
     aie.shim_dma_allocation @airMemcpyId5(MM2S, 0, 1)
-    aiex.runtime_sequence @six(%arg0: memref<5xi32>, %arg1: memref<96xi32>, %arg2: memref<96xi32>, %arg3: memref<9xi32>) {
+    aie.runtime_sequence @six(%arg0: memref<5xi32>, %arg1: memref<96xi32>, %arg2: memref<96xi32>, %arg3: memref<9xi32>) {
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 5][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<5xi32>
       aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<96xi32>
       aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId5} : memref<96xi32>

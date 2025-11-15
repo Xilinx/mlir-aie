@@ -16,7 +16,7 @@
 // CHECK: aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
 
 aie.device(npu1_1col) {
-  aiex.runtime_sequence(%arg0: memref<2048xi32>) {
+  aie.runtime_sequence(%arg0: memref<2048xi32>) {
     aiex.control_packet {address = 126976 : ui32, data = array<i32: 1024>, opcode = 0 : i32, stream_id = 0 : i32}
   }
 }
@@ -27,7 +27,7 @@ aie.device(npu1_1col) {
 // CHECK: aie.tile(0, 2) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 27>}
 
 aie.device(npu1_1col) {
-  aiex.runtime_sequence(%arg0: memref<2048xi32>) {
+  aie.runtime_sequence(%arg0: memref<2048xi32>) {
     aiex.control_packet {address = 2301952 : ui32, data = array<i32: 0>, opcode = 0 : i32, stream_id = 0 : i32}
   }
 }

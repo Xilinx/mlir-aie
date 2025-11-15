@@ -278,8 +278,8 @@ public:
     }
 
     // arg_idx
-    AIEX::RuntimeSequenceOp seq_op =
-        op->getParentOfType<AIEX::RuntimeSequenceOp>();
+    AIE::RuntimeSequenceOp seq_op =
+        op->getParentOfType<AIE::RuntimeSequenceOp>();
     if (!seq_op) {
       op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp parent at "
                       "time of lowering.");
@@ -602,8 +602,7 @@ public:
     memref::GlobalOp global = nullptr;
     {
       OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPoint(
-          op->getParentOfType<AIEX::RuntimeSequenceOp>());
+      rewriter.setInsertionPoint(op->getParentOfType<AIE::RuntimeSequenceOp>());
       global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words);
     }
     auto memref = rewriter.create<memref::GetGlobalOp>(

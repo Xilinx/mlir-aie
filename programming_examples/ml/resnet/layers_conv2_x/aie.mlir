@@ -880,7 +880,7 @@ aie.device(npu1_3col) {
     } { link_with="conv2dk1_skip.o" }
 
 
-  aiex.runtime_sequence(%in0 : memref<16384xi32>, %wts0 : memref<53248xi32>, %out : memref<65536xi32>) {
+  aie.runtime_sequence(%in0 : memref<16384xi32>, %wts0 : memref<53248xi32>, %out : memref<65536xi32>) {
                   // Trace output
 
       // Trace_Event0, Trace_Event1: Select which events to trace.

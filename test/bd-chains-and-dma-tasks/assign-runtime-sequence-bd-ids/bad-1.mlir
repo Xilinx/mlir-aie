@@ -18,7 +18,7 @@ module {
       aie.end
     }
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<12xi16>, %arg2: memref<8xi16>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<12xi16>, %arg2: memref<8xi16>) {
       // expected-note@+1 {{Lower this operation first using the --aie-materialize-bd-chains pass}}
       %t1 = aiex.dma_start_bd_chain @simple_chain(%arg0, %arg1, %arg2) : (memref<8xi16>, memref<12xi16>, memref<8xi16>)  
                                     on (%tile_0_0, MM2S, 0) 

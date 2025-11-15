@@ -47,7 +47,7 @@ module {
       aie.packet_source<%tile_0_2, Trace : 1>
       aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>
     } {keep_pkt_header = true}
-    aiex.runtime_sequence @sequence(%arg0: memref<4096xi16>, %arg1: memref<1xi32>, %arg2: memref<4096xi16>) {
+    aie.runtime_sequence @sequence(%arg0: memref<4096xi16>, %arg1: memref<1xi32>, %arg2: memref<4096xi16>) {
       aiex.npu.write32 {address = 213200 : ui32, column = 0 : i32, row = 2 : i32, value = 2038038528 : ui32}
       aiex.npu.write32 {address = 213204 : ui32, column = 0 : i32, row = 2 : i32, value = 1 : ui32}
       aiex.npu.write32 {address = 213216 : ui32, column = 0 : i32, row = 2 : i32, value = 1260724762 : ui32}
