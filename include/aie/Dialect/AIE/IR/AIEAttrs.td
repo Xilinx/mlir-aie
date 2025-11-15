@@ -211,7 +211,7 @@ def InitValuesArrayAttr
 // Generated AIE event enumerations
 //===----------------------------------------------------------------------===//
 
-include "aie/Dialect/AIE/IR/AIEEvents.td.inc"
+include "aie/Dialect/AIE/IR/AIEEventsAIE.td.inc"
 include "aie/Dialect/AIE/IR/AIEEventsAIE2.td.inc"
 include "aie/Dialect/AIE/IR/AIEEventsAIE2P.td.inc"
 
