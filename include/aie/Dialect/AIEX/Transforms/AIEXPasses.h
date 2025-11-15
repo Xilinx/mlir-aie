@@ -33,6 +33,8 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEMaterializeBDChainsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEMaterializeRuntimeSequencesPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEAssignRuntimeSequenceBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDMATasksToNPUPass();

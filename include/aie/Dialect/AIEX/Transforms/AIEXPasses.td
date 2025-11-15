@@ -160,6 +160,23 @@ def AIEMaterializeBDChains : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> 
   ];
 }
 
+def AIEMaterializeRuntimeSequences : Pass<"aie-materialize-runtime-sequences", "AIE::DeviceOp"> {
+  let summary = "Turn `aiex.configure` into configuration primitives and inline `aiex.run` calls";
+  let description = [{
+    Turns top-level `aiex.configure` into load PDI firmware instructions that set up the requested configuration.
+
+    Inlines calls to other runtime sequences using `aiex.run` into the calling runtime sequence, resolving references within them to the device containing the definition.
+
+    This pass requires ObjectFIFOs to be lowered first; apply the ObjectFIFO stateful transform before applying this pass.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "AIE::DeviceOp"> {
   let summary = "Assign IDs to Buffer Descriptors Configured in the Runtime Sequence";
 
