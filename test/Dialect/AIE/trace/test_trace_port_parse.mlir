@@ -18,10 +18,10 @@ module {
       // CHECK: aie.trace.port<2> port = South channel = 2 direction = S2MM
       aie.trace.port<2> port=South channel=2 direction=S2MM
       
-      // CHECK: aie.trace.event <PORT_RUNNING_0>
+      // CHECK: aie.trace.event<"PORT_RUNNING_0">
       aie.trace.event<"PORT_RUNNING_0">
-      
-      // CHECK: aie.trace.event <PORT_IDLE_1>
+
+      // CHECK: aie.trace.event<"PORT_IDLE_1">
       aie.trace.event<"PORT_IDLE_1">
     }
   }
