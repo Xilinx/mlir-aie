@@ -63,6 +63,15 @@ std::optional<int64_t> TraceEventAttr::getEnumValue() const {
   if (auto intAttr = llvm::dyn_cast<IntegerAttr>(getValue())) {
     return intAttr.getInt();
   }
+  if (auto strAttr = llvm::dyn_cast<StringAttr>(getValue())) {
+    // If the string is fully qualified (contains '::'), extract just the name
+    StringRef strValue = strAttr.getValue();
+    size_t pos = strValue.find("::");
+    if (pos != StringRef::npos) {
+      return strValue.substr(pos + 2).str();
+    }
+    return strAttr.getValue().str();
+  }
   return std::nullopt;
 }
 
