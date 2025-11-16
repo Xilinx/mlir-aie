@@ -124,7 +124,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           configBuilder.create<TraceRegOp>(
               comboOp.getLoc(), builder.getStringAttr("Combo_event_inputs"),
               builder.getStringAttr(eventAField),
-              builder.getI32IntegerAttr(*eventANum),
+              comboOp.getEventA(),
               /*mask=*/nullptr,
               builder.getStringAttr("combo" + std::to_string(slot) +
                                     " eventA"));
@@ -132,7 +132,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           configBuilder.create<TraceRegOp>(
               comboOp.getLoc(), builder.getStringAttr("Combo_event_inputs"),
               builder.getStringAttr(eventBField),
-              builder.getI32IntegerAttr(*eventBNum),
+              comboOp.getEventB(),
               /*mask=*/nullptr,
               builder.getStringAttr("combo" + std::to_string(slot) +
                                     " eventB"));
@@ -184,7 +184,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
               edgeOp.getLoc(),
               builder.getStringAttr("Edge_Detection_event_control"),
               builder.getStringAttr(eventField),
-              builder.getI32IntegerAttr(*eventNum),
+              builder.getStringAttr(eventName),
               /*mask=*/nullptr,
               builder.getStringAttr("edge" + std::to_string(slot) +
                                     " source"));
@@ -381,9 +381,9 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
         configBuilder.create<TraceRegOp>(
             trace.getLoc(), builder.getStringAttr(registerName),
             builder.getStringAttr(fieldName),
-            builder.getI32IntegerAttr(*eventNum),
+            events[i].getEvent(), //builder.getI32IntegerAttr(*eventNum),
             /*mask=*/nullptr,
-            builder.getStringAttr("event slot " + std::to_string(i)));
+            builder.getStringAttr(eventName));
       }
 
       // Add terminator
