@@ -14,7 +14,7 @@ There are several options that exist to configure the IRON Python programming en
 
 ## Default IRON Tensor Class
 
-This is a variable that controls the types of [```iron.Tensor```s](../python/iron/hostruntime/tensor.py) that are produced by the utility functions ```tensor```, ```ones```, etc. Right now there are two tensor implementations: [```CPUOnlyTensor```](../python/iron/hostruntime/tensor.py) and [```XRTTensor```](../python/iron/hostruntime/xrtruntime/tensor.py).
+This is a variable that controls the types of [```iron.Tensor```](../python/iron/hostruntime/tensor.py)s that are produced by the utility functions ```tensor```, ```ones```, etc. Right now there are two tensor implementations: [```CPUOnlyTensor```](../python/iron/hostruntime/tensor.py) and [```XRTTensor```](../python/iron/hostruntime/xrtruntime/tensor.py).
 
 By default, if ```pyxrt``` is available, the ```DEFAULT_IRON_TENSOR_CLASS``` is set to ```XRTTensor```. However, you can also manually set this value through the ```set_iron_tensor_class()```, e.g.:
 ```python
