@@ -52,7 +52,7 @@ std::string TraceEventAttr::getEventName() const {
   // }
 
   // Fallback: shouldn't reach here for well-formed IR
-  return "";
+  return "42";
 }
 
 bool TraceEventAttr::isStringAttr() const {
@@ -63,15 +63,7 @@ std::optional<int64_t> TraceEventAttr::getEnumValue() const {
   if (auto intAttr = llvm::dyn_cast<IntegerAttr>(getValue())) {
     return intAttr.getInt();
   }
-  if (auto strAttr = llvm::dyn_cast<StringAttr>(getValue())) {
-    // If the string is fully qualified (contains '::'), extract just the name
-    StringRef strValue = strAttr.getValue();
-    size_t pos = strValue.find("::");
-    if (pos != StringRef::npos) {
-      return strValue.substr(pos + 2).str();
-    }
-    return strAttr.getValue().str();
-  }
+  // String values don't have enum values - they're event names
   return std::nullopt;
 }
 
@@ -298,6 +290,10 @@ ParseResult xilinx::AIE::parseTraceEvent(AsmParser &parser, Attribute &result) {
 }
 
 void xilinx::AIE::printTraceEventEnum(AsmPrinter &printer, Attribute attr) {
+  if (auto traceAttr = llvm::dyn_cast<TraceEventAttr>(attr)) {
+    printTraceEventEnum(printer, traceAttr.getValue());
+    return;
+  }
   if (auto strAttr = llvm::dyn_cast<StringAttr>(attr)) {
     // If string contains "::" (enum format), print without quotes
     if (strAttr.getValue().contains("::")) {
@@ -305,6 +301,10 @@ void xilinx::AIE::printTraceEventEnum(AsmPrinter &printer, Attribute attr) {
       return;
     }
     printer << "\"" << strAttr.getValue() << "\"";
+  }
+  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
+    printer << intAttr.getInt();
+    return;
   }
   // // AIE2 event enums
   // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(attr)) {
@@ -487,46 +487,47 @@ LogicalResult TraceStopEventOp::verify() {
   return success();
 }
 
-void TraceEventOp::print(OpAsmPrinter &p) {
-  p << "<";
-  printTraceEventEnum(p, getEvent().getValue());
-  p << ">";
-  if (auto label = getLabel()) {
-    p << " label = " << label;
-  }
-  p.printOptionalAttrDict((*this)->getAttrs(),
-                          /*elidedAttrs=*/{"event", "label"});
-}
+// void TraceEventOp::print(OpAsmPrinter &p) {
+//   p << "<";
+//   printTraceEventEnum(p, getEvent().getValue());
+//   p << ">";
+//   if (auto label = getLabel()) {
+//     p << " label = " << label;
+//   }
+//   p.printOptionalAttrDict((*this)->getAttrs(),
+//                           /*elidedAttrs=*/{"event", "label"});
+// }
 
-ParseResult TraceEventOp::parse(OpAsmParser &parser, OperationState &result) {
-  Attribute innerValue;
+// ParseResult TraceEventOp::parse(OpAsmParser &parser, OperationState &result)
+// {
+//   Attribute innerValue;
 
-  if (parser.parseLess())
-    return failure();
+//   if (parser.parseLess())
+//     return failure();
 
-  if (failed(parseTraceEvent(parser, innerValue)))
-    return failure();
+//   if (failed(parseTraceEvent(parser, innerValue)))
+//     return failure();
 
-  // Wrap in TraceEventAttr
-  auto traceEvent = TraceEventAttr::get(parser.getContext(), innerValue);
-  result.attributes.set("event", traceEvent);
+//   // Wrap in TraceEventAttr
+//   auto traceEvent = TraceEventAttr::get(parser.getContext(), innerValue);
+//   result.attributes.set("event", traceEvent);
 
-  if (parser.parseGreater())
-    return failure();
+//   if (parser.parseGreater())
+//     return failure();
 
-  // Parse optional label
-  if (succeeded(parser.parseOptionalKeyword("label"))) {
-    StringAttr label;
-    if (parser.parseEqual() ||
-        parser.parseAttribute(label, "label", result.attributes))
-      return failure();
-  }
+//   // Parse optional label
+//   if (succeeded(parser.parseOptionalKeyword("label"))) {
+//     StringAttr label;
+//     if (parser.parseEqual() ||
+//         parser.parseAttribute(label, "label", result.attributes))
+//       return failure();
+//   }
 
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return failure();
+//   if (parser.parseOptionalAttrDict(result.attributes))
+//     return failure();
 
-  return success();
-}
+//   return success();
+// }
 
 //===----------------------------------------------------------------------===//
 // TraceStartEventOp and TraceStopEventOp
@@ -690,73 +691,73 @@ LogicalResult TraceComboEventOp::verify() {
   return success();
 }
 
-void TraceComboEventOp::print(OpAsmPrinter &p) {
-  auto printEvent = [&](TraceEventAttr evt) {
-    printTraceEventEnum(p, evt.getValue());
-  };
+// void TraceComboEventOp::print(OpAsmPrinter &p) {
+//   auto printEvent = [&](TraceEventAttr evt) {
+//     printTraceEventEnum(p, evt.getValue());
+//   };
 
-  p << "<" << getSlot() << "> <";
-  printEvent(getEventA());
-  p << "> " << getLogic() << " <";
-  printEvent(getEventB());
-  p << ">";
-  p.printOptionalAttrDict(
-      (*this)->getAttrs(),
-      /*elidedAttrs=*/{"slot", "eventA", "logic", "eventB"});
-}
+//   p << "<" << getSlot() << "> <";
+//   printEvent(getEventA());
+//   p << "> " << getLogic() << " <";
+//   printEvent(getEventB());
+//   p << ">";
+//   p.printOptionalAttrDict(
+//       (*this)->getAttrs(),
+//       /*elidedAttrs=*/{"slot", "eventA", "logic", "eventB"});
+// }
 
-ParseResult TraceComboEventOp::parse(OpAsmParser &parser,
-                                     OperationState &result) {
-  IntegerAttr slot;
-  Attribute eventAValue, eventBValue;
-  ComboLogicAttr logic;
+// ParseResult TraceComboEventOp::parse(OpAsmParser &parser,
+//                                      OperationState &result) {
+//   IntegerAttr slot;
+//   Attribute eventAValue, eventBValue;
+//   ComboLogicAttr logic;
 
-  if (parser.parseLess() ||
-      parser.parseAttribute(slot, parser.getBuilder().getI32Type(), "slot",
-                            result.attributes) ||
-      parser.parseGreater() || parser.parseLess())
-    return failure();
+//   if (parser.parseLess() ||
+//       parser.parseAttribute(slot, parser.getBuilder().getI32Type(), "slot",
+//                             result.attributes) ||
+//       parser.parseGreater() || parser.parseLess())
+//     return failure();
 
-  if (failed(parseTraceEvent(parser, eventAValue)))
-    return failure();
+//   if (failed(parseTraceEvent(parser, eventAValue)))
+//     return failure();
 
-  auto eventA = TraceEventAttr::get(parser.getContext(), eventAValue);
-  result.attributes.set("eventA", eventA);
+//   auto eventA = TraceEventAttr::get(parser.getContext(), eventAValue);
+//   result.attributes.set("eventA", eventA);
 
-  if (parser.parseGreater())
-    return failure();
+//   if (parser.parseGreater())
+//     return failure();
 
-  // Parse logic as keyword (AND, OR, etc.)
-  StringRef logicStr;
-  if (failed(parser.parseKeyword(&logicStr)))
-    return failure();
+//   // Parse logic as keyword (AND, OR, etc.)
+//   StringRef logicStr;
+//   if (failed(parser.parseKeyword(&logicStr)))
+//     return failure();
 
-  auto logicEnum = symbolizeComboLogic(logicStr);
-  if (!logicEnum) {
-    return parser.emitError(parser.getCurrentLocation(),
-                            "unknown combo logic: ")
-           << logicStr;
-  }
-  logic = ComboLogicAttr::get(parser.getContext(), *logicEnum);
-  result.attributes.set("logic", logic);
+//   auto logicEnum = symbolizeComboLogic(logicStr);
+//   if (!logicEnum) {
+//     return parser.emitError(parser.getCurrentLocation(),
+//                             "unknown combo logic: ")
+//            << logicStr;
+//   }
+//   logic = ComboLogicAttr::get(parser.getContext(), *logicEnum);
+//   result.attributes.set("logic", logic);
 
-  if (parser.parseLess())
-    return failure();
+//   if (parser.parseLess())
+//     return failure();
 
-  if (failed(parseTraceEvent(parser, eventBValue)))
-    return failure();
+//   if (failed(parseTraceEvent(parser, eventBValue)))
+//     return failure();
 
-  auto eventB = TraceEventAttr::get(parser.getContext(), eventBValue);
-  result.attributes.set("eventB", eventB);
+//   auto eventB = TraceEventAttr::get(parser.getContext(), eventBValue);
+//   result.attributes.set("eventB", eventB);
 
-  if (parser.parseGreater())
-    return failure();
+//   if (parser.parseGreater())
+//     return failure();
 
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return failure();
+//   if (parser.parseOptionalAttrDict(result.attributes))
+//     return failure();
 
-  return success();
-}
+//   return success();
+// }
 
 //===----------------------------------------------------------------------===//
 // TraceEdgeEventOp

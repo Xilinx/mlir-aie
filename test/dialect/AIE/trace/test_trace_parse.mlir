@@ -25,13 +25,13 @@ module {
       // CHECK: aie.trace.packet id = 1 type = core
       aie.trace.packet id=1 type="core"
       
-      // CHECK: aie.trace.event<"INSTR_EVENT_0">
+      // CHECK: aie.trace.event <"INSTR_EVENT_0">
       aie.trace.event<"INSTR_EVENT_0">
       
-      // CHECK: aie.trace.event<"INSTR_VECTOR"> label = vector_op
+      // CHECK: aie.trace.event <"INSTR_VECTOR"> label = "vector_op"
       aie.trace.event<"INSTR_VECTOR"> label="vector_op"
       
-      // CHECK: aie.trace.event<"LOCK_STALL">
+      // CHECK: aie.trace.event <"LOCK_STALL">
       aie.trace.event<"LOCK_STALL">
       
       // CHECK: aie.trace.start broadcast = 15
