@@ -92,7 +92,7 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb6)
     ^bb1:  // 2 preds: ^bb0, ^bb3
       aie.use_lock(%out_cons_lock_2, AcquireGreaterEqual, 1)
-      aie.dma_bd(%out_buff_0 : memref<24xi32>, 0, 0, [<size = 8, stride = 1>, <size = 3, stride = 8>])
+      aie.dma_bd(%out_buff_0 : memref<24xi32>, 0, 24, [<size = 8, stride = 1>, <size = 3, stride = 8>])
       aie.use_lock(%out_prod_lock_2, Release, 1)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
@@ -102,20 +102,9 @@ module {
       aie.next_bd ^bb3
     ^bb3:  // pred: ^bb2
       aie.use_lock(%out_cons_lock_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%out_buff_0 : memref<24xi32>, 0, 24, [<size = 8, stride = 1>, <size = 3, stride = 8>])
+      aie.dma_bd(%out_buff_0 : memref<24xi32>, 0, 0, [<size = 8, stride = 1>, <size = 3, stride = 8>])
       aie.use_lock(%out_prod_lock_0, Release, 1)
       aie.next_bd ^bb1
-
-    // ^bb1:  // 2 preds: ^bb0, ^bb1
-    //   aie.use_lock(%out_cons_lock_0, AcquireGreaterEqual, 1)
-    //   aie.use_lock(%out_cons_lock_1, AcquireGreaterEqual, 1)
-    //   aie.use_lock(%out_cons_lock_2, AcquireGreaterEqual, 1)
-    //   aie.dma_bd(%out_buff_0 : memref<24xi32>, 0, 24, [<size = 8, stride = 1>, <size = 3, stride = 8>]) {bd_id = 0 : i32, next_bd_id = 0 : i32}
-    //   aie.use_lock(%out_prod_lock_0, Release, 1)
-    //   aie.use_lock(%out_prod_lock_1, Release, 1)
-    //   aie.use_lock(%out_prod_lock_2, Release, 1)
-    //   aie.next_bd ^bb1
-
     ^bb6:  // pred: ^bb0
       %1 = aie.dma_start(S2MM, 0, ^bb7, ^bb8)
     ^bb7:  // 2 preds: ^bb6, ^bb7

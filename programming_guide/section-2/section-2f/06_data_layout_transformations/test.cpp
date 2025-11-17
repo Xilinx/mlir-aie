@@ -117,13 +117,17 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
-    uint32_t ref = i % 3 + 1;
+    uint32_t ref = -1;
+    if (i < OUT_SIZE / 2)
+      ref = i % 3 + 1;
+    else
+      ref = i % 3 + 2;
     if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
+      std::cout << "Error in output " << i << ": " << *(bufOut + i) << " != " << ref
                 << std::endl;
       errors++;
     } else {
-      std::cout << "Correct output " << *(bufOut + i) << " == " << ref
+      std::cout << "Correct output " << i << ": " << *(bufOut + i) << " == " << ref
                 << std::endl;
     }
   }
