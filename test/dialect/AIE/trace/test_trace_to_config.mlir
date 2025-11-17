@@ -25,11 +25,11 @@ module {
       aie.trace.stop broadcast=14
     }
 
-    // CHECK-DAG: aie.trace.reg register = "Trace_Control0" field = "Mode" value = 0 : i32
-    // CHECK-DAG: aie.trace.reg register = "Trace_Control1" field = "ID" value = 1 : i32
-    // CHECK-DAG: aie.trace.reg register = "Trace_Control1" field = "Packet_Type" value = 0 : i32
-    // CHECK-DAG: aie.trace.reg register = "Trace_Control0" field = "Trace_Start_Event" value = 15 : i32
-    // CHECK-DAG: aie.trace.reg register = "Trace_Control0" field = "Trace_Stop_Event" value = 14 : i32
+    // CHECK-DAG: aie.trace.reg register = "Trace_Control0" field = "Mode" value = 0
+    // CHECK-DAG: aie.trace.reg register = "Trace_Control1" field = "ID" value = 1
+    // CHECK-DAG: aie.trace.reg register = "Trace_Control1" field = "Packet_Type" value = 0
+    // CHECK-DAG: aie.trace.reg register = "Trace_Control0" field = "Trace_Start_Event" value = 15
+    // CHECK-DAG: aie.trace.reg register = "Trace_Control0" field = "Trace_Stop_Event" value = 14
     // CHECK-DAG: aie.trace.reg register = "Trace_Event0" field = "Trace_Event0" value = "INSTR_EVENT_0"
     // CHECK-DAG: aie.trace.reg register = "Trace_Event0" field = "Trace_Event1" value = "INSTR_VECTOR"
     // CHECK-DAG: aie.trace.reg register = "Trace_Event0" field = "Trace_Event2" value = "LOCK_STALL"
