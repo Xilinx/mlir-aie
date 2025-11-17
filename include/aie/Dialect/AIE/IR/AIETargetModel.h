@@ -21,7 +21,7 @@
 
 namespace xilinx::AIE {
 
-// Forward declarations  
+// Forward declarations
 class TileOp;
 
 using TileID = struct TileID {

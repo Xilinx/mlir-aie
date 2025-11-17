@@ -86,12 +86,12 @@ def TraceEventAttr : AttrDef<AIE_Dialect, "TraceEvent"> {
     - Architecture (AIE/AIE2/AIE2P/AIE4)
 
     Examples:
-      "INSTR_EVENT_0"  // String (resolved during lowering)
-      INSTR_EVENT_0    // Enum (CoreEventAIE2::INSTR_EVENT_0)
+      "INSTR_EVENT_0"                // String (resolved during lowering)
+      CoreEventAIE2::INSTR_EVENT_0   // Enum
   }];
 
   let parameters = (ins
-    "Attribute":$value  // Can be StringAttr, IntegerAttr (for enums), etc.
+    "Attribute":$value
   );
 
   let assemblyFormat = "`<` custom<TraceEventValue>($value) `>`";

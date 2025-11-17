@@ -173,8 +173,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           configBuilder.create<TraceRegOp>(
               edgeOp.getLoc(),
               builder.getStringAttr("Edge_Detection_event_control"),
-              builder.getStringAttr(eventField),
-              builder.getStringAttr(eventName),
+              builder.getStringAttr(eventField), edgeOp.getEvent(),
               /*mask=*/nullptr,
               builder.getStringAttr("edge" + std::to_string(slot) + " source"));
 
