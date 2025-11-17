@@ -54,7 +54,8 @@ fi
 
 XRTSMI=`which xrt-smi`
 if ! test -f "$XRTSMI"; then
-  source /opt/xilinx/xrt/setup.sh
+    echo "xrt-smi not found. Is XRT installed?"
+    return 1
 fi
 NPU=`xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
 NPU="${NPU:-$(/mnt/c/Windows/System32/AMD/xrt-smi.exe examine 2>/dev/null | tr -d '\r' | grep -E 'NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]' || true)}"
