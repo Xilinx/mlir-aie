@@ -36,9 +36,11 @@ module {
         %c0_0 = arith.constant 0 : index
         %c8 = arith.constant 8 : index
         %c1_1 = arith.constant 1 : index
+        %c1_i32 = arith.constant 1 : i32
+        %index = arith.index_cast %arg0 : index to i32
+        %val = arith.addi %c1_i32, %index : i32
         scf.for %arg1 = %c0_0 to %c8 step %c1_1 {
-          %c1_i32 = arith.constant 1 : i32
-          memref.store %c1_i32, %out0_buff_0[%arg1] : memref<8xi32>
+          memref.store %val, %out0_buff_0[%arg1] : memref<8xi32>
         }
         aie.use_lock(%out0_cons_lock_0, Release, 1)
       }
@@ -53,9 +55,11 @@ module {
         %c0_0 = arith.constant 0 : index
         %c8 = arith.constant 8 : index
         %c1_1 = arith.constant 1 : index
+        %c2_i32 = arith.constant 2 : i32
+        %index = arith.index_cast %arg0 : index to i32
+        %val = arith.addi %c2_i32, %index : i32
         scf.for %arg1 = %c0_0 to %c8 step %c1_1 {
-          %c2_i32 = arith.constant 2 : i32
-          memref.store %c2_i32, %out1_buff_0[%arg1] : memref<8xi32>
+          memref.store %val, %out1_buff_0[%arg1] : memref<8xi32>
         }
         aie.use_lock(%out1_cons_lock_0, Release, 1)
       }
@@ -70,9 +74,11 @@ module {
         %c0_0 = arith.constant 0 : index
         %c8 = arith.constant 8 : index
         %c1_1 = arith.constant 1 : index
+        %c3_i32 = arith.constant 3 : i32
+        %index = arith.index_cast %arg0 : index to i32
+        %val = arith.addi %c3_i32, %index : i32
         scf.for %arg1 = %c0_0 to %c8 step %c1_1 {
-          %c3_i32 = arith.constant 3 : i32
-          memref.store %c3_i32, %out2_buff_0[%arg1] : memref<8xi32>
+          memref.store %val, %out2_buff_0[%arg1] : memref<8xi32>
         }
         aie.use_lock(%out2_cons_lock_0, Release, 1)
       }
@@ -99,6 +105,17 @@ module {
       aie.dma_bd(%out_buff_0 : memref<24xi32>, 0, 24, [<size = 8, stride = 1>, <size = 3, stride = 8>])
       aie.use_lock(%out_prod_lock_0, Release, 1)
       aie.next_bd ^bb1
+
+    // ^bb1:  // 2 preds: ^bb0, ^bb1
+    //   aie.use_lock(%out_cons_lock_0, AcquireGreaterEqual, 1)
+    //   aie.use_lock(%out_cons_lock_1, AcquireGreaterEqual, 1)
+    //   aie.use_lock(%out_cons_lock_2, AcquireGreaterEqual, 1)
+    //   aie.dma_bd(%out_buff_0 : memref<24xi32>, 0, 24, [<size = 8, stride = 1>, <size = 3, stride = 8>]) {bd_id = 0 : i32, next_bd_id = 0 : i32}
+    //   aie.use_lock(%out_prod_lock_0, Release, 1)
+    //   aie.use_lock(%out_prod_lock_1, Release, 1)
+    //   aie.use_lock(%out_prod_lock_2, Release, 1)
+    //   aie.next_bd ^bb1
+
     ^bb6:  // pred: ^bb0
       %1 = aie.dma_start(S2MM, 0, ^bb7, ^bb8)
     ^bb7:  // 2 preds: ^bb6, ^bb7
