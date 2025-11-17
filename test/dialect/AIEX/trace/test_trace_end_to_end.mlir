@@ -1,4 +1,14 @@
-// RUN: aie-opt %s -aie-trace-to-config -aiex-inline-trace-config | FileCheck %s
+//===- test_trace_end_to_end.mlir ------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2025 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: aie-opt %s -aie-trace-to-config -aie-trace-pack-reg-writes -aiex-inline-trace-config | FileCheck %s
 
 // This test demonstrates the complete trace configuration pipeline
 // from high-level aie.trace operations through to inlined register specifications
@@ -8,7 +18,7 @@ module {
   aie.device(npu1_1col) {
     // CHECK: %[[TILE:.*]] = aie.tile(0, 2)
     %tile02 = aie.tile(0, 2)
-    
+
     // High-level trace configuration
     aie.trace @my_trace(%tile02) {
       aie.trace.mode "Event-Time"
@@ -20,15 +30,15 @@ module {
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
     }
-    
+
     // After Pass 1 (TraceToConfig): aie.trace → aie.trace.config
-    // CHECK: aie.trace.config @my_trace_config(%[[TILE]]) {
-    
+    // CHECK: aie.trace.config @my_trace_config(%[[TILE]]) packet_type = core {
+
     // Runtime sequence with trace invocation
     aiex.runtime_sequence @seq(%arg0: memref<32xi32>) {
       // CHECK: aiex.runtime_sequence
       aie.trace.start_config @my_trace
-      
+
       // After Pass 2 (AIEXInlineTraceConfig): generates npu.write32 with col/row
       // CHECK-NOT: aie.trace.start_config
       // CHECK: aiex.npu.write32

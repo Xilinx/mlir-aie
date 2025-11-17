@@ -11,7 +11,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/IR/AIERegisterDatabase.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
@@ -27,13 +26,7 @@ struct AIEInlineTraceConfigPass
     : AIEXInlineTraceConfigBase<AIEInlineTraceConfigPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
-
-    // Load RegisterDatabase for AIE2
-    auto regDb = RegisterDatabase::loadAIE2();
-    if (!regDb) {
-      device.emitError("Failed to load register database");
-      return signalPassFailure();
-    }
+    const auto &targetModel = device.getTargetModel();
 
     // Collect all trace.start_config operations
     SmallVector<TraceStartConfigOp> startConfigs;
@@ -89,7 +82,7 @@ struct AIEInlineTraceConfigPass
         // Look up register to get offset
         auto regName = regOp.getRegName().str();
         const RegisterInfo *regInfo =
-            regDb->lookupRegister(regName, tileOp, isMem);
+            targetModel.lookupRegister(regName, tileOp, isMem);
         if (!regInfo) {
           regOp.emitError("Register '") << regName << "' not found for tile ("
                                         << col << ", " << row << ")";
