@@ -95,7 +95,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00033" name="l00033"></a><span class="lineno">   33</span>    <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = device.getTargetModel();</div>
 <div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>    OpBuilder devBuilder = OpBuilder::atBlockBegin(device.getBody());</div>
 <div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span> </div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    <span class="keyword">auto</span> sequenceOps = device.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span>    <span class="keyword">auto</span> sequenceOps = device.getOps&lt;AIE::RuntimeSequenceOp&gt;();</div>
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> f : sequenceOps) {</div>
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>      <span class="keyword">auto</span> ctrlPktOps = f.getOps&lt;AIEX::NpuControlPacketOp&gt;();</div>
 <div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> ctrlPktOp : ctrlPktOps) {</div>
@@ -130,7 +130,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>      <span class="keywordflow">return</span>; <span class="comment">// Disable this pass for AIE1; AIE1 support NYI.</span></div>
 <div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
 <div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    SmallVector&lt;Operation *&gt; erased;</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    <span class="keyword">auto</span> sequenceOps = device.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    <span class="keyword">auto</span> sequenceOps = device.getOps&lt;AIE::RuntimeSequenceOp&gt;();</div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> f : sequenceOps) {</div>
 <div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
 <div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>      <span class="keyword">auto</span> controlPacketOps = f.getOps&lt;AIEX::NpuControlPacketOp&gt;();</div>
@@ -142,7 +142,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>      IRMapping mapping;</div>
 <div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>      <span class="keyword">auto</span> newSeq =</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>          builder.create&lt;AIEX::RuntimeSequenceOp&gt;(loc, f.getSymNameAttr());</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>          builder.create&lt;AIE::RuntimeSequenceOp&gt;(loc, f.getSymNameAttr());</div>
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>      newSeq.getBody().push_back(<span class="keyword">new</span> Block);</div>
 <div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>      <span class="comment">// Copy the arguments from the old sequence to the new one.</span></div>
@@ -312,7 +312,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 18 2025 02:20:23 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Nov 18 2025 17:09:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

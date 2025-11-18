@@ -739,7 +739,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span>    <span class="keywordflow">while</span> (device.lookupSymbol(seq_name))</div>
 <div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span>      seq_name = <span class="stringliteral">&quot;configure&quot;</span> + std::to_string(<span class="keywordtype">id</span>++);</div>
 <div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span>    StringAttr seq_sym_name = builder.getStringAttr(seq_name);</div>
-<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span>    <span class="keyword">auto</span> seq = builder.create&lt;AIEX::RuntimeSequenceOp&gt;(loc, seq_sym_name);</div>
+<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span>    <span class="keyword">auto</span> seq = builder.create&lt;AIE::RuntimeSequenceOp&gt;(loc, seq_sym_name);</div>
 <div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span>    seq.getBody().push_back(<span class="keyword">new</span> Block);</div>
 <div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span> </div>
 <div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span>    builder.setInsertionPointToStart(&amp;seq.getBody().front());</div>
@@ -961,7 +961,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 18 2025 02:20:23 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Nov 18 2025 17:09:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

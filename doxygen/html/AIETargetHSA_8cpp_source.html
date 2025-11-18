@@ -117,14 +117,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>  output &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#aeac74c4261ceaa6b4f2f336f21037fc5">hsa_cpp_file_header</a>;</div>
 <div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span> </div>
 <div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>  <span class="comment">// Getting the sequence function op which contains the instructions</span></div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>  <span class="keyword">auto</span> sequenceOps = targetOp.getOps&lt;AIEX::RuntimeSequenceOp&gt;();</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>  <span class="keyword">auto</span> sequenceOps = targetOp.getOps&lt;AIE::RuntimeSequenceOp&gt;();</div>
 <div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>  <span class="keywordflow">if</span> (sequenceOps.empty()) {</div>
 <div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <span class="comment">// If no sequenceOp then just return</span></div>
 <div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>  } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (std::distance(sequenceOps.begin(), sequenceOps.end()) &gt; 1) {</div>
 <div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>    <span class="keywordflow">return</span> <span class="keyword">module</span>.emitOpError(&quot;expected at most one sequence operation&quot;);</div>
 <div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>  }</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>  AIEX::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>  AIE::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();</div>
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span> </div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>  <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3a91d62b738d30b89aaca25caf49edbe">collectTiles</a>(targetOp, tiles);</div>
 <div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>  <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3e9658a61800052f09a70ec072b7ced9">collectBuffers</a>(targetOp, buffers);</div>
@@ -139,7 +139,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>    <span class="comment">// Getting the IDs of the buffers</span></div>
 <div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="keyword">auto</span> memref = op.getMemref();</div>
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    Block &amp;entryBB =</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>        op-&gt;getParentOfType&lt;AIEX::RuntimeSequenceOp&gt;().getBody().front();</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>        op-&gt;getParentOfType&lt;AIE::RuntimeSequenceOp&gt;().getBody().front();</div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    <span class="keywordtype">int</span> arg_idx = -1;</div>
 <div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0, e = entryBB.getNumArguments(); i &lt; e; i++) {</div>
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>      <span class="keywordflow">if</span> (entryBB.getArgument(i) == memref) {</div>
@@ -206,7 +206,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    <span class="comment">// Getting the ID of the buffer that we are using</span></div>
 <div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>    <span class="keyword">auto</span> memref = op.getMemref();</div>
 <div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>    Block &amp;entryBB =</div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>        op-&gt;getParentOfType&lt;AIEX::RuntimeSequenceOp&gt;().getBody().front();</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>        op-&gt;getParentOfType&lt;AIE::RuntimeSequenceOp&gt;().getBody().front();</div>
 <div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>    <span class="keywordtype">int</span> arg_idx = -1;</div>
 <div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0, e = entryBB.getNumArguments(); i &lt; e; i++) {</div>
 <div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>      <span class="keywordflow">if</span> (entryBB.getArgument(i) == memref) {</div>
@@ -288,7 +288,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 18 2025 02:20:23 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Nov 18 2025 17:09:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

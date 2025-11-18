@@ -338,8 +338,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>    }</div>
 <div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span> </div>
 <div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>    <span class="comment">// arg_idx</span></div>
-<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>    AIEX::RuntimeSequenceOp seq_op =</div>
-<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>        op-&gt;getParentOfType&lt;AIEX::RuntimeSequenceOp&gt;();</div>
+<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>    AIE::RuntimeSequenceOp seq_op =</div>
+<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>        op-&gt;getParentOfType&lt;AIE::RuntimeSequenceOp&gt;();</div>
 <div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>    <span class="keywordflow">if</span> (!seq_op) {</div>
 <div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>      op-&gt;emitOpError(<span class="stringliteral">&quot;NpuDmaMemcpyNdOps must have RuntimeSequenceOp parent at &quot;</span></div>
 <div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>                      <span class="stringliteral">&quot;time of lowering.&quot;</span>);</div>
@@ -662,70 +662,69 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>    memref::GlobalOp global = <span class="keyword">nullptr</span>;</div>
 <div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>    {</div>
 <div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>      OpBuilder::InsertionGuard guard(rewriter);</div>
-<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>      rewriter.setInsertionPoint(</div>
-<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>          op-&gt;getParentOfType&lt;AIEX::RuntimeSequenceOp&gt;());</div>
-<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>      global = <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">getOrCreateDataMemref</a>(rewriter, dev, op.getLoc(), words);</div>
-<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>    }</div>
-<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>    <span class="keyword">auto</span> memref = rewriter.create&lt;memref::GetGlobalOp&gt;(</div>
-<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span>        op.getLoc(), global.getType(), global.getName());</div>
-<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span> </div>
-<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>    (void)rewriter.replaceOpWithNewOp&lt;NpuBlockWriteOp&gt;(</div>
-<div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>        op, rewriter.getUI32IntegerAttr(bd_addr), memref.getResult(), <span class="keyword">nullptr</span>,</div>
-<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>        <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
-<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>  }</div>
-<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>};</div>
-<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span> </div>
-<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span><span class="keyword">struct </span>AIEDmaToNpuPass : AIEDmaToNpuBase&lt;AIEDmaToNpuPass&gt; {</div>
-<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span> </div>
-<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>  <span class="keywordtype">void</span> getDependentDialects(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span>    registry.insert&lt;memref::MemRefDialect&gt;();</div>
-<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>  }</div>
-<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span> </div>
-<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span> </div>
-<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>    AIE::DeviceOp device = getOperation();</div>
-<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span> </div>
-<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>    ConversionTarget target(getContext());</div>
-<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>    target.addLegalDialect&lt;AIEXDialect&gt;();</div>
-<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>    target.addLegalDialect&lt;memref::MemRefDialect&gt;();</div>
-<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span>    target.addLegalOp&lt;AIE::BufferOp&gt;();</div>
-<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>    target.addLegalOp&lt;AIE::ShimDMAAllocationOp&gt;();</div>
-<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>    target.addLegalOp&lt;AIE::TileOp&gt;();</div>
-<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span> </div>
-<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>    target.addIllegalOp&lt;NpuDmaMemcpyNdOp&gt;();</div>
-<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>    target.addIllegalOp&lt;NpuDmaWaitOp&gt;();</div>
-<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>    target.addIllegalOp&lt;NpuPushQueueOp&gt;();</div>
-<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>    target.addIllegalOp&lt;NpuWriteRTPOp&gt;();</div>
-<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>    target.addIllegalOp&lt;NpuWriteBdOp&gt;();</div>
-<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>    target.addDynamicallyLegalOp&lt;NpuWrite32Op&gt;(</div>
-<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>        [&amp;](NpuWrite32Op op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
-<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>    target.addDynamicallyLegalOp&lt;NpuBlockWriteOp&gt;(</div>
-<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>        [&amp;](NpuBlockWriteOp op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
-<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>    target.addDynamicallyLegalOp&lt;NpuMaskWrite32Op&gt;(</div>
-<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>        [&amp;](NpuMaskWrite32Op op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
-<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span> </div>
-<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>    RewritePatternSet patterns(&amp;getContext());</div>
-<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>    patterns.insert&lt;BlockWriteSymToAddr&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>    patterns.insert&lt;DmaToNpuPattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>    patterns.insert&lt;DmaWaitToSyncPattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>    patterns.insert&lt;MaskWrite32SymToAddr&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>    patterns.insert&lt;PushQueuetoWrite32Pattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>    patterns.insert&lt;RtpToWrite32Pattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span>    patterns.insert&lt;Write32SymToAddr&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>    patterns.insert&lt;WriteBdToBlockWritePattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span> </div>
-<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
-<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>      signalPassFailure();</div>
-<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span>  }</div>
-<div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span>};</div>
-<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span> </div>
-<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>} <span class="comment">// namespace</span></div>
-<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span> </div>
-<div class="foldopen" id="foldopen00665" data-start="{" data-end="}">
-<div class="line"><a id="l00665" name="l00665"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">  665</a></span>std::unique_ptr&lt;OperationPass&lt;AIE::DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">AIEX::createAIEDmaToNpuPass</a>() {</div>
-<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEDmaToNpuPass&gt;();</div>
-<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>}</div>
+<div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span>      rewriter.setInsertionPoint(op-&gt;getParentOfType&lt;AIE::RuntimeSequenceOp&gt;());</div>
+<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>      global = <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">getOrCreateDataMemref</a>(rewriter, dev, op.getLoc(), words);</div>
+<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>    }</div>
+<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>    <span class="keyword">auto</span> memref = rewriter.create&lt;memref::GetGlobalOp&gt;(</div>
+<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>        op.getLoc(), global.getType(), global.getName());</div>
+<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span> </div>
+<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span>    (void)rewriter.replaceOpWithNewOp&lt;NpuBlockWriteOp&gt;(</div>
+<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>        op, rewriter.getUI32IntegerAttr(bd_addr), memref.getResult(), <span class="keyword">nullptr</span>,</div>
+<div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>        <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>  }</div>
+<div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span>};</div>
+<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span> </div>
+<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span><span class="keyword">struct </span>AIEDmaToNpuPass : AIEDmaToNpuBase&lt;AIEDmaToNpuPass&gt; {</div>
+<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span> </div>
+<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>  <span class="keywordtype">void</span> getDependentDialects(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>    registry.insert&lt;memref::MemRefDialect&gt;();</div>
+<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span>  }</div>
+<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span> </div>
+<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span> </div>
+<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>    AIE::DeviceOp device = getOperation();</div>
+<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span> </div>
+<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>    ConversionTarget target(getContext());</div>
+<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>    target.addLegalDialect&lt;AIEXDialect&gt;();</div>
+<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>    target.addLegalDialect&lt;memref::MemRefDialect&gt;();</div>
+<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>    target.addLegalOp&lt;AIE::BufferOp&gt;();</div>
+<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span>    target.addLegalOp&lt;AIE::ShimDMAAllocationOp&gt;();</div>
+<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>    target.addLegalOp&lt;AIE::TileOp&gt;();</div>
+<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span> </div>
+<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>    target.addIllegalOp&lt;NpuDmaMemcpyNdOp&gt;();</div>
+<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>    target.addIllegalOp&lt;NpuDmaWaitOp&gt;();</div>
+<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>    target.addIllegalOp&lt;NpuPushQueueOp&gt;();</div>
+<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>    target.addIllegalOp&lt;NpuWriteRTPOp&gt;();</div>
+<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>    target.addIllegalOp&lt;NpuWriteBdOp&gt;();</div>
+<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>    target.addDynamicallyLegalOp&lt;NpuWrite32Op&gt;(</div>
+<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>        [&amp;](NpuWrite32Op op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
+<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>    target.addDynamicallyLegalOp&lt;NpuBlockWriteOp&gt;(</div>
+<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>        [&amp;](NpuBlockWriteOp op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
+<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>    target.addDynamicallyLegalOp&lt;NpuMaskWrite32Op&gt;(</div>
+<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>        [&amp;](NpuMaskWrite32Op op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
+<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span> </div>
+<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>    RewritePatternSet patterns(&amp;getContext());</div>
+<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>    patterns.insert&lt;BlockWriteSymToAddr&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>    patterns.insert&lt;DmaToNpuPattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>    patterns.insert&lt;DmaWaitToSyncPattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>    patterns.insert&lt;MaskWrite32SymToAddr&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>    patterns.insert&lt;PushQueuetoWrite32Pattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>    patterns.insert&lt;RtpToWrite32Pattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>    patterns.insert&lt;Write32SymToAddr&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span>    patterns.insert&lt;WriteBdToBlockWritePattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span> </div>
+<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
+<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>      signalPassFailure();</div>
+<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>  }</div>
+<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span>};</div>
+<div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span> </div>
+<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>} <span class="comment">// namespace</span></div>
+<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span> </div>
+<div class="foldopen" id="foldopen00664" data-start="{" data-end="}">
+<div class="line"><a id="l00664" name="l00664"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">  664</a></span>std::unique_ptr&lt;OperationPass&lt;AIE::DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">AIEX::createAIEDmaToNpuPass</a>() {</div>
+<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEDmaToNpuPass&gt;();</div>
+<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetModel_8h_html"><div class="ttname"><a href="AIETargetModel_8h.html">AIETargetModel.h</a></div></div>
@@ -736,7 +735,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html">xilinx::AIE::AIETargetModel</a></div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00055">AIETargetModel.h:55</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a3370ff7ebeeefcfaeeadee0834dbee51"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">xilinx::AIEX::createAIEDmaToNpuPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEDmaToNpuPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEDmaToNpu_8cpp_source.html#l00665">AIEDmaToNpu.cpp:665</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a3370ff7ebeeefcfaeeadee0834dbee51"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">xilinx::AIEX::createAIEDmaToNpuPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEDmaToNpuPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEDmaToNpu_8cpp_source.html#l00664">AIEDmaToNpu.cpp:664</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html_aa8da22224cb11f459ecc40327807bb57"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#aa8da22224cb11f459ecc40327807bb57">xilinx::AIEX::getHardwareStridesWraps</a></div><div class="ttdeci">void getHardwareStridesWraps(const AIE::AIETargetModel &amp;targetModel, mlir::Operation *op, mlir::BaseMemRefType referencedBufType, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;sizes, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;strides)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00088">AIEXDialect.cpp:88</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html_acd8bb70bd4615d3c251a2ab8176e4973"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">xilinx::AIEX::verifyStridesWraps</a></div><div class="ttdeci">mlir::LogicalResult verifyStridesWraps(mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareSizes, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareStrides, bool skipTransformationChecks=false)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00172">AIEXDialect.cpp:172</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html_afa4b7d3cc349d42315b2c37bfd175cb8"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">xilinx::AIEX::getOrCreateDataMemref</a></div><div class="ttdeci">memref::GlobalOp getOrCreateDataMemref(OpBuilder &amp;builder, AIE::DeviceOp dev, mlir::Location loc, ArrayRef&lt; uint32_t &gt; words)</div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8cpp_source.html#l00018">AIEUtils.cpp:18</a></div></div>
@@ -748,7 +747,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 18 2025 02:20:23 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Nov 18 2025 17:09:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

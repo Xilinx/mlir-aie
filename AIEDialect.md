@@ -1764,6 +1764,29 @@ Traits: `HasParent<PacketRulesOp>`
 
 
 
+### `aie.runtime_sequence` (::xilinx::AIE::RuntimeSequenceOp)
+
+_Program the configuration co-processor of the AI Engine array_
+
+Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
+These instructions will execute on the configuration co-processor of the AI Engine array.
+
+Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
+The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
+
+Traits: `HasParent<DeviceOp>`, `NoTerminator`
+
+Interfaces: `Symbol`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+
+
 ### `aie.shim_dma` (::xilinx::AIE::ShimDMAOp)
 
 _Declare a DMA in the PL shim_
