@@ -392,10 +392,10 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`init_values` does not initialize all objects");
   }
 
-  if (getBdChainIterCount().has_value()) {
-    int iterCount = getBdChainIterCount().value();
+  if (getIterCount().has_value()) {
+    int iterCount = getIterCount().value();
     if (iterCount < 1 || iterCount > 256)
-      return emitError("`bd_chain_iter_count` must be between 1 and 256");
+      return emitError("`iter_count` must be between 1 and 256");
 
     // Check that either producer or at least one consumer is a MemTile
     bool hasMemTile = getProducerTileOp().isMemTile();
@@ -408,8 +408,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
       }
     }
     if (!hasMemTile)
-      return emitError(
-          "`bd_chain_iter_count` is currently only supported on MemTiles");
+      return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
   return success();

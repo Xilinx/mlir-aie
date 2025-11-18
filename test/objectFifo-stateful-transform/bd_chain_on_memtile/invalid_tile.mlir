@@ -10,13 +10,13 @@
 
 // RUN: not aie-opt %s 2>&1 | FileCheck %s
 
-// CHECK: `bd_chain_iter_count` is currently only supported on MemTiles
+// CHECK: `iter_count` is currently only supported on MemTiles
 
 module @objectfifo_invalid_bd_chain_iter_count_no_memtile {
  aie.device(npu1) {
     %tile13 = aie.tile(1, 2)
     %tile14 = aie.tile(1, 3)
 
-    aie.objectfifo @of_0 (%tile13, {%tile14}, 2 : i32) {bd_chain_iter_count = 5 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of_0 (%tile13, {%tile14}, 2 : i32) {iter_count = 5 : i32} : !aie.objectfifo<memref<16xi32>>
  }
 }

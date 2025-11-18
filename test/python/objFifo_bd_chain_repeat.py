@@ -9,8 +9,8 @@
 # RUN: not %python %s high 2>&1 | FileCheck %s --check-prefix=ERROR_HIGH
 # RUN: not %python %s args 2>&1 | FileCheck %s --check-prefix=ERROR_ARGS
 
-# NORMAL: aie.objectfifo @shim_to_mem(%{{.*}}, {%{{.*}}}, {{.*}}) {bd_chain_iter_count = 1 : i32} : !aie.objectfifo<memref<2048xi32>>
-# NORMAL: aie.objectfifo @shim_to_mem_fwd(%{{.*}}, {%{{.*}}}, {{.*}}) {bd_chain_iter_count = 3 : i32} : !aie.objectfifo<memref<1024xi32>>
+# NORMAL: aie.objectfifo @shim_to_mem(%{{.*}}, {%{{.*}}}, {{.*}}) {iter_count = 1 : i32} : !aie.objectfifo<memref<2048xi32>>
+# NORMAL: aie.objectfifo @shim_to_mem_fwd(%{{.*}}, {%{{.*}}}, {{.*}}) {iter_count = 3 : i32} : !aie.objectfifo<memref<1024xi32>>
 
 # ERROR_ZERO: ValueError: Iter count must be in [1, 256] range.
 # ERROR_HIGH: ValueError: Iter count must be in [1, 256] range.
@@ -31,10 +31,10 @@ def test_objectfifo_bd_chain_scenarios():
     mem_ty = np.ndarray[(2048,), np.dtype[np.int32]]
 
     of_shim_to_mem = ObjectFifo(mem_ty, name="shim_to_mem")
-    of_shim_to_mem.use_bd_chain(1)
+    of_shim_to_mem.set_iter_count(1)
 
     of_mem_to_compute = of_shim_to_mem.cons().forward(obj_type=line_ty)
-    of_mem_to_compute.use_bd_chain(3)
+    of_mem_to_compute.set_iter_count(3)
 
     rt = Runtime()
     vector_ty = np.ndarray[(4096,), np.dtype[np.int32]]
@@ -52,21 +52,21 @@ def test_objectfifo_bd_chain_error_zero():
     line_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
     of_test = ObjectFifo(line_ty, name="test_zero")
-    of_test.use_bd_chain(0)
+    of_test.set_iter_count(0)
 
 
 def test_objectfifo_bd_chain_error_high():
     line_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
     of_test = ObjectFifo(line_ty, name="test_high")
-    of_test.use_bd_chain(257)
+    of_test.set_iter_count(257)
 
 
 def test_objectfifo_bd_chain_error_args():
     line_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
     of_test = ObjectFifo(line_ty, name="test_args")
-    of_test.use_bd_chain()
+    of_test.set_iter_count()
 
 
 if __name__ == "__main__":

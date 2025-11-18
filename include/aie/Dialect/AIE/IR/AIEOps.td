@@ -1727,7 +1727,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
-        OptionalAttr<AIEI32Attr>:$bd_chain_iter_count
+        // iter_count*depth number of objects will be transferred
+        OptionalAttr<AIEI32Attr>:$iter_count
   );
 
   let assemblyFormat = [{
