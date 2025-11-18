@@ -46,29 +46,39 @@ namespace {
 /// Check if a value depends on the given loop induction variable
 /// Uses a cache to avoid exponential recursion on complex dependency chains
 static bool dependsOnLoopIVForHoist(Value val, Value loopIV,
-                                    DenseSet<Value> &visited) {
-  // Check cache to avoid re-processing
-  if (!visited.insert(val).second)
-    return false;
+                                    DenseMap<Value, bool> &cache) {
+  // Check cache - return cached result if already computed
+  auto it = cache.find(val);
+  if (it != cache.end())
+    return it->second;
 
-  if (val == loopIV)
-    return true;
+  // Mark as being computed (assume false initially to handle recursion)
+  // This prevents infinite recursion in case of cycles (though SSA shouldn't
+  // have cycles)
+  cache[val] = false;
 
-  // Check for operations that use the loop IV in their operands
-  if (auto defOp = val.getDefiningOp()) {
+  bool result = false;
+  if (val == loopIV) {
+    result = true;
+  } else if (auto defOp = val.getDefiningOp()) {
+    // Check for operations that use the loop IV in their operands
     for (Value operand : defOp->getOperands()) {
-      if (dependsOnLoopIVForHoist(operand, loopIV, visited))
-        return true;
+      if (dependsOnLoopIVForHoist(operand, loopIV, cache)) {
+        result = true;
+        break;
+      }
     }
   }
 
-  return false;
+  // Store the computed result in cache
+  cache[val] = result;
+  return result;
 }
 
-/// Wrapper for dependsOnLoopIVForHoist that manages the visited set
+/// Wrapper for dependsOnLoopIVForHoist that manages the cache
 static bool dependsOnLoopIVForHoist(Value val, Value loopIV) {
-  DenseSet<Value> visited;
-  return dependsOnLoopIVForHoist(val, loopIV, visited);
+  DenseMap<Value, bool> cache;
+  return dependsOnLoopIVForHoist(val, loopIV, cache);
 }
 
 /// Clone an operation and its operands (recursively) that don't depend on the
@@ -97,7 +107,8 @@ static Value cloneOpAndOperands(Operation *op, Value loopIV, OpBuilder &builder,
         return Value(); // Failed to clone an operand
       newOperands.push_back(clonedOperand);
     } else {
-      // Operand is a block argument or constant
+      // Operand is a block argument or constant (guaranteed not to be the
+      // loop IV due to the dependency check at line 91)
       newOperands.push_back(operand);
     }
   }
