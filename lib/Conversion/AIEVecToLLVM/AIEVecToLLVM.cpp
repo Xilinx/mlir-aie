@@ -1018,6 +1018,133 @@ public:
   }
 };
 
+// AIE2p version of MulElemOp conversion
+class MulElemOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MulElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::MulElemOp>::ConvertOpToLLVMPattern;
+
+  struct DecodedMulElemOp {
+    enum class Kind {
+      BF16_BF16_FP32_16x1x1x1, // 16-lane bf16 -> 16-lane f32
+      BF16_BF16_FP32_32x1x2x1, // 32-lane bf16 -> 32-lane f32
+      BF16_BF16_FP32_64x1x2x1, // 64-lane bf16 -> 64-lane f32
+      UNSUPPORTED
+    };
+    Kind kind;
+    int conf;
+  };
+
+  static DecodedMulElemOp decodeMulElemOp(OpAdaptor op) {
+    auto lhs = op.getLhs();
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto lhsScaTy = lhsVecTy.getElementType();
+    unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
+    int lhsLanes = getVectorLaneSize(lhsVecTy);
+
+    // Integer types - not supported for AIE2p elementwise mul
+    if (llvm::isa<IntegerType>(lhsScaTy)) {
+      return {DecodedMulElemOp::Kind::UNSUPPORTED, -1};
+    } else {
+      // Float types
+      if (lhsBitWidth == 16) {
+        // BF16 mul_elem
+        if (lhsLanes == 16) {
+          // 16-lane bfloat16 uses I512.I512.ACC512 intrinsic
+          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x1x1, /*conf*/ 60};
+        } else if (lhsLanes == 32) {
+          // 32-lane bfloat16 uses I512.I512.ACC1024 intrinsic
+          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_32x1x2x1, /*conf*/ 60};
+        } else if (lhsLanes == 64) {
+          // 64-lane bfloat16 uses I1024.I1024.ACC2048 intrinsic
+          return {DecodedMulElemOp::Kind::BF16_BF16_FP32_64x1x2x1, /*conf*/ 60};
+        }
+      }
+    }
+    return {DecodedMulElemOp::Kind::UNSUPPORTED, -1};
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::MulElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto decodedMulElemOp = decodeMulElemOp(adaptor);
+
+    if (decodedMulElemOp.kind == DecodedMulElemOp::Kind::UNSUPPORTED) {
+      op.emitWarning() << "aievec.mul_elem conversion is not supported for "
+                          "AIE2p.\n";
+      return failure();
+    }
+
+    // Create constant for config
+    auto confCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(),
+        rewriter.getI32IntegerAttr(decodedMulElemOp.conf));
+
+    Value mulElemOp = nullptr;
+
+    // Handle BF16 mul_elem for AIE2p
+    if (decodedMulElemOp.kind ==
+        DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x1x1) {
+      // 16-lane bfloat16: <16 x bfloat> x <16 x bfloat> -> <16 x float>
+      // The intrinsic requires <32 x bfloat> inputs, so we need to pad
+
+      // Pad LHS from 16 to 32 bfloat16 using shuffle
+      SmallVector<int64_t> padMask;
+      for (int i = 0; i < 16; ++i)
+        padMask.push_back(i);
+      for (int i = 16; i < 32; ++i)
+        padMask.push_back(-1); // poison/undef
+
+      auto lhsPadded = rewriter.create<vector::ShuffleOp>(
+          loc, adaptor.getLhs(), adaptor.getLhs(), padMask);
+      auto rhsPadded = rewriter.create<vector::ShuffleOp>(
+          loc, adaptor.getRhs(), adaptor.getRhs(), padMask);
+
+      SmallVector<Value> operands({lhsPadded, rhsPadded, confCst});
+
+      // Call I512.I512.ACC512 intrinsic
+      mulElemOp = rewriter.create<xllvm::MulConfBF16I512ACC512AIE2pIntrOp>(
+          loc, VectorType::get({16}, rewriter.getF32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({32}, rewriter.getBF16Type()),
+               VectorType::get({32}, rewriter.getBF16Type()),
+               rewriter.getI32Type()}));
+    } else if (decodedMulElemOp.kind ==
+               DecodedMulElemOp::Kind::BF16_BF16_FP32_32x1x2x1) {
+      // 32-lane bfloat16: <32 x bfloat> x <32 x bfloat> -> <32 x float>
+      SmallVector<Value> operands(
+          {adaptor.getLhs(), adaptor.getRhs(), confCst});
+      mulElemOp = rewriter.create<xllvm::MulConfBF16I512ACC1024AIE2pIntrOp>(
+          loc, VectorType::get({32}, rewriter.getF32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({32}, rewriter.getBF16Type()),
+               VectorType::get({32}, rewriter.getBF16Type()),
+               rewriter.getI32Type()}));
+    } else if (decodedMulElemOp.kind ==
+               DecodedMulElemOp::Kind::BF16_BF16_FP32_64x1x2x1) {
+      // 64-lane bfloat16: <64 x bfloat> x <64 x bfloat> -> <64 x float>
+      SmallVector<Value> operands(
+          {adaptor.getLhs(), adaptor.getRhs(), confCst});
+      mulElemOp = rewriter.create<xllvm::MulConfBF16I1024ACC2048AIE2pIntrOp>(
+          loc, VectorType::get({64}, rewriter.getF32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({64}, rewriter.getBF16Type()),
+               VectorType::get({64}, rewriter.getBF16Type()),
+               rewriter.getI32Type()}));
+    }
+
+    // create bitcast/shape_cast for result
+    auto resultVal = forceCastValueToType(rewriter, loc, mulElemOp,
+                                          op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
+    return success();
+  }
+};
+
 // Enum to represent different AIE target architectures
 enum class AIEArch {
   AIE2,
@@ -3657,9 +3784,67 @@ class ShuffleOpConversion
   }
 };
 
+// Convert aievec.exp to xllvm.exp2 intrinsic for AIE2P
+// Uses the identity: exp(x) = exp2(x * log2(e))
+class ExpOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::ExpOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::ExpOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::ExpOp expOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = expOp.getLoc();
+    auto srcType = cast<VectorType>(adaptor.getSource().getType());
+    auto srcElemType = srcType.getElementType();
+    unsigned laneSize = getVectorLaneSize(srcType);
+
+    // Only support v16bfloat16 for now
+    if (laneSize != 16 || !srcElemType.isBF16())
+      return expOp.emitWarning()
+             << "aievec.exp conversion only supports v16bfloat16.\n";
+
+    // Step 1: Create bf16 constant for log2(e) ≈ 1.442695
+    auto log2eBF16Const = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getBF16Type(),
+        rewriter.getFloatAttr(rewriter.getBF16Type(), 1.442695));
+
+    // Broadcast log2(e) to v16bfloat16
+    SmallVector<int64_t> broadcastMask;
+    for (int i = 0; i < 16; ++i)
+      broadcastMask.push_back(0);
+
+    auto v1bf16 = rewriter.create<LLVM::UndefOp>(
+        loc, VectorType::get({1}, rewriter.getBF16Type()));
+    auto v1bf16Inserted = rewriter.create<LLVM::InsertElementOp>(
+        loc, v1bf16, log2eBF16Const,
+        rewriter.create<LLVM::ConstantOp>(loc, rewriter.getI32Type(), 0));
+
+    auto log2eVec = rewriter.create<vector::ShuffleOp>(
+        loc, v1bf16Inserted, v1bf16Inserted, broadcastMask);
+
+    // Step 2: Multiply input by log2(e) in bf16 domain using MulElemOp
+    // This will use the I512.I512.ACC512 bf16 mul intrinsic
+    auto v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());
+    auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
+
+    // Multiply in bf16: x * log2(e)
+    auto mulResult = rewriter.create<aievec::MulElemOp>(
+        loc, v16f32Ty, adaptor.getSource(), log2eVec);
+
+    // Step 3: Call exp2 intrinsic
+    // exp2 takes v16float and returns v16bfloat16
+    auto exp2Op =
+        rewriter.create<xllvm::Exp2AIE2pIntrOp>(loc, v16bf16Ty, mulResult);
+
+    rewriter.replaceOp(expOp, exp2Op.getResult());
+
+    return success();
+  }
+};
+
 void populateAIEVecToLLVMCommonConversionPatterns(
-    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
-    Aie2Fp32Emulation aie2Fp32EmulationOption) {
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
   // clang-format off
   // Patterns that work for all backends (AIE1, AIE2, AIE2p)
   patterns.add<AddOpConversion,
@@ -3682,14 +3867,15 @@ void populateAIEVecToLLVMCommonConversionPatterns(
                ExtractElemOpConversion,
                FoldAIECastOps,
                ShuffleOpConversion>(converter);
-  patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   // clang-format on
 }
 
 void populateAIEVecToLLVMAIE2ConversionPatterns(
-    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
+    Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // Patterns specific to AIE2 backend
   patterns.add<AddElemOpAIE2Conversion>(converter);
+  patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   patterns.add<UPSOpAIE2Conversion, SRSOpAIE2Conversion>(converter);
 }
 
@@ -3697,19 +3883,21 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
   // Patterns specific to AIE2p backend
   patterns.add<AddElemOpAIE2pConversion>(converter);
+  patterns.add<MulElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
   patterns.add<MatMulOpAIE2pConversion>(converter);
+  patterns.add<ExpOpAIE2pConversion>(converter);
 }
 
 void populateAIEVecToLLVMConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
     Aie2Fp32Emulation aie2Fp32EmulationOption, StringRef aieTarget) {
-  populateAIEVecToLLVMCommonConversionPatterns(converter, patterns,
-                                               aie2Fp32EmulationOption);
+  populateAIEVecToLLVMCommonConversionPatterns(converter, patterns);
   if (aieTarget == "aie2p")
     populateAIEVecToLLVMAIE2pConversionPatterns(converter, patterns);
   else
-    populateAIEVecToLLVMAIE2ConversionPatterns(converter, patterns);
+    populateAIEVecToLLVMAIE2ConversionPatterns(converter, patterns,
+                                               aie2Fp32EmulationOption);
 }
 
 struct ConvertAIEVecToLLVMPass
