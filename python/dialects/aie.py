@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import inspect
 from typing import List, Tuple, Dict, Any, Union
 import contextlib
+from enum import IntEnum
 
 import numpy as np
 
@@ -194,6 +195,8 @@ def _trace_event_attr(x, context):
         return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
     elif isinstance(x, StringAttr):
         return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
+    elif isinstance(x, IntEnum):
+        return Attribute.parse(f'#aie.trace_event<"{str(x)}">', context=context)
     else:
         # Assume it's already an Attribute (could be an enum)
         return x
