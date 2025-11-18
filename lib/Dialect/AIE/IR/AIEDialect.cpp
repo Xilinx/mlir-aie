@@ -2333,6 +2333,111 @@ ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
   return nullptr;
 }
 
+//===----------------------------------------------------------------------===//
+// RuntimeSequenceOp
+//===----------------------------------------------------------------------===//
+
+ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+
+  // Name of this runtime sequence
+  StringAttr nameAttr;
+  (void)parser.parseOptionalSymbolName(
+      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
+
+  SmallVector<OpAsmParser::Argument> entryArgs;
+
+  // Entry arguments,  e.g. (%addr: memref<1xi32>)
+  ParseResult argParseResult = parser.parseCommaSeparatedList(
+      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+        OpAsmParser::Argument argument;
+        if (parser.parseArgument(argument, true, true)) {
+          return failure();
+        }
+        entryArgs.push_back(argument);
+        return success();
+      });
+  if (argParseResult) {
+    return argParseResult;
+  }
+
+  // Body
+  auto *body = result.addRegion();
+  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
+  if (bodyParseResult) {
+    return bodyParseResult;
+  }
+
+  return success();
+}
+
+void RuntimeSequenceOp::print(OpAsmPrinter &printer) {
+  Region &body = getRegion();
+
+  auto nameAttr = (*this)->getAttrOfType<StringAttr>(
+      mlir::SymbolTable::getSymbolAttrName());
+  if (nameAttr &&
+      nameAttr != ::mlir::OpBuilder((*this)->getContext())
+                      .getStringAttr(getDefaultRuntimeSequenceName())) {
+    printer << ' ';
+    printer.printSymbolName(nameAttr);
+  }
+
+  printer << '(';
+  for (unsigned i = 0, n = body.getNumArguments(); i < n; i++) {
+    if (i > 0) {
+      printer << ", ";
+    }
+    printer.printRegionArgument(body.getArgument(i));
+  }
+  printer << ')';
+
+  printer << ' ';
+  printer.printRegion(body, false, true);
+}
+
+LogicalResult RuntimeSequenceOp::verify() {
+  DeviceOp device = (*this)->getParentOfType<DeviceOp>();
+  if (!device) {
+    // this check is redudnant with the HasParent trait, but can't hurt
+    (*this)->emitOpError() << "must be inside AIE device operation.";
+    return failure();
+  }
+  return success();
+}
+
+RuntimeSequenceOp
+RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,
+                                        llvm::StringRef symbol) {
+  RuntimeSequenceOp runtimeSequenceOp;
+  if (!symbol.size()) {
+    runtimeSequenceOp = *deviceOp.getOps<RuntimeSequenceOp>().begin();
+  } else {
+    Operation *maybeRuntimeSequenceOp =
+        mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);
+    if (!maybeRuntimeSequenceOp) {
+      return nullptr;
+    }
+    runtimeSequenceOp =
+        llvm::dyn_cast<RuntimeSequenceOp>(maybeRuntimeSequenceOp);
+  }
+  return runtimeSequenceOp;
+}
+
+RuntimeSequenceOp
+RuntimeSequenceOp::getForSymbolInDeviceOrError(DeviceOp deviceOp,
+                                               llvm::StringRef symbol) {
+  RuntimeSequenceOp runtimeSequenceOp = getForSymbolInDevice(deviceOp, symbol);
+  if (!runtimeSequenceOp) {
+    if (!symbol.empty()) {
+      deviceOp.emitError("No such runtime sequence: ") << symbol;
+    } else {
+      deviceOp.emitError("No runtime sequence in device");
+    }
+  }
+  return runtimeSequenceOp;
+}
+
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"
