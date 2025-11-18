@@ -62,6 +62,7 @@ from ..ir import (
     IntegerAttr,
     IntegerType,
     MemRefType,
+    StringAttr,
     TypeAttr,
     UnitAttr,
     Value,
@@ -184,6 +185,18 @@ def _objectFifo_depth_attr(x, context):
     if isinstance(x, list):
         return _i32ArrayAttr(x, context)
     return IntegerAttr.get(IntegerType.get_signless(32, context=context), x)
+
+
+@register_attribute_builder("TraceEventAttr")
+def _trace_event_attr(x, context):
+    """Build TraceEventAttr from string or StringAttr."""
+    if isinstance(x, str):
+        return Attribute.parse(f'#aie.trace_event<"{x}">', context=context)
+    elif isinstance(x, StringAttr):
+        return Attribute.parse(f'#aie.trace_event<"{x.value}">', context=context)
+    else:
+        # Assume it's already an Attribute (could be an enum)
+        return x
 
 
 #### MLIR Helpers ####
@@ -526,6 +539,12 @@ class packetflow(PacketFlowOp):
 
 core = region_op(Core, terminator=lambda *_: EndOp())
 device = region_op(Device, terminator=lambda *_: EndOp())
+trace = region_op(
+    lambda tile, sym_name, *, buffer_size=None, loc=None, ip=None: TraceOp(
+        tile, sym_name, buffer_size=buffer_size, loc=loc, ip=ip
+    ),
+    terminator=lambda *_: EndOp(),
+)
 switchbox = region_op(
     lambda tile, *, loc=None, ip=None: SwitchboxOp(T.index(), tile, loc=loc, ip=ip)
 )
