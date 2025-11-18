@@ -23,8 +23,8 @@
 // CHECK:       aie.use_lock(%broadcast_input_cons_cons_lock_0, Release, 1)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
-// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6, repeat_count = 7)
-// CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
+// CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb7, repeat_count = 7)
+// CHECK:     ^bb4:  // pred: ^bb3
 // CHECK:       aie.use_lock(%broadcast_input_cons_cons_lock_0, AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%broadcast_input_cons_buff_0 : memref<512xui8>, 0, 512)
 // CHECK:       aie.use_lock(%broadcast_input_cons_prod_lock_0, Release, 1)
@@ -33,8 +33,10 @@
 // CHECK:       aie.use_lock(%broadcast_input_cons_cons_lock_0, AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%broadcast_input_cons_buff_1 : memref<512xui8>, 0, 512)
 // CHECK:       aie.use_lock(%broadcast_input_cons_prod_lock_0, Release, 1)
-// CHECK:       aie.next_bd ^bb4
-// CHECK:     ^bb6:  // pred: ^bb3
+// CHECK:       aie.next_bd ^bb6
+// CHECK:     ^bb6:  // pred: ^bb5
+// CHECK:       aie.end
+// CHECK:     ^bb7:  // pred: ^bb3
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:     %mem_0_2 = aie.mem(%tile_0_2) {
