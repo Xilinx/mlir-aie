@@ -8,7 +8,7 @@ from operator import itemgetter
 import numpy as np
 
 from ._aiex_ops_gen import *
-from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp
+from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
     DMAChannelDir,
