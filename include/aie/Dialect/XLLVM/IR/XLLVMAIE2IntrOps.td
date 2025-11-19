@@ -181,11 +181,25 @@ def MulConfBF16IntrOp :
                    VectorOfLengthAndType<[32], [BF16]>:$rhs,
                    I32:$conf)>;
 
+def MulConfBF16I512ACC512AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I512.I512.ACC512.bf.mul.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   I32:$conf)>;
+
 def MulConfBF16I512ACC1024AIE2pIntrOp :
     AIEVec2p_IntrOp<"I512.I512.ACC1024.bf.mul.conf",
         [TypeIs<"res", VectorOfLengthAndType<[32], [F32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
                    VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   I32:$conf)>;
+
+def MulConfBF16I1024ACC2048AIE2pIntrOp :
+    AIEVec2p_IntrOp<"I1024.I1024.ACC2048.bf.mul.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[64], [BF16]>:$rhs,
                    I32:$conf)>;
 
 // ----- ADD -----
@@ -560,6 +574,13 @@ def Vector32BF16ToV32AccFloatAIE2pIntrOp :
     AIEVec2p_IntrOp<"v32bf16.to.v32accfloat",
         [TypeIs<"res", VectorOfLengthAndType<[32], [F32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$src)>;
+
+// ----- EXP2 -----
+
+def Exp2AIE2pIntrOp :
+    AIEVec2p_IntrOp<"exp2",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
 
 // ----- SHIFT -----
 
