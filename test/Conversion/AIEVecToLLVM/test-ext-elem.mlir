@@ -52,7 +52,8 @@ func.func @ext_elem_i16(%vec : vector<32xi16>, %idx : i32) -> i16 {
 // AIE2P-SAME: %[[IDX:[a-zA-Z0-9]+]]: i32
 func.func @ext_elem_bf16(%vec : vector<32xbf16>, %idx : i32) -> bf16 {
   // CHECK: %[[SIGN:.*]] = llvm.mlir.constant(1 : i32) : i32
-  // CHECK: %[[EXT:.*]] = "xllvm.intr.aie2.vextract.elem16.I512"(%[[VEC]], %[[IDX]], %[[SIGN]]) : (vector<32xbf16>, i32, i32) -> i32
+  // CHECK: %[[BITCAST_VEC:.*]] = llvm.bitcast %[[VEC]] : vector<32xbf16> to vector<32xi16>
+  // CHECK: %[[EXT:.*]] = "xllvm.intr.aie2.vextract.elem16.I512"(%[[BITCAST_VEC]], %[[IDX]], %[[SIGN]]) : (vector<32xi16>, i32, i32) -> i32
   // CHECK: %[[TRUNC:.*]] = llvm.trunc %[[EXT]] : i32 to i16
   // CHECK: %[[BITCAST:.*]] = llvm.bitcast %[[TRUNC]] : i16 to bf16
   // AIE2P: %[[EXT:.*]] = llvm.extractelement %[[VEC]][%[[IDX]] : i32] : vector<32xbf16>
