@@ -1149,7 +1149,7 @@ struct AIEObjectFifoStatefulTransformPass
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
 
-    // Use bd_chain_iter_count if available, otherwise default to 0
+    // Use iter_count if available, otherwise default to 0
     int taskCount = 0;
     bool isBdChainMode = false;
     if (bdChainIterCount.has_value()) {
@@ -1174,7 +1174,7 @@ struct AIEObjectFifoStatefulTransformPass
         break;
       for (int r = 0; r < repeatCount * joinDistribFactor; r++) {
         if (totalBlocks == numBlocks * repeatCount * joinDistribFactor - 1) {
-          // If bd_chain_iter_count attribute is set (BD chain mode), create a
+          // If iter_count attribute is set (BD chain mode), create a
           // dedicated terminating block
           if (isBdChainMode) {
             succ = builder.createBlock(endBlock);
