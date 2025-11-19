@@ -362,6 +362,41 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `aievec.exp` (::xilinx::aievec::ExpOp)
+
+_AIE vector exponential_
+
+Syntax:
+
+```
+operation ::= `aievec.exp` $source attr-dict `:` type($result)
+```
+
+AMD-specific intrinsic that computes the exponential of the input vector.
+For AIE2P, this will be lowered to the exp2 intrinsic using the identity
+exp(x) = exp2(x * log2(e)).
+`$result = exp(`$source`).
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values |
+
+
+
 ### `aievec.ext` (::xilinx::aievec::ExtOp)
 
 _AIE ext_
