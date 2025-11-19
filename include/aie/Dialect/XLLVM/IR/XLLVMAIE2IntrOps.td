@@ -600,6 +600,22 @@ def VectorShiftBF512BF512IntrOp :
                    I32:$step,
                    I32:$shift)>;
 
+def VectorShiftI512I512AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vshift.I512.I512",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$step,
+                   I32:$shift)>;
+
+def VectorShiftBF512BF512AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vshift.bf512.bf512",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[32], [BF16]>:$rhs,
+                   I32:$step,
+                   I32:$shift)>;
+
 // ----- EXTRACT ELEMENT ----- 
 
 def VectorExtractElem8I512IntrOp :
@@ -661,6 +677,42 @@ def VectorMaxLtBf16IntrOp :
         >], /*numResults=*/2>,
     AIE2BF16MinMaxElem;
 
+def VectorMaxLt8AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vmax.lt8",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[64], [I8]>,
+                VectorOfLengthAndType<[2], [I32]>]>
+        >], /*numResults=*/2>,
+    AIE2I8MinMaxElem;
+
+def VectorMaxLt16AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vmax.lt16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [I16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    AIE2I16MinMaxElem;
+
+def VectorMaxLt32AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vmax.lt32",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[16], [I32]>,
+                I32]>
+        >], /*numResults=*/2>,
+    AIE2I32MinMaxElem;
+
+def VectorMaxLtBf16AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vmax.ltbf16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [BF16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    AIE2BF16MinMaxElem;
+
 // ----- MIN ELEMENT -----
 
 def VectorMinGe8IntrOp :
@@ -692,6 +744,42 @@ def VectorMinGe32IntrOp :
 
 def VectorMinGeBf16IntrOp :
     AIEVec2_IntrOp<"vmin.gebf16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [BF16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    AIE2BF16MinMaxElem;
+
+def VectorMinGe8AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vmin.ge8",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[64], [I8]>,
+                VectorOfLengthAndType<[2], [I32]>]>
+        >], /*numResults=*/2>,
+    AIE2I8MinMaxElem;
+
+def VectorMinGe16AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vmin.ge16",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[32], [I16]>,
+                I32]>
+        >], /*numResults=*/2>,
+    AIE2I16MinMaxElem;
+
+def VectorMinGe32AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vmin.ge32",
+        [TypeIs<"res",
+            LLVM_StructOf<[
+                VectorOfLengthAndType<[16], [I32]>,
+                I32]>
+        >], /*numResults=*/2>,
+    AIE2I32MinMaxElem;
+
+def VectorMinGeBf16AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vmin.gebf16",
         [TypeIs<"res",
             LLVM_StructOf<[
                 VectorOfLengthAndType<[32], [BF16]>,
