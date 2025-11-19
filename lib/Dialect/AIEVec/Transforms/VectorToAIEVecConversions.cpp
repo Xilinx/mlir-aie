@@ -1969,6 +1969,24 @@ struct FuseExtIntoUPDPattern : OpConversionPattern<aievec::ExtOp> {
   }
 };
 
+// Convert math.exp to aievec.exp for AIE2P (will be further lowered to exp2
+// intrinsic)
+struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!matchExpOpForLUT(adaptor))
+      return failure();
+
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    rewriter.replaceOpWithNewOp<aievec::ExpOp>(expOp, srcType,
+                                               adaptor.getOperand());
+    return success();
+  }
+};
+
 struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -3153,7 +3171,7 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
-      ComputeExpOpByLUTLLVMPattern, LowerVectorAddFOpToAIEVecAddElemOp
+      LowerVectorAddFOpToAIEVecAddElemOp
       >(patterns.getContext());
   }
   patterns.add<
@@ -3202,6 +3220,10 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   populateAIEVecV2CommonConversionPatterns(patterns, backend);
   patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2>(
       patterns.getContext(), backend == TargetBackend::CPP);
+  // For AIE2 with LLVMIR backend, use LUT-based exp
+  if (backend == TargetBackend::LLVMIR) {
+    patterns.add<ComputeExpOpByLUTLLVMPattern>(patterns.getContext());
+  }
 }
 
 static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
@@ -3209,6 +3231,10 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
   populateAIEVecV2CommonConversionPatterns(patterns, backend);
   patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2P>(
       patterns.getContext(), backend == TargetBackend::CPP);
+  // For AIE2P with LLVMIR backend, use aievec.exp instead of LUT
+  if (backend == TargetBackend::LLVMIR) {
+    patterns.add<ConvertMathExpToAIEVecExpOpPattern>(patterns.getContext());
+  }
 }
 
 //===----------------------------------------------------------------------===//
