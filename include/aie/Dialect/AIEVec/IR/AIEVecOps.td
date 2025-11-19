@@ -498,6 +498,24 @@ def AIEVec_NegOp:
   let hasVerifier = 0;
 }
 
+def AIEVec_ExpOp:
+  AIEVec_Op<"exp", [
+    Pure,
+    AllTypesMatch<["source", "result"]>
+  ]>,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+  let summary = "AIE vector exponential";
+  let description = [{
+    AMD-specific intrinsic that computes the exponential of the input vector.
+    For AIE2P, this will be lowered to the exp2 intrinsic using the identity
+    exp(x) = exp2(x * log2(e)).
+    `$result = exp(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
 def AIEVec_BxorOp:
   AIEVec_Op<"bxor", [
     Pure,
