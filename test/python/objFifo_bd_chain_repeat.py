@@ -58,7 +58,7 @@ def test_objectfifo_bd_chain_error_high():
 
 
 # RUN: not %python %s args 2>&1 | FileCheck %s --check-prefix=ERROR_ARGS
-# ERROR_ARGS: ValueError: iter_count is required. Provide a value between 1 and 256.
+# ERROR_ARGS: ValueError: Iter count must be in [1, 256] range.
 def test_objectfifo_bd_chain_error_args():
     line_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
