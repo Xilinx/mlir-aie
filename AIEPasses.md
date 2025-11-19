@@ -109,28 +109,6 @@ the loop body, replacing them with simple pointer arithmetic.
 This pass must run before scf-to-cf conversion and before cores are outlined
 to functions, since it operates on scf.for loops within aie.core regions.
 
-### `-aie-llvm-loop-opt`
-
-_Optimize LLVM dialect loops for AIE (index-to-pointer transformation)_
-
-Performs loop strength reduction on LLVM dialect code by converting
-index-carried loops to pointer-carried loops. This optimization identifies
-loop-carried integer indices that are only used for getelementptr operations
-and transforms them to carry pointers instead, eliminating redundant address
-computations in each iteration.
-
-Pattern detected:
-- Loop header carries i64 index
-- Index used in: ptr = getelementptr base[index]
-- Index incremented: new_index = add index, stride
-- New index passed to next iteration
-
-Transformed to:
-- Loop header carries !llvm.ptr pointer
-- Pointer used directly for loads
-- Pointer incremented: new_ptr = getelementptr ptr[stride]
-- New pointer passed to next iteration
-
 ### `-aie-localize-locks`
 
 _Convert global locks to a core-relative index_
