@@ -56,14 +56,14 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
   output << hsa_cpp_file_header;
 
   // Getting the sequence function op which contains the instructions
-  auto sequenceOps = targetOp.getOps<AIEX::RuntimeSequenceOp>();
+  auto sequenceOps = targetOp.getOps<AIE::RuntimeSequenceOp>();
   if (sequenceOps.empty()) {
     // If no sequenceOp then just return
     return success();
   } else if (std::distance(sequenceOps.begin(), sequenceOps.end()) > 1) {
     return module.emitOpError("expected at most one sequence operation");
   }
-  AIEX::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();
+  AIE::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();
 
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
@@ -78,7 +78,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
     // Getting the IDs of the buffers
     auto memref = op.getMemref();
     Block &entryBB =
-        op->getParentOfType<AIEX::RuntimeSequenceOp>().getBody().front();
+        op->getParentOfType<AIE::RuntimeSequenceOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {
@@ -145,7 +145,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
     // Getting the ID of the buffer that we are using
     auto memref = op.getMemref();
     Block &entryBB =
-        op->getParentOfType<AIEX::RuntimeSequenceOp>().getBody().front();
+        op->getParentOfType<AIE::RuntimeSequenceOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {

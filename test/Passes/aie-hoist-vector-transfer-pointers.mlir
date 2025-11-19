@@ -132,3 +132,41 @@ func.func @preserve_contiguous_strided_layout(%arg0: memref<16x16xf32, 2>, %arg1
   }
   return
 }
+
+// -----
+
+// Test that loops with only IV-dependent subviews don't cause infinite loops
+// This pattern previously caused the pass to hang due to:
+// 1. Exponential recursion in dependency checking without memoization
+// 2. Infinite loop in greedy rewriter (pattern matches but can't transform)
+// The fix adds memoization and early exit for unprocessable transfers
+// CHECK-LABEL: func.func @loop_with_iv_dependent_subviews
+func.func @loop_with_iv_dependent_subviews(%arg0: memref<1x256xbf16, 2>, %arg1: memref<1x256xf32, 2>) {
+  %c0 = arith.constant 0 : index
+  %c16 = arith.constant 16 : index
+  %c256 = arith.constant 256 : index
+  %poison_bf16 = ub.poison : bf16
+  %poison_f32 = ub.poison : f32
+  
+  // CHECK: scf.for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} {
+  scf.for %i = %c0 to %c256 step %c16 {
+    // Subviews are created inside the loop using the IV - can't be hoisted
+    // Pattern should recognize these can't be processed and skip without hanging
+    // CHECK: memref.subview %{{.*}}[0, %{{.*}}] [1, 16] [1, 1]
+    %subview_in = memref.subview %arg0[0, %i] [1, 16] [1, 1] 
+      : memref<1x256xbf16, 2> to memref<1x16xbf16, strided<[256, 1], offset: ?>, 2>
+    // CHECK: memref.subview %{{.*}}[0, %{{.*}}] [1, 16] [1, 1]
+    %subview_out = memref.subview %arg1[0, %i] [1, 16] [1, 1] 
+      : memref<1x256xf32, 2> to memref<1x16xf32, strided<[256, 1], offset: ?>, 2>
+    
+    // Transfers on IV-dependent subviews - should not be transformed or cause hang
+    // CHECK: vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}]
+    %vec_bf16 = vector.transfer_read %subview_in[%c0, %c0], %poison_bf16 
+      {in_bounds = [true]} : memref<1x16xbf16, strided<[256, 1], offset: ?>, 2>, vector<16xbf16>
+    %vec_f32 = arith.extf %vec_bf16 : vector<16xbf16> to vector<16xf32>
+    // CHECK: vector.transfer_write %{{.*}}, %{{.*}}[%{{.*}}, %{{.*}}]
+    vector.transfer_write %vec_f32, %subview_out[%c0, %c0] 
+      {in_bounds = [true]} : vector<16xf32>, memref<1x16xf32, strided<[256, 1], offset: ?>, 2>
+  }
+  return
+}
