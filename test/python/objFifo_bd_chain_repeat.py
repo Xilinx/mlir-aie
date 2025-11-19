@@ -4,18 +4,6 @@
 #
 # (c) Copyright 2025 AMD Inc.
 
-# RUN: %python %s | FileCheck %s --check-prefix=NORMAL
-# RUN: not %python %s zero 2>&1 | FileCheck %s --check-prefix=ERROR_ZERO
-# RUN: not %python %s high 2>&1 | FileCheck %s --check-prefix=ERROR_HIGH
-# RUN: not %python %s args 2>&1 | FileCheck %s --check-prefix=ERROR_ARGS
-
-# NORMAL: aie.objectfifo @shim_to_mem(%{{.*}}, {%{{.*}}}, {{.*}}) {iter_count = 1 : i32} : !aie.objectfifo<memref<2048xi32>>
-# NORMAL: aie.objectfifo @shim_to_mem_fwd(%{{.*}}, {%{{.*}}}, {{.*}}) {iter_count = 3 : i32} : !aie.objectfifo<memref<1024xi32>>
-
-# ERROR_ZERO: ValueError: Iter count must be in [1, 256] range.
-# ERROR_HIGH: ValueError: Iter count must be in [1, 256] range.
-
-# ERROR_ARGS: ValueError: iter_count is required. Provide a value between 1 and 256.
 
 import sys
 import numpy as np
@@ -24,6 +12,9 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 
 
+# RUN: %python %s | FileCheck %s --check-prefix=NORMAL
+# NORMAL: aie.objectfifo @shim_to_mem(%{{.*}}, {%{{.*}}}, {{.*}}) {iter_count = 1 : i32} : !aie.objectfifo<memref<2048xi32>>
+# NORMAL: aie.objectfifo @shim_to_mem_fwd(%{{.*}}, {%{{.*}}}, {{.*}}) {iter_count = 3 : i32} : !aie.objectfifo<memref<1024xi32>>
 def test_objectfifo_bd_chain_scenarios():
 
     dev = NPU1Col1()
@@ -48,6 +39,8 @@ def test_objectfifo_bd_chain_scenarios():
     print(module)
 
 
+# RUN: not %python %s zero 2>&1 | FileCheck %s --check-prefix=ERROR_ZERO
+# ERROR_ZERO: ValueError: Iter count must be in [1, 256] range.
 def test_objectfifo_bd_chain_error_zero():
     line_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
@@ -55,6 +48,8 @@ def test_objectfifo_bd_chain_error_zero():
     of_test.set_iter_count(0)
 
 
+# RUN: not %python %s high 2>&1 | FileCheck %s --check-prefix=ERROR_HIGH
+# ERROR_HIGH: ValueError: Iter count must be in [1, 256] range.
 def test_objectfifo_bd_chain_error_high():
     line_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
@@ -62,6 +57,8 @@ def test_objectfifo_bd_chain_error_high():
     of_test.set_iter_count(257)
 
 
+# RUN: not %python %s args 2>&1 | FileCheck %s --check-prefix=ERROR_ARGS
+# ERROR_ARGS: ValueError: iter_count is required. Provide a value between 1 and 256.
 def test_objectfifo_bd_chain_error_args():
     line_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
