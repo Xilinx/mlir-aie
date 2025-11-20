@@ -76,7 +76,7 @@ module {
     } {keep_pkt_header = true}
 
     // Runtime sequence with trace configuration
-    aiex.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<1xi32>, %arg2: memref<4096xi32>) {
+    aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<1xi32>, %arg2: memref<4096xi32>) {
 
       // ========================================================================
       // Trace Control Register Configuration
@@ -184,7 +184,7 @@ module {
       // ========================================================================
 
       // Configure DMA tasks for input, factor, and output
-      %0 = aie.dma_configure_task_for @in {
+      %0 = aiex.dma_configure_task_for @in {
         aie.dma_bd(%arg0 : memref<4096xi32>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
