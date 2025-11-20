@@ -253,6 +253,8 @@ class InstallWithPth(install):
 
 
 def get_version():
+    if "AIE_WHEEL_VERSION" in os.environ:
+        return os.environ["AIE_WHEEL_VERSION"].lstrip("v")
     release_version = "0.0.1"
     commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
     now = datetime.now()
