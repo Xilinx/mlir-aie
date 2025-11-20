@@ -264,7 +264,8 @@ def mem_eight_in_three_out(module):
 @construct_and_print_module
 def compute_three_in_col_lim(module):
     n = 1024
-    cores_per_col = 2
+    # TODO(erika): use device slice
+    # cores_per_col = 2
 
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
@@ -288,7 +289,8 @@ def compute_three_in_col_lim(module):
         rt.fill(of_1.prod(), B)
         rt.fill(of_2.prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
+    # module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module
 
 
