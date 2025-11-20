@@ -8,21 +8,17 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, LocalBuffer
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2Col1, NPU2
+from aie.iron.device import NPU2Col1
+
 
 # CHECK:  module {
 # CHECK:    aie.device(npu2_1col) {
 # CHECK:      %tile_0_2 = aie.tile(0, 2)
 # CHECK:      %unint_local_buf = aie.buffer(%tile_0_2) {sym_name = "unint_local_buf"} : memref<4096xui8>
 # CHECK:      %init_local_buf = aie.buffer(%tile_0_2) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
-# CHECK:      %shim_noc_tile_0_0 = aie.tile(0, 0)
-
-
 def passthrough_local_buff():
     in1_size = 4096
-    out_size = 4096
     in1_dtype = np.uint8
-    out_dtype = np.uint8
 
     # Define tensor types
     line_size = in1_size // in1_dtype(0).nbytes
@@ -52,9 +48,9 @@ def passthrough_local_buff():
         )
         elemOut = of_out.acquire(1)
         elemIn = of_in.acquire(1)
-        passthrough_fn(elemIn, unint_local_buf, line_size)
-        passthrough_fn(unint_local_buf, init_local_buf, line_size)
-        passthrough_fn(init_local_buf, elemOut, line_size)
+        passThroughLine(elemIn, unint_local_buf, line_size)
+        passThroughLine(unint_local_buf, init_local_buf, line_size)
+        passThroughLine(init_local_buf, elemOut, line_size)
         of_in.release(1)
         of_out.release(1)
 
@@ -66,7 +62,7 @@ def passthrough_local_buff():
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
+    with rt.sequence(vector_type, vector_type) as (a_in, b_out):
         rt.start(my_worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), b_out, wait=True)
