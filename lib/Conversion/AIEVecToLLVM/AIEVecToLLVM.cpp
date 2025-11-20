@@ -2654,6 +2654,206 @@ public:
   }
 };
 
+// AIE2p version of MaxOp conversion
+class MaxOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MaxOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::MaxOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::MaxOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    VectorType resultType = cast<VectorType>(op.getResult().getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    // aievec.max op has the AllTypesMatch constraint on lhs/rhs/res
+    if (resultVectorSize != 512) {
+      op.emitWarning() << "aievec.max conversion with " << resultVectorSize
+                       << "-bit result is not supported.\n";
+      return failure();
+    }
+
+    // create xllvm intrinsic
+    Value maxOp = nullptr;
+    if (llvm::isa<IntegerType>(resultScaTy)) {
+      // create constant for third operand `cmp`
+      // Note: `cmp` is implicitly treated as `sign` to the vmax intrinsic
+      auto cmpCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+      SmallVector<Value> operands{adaptor.getLhs(), adaptor.getRhs(), cmpCst};
+      if (resultBitWidth == 8) {
+        maxOp = rewriter.create<xllvm::VectorMaxLt8AIE2pIntrOp>(
+            loc,
+            mlir::LLVM::LLVMStructType::getLiteral(
+                rewriter.getContext(),
+                {VectorType::get({64}, rewriter.getI8Type()),
+                 VectorType::get({2}, rewriter.getI32Type())}),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({64}, rewriter.getI8Type()),
+                 VectorType::get({64}, rewriter.getI8Type()),
+                 rewriter.getI32Type()}));
+      } else if (resultBitWidth == 16) {
+        maxOp = rewriter.create<xllvm::VectorMaxLt16AIE2pIntrOp>(
+            loc,
+            mlir::LLVM::LLVMStructType::getLiteral(
+                rewriter.getContext(),
+                {VectorType::get({32}, rewriter.getI16Type()),
+                 rewriter.getI32Type()}),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({32}, rewriter.getI16Type()),
+                 VectorType::get({32}, rewriter.getI16Type()),
+                 rewriter.getI32Type()}));
+      } else if (resultBitWidth == 32) {
+        maxOp = rewriter.create<xllvm::VectorMaxLt32AIE2pIntrOp>(
+            loc,
+            mlir::LLVM::LLVMStructType::getLiteral(
+                rewriter.getContext(),
+                {VectorType::get({16}, rewriter.getI32Type()),
+                 rewriter.getI32Type()}),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({16}, rewriter.getI32Type()),
+                 VectorType::get({16}, rewriter.getI32Type()),
+                 rewriter.getI32Type()}));
+      }
+    } else {
+      if (resultBitWidth == 16) {
+        maxOp = rewriter.create<xllvm::VectorMaxLtBf16AIE2pIntrOp>(
+            loc,
+            mlir::LLVM::LLVMStructType::getLiteral(
+                rewriter.getContext(),
+                {VectorType::get({32}, rewriter.getBF16Type()),
+                 rewriter.getI32Type()}),
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs()},
+                {VectorType::get({32}, rewriter.getBF16Type()),
+                 VectorType::get({32}, rewriter.getBF16Type())}));
+      }
+    }
+
+    if (!maxOp) {
+      // We have checked the lhs/rhs/res to be 512-bit vectors. Hence, a
+      // possible failure here is due to unsupported element datatype.
+      op.emitWarning() << "aievec.max conversion fails due to unsupported "
+                          "element data type.\n";
+      return failure();
+    }
+
+    // create llvm.extractvalue for the first element in the LLVMStruct
+    rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(op, maxOp,
+                                                      /*position=*/0);
+
+    return success();
+  }
+};
+
+// AIE2p version of MinOp conversion
+class MinOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::MinOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::MinOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::MinOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    VectorType resultType = cast<VectorType>(op.getResult().getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    // aievec.min op has the AllTypesMatch constraint on lhs/rhs/res
+    if (resultVectorSize != 512) {
+      op.emitWarning() << "aievec.min conversion with " << resultVectorSize
+                       << "-bit result is not supported.\n";
+      return failure();
+    }
+
+    // create xllvm intrinsic
+    Value minOp = nullptr;
+    if (llvm::isa<IntegerType>(resultScaTy)) {
+      // create constant for third operand `cmp`
+      // Note: `cmp` is implicitly treated as `sign` to the vmin intrinsic
+      auto cmpCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+      SmallVector<Value> operands{adaptor.getLhs(), adaptor.getRhs(), cmpCst};
+      if (resultBitWidth == 8) {
+        minOp = rewriter.create<xllvm::VectorMinGe8AIE2pIntrOp>(
+            loc,
+            mlir::LLVM::LLVMStructType::getLiteral(
+                rewriter.getContext(),
+                {VectorType::get({64}, rewriter.getI8Type()),
+                 VectorType::get({2}, rewriter.getI32Type())}),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({64}, rewriter.getI8Type()),
+                 VectorType::get({64}, rewriter.getI8Type()),
+                 rewriter.getI32Type()}));
+      } else if (resultBitWidth == 16) {
+        minOp = rewriter.create<xllvm::VectorMinGe16AIE2pIntrOp>(
+            loc,
+            mlir::LLVM::LLVMStructType::getLiteral(
+                rewriter.getContext(),
+                {VectorType::get({32}, rewriter.getI16Type()),
+                 rewriter.getI32Type()}),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({32}, rewriter.getI16Type()),
+                 VectorType::get({32}, rewriter.getI16Type()),
+                 rewriter.getI32Type()}));
+      } else if (resultBitWidth == 32) {
+        minOp = rewriter.create<xllvm::VectorMinGe32AIE2pIntrOp>(
+            loc,
+            mlir::LLVM::LLVMStructType::getLiteral(
+                rewriter.getContext(),
+                {VectorType::get({16}, rewriter.getI32Type()),
+                 rewriter.getI32Type()}),
+            forceCastOperandsToSignature(
+                rewriter, loc, operands,
+                {VectorType::get({16}, rewriter.getI32Type()),
+                 VectorType::get({16}, rewriter.getI32Type()),
+                 rewriter.getI32Type()}));
+      }
+    } else {
+      if (resultBitWidth == 16) {
+        minOp = rewriter.create<xllvm::VectorMinGeBf16AIE2pIntrOp>(
+            loc,
+            mlir::LLVM::LLVMStructType::getLiteral(
+                rewriter.getContext(),
+                {VectorType::get({32}, rewriter.getBF16Type()),
+                 rewriter.getI32Type()}),
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs()},
+                {VectorType::get({32}, rewriter.getBF16Type()),
+                 VectorType::get({32}, rewriter.getBF16Type())}));
+      }
+    }
+
+    if (!minOp) {
+      // We have checked the lhs/rhs/res to be 512-bit vectors. Hence, a
+      // possible failure here is due to unsupported element datatype.
+      op.emitWarning() << "aievec.min conversion fails due to unsupported "
+                          "element data type.\n";
+      return failure();
+    }
+
+    // create llvm.extractvalue for the first element in the LLVMStruct
+    rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(op, minOp,
+                                                      /*position=*/0);
+
+    return success();
+  }
+};
+
 class BroadcastScalarOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::BroadcastScalarOp> {
 public:
@@ -2768,6 +2968,67 @@ public:
     } else {
       // Float types
       shiftOp = rewriter.create<xllvm::VectorShiftBF512BF512IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({32}, rewriter.getBF16Type()),
+               VectorType::get({32}, rewriter.getBF16Type()),
+               rewriter.getI32Type(), rewriter.getI32Type()}));
+    }
+
+    // create bitcast/shape_cast for result
+    auto resultVal =
+        forceCastValueToType(rewriter, loc, shiftOp, op.getResult().getType());
+    rewriter.replaceOp(op, resultVal);
+
+    return success();
+  }
+};
+
+// AIE2p version of ShiftOp conversion
+class ShiftOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::ShiftOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::ShiftOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::ShiftOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    Value result = op.getResult();
+    VectorType resultType = cast<VectorType>(result.getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    if (resultVectorSize != 512) {
+      op.emitWarning() << "aievec.shift conversion with result vector size "
+                       << resultVectorSize << " is not implemented.\n";
+      return failure();
+    }
+
+    // assume step is always zero
+    auto stepCst = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+
+    // create xllvm intrinsic
+    Value shiftOp = nullptr;
+    SmallVector<Value> operands(
+        {adaptor.getLhs(), adaptor.getRhs(), stepCst, adaptor.getShift()});
+    if (llvm::isa<IntegerType>(resultScaTy)) {
+      // Integer types - use AIE2p intrinsic
+      shiftOp = rewriter.create<xllvm::VectorShiftI512I512AIE2pIntrOp>(
+          loc, VectorType::get({16}, rewriter.getI32Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({16}, rewriter.getI32Type()),
+               VectorType::get({16}, rewriter.getI32Type()),
+               rewriter.getI32Type(), rewriter.getI32Type()}));
+    } else {
+      // Float types - use AIE2p intrinsic
+      shiftOp = rewriter.create<xllvm::VectorShiftBF512BF512AIE2pIntrOp>(
           loc, VectorType::get({32}, rewriter.getBF16Type()),
           forceCastOperandsToSignature(
               rewriter, loc, operands,
@@ -3852,7 +4113,6 @@ void populateAIEVecToLLVMCommonConversionPatterns(
                FMAOpConversion,
                MulOpConversion,
                UPDOpConversion,
-               ConcatOpConversion,
                ExtOpConversion,
                SelectOpConversion,
                PackOpConversion,
@@ -3861,10 +4121,6 @@ void populateAIEVecToLLVMCommonConversionPatterns(
                BroadcastScalarOpConversion,
                FMAElemOpConversion,
                MatMulOpConversion,
-               MaxOpConversion,
-               MinOpConversion,
-               ShiftOpConversion,
-               ExtractElemOpConversion,
                FoldAIECastOps,
                ShuffleOpConversion>(converter);
   // clang-format on
@@ -3877,7 +4133,92 @@ void populateAIEVecToLLVMAIE2ConversionPatterns(
   patterns.add<AddElemOpAIE2Conversion>(converter);
   patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   patterns.add<UPSOpAIE2Conversion, SRSOpAIE2Conversion>(converter);
+  patterns.add<ShiftOpConversion>(converter);
+  patterns.add<MaxOpConversion, MinOpConversion>(converter);
+  patterns.add<ExtractElemOpConversion>(converter);
+  patterns.add<ConcatOpConversion>(converter);
 }
+
+// AIE2p version of ExtractElemOp conversion using LLVM extractelement
+class ExtractElemOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::ExtElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::ExtElemOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::ExtElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    // AIE2p doesn't have dedicated vextract intrinsics, so use LLVM
+    // extractelement
+    Value extracted = rewriter.create<LLVM::ExtractElementOp>(
+        loc, adaptor.getSource(), adaptor.getIndex());
+
+    rewriter.replaceOp(op, extracted);
+    return success();
+  }
+};
+
+// AIE2p version of ConcatOp conversion using vector.shuffle
+class ConcatOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::ConcatOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::ConcatOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::ConcatOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    SmallVector<Value> sources = adaptor.getSources();
+
+    if (sources.empty()) {
+      op.emitWarning() << "aievec.concat with no sources is not supported.\n";
+      return failure();
+    }
+
+    // AIE2p doesn't have dedicated concat intrinsics, use vector.shuffle
+    Value result = sources[0];
+
+    // Build shuffle mask that concatenates all sources
+    auto srcType = cast<VectorType>(sources[0].getType());
+    int64_t srcLanes = getVectorLaneSize(srcType);
+
+    if (sources.size() == 2) {
+      // Concatenate two vectors using shuffle
+      SmallVector<int64_t> mask;
+      for (int64_t i = 0; i < srcLanes * 2; ++i)
+        mask.push_back(i);
+
+      result =
+          rewriter.create<vector::ShuffleOp>(loc, sources[0], sources[1], mask);
+    } else if (sources.size() == 4) {
+      // Concatenate four vectors: first concat pairs, then concat results
+      SmallVector<int64_t> pairMask;
+      for (int64_t i = 0; i < srcLanes * 2; ++i)
+        pairMask.push_back(i);
+
+      auto pair0 = rewriter.create<vector::ShuffleOp>(loc, sources[0],
+                                                      sources[1], pairMask);
+      auto pair1 = rewriter.create<vector::ShuffleOp>(loc, sources[2],
+                                                      sources[3], pairMask);
+
+      SmallVector<int64_t> finalMask;
+      for (int64_t i = 0; i < srcLanes * 4; ++i)
+        finalMask.push_back(i);
+
+      result = rewriter.create<vector::ShuffleOp>(loc, pair0, pair1, finalMask);
+    } else {
+      op.emitWarning() << "aievec.concat with " << sources.size()
+                       << " operands is not supported for AIE2p.\n";
+      return failure();
+    }
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
 
 void populateAIEVecToLLVMAIE2pConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
@@ -3886,6 +4227,10 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<MulElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
   patterns.add<MatMulOpAIE2pConversion>(converter);
+  patterns.add<ShiftOpAIE2pConversion>(converter);
+  patterns.add<MaxOpAIE2pConversion, MinOpAIE2pConversion>(converter);
+  patterns.add<ExtractElemOpAIE2pConversion>(converter);
+  patterns.add<ConcatOpAIE2pConversion>(converter);
   patterns.add<ExpOpAIE2pConversion>(converter);
 }
 
