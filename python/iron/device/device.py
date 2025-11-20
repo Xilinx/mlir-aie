@@ -195,11 +195,17 @@ class DeviceLike(Resolvable):
 class DeviceView(DeviceLike):
     def __init__(self, device: "Device", tiles: list[Tile]):
         super().__init__(device=device._device, tiles=tiles)
+        self._device_instance = device
+        self._coords = set()
+        for col in tiles:
+            for t in col:
+                self._coords.add((t.col, t.row))
 
     def tile_iterator(self) -> Generator[Tile, None, None]:
-        for t in super().tile_iterator():
-            if t in self._tiles():
-                yield t
+        # Keep ordering consistent from the device we sliced from.
+        for c in range(len(self._tiles)):
+            for r in range(len(self._tiles[0])):
+                yield self._tiles[c][r]
 
 
 class Device(DeviceLike):

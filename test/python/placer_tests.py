@@ -304,8 +304,10 @@ def explicit_of_endpoint(module):
     of_0 = ObjectFifo(n_ty, name="of0")
     of_1 = ObjectFifo(n_ty, name="of1")
 
-    of_0.cons(endpoint=RuntimeEndpoint(AnyShimTile))
-    of_1.prod(endpoint=RuntimeEndpoint(AnyShimTile))
+    of_0_cons = of_0.cons()
+    of_0_cons.endpoint = RuntimeEndpoint(AnyShimTile)
+    of_1_prod = of_1.prod()
+    of_1_prod.endpoint = RuntimeEndpoint(AnyShimTile)
 
     def core_fn(of0, of1):
         pass
