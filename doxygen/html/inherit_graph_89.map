@@ -1,147 +1,149 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classOpConversionPattern.html" title=" " alt="" coords="5,1909,164,1935"/>
+<area shape="rect" id="Node000000" href="$classOpConversionPattern.html" title=" " alt="" coords="5,1948,164,1973"/>
 <area shape="rect" id="Node000001" href="$structAIEBufferToStandard.html" title=" " alt="" coords="267,5,421,31"/>
-<area shape="poly" id="edge81_Node000000_Node000001" title=" " alt="" coords="83,1896,84,1535,89,1252,97,942,112,635,135,362,150,248,167,154,187,83,198,58,210,40,236,22,266,13,267,18,238,27,214,44,203,61,192,85,172,155,155,249,140,363,118,635,103,942,94,1252,90,1535,89,1896"/>
+<area shape="poly" id="edge84_Node000000_Node000001" title=" " alt="" coords="83,1935,84,1567,88,1278,96,962,111,648,134,369,149,252,166,156,186,84,198,59,210,40,236,22,266,13,267,18,238,27,214,44,202,61,191,86,171,157,154,253,139,370,116,648,102,962,93,1279,89,1567,88,1935"/>
 <area shape="rect" id="Node000002" href="$structAIECoreToStandardFunc.html" title=" " alt="" coords="257,55,431,80"/>
-<area shape="poly" id="edge82_Node000000_Node000002" title=" " alt="" coords="83,1895,85,1542,90,1266,99,965,114,667,137,402,151,291,168,200,187,131,198,107,210,90,231,74,255,65,257,70,233,78,214,93,203,110,192,133,173,201,156,292,142,402,119,667,104,965,95,1267,90,1542,89,1895"/>
+<area shape="poly" id="edge85_Node000000_Node000002" title=" " alt="" coords="83,1934,84,1574,89,1293,98,985,113,680,135,409,150,296,167,202,187,132,198,107,210,90,231,73,255,64,257,70,233,78,214,93,203,110,192,134,172,203,155,297,141,410,118,680,103,985,94,1293,90,1574,89,1934"/>
 <area shape="rect" id="Node000003" href="$structAIEDebugOpToStdLowering.html" title=" " alt="" coords="245,104,443,129"/>
-<area shape="poly" id="edge83_Node000000_Node000003" title=" " alt="" coords="83,1896,86,1552,91,1284,100,991,116,701,138,443,152,335,169,246,188,180,210,139,226,126,244,117,246,122,229,130,214,142,193,182,174,247,158,336,143,443,121,701,106,991,96,1284,91,1552,89,1896"/>
+<area shape="poly" id="edge86_Node000000_Node000003" title=" " alt="" coords="83,1934,85,1583,90,1309,99,1009,114,713,137,449,151,339,168,248,187,181,198,156,210,139,226,126,244,117,246,122,229,130,214,142,203,159,192,182,173,250,157,340,142,450,120,713,105,1009,95,1309,91,1583,89,1934"/>
 <area shape="rect" id="Node000004" href="$structAIEEventOpToStdLowering.html" title=" " alt="" coords="248,153,440,179"/>
-<area shape="poly" id="edge84_Node000000_Node000004" title=" " alt="" coords="83,1895,86,1559,92,1299,102,1014,117,733,140,483,154,378,170,292,189,228,210,188,227,174,247,166,249,171,230,179,214,192,193,230,175,293,159,379,145,483,123,733,107,1014,97,1299,92,1559,89,1895"/>
+<area shape="poly" id="edge87_Node000000_Node000004" title=" " alt="" coords="83,1934,86,1591,91,1325,101,1034,116,746,138,490,153,383,169,295,188,229,210,188,227,174,247,166,249,171,230,179,214,192,193,231,174,296,158,384,144,490,121,746,106,1034,96,1325,91,1592,89,1934"/>
 <area shape="rect" id="Node000005" href="$structAIEGetCascadeToStdLowering.html" title=" " alt="" coords="237,203,451,228"/>
-<area shape="poly" id="edge85_Node000000_Node000005" title=" " alt="" coords="83,1895,87,1568,93,1315,103,1039,119,766,141,523,155,422,171,338,189,276,210,238,235,220,238,224,214,241,194,278,176,340,160,423,146,524,124,766,109,1039,98,1315,92,1568,89,1895"/>
+<area shape="poly" id="edge88_Node000000_Node000005" title=" " alt="" coords="83,1934,87,1600,92,1341,102,1058,118,779,140,530,154,426,170,341,189,277,210,238,235,220,238,224,214,241,194,279,175,342,159,427,145,531,123,779,108,1058,98,1342,92,1600,89,1934"/>
 <area shape="rect" id="Node000006" href="$structAIEGetStreamToStdLowering.html" title=" " alt="" coords="241,252,447,277"/>
-<area shape="poly" id="edge86_Node000000_Node000006" title=" " alt="" coords="83,1896,88,1577,94,1332,105,1063,121,799,143,564,156,466,172,385,190,324,210,287,224,275,239,267,242,272,227,280,214,290,195,326,177,386,161,466,148,564,126,799,110,1064,100,1332,93,1577,89,1896"/>
+<area shape="poly" id="edge89_Node000000_Node000006" title=" " alt="" coords="83,1934,87,1609,93,1358,104,1083,119,812,141,571,155,470,171,387,189,325,210,287,224,275,239,267,242,272,227,280,214,290,194,327,176,388,160,471,147,571,125,812,109,1083,99,1358,93,1609,89,1934"/>
 <area shape="rect" id="Node000007" href="$structAIEOpRemoval.html" title=" " alt="" coords="240,301,448,327"/>
-<area shape="poly" id="edge87_Node000000_Node000007" title=" " alt="" coords="84,1895,89,1585,106,1087,122,831,144,604,158,509,173,431,190,372,210,336,238,317,241,321,214,340,195,374,178,432,163,510,149,605,128,831,112,1087,94,1585,89,1895"/>
+<area shape="poly" id="edge90_Node000000_Node000007" title=" " alt="" coords="83,1934,88,1618,94,1374,105,1108,121,845,143,611,156,514,172,433,190,373,210,336,238,317,241,321,214,340,195,375,177,435,162,515,148,612,126,845,110,1108,100,1374,93,1618,89,1934"/>
 <area shape="rect" id="Node000008" href="$structAIEPutCascadeToStdLowering.html" title=" " alt="" coords="237,351,451,376"/>
-<area shape="poly" id="edge88_Node000000_Node000008" title=" " alt="" coords="84,1895,89,1594,108,1112,124,864,146,644,159,553,174,477,191,420,210,386,235,368,238,372,214,389,196,422,179,478,164,554,151,645,129,865,113,1112,95,1594,89,1895"/>
+<area shape="poly" id="edge91_Node000000_Node000008" title=" " alt="" coords="84,1934,89,1626,107,1131,123,877,144,651,158,557,173,479,190,421,210,386,235,367,238,372,214,389,195,423,178,481,163,558,150,652,128,877,112,1132,94,1626,89,1934"/>
 <area shape="rect" id="Node000009" href="$structAIEPutStreamToStdLowering.html" title=" " alt="" coords="241,400,447,425"/>
-<area shape="poly" id="edge89_Node000000_Node000009" title=" " alt="" coords="84,1895,90,1602,109,1136,125,897,147,685,160,596,175,523,191,468,210,435,224,423,239,415,242,420,227,428,214,438,196,471,180,524,165,597,152,685,131,897,115,1136,95,1602,89,1895"/>
+<area shape="poly" id="edge92_Node000000_Node000009" title=" " alt="" coords="84,1934,90,1635,108,1156,124,910,146,692,159,601,174,526,191,469,210,435,224,423,240,415,243,420,227,427,214,438,196,471,179,527,164,602,151,693,129,911,113,1157,95,1635,89,1934"/>
 <area shape="rect" id="Node000010" href="$structAIEUseLockToStdLowering.html" title=" " alt="" coords="248,449,440,475"/>
-<area shape="poly" id="edge90_Node000000_Node000010" title=" " alt="" coords="84,1895,91,1611,111,1161,127,930,149,725,161,640,176,569,192,517,210,484,227,470,247,462,249,467,230,475,214,488,197,519,181,571,167,641,154,726,132,931,116,1161,96,1612,89,1895"/>
+<area shape="poly" id="edge93_Node000000_Node000010" title=" " alt="" coords="84,1934,90,1643,110,1180,126,943,147,732,160,644,175,572,191,518,210,484,227,470,247,462,249,467,230,475,214,488,196,520,180,573,166,645,153,733,131,943,115,1181,96,1643,89,1934"/>
 <area shape="rect" id="Node000011" href="$structAIEXOpRemoval.html" title=" " alt="" coords="232,499,456,524"/>
-<area shape="poly" id="edge91_Node000000_Node000011" title=" " alt="" coords="84,1895,92,1620,113,1186,129,964,150,767,163,685,177,617,193,566,210,535,230,519,234,523,214,538,197,568,182,618,168,686,156,768,134,964,118,1187,97,1620,89,1895"/>
+<area shape="poly" id="edge94_Node000000_Node000011" title=" " alt="" coords="84,1934,91,1653,111,1206,128,977,149,774,162,689,176,619,192,567,210,535,230,519,234,523,214,538,197,569,181,621,167,690,154,775,133,978,117,1207,97,1653,89,1934"/>
 <area shape="rect" id="Node000012" href="$structComputeAbsOpPattern.html" title=" " alt="" coords="259,549,429,589"/>
-<area shape="poly" id="edge92_Node000000_Node000012" title=" " alt="" coords="84,1895,93,1632,116,1219,132,1008,153,820,179,678,194,629,210,599,232,581,258,571,260,576,235,586,214,602,199,631,184,679,159,821,138,1008,121,1220,99,1632,89,1896"/>
+<area shape="poly" id="edge95_Node000000_Node000012" title=" " alt="" coords="84,1934,93,1665,114,1239,131,1021,152,828,178,680,193,630,210,599,232,581,258,571,260,576,235,586,214,602,198,632,183,681,157,828,136,1022,120,1240,98,1665,89,1935"/>
 <area shape="rect" id="Node000013" href="$structComputeBandAndBorOpPattern.html" title=" " alt="" coords="231,613,457,653"/>
-<area shape="poly" id="edge93_Node000000_Node000013" title=" " alt="" coords="84,1896,94,1644,117,1252,134,1051,155,873,180,738,194,691,210,663,230,647,233,651,214,666,199,694,185,739,161,874,140,1051,123,1252,100,1644,90,1896"/>
+<area shape="poly" id="edge96_Node000000_Node000013" title=" " alt="" coords="84,1934,94,1675,116,1270,133,1063,154,880,179,740,194,692,210,663,230,647,233,651,214,666,199,694,185,741,159,881,139,1064,122,1271,99,1676,89,1934"/>
 <area shape="rect" id="Node000014" href="$structComputeBxorAndBnegOpPattern.html" title=" " alt="" coords="228,677,460,703"/>
-<area shape="poly" id="edge94_Node000000_Node000014" title=" " alt="" coords="84,1895,95,1652,118,1275,135,1083,156,912,180,783,195,739,210,712,226,699,230,703,214,716,199,741,186,784,161,913,140,1083,123,1275,100,1653,90,1896"/>
+<area shape="poly" id="edge97_Node000000_Node000014" title=" " alt="" coords="84,1934,94,1683,117,1294,133,1095,154,919,180,785,194,740,210,712,226,699,230,703,214,716,199,742,185,787,160,920,139,1096,122,1294,99,1684,89,1934"/>
 <area shape="rect" id="Node000015" href="$structComputeCeilOpPattern.html" title=" " alt="" coords="259,727,429,752"/>
-<area shape="poly" id="edge95_Node000000_Node000015" title=" " alt="" coords="84,1896,95,1661,119,1300,136,1116,157,953,181,829,195,787,210,762,232,745,258,736,259,741,234,750,214,765,200,789,187,831,162,954,142,1116,125,1300,101,1662,90,1896"/>
+<area shape="poly" id="edge98_Node000000_Node000015" title=" " alt="" coords="84,1934,95,1693,118,1319,135,1129,156,960,181,832,195,788,210,762,232,745,258,736,259,741,234,750,214,765,199,790,186,833,161,961,140,1129,123,1320,100,1694,90,1935"/>
 <area shape="rect" id="Node000016" href="$structComputeErfOpPattern.html" title=" " alt="" coords="263,776,425,801"/>
-<area shape="poly" id="edge96_Node000000_Node000016" title=" " alt="" coords="84,1895,96,1669,121,1324,138,1148,159,993,182,875,196,835,210,811,234,794,262,785,263,790,236,799,214,814,201,838,188,877,164,994,143,1149,126,1324,102,1670,90,1895"/>
+<area shape="poly" id="edge99_Node000000_Node000016" title=" " alt="" coords="84,1934,96,1701,120,1343,137,1161,157,1000,182,878,195,836,210,811,234,794,262,785,263,790,236,799,214,814,200,839,187,879,163,1001,142,1162,125,1344,101,1702,90,1934"/>
 <area shape="rect" id="Node000017" href="$structComputeExpOpByLUTLLVMPattern.html" title=" " alt="" coords="221,825,467,851"/>
-<area shape="poly" id="edge97_Node000000_Node000017" title=" " alt="" coords="85,1895,97,1679,122,1349,140,1182,160,1034,183,922,196,884,210,860,224,849,227,853,214,864,201,886,189,923,165,1035,145,1182,128,1350,102,1679,90,1896"/>
+<area shape="poly" id="edge100_Node000000_Node000017" title=" " alt="" coords="85,1934,96,1711,121,1368,138,1194,159,1041,183,924,196,885,210,860,224,849,227,853,214,864,201,887,188,925,164,1042,144,1195,127,1369,102,1711,90,1934"/>
 <area shape="rect" id="Node000018" href="$structComputeExpOpByLUTPattern.html" title=" " alt="" coords="239,875,449,900"/>
-<area shape="poly" id="edge98_Node000000_Node000018" title=" " alt="" coords="85,1896,98,1688,124,1374,141,1215,162,1075,184,968,197,932,210,910,237,891,240,896,214,913,202,934,190,969,167,1076,147,1216,129,1375,103,1689,90,1896"/>
+<area shape="poly" id="edge101_Node000000_Node000018" title=" " alt="" coords="85,1934,97,1719,123,1393,140,1227,160,1081,184,970,196,933,210,910,237,891,240,896,214,913,201,935,189,972,166,1082,145,1228,128,1393,103,1719,90,1934"/>
 <area shape="rect" id="Node000019" href="$structComputeFloorOpPattern.html" title=" " alt="" coords="255,924,433,949"/>
-<area shape="poly" id="edge99_Node000000_Node000019" title=" " alt="" coords="83,1896,83,1710,87,1575,96,1428,111,1281,133,1145,148,1086,166,1034,186,991,210,959,230,944,254,935,256,940,233,948,214,963,191,994,171,1036,154,1088,139,1146,116,1281,101,1428,92,1575,88,1710,88,1896"/>
+<area shape="poly" id="edge102_Node000000_Node000019" title=" " alt="" coords="85,1934,98,1729,124,1418,142,1261,162,1122,185,1017,197,981,210,959,230,944,254,935,255,940,233,948,214,962,202,983,190,1018,167,1123,147,1261,130,1419,104,1729,90,1934"/>
 <area shape="rect" id="Node000020" href="$structComputeInvOpByLUTPattern.html" title=" " alt="" coords="241,973,447,999"/>
-<area shape="poly" id="edge100_Node000000_Node000020" title=" " alt="" coords="83,1896,85,1719,89,1591,99,1451,114,1312,136,1184,151,1128,168,1079,188,1039,210,1008,239,989,242,994,214,1012,192,1042,173,1081,156,1130,142,1185,119,1313,104,1452,95,1591,90,1719,88,1896"/>
+<area shape="poly" id="edge103_Node000000_Node000020" title=" " alt="" coords="83,1934,83,1750,87,1616,96,1471,111,1325,134,1192,149,1134,166,1082,187,1040,210,1008,239,989,242,994,214,1012,191,1043,171,1084,154,1135,139,1193,117,1326,102,1471,93,1616,89,1750,88,1934"/>
 <area shape="rect" id="Node000021" href="$structComputeNegOpPattern.html" title=" " alt="" coords="259,1023,429,1048"/>
-<area shape="poly" id="edge101_Node000000_Node000021" title=" " alt="" coords="83,1895,86,1726,92,1605,102,1474,117,1343,140,1223,154,1170,170,1124,189,1086,210,1057,232,1042,258,1033,259,1038,235,1046,214,1061,193,1089,175,1126,159,1172,145,1224,122,1344,107,1474,97,1605,92,1726,89,1895"/>
+<area shape="poly" id="edge104_Node000000_Node000021" title=" " alt="" coords="83,1934,85,1758,90,1632,99,1494,115,1357,137,1231,152,1176,168,1128,188,1088,210,1057,232,1042,258,1033,259,1038,235,1046,214,1061,192,1090,173,1130,157,1177,142,1232,120,1358,105,1495,95,1632,90,1759,88,1934"/>
 <area shape="rect" id="Node000022" href="$structComputeRsqrtOpPattern.html" title=" " alt="" coords="255,1072,433,1097"/>
-<area shape="poly" id="edge102_Node000000_Node000022" title=" " alt="" coords="83,1895,88,1735,94,1621,105,1497,121,1374,143,1262,172,1169,190,1134,210,1107,230,1092,254,1083,255,1088,233,1097,214,1111,194,1137,177,1171,148,1263,126,1375,110,1498,100,1621,93,1735,89,1895"/>
+<area shape="poly" id="edge105_Node000000_Node000022" title=" " alt="" coords="83,1934,87,1767,92,1648,102,1518,118,1389,140,1270,154,1218,170,1173,189,1135,210,1107,230,1092,253,1083,255,1088,233,1097,214,1111,193,1138,175,1175,159,1220,145,1271,123,1389,108,1519,98,1648,92,1767,89,1934"/>
 <area shape="rect" id="Node000023" href="$structComputeSigmoidOpPattern.html" title=" " alt="" coords="245,1121,443,1147"/>
-<area shape="poly" id="edge103_Node000000_Node000023" title=" " alt="" coords="84,1896,90,1744,108,1522,124,1407,146,1302,174,1216,191,1183,210,1157,226,1145,243,1137,246,1142,228,1150,214,1161,196,1186,179,1218,151,1304,129,1408,113,1523,95,1745,89,1896"/>
+<area shape="poly" id="edge106_Node000000_Node000023" title=" " alt="" coords="84,1934,88,1776,106,1542,122,1421,143,1310,173,1219,190,1184,210,1157,226,1145,243,1137,246,1142,228,1150,214,1161,195,1187,177,1221,149,1312,127,1422,111,1543,94,1776,89,1934"/>
 <area shape="rect" id="Node000024" href="$structComputeSignedIntRightShiftOpPattern.html" title=" " alt="" coords="241,1171,447,1211"/>
-<area shape="poly" id="edge104_Node000000_Node000024" title=" " alt="" coords="84,1895,93,1756,113,1553,130,1449,151,1354,177,1275,193,1245,210,1221,240,1201,243,1206,214,1225,197,1248,182,1277,156,1355,135,1450,119,1554,98,1756,90,1896"/>
+<area shape="poly" id="edge107_Node000000_Node000024" title=" " alt="" coords="84,1934,91,1788,111,1574,127,1463,149,1362,176,1279,192,1246,210,1221,240,1201,243,1205,214,1225,197,1249,181,1281,154,1363,132,1464,116,1574,97,1788,89,1934"/>
 <area shape="rect" id="Node000025" href="$structComputeSqrtOpPattern.html" title=" " alt="" coords="259,1236,429,1261"/>
-<area shape="poly" id="edge105_Node000000_Node000025" title=" " alt="" coords="85,1895,94,1764,115,1576,132,1479,153,1392,178,1320,194,1292,210,1271,232,1255,258,1247,259,1252,235,1260,214,1275,198,1295,183,1322,158,1393,137,1481,121,1577,99,1764,90,1896"/>
+<area shape="poly" id="edge108_Node000000_Node000025" title=" " alt="" coords="84,1934,92,1796,113,1596,129,1494,150,1400,177,1323,193,1293,210,1271,232,1255,258,1247,259,1252,235,1260,214,1275,197,1296,182,1325,155,1401,134,1495,118,1597,98,1797,90,1935"/>
 <area shape="rect" id="Node000026" href="$structComputeTanhOpByLUTPattern.html" title=" " alt="" coords="235,1285,453,1311"/>
-<area shape="poly" id="edge106_Node000000_Node000026" title=" " alt="" coords="85,1895,96,1773,119,1601,135,1512,156,1432,181,1366,195,1341,210,1321,234,1305,237,1310,214,1325,199,1344,185,1368,161,1433,141,1513,124,1601,101,1774,90,1896"/>
+<area shape="poly" id="edge109_Node000000_Node000026" title=" " alt="" coords="85,1934,94,1805,116,1620,133,1526,154,1440,179,1369,194,1342,210,1321,234,1305,237,1310,214,1325,198,1345,184,1372,159,1441,138,1527,122,1621,100,1805,90,1934"/>
 <area shape="rect" id="Node000027" href="$structConvertMathExpToAIEVecExpOpPattern.html" title=" " alt="" coords="238,1335,450,1375"/>
-<area shape="poly" id="edge107_Node000000_Node000027" title=" " alt="" coords="86,1895,99,1785,124,1632,141,1554,161,1483,184,1425,210,1385,236,1367,239,1372,214,1389,188,1428,166,1485,146,1556,129,1633,105,1786,91,1896"/>
+<area shape="poly" id="edge110_Node000000_Node000027" title=" " alt="" coords="86,1934,98,1817,121,1652,138,1568,158,1491,182,1429,196,1404,210,1385,236,1367,239,1372,214,1389,200,1407,187,1431,163,1493,143,1569,127,1653,103,1817,91,1934"/>
 <area shape="rect" id="Node000028" href="$structConvertMulAddToAIEVecFMAElemOpPattern.html" title=" " alt="" coords="223,1399,465,1439"/>
-<area shape="poly" id="edge108_Node000000_Node000028" title=" " alt="" coords="87,1895,102,1797,128,1663,145,1596,165,1534,186,1484,210,1449,226,1437,229,1441,214,1453,191,1486,170,1536,150,1597,134,1665,107,1798,92,1896"/>
+<area shape="poly" id="edge111_Node000000_Node000028" title=" " alt="" coords="86,1934,100,1828,126,1683,143,1609,162,1542,185,1487,210,1450,225,1438,228,1442,214,1453,189,1490,167,1544,148,1611,131,1684,106,1829,92,1935"/>
 <area shape="rect" id="Node000029" href="$structConvertMulAddToAIEVecFMAOpPattern.html" title=" " alt="" coords="231,1463,457,1503"/>
-<area shape="poly" id="edge109_Node000000_Node000029" title=" " alt="" coords="83,1895,88,1820,105,1717,121,1662,143,1608,172,1557,210,1513,229,1500,232,1504,214,1517,177,1560,148,1610,126,1664,110,1718,93,1820,88,1895"/>
+<area shape="poly" id="edge112_Node000000_Node000029" title=" " alt="" coords="82,1934,84,1853,90,1798,100,1739,116,1678,138,1618,169,1562,210,1513,229,1500,232,1504,214,1517,174,1565,143,1621,121,1680,105,1740,95,1799,90,1853,88,1934"/>
 <area shape="rect" id="Node000030" href="$structConvertMulFToAIEVecMulElemOpPattern.html" title=" " alt="" coords="235,1527,453,1567"/>
-<area shape="poly" id="edge110_Node000000_Node000030" title=" " alt="" coords="85,1895,93,1831,113,1745,129,1699,150,1655,177,1613,210,1577,233,1562,236,1567,214,1581,181,1617,155,1657,134,1701,118,1746,98,1832,90,1896"/>
+<area shape="poly" id="edge113_Node000000_Node000030" title=" " alt="" coords="84,1934,90,1863,108,1767,124,1715,146,1665,174,1618,210,1577,233,1562,236,1566,214,1581,179,1621,151,1667,129,1717,113,1768,95,1864,89,1934"/>
 <area shape="rect" id="Node000031" href="$structConvertMulIToAIEVecMulElemOpPattern.html" title=" " alt="" coords="236,1591,452,1631"/>
-<area shape="poly" id="edge111_Node000000_Node000031" title=" " alt="" coords="87,1895,99,1842,122,1773,138,1737,158,1702,182,1669,210,1641,235,1626,237,1631,214,1645,186,1673,162,1705,143,1739,127,1775,105,1843,93,1896"/>
+<area shape="poly" id="edge114_Node000000_Node000031" title=" " alt="" coords="86,1933,96,1873,117,1794,133,1752,154,1712,179,1674,210,1641,234,1626,237,1630,214,1645,183,1677,158,1714,138,1755,122,1796,101,1874,91,1934"/>
 <area shape="rect" id="Node000032" href="$structConvertSplatToAIEBroadcast.html" title=" " alt="" coords="241,1656,447,1681"/>
-<area shape="poly" id="edge112_Node000000_Node000032" title=" " alt="" coords="90,1895,104,1850,129,1795,163,1739,185,1713,211,1692,239,1677,242,1682,213,1696,189,1717,168,1742,133,1797,109,1852,95,1897"/>
-<area shape="rect" id="Node000033" href="$structConvertSplatTransferReadToBroadcastPattern.html" title=" " alt="" coords="249,1706,439,1746"/>
-<area shape="poly" id="edge113_Node000000_Node000033" title=" " alt="" coords="96,1896,114,1864,140,1826,172,1788,211,1756,247,1738,250,1743,213,1760,176,1791,144,1829,119,1866,100,1898"/>
-<area shape="rect" id="Node000034" href="$structConvertVectorFMAOpToAIEVecFMAElemOpPattern.html" title=" " alt="" coords="235,1770,453,1810"/>
-<area shape="poly" id="edge114_Node000000_Node000034" title=" " alt="" coords="106,1898,152,1858,211,1820,241,1808,243,1813,213,1824,155,1862,110,1902"/>
-<area shape="rect" id="Node000035" href="$structDMAAwaitTaskOpPattern.html" title=" " alt="" coords="253,1835,435,1860"/>
-<area shape="poly" id="edge115_Node000000_Node000035" title=" " alt="" coords="124,1901,211,1869,259,1857,260,1863,213,1874,126,1906"/>
-<area shape="rect" id="Node000036" href="$structDMAStartTaskOpPattern.html" title=" " alt="" coords="255,1884,433,1909"/>
-<area shape="poly" id="edge116_Node000000_Node000036" title=" " alt="" coords="177,1910,255,1903,255,1908,178,1916"/>
-<area shape="rect" id="Node000037" href="$structExpandUPDToUPDAndExtPattern.html" title=" " alt="" coords="228,1933,460,1959"/>
-<area shape="poly" id="edge117_Node000000_Node000037" title=" " alt="" coords="178,1928,228,1933,227,1938,177,1933"/>
-<area shape="rect" id="Node000038" href="$structExtractTransposeFromContractionOp.html" title=" " alt="" coords="215,1983,473,2008"/>
-<area shape="poly" id="edge118_Node000000_Node000038" title=" " alt="" coords="128,1937,213,1967,266,1980,265,1985,211,1973,126,1942"/>
-<area shape="rect" id="Node000039" href="$structFlattenMultDimTransferReadPattern.html" title=" " alt="" coords="239,2033,449,2073"/>
-<area shape="poly" id="edge119_Node000000_Node000039" title=" " alt="" coords="110,1942,156,1981,213,2017,246,2030,244,2035,211,2022,153,1985,107,1946"/>
-<area shape="rect" id="Node000040" href="$structFlattenMultDimTransferWritePattern.html" title=" " alt="" coords="239,2097,449,2137"/>
-<area shape="poly" id="edge120_Node000000_Node000040" title=" " alt="" coords="101,1946,144,2015,176,2052,213,2082,240,2096,237,2101,211,2087,172,2055,140,2018,96,1949"/>
-<area shape="rect" id="Node000041" href="$structFoldAIEShiftAndBroadcast.html" title=" " alt="" coords="249,2161,439,2187"/>
-<area shape="poly" id="edge121_Node000000_Node000041" title=" " alt="" coords="95,1947,110,1991,133,2046,168,2101,189,2126,213,2146,250,2164,248,2169,211,2151,185,2129,164,2104,129,2048,105,1993,90,1949"/>
-<area shape="rect" id="Node000042" href="$structFoldMulAddChainToConvOpPattern.html" title=" " alt="" coords="221,2211,467,2236"/>
-<area shape="poly" id="edge122_Node000000_Node000042" title=" " alt="" coords="92,1948,104,2001,126,2069,142,2104,162,2138,186,2169,214,2196,234,2208,231,2213,210,2200,182,2173,158,2141,138,2107,121,2071,99,2002,87,1949"/>
-<area shape="rect" id="Node000043" href="$structFoldSplatToFMAOp.html" title=" " alt="" coords="273,2260,415,2285"/>
-<area shape="poly" id="edge123_Node000000_Node000043" title=" " alt="" coords="90,1948,99,2010,119,2091,135,2133,156,2175,182,2213,214,2245,242,2261,273,2269,272,2275,240,2266,210,2249,178,2216,151,2177,130,2136,114,2092,94,2011,85,1948"/>
-<area shape="rect" id="Node000044" href="$structFoldVectorExtractAndSplatToAIEBroadcast.html" title=" " alt="" coords="247,2310,441,2350"/>
-<area shape="poly" id="edge124_Node000000_Node000044" title=" " alt="" coords="89,1948,96,2018,114,2111,130,2161,152,2210,179,2255,214,2295,229,2306,247,2315,245,2320,227,2311,210,2299,175,2258,147,2213,125,2163,109,2113,90,2018,84,1949"/>
-<area shape="rect" id="Node000045" href="$structFuseExtIntoUPDPattern.html" title=" " alt="" coords="258,2375,430,2400"/>
-<area shape="poly" id="edge125_Node000000_Node000045" title=" " alt="" coords="93,1948,108,2041,135,2165,152,2228,171,2284,192,2330,214,2360,235,2374,259,2382,257,2387,232,2379,210,2364,187,2333,166,2286,147,2229,130,2166,103,2042,87,1949"/>
-<area shape="rect" id="Node000046" href="$structLowerAIEMemcpy.html" title=" " alt="" coords="275,2424,413,2449"/>
-<area shape="poly" id="edge126_Node000000_Node000046" title=" " alt="" coords="92,1948,106,2050,131,2189,148,2260,168,2323,190,2375,214,2409,242,2427,275,2435,274,2440,240,2432,210,2413,185,2378,163,2325,143,2261,126,2190,101,2051,86,1949"/>
-<area shape="rect" id="Node000047" href="$structLowerExtOpPattern.html" title=" " alt="" coords="265,2474,423,2514"/>
-<area shape="poly" id="edge127_Node000000_Node000047" title=" " alt="" coords="91,1948,104,2059,129,2213,146,2291,166,2362,188,2420,214,2459,238,2476,266,2486,264,2491,235,2481,210,2463,184,2422,161,2364,141,2292,124,2214,99,2060,86,1949"/>
-<area shape="rect" id="Node000048" href="$structLowerTruncOpPattern.html" title=" " alt="" coords="265,2538,423,2578"/>
-<area shape="poly" id="edge128_Node000000_Node000048" title=" " alt="" coords="91,1948,102,2071,125,2244,141,2333,162,2414,186,2480,199,2505,214,2524,237,2541,265,2551,264,2556,235,2546,210,2528,195,2508,181,2482,157,2416,136,2334,119,2245,96,2072,85,1949"/>
-<area shape="rect" id="Node000049" href="$structLowerVectorAddIOpToAIEVecAddOp.html" title=" " alt="" coords="241,2602,447,2642"/>
-<area shape="poly" id="edge129_Node000000_Node000049" title=" " alt="" coords="90,1948,99,2082,121,2275,137,2374,158,2465,183,2539,198,2567,214,2588,242,2607,239,2612,210,2592,194,2570,178,2541,153,2466,132,2375,115,2276,94,2083,85,1949"/>
-<area shape="rect" id="Node000050" href="$structLowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp.html" title=" " alt="" coords="223,2667,465,2721"/>
-<area shape="poly" id="edge130_Node000000_Node000050" title=" " alt="" coords="90,1948,98,2093,118,2305,134,2414,155,2514,182,2596,197,2628,214,2652,227,2664,224,2668,210,2656,193,2631,177,2598,150,2515,129,2415,113,2305,92,2094,84,1949"/>
-<area shape="rect" id="Node000051" href="$structLowerVectorCmpOpToAIEVecCmpOp.html" title=" " alt="" coords="240,2746,448,2786"/>
-<area shape="poly" id="edge131_Node000000_Node000051" title=" " alt="" coords="89,1948,94,2108,112,2343,128,2465,150,2577,178,2669,195,2704,214,2731,241,2750,238,2755,210,2735,191,2707,173,2671,145,2578,123,2466,107,2344,89,2108,84,1949"/>
-<area shape="rect" id="Node000052" href="$structLowerVectorContractionOpToAIEVecMatMulPattern.html" title=" " alt="" coords="247,2811,441,2865"/>
-<area shape="poly" id="edge132_Node000000_Node000052" title=" " alt="" coords="89,1948,93,2117,99,2240,110,2372,125,2505,147,2627,177,2728,194,2767,214,2796,229,2810,248,2820,245,2825,226,2814,210,2800,190,2769,172,2730,142,2628,120,2506,104,2373,94,2240,88,2118,83,1948"/>
-<area shape="rect" id="Node000053" href="$structLowerVectorExtractStridedSliceOpAIE2Pattern.html" title=" " alt="" coords="247,2890,441,2930"/>
-<area shape="poly" id="edge133_Node000000_Node000053" title=" " alt="" coords="88,1949,90,2133,94,2266,104,2411,119,2557,141,2691,156,2749,173,2801,192,2843,214,2875,229,2888,248,2897,245,2902,226,2892,210,2878,187,2846,168,2803,151,2751,136,2692,113,2558,98,2412,89,2266,84,2133,83,1949"/>
-<area shape="rect" id="Node000054" href="$structLowerVectorExtractStridedSliceOpAIEv1Pattern.html" title=" " alt="" coords="247,2954,441,2994"/>
-<area shape="poly" id="edge134_Node000000_Node000054" title=" " alt="" coords="90,1948,104,2157,130,2473,148,2634,168,2775,190,2883,202,2919,214,2940,229,2953,248,2962,245,2967,226,2958,210,2944,197,2921,185,2884,162,2776,142,2634,125,2474,98,2157,85,1949"/>
-<area shape="rect" id="Node000055" href="$structLowerVectorMinMaxOpToAIEVecMinMaxOp.html" title=" " alt="" coords="226,3018,462,3058"/>
-<area shape="poly" id="edge135_Node000000_Node000055" title=" " alt="" coords="90,1948,103,2169,128,2506,145,2677,166,2828,189,2943,201,2981,214,3004,227,3016,224,3020,210,3008,196,2983,184,2944,160,2829,140,2677,123,2506,97,2169,85,1949"/>
-<area shape="rect" id="Node000056" href="$structLowerVectorMulIOpToAIEVecMulOp.html" title=" " alt="" coords="241,3082,447,3122"/>
-<area shape="poly" id="edge136_Node000000_Node000056" title=" " alt="" coords="90,1948,102,2180,126,2538,143,2720,164,2881,188,3003,201,3044,214,3068,227,3080,242,3088,239,3093,224,3084,210,3072,196,3046,182,3004,159,2881,138,2720,121,2538,96,2181,84,1949"/>
-<area shape="rect" id="Node000057" href="$structLowerVectorReductionAddBfloat16Op.html" title=" " alt="" coords="212,3147,476,3172"/>
-<area shape="poly" id="edge137_Node000000_Node000057" title=" " alt="" coords="90,1948,100,2192,123,2571,140,2763,161,2934,186,3063,199,3107,214,3132,229,3144,226,3149,210,3136,195,3109,180,3065,156,2935,135,2764,118,2571,95,2193,84,1949"/>
-<area shape="rect" id="Node000058" href="$structLowerVectorReductionAddFloatOp.html" title=" " alt="" coords="223,3196,465,3221"/>
-<area shape="poly" id="edge138_Node000000_Node000058" title=" " alt="" coords="89,1948,99,2201,122,2595,138,2796,159,2974,185,3110,199,3155,214,3182,229,3194,226,3198,210,3185,194,3157,179,3111,154,2975,133,2797,116,2596,94,2201,84,1949"/>
-<area shape="rect" id="Node000059" href="$structLowerVectorReductionAddIntOp.html" title=" " alt="" coords="231,3245,457,3271"/>
-<area shape="poly" id="edge139_Node000000_Node000059" title=" " alt="" coords="89,1948,98,2210,120,2620,137,2829,158,3015,184,3156,198,3203,214,3231,232,3245,229,3249,210,3234,193,3205,178,3157,153,3016,132,2830,115,2620,93,2210,84,1949"/>
-<area shape="rect" id="Node000060" href="$structLowerVectorReductionMaxOp.html" title=" " alt="" coords="237,3295,451,3320"/>
-<area shape="poly" id="edge140_Node000000_Node000060" title=" " alt="" coords="89,1948,98,2218,119,2644,135,2862,156,3055,169,3136,183,3202,198,3251,214,3280,238,3298,235,3302,210,3284,193,3253,177,3203,164,3137,151,3056,130,2863,113,2644,92,2218,84,1948"/>
-<area shape="rect" id="Node000061" href="$structLowerVectorReductionMinOp.html" title=" " alt="" coords="239,3344,449,3369"/>
-<area shape="poly" id="edge141_Node000000_Node000061" title=" " alt="" coords="89,1949,97,2228,117,2669,134,2896,155,3096,168,3179,182,3248,197,3299,214,3330,240,3348,237,3352,210,3333,192,3301,177,3250,162,3180,150,3097,128,2896,112,2670,91,2228,84,1949"/>
-<area shape="rect" id="Node000062" href="$structLowerVectorSelectOpToAIEVecSelOp.html" title=" " alt="" coords="235,3394,453,3434"/>
-<area shape="poly" id="edge142_Node000000_Node000062" title=" " alt="" coords="89,1948,97,2235,117,2692,133,2927,155,3135,168,3222,182,3294,197,3347,214,3379,236,3396,232,3401,210,3382,192,3349,176,3295,162,3223,150,3136,128,2927,112,2692,91,2235,84,1948"/>
-<area shape="rect" id="Node000063" href="$structLowerVectorTransferReadToAIEUPD.html" title=" " alt="" coords="243,3458,445,3498"/>
-<area shape="poly" id="edge143_Node000000_Node000063" title=" " alt="" coords="89,1948,96,2247,115,2725,131,2971,153,3189,166,3280,180,3355,196,3411,214,3444,228,3457,244,3466,242,3470,225,3461,210,3448,191,3413,175,3356,160,3281,147,3189,126,2971,110,2725,90,2247,84,1948"/>
-<area shape="rect" id="Node000064" href="$structLowerVectorTransposeOpToAIEVecShuffleOpPattern.html" title=" " alt="" coords="245,3522,443,3562"/>
-<area shape="poly" id="edge144_Node000000_Node000064" title=" " alt="" coords="89,1949,95,2259,113,2757,129,3014,151,3241,164,3336,179,3415,196,3473,214,3508,228,3521,245,3530,243,3535,225,3525,210,3512,191,3475,174,3416,159,3337,146,3242,124,3014,108,2758,89,2259,84,1949"/>
-<area shape="rect" id="Node000065" href="$structMergeSingleColumnI16FMAOpPattern.html" title=" " alt="" coords="234,3586,454,3626"/>
-<area shape="poly" id="edge145_Node000000_Node000065" title=" " alt="" coords="89,1949,94,2270,111,2789,127,3056,149,3294,162,3393,178,3475,195,3536,214,3572,235,3589,232,3593,210,3576,190,3538,173,3476,157,3394,144,3294,122,3057,106,2789,88,2270,84,1949"/>
-<area shape="rect" id="Node000066" href="$structOneToOneVectorOpToAIEVecOpPattern.html" title=" " alt="" coords="229,3650,459,3690"/>
-<area shape="poly" id="edge146_Node000000_Node000066" title=" " alt="" coords="89,1949,93,2282,99,2539,109,2821,125,3099,147,3346,161,3450,177,3535,194,3598,214,3636,230,3650,226,3654,210,3640,189,3600,171,3536,156,3450,142,3347,120,3100,104,2821,94,2540,88,2282,83,1949"/>
-<area shape="rect" id="Node000067" href="$structRemoveAIECalls.html" title=" " alt="" coords="279,3715,409,3740"/>
-<area shape="poly" id="edge147_Node000000_Node000067" title=" " alt="" coords="89,1948,91,2291,96,2559,106,2852,121,3142,144,3399,158,3507,174,3595,193,3661,214,3700,228,3712,244,3720,280,3728,279,3733,242,3725,225,3716,210,3704,188,3663,169,3596,153,3508,138,3400,116,3142,101,2852,91,2559,86,2292,83,1948"/>
-<area shape="rect" id="Node000068" href="$structRemoveAIEFuncs.html" title=" " alt="" coords="277,3764,411,3789"/>
-<area shape="poly" id="edge148_Node000000_Node000068" title=" " alt="" coords="89,1949,91,2302,95,2577,105,2878,120,3176,142,3440,157,3551,173,3642,193,3709,203,3733,214,3750,227,3761,242,3769,277,3777,276,3782,240,3774,224,3765,210,3753,198,3736,187,3711,168,3643,151,3551,137,3441,114,3176,99,2878,90,2577,85,2302,83,1949"/>
-<area shape="rect" id="Node000069" href="$structSetLockToWrite32Pattern.html" title=" " alt="" coords="252,3813,436,3839"/>
-<area shape="poly" id="edge149_Node000000_Node000069" title=" " alt="" coords="89,1948,90,2309,94,2591,103,2901,118,3208,141,3480,155,3594,172,3688,192,3757,203,3782,214,3799,232,3813,253,3822,251,3827,229,3818,210,3802,198,3784,187,3759,167,3689,150,3595,135,3481,113,3208,98,2901,89,2591,84,2309,83,1948"/>
-<area shape="rect" id="Node000070" href="$structSplitUnalignedTransferReadPattern.html" title=" " alt="" coords="243,3863,445,3903"/>
-<area shape="poly" id="edge150_Node000000_Node000070" title=" " alt="" coords="89,1948,90,2316,95,2606,104,2924,119,3239,141,3519,156,3636,173,3733,192,3805,203,3830,214,3848,227,3861,243,3870,241,3874,224,3865,210,3852,198,3833,187,3807,167,3734,150,3637,136,3519,113,3239,98,2924,89,2606,85,2316,83,1948"/>
-<area shape="rect" id="Node000071" href="$structToken2LockLowering.html" title=" " alt="" coords="266,3928,422,3953"/>
-<area shape="poly" id="edge151_Node000000_Node000071" title=" " alt="" coords="88,1949,88,2330,92,2630,100,2959,114,3285,137,3574,152,3695,170,3795,191,3869,202,3895,214,3913,238,3931,267,3940,265,3945,235,3936,210,3917,197,3898,186,3871,165,3796,147,3696,132,3575,109,3285,95,2959,86,2630,83,2330,83,1949"/>
-<area shape="rect" id="Node000072" href="$structxilinx_1_1AIE_1_1AIEOpRemoval.html" title=" " alt="" coords="248,3978,440,4018"/>
-<area shape="poly" id="edge152_Node000000_Node000072" title=" " alt="" coords="88,1948,89,2336,92,2643,100,2981,115,3315,138,3613,153,3737,170,3840,191,3917,202,3944,214,3963,230,3977,249,3987,247,3991,227,3981,210,3966,197,3946,186,3919,165,3841,148,3738,133,3613,110,3315,95,2981,87,2643,83,2336,83,1948"/>
+<area shape="poly" id="edge115_Node000000_Node000032" title=" " alt="" coords="88,1934,100,1882,123,1816,139,1782,159,1748,182,1718,210,1692,239,1676,241,1681,214,1696,186,1722,163,1751,144,1784,128,1818,105,1883,93,1935"/>
+<area shape="rect" id="Node000033" href="$structConvertSplatToAIEBroadcastAIE2p.html" title=" " alt="" coords="241,1706,447,1746"/>
+<area shape="poly" id="edge116_Node000000_Node000033" title=" " alt="" coords="92,1934,108,1894,133,1846,167,1797,210,1756,239,1740,241,1745,214,1760,171,1801,138,1849,113,1896,97,1936"/>
+<area shape="rect" id="Node000034" href="$structConvertSplatTransferReadToBroadcastPattern.html" title=" " alt="" coords="249,1770,439,1810"/>
+<area shape="poly" id="edge117_Node000000_Node000034" title=" " alt="" coords="99,1935,144,1877,175,1846,211,1820,248,1803,250,1808,213,1824,179,1850,148,1880,103,1938"/>
+<area shape="rect" id="Node000035" href="$structConvertVectorFMAOpToAIEVecFMAElemOpPattern.html" title=" " alt="" coords="235,1834,453,1874"/>
+<area shape="poly" id="edge118_Node000000_Node000035" title=" " alt="" coords="114,1938,158,1910,211,1884,246,1872,248,1877,213,1888,161,1915,116,1942"/>
+<area shape="rect" id="Node000036" href="$structDMAAwaitTaskOpPattern.html" title=" " alt="" coords="253,1899,435,1924"/>
+<area shape="poly" id="edge119_Node000000_Node000036" title=" " alt="" coords="161,1943,211,1933,272,1921,273,1927,213,1938,162,1948"/>
+<area shape="rect" id="Node000037" href="$structDMAStartTaskOpPattern.html" title=" " alt="" coords="255,1948,433,1973"/>
+<area shape="poly" id="edge120_Node000000_Node000037" title=" " alt="" coords="177,1958,255,1958,255,1963,177,1963"/>
+<area shape="rect" id="Node000038" href="$structExpandUPDToUPDAndExtPattern.html" title=" " alt="" coords="228,1997,460,2023"/>
+<area shape="poly" id="edge121_Node000000_Node000038" title=" " alt="" coords="166,1973,277,1995,276,2000,165,1979"/>
+<area shape="rect" id="Node000039" href="$structExtractTransposeFromContractionOp.html" title=" " alt="" coords="215,2047,473,2072"/>
+<area shape="poly" id="edge122_Node000000_Node000039" title=" " alt="" coords="116,1979,160,2006,213,2032,256,2044,255,2049,211,2036,158,2011,113,1983"/>
+<area shape="rect" id="Node000040" href="$structFlattenMultDimTransferReadPattern.html" title=" " alt="" coords="239,2097,449,2137"/>
+<area shape="poly" id="edge123_Node000000_Node000040" title=" " alt="" coords="106,1983,151,2033,181,2059,213,2081,243,2094,240,2099,211,2086,178,2063,147,2037,102,1986"/>
+<area shape="rect" id="Node000041" href="$structFlattenMultDimTransferWritePattern.html" title=" " alt="" coords="239,2161,449,2201"/>
+<area shape="poly" id="edge124_Node000000_Node000041" title=" " alt="" coords="98,1985,115,2022,140,2066,173,2110,214,2146,240,2160,237,2165,210,2151,169,2113,136,2069,111,2024,93,1987"/>
+<area shape="rect" id="Node000042" href="$structFoldAIEShiftAndBroadcast.html" title=" " alt="" coords="249,2225,439,2251"/>
+<area shape="poly" id="edge125_Node000000_Node000042" title=" " alt="" coords="94,1986,107,2035,130,2096,165,2159,187,2187,214,2211,231,2221,250,2228,248,2233,229,2226,210,2215,184,2190,160,2162,125,2099,102,2037,89,1987"/>
+<area shape="rect" id="Node000043" href="$structFoldMulAddChainToConvOpPattern.html" title=" " alt="" coords="221,2275,467,2300"/>
+<area shape="poly" id="edge126_Node000000_Node000043" title=" " alt="" coords="91,1986,101,2044,123,2119,139,2158,159,2196,184,2230,214,2260,233,2272,231,2277,210,2264,180,2234,154,2198,134,2160,118,2121,96,2045,86,1987"/>
+<area shape="rect" id="Node000044" href="$structFoldSplatToFMAOp.html" title=" " alt="" coords="273,2324,415,2349"/>
+<area shape="poly" id="edge127_Node000000_Node000044" title=" " alt="" coords="90,1987,97,2053,116,2141,132,2187,153,2232,180,2274,214,2309,241,2325,273,2334,272,2339,239,2330,210,2313,176,2277,148,2235,127,2189,111,2142,92,2054,84,1987"/>
+<area shape="rect" id="Node000045" href="$structFoldVectorExtractAndSplatToAIEBroadcast.html" title=" " alt="" coords="247,2374,441,2414"/>
+<area shape="poly" id="edge128_Node000000_Node000045" title=" " alt="" coords="89,1987,94,2061,111,2161,127,2215,149,2267,177,2316,214,2359,229,2370,247,2379,245,2384,227,2375,210,2363,173,2319,144,2270,122,2217,106,2163,88,2062,83,1988"/>
+<area shape="rect" id="Node000046" href="$structFuseExtIntoUPDPattern.html" title=" " alt="" coords="258,2439,430,2464"/>
+<area shape="poly" id="edge129_Node000000_Node000046" title=" " alt="" coords="92,1986,107,2084,133,2216,150,2283,169,2343,191,2392,214,2424,234,2438,259,2446,257,2451,232,2443,210,2428,186,2394,164,2345,145,2284,128,2217,102,2085,87,1987"/>
+<area shape="rect" id="Node000047" href="$structLowerAIEMemcpy.html" title=" " alt="" coords="275,2488,413,2513"/>
+<area shape="poly" id="edge130_Node000000_Node000047" title=" " alt="" coords="91,1987,105,2094,130,2241,147,2315,166,2383,189,2437,214,2473,242,2491,275,2499,274,2504,240,2496,210,2477,184,2440,161,2384,141,2317,125,2242,100,2095,86,1988"/>
+<area shape="rect" id="Node000048" href="$structLowerExtOpPattern.html" title=" " alt="" coords="265,2538,423,2578"/>
+<area shape="poly" id="edge131_Node000000_Node000048" title=" " alt="" coords="91,1986,103,2102,127,2263,144,2345,164,2420,187,2482,200,2505,214,2523,238,2540,266,2550,264,2555,235,2545,210,2527,196,2508,183,2484,159,2422,139,2347,122,2264,98,2102,86,1987"/>
+<area shape="rect" id="Node000049" href="$structLowerTruncOpPattern.html" title=" " alt="" coords="265,2602,423,2642"/>
+<area shape="poly" id="edge132_Node000000_Node000049" title=" " alt="" coords="90,1987,101,2115,123,2296,140,2388,160,2473,185,2542,199,2568,214,2588,237,2605,265,2615,263,2620,235,2610,210,2592,194,2571,180,2544,155,2474,134,2389,118,2297,95,2115,85,1988"/>
+<area shape="rect" id="Node000050" href="$structLowerVectorAddIOpToAIEVecAddOp.html" title=" " alt="" coords="241,2666,447,2706"/>
+<area shape="poly" id="edge133_Node000000_Node000050" title=" " alt="" coords="90,1987,98,2125,119,2326,135,2429,156,2523,182,2600,197,2630,214,2652,242,2672,239,2676,210,2656,193,2633,178,2603,151,2525,130,2430,114,2326,93,2126,84,1987"/>
+<area shape="rect" id="Node000051" href="$structLowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp.html" title=" " alt="" coords="223,2731,465,2785"/>
+<area shape="poly" id="edge134_Node000000_Node000051" title=" " alt="" coords="89,1987,97,2137,117,2356,133,2469,154,2573,181,2658,197,2691,214,2716,227,2728,224,2732,210,2720,192,2694,176,2660,149,2574,128,2470,111,2356,92,2137,84,1987"/>
+<area shape="rect" id="Node000052" href="$structLowerVectorCmpOpToAIEVecCmpOp.html" title=" " alt="" coords="240,2810,448,2850"/>
+<area shape="poly" id="edge135_Node000000_Node000052" title=" " alt="" coords="89,1987,93,2150,100,2267,111,2393,126,2520,148,2636,177,2731,195,2767,214,2795,241,2814,238,2819,210,2799,190,2770,172,2733,143,2637,121,2520,105,2394,95,2267,88,2150,84,1987"/>
+<area shape="rect" id="Node000053" href="$structLowerVectorContractionOpToAIEVecMatMulPattern.html" title=" " alt="" coords="247,2875,441,2929"/>
+<area shape="poly" id="edge136_Node000000_Node000053" title=" " alt="" coords="89,1987,92,2161,98,2287,108,2423,124,2560,146,2686,160,2741,176,2790,194,2830,214,2860,229,2874,248,2884,245,2889,226,2878,210,2864,189,2832,171,2792,155,2743,141,2687,118,2561,103,2424,93,2287,87,2161,83,1987"/>
+<area shape="rect" id="Node000054" href="$structLowerVectorExtractStridedSliceOpAIE2Pattern.html" title=" " alt="" coords="247,2954,441,2994"/>
+<area shape="poly" id="edge137_Node000000_Node000054" title=" " alt="" coords="88,1987,89,2175,93,2312,102,2462,117,2611,140,2749,155,2810,172,2862,191,2906,214,2939,229,2952,248,2961,245,2966,226,2956,210,2942,187,2909,167,2864,149,2811,135,2750,112,2612,97,2462,88,2313,84,2175,83,1987"/>
+<area shape="rect" id="Node000055" href="$structLowerVectorExtractStridedSliceOpAIEv1Pattern.html" title=" " alt="" coords="247,3018,441,3058"/>
+<area shape="poly" id="edge138_Node000000_Node000055" title=" " alt="" coords="90,1987,103,2201,129,2525,147,2690,167,2835,190,2945,202,2982,214,3004,229,3017,248,3027,245,3031,226,3022,210,3008,197,2984,184,2947,162,2836,141,2690,124,2525,98,2201,85,1987"/>
+<area shape="rect" id="Node000056" href="$structLowerVectorMinMaxOpToAIEVecMinMaxOp.html" title=" " alt="" coords="226,3082,462,3122"/>
+<area shape="poly" id="edge139_Node000000_Node000056" title=" " alt="" coords="90,1987,102,2212,127,2557,145,2733,165,2888,188,3005,201,3045,214,3068,227,3080,224,3084,210,3072,196,3047,183,3007,160,2888,139,2733,122,2558,97,2213,85,1987"/>
+<area shape="rect" id="Node000057" href="$structLowerVectorMulIOpToAIEVecMulOp.html" title=" " alt="" coords="241,3146,447,3186"/>
+<area shape="poly" id="edge140_Node000000_Node000057" title=" " alt="" coords="90,1987,101,2224,125,2589,143,2775,163,2940,187,3065,200,3107,214,3132,227,3144,242,3152,239,3157,224,3148,210,3136,195,3109,182,3067,158,2941,137,2776,120,2590,96,2224,84,1987"/>
+<area shape="rect" id="Node000058" href="$structLowerVectorReductionAddBfloat16Op.html" title=" " alt="" coords="212,3211,476,3236"/>
+<area shape="poly" id="edge141_Node000000_Node000058" title=" " alt="" coords="89,1987,100,2235,122,2622,139,2819,160,2993,185,3126,199,3170,214,3196,229,3209,226,3213,210,3200,194,3172,180,3127,155,2994,134,2820,117,2622,94,2236,84,1987"/>
+<area shape="rect" id="Node000059" href="$structLowerVectorReductionAddFloatOp.html" title=" " alt="" coords="223,3260,465,3285"/>
+<area shape="poly" id="edge142_Node000000_Node000059" title=" " alt="" coords="89,1987,99,2244,121,2646,138,2852,159,3034,184,3172,199,3218,214,3246,229,3258,226,3262,210,3249,194,3220,179,3173,153,3035,132,2853,116,2647,93,2244,84,1987"/>
+<area shape="rect" id="Node000060" href="$structLowerVectorReductionAddIntOp.html" title=" " alt="" coords="231,3309,457,3335"/>
+<area shape="poly" id="edge143_Node000000_Node000060" title=" " alt="" coords="89,1987,98,2253,119,2671,136,2885,157,3074,183,3218,198,3266,214,3295,232,3309,229,3313,210,3298,193,3268,178,3219,152,3075,131,2885,114,2671,93,2253,84,1987"/>
+<area shape="rect" id="Node000061" href="$structLowerVectorReductionMaxOp.html" title=" " alt="" coords="237,3359,451,3384"/>
+<area shape="poly" id="edge144_Node000000_Node000061" title=" " alt="" coords="89,1987,97,2262,118,2696,134,2918,156,3115,168,3197,182,3264,197,3314,214,3344,238,3362,235,3366,210,3348,193,3317,177,3266,163,3198,150,3116,129,2919,113,2696,92,2263,84,1988"/>
+<area shape="rect" id="Node000062" href="$structLowerVectorReductionMinOp.html" title=" " alt="" coords="239,3408,449,3433"/>
+<area shape="poly" id="edge145_Node000000_Node000062" title=" " alt="" coords="89,1987,96,2271,116,2720,133,2951,154,3155,167,3241,181,3311,197,3363,214,3394,240,3412,237,3416,210,3397,192,3365,176,3312,162,3241,149,3156,127,2951,111,2721,91,2271,84,1987"/>
+<area shape="rect" id="Node000063" href="$structLowerVectorSelectOpToAIEVecSelOp.html" title=" " alt="" coords="235,3458,453,3498"/>
+<area shape="poly" id="edge146_Node000000_Node000063" title=" " alt="" coords="89,1987,96,2279,116,2744,133,2983,154,3195,167,3283,181,3356,197,3410,214,3443,236,3460,232,3465,210,3446,192,3412,176,3357,162,3284,149,3195,127,2983,111,2744,91,2280,84,1988"/>
+<area shape="rect" id="Node000064" href="$structLowerVectorTransferReadToAIEUPD.html" title=" " alt="" coords="243,3522,445,3562"/>
+<area shape="poly" id="edge147_Node000000_Node000064" title=" " alt="" coords="89,1987,95,2290,114,2776,130,3026,152,3248,165,3341,180,3417,196,3474,214,3508,228,3521,244,3530,242,3534,225,3525,210,3512,191,3476,175,3418,160,3342,147,3249,125,3026,109,2776,90,2290,84,1987"/>
+<area shape="rect" id="Node000065" href="$structLowerVectorTransposeOpToAIEVecShuffleOpPattern.html" title=" " alt="" coords="245,3586,443,3626"/>
+<area shape="poly" id="edge148_Node000000_Node000065" title=" " alt="" coords="89,1987,94,2302,112,2808,128,3069,150,3301,163,3397,179,3477,195,3537,214,3572,228,3585,245,3594,243,3599,225,3589,210,3576,190,3539,173,3478,158,3398,145,3301,123,3069,107,2808,89,2302,84,1987"/>
+<area shape="rect" id="Node000066" href="$structMergeSingleColumnI16FMAOpPattern.html" title=" " alt="" coords="234,3650,454,3690"/>
+<area shape="poly" id="edge149_Node000000_Node000066" title=" " alt="" coords="89,1987,93,2312,100,2564,110,2840,126,3111,148,3353,162,3454,177,3537,195,3599,214,3636,235,3653,232,3657,210,3640,190,3601,172,3538,156,3455,143,3354,121,3112,105,2840,95,2564,88,2313,83,1987"/>
+<area shape="rect" id="Node000067" href="$structOneToOneVectorOpToAIEVecOpPattern.html" title=" " alt="" coords="229,3714,459,3754"/>
+<area shape="poly" id="edge150_Node000000_Node000067" title=" " alt="" coords="89,1987,92,2324,98,2586,109,2872,124,3154,146,3406,160,3510,176,3597,194,3662,214,3700,230,3714,226,3718,210,3704,189,3663,171,3598,155,3511,141,3406,119,3155,103,2872,93,2586,87,2324,83,1988"/>
+<area shape="rect" id="Node000068" href="$structRemoveAIECalls.html" title=" " alt="" coords="279,3779,409,3804"/>
+<area shape="poly" id="edge151_Node000000_Node000068" title=" " alt="" coords="89,1987,91,2335,96,2607,105,2904,121,3198,143,3459,157,3568,174,3658,193,3725,203,3748,214,3764,228,3776,243,3784,280,3792,278,3797,242,3789,225,3780,210,3768,198,3751,188,3726,169,3659,152,3569,138,3460,115,3198,100,2904,91,2607,86,2335,83,1987"/>
+<area shape="rect" id="Node000069" href="$structRemoveAIEFuncs.html" title=" " alt="" coords="277,3828,411,3853"/>
+<area shape="poly" id="edge152_Node000000_Node000069" title=" " alt="" coords="89,1987,90,2344,95,2623,104,2929,119,3231,141,3499,156,3612,173,3704,192,3773,203,3797,214,3814,227,3825,242,3833,277,3841,276,3846,240,3838,224,3829,210,3817,198,3799,187,3774,168,3705,151,3612,136,3500,114,3231,99,2929,89,2623,85,2344,83,1987"/>
+<area shape="rect" id="Node000070" href="$structSetLockToWrite32Pattern.html" title=" " alt="" coords="252,3877,436,3903"/>
+<area shape="poly" id="edge153_Node000000_Node000070" title=" " alt="" coords="89,1987,89,2353,94,2639,102,2953,117,3264,140,3540,155,3655,172,3750,192,3821,203,3846,214,3863,232,3877,253,3886,251,3891,229,3882,210,3866,198,3848,187,3823,167,3751,149,3656,135,3540,112,3264,97,2953,88,2639,84,2353,83,1987"/>
+<area shape="rect" id="Node000071" href="$structSplitUnalignedTransferReadPattern.html" title=" " alt="" coords="243,3927,445,3967"/>
+<area shape="poly" id="edge154_Node000000_Node000071" title=" " alt="" coords="89,1987,90,2360,94,2654,103,2976,118,3295,140,3578,155,3697,172,3795,192,3868,203,3894,214,3912,227,3925,243,3934,241,3938,224,3929,210,3916,198,3897,187,3870,167,3796,150,3698,135,3579,113,3295,98,2976,89,2654,84,2360,83,1987"/>
+<area shape="rect" id="Node000072" href="$structToken2LockLowering.html" title=" " alt="" coords="266,3992,422,4017"/>
+<area shape="poly" id="edge155_Node000000_Node000072" title=" " alt="" coords="88,1987,88,2372,91,2676,99,3009,114,3340,136,3633,152,3756,170,3857,190,3933,202,3959,214,3977,238,3995,267,4004,265,4009,235,4000,210,3981,197,3962,185,3934,164,3859,146,3757,131,3634,108,3340,94,3009,86,2676,83,2372,83,1987"/>
+<area shape="rect" id="Node000073" href="$structxilinx_1_1AIE_1_1AIEOpRemoval.html" title=" " alt="" coords="248,4042,440,4082"/>
+<area shape="poly" id="edge156_Node000000_Node000073" title=" " alt="" coords="88,1987,88,2380,92,2691,100,3032,114,3371,137,3672,152,3798,170,3902,191,3980,202,4008,214,4027,230,4041,249,4051,247,4055,227,4045,210,4030,197,4010,186,3982,165,3904,147,3799,132,3673,109,3371,94,3033,86,2691,83,2380,83,1987"/>
 </map>

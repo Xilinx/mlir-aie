@@ -525,6 +525,24 @@ _Types and operations for external LLVM dialect_
 
 
 
+### `xllvm.intr.aie2.sub.accfloat` (::xilinx::xllvm::SubAccFloatAIE2IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 64-bit signless integer values of length 8 |
+| `rhs` | vector of 64-bit signless integer values of length 8 |
+| `conf` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2.upd.bf512.bf256` (::xilinx::xllvm::UpdBF512BF256IntrOp)
 
 #### Operands:
@@ -918,6 +936,24 @@ _Types and operations for external LLVM dialect_
 
 
 ### `xllvm.intr.aie2p.ACC2048.accfloat.add.conf` (::xilinx::xllvm::AddACC2048AccFloatAIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 32-bit float values of length 64 |
+| `rhs` | vector of 32-bit float values of length 64 |
+| `conf` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.ACC2048.accfloat.sub.conf` (::xilinx::xllvm::SubACC2048AccFloatAIE2pIntrOp)
 
 #### Operands:
 
