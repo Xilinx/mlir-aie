@@ -184,7 +184,7 @@ module {
       // ========================================================================
 
       // Configure DMA tasks for input, factor, and output
-      %0 = aiex.dma_configure_task_for @in {
+      %0 = aie.dma_configure_task_for @in {
         aie.dma_bd(%arg0 : memref<4096xi32>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
