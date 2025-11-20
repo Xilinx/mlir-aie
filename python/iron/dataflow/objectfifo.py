@@ -181,7 +181,6 @@ class ObjectFifo(Resolvable):
 
         if dims_from_stream is None:
             dims_from_stream = self._dims_from_stream_per_cons
-
         self._cons.append(
             ObjectFifoHandle(
                 self, is_prod=False, depth=depth, dims_from_stream=dims_from_stream
