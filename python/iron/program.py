@@ -64,43 +64,25 @@ class Program:
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
-                # Collect all fifos
-                all_fifos = set()
-                all_fifos.update(self._rt.fifos)
-                for w in self._rt.workers:
-                    all_fifos.update(w.fifos)
-
-                # In some "incomplete" designs where ofs aren't fully used
-                # (a technique that is useful during development)
-                # we have to manually fetch all the handles to ensure they all get placed.
-                all_fifo_handles = set()
-                for ofh in all_fifos:
-                    all_fifo_handles.add(ofh._object_fifo._prod)
-                    all_fifo_handles.update(ofh._object_fifo._cons)
-
-                # Sort fifos for deterministic resolve
-                all_fifos = sorted(all_fifo_handles, key=lambda obj: obj.name)
-
                 if placer:
                     # We cannot just give rt because some designs are purposefully incomplete
                     # and it is still useful to place them.
-                    placer.make_placement(
-                        self._device, self._rt, self._rt.workers, all_fifos
-                    )
+                    placer.make_placement(self._device, self._rt)
 
                 # Collect all tiles
-                all_tiles = []
+                all_ofh = self._rt.fifohandles
+                all_tiles = set()
                 for w in self._rt.workers:
-                    all_tiles.append(w.tile)
-                for f in all_fifos:
-                    all_tiles.extend([e.tile for e in f.all_of_endpoints()])
+                    all_tiles.add(w.tile)
+                for ofh in all_ofh:
+                    all_tiles.add(ofh.endpoint.tile)
 
                 # Resolve tiles
                 for t in all_tiles:
                     self._device.resolve_tile(t)
 
                 # Generate fifos
-                for f in all_fifos:
+                for f in all_ofh:
                     f.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok

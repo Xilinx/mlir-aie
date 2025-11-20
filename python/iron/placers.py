@@ -28,16 +28,12 @@ class Placer(metaclass=ABCMeta):
         self,
         device: Device,
         rt: Runtime,
-        workers: list[Worker],
-        object_fifos: list[ObjectFifoHandle],
     ):
         """Assign placement informatio to a program.
 
         Args:
             device (Device): The device to use for placement.
             rt (Runtime): The runtime information for the program.
-            workers (list[Worker]): The workers included in the program.
-            object_fifos (list[ObjectFifoHandle]): The object fifos used by the program.
         """
         ...
 
@@ -59,22 +55,12 @@ class SequentialPlacer(Placer):
         self,
         device: Device,
         rt: Runtime,
-        object_fifos: list[ObjectFifoHandle],
     ):
 
         # Keep track of tiles available for placement
         shims = device.get_shim_tiles()
         mems = device.get_mem_tiles()
         computes = device.get_compute_tiles()
-
-        # For shims and memtiles, we try to avoid overloading channels
-        # by keeping tracks of prod/cons endpoints
-        shim_prodcon_counts = defaultdict(list)
-        for s in shims:
-            shim_prodcon_counts[s] = [0, 0]
-        shim_prodcon_counts = defaultdict(list)
-        for m in mems:
-            shim_prodcon_counts[m] = [0, 0]
 
         compute_idx = 0
 
@@ -105,14 +91,6 @@ class SequentialPlacer(Placer):
         if len(computes) > 0:
             compute_idx = compute_idx % len(computes)
 
-        for ofh in object_fifos:
-            of_endpoints = ofh.all_of_endpoints()
-            of_compute_endpoints_tiles = [
-                ofe.tile for ofe in of_endpoints if ofe.tile in computes
-            ]
-            # Place "closest" to the compute endpoints
-            common_col = self._get_common_col(of_compute_endpoints_tiles)
-
-            for ofe in of_endpoints:
-                # TODO: do logic here.
-                pass
+        for ofh in rt.fifohandles:
+            # TODO
+            pass
