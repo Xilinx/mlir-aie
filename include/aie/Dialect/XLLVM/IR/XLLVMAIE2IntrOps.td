@@ -218,7 +218,23 @@ def AddACC2048AccFloatAIE2pIntrOp :
                    VectorOfLengthAndType<[64], [F32]>:$rhs,
                    I32:$conf)>;
 
-// ----- SET ----- 
+// ----- SUB -----
+
+def SubAccFloatAIE2IntrOp :
+    AIEVec2_IntrOp<"sub.accfloat",
+        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$lhs,
+                   VectorOfLengthAndType<[8], [I64]>:$rhs,
+                   I32:$conf)>;
+
+def SubACC2048AccFloatAIE2pIntrOp :
+    AIEVec2p_IntrOp<"ACC2048.accfloat.sub.conf",
+        [TypeIs<"res", VectorOfLengthAndType<[64], [F32]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[64], [F32]>:$lhs,
+                   VectorOfLengthAndType<[64], [F32]>:$rhs,
+                   I32:$conf)>;
+
+// ----- SET -----
 
 def VectorSetI512I128IntrOp :
     AIEVec2_IntrOp<"set.I512.I128",

@@ -309,6 +309,77 @@ public:
   }
 };
 
+// AIE2 version of SubElemOp conversion
+class SubElemOpAIE2Conversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::SubElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::SubElemOp>::ConvertOpToLLVMPattern;
+
+  struct DecodedSubElemOp {
+    enum class Kind { FP32_FP32_FP32_16x1x1x1, UNSUPPORTED };
+    Kind kind;
+    int conf;
+  };
+
+  static DecodedSubElemOp decodeSubElemOp(OpAdaptor op) {
+    auto lhs = op.getLhs();
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto lhsScaTy = lhsVecTy.getElementType();
+    unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
+
+    // Integer types
+    if (llvm::isa<IntegerType>(lhsScaTy)) {
+      return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
+    } else {
+      // Float types
+      if (lhsBitWidth == 32) {
+        // FP32 sub_elem
+        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
+      }
+    }
+    return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::SubElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto decodedSubElemOp = decodeSubElemOp(adaptor);
+
+    if (decodedSubElemOp.kind == DecodedSubElemOp::Kind::UNSUPPORTED) {
+      op.emitWarning() << "aievec.sub_elem conversion is not supported.\n";
+      return failure();
+    }
+
+    // Handle the FP32 sub_elem for AIE2 - uses packed I64 representation
+    if (decodedSubElemOp.kind ==
+        DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
+      auto confCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(),
+          rewriter.getI32IntegerAttr(decodedSubElemOp.conf));
+      SmallVector<Value> operands(
+          {adaptor.getLhs(), adaptor.getRhs(), confCst});
+
+      auto subElemOp = rewriter.create<xllvm::SubAccFloatAIE2IntrOp>(
+          loc, VectorType::get({8}, rewriter.getI64Type()),
+          forceCastOperandsToSignature(
+              rewriter, loc, operands,
+              {VectorType::get({8}, rewriter.getI64Type()),
+               VectorType::get({8}, rewriter.getI64Type()),
+               rewriter.getI32Type()}));
+
+      // create bitcast/shape_cast for result
+      auto resultVal = forceCastValueToType(rewriter, loc, subElemOp,
+                                            op.getResult().getType());
+      rewriter.replaceOp(op, resultVal);
+      return success();
+    }
+
+    op.emitWarning() << "aievec.sub_elem conversion is not supported.\n";
+    return failure();
+  }
+};
+
 // AIE2p version of AddElemOp conversion
 class AddElemOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::AddElemOp> {
@@ -334,7 +405,7 @@ public:
       // Float types
       if (lhsBitWidth == 32) {
         // FP32 add_elem
-        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 0};
+        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
       }
     }
     return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
@@ -407,6 +478,108 @@ public:
     }
 
     op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
+    return failure();
+  }
+};
+
+// AIE2p version of SubElemOp conversion
+class SubElemOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::SubElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::SubElemOp>::ConvertOpToLLVMPattern;
+
+  struct DecodedSubElemOp {
+    enum class Kind { FP32_FP32_FP32_16x1x1x1, UNSUPPORTED };
+    Kind kind;
+    int conf;
+  };
+
+  static DecodedSubElemOp decodeSubElemOp(OpAdaptor op) {
+    auto lhs = op.getLhs();
+    auto lhsVecTy = cast<VectorType>(lhs.getType());
+    auto lhsScaTy = lhsVecTy.getElementType();
+    unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
+
+    // Integer types
+    if (llvm::isa<IntegerType>(lhsScaTy)) {
+      return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
+    } else {
+      // Float types
+      if (lhsBitWidth == 32) {
+        // FP32 sub_elem
+        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+      }
+    }
+    return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
+  }
+
+  LogicalResult
+  matchAndRewrite(aievec::SubElemOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto decodedSubElemOp = decodeSubElemOp(adaptor);
+
+    if (decodedSubElemOp.kind == DecodedSubElemOp::Kind::UNSUPPORTED) {
+      op.emitWarning() << "aievec.sub_elem conversion is not supported.\n";
+      return failure();
+    }
+
+    // Handle the FP32 sub_elem for AIE2p
+    // We need to expand <16xf32> to <64xf32> for the ACC2048 intrinsic
+    if (decodedSubElemOp.kind ==
+        DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
+      // Step 1: Bitcast <16 x float> to <8 x i64>
+      auto v8i64Ty = VectorType::get({8}, rewriter.getI64Type());
+      auto lhsI64 =
+          rewriter.create<LLVM::BitcastOp>(loc, v8i64Ty, adaptor.getLhs());
+      auto rhsI64 =
+          rewriter.create<LLVM::BitcastOp>(loc, v8i64Ty, adaptor.getRhs());
+
+      // Step 2: Shuffle <8 x i64> to <32 x i64> (expand with poison values)
+      auto v32i64Ty = VectorType::get({32}, rewriter.getI64Type());
+      SmallVector<int64_t> expandMask = {0, 1, 2, 3, 4, 5, 6, 7};
+      for (int i = 8; i < 32; ++i)
+        expandMask.push_back(-1); // poison values
+
+      auto lhsExpanded =
+          rewriter.create<vector::ShuffleOp>(loc, lhsI64, lhsI64, expandMask);
+      auto rhsExpanded =
+          rewriter.create<vector::ShuffleOp>(loc, rhsI64, rhsI64, expandMask);
+
+      // Step 3: Bitcast <32 x i64> to <64 x float>
+      auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
+      auto lhsF32 =
+          rewriter.create<LLVM::BitcastOp>(loc, v64f32Ty, lhsExpanded);
+      auto rhsF32 =
+          rewriter.create<LLVM::BitcastOp>(loc, v64f32Ty, rhsExpanded);
+
+      // Step 4: Call the ACC2048 intrinsic with conf=60
+      auto confCst = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(60));
+
+      // Create the intrinsic call
+      auto subResult = rewriter.create<xllvm::SubACC2048AccFloatAIE2pIntrOp>(
+          loc, v64f32Ty, lhsF32, rhsF32, confCst);
+
+      // Step 5: Bitcast <64 x float> back to <32 x i64>
+      auto resultI64 =
+          rewriter.create<LLVM::BitcastOp>(loc, v32i64Ty, subResult);
+
+      // Step 6: Shuffle to extract first 8 elements <32 x i64> -> <8 x i64>
+      SmallVector<int64_t> extractMask = {0, 1, 2, 3, 4, 5, 6, 7};
+      auto resultExtracted = rewriter.create<vector::ShuffleOp>(
+          loc, resultI64, resultI64, extractMask);
+
+      // Step 7: Bitcast <8 x i64> back to <16 x float>
+      auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
+      auto finalResult =
+          rewriter.create<LLVM::BitcastOp>(loc, v16f32Ty, resultExtracted);
+
+      rewriter.replaceOp(op, finalResult);
+      return success();
+    }
+
+    op.emitWarning() << "aievec.sub_elem conversion is not supported.\n";
     return failure();
   }
 };
@@ -2926,6 +3099,67 @@ public:
   }
 };
 
+// AIE2p version of BroadcastScalarOp conversion using insertelement +
+// shufflevector
+class BroadcastScalarOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::BroadcastScalarOp> {
+public:
+  using ConvertOpToLLVMPattern<
+      aievec::BroadcastScalarOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::BroadcastScalarOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+
+    Value result = op.getResult();
+    VectorType resultType = cast<VectorType>(result.getType());
+    Type resultScaTy = resultType.getElementType();
+    unsigned resultBitWidth = resultScaTy.getIntOrFloatBitWidth();
+    int resultLanes = getVectorLaneSize(resultType);
+    int resultVectorSize = resultBitWidth * resultLanes;
+
+    // Support both 256-bit and 512-bit vectors for AIE2p
+    if (resultVectorSize != 256 && resultVectorSize != 512) {
+      op.emitWarning()
+          << "aievec.broadcast_scalar conversion with result vector size "
+          << resultVectorSize << " is not implemented for AIE2p.\n";
+      return failure();
+    }
+
+    Value src = adaptor.getSource();
+    Type srcType = src.getType();
+
+    // For integer types, extend or truncate to match result element type
+    if (llvm::isa<IntegerType>(resultScaTy)) {
+      unsigned srcBitWidth = srcType.getIntOrFloatBitWidth();
+      if (srcBitWidth < resultBitWidth) {
+        src = rewriter.create<LLVM::SExtOp>(loc, resultScaTy, src);
+      } else if (srcBitWidth > resultBitWidth) {
+        src = rewriter.create<LLVM::TruncOp>(loc, resultScaTy, src);
+      }
+    }
+
+    // Create poison vector of the result type
+    auto poisonVec = rewriter.create<LLVM::PoisonOp>(loc, resultType);
+
+    // Insert scalar at position 0
+    auto idx0 = rewriter.create<LLVM::ConstantOp>(
+        loc, rewriter.getI64Type(), rewriter.getI64IntegerAttr(0));
+    auto insertedVec = rewriter.create<LLVM::InsertElementOp>(
+        loc, resultType, poisonVec, src, idx0);
+
+    // Create shufflevector mask with all zeros (broadcast position 0 to all
+    // lanes)
+    SmallVector<int64_t> broadcastMask(resultLanes, 0);
+    auto broadcastVec = rewriter.create<vector::ShuffleOp>(
+        loc, insertedVec, insertedVec, broadcastMask);
+
+    rewriter.replaceOp(op, broadcastVec);
+    return success();
+  }
+};
+
 class ShiftOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::ShiftOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::ShiftOp>::ConvertOpToLLVMPattern;
@@ -4130,7 +4364,7 @@ void populateAIEVecToLLVMAIE2ConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
     Aie2Fp32Emulation aie2Fp32EmulationOption) {
   // Patterns specific to AIE2 backend
-  patterns.add<AddElemOpAIE2Conversion>(converter);
+  patterns.add<AddElemOpAIE2Conversion, SubElemOpAIE2Conversion>(converter);
   patterns.add<MulElemOpConversion>(converter, aie2Fp32EmulationOption);
   patterns.add<UPSOpAIE2Conversion, SRSOpAIE2Conversion>(converter);
   patterns.add<ShiftOpConversion>(converter);
@@ -4223,7 +4457,7 @@ public:
 void populateAIEVecToLLVMAIE2pConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
   // Patterns specific to AIE2p backend
-  patterns.add<AddElemOpAIE2pConversion>(converter);
+  patterns.add<AddElemOpAIE2pConversion, SubElemOpAIE2pConversion>(converter);
   patterns.add<MulElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
   patterns.add<MatMulOpAIE2pConversion>(converter);
@@ -4232,6 +4466,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ExtractElemOpAIE2pConversion>(converter);
   patterns.add<ConcatOpAIE2pConversion>(converter);
   patterns.add<ExpOpAIE2pConversion>(converter);
+  patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
 }
 
 void populateAIEVecToLLVMConversionPatterns(
