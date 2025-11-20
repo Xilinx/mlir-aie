@@ -9,7 +9,7 @@
 #
 # ===-----------------------------------------------------------------------===#
 #
-# REQUIRES: ryzen_ai, chess
+# REQUIRES: ryzen_ai_npu1, chess
 #
 
 # Build the test
