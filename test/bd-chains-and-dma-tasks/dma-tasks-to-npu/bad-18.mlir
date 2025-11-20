@@ -10,7 +10,7 @@ module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>) {
       // CHECK: Packet ID exceeds the maximum supported by 5 bits.
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32, packet = #aie.packet_info<pkt_type = 1, pkt_id = 33>}

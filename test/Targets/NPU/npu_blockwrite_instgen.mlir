@@ -11,7 +11,7 @@
 // RUN: aie-opt --aie-dma-to-npu %s | aie-translate --aie-npu-to-binary -aie-output-binary=false | FileCheck %s
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+    aie.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // TXN header 0.1
       // CHECK: 06030100

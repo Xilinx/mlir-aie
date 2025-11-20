@@ -14,7 +14,7 @@ module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(2, 2)
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<10xi32>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<10xi32>) {
       // CHECK: Burst length is only supported in Shim NOC tiles that are connected to the memory-mapped NOC.
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32, burst_length = 256 : i32}

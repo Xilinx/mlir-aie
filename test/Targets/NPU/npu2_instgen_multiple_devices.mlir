@@ -13,19 +13,19 @@
 // RUN: aie-translate --aie-npu-to-binary --aie-output-binary=false --aie-device-name=device_b --aie-sequence-name=sequence_b %s | FileCheck %s
 module {
   aie.device(npu2) @device_a {
-    aiex.runtime_sequence @sequence_a(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+    aie.runtime_sequence @sequence_a(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
       aiex.npu.write32 { column = 2 : i32, row = 2 : i32, address = 0x01010101 : ui32, value = 0x01010101 : ui32 }
     }
-    aiex.runtime_sequence @sequence_b(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+    aie.runtime_sequence @sequence_b(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
       aiex.npu.write32 { column = 2 : i32, row = 2 : i32, address = 0x02020202 : ui32, value = 0x02020202 : ui32 }
     }
   }
 
   aie.device(npu2) @device_b {
-    aiex.runtime_sequence @sequence_a(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+    aie.runtime_sequence @sequence_a(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
       aiex.npu.write32 { column = 2 : i32, row = 2 : i32, address = 0x03030303 : ui32, value = 0x03030303 : ui32 }
     }
-    aiex.runtime_sequence @sequence_b(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+    aie.runtime_sequence @sequence_b(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
       // CHECK: 06040100
       // CHECK: 00000108
       // CHECK: 00000001
