@@ -91,6 +91,15 @@ class SequentialPlacer(Placer):
         if len(computes) > 0:
             compute_idx = compute_idx % len(computes)
 
+        shim_idx = 0
+        mem_idx = 0
         for ofh in rt.fifohandles:
-            # TODO
-            pass
+            if ofh.endpoint.tile == AnyComputeTile:
+                ofh.endpoint.place(computes[compute_idx])
+                compute_idx = (compute_idx + 1) % len(computes)
+            elif ofh.endpoint.tile == AnyShimTile:
+                ofh.endpoint.place(shims[shim_idx])
+                shim_idx = (shim_idx + 1) % len(shims)
+            elif ofh.endpoint.tile == AnyMemTile:
+                ofh.endpoint.place(mems[mem_idx])
+                mem_idx = (shim_idx + 1) % len(mems)
