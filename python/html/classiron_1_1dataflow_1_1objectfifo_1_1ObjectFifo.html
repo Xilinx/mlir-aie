@@ -127,6 +127,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:af3f2ba3a0744cc943cc83af64d8c451d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9dfb84dd852bf7ca96418064817245ef" id="r_a9dfb84dd852bf7ca96418064817245ef"><td class="memItemLeft" align="right" valign="top">type[np.ndarray]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9dfb84dd852bf7ca96418064817245ef">obj_type</a> (self)</td></tr>
 <tr class="separator:a9dfb84dd852bf7ca96418064817245ef"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a35a3a402ae12bb7aad5c06548e330f94" id="r_a35a3a402ae12bb7aad5c06548e330f94"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a35a3a402ae12bb7aad5c06548e330f94">set_iter_count</a> (self, int iter_count)</td></tr>
+<tr class="separator:a35a3a402ae12bb7aad5c06548e330f94"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae0480885d061abe0ef3ef22bae2bc0fa" id="r_ae0480885d061abe0ef3ef22bae2bc0fa"><td class="memItemLeft" align="right" valign="top">str&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#ae0480885d061abe0ef3ef22bae2bc0fa">__str__</a> (self)</td></tr>
 <tr class="separator:ae0480885d061abe0ef3ef22bae2bc0fa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a99b554ace7626a3b65076e54123aced2" id="r_a99b554ace7626a3b65076e54123aced2"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a99b554ace7626a3b65076e54123aced2">prod</a> (self, int|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52fa60e2e75287e53008e22c5b0b3be8">depth</a>=None)</td></tr>
@@ -172,6 +174,8 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:a53e54fae171dc492bf1d6e35ff48ddae"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac26a99d9a71f06e7fedd40877b9ff908" id="r_ac26a99d9a71f06e7fedd40877b9ff908"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#ac26a99d9a71f06e7fedd40877b9ff908">_resolving</a></td></tr>
 <tr class="separator:ac26a99d9a71f06e7fedd40877b9ff908"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a86eb78bde4834d451011f01c5e07c427" id="r_a86eb78bde4834d451011f01c5e07c427"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a86eb78bde4834d451011f01c5e07c427">_iter_count</a></td></tr>
+<tr class="separator:a86eb78bde4834d451011f01c5e07c427"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a211807c38e7d3e32dba480db578004cc" id="r_a211807c38e7d3e32dba480db578004cc"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a211807c38e7d3e32dba480db578004cc">_prod</a></td></tr>
 <tr class="separator:a211807c38e7d3e32dba480db578004cc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a01b2ae3f4bea8c442b9ed7d65fff94e3" id="r_a01b2ae3f4bea8c442b9ed7d65fff94e3"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a01b2ae3f4bea8c442b9ed7d65fff94e3">_cons</a></td></tr>
@@ -746,6 +750,42 @@ Args:
 
 </div>
 </div>
+<a id="a35a3a402ae12bb7aad5c06548e330f94" name="a35a3a402ae12bb7aad5c06548e330f94"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a35a3a402ae12bb7aad5c06548e330f94">&#9670;&#160;</a></span>set_iter_count()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.dataflow.objectfifo.ObjectFifo.set_iter_count </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>iter_count</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Set iteration count for DMA BD (Buffer Descriptor) chaining on MemTile for the ObjectFifo.
+
+Args:
+    iter_count (int): Number of forward chain iterations.
+        - Must be in range [1, 256]: Forward chain with specified number of iterations
+
+Raises:
+    ValueError: If iter_count is outside the valid range [1, 256]
+</pre> 
+</div>
+</div>
 <a id="a528ff4dca1a1357f5f4840331f3c9efa" name="a528ff4dca1a1357f5f4840331f3c9efa"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a528ff4dca1a1357f5f4840331f3c9efa">&#9670;&#160;</a></span>shape()</h2>
 
@@ -890,6 +930,28 @@ Returns:
       <table class="memname">
         <tr>
           <td class="memname">iron.dataflow.objectfifo.ObjectFifo._dims_to_stream</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a86eb78bde4834d451011f01c5e07c427" name="a86eb78bde4834d451011f01c5e07c427"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a86eb78bde4834d451011f01c5e07c427">&#9670;&#160;</a></span>_iter_count</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.dataflow.objectfifo.ObjectFifo._iter_count</td>
         </tr>
       </table>
   </td>
