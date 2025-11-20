@@ -18,12 +18,55 @@ from .tile import Tile
 import re
 
 
-class Device(Resolvable):
+class DeviceLike:
+    def get_shim_tiles(self) -> list[Tile]:
+        """Returns a list of all shim tiles on the device.
+
+        Returns:
+            list[Tile]: A list of shim tiles.
+        """
+        return [
+            t
+            for t in self.tile_iterator()
+            if self._tm.is_shim_noc_or_pl_tile(t.col, t.row)
+        ]
+
+    def get_mem_tiles(self) -> list[Tile]:
+        """Returns a list of all mem tiles on the device.
+
+        Returns:
+            list[Tile]: A list of mem tiles.
+        """
+        return [t for t in self.tile_iterator() if self._tm.is_mem_tile(t.col, t.row)]
+
+    def get_compute_tiles(self) -> list[Tile]:
+        """Returns a list of all compute tiles on the device.
+
+        Returns:
+            list[Tile]: A list of compute tiles.
+        """
+        return [
+            Tile(t._col, t._row)
+            for t in self.tile_iterator()
+            if self._tm.is_core_tile(t._col, t._row)
+        ]
+
+
+class DeviceView(DeviceLike):
+    def __init__(self, device: "Device", tiles: list[Tile]):
+        self._device = device
+        self._tiles = tiles
+
+    def tile_iterator(self) -> Generator[Tile, None, None]:
+        yield from self._tiles
+
+
+class Device(Resolvable, DeviceLike):
     """
     A base class for representations of a device of a specific type.
     """
 
-    class __DeviceTile(Resolvable):
+    class __DeviceTile(Tile, Resolvable):
         """
         Interior class for tiles objects owned by a particular device.
         This is needed to ensure we don't generate more than one MLIR operation corresponding
@@ -31,10 +74,8 @@ class Device(Resolvable):
         """
 
         def __init__(self, col: int, row: int) -> None:
-            self._col: int = col
-            self._row: int = row
-            self._op: TileOp | None = None
-            super().__init__()
+            Tile.__init__(self, col, row)
+            Resolvable.__init__(self)
 
         def resolve(
             self,
@@ -44,24 +85,12 @@ class Device(Resolvable):
         ) -> None:
             if self._op == None:
                 self._op = tile(
-                    self._col,
-                    self._row,
+                    self.col,
+                    self.row,
                     loc=loc,
                     ip=ip,
                     allocation_scheme=allocation_scheme,
                 )
-
-        @property
-        def op(self) -> TileOp:
-            if not self._op:
-                raise ValueError("Cannot get operation before it is set.")
-            return self._op
-
-        @op.setter
-        def op(self, op: TileOp):
-            if self._op:
-                raise ValueError("Cannot set operation more than once.")
-            self._op = op
 
     def __init__(self, device: AIEDevice) -> None:
         """Initialize a representation of a device.
@@ -76,14 +105,64 @@ class Device(Resolvable):
             self._tiles.append([])
             for r in range(self._tm.rows()):
                 self._tiles[c].append(Device.__DeviceTile(c, r))
+        self._claimed_tiles = set()
+
+    def __getitem__(self, key):
+        if isinstance(key, tuple):
+            if len(key) > 2:
+                raise IndexError("Only 2D slicing is supported for devices.")
+            if len(key) == 2:
+                col_slice, row_slice = key
+            else:
+                col_slice, row_slice = key[0], slice(None, None, None)
+        elif isinstance(key, (int, slice)):
+            col_slice, row_slice = key, slice(None, None, None)
+        else:
+            raise IndexError(
+                "Device indices must be integers, slices, or a 2-tuple of those."
+            )
+
+        # Special case for single tile access - this is non-destructive
+        if isinstance(col_slice, int) and isinstance(row_slice, int):
+            if col_slice >= self.cols or row_slice >= self.rows:
+                raise IndexError("Tile index out of range.")
+            return self._tiles[col_slice][row_slice]
+
+        # Handle slices and integers for cols
+        if isinstance(col_slice, int):
+            cols = [col_slice]
+        else:
+            cols = range(self.cols)[col_slice]
+
+        # Handle slices and integers for rows
+        if isinstance(row_slice, int):
+            rows = [row_slice]
+        else:
+            rows = range(self.rows)[row_slice]
+
+        if not cols or not rows:
+            return DeviceView(self, [])
+
+        tiles_to_claim = []
+        coords_to_claim = set()
+        for c in cols:
+            for r in rows:
+                if (c, r) in self._claimed_tiles:
+                    raise ValueError(f"Tile ({c}, {r}) has already been claimed.")
+                coords_to_claim.add((c, r))
+                tiles_to_claim.append(self._tiles[c][r])
+
+        self._claimed_tiles.update(coords_to_claim)
+        return DeviceView(self, tiles_to_claim)
 
     def tile_iterator(self) -> Generator[Tile, None, None]:
         """
-        Iterates over the device tiles deterministically
+        Iterates over the available device tiles deterministically
         """
         for c in range(self._tm.columns()):
             for r in range(self._tm.rows()):
-                yield self._tiles[c][r]
+                if (c, r) not in self._claimed_tiles:
+                    yield self._tiles[c][r]
 
     @property
     def rows(self) -> int:
@@ -93,41 +172,13 @@ class Device(Resolvable):
     def cols(self) -> int:
         return self._tm.columns()
 
-    def get_shim_tiles(self) -> list[Tile]:
-        """Returns a list of all shim tiles on the device.
-
-        Returns:
-            list[Tile]: A list of shim tiles.
-        """
-        return [
-            Tile(t._col, t._row)
-            for t in self.tile_iterator()
-            if self._tm.is_shim_noc_or_pl_tile(t._col, t._row)
-        ]
-
-    def get_mem_tiles(self) -> list[Tile]:
-        """Returns a list of all mem tiles on the device.
-
-        Returns:
-            list[Tile]: A list of mem tiles.
-        """
-        return [
-            Tile(t._col, t._row)
-            for t in self.tile_iterator()
-            if self._tm.is_mem_tile(t._col, t._row)
-        ]
-
     def get_compute_tiles(self) -> list[Tile]:
         """Returns a list of all compute tiles on the device.
 
         Returns:
             list[Tile]: A list of compute tiles.
         """
-        return [
-            Tile(t._col, t._row)
-            for t in self.tile_iterator()
-            if self._tm.is_core_tile(t._col, t._row)
-        ]
+        return [t for t in self.tile_iterator() if self._tm.is_core_tile(t.col, t.row)]
 
     def get_num_source_switchbox_connections(self, t: Tile) -> int:
         """Returns number of DMA source ports in the switchbox for the given tile on the device.
