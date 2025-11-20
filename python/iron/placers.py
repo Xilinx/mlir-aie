@@ -50,21 +50,15 @@ class SequentialPlacer(Placer):
     The SequentialPlacer only does validation of placement with respect to available DMA channels on the tiles.
     However, it can yield invalid placements that exceed other resource limits, such as memory, For complex or
     resource sensitive designs, a more complex placer or manual placement is required.
-
-    The user may define a limited number of cores per column, which could help with issues in using packet-
-    switched tracing. By limiting the number of cores per column, the placer will assign workers to compute
-    tiles in a row-wise direction up to the defined limit then move to the next column for subsequent placement.
     """
 
-    def __init__(self, cores_per_col: int | None = None):
+    def __init__(self):
         super().__init__()
-        self.cores_per_col = cores_per_col
 
     def make_placement(
         self,
         device: Device,
         rt: Runtime,
-        workers: list[Worker],
         object_fifos: list[ObjectFifoHandle],
     ):
 
@@ -74,18 +68,18 @@ class SequentialPlacer(Placer):
         computes = device.get_compute_tiles()
 
         # For shims and memtiles, we try to avoid overloading channels
-        # by keeping tracks of [input_channels, output_channels] for each tile of that type.
-        shim_endpoint_counts = defaultdict(list)
+        # by keeping tracks of prod/cons endpoints
+        shim_prodcon_counts = defaultdict(list)
         for s in shims:
-            shim_endpoint_counts[s] = [0, 0]
-        mem_endpoint_counts = defaultdict(list)
+            shim_prodcon_counts[s] = [0, 0]
+        shim_prodcon_counts = defaultdict(list)
         for m in mems:
-            mem_endpoint_counts[m] = [0, 0]
+            shim_prodcon_counts[m] = [0, 0]
 
         compute_idx = 0
 
-        # If some workers are already taken, remove them from the available set
-        for worker in workers:
+        # If some workers are already placed, remove them from the available set
+        for worker in rt.workers:
             # This worker has already been placed
             if isinstance(worker.tile, Tile):
                 if not worker.tile in computes:
@@ -96,23 +90,8 @@ class SequentialPlacer(Placer):
                     )
                 computes.remove(worker.tile)
 
-        # Shorten the list of compute tiles available if the cores per column value is set
-        if self.cores_per_col is not None:
-            unused_computes_at_col = {
-                column: [tile for tile in computes if tile.col == column]
-                for column in range(device.cols)
-            }
-            computes = []
-            for col, tiles in unused_computes_at_col.items():
-                if len(tiles) < self.cores_per_col:
-                    raise ValueError(
-                        f"Not enough compute tiles at column {col} to satisfy {self.cores_per_col} cores per column!"
-                    )
-                else:
-                    computes.extend(tiles[: self.cores_per_col])
-
         # Place worker tiles
-        for worker in workers:
+        for worker in rt.workers:
             if worker.tile == AnyComputeTile:
                 if compute_idx >= len(computes):
                     raise ValueError("Ran out of compute tiles for placement!")
@@ -135,64 +114,5 @@ class SequentialPlacer(Placer):
             common_col = self._get_common_col(of_compute_endpoints_tiles)
 
             for ofe in of_endpoints:
-                if isinstance(ofe, Worker):
-                    continue
-                endpoint_type = 1 if ofe.is_prod() else 0
-
-                if ofe.tile == AnyMemTile:
-                    candidate_tiles = []
-                    for m in mems:
-                        # Only mark as candidate if there is a "connection" available
-                        if mem_endpoint_counts[m][
-                            endpoint_type
-                        ] < device.get_num_connections(m, ofe.is_prod()):
-                            candidate_tiles.append(m)
-                elif ofe.tile == AnyShimTile:
-                    candidate_tiles = []
-                    for s in shims:
-                        # Only mark as candidate if there is a "connection" available
-                        if shim_endpoint_counts[s][
-                            endpoint_type
-                        ] < device.get_num_connections(s, ofe.is_prod()):
-                            candidate_tiles.append(s)
-                elif ofe.tile == AnyComputeTile:
-                    candidate_tiles = computes
-                else:
-                    pass
-
-                placement_tile = self._find_col_match(common_col, candidate_tiles)
-                ofe.place(placement_tile)
-
-                # Once placement tile is chosen, update the counts
-                if ofe.tile == AnyMemTile:
-                    mem_endpoint_counts[placement_tile][endpoint_type] += 1
-                elif ofe.tile == AnyShimTile:
-                    shim_endpoint_counts[placement_tile][endpoint_type] += 1
-
-    def _get_common_col(self, tiles: list[Tile]) -> int:
-        """
-        A utility function that calculates a column that is "close" or "common"
-        to a set of tiles. It is a simple heuristic using the average to represent "distance".
-        """
-        cols = [t.col for t in tiles if isinstance(t, Tile)]
-        if len(cols) == 0:
-            return 0
-        avg_col = round(statistics.mean(cols))
-        return avg_col
-
-    def _find_col_match(self, col: int, tiles: list[Tile], device: Device) -> Tile:
-        """
-        A utility function that sequentially searches a list of tiles to find one with a matching column.
-        The column is increased until a tile is found in the device, or an error is signaled.
-        """
-        new_col = col
-        cols_checked = 0
-        while cols_checked < device.cols:
-            for t in tiles:
-                if t.col == new_col:
-                    return t
-            new_col = (new_col + 1) % device.cols  # Loop around
-            cols_checked += 1
-        raise ValueError(
-            f"Failed to find a tile matching column {col}: tried until column {new_col}. Try using a device with more columns."
-        )
+                # TODO: do logic here.
+                pass
