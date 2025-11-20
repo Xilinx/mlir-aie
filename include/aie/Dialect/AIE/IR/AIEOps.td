@@ -1708,6 +1708,16 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
                            }, 2 : i32
                           ) : !aie.objectfifo<memref<256xi32>>
     ```
+    
+    The behavior of the objectFifo is further controlled by optional parameters.
+    The `repeat_count` parameter specifies the number of times each individual 
+    object is repeated during transfer. When `repeat_count == 1`, each object 
+    is transferred once.
+
+    The `iter_count` parameter specifies the number of iterations of 
+    the buffer descriptor chain generated at the lower level. The total number 
+    of objects transferred is calculated as `iter_count * elemNumber * repeat_count`.
+    When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
   }];
 
   let arguments = (
@@ -1726,7 +1736,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // repeat_count==1 means "do it once"
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
         InitValuesArrayAttr:$initValues,
-        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions
+        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        OptionalAttr<AIEI32Attr>:$iter_count
   );
 
   let assemblyFormat = [{
