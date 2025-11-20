@@ -18,11 +18,6 @@ from .resolvable import Resolvable
 # import aie.utils.trace as trace_utils
 from ..utils import trace as trace_utils
 
-import contextvars
-
-CurrentDeviceOp = contextvars.ContextVar("CurrentDeviceOp", default=None)
-CurrentModule = contextvars.ContextVar("CurrentModule", default=None)
-
 
 class Program:
     def __init__(
@@ -53,7 +48,6 @@ class Program:
             module (Module): The module containing the MLIR context information.
         """
         with mlir_mod_ctx() as ctx:
-            CurrentModule.set(ctx.module)
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
@@ -112,9 +106,6 @@ class Program:
 
                 # In/Out Sequence
                 self._rt.resolve()
-
-            device_op = device_body
-            CurrentDeviceOp.set(device_op)
 
             self._print_verify(ctx)
             return ctx.module
