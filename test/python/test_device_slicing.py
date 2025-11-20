@@ -13,14 +13,14 @@ devices = [NPU1, NPU1Col1, NPU2]
 @pytest.mark.parametrize("device_class", devices)
 def test_initial_state(device_class):
     device = device_class()
-    total_tiles = device.cols * device.rows
+    total_tiles = device.ncols * device.nrows
     assert len(list(device.tile_iterator())) == total_tiles
 
 
 @pytest.mark.parametrize("device_class", devices)
 def test_destructive_slice(device_class):
     device = device_class()
-    if device.cols < 3 or device.rows < 3:
+    if device.ncols < 3 or device.nrows < 3:
         pytest.skip("Device too small for this test")
 
     initial_tile_count = len(list(device.tile_iterator()))
@@ -40,7 +40,7 @@ def test_destructive_slice(device_class):
 @pytest.mark.parametrize("device_class", devices)
 def test_double_claim_error_overlap(device_class):
     device = device_class()
-    if device.cols < 4 or device.rows < 4:
+    if device.ncols < 4 or device.nrows < 4:
         pytest.skip("Device too small for this test")
 
     _ = device[1:3, 1:3]
@@ -51,7 +51,7 @@ def test_double_claim_error_overlap(device_class):
 @pytest.mark.parametrize("device_class", devices)
 def test_double_claim_error_single_col(device_class):
     device = device_class()
-    if device.rows < 4:
+    if device.nrows < 4:
         pytest.skip("Device too small for this test")
     _ = device[0:1, 0:3]
     with pytest.raises(ValueError, match="Tile .* has already been claimed."):
@@ -59,25 +59,27 @@ def test_double_claim_error_single_col(device_class):
 
 
 @pytest.mark.parametrize("device_class", devices)
-def test_non_destructive_single_tile_access(device_class):
+def test_single_tile_slice(device_class):
     device = device_class()
-    if device.cols < 2 or device.rows < 3:
+    if device.ncols < 2 or device.nrows < 3:
         pytest.skip("Device too small for this test")
 
     initial_tile_count = len(list(device.tile_iterator()))
-    tile = device[1, 2]
-    assert tile.col == 1
-    assert tile.row == 2
+    small_slice = device[1, 2]
+    tiles = list(small_slice.tile_iterator())
+    assert len(tiles) == 1
+    assert tiles[0].col == 1
+    assert tiles[0].row == 2
 
     # Check that the tile was not claimed
     remaining_tiles_count = len(list(device.tile_iterator()))
-    assert remaining_tiles_count == initial_tile_count
+    assert remaining_tiles_count == initial_tile_count - 1
 
 
 @pytest.mark.parametrize("device_class", devices)
 def test_disjoint_partitions(device_class):
     device = device_class()
-    if device.cols < 4 or device.rows < 4:
+    if device.ncols < 4 or device.nrows < 4:
         pytest.skip("Device too small for this test")
 
     initial_tile_count = len(list(device.tile_iterator()))

@@ -50,7 +50,7 @@ class DeviceLike(Resolvable):
     ) -> None:
         self._device = device
         self._tm = get_target_model(device)
-        if not tiles:
+        if tiles is None:
             self._tiles: list[list[DeviceLike.__DeviceTile]] = []
             for c in range(self._tm.columns()):
                 self._tiles.append([])
@@ -58,6 +58,8 @@ class DeviceLike(Resolvable):
                     self._tiles[c].append(DeviceLike.__DeviceTile(c, r))
         else:
             self._tiles = tiles
+        self.ncols = len(self._tiles)
+        self.nrows = len(self._tiles[0]) if self.ncols else 0
 
     def get_shim_tiles(self) -> list[Tile]:
         """Returns a list of all shim tiles on the device.
@@ -237,12 +239,9 @@ class Device(DeviceLike):
                 "Device indices must be integers, slices, or a 2-tuple of those."
             )
 
-        # Special case for single tile access - this is non-destructive
-        # TODO(erika): this should be destructive
         if isinstance(col_slice, int) and isinstance(row_slice, int):
             if col_slice >= self._tm.columns() or row_slice >= self._tm.rows():
                 raise IndexError("Tile index out of range.")
-            return [[self._tiles[col_slice][row_slice]]]
 
         # Handle slices and integers for cols
         if isinstance(col_slice, int):
