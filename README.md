@@ -115,7 +115,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    ```bash
    # Install IRON library and mlir-aie from a specific release
-   python3 -m pip install mlir_aie==<version> -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
    ```
 
    Alternatively, you can install the latest stable released version of `mlir-aie`.
@@ -123,16 +123,14 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # Get the latest stable release version
    export AIE_VERSION=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases" | jq -r '.[] | select(.prerelease==false and (.tag_name | test("v[0-9]+\\.[0-9]+\\.[0-9]+$"))) | .tag_name' | head -n 1)
    # Install IRON library and mlir-aie from the latest stable release
-   python3 -m pip install mlir_aie==${AIE_VERSION#v} -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${AIE_VERSION}
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${AIE_VERSION}
    ```
 
    For the latest wheels (not necessarily a release):
    ```bash
    # Install IRON library and mlir-aie from the latest wheel
    python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
-
-
-   > **NOTE:** The `iron` library is included in the `mlir-aie` wheel.
+   ```
 
    You will also need to install the `llvm-aie` wheel for the Peano compiler and the `mlir-aie` python extras.
 
