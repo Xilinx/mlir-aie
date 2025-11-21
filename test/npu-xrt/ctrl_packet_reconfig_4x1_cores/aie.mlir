@@ -243,14 +243,14 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @shim_in_0(MM2S, 0, 0)
-    aie.shim_dma_allocation @shim_in_1(MM2S, 0, 1)
-    aie.shim_dma_allocation @shim_in_2(MM2S, 0, 2)
-    aie.shim_dma_allocation @shim_in_3(MM2S, 0, 3)
-    aie.shim_dma_allocation @shim_out_0(S2MM, 0, 0)
-    aie.shim_dma_allocation @shim_out_1(S2MM, 0, 1)
-    aie.shim_dma_allocation @shim_out_2(S2MM, 0, 2)
-    aie.shim_dma_allocation @shim_out_3(S2MM, 0, 3)
+    aie.shim_dma_allocation @shim_in_0 (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @shim_in_1 (%tile_1_0, MM2S, 0)
+    aie.shim_dma_allocation @shim_in_2 (%tile_2_0, MM2S, 0)
+    aie.shim_dma_allocation @shim_in_3 (%tile_3_0, MM2S, 0)
+    aie.shim_dma_allocation @shim_out_0 (%tile_0_0, S2MM, 0)
+    aie.shim_dma_allocation @shim_out_1 (%tile_1_0, S2MM, 0)
+    aie.shim_dma_allocation @shim_out_2 (%tile_2_0, S2MM, 0)
+    aie.shim_dma_allocation @shim_out_3 (%tile_3_0, S2MM, 0)
 
     aie.runtime_sequence @run(%arg0: memref<4x64x64xi8>, %arg1: memref<4x64x64xi8>) {
       %c0_i64 = arith.constant 0 : i64

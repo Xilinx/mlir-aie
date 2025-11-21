@@ -99,7 +99,7 @@
 // CHECK:     ^bb4:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of2_shim_alloc(S2MM, 0, 1)
+// CHECK:     aie.shim_dma_allocation @of2_shim_alloc (%tile_1_0, S2MM, 0)
 // CHECK:   }
 // CHECK: }
 
