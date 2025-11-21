@@ -89,14 +89,6 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
         )
 
     def core_body(*args):
-        nextC_buffer = Buffer(
-            type=np.ndarray[(out_num_elements,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
-        tmp_buffer = Buffer(
-            type=np.ndarray[(out_num_elements,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
         # Extract fixed arguments from end of args list
         compute_max = args[-1]
         reduce_max_vector = args[-2]
