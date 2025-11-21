@@ -121,7 +121,7 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         # Extract object fifos from start of args list
         of_in = args[0]
         of_out = args[1]
-        in_fifos = args[2:-2]  # Variable number of input fifos based on n_cores
+        in_fifos = args[2:-4]  # Variable number of input fifos based on n_cores
 
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
