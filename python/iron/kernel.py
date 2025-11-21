@@ -212,8 +212,3 @@ class ExternalFunction(BaseKernel):
         # Create hash from combined string
         combined = "|".join(hash_parts)
         return int(hashlib.sha256(combined.encode("utf-8")).hexdigest()[:8], 16)
-
-    def __call__(self, *args, **kwargs):
-        if not self._op:
-            raise ValueError("Need to resolve ExternalFunction before it can be called")
-        call(self._op, args, **kwargs)
