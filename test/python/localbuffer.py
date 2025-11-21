@@ -3,26 +3,19 @@
 
 # RUN: %python %s | FileCheck %s
 import numpy as np
-import argparse
-import sys
-
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, LocalBuffer
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, Buffer
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2Col1, NPU2
+from aie.iron.device import NPU2Col1
+
 
 # CHECK:  module {
 # CHECK:    aie.device(npu2_1col) {
 # CHECK:      %tile_0_2 = aie.tile(0, 2)
-# CHECK:      %unint_local_buf = aie.buffer(%tile_0_2) {sym_name = "unint_local_buf"} : memref<4096xui8>
+# CHECK:      %unint_local_buf = aie.buffer(%tile_0_2) {sym_name = "uninit_local_buf"} : memref<4096xui8>
 # CHECK:      %init_local_buf = aie.buffer(%tile_0_2) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
-# CHECK:      %shim_noc_tile_0_0 = aie.tile(0, 0)
-
-
 def passthrough_local_buff():
     in1_size = 4096
-    out_size = 4096
     in1_dtype = np.uint8
-    out_dtype = np.uint8
 
     # Define tensor types
     line_size = in1_size // in1_dtype(0).nbytes
@@ -40,28 +33,29 @@ def passthrough_local_buff():
         [line_type, line_type, np.int32],
     )
 
+    # This buffer is local to the core and has no initial value
+    uninit_buf = Buffer(line_type, name="uninit_local_buf")
+    # This buffer is local to the core and has an initial value
+    init_buf = Buffer(
+        line_type,
+        name="init_local_buf",
+        initial_value=np.zeros(line_size, dtype=in1_dtype),
+    )
+
     # Task for the core to perform
-    def core_fn(of_in, of_out, passThroughLine):
-        # This buffer is local to the core and has no initial value
-        unint_local_buf = LocalBuffer(line_type, name="unint_local_buf")
-        # This buffer is local to the core and has an initial value
-        init_local_buf = LocalBuffer(
-            line_type,
-            name="init_local_buf",
-            initial_value=np.zeros(line_size, dtype=in1_dtype),
-        )
+    def core_fn(of_in, of_out, buf1, buf2, passThroughLine):
         elemOut = of_out.acquire(1)
         elemIn = of_in.acquire(1)
-        passthrough_fn(elemIn, unint_local_buf, line_size)
-        passthrough_fn(unint_local_buf, init_local_buf, line_size)
-        passthrough_fn(init_local_buf, elemOut, line_size)
+        passThroughLine(elemIn, buf1, line_size)
+        passThroughLine(buf1, buf2, line_size)
+        passThroughLine(buf2, elemOut, line_size)
         of_in.release(1)
         of_out.release(1)
 
     # Create a worker to perform the task
     my_worker = Worker(
         core_fn,
-        [of_in.cons(), of_out.prod(), passthrough_fn],
+        [of_in.cons(), of_out.prod(), uninit_buf, init_buf, passthrough_fn],
     )
 
     # Runtime operations to move data to/from the AIE-array

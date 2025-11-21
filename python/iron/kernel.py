@@ -13,6 +13,7 @@ from ..extras.dialects.ext.func import FuncOp  # type: ignore
 from ..helpers.dialects.ext.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable
+from .buffer import Buffer
 
 
 class BaseKernel(Resolvable):
@@ -29,19 +30,17 @@ class BaseKernel(Resolvable):
         self._arg_types = arg_types
         self._op: FuncOp | None = None
 
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        """Resolve the kernel to a FuncOp. Must be implemented by subclasses."""
-        raise NotImplementedError("Subclasses must implement resolve()")
-
     def __call__(self, *args, **kwargs):
         """Call the kernel with the given arguments."""
         if not self._op:
             raise ValueError("Need to resolve kernel before it can be called")
-        call(self._op, args, **kwargs)
+        arg_ops = []
+        for a in args:
+            if isinstance(a, Buffer):
+                arg_ops.append(a.op)
+            else:
+                arg_ops.append(a)
+        call(self._op, arg_ops, **kwargs)
 
 
 class Kernel(BaseKernel):
