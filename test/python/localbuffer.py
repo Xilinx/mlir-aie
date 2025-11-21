@@ -11,7 +11,7 @@ from aie.iron.device import NPU2Col1
 # CHECK:  module {
 # CHECK:    aie.device(npu2_1col) {
 # CHECK:      %tile_0_2 = aie.tile(0, 2)
-# CHECK:      %unint_local_buf = aie.buffer(%tile_0_2) {sym_name = "uninit_local_buf"} : memref<4096xui8>
+# CHECK:      %uninit_local_buf = aie.buffer(%tile_0_2) {sym_name = "uninit_local_buf"} : memref<4096xui8>
 # CHECK:      %init_local_buf = aie.buffer(%tile_0_2) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
 def passthrough_local_buff():
     in1_size = 4096
