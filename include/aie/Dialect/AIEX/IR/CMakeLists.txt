@@ -7,3 +7,7 @@
 
 add_mlir_dialect(AIEX aiex)
 add_mlir_doc(AIEX AIEXDialect ./ -gen-dialect-doc -dialect=aiex)
+
+# AIEX dialect depends on AIE event enums being generated first
+# because AIEX.td includes AIEAttrs.td which includes the generated files
+add_dependencies(MLIRAIEXIncGen GenerateAIEEventsTD)

@@ -12,6 +12,7 @@
 #define AIE_ATTRS
 
 include "aie/Dialect/AIE/IR/AIE.td"
+include "aie/Dialect/AIE/IR/AIETraceAttrs.td"
 
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/EnumAttr.td"
@@ -206,5 +207,12 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 def InitValuesArrayAttr
   : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
 
+//===----------------------------------------------------------------------===//
+// Generated AIE event enumerations
+//===----------------------------------------------------------------------===//
+
+include "aie/Dialect/AIE/IR/AIEEventsAIE.td.inc"
+include "aie/Dialect/AIE/IR/AIEEventsAIE2.td.inc"
+include "aie/Dialect/AIE/IR/AIEEventsAIE2P.td.inc"
 
 #endif // AIE_ATTRS
