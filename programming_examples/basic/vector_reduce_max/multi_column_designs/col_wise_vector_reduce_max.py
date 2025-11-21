@@ -99,7 +99,7 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
         of_in1 = args[0]
         of_out = args[1]
         neighbor_of_in1s = args[
-            2:-2
+            2:-4
         ]  # Variable number of input fifos based on num_cores
 
         for _ in range_(N_div_n):
