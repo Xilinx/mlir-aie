@@ -148,15 +148,19 @@ def _create_aie_lower_to_llvm_pipeline(
 AIE_LOWER_TO_LLVM = _create_aie_lower_to_llvm_pipeline
 
 # pipeline to lower and legalize runtime sequence for NPU
-NPU_LOWERING_PIPELINE = Pipeline().Nested(
-    "aie.device",
+NPU_LOWERING_PIPELINE = (
     Pipeline()
-    .add_pass("aie-materialize-bd-chains")
-    .add_pass("aie-substitute-shim-dma-allocations")
-    .add_pass("aie-assign-runtime-sequence-bd-ids")
-    .add_pass("aie-dma-tasks-to-npu")
-    .add_pass("aie-dma-to-npu")
-    .add_pass("aie-lower-set-lock"),
+    .add_pass("aie-materialize-runtime-sequences")
+    .Nested(
+        "aie.device",
+        Pipeline()
+        .add_pass("aie-materialize-bd-chains")
+        .add_pass("aie-substitute-shim-dma-allocations")
+        .add_pass("aie-assign-runtime-sequence-bd-ids")
+        .add_pass("aie-dma-tasks-to-npu")
+        .add_pass("aie-dma-to-npu")
+        .add_pass("aie-lower-set-lock"),
+    )
 )
 
 
@@ -373,11 +377,9 @@ def create_device_id_mapping(devices):
     return device_to_id
 
 
-def assign_load_pdi_ids(mlir_module_str, device_to_id_mapping):
+def assign_load_pdi_ids(module, device_to_id_mapping):
     """Transform symbolic aiex.npu.load_pdi references to numeric IDs"""
-    with Context() as context, Location.unknown():
-        module = Module.parse(mlir_module_str)
-
+    with module.context as context, Location.unknown():
         for runtime_seq in find_ops(
             module.operation,
             lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
@@ -398,8 +400,6 @@ def assign_load_pdi_ids(mlir_module_str, device_to_id_mapping):
                 load_pdi_op.id = IntegerAttr.get(
                     IntegerType.get_signless(32, context=context), pdi_id
                 )
-
-        return str(module)
 
 
 def set_elf_file_for_core(core, path):
@@ -979,9 +979,9 @@ class FlowRunner:
                 "PDIs": [],
             }
 
-            pdi_id = device_to_id_mapping[device_name]
-            pdi_filename = self.pdi_file_name(device_name)
-            kernel_entry["PDIs"].append({"id": pdi_id, "PDI_file": pdi_filename})
+            for other_device_name, other_pdi_id in device_to_id_mapping.items():
+                pdi_filename = self.pdi_file_name(other_device_name)
+                kernel_entry["PDIs"].append({"id": other_pdi_id, "PDI_file": pdi_filename})
 
             for seq_op, seq_name in sequences:
                 insts_filename = self.npu_insts_file_name(device_name, seq_name)
@@ -1607,15 +1607,6 @@ class FlowRunner:
                 sys.exit(1)
             aie_target, aie_peano_target = aie_targets[0], aie_peano_targets[0]
 
-            # Handle full ELF generation configuration
-            if opts.generate_full_elf:
-                device_to_id_mapping = create_device_id_mapping(devices)
-                self.mlir_module_str = assign_load_pdi_ids(
-                    self.mlir_module_str, device_to_id_mapping
-                )
-                transformed_mlir_path = self.prepend_tmp("input_with_pdi_ids.mlir")
-                await write_file_async(self.mlir_module_str, transformed_mlir_path)
-
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
                 opts.alloc_scheme,
                 opts.dynamic_objFifos,
@@ -1717,6 +1708,13 @@ class FlowRunner:
                         npu_insts_file,
                         self.opts.verbose,
                     )
+                    if opts.generate_full_elf:
+                        device_to_id_mapping = create_device_id_mapping(devices)
+                        assign_load_pdi_ids(
+                            npu_insts_module, device_to_id_mapping
+                        )
+                        transformed_mlir_path = self.prepend_tmp("npu_insts_with_pid_ids.mlir")
+                        await write_file_async(str(npu_insts_module), transformed_mlir_path)
                     self.progress_bar.update(task3, advance=1)
 
             # 4.) Generate compilation artifacts for each device
