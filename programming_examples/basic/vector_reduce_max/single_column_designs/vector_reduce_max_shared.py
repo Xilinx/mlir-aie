@@ -15,7 +15,7 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    LocalBuffer,
+    Buffer,
     str_to_dtype,
 )
 from aie.iron.placers import SequentialPlacer
@@ -66,8 +66,22 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         obj_types=[op_ty] * n_cores,
         names=[f"memA{i}" for i in range(n_cores)],
     )
+    nextC_buffers = []
+    tmp_buffers = []
     for i in range(n_cores):
         out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
+        nextC_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
+                initial_value=min_val,
+            )
+        )
+        tmp_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
+                initial_value=min_val,
+            )
+        )
 
     # AIE Core Function declarations
     suffix = "_bfloat16" if dtype_str == "bf16" else ""
@@ -84,15 +98,9 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     )
 
     # Define a task to run
-    def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
-        nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
-        tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
+    def start_core_body(
+        of_in, of_out, nextC_buffer, tmp_buffer, reduce_max_vector, compute_max
+    ):
         elem_out = of_out.acquire(1)
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
@@ -103,17 +111,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         of_out.release(1)
 
     def core_body(*args):
-        nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
-        tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
         # Extract fixed arguments from end of args list
         compute_max = args[-1]
         reduce_max_vector = args[-2]
+        nextC_buffer = args[-3]
+        tmp_buffer = args[-4]
 
         # Extract object fifos from start of args list
         of_in = args[0]
@@ -153,7 +155,9 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     fifo_args.append(out_fifos[j].cons())
                 else:
                     fifo_args.append(out_fifos[j + 1].cons())
-            fifo_args.extend([reduce_max_vector, compute_max])
+            fifo_args.extend(
+                [nextC_buffers[i], tmp_buffers[i], reduce_max_vector, compute_max]
+            )
 
             workers.append(
                 Worker(
@@ -169,6 +173,8 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     fn_args=[
                         in_fifos[i].cons(),
                         out_fifos[i].prod(),
+                        nextC_buffers[i],
+                        tmp_buffers[i],
                         reduce_max_vector,
                         compute_max,
                     ],

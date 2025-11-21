@@ -216,7 +216,7 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 rtps = []
 for i in range(n_workers):
     rtps.append(
-        GlobalBuffer(
+        Buffer(
             np.ndarray[(16,), np.dtype[np.int32]],
             name=f"rtp{i}",
             use_write_rtp=True,

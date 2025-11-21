@@ -10,11 +10,10 @@ import sys
 import os
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, jit
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, LocalBuffer
+from aie.iron import ExternalFunction
+from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.dialects.ext.scf import if_, else_
 from aie.utils.config import cxx_header_path
@@ -66,9 +65,22 @@ def vector_reduce_max(input0, output):
         obj_types=[op_ty] * n_cores,
         names=[f"memA{i}" for i in range(n_cores)],
     )
+    nextC_buffers = []
+    tmp_buffers = []
     for i in range(n_cores):
         out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
-
+        nextC_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
+                initial_value=min_val,
+            )
+        )
+        tmp_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
+                initial_value=min_val,
+            )
+        )
     # --------------------------------------------------------------------------
     # Task each core will run
     # --------------------------------------------------------------------------
@@ -81,15 +93,7 @@ def vector_reduce_max(input0, output):
     )
     min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
 
-    def start_core_body(of_in, of_out, reduce_max_vector):
-        nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
-            initial_value=min_val,
-        )
-        tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
-            initial_value=min_val,
-        )
+    def start_core_body(of_in, of_out, reduce_max_vector, nextC_buffer, tmp_buffer):
         elem_out = of_out.acquire(1)
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
@@ -100,16 +104,7 @@ def vector_reduce_max(input0, output):
         elem_out[0] = nextC_buffer[0]
         of_out.release(1)
 
-    def core_body(of_in, of_out, in0, reduce_max_vector):
-        nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
-            initial_value=min_val,
-        )
-        tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
-            initial_value=min_val,
-        )
-
+    def core_body(of_in, of_out, in0, reduce_max_vector, nextC_buffer, tmp_buffer):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
@@ -137,6 +132,8 @@ def vector_reduce_max(input0, output):
                         out_fifos[i].prod(),
                         out_fifos[i + 1].cons(),
                         reduce_max_vector,
+                        nextC_buffers[i],
+                        tmp_buffers[i],
                     ],
                     trace=None,
                 )
@@ -149,6 +146,8 @@ def vector_reduce_max(input0, output):
                         in_fifos[i].cons(),
                         out_fifos[i].prod(),
                         reduce_max_vector,
+                        nextC_buffers[i],
+                        tmp_buffers[i],
                     ],
                     trace=None,
                 )

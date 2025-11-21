@@ -16,7 +16,7 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    LocalBuffer,
+    Buffer,
     str_to_dtype,
 )
 from aie.iron.placers import SequentialPlacer
@@ -85,11 +85,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     ]
 
     def core_body(*args):
-        nextC_buffer = LocalBuffer(
+        nextC_buffer = Buffer(
             type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
             initial_value=min_val,
         )
-        tmp_buffer = LocalBuffer(
+        tmp_buffer = Buffer(
             type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
             initial_value=min_val,
         )

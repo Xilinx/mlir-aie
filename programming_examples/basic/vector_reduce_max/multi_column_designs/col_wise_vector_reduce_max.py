@@ -16,7 +16,7 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    LocalBuffer,
+    Buffer,
     str_to_dtype,
 )
 from aie.iron.placers import SequentialPlacer
@@ -72,18 +72,36 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
         else np.array([np.iinfo(dtype).min], dtype=dtype)
     )
 
+    nextC_buffers = []
+    tmp_buffers = []
+    for i in range(num_cores):
+        nextC_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_num_elements,), np.dtype[dtype]],
+                initial_value=min_val,
+            )
+        )
+        tmp_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_num_elements,), np.dtype[dtype]],
+                initial_value=min_val,
+            )
+        )
+
     def core_body(*args):
-        nextC_buffer = LocalBuffer(
+        nextC_buffer = Buffer(
             type=np.ndarray[(out_num_elements,), np.dtype[dtype]],
             initial_value=min_val,
         )
-        tmp_buffer = LocalBuffer(
+        tmp_buffer = Buffer(
             type=np.ndarray[(out_num_elements,), np.dtype[dtype]],
             initial_value=min_val,
         )
         # Extract fixed arguments from end of args list
         compute_max = args[-1]
         reduce_max_vector = args[-2]
+        tmp_buffer = args[-3]
+        c_buffer = args[-4]
 
         # Extract object fifos from start of args list
         of_in1 = args[0]
@@ -95,7 +113,7 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
         for _ in range_(N_div_n):
             elem_in1 = of_in1.acquire(1)
             reduce_max_vector(elem_in1, tmp_buffer, tile_size)
-            compute_max(nextC_buffer, tmp_buffer, nextC_buffer)
+            compute_max(c_buffer, tmp_buffer, c_buffer)
             of_in1.release(1)
 
         elem_out = of_out.acquire(1)
@@ -107,14 +125,14 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
 
             # Compute max across all inputs
             for elem in elem_in1s[:-1]:
-                compute_max(elem, nextC_buffer, nextC_buffer)
-            compute_max(elem_in1s[-1], nextC_buffer, elem_out)
+                compute_max(elem, c_buffer, c_buffer)
+            compute_max(elem_in1s[-1], c_buffer, elem_out)
 
             # Release all inputs
             for neighbor_of in neighbor_of_in1s:
                 neighbor_of.release(1)
         else:
-            elem_out[0] = nextC_buffer[0]
+            elem_out[0] = c_buffer[0]
         of_out.release(1)
 
     # Define a worker to run the task on a core
@@ -126,7 +144,9 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
             if num_cores - cores_per_col < i:
                 fifo_args.append(of_outs[i - 1].cons())
 
-        fifo_args.extend([reduce_max_vector, compute_max])
+        fifo_args.extend(
+            [nextC_buffers[i], tmp_buffers[i], reduce_max_vector, compute_max]
+        )
         my_workers.append(
             Worker(
                 core_body,
