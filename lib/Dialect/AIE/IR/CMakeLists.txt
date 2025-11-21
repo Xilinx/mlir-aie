@@ -20,6 +20,7 @@ add_mlir_dialect_library(AIE
   MLIRAIEOpsIncGen
 
   LINK_LIBS PUBLIC
+  MLIRAIEUtil
   MLIRIR
   MLIRSupport
 )

@@ -12,10 +12,13 @@
 #define MLIR_AIE_DEVICEMODEL_H
 
 #include "aie/Dialect/AIE/IR/AIEEnums.h"
+#include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
 
 #include "llvm/ADT/DenseSet.h"
 
 #include <iostream>
+#include <memory>
+#include <mutex>
 
 namespace xilinx::AIE {
 
@@ -96,6 +99,21 @@ private:
   const TargetModelKind kind;
 
   uint32_t ModelProperties = 0;
+
+  // Register database (loaded lazily on first access)
+  // Thread-safe lazy initialization using std::call_once
+  mutable std::unique_ptr<RegisterDatabase> regDB;
+  mutable std::once_flag regDBInitFlag;
+
+protected:
+  /// Subclasses override to provide architecture-specific database loading.
+  /// Returns nullptr if register database is not available for this
+  /// architecture.
+  virtual std::unique_ptr<RegisterDatabase> loadRegisterDatabase() const;
+
+  /// Get the register database, loading it lazily on first access.
+  /// Throws fatal error if database is required but unavailable.
+  const RegisterDatabase *getRegisterDatabase() const;
 
 public:
   TargetModelKind getKind() const { return kind; }
@@ -325,6 +343,23 @@ public:
 
   // Returns true if the target model supports the given block format.
   virtual bool isSupportedBlockFormat(std::string const &format) const;
+
+  /// Register Database API - provides access to register and event information
+  /// for trace configuration and low-level register access.
+
+  /// Lookup register information by name and tile.
+  /// Return pointer to register info, or nullptr if not found
+  const RegisterInfo *lookupRegister(llvm::StringRef name, TileID tile,
+                                     bool isMem = false) const;
+
+  /// Lookup event number by name and tile.
+  /// Return Event number if found, nullopt otherwise
+  std::optional<uint32_t> lookupEvent(llvm::StringRef name, TileID tile,
+                                      bool isMem = false) const;
+
+  /// Encode a field value with proper bit shifting.
+  /// Return Value shifted to correct bit position
+  uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -416,6 +451,9 @@ public:
 };
 
 class AIE2TargetModel : public AIETargetModel {
+protected:
+  std::unique_ptr<RegisterDatabase> loadRegisterDatabase() const override;
+
 public:
   AIE2TargetModel(TargetModelKind k) : AIETargetModel(k) {
     // Device properties initialization
