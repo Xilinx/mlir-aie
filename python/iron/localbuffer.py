@@ -8,12 +8,8 @@
 from collections import defaultdict
 import numpy as np
 
-from .. import ir
-from ..ir import Module, Context, InsertionPoint, Location, Operation
 from ..dialects.aie import buffer
 from .worker import Worker
-from .program import CurrentDeviceOp, CurrentModule
-from .device import Tile
 
 
 class LocalBuffer(buffer):
@@ -60,41 +56,15 @@ class LocalBuffer(buffer):
             idx = self.__get_index(current_core_placement)
             name = f"buf_{col}_{row}_{idx}"
 
-        # if initial_value is None:
-        device_op = get_device_op_from_module()
-        block = device_op.regions[0].blocks[0]
-
-        # Count number of tile ops and track last one
-        tile_count = 0
-        last_tile_op = None
-        for op in block.operations:
-            if op.name == "aie.tile":
-                tile_count += 1
-                last_tile_op = op
-
-        ip = None if tile_count == 1 else InsertionPoint(last_tile_op)
-
         super().__init__(
             tile=current_core_placement,
             datatype=type,
             name=name,
             initial_value=initial_value,
-            ip=ip,
         )
 
     @classmethod
-    def __get_index(cls, placement: Tile) -> int:
+    def __get_index(cls, placement):
         idx = cls.__buf_tile_index[placement]
         cls.__buf_tile_index[placement] += 1
         return idx
-
-
-def get_device_op_from_module():
-    module = CurrentModule.get()
-    if module is None:
-        raise RuntimeError("No MLIR module context available")
-    # The device op should be the first (or only) op in the module's body
-    for op in module.body.operations:
-        if op.name == "aie.device":
-            return op
-    raise RuntimeError("No aie.device op found in module")
