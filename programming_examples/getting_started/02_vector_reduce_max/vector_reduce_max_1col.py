@@ -65,6 +65,8 @@ def vector_reduce_max(input0, output):
         obj_types=[op_ty] * n_cores,
         names=[f"memA{i}" for i in range(n_cores)],
     )
+
+    min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
     nextC_buffers = []
     tmp_buffers = []
     for i in range(n_cores):
@@ -91,7 +93,6 @@ def vector_reduce_max(input0, output):
         arg_types=[op_ty, out_ty, np.int32],
         include_dirs=[cxx_header_path()],
     )
-    min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
 
     def start_core_body(of_in, of_out, reduce_max_vector, nextC_buffer, tmp_buffer):
         elem_out = of_out.acquire(1)

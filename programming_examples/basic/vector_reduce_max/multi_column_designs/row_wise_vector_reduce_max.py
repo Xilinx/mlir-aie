@@ -73,6 +73,21 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         if dtype_str == "bf16"
         else np.array([np.iinfo(dtype).min], dtype=dtype)
     )
+    nextC_buffers = []
+    tmp_buffers = []
+    for i in range(n_cores):
+        nextC_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
+                initial_value=min_val,
+            )
+        )
+        tmp_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
+                initial_value=min_val,
+            )
+        )
 
     taps = [
         TensorAccessPattern(
@@ -85,17 +100,11 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
     ]
 
     def core_body(*args):
-        nextC_buffer = Buffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
-        tmp_buffer = Buffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
         # Extract fixed arguments from end of args list
         compute_max = args[-1]
         reduce_max_vector = args[-2]
+        nextC_buffer = args[-3]
+        tmp_buffer = args[-4]
 
         # Extract object fifos from start of args list
         of_in = args[0]
@@ -150,7 +159,9 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                     fifo_args.append(out_fifos[4].cons())
                     fifo_args.extend(out_fifos[j].cons() for j in range(6, n_cores))
 
-        fifo_args.extend([reduce_max_vector, compute_max])
+        fifo_args.extend(
+            [tmp_buffers[i], nextC_buffers[i], reduce_max_vector, compute_max]
+        )
         workers.append(
             Worker(
                 core_body,
