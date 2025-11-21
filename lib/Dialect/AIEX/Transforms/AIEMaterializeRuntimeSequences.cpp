@@ -119,8 +119,7 @@ LogicalResult inlineReferencedSymbolDefinitions(
     Operation *op, 
     Operation *lookupFrom,
     IRMapping argMap,
-    llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
-    llvm::function_ref<bool(Operation *)> symbolDefValidator) {
+    llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap) {
   MLIRContext *ctx = op->getContext();
   for (NamedAttribute namedAttr : op->getAttrs()) {
     Attribute attr = namedAttr.getValue();
@@ -140,7 +139,7 @@ LogicalResult inlineReferencedSymbolDefinitions(
 
           // Add the new symbol definition
           Operation *symbolDefOp = SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
-          if (!symbolDefValidator(symbolDefOp)) {
+          if (!symbolDefOp) {
             return std::make_pair(newSymbolRef, WalkResult::interrupt());
           }
           Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
@@ -212,17 +211,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 
       rewriter.restoreInsertionPoint(clonedSymbolInsertionPoint);
       if (failed(inlineReferencedSymbolDefinitions(
-          rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap, previouslyInlinedSymbolMap,
-          [&](Operation *symbolDefOp) {
-            if (!llvm::isa<AIE::ShimDMAAllocationOp>(symbolDefOp)) {
-              runOp.emitError() << "referenced symbol '" 
-                                << symbolDefOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName()).getValue()
-                                << "' must be a ShimDMAAllocationOp, but got: "
-                                << symbolDefOp->getName().getStringRef();
-              return false;
-            }
-            return true;
-          }))) {
+          rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap, previouslyInlinedSymbolMap))) {
         return failure();
       }
       clonedSymbolInsertionPoint = rewriter.saveInsertionPoint();
@@ -242,7 +231,14 @@ struct AIEMaterializeRuntimeSequencesPass
     // Process each device in the module
     for (AIE::DeviceOp deviceOp : moduleOp.getOps<AIE::DeviceOp>()) {
 
-      // Turn aie.configure to aie.run @configure
+      // Verify all runtime sequences before materialization
+      for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
+        if (failed(runtimeSequenceOp.verifyBeforeMaterialization())) {
+          return signalPassFailure();
+        }
+      }
+
+      // Check for cycles in runtime sequence calls
       for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
         AnalysisManager am = getAnalysisManager().nest(deviceOp).nest(runtimeSequenceOp);
         RuntimeCallGraphCyclicityAnalysis cyclicity = am.getAnalysis<RuntimeCallGraphCyclicityAnalysis>();
@@ -253,9 +249,6 @@ struct AIEMaterializeRuntimeSequencesPass
           runtimeSequenceOp.emitError("Runtime sequence contains a cycle");
           return signalPassFailure();
         }
-        RewritePatternSet patterns(&getContext());
-        patterns.insert<InsertLoadPdiForConfigurePattern>(&getContext());
-        walkAndApplyPatterns(runtimeSequenceOp, std::move(patterns));
       }
 
       // Greedily inline all runtime sequences that can be inlined;
@@ -267,16 +260,24 @@ struct AIEMaterializeRuntimeSequencesPass
       rewriter_config.setRegionSimplificationLevel(
           GreedySimplifyRegionLevel::Disabled);
 
-      RewritePatternSet patterns(ctx);
-      patterns.insert<InlineRuntimeCallsPattern>(ctx);
-      if (failed(applyPatternsGreedily(deviceOp, std::move(patterns), rewriter_config))) {
+      RewritePatternSet patterns_0(ctx);
+      patterns_0.insert<InlineRuntimeCallsPattern>(ctx);
+      if (failed(applyPatternsGreedily(deviceOp, std::move(patterns_0), rewriter_config))) {
         signalPassFailure();
+      }
+
+      // Insert LoadPDI ops for each aiex.configure op
+      for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
+        RewritePatternSet patterns_1(ctx);
+        patterns_1.insert<InsertLoadPdiForConfigurePattern>(ctx);
+        walkAndApplyPatterns(runtimeSequenceOp, std::move(patterns_1));
       }
 
       // Flatten the IR: hoist all operations inside aiex.configure to be direct
       // children of the runtime sequence, preserving order
       for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
         SmallVector<ConfigureOp> configureOps;
+
         for (ConfigureOp configureOp : runtimeSequenceOp.getOps<ConfigureOp>()) {
           configureOps.push_back(configureOp);
         }
