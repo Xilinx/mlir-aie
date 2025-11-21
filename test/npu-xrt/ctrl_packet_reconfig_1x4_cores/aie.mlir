@@ -286,8 +286,8 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
-    aie.shim_dma_allocation @objFifo_out0(S2MM, 0, 0)
+    aie.shim_dma_allocation @objFifo_in0 (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @objFifo_out0 (%tile_0_0, S2MM, 0)
 
     aie.runtime_sequence @run(%arg0: memref<4x64x64xi8>, %arg1: memref<4x64x64xi8>) {
       %c0_i64 = arith.constant 0 : i64
