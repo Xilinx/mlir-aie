@@ -94,21 +94,21 @@ def vector_reduce_max(input0, output):
         include_dirs=[cxx_header_path()],
     )
 
-    def start_core_body(of_in, of_out, reduce_max_vector, nextC_buffer, tmp_buffer):
+    def start_core_body(of_in, of_out, reduce_fn, nextC_buffer, tmp_buffer):
         elem_out = of_out.acquire(1)
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
-            reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
+            reduce_fn(elem_in, tmp_buffer, elems_per_core)
             with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
         elem_out[0] = nextC_buffer[0]
         of_out.release(1)
 
-    def core_body(of_in, of_out, in0, reduce_max_vector, nextC_buffer, tmp_buffer):
+    def core_body(of_in, of_out, in0, reduce_fn, nextC_buffer, tmp_buffer):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
-            reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
+            reduce_fn(elem_in, tmp_buffer, elems_per_core)
             with if_(nextC_buffer[0] < tmp_buffer[0]) as if_op:
                 nextC_buffer[0] = tmp_buffer[0]
             of_in.release(1)
