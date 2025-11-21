@@ -292,3 +292,85 @@ def compute_three_in_col_lim(module):
 
     module = Program(dev_slice, rt).resolve_program(SequentialPlacer())
     return module
+
+
+# CHECK-LABEL: TEST: not_enough_columns
+# CHECK: Ran out of compute tiles for placement!
+@construct_and_print_module
+def not_enough_columns(module):
+    n = 1024
+    dev = NPU2()
+    dev_slice = dev[:, 0:1]
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+    of_2 = ObjectFifo(n_ty, name="iof2")
+    of_3 = ObjectFifo(n_ty, name="iof3")
+
+    def core_fn(of):
+        pass
+
+    workers = [
+        Worker(core_fn, [of_0.cons()]),
+        Worker(core_fn, [of_1.cons()]),
+        Worker(core_fn, [of_2.cons()]),
+        Worker(core_fn, [of_3.cons()]),
+    ]
+
+    rt = Runtime()
+    with rt.sequence(n_ty, n_ty, n_ty, n_ty) as (A, B, C, D):
+        rt.start(*workers)
+        rt.fill(of_0.prod(), A)
+        rt.fill(of_1.prod(), B)
+        rt.fill(of_2.prod(), C)
+        rt.fill(of_3.prod(), D)
+
+    try:
+        Program(dev_slice, rt).resolve_program(SequentialPlacer())
+    except ValueError as e:
+        print(e)
+    return module
+
+
+# CHECK-LABEL: TEST: multiple_slices
+# CHECK-LABEL: success!
+@construct_and_print_module
+def multiple_slices(module):
+    n = 1024
+    dev = NPU2()
+    slice_0 = dev[:, 0:1]
+    slice_1 = dev[:, 2:3]
+
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+
+    def core_fn(of):
+        pass
+
+    worker_0 = Worker(core_fn, [of_0.cons()])
+    worker_1 = Worker(core_fn, [of_1.cons()])
+
+    rt_0 = Runtime()
+    with rt_0.sequence(n_ty) as (A):
+        rt_0.start(worker_0)
+        rt_0.fill(of_0.prod(), A)
+
+    rt_1 = Runtime()
+    with rt_1.sequence(n_ty) as (B):
+        rt_1.start(worker_1)
+        rt_1.fill(of_1.prod(), B)
+
+    Program(slice_0, rt_0).resolve_program(SequentialPlacer())
+    Program(slice_1, rt_1).resolve_program(SequentialPlacer())
+
+    assert worker_0.tile.col == 0
+    assert worker_1.tile.col == 2
+    assert worker_0.tile != worker_1.tile
+    assert of_0.prod().tile.col == 0
+    assert of_1.prod().tile.col == 2
+    print("success!")
+    return module
