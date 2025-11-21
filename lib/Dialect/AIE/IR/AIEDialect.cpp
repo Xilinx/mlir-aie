@@ -2341,6 +2341,28 @@ void BDChainOp::print(OpAsmPrinter &printer) {
 // ShimDMAAllocationOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult ShimDMAAllocationOp::verify() {
+  TileOp tileOp = getTileOp();
+  if (!tileOp) {
+    return emitOpError("tile operand must be a TileOp");
+  }
+  
+  const auto &targetModel = getTargetModel(*this);
+  int col = tileOp.getCol();
+  int row = tileOp.getRow();
+  
+  if (!targetModel.isShimNOCorPLTile(col, row)) {
+    return emitOpError("tile must be a shim tile (row 0), but got tile(")
+           << col << ", " << row << ")";
+  }
+  
+  return success();
+}
+
+TileOp ShimDMAAllocationOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
+}
+
 ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
                                                       llvm::StringRef symbol) {
   Operation *maybeOp = device.lookupSymbol(symbol);

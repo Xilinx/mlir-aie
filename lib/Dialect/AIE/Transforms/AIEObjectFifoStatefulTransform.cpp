@@ -1663,10 +1663,10 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to generate, from an objectFifo with a shimTile endpoint, a
   /// shimDMAAllocationOp containing the channelDir, channelIndex and
-  /// shimTile col assigned by the objectFifo lowering.
+  /// shimTile reference assigned by the objectFifo lowering.
   void createObjectFifoAllocationInfo(OpBuilder &builder, MLIRContext *ctx,
                                       ObjectFifoCreateOp &objFifoOp,
-                                      int colIndex, DMAChannelDir channelDir,
+                                      TileOp shimTile, DMAChannelDir channelDir,
                                       int channelIndex, bool plio,
                                       std::optional<PacketInfoAttr> packet) {
     PacketInfoAttr packetInfo = nullptr;
@@ -1676,9 +1676,9 @@ struct AIEObjectFifoStatefulTransformPass
     // SymbolRefAttr::get(ctx, objFifoOp.getName())
     builder.create<ShimDMAAllocationOp>(builder.getUnknownLoc(),
                                         StringAttr::get(ctx, alloc_name),
+                                        shimTile.getResult(),
                                         DMAChannelDirAttr::get(ctx, channelDir),
                                         builder.getI64IntegerAttr(channelIndex),
-                                        builder.getI64IntegerAttr(colIndex),
                                         builder.getBoolAttr(plio), packetInfo);
   }
 
@@ -1951,7 +1951,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       if (producer.getProducerTileOp().isShimTile())
         createObjectFifoAllocationInfo(
-            builder, ctx, producer, producer.getProducerTileOp().colIndex(),
+            builder, ctx, producer, producer.getProducerTileOp(),
             producerChan.direction, producerChan.channel, producer.getPlio(),
             bdPacket);
 
@@ -2006,7 +2006,7 @@ struct AIEObjectFifoStatefulTransformPass
 
         if (consumer.getProducerTileOp().isShimTile())
           createObjectFifoAllocationInfo(
-              builder, ctx, producer, consumer.getProducerTileOp().colIndex(),
+              builder, ctx, producer, consumer.getProducerTileOp(),
               consumerChan.direction, consumerChan.channel, producer.getPlio(),
               {});
 
