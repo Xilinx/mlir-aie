@@ -253,6 +253,8 @@ class InstallWithPth(install):
 
 
 def get_version():
+    if "AIE_WHEEL_VERSION" in os.environ:
+        return os.environ["AIE_WHEEL_VERSION"].lstrip("v")
     release_version = "0.0.1"
     commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
     now = datetime.now()
@@ -282,8 +284,11 @@ def parse_requirements(filename):
 
 setup(
     version=get_version(),
-    author="",
+    author="AMD Inc.",
+    author_email="joseph.melber@amd.com",
     name="mlir-aie",
+    url="https://github.com/Xilinx/mlir-aie",
+    license="Apache License v2.0 with LLVM Exceptions",
     include_package_data=True,
     description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
     long_description=dedent(

@@ -9,6 +9,9 @@ on:
         type: string
         required: false
         default: ''
+  push:
+    tags:
+      - 'v*.*.*'
   merge_group:
 
   schedule:
@@ -98,6 +101,7 @@ jobs:
           env: |
             VITIS: ${{ env.VITIS }}
             XILINXD_LICENSE_FILE: ${{ env.XILINXD_LICENSE_FILE }}
+            AIE_WHEEL_VERSION: ${{ if(github.ref_type == 'tag' && startsWith(github.ref_name, 'v'), github.ref_name, '""') }}
           run: |
             git config --global --add safe.directory $PWD
             MLIR_VERSION=$(git rev-parse --short HEAD)
@@ -163,15 +167,17 @@ jobs:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
 
-      - name: Release current commit
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+      - name: Release
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'schedule' ||
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
         uses: ncipollo/release-action@v1.12.0
         with:
           artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
-          name: ${{ matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti' }}
-          removeArtifacts: false
+          tag: ${{ github.event_name == 'push' && github.ref_name || (matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti') }}
+          name: ${{ github.event_name == 'push' && github.ref_name || (matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti') }}
           allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: false
+          replacesArtifacts: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+          makeLatest: ${{ github.event_name == 'push' }}
