@@ -11,7 +11,8 @@ represent end-to-end compilation flows or to be particularly easy to use for sys
 """, content-type = "text/markdown" }
 dynamic = ["dependencies", "requires-python", "version", "license"]
 authors = [
-  { name="AMD Inc.", email="joseph.melber@amd.com" },
+  { name="AMD Inc." },
+  { email="joseph.melber@amd.com" },
 ]
 
 [project.urls]
