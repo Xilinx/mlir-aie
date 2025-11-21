@@ -26,6 +26,8 @@ class BaseKernel(Resolvable):
             name (str): The name of the function
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
         """
+        if not name:
+            raise ValueError("The name of a kernel cannot be empty or null.")
         self._name = name
         self._arg_types = arg_types
         self._op: FuncOp | None = None
@@ -100,7 +102,7 @@ class ExternalFunction(Kernel):
             compile_flags (list[str], optional): Additional compilation flags. Defaults to [].
         """
         if not object_file_name:
-            object_file_name = f"{self._name}.o"
+            object_file_name = f"{name}.o"
         super().__init__(name, object_file_name, arg_types)
 
         self._setup_source(source_file, source_string)
