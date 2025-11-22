@@ -85,13 +85,15 @@ Inheritance diagram for iron.kernel.Kernel:</div>
 <div class="dyncontent">
 <div class="center"><img src="classiron_1_1kernel_1_1Kernel__inherit__graph.png" border="0" usemap="#airon_8kernel_8Kernel_inherit__map" alt="Inheritance graph"/></div>
 <map name="airon_8kernel_8Kernel_inherit__map" id="airon_8kernel_8Kernel_inherit__map">
-<area shape="rect" title=" " alt="" coords="35,225,171,251"/>
-<area shape="rect" href="classiron_1_1kernel_1_1BaseKernel.html" title=" " alt="" coords="19,152,187,177"/>
-<area shape="poly" title=" " alt="" coords="105,191,105,225,100,225,100,191"/>
-<area shape="rect" href="classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="5,79,200,104"/>
-<area shape="poly" title=" " alt="" coords="105,118,105,152,100,152,100,118"/>
-<area shape="rect" title=" " alt="" coords="78,5,127,31"/>
-<area shape="poly" title=" " alt="" coords="105,44,105,79,100,79,100,44"/>
+<area shape="rect" title=" " alt="" coords="39,225,175,251"/>
+<area shape="rect" href="classiron_1_1kernel_1_1ExternalFunction.html" title=" " alt="" coords="5,299,209,324"/>
+<area shape="poly" title=" " alt="" coords="110,264,110,299,105,299,105,264"/>
+<area shape="rect" href="classiron_1_1kernel_1_1BaseKernel.html" title=" " alt="" coords="23,152,191,177"/>
+<area shape="poly" title=" " alt="" coords="110,191,110,225,105,225,105,191"/>
+<area shape="rect" href="classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="10,79,205,104"/>
+<area shape="poly" title=" " alt="" coords="110,118,110,152,105,152,105,118"/>
+<area shape="rect" title=" " alt="" coords="83,5,132,31"/>
+<area shape="poly" title=" " alt="" coords="110,44,110,79,105,79,105,44"/>
 </map>
 <center><span class="legend">[<a href="graph_legend.html">legend</a>]</span></center></div>
 <div class="dynheader">
@@ -183,6 +185,8 @@ Args:
 </pre> 
 <p>Reimplemented from <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#afbb0471dbe7cdadddf7ed9f4c1ff59f7">iron.kernel.BaseKernel</a>.</p>
 
+<p>Reimplemented in <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a1de5718fef3540afc05b82678d8f2d79">iron.kernel.ExternalFunction</a>.</p>
+
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
@@ -214,7 +218,7 @@ Args:
           <td class="memname"> None iron.kernel.Kernel.resolve </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>self</em>, </td>
+          <td class="paramname"><em>cls</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -235,8 +239,14 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Resolve the kernel to a FuncOp. Must be implemented by subclasses.</pre> 
-<p>Reimplemented from <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#a3a554eab728c5dfaa12e9f12e986458c">iron.kernel.BaseKernel</a>.</p>
+<pre class="fragment">Resolve the current object into one or more MLIR operations.
+Should only be called within an MLIR context.
+
+Args:
+    loc (ir.Location | None, optional): Location is used by MLIR object during construction in some cases. Defaults to None.
+    ip (ir.InsertionPoint | None, optional): InsertionPoint is used by MLIR object during construction in some cases. Defaults to None.
+</pre> 
+<p>Reimplemented from <a class="el" href="classiron_1_1resolvable_1_1Resolvable.html#a9c07ee68915092d3fb53f75f8aa0ce53">iron.resolvable.Resolvable</a>.</p>
 
 </div>
 </div>

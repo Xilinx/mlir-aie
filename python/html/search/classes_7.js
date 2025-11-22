@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['globalbuffer_0',['GlobalBuffer',['../classiron_1_1globalbuffer_1_1GlobalBuffer.html',1,'iron::globalbuffer']]]
+  ['inlineopruntimetask_0',['InlineOpRuntimeTask',['../classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html',1,'iron::runtime::task']]]
 ];

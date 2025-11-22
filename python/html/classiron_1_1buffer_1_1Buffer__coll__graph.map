@@ -1,9 +1,9 @@
-<map id="iron.globalbuffer.GlobalBuffer" name="iron.globalbuffer.GlobalBuffer">
-<area shape="rect" id="Node000001" title=" " alt="" coords="121,152,295,192"/>
+<map id="iron.buffer.Buffer" name="iron.buffer.Buffer">
+<area shape="rect" id="Node000001" title=" " alt="" coords="143,152,273,177"/>
 <area shape="rect" id="Node000002" href="$classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="5,79,200,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="131,110,184,150,181,154,128,114"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="133,110,192,150,189,154,130,114"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="78,5,127,31"/>
 <area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="105,44,105,79,100,79,100,44"/>
 <area shape="rect" id="Node000004" href="$classiron_1_1placeable_1_1Placeable.html" title=" " alt="" coords="224,79,405,104"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="289,114,235,154,232,150,286,110"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="288,114,227,154,224,150,285,109"/>
 </map>
