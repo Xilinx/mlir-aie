@@ -35,6 +35,7 @@ def test_legal_mem_affinity(device):
     # Test multiple tiles of different types
     assert not device.is_legal_mem_affinity(Tile(0, 0), Tile(1, 2))
 
+
 def test_get_tiles(device):
     shim_tiles = device.get_shim_tiles()
     mem_tiles = device.get_mem_tiles()
