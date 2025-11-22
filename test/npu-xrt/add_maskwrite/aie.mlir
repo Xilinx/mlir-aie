@@ -59,7 +59,7 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @out0(S2MM, 0, 0)
+    aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 0)
 
     aie.runtime_sequence @seq(%arg0: memref<8xi32>) {
       %c0_i64 = arith.constant 0 : i64

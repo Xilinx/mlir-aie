@@ -22,7 +22,7 @@
 // CHECK:        aie.packet_source<%[[VAL_0]], DMA : 0>
 // CHECK:        aie.packet_dest<%[[VAL_2]], DMA : 0>
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of1_shim_alloc(MM2S, 0, 1, <pkt_type = 0, pkt_id = 0>)
+// CHECK:     aie.shim_dma_allocation @of1_shim_alloc(%[[VAL_0]], MM2S, 0, <pkt_type = 0, pkt_id = 0>)
 // CHECK:     %[[VAL_12:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:       aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2

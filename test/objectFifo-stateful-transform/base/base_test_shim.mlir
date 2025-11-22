@@ -19,7 +19,7 @@
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 // CHECK:     %[[VAL_5:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "of1_cons_lock_1"}
 // CHECK:     aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
-// CHECK:     aie.shim_dma_allocation @of1_shim_alloc(MM2S, 0, 1)
+// CHECK:     aie.shim_dma_allocation @of1_shim_alloc (%tile_1_0, MM2S, 0)
 // CHECK:     %[[VAL_6:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2

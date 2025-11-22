@@ -58,7 +58,7 @@ module {
       aie.end
     } {link_with = "scale.o"}
 
-    aie.shim_dma_allocation @in(MM2S, 0, 0)
+    aie.shim_dma_allocation @in (%tile_0_0, MM2S, 0)
 
     aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
       %c0_i64 = arith.constant 0 : i64
@@ -69,7 +69,7 @@ module {
       aiex.npu.dma_wait { symbol = @out }
     }
 
-    aie.shim_dma_allocation @out(S2MM, 0, 0)
+    aie.shim_dma_allocation @out (%tile_0_0, S2MM, 0)
 
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
