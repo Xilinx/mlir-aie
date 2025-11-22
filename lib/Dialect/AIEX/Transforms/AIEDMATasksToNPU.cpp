@@ -184,18 +184,41 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint64_t register_addr =
         target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id) +
         target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
-    if (mlir::BlockArgument buf_arg =
-            llvm::dyn_cast<mlir::BlockArgument>(buf)) {
+
+    if (llvm::isa<mlir::BlockArgument>(buf) || 
+        buf.getDefiningOp<AIEX::ArgSliceOp>()) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow())) {
         return bd_op->emitOpError("DDR memory (runtime input arguments) can "
                                   "only be referred to on shim tiles.");
       }
+
+      mlir::BlockArgument buf_arg = nullptr;
+      int64_t offset = 0;
+      if (mlir::BlockArgument the_buf_arg =
+              llvm::dyn_cast<mlir::BlockArgument>(buf)) {
+        buf_arg = the_buf_arg;
+      } else if (AIEX::ArgSliceOp arg_slice_op = buf.getDefiningOp<AIEX::ArgSliceOp>()) {
+        // Trace back through arg_slice chain to find root argument and cumulative
+        // offset
+        auto [root_value, the_offset] = arg_slice_op.getRootArgumentAndOffset();
+        if (mlir::BlockArgument the_buf_arg =
+                llvm::dyn_cast<mlir::BlockArgument>(root_value)) {
+          buf_arg = the_buf_arg;
+          offset = the_offset;
+        } else {
+          return bd_op->emitOpError(
+              "arg_slice chain must trace back to a block argument, but "
+              "found a value defined by ")
+                 << root_value.getDefiningOp()->getName();
+        }
+      }
+
       unsigned arg_idx = buf_arg.getArgNumber();
-      int64_t offset = bd_op.getOffsetInBytes();
+      offset += bd_op.getOffsetInBytes();
       NpuAddressPatchOp::create(builder, bd_op.getLoc(),
-                                /*addr*/ register_addr,
-                                /*arg_idx*/ arg_idx,
-                                /*arg_plus*/ offset);
+                                        /*addr*/ register_addr,
+                                        /*arg_idx*/ arg_idx,
+                                        /*arg_plus*/ offset);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -209,9 +232,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
                            nullptr, nullptr, nullptr);
     } else {
-      return bd_op->emitOpError("Buffer argument must be either a constant "
-                                "aie.buffer or a runtime "
-                                "sequence input argument.");
+      return bd_op->emitOpError("Buffer argument must be a constant aie.buffer, a runtime sequence input argument, or an arg_slice op.");
     }
     return success();
   }
