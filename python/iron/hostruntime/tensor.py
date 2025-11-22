@@ -215,6 +215,44 @@ class Tensor(ABC):
             self._sync_from_device()
         return self.data
 
+    def to_torch(self):
+        """
+        Returns a torch tensor with a copy of the data in this tensor.
+        """
+        try:
+            import torch
+            from ml_dtypes import bfloat16
+        except ImportError:
+            raise ImportError(
+                "torch is not installed. Please install it with 'pip install torch'"
+            )
+        if self.dtype == bfloat16:
+            return torch.from_numpy(self.numpy().astype(np.float16))
+        return torch.from_numpy(self.numpy().copy())
+
+    @classmethod
+    def from_torch(cls, torch_tensor, device=None, **kwargs):
+        """
+        Returns a tensor with a copy of the data in the torch_tensor.
+        """
+        try:
+            import torch
+            from ml_dtypes import bfloat16
+        except ImportError:
+            raise ImportError(
+                "torch is not installed. Please install it with 'pip install torch'"
+            )
+        if torch_tensor.dtype == torch.bfloat16:
+            np_array = torch_tensor.to(torch.float32).numpy().astype(bfloat16)
+        else:
+            np_array = torch_tensor.numpy()
+        return cls(
+            np_array,
+            dtype=np_array.dtype,
+            device=device or cls.DEFAULT_DEVICE,
+            **kwargs,
+        )
+
     def fill_(self, value):
         """
         Fills the tensor with a scalar value (in-place operation).

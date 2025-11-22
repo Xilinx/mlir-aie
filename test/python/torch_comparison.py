@@ -190,3 +190,39 @@ def test_len(shape, dtype, torch_dtype, tensorclass):
             len(torch_t)
     else:
         assert len(iron_t) == len(torch_t)
+
+
+@pytest.mark.parametrize("shape", TEST_SHAPES)
+@pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_to_torch(shape, dtype, torch_dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
+    iron_t = iron.ones(shape, dtype=dtype)
+    torch_t = iron_t.to_torch()
+    assert isinstance(torch_t, torch.Tensor)
+    assert iron_t.shape == torch_t.shape
+    if dtype == bfloat16:
+        # torch doesn't support bfloat16 numpy conversion, so we convert to float32
+        assert torch.allclose(
+            torch_t.to(torch.float32), torch.ones(shape, dtype=torch.float32)
+        )
+    else:
+        assert torch.allclose(torch_t, torch.ones(shape, dtype=torch_dtype))
+
+
+@pytest.mark.parametrize("shape", TEST_SHAPES)
+@pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_from_torch(shape, dtype, torch_dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
+    torch_t = torch.ones(shape, dtype=torch_dtype)
+    iron_t = tensorclass.from_torch(torch_t)
+    assert isinstance(iron_t, Tensor)
+    assert iron_t.shape == torch_t.shape
+    if dtype == bfloat16:
+        # torch doesn't support bfloat16 numpy conversion, so we convert to float32
+        assert np.allclose(
+            iron_t.numpy().astype(np.float32), torch_t.to(torch.float32).numpy()
+        )
+    else:
+        assert np.allclose(iron_t.numpy(), torch_t.numpy())
