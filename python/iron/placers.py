@@ -7,7 +7,6 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from abc import ABCMeta, abstractmethod
-from typing import Optional
 import statistics
 
 from .device import Device
@@ -55,9 +54,8 @@ class SequentialPlacer(Placer):
     tiles in a row-wise direction up to the defined limit then move to the next column for subsequent placement.
     """
 
-    def __init__(self, cores_per_col: Optional[int] = None):
+    def __init__(self):
         super().__init__()
-        self.cores_per_col = cores_per_col
 
     def make_placement(
         self,
@@ -96,19 +94,6 @@ class SequentialPlacer(Placer):
                         f"device {device} or has already been used."
                     )
                 computes.remove(worker.tile)
-
-        # Shorten the list of compute tiles available if the cores per column value is set
-        if self.cores_per_col is not None:
-            unused_computes_at_col = {
-                column: [tile for tile in computes if tile.col == column]
-                for column in range(device.cols)
-            }
-            computes = []
-            for col, tiles in unused_computes_at_col.items():
-                if len(tiles) < self.cores_per_col:
-                    raise ValueError(f"Not enough compute tiles at column {col}!")
-                else:
-                    computes.extend(tiles[: self.cores_per_col])
 
         for worker in workers:
             if worker.tile == AnyComputeTile:
@@ -261,7 +246,7 @@ class SequentialPlacer(Placer):
         The column is increased until a tile is found in the device, or an error is signaled.
         """
         new_col = col
-        while new_col < device.cols:
+        while new_col < device.ncols:
             for t in tiles:
                 if t.col == new_col:
                     return t
