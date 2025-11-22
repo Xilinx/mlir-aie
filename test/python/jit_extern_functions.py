@@ -6,6 +6,7 @@
 
 # RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s
+# REQUIRES: xrt_python_bindings
 
 import numpy as np
 import os

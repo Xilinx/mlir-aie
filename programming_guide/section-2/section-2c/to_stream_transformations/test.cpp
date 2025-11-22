@@ -123,12 +123,12 @@ int main(int argc, const char *argv[]) {
     else
       ref = i % 3 + 2;
     if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << i << ": " << *(bufOut + i) << " != " << ref
-                << std::endl;
+      std::cout << "Error in output " << i << ": " << *(bufOut + i)
+                << " != " << ref << std::endl;
       errors++;
     } else {
-      std::cout << "Correct output " << i << ": " << *(bufOut + i) << " == " << ref
-                << std::endl;
+      std::cout << "Correct output " << i << ": " << *(bufOut + i)
+                << " == " << ref << std::endl;
     }
   }
 
