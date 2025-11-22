@@ -47,7 +47,7 @@ class XRTTensor(Tensor):
         group_id = 0
         self.bo = xrt.bo(
             self.xrt_device,
-            np.prod(self._shape) * np.dtype(self.dtype).itemsize,
+            int(np.prod(self._shape) * np.dtype(self.dtype).itemsize),
             xrt.bo.host_only,
             group_id,
         )
