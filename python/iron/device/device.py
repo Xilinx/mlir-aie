@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-from abc import abstractmethod
 from typing import Generator
 
 from ... import ir  # type: ignore
