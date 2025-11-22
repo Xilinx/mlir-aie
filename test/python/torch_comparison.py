@@ -173,3 +173,20 @@ def test_fill(shape, dtype, torch_dtype, tensorclass):
     torch_t.fill_(fill_value)
 
     assert bfloat16_safe_allclose(dtype, iron_t, torch_t)
+
+
+@pytest.mark.parametrize("shape", TEST_SHAPES)
+@pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_len(shape, dtype, torch_dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
+    iron_t = iron.zeros(shape, dtype=dtype)
+    torch_t = torch.zeros(shape, dtype=torch_dtype)
+    if not shape:
+        # len of a 0-d tensor is a TypeError
+        with pytest.raises(TypeError):
+            len(iron_t)
+        with pytest.raises(TypeError):
+            len(torch_t)
+    else:
+        assert len(iron_t) == len(torch_t)

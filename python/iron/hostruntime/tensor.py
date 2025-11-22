@@ -121,7 +121,9 @@ class Tensor(ABC):
             self._sync_to_device()
 
     def __len__(self):
-        return self.shape[0] if self.shape else 0
+        if self.data.ndim == 0:
+            raise TypeError("len() of a 0-d tensor")
+        return self.shape[0]
 
     @cached_property
     def nbytes(self) -> int:
