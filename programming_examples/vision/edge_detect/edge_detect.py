@@ -7,7 +7,7 @@
 import numpy as np
 import sys
 
-from aie.iron import LocalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
@@ -96,20 +96,21 @@ def edge_detect(dev, width, height):
         )
     )
 
+    filter_kernel_buff = Buffer(
+        np.ndarray[(3, 3), np.dtype[np.int16]],
+        name="kernel",
+        initial_value=np.array(
+            [[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16
+        ),
+    )
+
     # Task for the core to perform
-    def filter_fn(of_in, of_out, filter2d_line):
+    def filter_fn(of_in, of_out, kernel, filter2d_line):
         # OF_2to3 -> intermediates[0]
         # OF_3to4 -> intermediates[1]
         v0 = 0
         v1 = 4096
         v_minus4 = -16384
-        kernel = LocalBuffer(
-            np.ndarray[(3, 3), np.dtype[np.int16]],
-            name="kernel",
-            initial_value=np.array(
-                [[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16
-            ),
-        )
 
         for _ in range_(sys.maxsize):
             # Preamble : Top Border

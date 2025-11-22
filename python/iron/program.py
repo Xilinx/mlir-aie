@@ -8,21 +8,13 @@
 
 from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.ext.func import FuncBase
-from ..dialects.aie import device, tile
+from ..dialects.aie import device
 
 from .device import Device
 from .runtime import Runtime
 from .placers import Placer
 from .resolvable import Resolvable
-
-# import aie.utils.trace as trace_utils
 from ..utils import trace as trace_utils
-
-import contextvars
-
-CurrentDeviceOp = contextvars.ContextVar("CurrentDeviceOp", default=None)
-
-CurrentModule = contextvars.ContextVar("CurrentModule", default=None)
 
 
 class Program:
@@ -54,8 +46,6 @@ class Program:
             module (Module): The module containing the MLIR context information.
         """
         with mlir_mod_ctx() as ctx:
-            CurrentModule.set(ctx.module)
-
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
                 # Collect all fifos
@@ -122,9 +112,6 @@ class Program:
 
                 # In/Out Sequence
                 self._rt.resolve()
-
-            device_op = device_body
-            CurrentDeviceOp.set(device_op)
 
             self._print_verify(ctx)
             return ctx.module

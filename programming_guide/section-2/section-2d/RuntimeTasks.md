@@ -111,13 +111,13 @@ def inline_ops(self, inline_func: Callable, inline_args: list)
 ```
 The `inline_func` is the function to execute within an MLIR context and the `inline_args` are state the function needs to execute.
 
-In the following code snippet, an array of `GlobalBuffers` is created where each of the buffers will hold a runtime parameter of type `16xi32`. A [`GlobalBuffer`](../../../python/iron/globalbuffer.py) is a memory region declared at the top-level of the IRON design that is available both to the `Worker`s and to the runtime for operations. When `use_write_rtp` is set, runtime parameter specific operations will be generated within the `Runtime`'s `sequence` at lower-levels of compiler abstraction.
+In the following code snippet, an array of `Buffer`s are created where each of the buffers will hold a runtime parameter of type `16xi32`. A [`Buffer`](../../../python/iron/buffer.py) is a memory region declared at the top-level of the IRON design that is available both to the `Worker`s and to the runtime for operations. When `use_write_rtp` is set, runtime parameter specific operations will be generated within the `Runtime`'s `sequence` at lower-levels of compiler abstraction.
 ```python
 # Runtime parameters
 rtps = []
 for i in range(4):
     rtps.append(
-        GlobalBuffer(
+        Buffer(
             np.ndarray[(16,), np.dtype[np.int32]],
             name=f"rtp{i}",
             use_write_rtp=True,
@@ -170,7 +170,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 ```
 Currently, a `WorkerRuntimeBarrier` may take any value between 0 and 63. This is due to the fact that these barriers leverage the lock mechansim of the architecture under-the-hood.
 
-> **NOTE:**  Similar to the `GlobalBuffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.
+> **NOTE:**  Similar to the `Buffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.
 
 #### **Runtime Task Groups**
 
