@@ -7,8 +7,6 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, Buffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2Col1
 
-from aie.iron.device import NPU2Col1
-
 
 # CHECK:  module {
 # CHECK:    aie.device(npu2_1col) {
