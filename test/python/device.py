@@ -44,7 +44,11 @@ def test_get_tiles(device):
     assert all(device._tm.is_shim_noc_or_pl_tile(t.col, t.row) for t in shim_tiles)
     assert all(device._tm.is_mem_tile(t.col, t.row) for t in mem_tiles)
     assert all(device._tm.is_core_tile(t.col, t.row) for t in compute_tiles)
-    assert len(shim_tiles) + len(mem_tiles) + len(compute_tiles) == device.rows * device.cols
+    assert (
+        len(shim_tiles) + len(mem_tiles) + len(compute_tiles)
+        == device.rows * device.cols
+    )
+
 
 def test_rows_cols(device):
     assert device.rows == device._tm.rows()
