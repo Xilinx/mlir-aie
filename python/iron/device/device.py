@@ -193,8 +193,8 @@ class DeviceView(DeviceLike):
         super().__init__(device=device._device, tiles=tiles)
         self._device_instance = device
         self._coords = set()
-        for col in tiles:
-            for t in col:
+        for col_tiles in tiles:
+            for t in col_tiles:
                 self._coords.add((t.col, t.row))
 
     def tile_iterator(self) -> Generator[Tile, None, None]:
