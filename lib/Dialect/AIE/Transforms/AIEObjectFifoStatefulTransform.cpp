@@ -1174,13 +1174,37 @@ struct AIEObjectFifoStatefulTransformPass
           distribOrJoin = true;
           if (target == op) {
             if (isDistribute) {
-              offset = *getConstantIntValue(linkOp->getDstOffsets()[r]);
-              lenOut = linkOp->getDistributeTransferLengths()[r];
+              if (!dims.empty()) {
+                if (r % joinDistribFactor == 0) {
+                  lenOut = elemType.getNumElements();
+                } else {
+                  offset = 0;
+                  lenOut = 0;
+                }
+                lockIndex = ((repeatCount * joinDistribFactor - 1) - r) %
+                            joinDistribFactor;
+              } else {
+                offset = *getConstantIntValue(linkOp->getDstOffsets()[r]);
+                lenOut = linkOp->getDistributeTransferLengths()[r];
+                lockIndex = r % joinDistribFactor;
+              }
             } else {
-              offset = *getConstantIntValue(linkOp->getSrcOffsets()[r]);
-              lenOut = linkOp->getJoinTransferLengths()[r];
+              if (!dims.empty()) {
+                if (r % joinDistribFactor == 0) {
+                  lenOut = elemType.getNumElements();
+                } else {
+                  offset = 0;
+                  lenOut = 0;
+                }
+                lockIndex = ((repeatCount * joinDistribFactor - 1) - r) %
+                            joinDistribFactor;
+              } else {
+                offset = *getConstantIntValue(linkOp->getSrcOffsets()[r]);
+                lenOut = linkOp->getJoinTransferLengths()[r];
+                lockIndex = r % joinDistribFactor;
+              }
             }
-            lockIndex = r % joinDistribFactor;
+            // lockIndex = r % joinDistribFactor;
           } else {
             offset = extraOffset;
             lockIndex = joinDistribLockIndex;
