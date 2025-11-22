@@ -125,6 +125,8 @@ def test_arange_floats(dtype, torch_dtype, tensorclass):
 def test_rand(shape, dtype, torch_dtype, tensorclass):
     iron.set_iron_tensor_class(tensorclass)
     if shape == ():
+        with pytest.raises(ValueError, match="rand.. received no arguments"):
+            iron.rand(*shape, dtype=dtype)
         with pytest.raises(
             TypeError,
             match=r"rand\(\) missing 1 required positional arguments: \"size\"",
@@ -213,10 +215,78 @@ def test_from_torch(shape, dtype, torch_dtype, tensorclass):
     iron_t = tensorclass.from_torch(torch_t)
     assert isinstance(iron_t, Tensor)
     assert iron_t.shape == torch_t.shape
-    if dtype == bfloat16:
-        # torch doesn't support bfloat16 numpy conversion, so we convert to float32
-        assert np.allclose(
-            iron_t.numpy().astype(np.float32), torch_t.to(torch.float32).numpy()
-        )
-    else:
-        assert np.allclose(iron_t.numpy(), torch_t.numpy())
+    assert bfloat16_safe_allclose(dtype, iron_t, torch_t)
+
+
+@pytest.mark.parametrize("shape", TEST_SHAPES)
+@pytest.mark.parametrize(
+    "dtype, torch_dtype",
+    zip(
+        [d for d in TEST_DTYPES if np.issubdtype(d, np.integer)],
+        [d for d in TORCH_DTYPES if not d.is_floating_point],
+    ),
+)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_iron_torch_iron(shape, dtype, torch_dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
+    low, high = 0, 100
+    iron_t_orig = iron.randint(low, high, shape, dtype=dtype)
+    torch_t = iron_t_orig.to_torch()
+    iron_t_new = tensorclass.from_torch(torch_t)
+    assert bfloat16_safe_allclose(dtype, iron_t_orig, iron_t_new)
+
+
+@pytest.mark.parametrize("shape", TEST_SHAPES)
+@pytest.mark.parametrize(
+    "dtype, torch_dtype",
+    zip(
+        [d for d in TEST_DTYPES if np.issubdtype(d, np.integer)],
+        [d for d in TORCH_DTYPES if not d.is_floating_point],
+    ),
+)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_torch_iron_torch(shape, dtype, torch_dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
+    low, high = 0, 100
+    torch_t_orig = torch.randint(low, high, shape, dtype=torch_dtype)
+    iron_t = tensorclass.from_torch(torch_t_orig)
+    torch_t_new = iron_t.to_torch()
+    assert bfloat16_safe_allclose(dtype, torch_t_orig, torch_t_new)
+
+
+@pytest.mark.parametrize("shape", TEST_SHAPES)
+@pytest.mark.parametrize(
+    "dtype, torch_dtype",
+    zip(
+        [d for d in TEST_DTYPES if np.issubdtype(d, np.floating)],
+        [d for d in TORCH_DTYPES if d.is_floating_point],
+    ),
+)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_iron_torch_iron_float(shape, dtype, torch_dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
+    if shape == ():
+        return
+    iron_t_orig = iron.rand(*shape, dtype=dtype)
+    torch_t = iron_t_orig.to_torch()
+    iron_t_new = tensorclass.from_torch(torch_t)
+    assert bfloat16_safe_allclose(dtype, iron_t_orig, iron_t_new)
+
+
+@pytest.mark.parametrize("shape", TEST_SHAPES)
+@pytest.mark.parametrize(
+    "dtype, torch_dtype",
+    zip(
+        [d for d in TEST_DTYPES if np.issubdtype(d, np.floating)],
+        [d for d in TORCH_DTYPES if d.is_floating_point],
+    ),
+)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_torch_iron_torch_float(shape, dtype, torch_dtype, tensorclass):
+    iron.set_iron_tensor_class(tensorclass)
+    if shape == ():
+        return
+    torch_t_orig = torch.rand(*shape, dtype=torch_dtype)
+    iron_t = tensorclass.from_torch(torch_t_orig)
+    torch_t_new = iron_t.to_torch()
+    assert bfloat16_safe_allclose(dtype, torch_t_orig, torch_t_new)
