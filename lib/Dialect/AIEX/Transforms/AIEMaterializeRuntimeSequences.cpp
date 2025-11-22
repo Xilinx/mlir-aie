@@ -150,7 +150,7 @@ LogicalResult copyReferencedSSAValues(
     const llvm::SetVector<Value> &referencedValues,
     AIE::DeviceOp callerDevice,
     IRMapping &argMap,
-    mlir::OpBuilder::InsertPoint &clonedSymbolInsertionPoint,
+    mlir::OpBuilder::InsertPoint &clonedSSAInsertionPoint,
     Operation *errorReportOp) {
   
   for (Value referencedValue : referencedValues) {
@@ -197,14 +197,22 @@ LogicalResult copyReferencedSSAValues(
                    << ") already exists in the device with different attributes";
           }
         }
+
         // Use the existing tile
+        rewriter.restoreInsertionPoint(clonedSSAInsertionPoint);
+        if (!existingTile->isBeforeInBlock(&*rewriter.getInsertionPoint())) {
+          rewriter.moveOpBefore(existingTile,
+                                clonedSSAInsertionPoint.getBlock(), 
+                                clonedSSAInsertionPoint.getPoint());
+          rewriter.setInsertionPointAfter(existingTile);
+        }
         argMap.map(referencedValue, existingTile.getResult());
       } else {
         // Clone the tile operation into the caller device
-        rewriter.restoreInsertionPoint(clonedSymbolInsertionPoint);
+        rewriter.restoreInsertionPoint(clonedSSAInsertionPoint);
         Operation *clonedTile = rewriter.clone(*tileOp);
         argMap.map(referencedValue, clonedTile->getResult(0));
-        clonedSymbolInsertionPoint = rewriter.saveInsertionPoint();
+        clonedSSAInsertionPoint = rewriter.saveInsertionPoint();
       }
 
     } else {
@@ -230,7 +238,7 @@ LogicalResult inlineReferencedSymbolDefinitions(
     IRMapping argMap,
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
     AIE::DeviceOp callerDevice,
-    mlir::OpBuilder::InsertPoint &clonedSymbolInsertionPoint) {
+    mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint) {
   MLIRContext *ctx = op->getContext();
   for (NamedAttribute namedAttr : op->getAttrs()) {
     Attribute attr = namedAttr.getValue();
@@ -273,7 +281,25 @@ LogicalResult inlineReferencedSymbolDefinitions(
         } else {
           newSymbolRef = previouslyInlinedSymbolMap[oldSymbolRef];
         }
-        return std::make_pair(newSymbolRef, WalkResult::advance());
+        
+        // Collect SSA values referenced by the symbol definition operation
+        llvm::SetVector<Value> symbolReferencedValues;
+        collectReferencedSSAValues(symbolDefOp, argMap, symbolReferencedValues);
+        
+        // Copy SSA values referenced by the symbol definition
+        if (failed(copyReferencedSSAValues(rewriter, symbolReferencedValues,
+                                           callerDevice, argMap,
+                                           clonedDefOpsInsertionPoint, op))) {
+          return std::make_pair(newSymbolRef, WalkResult::interrupt());
+        }
+        
+        //rewriter.restoreInsertionPoint(clonedDefOpsInsertionPoint);
+        Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
+        clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(),
+                                   StringAttr::get(ctx, uniqueName));
+        //clonedDefOpsInsertionPoint = rewriter.saveInsertionPoint();
+      } else {
+        newSymbolRef = previouslyInlinedSymbolMap[oldSymbolRef];
       }
     );
     if (!newAttr) {
@@ -351,11 +377,11 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 
     // Copy the operations that define these SSA values into the caller device
     mlir::Block &callerDeviceBodyFirstBlock = callerDeviceBody.front();
-    mlir::OpBuilder::InsertPoint clonedSymbolInsertionPoint(
+    mlir::OpBuilder::InsertPoint clonedDefOpsInsertPoint(
         &callerDeviceBodyFirstBlock, callerDeviceBodyFirstBlock.begin());
     if (failed(copyReferencedSSAValues(rewriter, referencedValues, 
                                        callerDevice, argMap, 
-                                       clonedSymbolInsertionPoint, runOp))) {
+                                       clonedDefOpsInsertPoint, runOp))) {
       return failure();
     }
 
@@ -365,20 +391,17 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     mlir::OpBuilder::InsertPoint clonedOpInsertionPoint =
         rewriter.saveInsertionPoint();
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> previouslyInlinedSymbolMap;
-    rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
     for (Operation &op : calleeBody.getOps()) {
       rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
       Operation *clonedOp = rewriter.clone(op, argMap);
       clonedOpInsertionPoint = rewriter.saveInsertionPoint();
 
-      rewriter.restoreInsertionPoint(clonedSymbolInsertionPoint);
       if (failed(inlineReferencedSymbolDefinitions(
               rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap,
               previouslyInlinedSymbolMap, callerDevice, 
-              clonedSymbolInsertionPoint))) {
+              clonedDefOpsInsertPoint))) {
         return failure();
       }
-      clonedSymbolInsertionPoint = rewriter.saveInsertionPoint();
     }
 
     // The aiex.run op has been inlined; erase it.
