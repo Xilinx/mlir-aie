@@ -16,7 +16,7 @@ from aie.iron import (
     Kernel,
     ObjectFifo,
     Program,
-    GlobalBuffer,
+    Buffer,
     Runtime,
     Worker,
     WorkerRuntimeBarrier,
@@ -126,7 +126,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     rtps = []
     for i in range(n_cores):
         rtps.append(
-            GlobalBuffer(
+            Buffer(
                 np.ndarray[(1,), np.dtype[np.int32]],
                 name=f"rtp{i}",
                 initial_value=np.array([1], dtype=np.int32),

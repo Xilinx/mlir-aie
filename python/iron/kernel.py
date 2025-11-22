@@ -13,6 +13,7 @@ from ..extras.dialects.ext.func import FuncOp  # type: ignore
 from ..helpers.dialects.ext.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable
+from .buffer import Buffer
 
 
 class BaseKernel(Resolvable):
@@ -25,23 +26,23 @@ class BaseKernel(Resolvable):
             name (str): The name of the function
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
         """
+        if not name:
+            raise ValueError("The name of a kernel cannot be empty or null.")
         self._name = name
         self._arg_types = arg_types
         self._op: FuncOp | None = None
-
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        """Resolve the kernel to a FuncOp. Must be implemented by subclasses."""
-        raise NotImplementedError("Subclasses must implement resolve()")
 
     def __call__(self, *args, **kwargs):
         """Call the kernel with the given arguments."""
         if not self._op:
             raise ValueError("Need to resolve kernel before it can be called")
-        call(self._op, args, **kwargs)
+        arg_ops = []
+        for a in args:
+            if isinstance(a, Buffer):
+                arg_ops.append(a.op)
+            else:
+                arg_ops.append(a)
+        call(self._op, arg_ops, **kwargs)
 
 
 class Kernel(BaseKernel):
@@ -75,7 +76,7 @@ class Kernel(BaseKernel):
             self._op = external_func(self._name, inputs=self._arg_types)
 
 
-class ExternalFunction(BaseKernel):
+class ExternalFunction(Kernel):
     _instances = set()
 
     def __init__(
@@ -100,14 +101,13 @@ class ExternalFunction(BaseKernel):
             include_dirs (list[str], optional): Additional include directories. Defaults to [].
             compile_flags (list[str], optional): Additional compilation flags. Defaults to [].
         """
-        super().__init__(name, arg_types)
+        if not object_file_name:
+            object_file_name = f"{name}.o"
+        super().__init__(name, object_file_name, arg_types)
+
         self._setup_source(source_file, source_string)
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
-        if object_file_name:
-            self._object_file_name = object_file_name
-        else:
-            self._object_file_name = f"{self._name}.o"
         self._compiled = False
 
         # Track this instance for JIT compilation
@@ -131,10 +131,6 @@ class ExternalFunction(BaseKernel):
     def __exit__(self, exc_type, exc_value, traceback):
         """Exit the context."""
         pass
-
-    @property
-    def bin_name(self) -> str:
-        return self._object_file_name
 
     def tile_size(self, arg_index: int = 0) -> int:
         """Get the tile size from the specified array argument type.
@@ -177,15 +173,6 @@ class ExternalFunction(BaseKernel):
         """Get the argument types of the ExternalFunction."""
         return self._arg_types.copy()
 
-    def resolve(
-        self,
-        loc: ir.Location | None = None,
-        ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        if not self._op:
-            # Create the external function
-            self._op = external_func(self._name, inputs=self._arg_types)
-
     def __hash__(self):
         """
         Compute a hash for the ExternalFunction based on its properties.
@@ -213,8 +200,3 @@ class ExternalFunction(BaseKernel):
         # Create hash from combined string
         combined = "|".join(hash_parts)
         return int(hashlib.sha256(combined.encode("utf-8")).hexdigest()[:8], 16)
-
-    def __call__(self, *args, **kwargs):
-        if not self._op:
-            raise ValueError("Need to resolve ExternalFunction before it can be called")
-        call(self._op, args, **kwargs)
