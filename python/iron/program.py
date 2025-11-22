@@ -46,6 +46,7 @@ class Program:
             module (Module): The module containing the MLIR context information.
         """
         with mlir_mod_ctx() as ctx:
+
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
                 # Collect all fifos
