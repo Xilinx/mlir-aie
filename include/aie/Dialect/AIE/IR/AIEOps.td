@@ -1630,6 +1630,15 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
 
+  let builders = [
+    OpBuilder<(ins "mlir::StringRef":$sym_name, "DMAChannelDir":$dir, "int":$channel_index,
+               "int":$col, "bool":$plio), [{
+      build($_builder, $_state, ::mlir::SymbolRefAttr::get(odsBuilder.getContext(), sym_name), 
+            DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
+            $_builder.getI64IntegerAttr(channel_index), 
+            $_builder.getI64IntegerAttr(col), $_builder.getBoolAttr(plio), nullptr);
+    }]>
+  ];
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
@@ -1735,6 +1744,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
         // repeat_count==1 means "do it once"
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        // aie_stream==0 means enable aie stream port on producer tile
+        // aie_stream==1 means enable aie stream port on consumer tile
+        // aie_stream==2 means enable aie stream ports on producer and consumer tiles
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<2>]>>:$aie_stream,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
         OptionalAttr<AIEI32Attr>:$iter_count
@@ -2021,6 +2035,11 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   let assemblyFormat = [{
     $subview `[` $index `]` attr-dict `:` qualified(type($subview)) `->` qualified(type($output))
   }];
+
+  // Allow building an AIE_ObjectFifoSubviewAccessOp with just a subview value and an index.
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$subview, "size_t":$index)>
+  ];
 }
 
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
