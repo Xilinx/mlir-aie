@@ -22,7 +22,7 @@ from ...util import single_elem_or_list_to_list
 
 from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint
-from ..device import PlacementTile, AnyMemTile, Tile
+from ..device import Device, PlacementTile, AnyMemTile, Tile
 
 
 class ObjectFifo(Resolvable):
@@ -218,7 +218,11 @@ class ObjectFifo(Resolvable):
             raise ValueError("Cannot return prod.tile.op because prod was not created.")
         if self._cons == []:
             raise ValueError("Cannot return cons.tile.op because prod was not created.")
-        return [self._prod.tile] + [cons.tile for cons in self._cons]
+        return [self._prod.endpoint.tile] + [cons.endpoint.tile for cons in self._cons]
+
+    def has_legal_mem_affinity(self, device: Device) -> bool:
+        """Checks if all endpoints of the object fifo have a legal memory affinity."""
+        return device.is_legal_mem_affinity(*self.tiles())
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:

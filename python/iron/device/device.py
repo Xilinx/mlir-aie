@@ -194,6 +194,9 @@ class Device(Resolvable):
         Returns:
             int: Number of connections (channels) available on the tile
         """
+        for t in tiles:
+            if not isinstance(t, Tile):
+                raise ValueError(f"Expected a Tile, but got {t}")
         if not tiles:
             return True
         if len(tiles) == 1:
