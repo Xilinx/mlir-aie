@@ -35,6 +35,7 @@ class XRTTensor(Tensor):
         elif hasattr(shape_or_data, "shape"):
             # If this is a shaped thing, we will trust it.
             self._shape = shape_or_data.shape
+            np_data = shape_or_data
         else:
             # TODO(efficiency): Extra data copy here (when necessary)
             # so we can borrow verification of array-like things from numpy.
@@ -47,7 +48,7 @@ class XRTTensor(Tensor):
         group_id = 0
         self.bo = xrt.bo(
             self.xrt_device,
-            np.prod(self._shape) * np.dtype(self.dtype).itemsize,
+            int(np.prod(self._shape) * np.dtype(self.dtype).itemsize),
             xrt.bo.host_only,
             group_id,
         )
