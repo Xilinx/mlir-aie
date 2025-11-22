@@ -24,15 +24,9 @@ TEST_SHAPES = [(2, 3), (1, 5), (4, 1), (3, 3, 3), (10,), ()]
 
 def bfloat16_safe_allclose(dtype, arr1, arr2):
     if not isinstance(arr1, torch.Tensor):
-        if hasattr(arr1, "dtype") and arr1.dtype == bfloat16:
-            arr1 = torch.from_numpy(np.array(arr1, dtype=np.float16))
-        else:
-            arr1 = torch.from_numpy(np.array(arr1))
+        arr1 = arr1.to_torch()
     if not isinstance(arr2, torch.Tensor):
-        if hasattr(arr2, "dtype") and arr2.dtype == bfloat16:
-            arr2 = torch.from_numpy(np.array(arr2, dtype=np.float16))
-        else:
-            arr2 = torch.from_numpy(np.array(arr2))
+        arr2 = arr2.to_torch()
 
     if dtype == bfloat16 or dtype == torch.bfloat16:
         arr1 = arr1.to(torch.float16)
