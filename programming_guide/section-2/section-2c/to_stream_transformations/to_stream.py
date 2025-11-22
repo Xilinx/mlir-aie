@@ -23,6 +23,7 @@ if len(sys.argv) > 1:
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 n_workers = 3
+depth = 2
 
 # Define tensor types
 data_ty = np.ndarray[(48,), np.dtype[np.int32]]
@@ -34,11 +35,11 @@ tile8_ty = np.ndarray[(8,), np.dtype[np.int32]]
 of_offsets = [8 * worker for worker in range(n_workers)]
 
 # Output
-of_out = ObjectFifo(tile24_ty, depth=1, name="out", dims_to_stream=[(8, 1), (3, 8)])
+of_out = ObjectFifo(tile24_ty, depth=depth, name="out", dims_to_stream=[(8, 1), (3, 8)])
 of_outs = of_out.prod().join(
     of_offsets,
     obj_types=[tile8_ty] * n_workers,
-    depths=[1] * n_workers,
+    depths=[depth] * n_workers,
     names=[f"out{worker}" for worker in range(n_workers)],
 )
 
