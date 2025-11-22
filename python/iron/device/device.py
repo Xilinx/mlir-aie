@@ -191,14 +191,37 @@ class Device(Resolvable):
         else:
             return self.get_num_dest_switchbox_connections(tile)
 
-    def is_legal_mem_affinity(self, src_tile: Tile, dst_tile: Tile) -> bool:
+    def is_legal_mem_affinity(self, *tiles: Tile) -> bool:
         """Returns whether memory on a destination can be accessed by a source.
         Returns:
             int: Number of connections (channels) available on the tile
         """
-        return self._tm.is_legal_mem_affinity(
-            src_tile.col, src_tile.row, dst_tile.col, dst_tile.rol
-        )
+        if not tiles:
+            return True
+        if len(tiles) == 1:
+            return True
+
+        first_tile = tiles[0]
+        is_first_compute = self._tm.is_core_tile(first_tile.col, first_tile.row)
+        is_first_mem = self._tm.is_mem_tile(first_tile.col, first_tile.row)
+
+        for i in range(len(tiles) - 1):
+            src_tile = tiles[i]
+            dst_tile = tiles[i + 1]
+            is_dst_compute = self._tm.is_core_tile(dst_tile.col, dst_tile.row)
+            is_dst_mem = self._tm.is_mem_tile(dst_tile.col, dst_tile.row)
+
+            if is_first_compute != is_dst_compute:
+                return False
+
+            if is_first_mem != is_dst_mem:
+                return False
+
+            if not self._tm.is_legal_mem_affinity(
+                src_tile.col, src_tile.row, dst_tile.col, dst_tile.row
+            ):
+                return False
+        return True
 
     def resolve_tile(
         self,
