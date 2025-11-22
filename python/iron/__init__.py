@@ -1,6 +1,5 @@
-from .globalbuffer import GlobalBuffer
+from .buffer import Buffer
 from .kernel import ExternalFunction, Kernel
-from .localbuffer import LocalBuffer
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime

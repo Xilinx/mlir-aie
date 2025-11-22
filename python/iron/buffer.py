@@ -15,11 +15,11 @@ from ..helpers.util import (
     np_ndarray_type_get_shape,
 )
 from .device import PlacementTile
-from .resolvable import Resolvable
+from .resolvable import Resolvable, NotResolvedError
 from .placeable import Placeable
 
 
-class GlobalBuffer(Resolvable, Placeable):
+class Buffer(Resolvable, Placeable):
     """A buffer that is available both to Workers and to the Runtime for operations.
     This is often used for Runtime Parameters.
     """
@@ -35,7 +35,7 @@ class GlobalBuffer(Resolvable, Placeable):
         placement: PlacementTile | None = None,
         use_write_rtp: bool = False,
     ):
-        """A GlobalBuffer is a memory region declared at the top-level of the design, allowing it to
+        """A Buffer is a memory region declared at the top-level of the design, allowing it to
         be accessed by both Workers and the Runtime.
 
         Args:
@@ -77,17 +77,23 @@ class GlobalBuffer(Resolvable, Placeable):
         """The per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._obj_type)
 
+    @property
+    def op(self):
+        if self._op is None:
+            raise NotResolvedError()
+        return self._op
+
     def __getitem__(self, idx):
         if self._op is None:
             return AttributeError(
-                "Cannot index into GlobalBuffer before it has been resolved."
+                "Cannot index into Buffer before it has been resolved."
             )
         return self._op[idx]
 
     def __setitem__(self, idx, source):
         if self._op is None:
             return AttributeError(
-                "Cannot index into GlobalBuffer before it has been resolved."
+                "Cannot index into Buffer before it has been resolved."
             )
         else:
             self._op[idx] = source
