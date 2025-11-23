@@ -171,40 +171,64 @@ def parse_args(args=None):
         help="Use packet switched flows when lowering object fifos",
     )
     parser.add_argument(
+        "--reset-tiles",
+        dest="reset_tiles",
+        default="shim,mem,core",
+        help="Default comma-separated list of tile types to reset (shim,mem,core). Overridden by specific --reset-*-tiles options.",
+    )
+    parser.add_argument(
+        "--reset-mode",
+        dest="reset_mode",
+        default="ifchangedfinegrained",
+        help="Default reset mode: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always. Overridden by specific --reset-*-mode options.",
+    )
+    parser.add_argument(
         "--reset-dmas-tiles",
         dest="reset_dmas_tiles",
-        default="",
-        help="Comma-separated list of tile types to reset DMAs for (shim,mem,core)",
+        default=None,
+        help="Comma-separated list of tile types to reset DMAs for (shim,mem,core). Defaults to --reset-tiles if not specified.",
     )
     parser.add_argument(
         "--reset-dmas-mode",
         dest="reset_dmas_mode",
-        default="never",
-        help="When to reset DMAs: never, ifused, ifchanged, always",
+        default=None,
+        help="When to reset DMAs: never, ifused, ifchanged, always. Defaults to --reset-mode if not specified.",
     )
     parser.add_argument(
         "--reset-switches-tiles",
         dest="reset_switches_tiles",
-        default="",
-        help="Comma-separated list of tile types to reset switches for (shim,mem,core)",
+        default=None,
+        help="Comma-separated list of tile types to reset switches for (shim,mem,core). Defaults to --reset-tiles if not specified.",
     )
     parser.add_argument(
         "--reset-switches-mode",
         dest="reset_switches_mode",
-        default="never",
-        help="When to reset switches: never, ifused, ifchanged, always",
+        default=None,
+        help="When to reset switches: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always. Defaults to --reset-mode if not specified.",
     )
     parser.add_argument(
         "--reset-locks-tiles",
         dest="reset_locks_tiles",
-        default="",
-        help="Comma-separated list of tile types to reset locks for (mem,core)",
+        default=None,
+        help="Comma-separated list of tile types to reset locks for (mem,core). Defaults to --reset-tiles if not specified.",
     )
     parser.add_argument(
         "--reset-locks-mode",
         dest="reset_locks_mode",
-        default="never",
-        help="When to reset locks: never, ifused, ifchanged, always",
+        default=None,
+        help="When to reset locks: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always. Defaults to --reset-mode if not specified.",
+    )
+    parser.add_argument(
+        "--reset-cores-tiles",
+        dest="reset_cores_tiles",
+        default=None,
+        help="Comma-separated list of tile types to reset cores for (core). Defaults to --reset-tiles if not specified.",
+    )
+    parser.add_argument(
+        "--reset-cores-mode",
+        dest="reset_cores_mode",
+        default=None,
+        help="When to reset cores: never, ifused, ifchanged, always. Defaults to --reset-mode if not specified.",
     )
     parser.add_argument(
         "host_args",

@@ -156,7 +156,11 @@ def _create_npu_lowering_pipeline(
     reset_switches_mode="never",
     reset_locks_tiles="",
     reset_locks_mode="never",
+    reset_cores_tiles="",
+    reset_cores_mode="never"
 ):
+    device_pipeline_1 = (
+    )
     pipeline = (
         Pipeline()
         .add_pass("aie-materialize-runtime-sequences")
@@ -180,10 +184,10 @@ def _create_npu_lowering_pipeline(
             reset_switches_mode=reset_switches_mode,
             reset_locks_tiles=reset_locks_tiles,
             reset_locks_mode=reset_locks_mode,
+            reset_cores_tiles=reset_cores_tiles,
+            reset_cores_mode=reset_cores_mode,
         )
     return pipeline
-
-NPU_LOWERING_PIPELINE = _create_npu_lowering_pipeline()
 
 
 async def read_file_async(file_path: str) -> str:
@@ -1731,6 +1735,8 @@ class FlowRunner:
                         reset_switches_mode=opts.reset_switches_mode,
                         reset_locks_tiles=opts.reset_locks_tiles,
                         reset_locks_mode=opts.reset_locks_mode,
+                        reset_cores_tiles=opts.reset_cores_tiles,
+                        reset_cores_mode=opts.reset_cores_mode
                     )
                     pass_pipeline = npu_pipeline.materialize(module=True)
                     npu_insts_file = self.prepend_tmp(f"npu_insts.mlir")
@@ -1897,6 +1903,24 @@ def run(mlir_module, args=None):
     if args is not None:
         opts = aie.compiler.aiecc.cl_arguments.parse_args(args)
 
+    # Apply default reset options if specific ones not provided
+    if opts.reset_dmas_tiles is None:
+        opts.reset_dmas_tiles = opts.reset_tiles
+    if opts.reset_dmas_mode is None:
+        opts.reset_dmas_mode = opts.reset_mode
+    if opts.reset_switches_tiles is None:
+        opts.reset_switches_tiles = opts.reset_tiles
+    if opts.reset_switches_mode is None:
+        opts.reset_switches_mode = opts.reset_mode
+    if opts.reset_locks_tiles is None:
+        opts.reset_locks_tiles = opts.reset_tiles
+    if opts.reset_locks_mode is None:
+        opts.reset_locks_mode = opts.reset_mode
+    if opts.reset_cores_tiles is None:
+        opts.reset_cores_tiles = opts.reset_tiles
+    if opts.reset_cores_mode is None:
+        opts.reset_cores_mode = opts.reset_mode
+
     opts.aietools_path = None
 
     # If Ryzen AI Software is installed then use it for aietools
@@ -1977,6 +2001,24 @@ def run(mlir_module, args=None):
 def main():
     global opts
     opts = aie.compiler.aiecc.cl_arguments.parse_args()
+
+    # Apply default reset options if specific ones not provided
+    if opts.reset_dmas_tiles is None:
+        opts.reset_dmas_tiles = opts.reset_tiles
+    if opts.reset_dmas_mode is None:
+        opts.reset_dmas_mode = opts.reset_mode
+    if opts.reset_switches_tiles is None:
+        opts.reset_switches_tiles = opts.reset_tiles
+    if opts.reset_switches_mode is None:
+        opts.reset_switches_mode = opts.reset_mode
+    if opts.reset_locks_tiles is None:
+        opts.reset_locks_tiles = opts.reset_tiles
+    if opts.reset_locks_mode is None:
+        opts.reset_locks_mode = opts.reset_mode
+    if opts.reset_cores_tiles is None:
+        opts.reset_cores_tiles = opts.reset_tiles
+    if opts.reset_cores_mode is None:
+        opts.reset_cores_mode = opts.reset_mode
 
     if opts.version:
         print(f"aiecc.py {aie.compiler.aiecc.configure.git_commit}")

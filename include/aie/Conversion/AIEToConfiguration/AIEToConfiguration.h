@@ -43,10 +43,12 @@ inline bool hasFlag(ResetTileType value, ResetTileType flag) {
 
 // Enum for specifying when to reset
 enum class ResetMode {
-  Never,     // Never perform reset
-  IfUsed,    // Reset only if the tile is used in the device
-  IfChanged, // Reset only if the tile configuration changed from previous
-  Always     // Reset all tiles of the specified type
+  Never,                // Never perform reset
+  IfUsed,               // Reset only if the tile is used in the device
+  IfUsedFineGrained,    // Reset only individual locks/connections that are used
+  IfChanged,            // Reset only if the tile configuration changed from previous
+  IfChangedFineGrained, // Reset only individual locks/connections that changed
+  Always                // Reset all tiles of the specified type
 };
 
 // Configuration for different reset operations
@@ -80,7 +82,8 @@ generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
                          mlir::Operation *insertionPoint,
                          ResetConfig dmaConfig = ResetConfig(),
                          ResetConfig switchConfig = ResetConfig(),
-                         ResetConfig lockConfig = ResetConfig());
+                         ResetConfig lockConfig = ResetConfig(),
+                         ResetConfig coreConfig = ResetConfig());
 
 // Version with previous device for change detection
 mlir::LogicalResult
@@ -89,6 +92,7 @@ generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
                          ResetConfig dmaConfig,
                          ResetConfig switchConfig,
                          ResetConfig lockConfig,
+                         ResetConfig coreConfig,
                          xilinx::AIE::DeviceOp previousDevice);
 
 } // namespace xilinx::AIE

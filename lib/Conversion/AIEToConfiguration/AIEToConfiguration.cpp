@@ -911,16 +911,61 @@ xilinx::AIE::generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
   return success();
 }
 
+// Helper structures for fine-grained resets
+struct ConnectionToReset {
+  int col, row;
+  WireBundle sourceBundle;
+  int sourceChannel;
+  WireBundle destBundle;
+  int destChannel;
+};
+
+struct LockToReset {
+  int col, row;
+  int lockId;
+};
+
+// Helper function to collect connections from a switchbox
+static void collectConnections(SwitchboxOp sb, 
+                               SmallVectorImpl<std::tuple<WireBundle, int, WireBundle, int>> &connections) {
+  if (!sb) return;
+  
+  for (auto connectOp : sb.getOps<ConnectOp>()) {
+    connections.push_back({connectOp.getSourceBundle(), 
+                          connectOp.getSourceChannel(),
+                          connectOp.getDestBundle(), 
+                          connectOp.getDestChannel()});
+  }
+}
+
+// Helper function to collect lock IDs from a device at a specific location
+static void collectLockIds(DeviceOp device, int col, int row, SmallVectorImpl<int> &lockIds) {
+  if (!device) return;
+  
+  for (auto lockOp : device.getOps<LockOp>()) {
+    if (auto tileValue = lockOp.getTile()) {
+      if (auto tileOp = tileValue.getDefiningOp<TileOp>()) {
+        if (tileOp.getCol() == col && tileOp.getRow() == row) {
+          if (auto lockId = lockOp.getLockID()) {
+            lockIds.push_back(*lockId);
+          }
+        }
+      }
+    }
+  }
+}
+
 // Version without previous device (first load)
 mlir::LogicalResult
 xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
                                        mlir::Operation *insertionPoint,
                                        ResetConfig dmaConfig,
                                        ResetConfig switchConfig,
-                                       ResetConfig lockConfig) {
+                                       ResetConfig lockConfig,
+                                       ResetConfig coreConfig) {
   // Call the full version with a null DeviceOp
   return generateAndInsertResetOps(device, insertionPoint, dmaConfig,
-                                  switchConfig, lockConfig, nullptr);
+                                  switchConfig, lockConfig, coreConfig, nullptr);
 }
 
 // Generate reset operations for all tiles used in the device
@@ -930,6 +975,7 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
                                        ResetConfig dmaConfig,
                                        ResetConfig switchConfig,
                                        ResetConfig lockConfig,
+                                       ResetConfig coreConfig,
                                        xilinx::AIE::DeviceOp previousDevice) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
@@ -1179,9 +1225,9 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
         if (targetModel.isMemTile(col, row) && hasFlag(dmaConfig.tileType, ResetTileType::MemTile)) {
           if (dmaConfig.mode == ResetMode::Always) {
             shouldReset = true;
-          } else if (dmaConfig.mode == ResetMode::IfUsed) {
+          } else if (dmaConfig.mode == ResetMode::IfUsed || dmaConfig.mode == ResetMode::IfUsedFineGrained) {
             shouldReset = isTileUsed(col, row);
-          } else if (dmaConfig.mode == ResetMode::IfChanged) {
+          } else if (dmaConfig.mode == ResetMode::IfChanged || dmaConfig.mode == ResetMode::IfChangedFineGrained) {
             auto currentDMA = findCurrentDMA(col, row);
             auto prevDMA = findPreviousDMA(col, row);
             shouldReset = currentDMA && !dmasEquivalent(currentDMA, prevDMA);
@@ -1189,9 +1235,9 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
         } else if (targetModel.isCoreTile(col, row) && hasFlag(dmaConfig.tileType, ResetTileType::CoreTile)) {
           if (dmaConfig.mode == ResetMode::Always) {
             shouldReset = true;
-          } else if (dmaConfig.mode == ResetMode::IfUsed) {
+          } else if (dmaConfig.mode == ResetMode::IfUsed || dmaConfig.mode == ResetMode::IfUsedFineGrained) {
             shouldReset = isTileUsed(col, row);
-          } else if (dmaConfig.mode == ResetMode::IfChanged) {
+          } else if (dmaConfig.mode == ResetMode::IfChanged || dmaConfig.mode == ResetMode::IfChangedFineGrained) {
             auto currentDMA = findCurrentDMA(col, row);
             auto prevDMA = findPreviousDMA(col, row);
             shouldReset = currentDMA && !dmasEquivalent(currentDMA, prevDMA);
@@ -1199,9 +1245,9 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
         } else if (targetModel.isShimNOCTile(col, row) && hasFlag(dmaConfig.tileType, ResetTileType::ShimNOC)) {
           if (dmaConfig.mode == ResetMode::Always) {
             shouldReset = true;
-          } else if (dmaConfig.mode == ResetMode::IfUsed) {
+          } else if (dmaConfig.mode == ResetMode::IfUsed || dmaConfig.mode == ResetMode::IfUsedFineGrained) {
             shouldReset = isTileUsed(col, row);
-          } else if (dmaConfig.mode == ResetMode::IfChanged) {
+          } else if (dmaConfig.mode == ResetMode::IfChanged || dmaConfig.mode == ResetMode::IfChangedFineGrained) {
             auto currentDMA = findCurrentDMA(col, row);
             auto prevDMA = findPreviousDMA(col, row);
             shouldReset = currentDMA && !dmasEquivalent(currentDMA, prevDMA);
@@ -1302,21 +1348,19 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
     }
   }
 
-  // Build tile list for core resets (cores need special handling)
+  // Build tile list for core resets
   std::vector<std::pair<int, int>> coreTiles;
-  if (hasFlag(dmaConfig.tileType, ResetTileType::CoreTile) || 
-      hasFlag(switchConfig.tileType, ResetTileType::CoreTile) ||
-      hasFlag(lockConfig.tileType, ResetTileType::CoreTile)) {
+  if (coreConfig.mode != ResetMode::Never && hasFlag(coreConfig.tileType, ResetTileType::CoreTile)) {
     for (int col = 0; col < numCols; col++) {
       for (int row = 0; row < numRows; row++) {
         if (targetModel.isCoreTile(col, row)) {
-          // For cores, we check if there's a CoreOp rather than just a TileOp
           bool shouldReset = false;
-          if (dmaConfig.mode == ResetMode::Always || switchConfig.mode == ResetMode::Always || lockConfig.mode == ResetMode::Always) {
+          
+          if (coreConfig.mode == ResetMode::Always) {
             shouldReset = true;
-          } else if (dmaConfig.mode == ResetMode::IfUsed || switchConfig.mode == ResetMode::IfUsed || lockConfig.mode == ResetMode::IfUsed) {
+          } else if (coreConfig.mode == ResetMode::IfUsed || coreConfig.mode == ResetMode::IfUsedFineGrained) {
             shouldReset = hasCoreOp(col, row);
-          } else if (dmaConfig.mode == ResetMode::IfChanged || switchConfig.mode == ResetMode::IfChanged || lockConfig.mode == ResetMode::IfChanged) {
+          } else if (coreConfig.mode == ResetMode::IfChanged || coreConfig.mode == ResetMode::IfChangedFineGrained) {
             auto currentCore = findCurrentCore(col, row);
             auto prevCore = findPreviousCore(col, row);
             shouldReset = currentCore && !coresEquivalent(currentCore, prevCore);
@@ -1324,6 +1368,156 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
           
           if (shouldReset) {
             coreTiles.push_back({col, row});
+          }
+        }
+      }
+    }
+  }
+
+  // Build fine-grained switch connection resets
+  std::vector<ConnectionToReset> connectionsToReset;
+  if (switchConfig.mode == ResetMode::IfUsedFineGrained || 
+      switchConfig.mode == ResetMode::IfChangedFineGrained) {
+    for (int col = 0; col < numCols; col++) {
+      for (int row = 0; row < numRows; row++) {
+        bool shouldCheck = false;
+        
+        if (targetModel.isMemTile(col, row) && hasFlag(switchConfig.tileType, ResetTileType::MemTile)) {
+          shouldCheck = true;
+        } else if (targetModel.isCoreTile(col, row) && hasFlag(switchConfig.tileType, ResetTileType::CoreTile)) {
+          shouldCheck = true;
+        } else if (targetModel.isShimNOCTile(col, row) && hasFlag(switchConfig.tileType, ResetTileType::ShimNOC)) {
+          shouldCheck = true;
+        }
+        
+        if (!shouldCheck) continue;
+        
+        auto currentSB = findCurrentSwitchbox(col, row);
+        if (!currentSB) continue;
+        
+        // Collect current connections
+        SmallVector<std::tuple<WireBundle, int, WireBundle, int>> currentConns;
+        collectConnections(currentSB, currentConns);
+        
+        if (switchConfig.mode == ResetMode::IfUsedFineGrained) {
+          // For each source port used in current design, disable all possible
+          // destination connections that are NOT used in the current design.
+          // This prevents backpressure from stale destinations.
+          
+          // Collect all unique source ports used in current design
+          llvm::DenseSet<std::pair<WireBundle, int>> usedSources;
+          for (auto [srcBundle, srcChan, dstBundle, dstChan] : currentConns) {
+            usedSources.insert({srcBundle, srcChan});
+          }
+          
+          // For each used source, check all possible destinations
+          for (auto [srcBundle, srcChan] : usedSources) {
+            // Get all possible destination bundles for this tile type
+            llvm::SmallVector<WireBundle> possibleDests;
+            if (targetModel.isMemTile(col, row)) {
+              possibleDests = {WireBundle::DMA, WireBundle::North, WireBundle::South};
+            } else if (targetModel.isCoreTile(col, row)) {
+              possibleDests = {WireBundle::Core, WireBundle::DMA, WireBundle::North, 
+                              WireBundle::South, WireBundle::West, WireBundle::East};
+            } else if (targetModel.isShimNOCTile(col, row)) {
+              possibleDests = {WireBundle::DMA, WireBundle::North, WireBundle::South};
+            }
+            
+            // For each possible destination, check all channels (0-7 is typical)
+            for (auto dstBundle : possibleDests) {
+              for (int dstChan = 0; dstChan < 8; dstChan++) {
+                // Check if this specific connection exists in current design
+                bool isUsed = false;
+                for (auto [cSrcBundle, cSrcChan, cDstBundle, cDstChan] : currentConns) {
+                  if (srcBundle == cSrcBundle && srcChan == cSrcChan &&
+                      dstBundle == cDstBundle && dstChan == cDstChan) {
+                    isUsed = true;
+                    break;
+                  }
+                }
+                
+                // If this destination is NOT used, disable it to prevent backpressure
+                if (!isUsed) {
+                  connectionsToReset.push_back({col, row, srcBundle, srcChan, dstBundle, dstChan});
+                }
+              }
+            }
+          }
+        } else if (switchConfig.mode == ResetMode::IfChangedFineGrained) {
+          // Disable connections that existed in previous design but are NOT in current design.
+          // This prevents backpressure from stale destinations while preserving active ones.
+          auto prevSB = findPreviousSwitchbox(col, row);
+          SmallVector<std::tuple<WireBundle, int, WireBundle, int>> prevConns;
+          collectConnections(prevSB, prevConns);
+          
+          // Find connections that were in previous but are NOT in current
+          for (auto [pSrcBundle, pSrcChan, pDstBundle, pDstChan] : prevConns) {
+            bool stillUsed = false;
+            for (auto [cSrcBundle, cSrcChan, cDstBundle, cDstChan] : currentConns) {
+              if (pSrcBundle == cSrcBundle && pSrcChan == cSrcChan &&
+                  pDstBundle == cDstBundle && pDstChan == cDstChan) {
+                stillUsed = true;
+                break;
+              }
+            }
+            
+            // If this connection was in previous but NOT in current, disable it
+            if (!stillUsed) {
+              connectionsToReset.push_back({col, row, pSrcBundle, pSrcChan, pDstBundle, pDstChan});
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Build fine-grained lock resets
+  std::vector<LockToReset> locksToReset;
+  if (lockConfig.mode == ResetMode::IfUsedFineGrained || 
+      lockConfig.mode == ResetMode::IfChangedFineGrained) {
+    for (int col = 0; col < numCols; col++) {
+      for (int row = 0; row < numRows; row++) {
+        bool shouldCheck = false;
+        
+        if (targetModel.isMemTile(col, row) && hasFlag(lockConfig.tileType, ResetTileType::MemTile)) {
+          shouldCheck = true;
+        } else if (targetModel.isCoreTile(col, row) && hasFlag(lockConfig.tileType, ResetTileType::CoreTile)) {
+          shouldCheck = true;
+        }
+        
+        if (!shouldCheck) continue;
+        
+        // Collect current lock IDs
+        SmallVector<int> currentLockIds;
+        collectLockIds(device, col, row, currentLockIds);
+        
+        if (currentLockIds.empty()) continue;
+        
+        if (lockConfig.mode == ResetMode::IfUsedFineGrained) {
+          // Reset all used locks
+          for (int lockId : currentLockIds) {
+            locksToReset.push_back({col, row, lockId});
+          }
+        } else if (lockConfig.mode == ResetMode::IfChangedFineGrained) {
+          // Reset only changed locks
+          SmallVector<int> prevLockIds;
+          if (previousDevice) {
+            collectLockIds(previousDevice, col, row, prevLockIds);
+          }
+          
+          // Reset locks that are in current but not in previous
+          for (int lockId : currentLockIds) {
+            bool foundInPrev = false;
+            for (int pLockId : prevLockIds) {
+              if (lockId == pLockId) {
+                foundInPrev = true;
+                break;
+              }
+            }
+            // Only reset if new or changed (conservatively reset if changed)
+            if (!foundInPrev) {
+              locksToReset.push_back({col, row, lockId});
+            }
           }
         }
       }
@@ -1348,9 +1542,23 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
       return failure();
   }
 
+  // Perform fine-grained switch connection resets
+  for (auto &conn : connectionsToReset) {
+    if (failed(ctl.resetSwitchConnection(conn.col, conn.row, 
+                                        conn.sourceBundle, conn.sourceChannel,
+                                        conn.destBundle, conn.destChannel)))
+      return failure();
+  }
+
   // Perform lock resets
   for (auto [col, row, numLocks] : lockTiles) {
     if (failed(ctl.resetLocks(col, row, numLocks)))
+      return failure();
+  }
+
+  // Perform fine-grained lock resets
+  for (auto &lock : locksToReset) {
+    if (failed(ctl.resetLock(lock.col, lock.row, lock.lockId)))
       return failure();
   }
 

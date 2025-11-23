@@ -52,6 +52,10 @@ struct AIERTControl {
   mlir::LogicalResult resetCoreUnreset(int col, int row);
   mlir::LogicalResult resetSwitch(int col, int row);
   mlir::LogicalResult resetLocks(int col, int row, int numLocks);
+  mlir::LogicalResult resetLock(int col, int row, int lockId);
+  mlir::LogicalResult resetSwitchConnection(int col, int row, 
+                                            WireBundle sourceBundle, int sourceChannel,
+                                            WireBundle destBundle, int destChannel);
   mlir::LogicalResult resetPerfCounters(int col, int row);
 
 private:

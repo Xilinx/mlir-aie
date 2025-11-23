@@ -300,11 +300,15 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     Option<"resetSwitchesTiles", "reset-switches-tiles", "std::string", "\"\"",
            "Comma-separated list of tile types to reset switches for (shim,mem,core)">,
     Option<"resetSwitchesMode", "reset-switches-mode", "std::string", "\"never\"",
-           "When to reset switches: never, ifused, ifchanged, always">,
+           "When to reset switches: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always">,
     Option<"resetLocksTiles", "reset-locks-tiles", "std::string", "\"\"",
            "Comma-separated list of tile types to reset locks for (mem,core)">,
     Option<"resetLocksMode", "reset-locks-mode", "std::string", "\"never\"",
-           "When to reset locks: never, ifused, ifchanged, always">,
+           "When to reset locks: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always">,
+    Option<"resetCoresTiles", "reset-cores-tiles", "std::string", "\"\"",
+           "Comma-separated list of tile types to reset cores for (core)">,
+    Option<"resetCoresMode", "reset-cores-mode", "std::string", "\"never\"",
+           "When to reset cores: never, ifused, ifchanged, always">,
   ];
 }
 #endif
