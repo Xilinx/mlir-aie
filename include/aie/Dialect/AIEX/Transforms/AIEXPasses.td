@@ -319,17 +319,25 @@ def AIECoalesceWrite32s : Pass<"aie-coalesce-write32s", "AIE::DeviceOp"> {
     coalescing them into npu.blockwrite operations when their addresses are
     contiguous (4-byte increments).
     
-    Since register write instructions cannot be reordered, this optimization
-    only applies when the write32 operations are immediately adjacent in the
-    instruction stream.
+    The pass can reorder non-special register writes within slices bounded by
+    special register writes. Special registers (e.g., control registers) act
+    as barriers and cannot be reordered.
     
     For each sequence of N consecutive write32 operations at addresses
     [addr, addr+4, addr+8, ...], the pass:
-    1. Creates a memref.global with the values
-    2. Replaces the write32 sequence with a single npu.blockwrite
+    1. Eliminates duplicate writes (keeps only the last value for each address)
+    2. Reorders writes by address within safe boundaries
+    3. Creates a memref.global with the values
+    4. Replaces the write32 sequence with a single npu.blockwrite
     
     This reduces instruction count and can improve performance.
   }];
+
+  let options = [
+    Option<"minWritesToCoalesce", "min-writes-to-coalesce", "unsigned",
+           /*default=*/"2",
+           "Minimum number of contiguous writes required to coalesce into a blockwrite">
+  ];
 
   let constructor = "xilinx::AIEX::createAIECoalesceWrite32sPass()";
   let dependentDialects = [

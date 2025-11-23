@@ -11,8 +11,12 @@
 // This pass coalesces consecutive npu.write32 operations into npu.blockwrite
 // operations when their addresses are contiguous (4-byte increments).
 //
-// Since register writes cannot be reordered, we only coalesce operations that
-// are immediately adjacent in the instruction stream with no intervening ops.
+// The pass can reorder non-special register writes within slices. Special
+// register writes act as barriers and cannot be reordered. Duplicate writes
+// to the same address are eliminated (keeping the last value).
+//
+// A configurable threshold controls the minimum number of contiguous writes
+// required for coalescing into a blockwrite.
 //
 //===----------------------------------------------------------------------===//
 
@@ -257,7 +261,8 @@ private:
         currentSeq.push_back(write);
       } else {
         // Not contiguous, start new sequence
-        if (currentSeq.size() >= 2) {
+        // Only save sequences that meet the minimum threshold
+        if (currentSeq.size() >= minWritesToCoalesce) {
           sequences.push_back(currentSeq);
         }
         currentSeq.clear();
@@ -265,8 +270,8 @@ private:
       }
     }
     
-    // Don't forget the last sequence
-    if (currentSeq.size() >= 2) {
+    // Don't forget the last sequence (also check threshold)
+    if (currentSeq.size() >= minWritesToCoalesce) {
       sequences.push_back(currentSeq);
     }
     

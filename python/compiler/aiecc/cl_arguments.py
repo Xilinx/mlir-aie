@@ -462,6 +462,13 @@ def parse_args(args=None):
         const=False,
         help="Do not coalesce write32 operations into blockwrites in the NPU instruction sequence",
     )
+    parser.add_argument(
+        "--min-writes-to-coalesce",
+        dest="min_writes_to_coalesce",
+        default=2,
+        type=int,
+        help="Minimum number of consecutive write32 operations required to coalesce into a blockwrite (default: 2)",
+    )
 
     opts = parser.parse_args(args)
     return opts
