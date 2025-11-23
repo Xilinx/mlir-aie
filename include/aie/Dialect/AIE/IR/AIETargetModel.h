@@ -325,6 +325,28 @@ public:
 
   // Returns true if the target model supports the given block format.
   virtual bool isSupportedBlockFormat(std::string const &format) const;
+
+  /// Check if a register at the given address is a "special register" that
+  /// should not be reordered. Special registers are those that trigger
+  /// side-effects like device reset, start processing, etc.
+  /// \param absoluteAddress The full 32-bit address (including tile col/row)
+  /// \return true if this is a special register that must not be reordered
+  virtual bool isSpecialRegister(uint32_t absoluteAddress) const {
+    return false; // Default: no special registers
+  }
+
+  /// Check if a register at the given tile and offset is a "special register"
+  /// \param col The column of the tile
+  /// \param row The row of the tile
+  /// \param offset The offset within the tile's address space
+  /// \return true if this is a special register that must not be reordered
+  virtual bool isSpecialRegister(int col, int row, uint32_t offset) const {
+    uint32_t absoluteAddress = 
+        ((col & 0xff) << getColumnShift()) | 
+        ((row & 0xff) << getRowShift()) | 
+        (offset & 0xfffff);
+    return isSpecialRegister(absoluteAddress);
+  }
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -710,6 +732,48 @@ public:
   getShimBurstEncodingsAndLengths() const override;
 
   bool isSupportedBlockFormat(std::string const &format) const override;
+
+  /// Check if a register is a special register that should not be reordered
+  /// for AIE2P (NPU2) devices
+  bool isSpecialRegister(uint32_t absoluteAddress) const override {
+    // Extract tile coordinates from absolute address
+    // Address format: (col << 25) | (row << 20) | offset
+    int col = (absoluteAddress >> getColumnShift()) & 0xff;
+    int row = (absoluteAddress >> getRowShift()) & 0x1f;
+    uint32_t offset = absoluteAddress & 0xfffff;
+    return isSpecialRegister(col, row, offset);
+  }
+
+  bool isSpecialRegister(int col, int row, uint32_t offset) const override {
+    if (isCoreTile(col, row)) {
+      // Core tile special registers
+      return offset == 0x32000 ||  // Core_Control
+             offset == 0x36070 ||  // Memory_Control
+             offset == 0x60000 ||  // Module_Clock_Control
+             offset == 0x60010 ||  // Module_Reset_Control
+             offset == 0x60020 ||  // Tile_Control
+             offset == 0x1DE04 || offset == 0x1DE0C || 
+             offset == 0x1DE14 || offset == 0x1DE1C;
+    } else if (isShimNOCTile(col, row)) {
+      // Shim tile special registers
+      return (offset >= 0x15000 && offset <= 0x15010) ||
+             offset == 0x1D204 || offset == 0x1D20C ||
+             offset == 0x1D214 || offset == 0x1D21C ||
+             offset == 0x40000;
+    } else if (isMemTile(col, row)) {
+      // Memory tile special registers
+      return offset == 0x94008 || offset == 0x96048 ||
+             offset == 0xA0604 || offset == 0xA060C ||
+             offset == 0xA0614 || offset == 0xA061C ||
+             offset == 0xA0624 || offset == 0xA062C ||
+             offset == 0xA0634 || offset == 0xA063C ||
+             offset == 0xA0644 || offset == 0xA064C ||
+             offset == 0xA0654 || offset == 0xA065C ||
+             offset == 0xFFF00 || offset == 0xFFF10 ||
+             offset == 0xFFF20;
+    }
+    return false;
+  }
 
   static bool classof(const AIETargetModel *model) {
     return model->getKind() >= TK_AIE2_NPU2 &&
