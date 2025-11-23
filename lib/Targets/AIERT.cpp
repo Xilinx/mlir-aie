@@ -20,7 +20,9 @@ extern "C" {
 #include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaie_locks.h"
 #include "xaiengine/xaie_mem.h"
+#include "xaiengine/xaie_perfcnt.h"
 #include "xaiengine/xaie_plif.h"
+#include "xaiengine/xaie_reset.h"
 #include "xaiengine/xaie_ss.h"
 #include "xaiengine/xaie_txn.h"
 #include "xaiengine/xaiegbl.h"
@@ -840,6 +842,199 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElf(uint8_t col, uint8_t row,
                               XAie_TileLoc(col, row),
                               XAie_DmaChReset::DMA_CHANNEL_UNRESET);
 
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetPartition() {
+  // Manual implementation of XAie_ResetPartition that works in transaction mode.
+  // XAie_ResetPartition calls XAie_RunOp which doesn't work with DISABLE_AUTO_FLUSH.
+  // We only include the register writes, skipping the XAie_RunOp calls for:
+  // - XAIE_BACKEND_OP_SET_PROTREG (protected register enable/disable)
+  // - XAIE_BACKEND_OP_ASSERT_SHIMRST (hardware SHIM reset signal)
+  
+  XAie_DevInst *DevInst = &aiert->devInst;
+  u8 TileType;
+  const XAie_PlIfMod *PlIfMod;
+  
+  // 1. Disable clock buffers for all columns
+  for (u8 C = 0; C < DevInst->NumCols; C++) {
+    XAie_LocType Loc = XAie_TileLoc(C, 0);
+    TileType = DevInst->DevOps->GetTTypefromLoc(DevInst, Loc);
+    PlIfMod = DevInst->DevProp.DevMod[TileType].PlIfMod;
+    const XAie_ShimClkBufCntr *ClkBufCntr = PlIfMod->ClkBufCntr;
+    
+    u64 RegAddr = ClkBufCntr->RegOff + _XAie_GetTileAddr(DevInst, 0U, Loc.Col);
+    u32 FldVal = XAie_SetField(XAIE_DISABLE, ClkBufCntr->ClkBufEnable.Lsb,
+                                ClkBufCntr->ClkBufEnable.Mask);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_MaskWrite32, DevInst, RegAddr, 
+                                ClkBufCntr->ClkBufEnable.Mask, FldVal);
+  }
+  
+  // 2. Assert column reset for all columns
+  for (u8 C = 0; C < DevInst->NumCols; C++) {
+    XAie_LocType Loc = XAie_TileLoc(C, 0);
+    TileType = DevInst->DevOps->GetTTypefromLoc(DevInst, Loc);
+    PlIfMod = DevInst->DevProp.DevMod[TileType].PlIfMod;
+    
+    u64 RegAddr = PlIfMod->ColRstOff + _XAie_GetTileAddr(DevInst, Loc.Row, Loc.Col);
+    u32 FldVal = XAie_SetField(XAIE_ENABLE, PlIfMod->ColRst.Lsb, PlIfMod->ColRst.Mask);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_Write32, DevInst, RegAddr, FldVal);
+  }
+  
+  // 3. Re-enable clock buffers for all columns
+  for (u8 C = 0; C < DevInst->NumCols; C++) {
+    XAie_LocType Loc = XAie_TileLoc(C, 0);
+    TileType = DevInst->DevOps->GetTTypefromLoc(DevInst, Loc);
+    PlIfMod = DevInst->DevProp.DevMod[TileType].PlIfMod;
+    const XAie_ShimClkBufCntr *ClkBufCntr = PlIfMod->ClkBufCntr;
+    
+    u64 RegAddr = ClkBufCntr->RegOff + _XAie_GetTileAddr(DevInst, 0U, Loc.Col);
+    u32 FldVal = XAie_SetField(XAIE_ENABLE, ClkBufCntr->ClkBufEnable.Lsb,
+                                ClkBufCntr->ClkBufEnable.Mask);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_MaskWrite32, DevInst, RegAddr, 
+                                ClkBufCntr->ClkBufEnable.Mask, FldVal);
+  }
+  
+  // 4. Set SHIM reset registers (enable then disable)
+  // First set all SHIM reset bits to enable
+  for (u8 C = 0; C < DevInst->NumCols; C++) {
+    XAie_LocType Loc = XAie_TileLoc(C, 0);
+    TileType = DevInst->DevOps->GetTTypefromLoc(DevInst, Loc);
+    PlIfMod = DevInst->DevProp.DevMod[TileType].PlIfMod;
+    const XAie_ShimRstMod *ShimTileRst = PlIfMod->ShimTileRst;
+    
+    u64 RegAddr = ShimTileRst->RegOff + _XAie_GetTileAddr(DevInst, Loc.Row, Loc.Col);
+    u32 FldVal = XAie_SetField(XAIE_ENABLE, ShimTileRst->RstCntr.Lsb, 
+                                ShimTileRst->RstCntr.Mask);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_Write32, DevInst, RegAddr, FldVal);
+  }
+  
+  // Note: Skipping XAie_RunOp(XAIE_BACKEND_OP_ASSERT_SHIMRST) calls
+  // These are hardware backend operations that can't be recorded in transactions
+  
+  // Then set all SHIM reset bits to disable
+  for (u8 C = 0; C < DevInst->NumCols; C++) {
+    XAie_LocType Loc = XAie_TileLoc(C, 0);
+    TileType = DevInst->DevOps->GetTTypefromLoc(DevInst, Loc);
+    PlIfMod = DevInst->DevProp.DevMod[TileType].PlIfMod;
+    const XAie_ShimRstMod *ShimTileRst = PlIfMod->ShimTileRst;
+    
+    u64 RegAddr = ShimTileRst->RegOff + _XAie_GetTileAddr(DevInst, Loc.Row, Loc.Col);
+    u32 FldVal = XAie_SetField(XAIE_DISABLE, ShimTileRst->RstCntr.Lsb, 
+                                ShimTileRst->RstCntr.Mask);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_Write32, DevInst, RegAddr, FldVal);
+  }
+  
+  // 5. Block NSU AXI MM errors for all SHIM NOC tiles
+  // Note: Skipping XAie_RunOp(XAIE_BACKEND_OP_SET_PROTREG) to enable protected regs
+  for (u8 C = 0; C < DevInst->NumCols; C++) {
+    XAie_LocType Loc = XAie_TileLoc(C, 0);
+    TileType = DevInst->DevOps->GetTTypefromLoc(DevInst, Loc);
+    
+    if (TileType != XAIEGBL_TILE_TYPE_SHIMNOC) {
+      continue;
+    }
+    
+    PlIfMod = DevInst->DevProp.DevMod[TileType].PlIfMod;
+    const XAie_ShimNocAxiMMConfig *ShimNocAxiMM = PlIfMod->ShimNocAxiMM;
+    
+    u64 RegAddr = ShimNocAxiMM->RegOff + _XAie_GetTileAddr(DevInst, Loc.Row, Loc.Col);
+    u32 FldVal = XAie_SetField(XAIE_ENABLE, ShimNocAxiMM->NsuSlvErr.Lsb,
+                                ShimNocAxiMM->NsuSlvErr.Mask);
+    FldVal |= XAie_SetField(XAIE_ENABLE, ShimNocAxiMM->NsuDecErr.Lsb,
+                            ShimNocAxiMM->NsuDecErr.Mask);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_Write32, DevInst, RegAddr, FldVal);
+  }
+  // Note: Skipping XAie_RunOp(XAIE_BACKEND_OP_SET_PROTREG) to disable protected regs
+  
+  // 6. Disable clock buffers again
+  for (u8 C = 0; C < DevInst->NumCols; C++) {
+    XAie_LocType Loc = XAie_TileLoc(C, 0);
+    TileType = DevInst->DevOps->GetTTypefromLoc(DevInst, Loc);
+    PlIfMod = DevInst->DevProp.DevMod[TileType].PlIfMod;
+    const XAie_ShimClkBufCntr *ClkBufCntr = PlIfMod->ClkBufCntr;
+    
+    u64 RegAddr = ClkBufCntr->RegOff + _XAie_GetTileAddr(DevInst, 0U, Loc.Col);
+    u32 FldVal = XAie_SetField(XAIE_DISABLE, ClkBufCntr->ClkBufEnable.Lsb,
+                                ClkBufCntr->ClkBufEnable.Mask);
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_MaskWrite32, DevInst, RegAddr, 
+                                ClkBufCntr->ClkBufEnable.Mask, FldVal);
+  }
+  
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetDMA(int col, int row, bool on) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  XAie_DmaDesc dmaTileBd;
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDescInit, &aiert->devInst, &dmaTileBd, tileLoc);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDisableBd, &dmaTileBd);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &aiert->devInst, tileLoc, on ? XAie_DmaChReset::DMA_CHANNEL_UNRESET : XAie_DmaChReset::DMA_CHANNEL_RESET);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetCore(int col, int row) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreReset, &aiert->devInst, tileLoc);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetSwitch(int col, int row) {
+  XAie_LocType tileLoc = XAie_TileLoc(col, row);
+
+  // Reset all combinations of input/output routing in the switchbox
+  for (auto endpoint_a : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {
+    for (auto endpoint_b : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {
+      unsigned n_a_connections = targetModel.getNumSourceSwitchboxConnections(col, row, endpoint_a.first);
+      unsigned n_b_connections = targetModel.getNumDestSwitchboxConnections(col, row, endpoint_b.first);
+      for (unsigned a_index = 0; a_index < n_a_connections; a_index++) {
+        for (unsigned b_index = 0; b_index < n_b_connections; b_index++) {
+          if (!targetModel.isLegalTileConnection(col, row, endpoint_a.first, a_index, endpoint_b.first, b_index)) {
+            continue;
+          }
+          TRY_XAIE_API_FATAL_ERROR(XAie_StrmConnCctDisable, &aiert->devInst, tileLoc, endpoint_a.second, a_index, endpoint_b.second, b_index);
+        }
+      }
+    }
+  }
+
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetCoreUnreset(int col, int row) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreUnreset, &aiert->devInst, tileLoc);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetLocks(int col, int row, int numLocks) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  // Reset all locks to value 0
+  for (int lockID = 0; lockID < numLocks; lockID++) {
+    XAie_Lock lock;
+    lock.LockId = lockID;
+    lock.LockVal = 0;
+    TRY_XAIE_API_LOGICAL_RESULT(XAie_LockSetValue, &aiert->devInst, tileLoc, lock);
+  }
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetPerfCounters(int col, int row) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  // Reset performance counters in all modules
+  // Try core module counters (if applicable)
+  for (int counterId = 0; counterId < 4; counterId++) {
+    // Ignore errors as not all tiles have all counter types
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_CORE_MOD, counterId);
+  }
+  // Try mem module counters
+  for (int counterId = 0; counterId < 4; counterId++) {
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_MEM_MOD, counterId);
+  }
+  // Try PL module counters (for shim tiles)
+  for (int counterId = 0; counterId < 4; counterId++) {
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_PL_MOD, counterId);
+  }
   return success();
 }
 
