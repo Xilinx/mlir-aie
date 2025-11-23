@@ -195,6 +195,11 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
+// Trace Event Value Parsing/Printing (handles both string and typed enums)
+mlir::ParseResult parseTraceEvent(mlir::AsmParser &parser,
+                                  mlir::Attribute &result);
+void printTraceEventEnum(mlir::AsmPrinter &printer, mlir::Attribute attr);
+
 } // namespace xilinx::AIE
 
 // include TableGen generated Op definitions
