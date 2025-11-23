@@ -5,7 +5,7 @@ OUTPUT_CSV="benchmark_results.csv"
 # Write CSV header
 echo "variant,iteration,time_us" > "$OUTPUT_CSV"
 
-VARIANTS=("separate_xclbins" "runlist" "fused_transactions_loadpdi")
+VARIANTS=("separate_xclbins" "runlist" "fused_transactions_loadpdi" "fused_transactions_write32s")
 
 for variant in "${VARIANTS[@]}"; do
     echo "Running benchmark for $variant..." >&2

@@ -141,7 +141,7 @@ int main(int argc, const char *argv[]) {
 
   // Output CSV format: variant,iteration,time_us
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    std::cout << "fused_transactions_loadpdi," << i << "," << iteration_times[i] << std::endl;
+    std::cout << "fused_transactions_write32s," << i << "," << iteration_times[i] << std::endl;
   }
 
   return 0;
