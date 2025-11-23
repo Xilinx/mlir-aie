@@ -215,6 +215,33 @@ private:
       return;
     }
     
+    // Eliminate duplicate writes - keep only the last write to each address
+    // Map from address to the index of the last write to that address
+    DenseMap<uint32_t, size_t> lastWriteIndex;
+    DenseSet<Operation *> supersededOps;  // Operations that are superseded by later writes
+    
+    for (size_t i = 0; i < slice.writes.size(); ++i) {
+      uint32_t addr = slice.writes[i].address;
+      
+      // If there was a previous write to this address, mark it as superseded
+      if (lastWriteIndex.count(addr)) {
+        supersededOps.insert(slice.writes[lastWriteIndex[addr]].op);
+      }
+      
+      lastWriteIndex[addr] = i;
+    }
+    
+    // Filter writes to keep only the last write to each address
+    SmallVector<WriteWord> uniqueWrites;
+    for (size_t i = 0; i < slice.writes.size(); ++i) {
+      if (lastWriteIndex[slice.writes[i].address] == i) {
+        uniqueWrites.push_back(slice.writes[i]);
+      }
+    }
+    
+    // Update slice.writes with unique writes
+    slice.writes = std::move(uniqueWrites);
+    
     // Sort writes by address to enable coalescing
     llvm::sort(slice.writes);
     
@@ -244,7 +271,7 @@ private:
     }
     
     // Track which operations to erase
-    DenseSet<Operation *> toErase;
+    DenseSet<Operation *> toErase = supersededOps;  // Start with superseded ops
     
     // Create blockwrites for each sequence
     for (auto &seq : sequences) {
@@ -267,7 +294,7 @@ private:
     // Special register writes stay in their original positions
     // Nothing to do here - they're already in the IR
     
-    // Erase operations that were coalesced
+    // Erase operations that were coalesced or superseded
     for (auto *op : toErase) {
       op->erase();
     }
