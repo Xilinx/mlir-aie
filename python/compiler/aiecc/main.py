@@ -149,20 +149,26 @@ def _create_aie_lower_to_llvm_pipeline(
 AIE_LOWER_TO_LLVM = _create_aie_lower_to_llvm_pipeline
 
 # pipeline to lower and legalize runtime sequence for NPU
-NPU_LOWERING_PIPELINE = (
-    Pipeline()
-    .add_pass("aie-materialize-runtime-sequences")
-    .Nested(
-        "aie.device",
+def _create_npu_lowering_pipeline(expand_load_pdis=False):
+    pipeline = (
         Pipeline()
-        .add_pass("aie-materialize-bd-chains")
-        .add_pass("aie-substitute-shim-dma-allocations")
-        .add_pass("aie-assign-runtime-sequence-bd-ids")
-        .add_pass("aie-dma-tasks-to-npu")
-        .add_pass("aie-dma-to-npu")
-        .add_pass("aie-lower-set-lock"),
+        .add_pass("aie-materialize-runtime-sequences")
+        .Nested(
+            "aie.device",
+            Pipeline()
+            .add_pass("aie-materialize-bd-chains")
+            .add_pass("aie-substitute-shim-dma-allocations")
+            .add_pass("aie-assign-runtime-sequence-bd-ids")
+            .add_pass("aie-dma-tasks-to-npu")
+            .add_pass("aie-dma-to-npu")
+            .add_pass("aie-lower-set-lock"),
+        )
     )
-)
+    if expand_load_pdis:
+        pipeline = pipeline.add_pass("aie-expand-load-pdi")
+    return pipeline
+
+NPU_LOWERING_PIPELINE = _create_npu_lowering_pipeline()
 
 
 async def read_file_async(file_path: str) -> str:
@@ -965,6 +971,10 @@ class FlowRunner:
         for device_op, device_name in devices:
             sequences = generate_runtime_sequences_list(device_op)
 
+            # Skip devices with no runtime sequences (e.g., @empty device)
+            if not sequences:
+                continue
+
             max_arg_count = max(
                 len(seq_op.body.blocks[0].arguments) for seq_op, seq_name in sequences
             )
@@ -1698,7 +1708,8 @@ class FlowRunner:
                     input_physical_with_elfs_module = Module.parse(
                         await read_file_async(input_physical_with_elfs)
                     )
-                    pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+                    npu_pipeline = _create_npu_lowering_pipeline(opts.expand_load_pdis)
+                    pass_pipeline = npu_pipeline.materialize(module=True)
                     npu_insts_file = self.prepend_tmp(f"npu_insts.mlir")
                     self.progress_bar.update(
                         task3, advance=1, command=pass_pipeline[0:30]
@@ -1709,6 +1720,17 @@ class FlowRunner:
                         npu_insts_file,
                         self.opts.verbose,
                     )
+                    
+                    # If expand_load_pdis is enabled, the pass may have created new devices
+                    # (e.g., @empty), so we need to regenerate the device list from the transformed module
+                    if opts.expand_load_pdis:
+                        devices = generate_devices_list(npu_insts_module)
+                        input_physical_with_expanded = self.prepend_tmp("input_physical_with_expanded.mlir")
+                        await write_file_async(str(npu_insts_module), input_physical_with_expanded)
+                        # Update both input_physical and input_physical_with_elfs to point to the file with expanded devices
+                        input_physical = input_physical_with_expanded
+                        input_physical_with_elfs = input_physical_with_expanded
+                    
                     if opts.generate_full_elf:
                         device_to_id_mapping = create_device_id_mapping(devices)
                         assign_load_pdi_ids(
@@ -1716,6 +1738,7 @@ class FlowRunner:
                         )
                         transformed_mlir_path = self.prepend_tmp("npu_insts_with_pid_ids.mlir")
                         await write_file_async(str(npu_insts_module), transformed_mlir_path)
+                    
                     self.progress_bar.update(task3, advance=1)
 
             # 4.) Generate compilation artifacts for each device

@@ -29,6 +29,17 @@ std::optional<mlir::ModuleOp>
 convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                std::vector<uint8_t> &binary);
 
+// Generate transaction binary and insert configuration operations at a specific point
+mlir::LogicalResult
+generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
+                          mlir::Operation *insertionPoint,
+                          llvm::StringRef clElfDir = "");
+
+// Generate reset operations for tiles in a device and insert them at a specific point
+mlir::LogicalResult
+generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
+                         mlir::Operation *insertionPoint);
+
 } // namespace xilinx::AIE
 
 #endif // AIE_CONVERSION_AIETOCONFIGURATION_AIETOCONFIGURATION_H

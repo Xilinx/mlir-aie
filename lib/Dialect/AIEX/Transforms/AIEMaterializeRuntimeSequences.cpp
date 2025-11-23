@@ -96,12 +96,16 @@ struct InsertLoadPdiForConfigurePattern : RewritePattern {
       return failure();
     }
 
-    Block &configureBlock = configureOp.getBody().front();
-    rewriter.setInsertionPointToStart(&configureBlock);
+    Block *configureBlock;
+    if (configureOp.getBody().empty()) {
+      configureBlock = rewriter.createBlock(&configureOp.getBody());
+    } else {
+      configureBlock = &configureOp.getBody().front();
+    }
+    rewriter.setInsertionPointToStart(configureBlock);
     rewriter.create<AIEX::NpuLoadPdiOp>(
-      configureOp.getLoc(), 
-      FlatSymbolRefAttr::get(referencedDevice.getSymNameAttr())
-    );
+      configureOp.getLoc(),
+      FlatSymbolRefAttr::get(referencedDevice.getSymNameAttr()));
 
     return success();
   }

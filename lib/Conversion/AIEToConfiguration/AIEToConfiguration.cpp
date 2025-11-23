@@ -631,7 +631,8 @@ enum OutputType {
 
 static LogicalResult convertTransactionOpsToMLIR(
     OpBuilder builder, AIE::DeviceOp device, OutputType outputType,
-    std::vector<TransactionBinaryOperation> &operations) {
+    std::vector<TransactionBinaryOperation> &operations,
+    Operation *insertionPoint = nullptr) {
 
   auto loc = builder.getUnknownLoc();
 
@@ -647,9 +648,9 @@ static LogicalResult convertTransactionOpsToMLIR(
     std::vector<uint32_t> data32(d, d + size);
 
     int id = 0;
-    std::string name = "blockwrite_data";
+    std::string name = "config_blockwrite_data";
     while (device.lookupSymbol(name))
-      name = "blockwrite_data_" + std::to_string(id++);
+      name = "config_blockwrite_data_" + std::to_string(id++);
 
     MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
     TensorType tensorType = RankedTensorType::get({size}, builder.getI32Type());
@@ -659,27 +660,32 @@ static LogicalResult convertTransactionOpsToMLIR(
     global_data.push_back(global);
   }
 
-  // search for aiex.configure ops in runtime sequences by walking the device
-  // and collect them in a vector. If there are none, create a new runtime
-  // sequence. Otherwise assume the insertion point is the first aiex.configure
-  // op.
+  // If an explicit insertion point is provided, use it for the config ops
   SmallVector<AIEX::ConfigureOp> configureOps;
-  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
-
-  if (configureOps.empty()) {
-
-    // create aiex.runtime_sequence
-    int id = 0;
-    std::string seq_name = "configure";
-    while (device.lookupSymbol(seq_name))
-      seq_name = "configure" + std::to_string(id++);
-    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
-    seq.getBody().push_back(new Block);
-
-    builder.setInsertionPointToStart(&seq.getBody().front());
+  if (insertionPoint) {
+    builder.setInsertionPointAfter(insertionPoint);
   } else {
-    builder.setInsertionPoint(configureOps.front());
+    // search for aiex.configure ops in runtime sequences by walking the device
+    // and collect them in a vector. If there are none, create a new runtime
+    // sequence. Otherwise assume the insertion point is the first aiex.configure
+    // op.
+    device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
+
+    if (configureOps.empty()) {
+
+      // create aiex.runtime_sequence
+      int id = 0;
+      std::string seq_name = "configure";
+      while (device.lookupSymbol(seq_name))
+        seq_name = "configure" + std::to_string(id++);
+      StringAttr seq_sym_name = builder.getStringAttr(seq_name);
+      auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
+      seq.getBody().push_back(new Block);
+
+      builder.setInsertionPointToStart(&seq.getBody().front());
+    } else {
+      builder.setInsertionPoint(configureOps.front());
+    }
   }
 
   // create the txn ops
@@ -696,7 +702,7 @@ static LogicalResult convertTransactionOpsToMLIR(
     llvm_unreachable("bad output type");
   }
 
-  if (!configureOps.empty()) {
+  if (!configureOps.empty() && !insertionPoint) {
     // splice the body into the current insertion point
     builder.getBlock()->getOperations().splice(
         builder.getInsertionPoint(),
@@ -849,4 +855,145 @@ xilinx::AIE::createConvertAIEToTransactionPass() {
 std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
 xilinx::AIE::createConvertAIEToControlPacketsPass() {
   return std::make_unique<ConvertAIEToControlPacketsPass>();
+}
+
+// Public API to generate transaction binary and insert configuration ops
+mlir::LogicalResult
+xilinx::AIE::generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
+                                        mlir::Operation *insertionPoint,
+                                        llvm::StringRef clElfDir) {
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)device.getTargetModel();
+
+  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
+    return failure();
+
+  bool aieSim = false;
+  bool xaieDebug = false;
+
+  AIERTControl ctl(targetModel);
+  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
+    return failure();
+
+  // start collecting transactions
+  ctl.startTransaction();
+
+  bool generateElfs = true;
+  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
+                                  true, true)))
+    return failure();
+
+  // Export the transactions to a binary buffer
+  std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
+
+  // parse the binary data
+  std::vector<TransactionBinaryOperation> operations;
+  if (!parseTransactionBinary(txn_data, operations)) {
+    llvm::errs() << "Failed to parse binary\n";
+    return failure();
+  }
+
+  // Get the parent device for the insertion point
+  auto parentDevice = insertionPoint->getParentOfType<AIE::DeviceOp>();
+  if (!parentDevice) {
+    llvm::errs() << "Insertion point must be within a DeviceOp\n";
+    return failure();
+  }
+
+  OpBuilder builder(parentDevice.getBodyRegion());
+
+  // convert the parsed ops to MLIR, inserting after the provided point
+  if (failed(convertTransactionOpsToMLIR(builder, parentDevice,
+                                         OutputType::Transaction, operations,
+                                         insertionPoint)))
+    return failure();
+
+  return success();
+}
+
+// Generate reset operations for all tiles used in the device
+mlir::LogicalResult
+xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
+                                       mlir::Operation *insertionPoint) {
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)device.getTargetModel();
+
+  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
+    return failure();
+
+  AIERTControl ctl(targetModel);
+  bool aieSim = false;
+  bool xaieDebug = false;
+
+  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
+    return failure();
+
+  ctl.startTransaction();
+
+  // Reset all tiles in the device using target model dimensions
+  int numCols = targetModel.columns();
+  int numRows = targetModel.rows();
+
+  // Reset cores and DMAs first
+  for (int col = 0; col < numCols; col++) {
+    for (int row = 0; row < numRows; row++) {
+      if (targetModel.isShimNOCTile(col, row)) {
+        // Shim NOC tiles - reset switches and perf counters
+        if (failed(ctl.resetSwitch(col, row)))
+          return failure();
+      } else if (targetModel.isMemTile(col, row)) {
+        // Mem tiles - reset DMA, switches, locks, perf counters
+        if (failed(ctl.resetDMA(col, row, false)))
+          return failure();
+        if (failed(ctl.resetSwitch(col, row)))
+          return failure();
+        if (failed(ctl.resetLocks(col, row, 64)))
+          return failure();
+      } else if (targetModel.isCoreTile(col, row)) {
+        // Core tiles - reset core, DMA, switches, locks, perf counters
+        if (failed(ctl.resetCore(col, row)))
+          return failure();
+        if (failed(ctl.resetDMA(col, row, false)))
+          return failure();
+        if (failed(ctl.resetSwitch(col, row)))
+          return failure();
+        if (failed(ctl.resetLocks(col, row, 16)))
+          return failure();
+        // Unreset the core after resetting
+        // if (failed(ctl.resetCoreUnreset(col, row)))
+        //   return failure();
+      }
+    }
+  }
+
+  // Reset partition - now uses direct register writes instead of XAie_RunOp
+  // if (failed(ctl.resetPartition()))
+  //   return failure();
+
+  // Export the reset transactions
+  std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
+
+  // Parse the binary data
+  std::vector<TransactionBinaryOperation> operations;
+  if (!parseTransactionBinary(txn_data, operations)) {
+    llvm::errs() << "Failed to parse reset transaction binary\n";
+    return failure();
+  }
+
+  // Get the parent device for the insertion point
+  auto parentDevice = insertionPoint->getParentOfType<AIE::DeviceOp>();
+  if (!parentDevice) {
+    llvm::errs() << "Insertion point must be within a DeviceOp\n";
+    return failure();
+  }
+
+  OpBuilder builder(parentDevice.getBodyRegion());
+
+  // Convert the parsed reset ops to MLIR, inserting after the provided point
+  if (failed(convertTransactionOpsToMLIR(builder, parentDevice,
+                                         OutputType::Transaction, operations,
+                                         insertionPoint)))
+    return failure();
+
+  return success();
 }

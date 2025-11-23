@@ -46,6 +46,13 @@ struct AIERTControl {
   void startTransaction();
   void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId);
   std::vector<uint8_t> exportSerializedTransaction();
+  mlir::LogicalResult resetPartition();
+  mlir::LogicalResult resetDMA(int col, int row, bool on);
+  mlir::LogicalResult resetCore(int col, int row);
+  mlir::LogicalResult resetCoreUnreset(int col, int row);
+  mlir::LogicalResult resetSwitch(int col, int row);
+  mlir::LogicalResult resetLocks(int col, int row, int numLocks);
+  mlir::LogicalResult resetPerfCounters(int col, int row);
 
 private:
   const AIETargetModel &targetModel;
