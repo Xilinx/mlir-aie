@@ -454,6 +454,14 @@ def parse_args(args=None):
         action="store_true",
         help="Expand load_pdi operations into explicit device reset and configuration sequences",
     )
+    parser.add_argument(
+        "--no-coalesce-write32s",
+        dest="coalesce_write32s",
+        default=True,
+        action="store_const",
+        const=False,
+        help="Do not coalesce write32 operations into blockwrites in the NPU instruction sequence",
+    )
 
     opts = parser.parse_args(args)
     return opts
