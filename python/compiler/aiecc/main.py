@@ -1737,7 +1737,7 @@ class FlowRunner:
                         reset_switches_mode=opts.reset_switches_mode,
                         reset_locks_tiles=opts.reset_locks_tiles,
                         reset_locks_mode=opts.reset_locks_mode,
-                        opts.coalesce_write32s
+                        coalesce_write32s=opts.coalesce_write32s
                     )
                     pass_pipeline = npu_pipeline.materialize(module=True)
                     npu_insts_file = self.prepend_tmp(f"npu_insts.mlir")
