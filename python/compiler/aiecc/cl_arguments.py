@@ -171,6 +171,42 @@ def parse_args(args=None):
         help="Use packet switched flows when lowering object fifos",
     )
     parser.add_argument(
+        "--reset-dmas-tiles",
+        dest="reset_dmas_tiles",
+        default="",
+        help="Comma-separated list of tile types to reset DMAs for (shim,mem,core)",
+    )
+    parser.add_argument(
+        "--reset-dmas-mode",
+        dest="reset_dmas_mode",
+        default="never",
+        help="When to reset DMAs: never, ifused, ifchanged, always",
+    )
+    parser.add_argument(
+        "--reset-switches-tiles",
+        dest="reset_switches_tiles",
+        default="",
+        help="Comma-separated list of tile types to reset switches for (shim,mem,core)",
+    )
+    parser.add_argument(
+        "--reset-switches-mode",
+        dest="reset_switches_mode",
+        default="never",
+        help="When to reset switches: never, ifused, ifchanged, always",
+    )
+    parser.add_argument(
+        "--reset-locks-tiles",
+        dest="reset_locks_tiles",
+        default="",
+        help="Comma-separated list of tile types to reset locks for (mem,core)",
+    )
+    parser.add_argument(
+        "--reset-locks-mode",
+        dest="reset_locks_mode",
+        default="never",
+        help="When to reset locks: never, ifused, ifchanged, always",
+    )
+    parser.add_argument(
         "host_args",
         action="store",
         help="arguments for host compiler",
