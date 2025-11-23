@@ -1056,7 +1056,7 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
       return dma1 == dma2;
     
     // For MemOp, MemTileDMAOp, ShimDMAOp, compare their contained operations
-    // This is a simplified structural comparison
+    // This is a structural comparison including attributes
     auto &region1 = dma1->getRegion(0);
     auto &region2 = dma2->getRegion(0);
     
@@ -1076,8 +1076,23 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
     auto it2 = ops2.begin();
     
     while (it1 != ops1.end() && it2 != ops2.end()) {
+      // Check operation names match
       if (it1->getName() != it2->getName())
         return false;
+      
+      // Check all attributes match
+      auto attrs1 = it1->getAttrs();
+      auto attrs2 = it2->getAttrs();
+      
+      if (attrs1.size() != attrs2.size())
+        return false;
+      
+      for (auto attr1 : attrs1) {
+        auto attr2 = it2->getAttr(attr1.getName());
+        if (!attr2 || attr1.getValue() != attr2)
+          return false;
+      }
+      
       ++it1;
       ++it2;
     }
