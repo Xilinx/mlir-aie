@@ -911,10 +911,26 @@ xilinx::AIE::generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
   return success();
 }
 
+// Version without previous device (first load)
+mlir::LogicalResult
+xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
+                                       mlir::Operation *insertionPoint,
+                                       ResetConfig dmaConfig,
+                                       ResetConfig switchConfig,
+                                       ResetConfig lockConfig) {
+  // Call the full version with a null DeviceOp
+  return generateAndInsertResetOps(device, insertionPoint, dmaConfig,
+                                  switchConfig, lockConfig, nullptr);
+}
+
 // Generate reset operations for all tiles used in the device
 mlir::LogicalResult
 xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
-                                       mlir::Operation *insertionPoint) {
+                                       mlir::Operation *insertionPoint,
+                                       ResetConfig dmaConfig,
+                                       ResetConfig switchConfig,
+                                       ResetConfig lockConfig,
+                                       xilinx::AIE::DeviceOp previousDevice) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -930,45 +946,413 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
 
   ctl.startTransaction();
 
-  // Reset all tiles in the device using target model dimensions
   int numCols = targetModel.columns();
   int numRows = targetModel.rows();
 
-  // Reset cores and DMAs first
-  for (int col = 0; col < numCols; col++) {
-    for (int row = 0; row < numRows; row++) {
-      if (targetModel.isShimNOCTile(col, row)) {
-        // Shim NOC tiles - reset switches and perf counters
-        if (failed(ctl.resetSwitch(col, row)))
-          return failure();
-      } else if (targetModel.isMemTile(col, row)) {
-        // Mem tiles - reset DMA, switches, locks, perf counters
-        if (failed(ctl.resetDMA(col, row, false)))
-          return failure();
-        if (failed(ctl.resetSwitch(col, row)))
-          return failure();
-        if (failed(ctl.resetLocks(col, row, 64)))
-          return failure();
-      } else if (targetModel.isCoreTile(col, row)) {
-        // Core tiles - reset core, DMA, switches, locks, perf counters
-        if (failed(ctl.resetCore(col, row)))
-          return failure();
-        if (failed(ctl.resetDMA(col, row, false)))
-          return failure();
-        if (failed(ctl.resetSwitch(col, row)))
-          return failure();
-        if (failed(ctl.resetLocks(col, row, 16)))
-          return failure();
-        // Unreset the core after resetting
-        // if (failed(ctl.resetCoreUnreset(col, row)))
-        //   return failure();
+  // Helper function to compare two switchbox ops for equivalence
+  auto switchboxesEquivalent = [](SwitchboxOp sb1, SwitchboxOp sb2) -> bool {
+    if (!sb1 || !sb2)
+      return sb1 == sb2; // Both null means equivalent
+    
+    // Compare all connection ops
+    auto conns1 = sb1.getOps<ConnectOp>();
+    auto conns2 = sb2.getOps<ConnectOp>();
+    
+    llvm::SmallVector<ConnectOp> vec1(conns1.begin(), conns1.end());
+    llvm::SmallVector<ConnectOp> vec2(conns2.begin(), conns2.end());
+    
+    if (vec1.size() != vec2.size())
+      return false;
+    
+    // Sort by source/dest to make comparison order-independent
+    auto connComparator = [](ConnectOp a, ConnectOp b) {
+      if (a.getSourceBundle() != b.getSourceBundle())
+        return static_cast<int>(a.getSourceBundle()) < static_cast<int>(b.getSourceBundle());
+      if (a.getSourceChannel() != b.getSourceChannel())
+        return a.getSourceChannel() < b.getSourceChannel();
+      if (a.getDestBundle() != b.getDestBundle())
+        return static_cast<int>(a.getDestBundle()) < static_cast<int>(b.getDestBundle());
+      return a.getDestChannel() < b.getDestChannel();
+    };
+    
+    llvm::sort(vec1, connComparator);
+    llvm::sort(vec2, connComparator);
+    
+    for (size_t i = 0; i < vec1.size(); ++i) {
+      if (vec1[i].getSourceBundle() != vec2[i].getSourceBundle() ||
+          vec1[i].getSourceChannel() != vec2[i].getSourceChannel() ||
+          vec1[i].getDestBundle() != vec2[i].getDestBundle() ||
+          vec1[i].getDestChannel() != vec2[i].getDestChannel())
+        return false;
+    }
+    
+    return true;
+  };
+
+  // Helper function to compare two core ops for equivalence
+  auto coresEquivalent = [](CoreOp c1, CoreOp c2) -> bool {
+    if (!c1 || !c2)
+      return c1 == c2; // Both null means equivalent
+    
+    // Compare ELF files
+    auto elf1 = c1.getElfFileAttr();
+    auto elf2 = c2.getElfFileAttr();
+    
+    if (elf1 && elf2)
+      return elf1 == elf2;
+    
+    return !elf1 && !elf2;
+  };
+
+  // Helper function to compare DMA configuration for equivalence
+  auto dmasEquivalent = [](Operation *dma1, Operation *dma2) -> bool {
+    if (!dma1 || !dma2)
+      return dma1 == dma2;
+    
+    // For MemOp, MemTileDMAOp, ShimDMAOp, compare their contained operations
+    // This is a simplified structural comparison
+    auto &region1 = dma1->getRegion(0);
+    auto &region2 = dma2->getRegion(0);
+    
+    if (region1.empty() != region2.empty())
+      return false;
+    
+    if (region1.empty())
+      return true;
+    
+    auto &block1 = region1.front();
+    auto &block2 = region2.front();
+    
+    auto ops1 = block1.without_terminator();
+    auto ops2 = block2.without_terminator();
+    
+    auto it1 = ops1.begin();
+    auto it2 = ops2.begin();
+    
+    while (it1 != ops1.end() && it2 != ops2.end()) {
+      if (it1->getName() != it2->getName())
+        return false;
+      ++it1;
+      ++it2;
+    }
+    
+    return it1 == ops1.end() && it2 == ops2.end();
+  };
+
+  // Helper lambda to check if a tile is used in the device
+  auto isTileUsed = [&](int col, int row) -> bool {
+    for (auto tileOp : device.getOps<TileOp>()) {
+      if (tileOp.colIndex() == col && tileOp.rowIndex() == row) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper lambda to check if a tile has a core
+  auto hasCoreOp = [&](int col, int row) -> bool {
+    for (auto coreOp : device.getOps<CoreOp>()) {
+      auto tileOp = cast<TileOp>(coreOp.getTile().getDefiningOp());
+      if (tileOp.colIndex() == col && tileOp.rowIndex() == row) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper lambda to check if a tile has a switchbox
+  auto hasSwitchboxOp = [&](int col, int row) -> bool {
+    for (auto switchboxOp : device.getOps<SwitchboxOp>()) {
+      auto tileOp = cast<TileOp>(switchboxOp.getTile().getDefiningOp());
+      if (tileOp.colIndex() == col && tileOp.rowIndex() == row) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper lambda to check if a tile has locks
+  auto hasLockOp = [&](int col, int row) -> bool {
+    for (auto lockOp : device.getOps<LockOp>()) {
+      auto tileOp = cast<TileOp>(lockOp.getTile().getDefiningOp());
+      if (tileOp.colIndex() == col && tileOp.rowIndex() == row) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Helper functions to find ops in previous device
+  auto findPreviousSwitchbox = [&](int col, int row) -> SwitchboxOp {
+    if (!previousDevice)
+      return nullptr;
+    for (auto sb : previousDevice.getOps<SwitchboxOp>()) {
+      auto tile = cast<TileOp>(sb.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return sb;
+    }
+    return nullptr;
+  };
+
+  auto findPreviousCore = [&](int col, int row) -> CoreOp {
+    if (!previousDevice)
+      return nullptr;
+    for (auto core : previousDevice.getOps<CoreOp>()) {
+      auto tile = cast<TileOp>(core.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return core;
+    }
+    return nullptr;
+  };
+
+  auto findPreviousDMA = [&](int col, int row) -> Operation* {
+    if (!previousDevice)
+      return nullptr;
+    // Check MemOp
+    for (auto mem : previousDevice.getOps<MemOp>()) {
+      auto tile = cast<TileOp>(mem.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return mem.getOperation();
+    }
+    // Check MemTileDMAOp
+    for (auto mem : previousDevice.getOps<MemTileDMAOp>()) {
+      auto tile = cast<TileOp>(mem.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return mem.getOperation();
+    }
+    // Check ShimDMAOp
+    for (auto shim : previousDevice.getOps<ShimDMAOp>()) {
+      auto tile = cast<TileOp>(shim.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return shim.getOperation();
+    }
+    return nullptr;
+  };
+
+  auto findCurrentSwitchbox = [&](int col, int row) -> SwitchboxOp {
+    for (auto sb : device.getOps<SwitchboxOp>()) {
+      auto tile = cast<TileOp>(sb.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return sb;
+    }
+    return nullptr;
+  };
+
+  auto findCurrentCore = [&](int col, int row) -> CoreOp {
+    for (auto core : device.getOps<CoreOp>()) {
+      auto tile = cast<TileOp>(core.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return core;
+    }
+    return nullptr;
+  };
+
+  auto findCurrentDMA = [&](int col, int row) -> Operation* {
+    // Check MemOp
+    for (auto mem : device.getOps<MemOp>()) {
+      auto tile = cast<TileOp>(mem.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return mem.getOperation();
+    }
+    // Check MemTileDMAOp
+    for (auto mem : device.getOps<MemTileDMAOp>()) {
+      auto tile = cast<TileOp>(mem.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return mem.getOperation();
+    }
+    // Check ShimDMAOp
+    for (auto shim : device.getOps<ShimDMAOp>()) {
+      auto tile = cast<TileOp>(shim.getTile().getDefiningOp());
+      if (tile.colIndex() == col && tile.rowIndex() == row)
+        return shim.getOperation();
+    }
+    return nullptr;
+  };
+
+  // Build tile lists for DMA resets
+  std::vector<std::pair<int, int>> dmaTiles;
+  if (dmaConfig.mode != ResetMode::Never) {
+    for (int col = 0; col < numCols; col++) {
+      for (int row = 0; row < numRows; row++) {
+        bool shouldReset = false;
+        
+        if (targetModel.isMemTile(col, row) && hasFlag(dmaConfig.tileType, ResetTileType::MemTile)) {
+          if (dmaConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (dmaConfig.mode == ResetMode::IfUsed) {
+            shouldReset = isTileUsed(col, row);
+          } else if (dmaConfig.mode == ResetMode::IfChanged) {
+            auto currentDMA = findCurrentDMA(col, row);
+            auto prevDMA = findPreviousDMA(col, row);
+            shouldReset = currentDMA && !dmasEquivalent(currentDMA, prevDMA);
+          }
+        } else if (targetModel.isCoreTile(col, row) && hasFlag(dmaConfig.tileType, ResetTileType::CoreTile)) {
+          if (dmaConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (dmaConfig.mode == ResetMode::IfUsed) {
+            shouldReset = isTileUsed(col, row);
+          } else if (dmaConfig.mode == ResetMode::IfChanged) {
+            auto currentDMA = findCurrentDMA(col, row);
+            auto prevDMA = findPreviousDMA(col, row);
+            shouldReset = currentDMA && !dmasEquivalent(currentDMA, prevDMA);
+          }
+        } else if (targetModel.isShimNOCTile(col, row) && hasFlag(dmaConfig.tileType, ResetTileType::ShimNOC)) {
+          if (dmaConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (dmaConfig.mode == ResetMode::IfUsed) {
+            shouldReset = isTileUsed(col, row);
+          } else if (dmaConfig.mode == ResetMode::IfChanged) {
+            auto currentDMA = findCurrentDMA(col, row);
+            auto prevDMA = findPreviousDMA(col, row);
+            shouldReset = currentDMA && !dmasEquivalent(currentDMA, prevDMA);
+          }
+        }
+        
+        if (shouldReset) {
+          dmaTiles.push_back({col, row});
+        }
       }
     }
   }
 
-  // Reset partition - now uses direct register writes instead of XAie_RunOp
-  // if (failed(ctl.resetPartition()))
-  //   return failure();
+  // Build tile lists for switch resets
+  std::vector<std::pair<int, int>> switchTiles;
+  if (switchConfig.mode != ResetMode::Never) {
+    for (int col = 0; col < numCols; col++) {
+      for (int row = 0; row < numRows; row++) {
+        bool shouldReset = false;
+        
+        if (targetModel.isMemTile(col, row) && hasFlag(switchConfig.tileType, ResetTileType::MemTile)) {
+          if (switchConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (switchConfig.mode == ResetMode::IfUsed) {
+            shouldReset = isTileUsed(col, row) && hasSwitchboxOp(col, row);
+          } else if (switchConfig.mode == ResetMode::IfChanged) {
+            auto currentSB = findCurrentSwitchbox(col, row);
+            auto prevSB = findPreviousSwitchbox(col, row);
+            shouldReset = currentSB && !switchboxesEquivalent(currentSB, prevSB);
+          }
+        } else if (targetModel.isCoreTile(col, row) && hasFlag(switchConfig.tileType, ResetTileType::CoreTile)) {
+          if (switchConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (switchConfig.mode == ResetMode::IfUsed) {
+            shouldReset = isTileUsed(col, row) && hasSwitchboxOp(col, row);
+          } else if (switchConfig.mode == ResetMode::IfChanged) {
+            auto currentSB = findCurrentSwitchbox(col, row);
+            auto prevSB = findPreviousSwitchbox(col, row);
+            shouldReset = currentSB && !switchboxesEquivalent(currentSB, prevSB);
+          }
+        } else if (targetModel.isShimNOCTile(col, row) && hasFlag(switchConfig.tileType, ResetTileType::ShimNOC)) {
+          if (switchConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (switchConfig.mode == ResetMode::IfUsed) {
+            shouldReset = isTileUsed(col, row) && hasSwitchboxOp(col, row);
+          } else if (switchConfig.mode == ResetMode::IfChanged) {
+            auto currentSB = findCurrentSwitchbox(col, row);
+            auto prevSB = findPreviousSwitchbox(col, row);
+            shouldReset = currentSB && !switchboxesEquivalent(currentSB, prevSB);
+          }
+        }
+        
+        if (shouldReset) {
+          switchTiles.push_back({col, row});
+        }
+      }
+    }
+  }
+
+  // Build tile lists for lock resets
+  std::vector<std::tuple<int, int, int>> lockTiles;  // col, row, numLocks
+  if (lockConfig.mode != ResetMode::Never) {
+    for (int col = 0; col < numCols; col++) {
+      for (int row = 0; row < numRows; row++) {
+        bool shouldReset = false;
+        int numLocks = 0;
+        
+        if (targetModel.isMemTile(col, row) && hasFlag(lockConfig.tileType, ResetTileType::MemTile)) {
+          numLocks = 64;
+          if (lockConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (lockConfig.mode == ResetMode::IfUsed) {
+            shouldReset = isTileUsed(col, row) && hasLockOp(col, row);
+          } else if (lockConfig.mode == ResetMode::IfChanged) {
+            // For locks, we reset if the tile configuration changed (conservative)
+            auto currentDMA = findCurrentDMA(col, row);
+            auto prevDMA = findPreviousDMA(col, row);
+            shouldReset = currentDMA && !dmasEquivalent(currentDMA, prevDMA);
+          }
+        } else if (targetModel.isCoreTile(col, row) && hasFlag(lockConfig.tileType, ResetTileType::CoreTile)) {
+          numLocks = 16;
+          if (lockConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (lockConfig.mode == ResetMode::IfUsed) {
+            shouldReset = isTileUsed(col, row) && hasLockOp(col, row);
+          } else if (lockConfig.mode == ResetMode::IfChanged) {
+            // For locks, we reset if the tile configuration changed (conservative)
+            auto currentDMA = findCurrentDMA(col, row);
+            auto prevDMA = findPreviousDMA(col, row);
+            shouldReset = currentDMA && !dmasEquivalent(currentDMA, prevDMA);
+          }
+        }
+        
+        if (shouldReset && numLocks > 0) {
+          lockTiles.push_back({col, row, numLocks});
+        }
+      }
+    }
+  }
+
+  // Build tile list for core resets (cores need special handling)
+  std::vector<std::pair<int, int>> coreTiles;
+  if (hasFlag(dmaConfig.tileType, ResetTileType::CoreTile) || 
+      hasFlag(switchConfig.tileType, ResetTileType::CoreTile) ||
+      hasFlag(lockConfig.tileType, ResetTileType::CoreTile)) {
+    for (int col = 0; col < numCols; col++) {
+      for (int row = 0; row < numRows; row++) {
+        if (targetModel.isCoreTile(col, row)) {
+          // For cores, we check if there's a CoreOp rather than just a TileOp
+          bool shouldReset = false;
+          if (dmaConfig.mode == ResetMode::Always || switchConfig.mode == ResetMode::Always || lockConfig.mode == ResetMode::Always) {
+            shouldReset = true;
+          } else if (dmaConfig.mode == ResetMode::IfUsed || switchConfig.mode == ResetMode::IfUsed || lockConfig.mode == ResetMode::IfUsed) {
+            shouldReset = hasCoreOp(col, row);
+          } else if (dmaConfig.mode == ResetMode::IfChanged || switchConfig.mode == ResetMode::IfChanged || lockConfig.mode == ResetMode::IfChanged) {
+            auto currentCore = findCurrentCore(col, row);
+            auto prevCore = findPreviousCore(col, row);
+            shouldReset = currentCore && !coresEquivalent(currentCore, prevCore);
+          }
+          
+          if (shouldReset) {
+            coreTiles.push_back({col, row});
+          }
+        }
+      }
+    }
+  }
+
+  // Perform core resets
+  for (auto [col, row] : coreTiles) {
+    if (failed(ctl.resetCore(col, row)))
+      return failure();
+  }
+
+  // Perform DMA resets
+  for (auto [col, row] : dmaTiles) {
+    if (failed(ctl.resetDMA(col, row, false)))
+      return failure();
+  }
+
+  // Perform switch resets
+  for (auto [col, row] : switchTiles) {
+    if (failed(ctl.resetSwitch(col, row)))
+      return failure();
+  }
+
+  // Perform lock resets
+  for (auto [col, row, numLocks] : lockTiles) {
+    if (failed(ctl.resetLocks(col, row, numLocks)))
+      return failure();
+  }
 
   // Export the reset transactions
   std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();

@@ -7,6 +7,21 @@
 // (c) Copyright 2025 Advanced Micro Devices Inc.
 //
 //===----------------------------------------------------------------------===//
+//
+// This pass expands `npu.load_pdi` operations that reference a device into:
+// 1. An empty device PDI load
+// 2. Optional reset operations based on command-line configuration
+// 3. Explicit configuration operations (write32/blockwrite)
+//
+// Example command-line usage:
+//   aie-opt --aie-expand-load-pdi \
+//     --reset-switches-tiles=shim,mem,core \
+//     --reset-switches-mode=ifused \
+//     --reset-locks-tiles=mem,core \
+//     --reset-locks-mode=always \
+//     input.mlir
+//
+//===----------------------------------------------------------------------===//
 
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -19,16 +34,66 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
+
 #define DEBUG_TYPE "aie-expand-load-pdi"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
+using namespace xilinx::AIE;
 
 namespace {
 
+// Helper function to parse tile types from comma-separated string
+static ResetTileType parseTileTypes(llvm::StringRef str) {
+  if (str.empty())
+    return ResetTileType::None;
+    
+  ResetTileType result = ResetTileType::None;
+  llvm::SmallVector<llvm::StringRef> tokens;
+  str.split(tokens, ',', -1, false);
+  
+  for (auto token : tokens) {
+    token = token.trim();
+    if (token == "shim" || token == "shimnoc")
+      result = result | ResetTileType::ShimNOC;
+    else if (token == "mem" || token == "memtile")
+      result = result | ResetTileType::MemTile;
+    else if (token == "core" || token == "coretile")
+      result = result | ResetTileType::CoreTile;
+    else if (token == "all")
+      result = ResetTileType::All;
+  }
+  
+  return result;
+}
+
+// Helper function to parse reset mode from string
+static ResetMode parseResetMode(llvm::StringRef str) {
+  auto trimmed = str.trim().lower();
+  if (trimmed == "never")
+    return ResetMode::Never;
+  else if (trimmed == "ifused" || trimmed == "if-used")
+    return ResetMode::IfUsed;
+  else if (trimmed == "ifchanged" || trimmed == "if-changed")
+    return ResetMode::IfChanged;
+  else if (trimmed == "always" || trimmed == "all")
+    return ResetMode::Always;
+  else
+    return ResetMode::Never;
+}
+
 struct ExpandLoadPdiPattern : public OpRewritePattern<NpuLoadPdiOp> {
-  using OpRewritePattern<NpuLoadPdiOp>::OpRewritePattern;
+  const ResetConfig dmaConfig;
+  const ResetConfig switchConfig;
+  const ResetConfig lockConfig;
+  mutable AIE::DeviceOp previousDevice;
+  
+  ExpandLoadPdiPattern(MLIRContext *context, ResetConfig dma, ResetConfig sw, ResetConfig lock)
+      : OpRewritePattern<NpuLoadPdiOp>(context), 
+        dmaConfig(dma), switchConfig(sw), lockConfig(lock), previousDevice(nullptr) {}
 
   LogicalResult matchAndRewrite(NpuLoadPdiOp loadPdiOp,
                                 PatternRewriter &rewriter) const override {
@@ -53,54 +118,67 @@ struct ExpandLoadPdiPattern : public OpRewritePattern<NpuLoadPdiOp> {
     if (referencedDevice.getSymName().starts_with("empty"))
       return failure();
 
-    // Create a unique empty device for this reset to avoid PDI address caching
-    OpBuilder::InsertionGuard guard(rewriter);
-    rewriter.setInsertionPointToStart(moduleOp.getBody());
+    // Determine if this is the first load_pdi (no previous device)
+    bool isFirstLoadPdi = !previousDevice;
     
-    // Find a unique name for the empty device
-    std::string emptyName;
-    int emptyIndex = 0;
-    do {
-      emptyName = "empty_" + std::to_string(emptyIndex++);
-    } while (moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName));
-    
-    auto deviceType = referencedDevice.getDevice();
-    auto loc = rewriter.getUnknownLoc();
-    auto emptyDevice = rewriter.create<AIE::DeviceOp>(
-        loc, deviceType, rewriter.getStringAttr(emptyName));
-    emptyDevice.getRegion().emplaceBlock();
-    
-    // Add empty cores in all columns to trigger column reset
-    Block *deviceBlock = &emptyDevice.getRegion().front();
-    
-    //const auto &targetModel = referencedDevice.getTargetModel();
-    //int numCols = targetModel.columns();
-    //for (int col = 0; col < numCols; col++) {
-    //  rewriter.setInsertionPointToEnd(deviceBlock);
-    //  auto tile = rewriter.create<AIE::TileOp>(loc, col, 2);
-    //  rewriter.setInsertionPointToEnd(deviceBlock);
-    //  auto core = rewriter.create<AIE::CoreOp>(loc, tile.getResult());
-    //  Region &coreRegion = core.getBody();
-    //  Block *coreBlock = rewriter.createBlock(&coreRegion);
-    //  rewriter.setInsertionPointToEnd(coreBlock);
-    //  rewriter.create<AIE::EndOp>(loc);
-    //}
-    rewriter.setInsertionPointToEnd(deviceBlock);
-    rewriter.create<AIE::EndOp>(loc);
+    // For first load_pdi with no reset modes requiring comparison, skip empty device
+    bool needsEmptyDevice = !isFirstLoadPdi || 
+                           dmaConfig.mode != ResetMode::Never || 
+                           switchConfig.mode != ResetMode::Never || 
+                           lockConfig.mode != ResetMode::Never;
 
-    // Create new load_pdi operation referencing the empty device
+    AIE::DeviceOp emptyDevice;
+    if (needsEmptyDevice) {
+      // Create a unique empty device for this reset to avoid PDI address caching
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(moduleOp.getBody());
+      
+      // Find a unique name for the empty device
+      std::string emptyName;
+      int emptyIndex = 0;
+      do {
+        emptyName = "empty_" + std::to_string(emptyIndex++);
+      } while (moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName));
+      
+      auto deviceType = referencedDevice.getDevice();
+      auto loc = rewriter.getUnknownLoc();
+      emptyDevice = rewriter.create<AIE::DeviceOp>(
+          loc, deviceType, rewriter.getStringAttr(emptyName));
+      emptyDevice.getRegion().emplaceBlock();
+      
+      Block *deviceBlock = &emptyDevice.getRegion().front();
+      rewriter.setInsertionPointToEnd(deviceBlock);
+      rewriter.create<AIE::EndOp>(loc);
+    }
+
+    // Create new load_pdi operation
     rewriter.setInsertionPoint(loadPdiOp);
-    auto newLoadPdi = rewriter.create<NpuLoadPdiOp>(
-        loadPdiOp.getLoc(), FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
-        loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
-        loadPdiOp.getAddressAttr());
+    NpuLoadPdiOp newLoadPdi;
+    if (needsEmptyDevice) {
+      newLoadPdi = rewriter.create<NpuLoadPdiOp>(
+          loadPdiOp.getLoc(), FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
+          loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
+          loadPdiOp.getAddressAttr());
+    } else {
+      // First load_pdi with no resets - keep original device reference
+      newLoadPdi = rewriter.create<NpuLoadPdiOp>(
+          loadPdiOp.getLoc(), loadPdiOp.getDeviceRefAttr(),
+          loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
+          loadPdiOp.getAddressAttr());
+    }
 
-    // Generate and insert reset operations after the empty load_pdi
-    // if (failed(xilinx::AIE::generateAndInsertResetOps(
-    //         referencedDevice, newLoadPdi.getOperation()))) {
-    //   loadPdiOp.emitError("Failed to generate reset operations");
-    //   return failure();
-    // }
+    // Generate and insert reset operations (skip for first load_pdi)
+    if (!isFirstLoadPdi && 
+        (dmaConfig.mode != ResetMode::Never || 
+         switchConfig.mode != ResetMode::Never || 
+         lockConfig.mode != ResetMode::Never)) {
+      if (failed(xilinx::AIE::generateAndInsertResetOps(
+              referencedDevice, newLoadPdi.getOperation(),
+              dmaConfig, switchConfig, lockConfig, previousDevice))) {
+        loadPdiOp.emitError("Failed to generate reset operations");
+        return failure();
+      }
+    }
 
     // Generate and insert the configuration operations after the reset ops
     // Find the last operation inserted (which should be from reset ops)
@@ -120,6 +198,9 @@ struct ExpandLoadPdiPattern : public OpRewritePattern<NpuLoadPdiOp> {
     // Remove the original load_pdi operation
     rewriter.eraseOp(loadPdiOp);
 
+    // Update previous device for next load_pdi
+    previousDevice = referencedDevice;
+
     return success();
   }
 };
@@ -133,8 +214,21 @@ struct AIEExpandLoadPdiPass
   void runOnOperation() override {
     auto module = getOperation();
 
+    // Parse reset configurations from command-line options
+    ResetTileType dmaTiles = parseTileTypes(resetDmasTiles);
+    ResetMode dmaMode = parseResetMode(resetDmasMode);
+    ResetConfig dmaConfig(dmaTiles, dmaMode);
+    
+    ResetTileType switchTiles = parseTileTypes(resetSwitchesTiles);
+    ResetMode switchMode = parseResetMode(resetSwitchesMode);
+    ResetConfig switchConfig(switchTiles, switchMode);
+    
+    ResetTileType lockTiles = parseTileTypes(resetLocksTiles);
+    ResetMode lockMode = parseResetMode(resetLocksMode);
+    ResetConfig lockConfig(lockTiles, lockMode);
+
     RewritePatternSet patterns(&getContext());
-    patterns.add<ExpandLoadPdiPattern>(&getContext());
+    patterns.add<ExpandLoadPdiPattern>(&getContext(), dmaConfig, switchConfig, lockConfig);
 
     if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();

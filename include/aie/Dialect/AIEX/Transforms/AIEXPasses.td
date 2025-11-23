@@ -291,5 +291,20 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
+  
+  let options = [
+    Option<"resetDmasTiles", "reset-dmas-tiles", "std::string", "\"\"",
+           "Comma-separated list of tile types to reset DMAs for (shim,mem,core)">,
+    Option<"resetDmasMode", "reset-dmas-mode", "std::string", "\"never\"",
+           "When to reset DMAs: never, ifused, ifchanged, always">,
+    Option<"resetSwitchesTiles", "reset-switches-tiles", "std::string", "\"\"",
+           "Comma-separated list of tile types to reset switches for (shim,mem,core)">,
+    Option<"resetSwitchesMode", "reset-switches-mode", "std::string", "\"never\"",
+           "When to reset switches: never, ifused, ifchanged, always">,
+    Option<"resetLocksTiles", "reset-locks-tiles", "std::string", "\"\"",
+           "Comma-separated list of tile types to reset locks for (mem,core)">,
+    Option<"resetLocksMode", "reset-locks-mode", "std::string", "\"never\"",
+           "When to reset locks: never, ifused, ifchanged, always">,
+  ];
 }
 #endif
