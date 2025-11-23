@@ -38,52 +38,26 @@ using namespace xilinx::AIE;
 
 namespace {
 
-// Represents a write operation that can be either write32 or blockwrite
-struct WriteOp {
-  Operation *op = nullptr;
-  uint32_t address = 0;
-  SmallVector<uint32_t, 8> values;
+// Represents a single 32-bit write to memory
+struct WriteWord {
+  uint32_t address;
+  uint32_t value;
+  Operation *op;  // The original operation that created this write
   
-  WriteOp() = default;
-  WriteOp(NpuWrite32Op w32) : op(w32.getOperation()), address(w32.getAddress()) {
-    values.push_back(w32.getValue());
-  }
-  
-  WriteOp(NpuBlockWriteOp bw) : op(bw.getOperation()) {
-    auto addr = bw.getAbsoluteAddress();
-    if (!addr) return;
-    address = *addr;
-    
-    auto dataWords = bw.getDataWords();
-    if (!dataWords) return;
-    
-    for (auto val : dataWords.getValues<APInt>()) {
-      values.push_back(val.getZExtValue());
-    }
-  }
-  
-  bool isValid() const {
-    return op != nullptr && !values.empty();
-  }
-  
-  size_t numWords() const {
-    return values.size();
+  bool operator<(const WriteWord &other) const {
+    return address < other.address;
   }
 };
 
-// Represents a sequence of consecutive write operations (write32 or blockwrite)
-struct WriteSequence {
-  SmallVector<WriteOp, 0> ops;  // Don't inline - WriteOp is large
-  uint32_t startAddress = 0;
-  SmallVector<uint32_t, 32> values;
-  std::optional<Location> firstLoc;
+// Represents a slice of execution between special register barriers
+// All writes within a slice can be reordered
+struct WriteSlice {
+  SmallVector<WriteWord, 0> writes;  // All writes in this slice (can be reordered)
+  SmallVector<Operation *, 0> specialOps;  // Special register writes (cannot be reordered)
+  SmallVector<Operation *, 0> otherOps;  // Non-write operations that create barriers
   
-  bool isCoalescable() const {
-    return ops.size() >= 2;
-  }
-  
-  size_t size() const {
-    return ops.size();
+  bool isEmpty() const {
+    return writes.empty() && specialOps.empty() && otherOps.empty();
   }
 };
 
@@ -109,154 +83,229 @@ private:
   void coalesceWrite32sInSequence(RuntimeSequenceOp seqOp) {
     OpBuilder builder(seqOp.getContext());
     
-    // Walk through the sequence and find consecutive write operations
+    // Get the device and target model
+    auto deviceOp = seqOp->getParentOfType<AIE::DeviceOp>();
+    if (!deviceOp) return;
+    
+    const auto &tm = deviceOp.getTargetModel();
+    
+    // Walk through the sequence and partition into slices
     for (Block &block : seqOp.getBody()) {
-      SmallVector<WriteSequence> sequences;
-      WriteSequence currentSeq;
-      uint32_t expectedNextAddr = 0;
-      bool inSequence = false;
+      SmallVector<WriteSlice> slices;
+      WriteSlice currentSlice;
       
-      for (Operation &op : llvm::make_early_inc_range(block)) {
-        WriteOp writeOp;
-        
-        // Skip get_global operations as they don't interrupt sequences
+      for (Operation &op : block) {
+        // Skip get_global operations - they don't create barriers
         if (isa<memref::GetGlobalOp>(&op)) {
           continue;
         }
         
+        bool isSpecialWrite = false;
+        
+        // Check if this is a write32 operation
         if (auto write32Op = dyn_cast<NpuWrite32Op>(&op)) {
-          // Check if this write32 has the required attributes
-          // (must have address but no buffer/column/row for coalescing)
-          if (write32Op.getBuffer() || write32Op.getColumn() || 
-              write32Op.getRow()) {
-            // Cannot coalesce symbolic writes
-            if (inSequence && currentSeq.isCoalescable()) {
-              sequences.push_back(currentSeq);
+          // Only handle writes with absolute addresses (no buffer/col/row)
+          if (!write32Op.getBuffer() && !write32Op.getColumn() && 
+              !write32Op.getRow()) {
+            uint32_t addr = write32Op.getAddress();
+            isSpecialWrite = tm.isSpecialRegister(addr);
+            
+            if (isSpecialWrite) {
+              currentSlice.specialOps.push_back(&op);
+            } else {
+              WriteWord word{addr, write32Op.getValue(), &op};
+              currentSlice.writes.push_back(word);
             }
-            currentSeq = WriteSequence();
-            inSequence = false;
-            expectedNextAddr = 0;
-            continue;
-          }
-          
-          writeOp = WriteOp(write32Op);
-        } else if (auto blockWriteOp = dyn_cast<NpuBlockWriteOp>(&op)) {
-          // Check if this blockwrite has the required attributes
-          if (blockWriteOp.getBuffer() || blockWriteOp.getColumn() || 
-              blockWriteOp.getRow()) {
-            // Cannot coalesce symbolic writes
-            if (inSequence && currentSeq.isCoalescable()) {
-              sequences.push_back(currentSeq);
+          } else {
+            // Symbolic write creates a barrier
+            if (!currentSlice.isEmpty()) {
+              slices.push_back(std::move(currentSlice));
+              currentSlice = WriteSlice();
             }
-            currentSeq = WriteSequence();
-            inSequence = false;
-            expectedNextAddr = 0;
-            continue;
+            currentSlice.otherOps.push_back(&op);
           }
-          
-          writeOp = WriteOp(blockWriteOp);
-          if (!writeOp.isValid()) {
-            // Invalid blockwrite (couldn't get address or data), skip coalescing
-            if (inSequence && currentSeq.isCoalescable()) {
-              sequences.push_back(currentSeq);
+        }
+        // Check if this is a blockwrite operation
+        else if (auto blockWriteOp = dyn_cast<NpuBlockWriteOp>(&op)) {
+          // Only handle writes with absolute addresses
+          if (!blockWriteOp.getBuffer() && !blockWriteOp.getColumn() && 
+              !blockWriteOp.getRow()) {
+            auto addr = blockWriteOp.getAbsoluteAddress();
+            auto dataWords = blockWriteOp.getDataWords();
+            
+            if (addr && dataWords) {
+              uint32_t baseAddr = *addr;
+              
+              // Check if any word writes to a special register
+              int64_t numWords = dataWords.size();
+              for (int64_t i = 0; i < numWords; ++i) {
+                if (tm.isSpecialRegister(baseAddr + i * 4)) {
+                  isSpecialWrite = true;
+                  break;
+                }
+              }
+              
+              if (isSpecialWrite) {
+                currentSlice.specialOps.push_back(&op);
+              } else {
+                // Add each word in the blockwrite as a separate WriteWord
+                int64_t idx = 0;
+                for (auto val : dataWords.getValues<APInt>()) {
+                  WriteWord word{
+                    static_cast<uint32_t>(baseAddr + idx * 4),
+                    static_cast<uint32_t>(val.getZExtValue()),
+                    &op
+                  };
+                  currentSlice.writes.push_back(word);
+                  ++idx;
+                }
+              }
+            } else {
+              // Invalid blockwrite creates a barrier
+              if (!currentSlice.isEmpty()) {
+                slices.push_back(std::move(currentSlice));
+                currentSlice = WriteSlice();
+              }
+              currentSlice.otherOps.push_back(&op);
             }
-            currentSeq = WriteSequence();
-            inSequence = false;
-            expectedNextAddr = 0;
-            continue;
+          } else {
+            // Symbolic write creates a barrier
+            if (!currentSlice.isEmpty()) {
+              slices.push_back(std::move(currentSlice));
+              currentSlice = WriteSlice();
+            }
+            currentSlice.otherOps.push_back(&op);
           }
-        } else {
-          // Non-write operation interrupts the sequence
-          if (inSequence && currentSeq.isCoalescable()) {
-            sequences.push_back(currentSeq);
+        }
+        // Any other operation creates a barrier
+        else {
+          if (!currentSlice.isEmpty()) {
+            slices.push_back(std::move(currentSlice));
+            currentSlice = WriteSlice();
           }
-          currentSeq = WriteSequence();
-          inSequence = false;
-          expectedNextAddr = 0;
-          continue;
+          currentSlice.otherOps.push_back(&op);
         }
         
-        // Process the write operation
-        if (!inSequence) {
-          // Start a new sequence
-          currentSeq = WriteSequence();
-          currentSeq.startAddress = writeOp.address;
-          currentSeq.ops.push_back(writeOp);
-          currentSeq.values.append(writeOp.values.begin(), writeOp.values.end());
-          currentSeq.firstLoc = writeOp.op->getLoc();
-          expectedNextAddr = writeOp.address + writeOp.numWords() * 4;
-          inSequence = true;
-        } else if (writeOp.address == expectedNextAddr) {
-          // Continue the sequence
-          currentSeq.ops.push_back(writeOp);
-          currentSeq.values.append(writeOp.values.begin(), writeOp.values.end());
-          expectedNextAddr = writeOp.address + writeOp.numWords() * 4;
-        } else {
-          // Address not contiguous, save current sequence if valid
-          if (currentSeq.isCoalescable()) {
-            sequences.push_back(currentSeq);
-          }
-          // Start a new sequence
-          currentSeq = WriteSequence();
-          currentSeq.startAddress = writeOp.address;
-          currentSeq.ops.push_back(writeOp);
-          currentSeq.values.append(writeOp.values.begin(), writeOp.values.end());
-          currentSeq.firstLoc = writeOp.op->getLoc();
-          expectedNextAddr = writeOp.address + writeOp.numWords() * 4;
+        // Special register writes create slice boundaries
+        if (isSpecialWrite) {
+          slices.push_back(std::move(currentSlice));
+          currentSlice = WriteSlice();
         }
       }
       
-      // Don't forget the last sequence
-      if (inSequence && currentSeq.isCoalescable()) {
-        sequences.push_back(currentSeq);
+      // Don't forget the last slice
+      if (!currentSlice.isEmpty()) {
+        slices.push_back(std::move(currentSlice));
       }
       
-      // Now replace each sequence with a blockwrite
-      for (auto &seq : sequences) {
-        replaceSequenceWithBlockWrite(builder, seq, seqOp);
+      // Now process each slice: sort writes and coalesce
+      for (auto &slice : slices) {
+        processSlice(builder, slice, deviceOp);
       }
     }
   }
   
-  void replaceSequenceWithBlockWrite(OpBuilder &builder, 
-                                     const WriteSequence &seq,
-                                     RuntimeSequenceOp seqOp) {
-    if (seq.ops.empty())
+  void processSlice(OpBuilder &builder, WriteSlice &slice, 
+                    AIE::DeviceOp deviceOp) {
+    // Non-write operations (barriers) are kept in their original positions
+    // Nothing to do here - they're already in the IR
+    
+    // If there are no writes to coalesce, nothing to do
+    if (slice.writes.empty()) {
       return;
+    }
+    
+    // Sort writes by address to enable coalescing
+    llvm::sort(slice.writes);
+    
+    // Find contiguous sequences and coalesce them
+    SmallVector<SmallVector<WriteWord>> sequences;
+    SmallVector<WriteWord> currentSeq;
+    
+    for (auto &write : slice.writes) {
+      if (currentSeq.empty()) {
+        currentSeq.push_back(write);
+      } else if (write.address == currentSeq.back().address + 4) {
+        // Contiguous with previous write
+        currentSeq.push_back(write);
+      } else {
+        // Not contiguous, start new sequence
+        if (currentSeq.size() >= 2) {
+          sequences.push_back(currentSeq);
+        }
+        currentSeq.clear();
+        currentSeq.push_back(write);
+      }
+    }
+    
+    // Don't forget the last sequence
+    if (currentSeq.size() >= 2) {
+      sequences.push_back(currentSeq);
+    }
+    
+    // Track which operations to erase
+    DenseSet<Operation *> toErase;
+    
+    // Create blockwrites for each sequence
+    for (auto &seq : sequences) {
+      createBlockWrite(builder, seq, deviceOp);
       
+      // Mark operations for erasure
+      for (auto &write : seq) {
+        toErase.insert(write.op);
+      }
+    }
+    
+    // For writes that couldn't be coalesced, keep them as write32 ops
+    for (auto &write : slice.writes) {
+      if (!toErase.contains(write.op)) {
+        // This write wasn't coalesced - keep it but possibly reorder
+        // The write is already in the IR, we just need to move it if needed
+      }
+    }
+    
+    // Special register writes stay in their original positions
+    // Nothing to do here - they're already in the IR
+    
+    // Erase operations that were coalesced
+    for (auto *op : toErase) {
+      op->erase();
+    }
+  }
+  
+  void createBlockWrite(OpBuilder &builder, 
+                       const SmallVector<WriteWord> &sequence,
+                       AIE::DeviceOp deviceOp) {
+    if (sequence.empty()) return;
+    
     MLIRContext *ctx = builder.getContext();
-    Location loc = seq.firstLoc.value();
-    
-    // Get or create the module to hold the global
-    auto moduleOp = seqOp->getParentOfType<ModuleOp>();
-    if (!moduleOp)
-      return;
-    
-    // Get the device to hold the global
-    auto deviceOp = seqOp->getParentOfType<AIE::DeviceOp>();
-    if (!deviceOp)
-      return;
+    uint32_t startAddr = sequence[0].address;
     
     // Generate a unique name for the global memref
     static unsigned globalCounter = 0;
     std::string globalName = "coalesced_write32_" + 
-                            std::to_string(seq.startAddress) + "_" +
+                            std::to_string(startAddr) + "_" +
                             std::to_string(globalCounter++);
     
-    // Create memref type: memref<NxI32>
+    // Collect values
+    SmallVector<int32_t> values;
+    for (auto &write : sequence) {
+      values.push_back(static_cast<int32_t>(write.value));
+    }
+    
+    // Create memref type
     auto i32Type = IntegerType::get(ctx, 32);
-    auto memrefType = MemRefType::get({static_cast<int64_t>(seq.values.size())}, 
+    auto memrefType = MemRefType::get({static_cast<int64_t>(values.size())}, 
                                      i32Type);
     
     // Create DenseIntElementsAttr for initial values
-    SmallVector<int32_t> signedValues;
-    for (uint32_t val : seq.values) {
-      signedValues.push_back(static_cast<int32_t>(val));
-    }
-    auto tensorType = RankedTensorType::get({static_cast<int64_t>(seq.values.size())}, 
+    auto tensorType = RankedTensorType::get({static_cast<int64_t>(values.size())}, 
                                            i32Type);
     auto valuesAttr = DenseElementsAttr::get<int32_t>(
-        tensorType, ArrayRef<int32_t>(signedValues));
+        tensorType, ArrayRef<int32_t>(values));
+    
+    // Get location from first operation
+    Location loc = sequence[0].op->getLoc();
     
     // Insert the global at the beginning of the device
     builder.setInsertionPointToStart(deviceOp.getBody());
@@ -269,24 +318,19 @@ private:
         /*constant=*/true,
         /*alignment=*/nullptr);
     
-    // Create a GetGlobalOp and BlockWriteOp at the position of the first operation
-    builder.setInsertionPoint(seq.ops[0].op);
+    // Create a GetGlobalOp and BlockWriteOp at the position of the first write
+    builder.setInsertionPoint(sequence[0].op);
     auto getGlobalOp = builder.create<memref::GetGlobalOp>(
         loc, memrefType, globalName);
     
     builder.create<NpuBlockWriteOp>(
         loc,
-        seq.startAddress,
+        startAddr,
         getGlobalOp.getResult(),
         nullptr, // buffer
         nullptr, // column
         nullptr  // row
     );
-    
-    // Erase all the original operations
-    for (const auto &writeOp : seq.ops) {
-      writeOp.op->erase();
-    }
   }
 };
 
