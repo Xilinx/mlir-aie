@@ -77,8 +77,12 @@ static ResetMode parseResetMode(llvm::StringRef str) {
     return ResetMode::Never;
   else if (trimmed == "ifused" || trimmed == "if-used")
     return ResetMode::IfUsed;
+  else if (trimmed == "ifusedfinegrained" || trimmed == "if-used-fine-grained")
+    return ResetMode::IfUsedFineGrained;
   else if (trimmed == "ifchanged" || trimmed == "if-changed")
     return ResetMode::IfChanged;
+  else if (trimmed == "ifchangedfinegrained" || trimmed == "if-changed-fine-grained")
+    return ResetMode::IfChangedFineGrained;
   else if (trimmed == "always" || trimmed == "all")
     return ResetMode::Always;
   else
@@ -89,11 +93,12 @@ struct ExpandLoadPdiPattern : public OpRewritePattern<NpuLoadPdiOp> {
   const ResetConfig dmaConfig;
   const ResetConfig switchConfig;
   const ResetConfig lockConfig;
+  const ResetConfig coreConfig;
   mutable AIE::DeviceOp previousDevice;
   
-  ExpandLoadPdiPattern(MLIRContext *context, ResetConfig dma, ResetConfig sw, ResetConfig lock)
+  ExpandLoadPdiPattern(MLIRContext *context, ResetConfig dma, ResetConfig sw, ResetConfig lock, ResetConfig core)
       : OpRewritePattern<NpuLoadPdiOp>(context), 
-        dmaConfig(dma), switchConfig(sw), lockConfig(lock), previousDevice(nullptr) {}
+        dmaConfig(dma), switchConfig(sw), lockConfig(lock), coreConfig(core), previousDevice(nullptr) {}
 
   LogicalResult matchAndRewrite(NpuLoadPdiOp loadPdiOp,
                                 PatternRewriter &rewriter) const override {
@@ -171,10 +176,11 @@ struct ExpandLoadPdiPattern : public OpRewritePattern<NpuLoadPdiOp> {
     if (!isFirstLoadPdi && 
         (dmaConfig.mode != ResetMode::Never || 
          switchConfig.mode != ResetMode::Never || 
-         lockConfig.mode != ResetMode::Never)) {
+         lockConfig.mode != ResetMode::Never ||
+         coreConfig.mode != ResetMode::Never)) {
       if (failed(xilinx::AIE::generateAndInsertResetOps(
               referencedDevice, newLoadPdi.getOperation(),
-              dmaConfig, switchConfig, lockConfig, previousDevice))) {
+              dmaConfig, switchConfig, lockConfig, coreConfig, previousDevice))) {
         loadPdiOp.emitError("Failed to generate reset operations");
         return failure();
       }
@@ -226,9 +232,13 @@ struct AIEExpandLoadPdiPass
     ResetTileType lockTiles = parseTileTypes(resetLocksTiles);
     ResetMode lockMode = parseResetMode(resetLocksMode);
     ResetConfig lockConfig(lockTiles, lockMode);
+    
+    ResetTileType coreTiles = parseTileTypes(resetCoresTiles);
+    ResetMode coreMode = parseResetMode(resetCoresMode);
+    ResetConfig coreConfig(coreTiles, coreMode);
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<ExpandLoadPdiPattern>(&getContext(), dmaConfig, switchConfig, lockConfig);
+    patterns.add<ExpandLoadPdiPattern>(&getContext(), dmaConfig, switchConfig, lockConfig, coreConfig);
 
     if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
       signalPassFailure();

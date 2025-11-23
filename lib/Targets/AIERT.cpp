@@ -905,6 +905,49 @@ LogicalResult xilinx::AIE::AIERTControl::resetLocks(int col, int row, int numLoc
   return success();
 }
 
+LogicalResult xilinx::AIE::AIERTControl::resetLock(int col, int row, int lockId) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  // Reset a single lock to value 0
+  XAie_Lock lock;
+  lock.LockId = lockId;
+  lock.LockVal = 0;
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_LockSetValue, &aiert->devInst, tileLoc, lock);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetSwitchConnection(int col, int row, 
+                                                                WireBundle sourceBundle, 
+                                                                int sourceChannel,
+                                                                WireBundle destBundle,
+                                                                int destChannel) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  
+  // Helper lambda to map WireBundle to StrmSwPortType
+  auto mapBundle = [](WireBundle bundle) -> StrmSwPortType {
+    switch (bundle) {
+      case WireBundle::Core: return CORE;
+      case WireBundle::DMA: return DMA;
+      case WireBundle::FIFO: return FIFO;
+      case WireBundle::South: return SOUTH;
+      case WireBundle::West: return WEST;
+      case WireBundle::North: return NORTH;
+      case WireBundle::East: return EAST;
+      case WireBundle::Trace: return TRACE;
+      default: return SOUTH;
+    }
+  };
+  
+  StrmSwPortType sourcePortType = mapBundle(sourceBundle);
+  StrmSwPortType destPortType = mapBundle(destBundle);
+  
+  // Disconnect the specific connection from source to destination
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_StrmConnCctDisable, &aiert->devInst, tileLoc,
+                              sourcePortType, sourceChannel, 
+                              destPortType, destChannel);
+  
+  return success();
+}
+
 LogicalResult xilinx::AIE::AIERTControl::resetPerfCounters(int col, int row) {
   auto tileLoc = XAie_TileLoc(col, row);
   // Reset performance counters in all modules
