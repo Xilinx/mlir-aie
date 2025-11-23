@@ -4,6 +4,15 @@ import csv
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
+import seaborn as sns
+
+# Set style and font
+# sns.set_theme(style='whitegrid')
+# plt.rcParams['font.family'] = 'serif'
+# plt.rcParams['font.serif'] = ['Times']
+# plt.rcParams['mathtext.fontset'] = 'custom'
+# plt.rcParams['mathtext.rm'] = 'Times'
+plt.style.use('dark_background')
 
 def read_benchmark_results(csv_file):
     """Read benchmark results from CSV with format: variant,iteration,time_us"""
@@ -45,28 +54,24 @@ def plot_results(stats, output_file):
     variants = list(stats.keys())
     means = [stats[v]['mean'] for v in variants]
     
-    # Color scheme
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+    # Color scheme - use seaborn palette
+    colors = sns.color_palette('flare', n_colors=len(variants))
     
     # Create bar chart for means
     x_pos = np.arange(len(variants))
-    bars = ax.bar(x_pos, means, color=colors, alpha=0.7, label='Mean', width=0.6)
+    bars = ax.bar(x_pos, means, color=colors, label='Mean', width=0.6)
     
     # Overlay box-and-whisker plots
     bp_data = [stats[v]['times'] for v in variants]
     bp = ax.boxplot(bp_data, positions=x_pos, widths=0.4,
-                    patch_artist=True,
-                    boxprops=dict(facecolor='white', edgecolor='black', linewidth=1.5, alpha=0.8),
-                    whiskerprops=dict(color='black', linewidth=1.5),
-                    capprops=dict(color='black', linewidth=1.5),
-                    medianprops=dict(color='red', linewidth=2),
-                    flierprops=dict(marker='o', markerfacecolor='red', markersize=5, 
-                                   markeredgecolor='black', alpha=0.5))
+                    #whiskerprops=dict(color='black'),
+                    #capprops=dict(color='black'),
+                    medianprops=dict(color='white'),
+                    flierprops=dict(marker='.'))
     
     ax.set_ylabel('Time per Iteration (μs)', fontsize=12)
-    ax.set_xlabel('Variant', fontsize=12)
-    ax.set_title('SwiGLU Performance Comparison\n(Bar=Mean, Box=Distribution)', 
-                 fontsize=14, fontweight='bold')
+    ax.set_title('SwiGLU Performance Comparison\n(4 Reconfigurations, Embedding Dim=2048, Hidden Dim=8192)', 
+                 fontsize=14)
     ax.set_xticks(x_pos)
     ax.set_xticklabels(variants)
     ax.grid(axis='y', alpha=0.3)
@@ -74,19 +79,19 @@ def plot_results(stats, output_file):
     # Add mean value labels on bars
     for i, (bar, mean) in enumerate(zip(bars, means)):
         height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height,
-                f'{mean:.1f} μs',
-                ha='center', va='bottom', fontsize=10, fontweight='bold')
+        ax.text(bar.get_x() + bar.get_width()/2., height + 100,
+                f'{mean:.0f} μs',
+                ha='center', va='bottom', fontsize=10)
     
     # Add legend
     from matplotlib.patches import Patch
-    legend_elements = [
-        Patch(facecolor=colors[0], alpha=0.7, label='Mean (bar)'),
-        Patch(facecolor='white', edgecolor='black', label='Box: 25th-75th percentile'),
-        plt.Line2D([0], [0], color='red', linewidth=2, label='Median'),
-        plt.Line2D([0], [0], color='black', linewidth=1.5, label='Min/Max (whiskers)')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right', fontsize=9)
+    #legend_elements = [
+    #    Patch(facecolor=colors[0], alpha=1.0, label='Mean (bar)'),
+    #    Patch(facecolor='white', edgecolor='black', label='Box: 25th-75th percentile'),
+    #    plt.Line2D([0], [0], color='black', linewidth=2, label='Median'),
+    #    plt.Line2D([0], [0], color='black', linewidth=1.5, label='Min/Max (whiskers)')
+    #]
+    ax.legend(loc='upper right', fontsize=9)
     
     plt.tight_layout()
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
