@@ -311,4 +311,31 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
            "When to reset cores: never, ifused, ifchanged, always">,
   ];
 }
+
+def AIECoalesceWrite32s : Pass<"aie-coalesce-write32s", "AIE::DeviceOp"> {
+  let summary = "Coalesce consecutive write32 operations into blockwrite operations";
+  let description = [{
+    This pass optimizes sequences of consecutive npu.write32 operations by
+    coalescing them into npu.blockwrite operations when their addresses are
+    contiguous (4-byte increments).
+    
+    Since register write instructions cannot be reordered, this optimization
+    only applies when the write32 operations are immediately adjacent in the
+    instruction stream.
+    
+    For each sequence of N consecutive write32 operations at addresses
+    [addr, addr+4, addr+8, ...], the pass:
+    1. Creates a memref.global with the values
+    2. Replaces the write32 sequence with a single npu.blockwrite
+    
+    This reduces instruction count and can improve performance.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIECoalesceWrite32sPass()";
+  let dependentDialects = [
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
 #endif
