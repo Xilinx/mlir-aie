@@ -158,6 +158,7 @@ def _create_npu_lowering_pipeline(
     reset_locks_tiles="",
     reset_locks_mode="never",
     coalesce_write32s=True,
+    min_writes_to_coalesce=2,
 ):
     device_pipeline_1 = (
     )
@@ -188,7 +189,7 @@ def _create_npu_lowering_pipeline(
     if coalesce_write32s:
         pipeline = pipeline.Nested(
             "aie.device",
-            Pipeline().add_pass("aie-coalesce-write32s"),
+            Pipeline().add_pass("aie-coalesce-write32s", min_writes_to_coalesce=min_writes_to_coalesce),
         )
     return pipeline
 
@@ -1738,7 +1739,8 @@ class FlowRunner:
                         reset_switches_mode=opts.reset_switches_mode,
                         reset_locks_tiles=opts.reset_locks_tiles,
                         reset_locks_mode=opts.reset_locks_mode,
-                        coalesce_write32s=opts.coalesce_write32s
+                        coalesce_write32s=opts.coalesce_write32s,
+                        min_writes_to_coalesce=opts.min_writes_to_coalesce
                     )
                     pass_pipeline = npu_pipeline.materialize(module=True)
                     npu_insts_file = self.prepend_tmp(f"npu_insts.mlir")
