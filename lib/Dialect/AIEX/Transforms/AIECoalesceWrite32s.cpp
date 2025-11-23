@@ -38,14 +38,47 @@ using namespace xilinx::AIE;
 
 namespace {
 
-// Represents a sequence of consecutive write32 operations
-struct Write32Sequence {
-  SmallVector<NpuWrite32Op, 8> ops;
-  uint32_t startAddress = 0;
+// Represents a write operation that can be either write32 or blockwrite
+struct WriteOp {
+  Operation *op = nullptr;
+  uint32_t address = 0;
   SmallVector<uint32_t, 8> values;
+  
+  WriteOp() = default;
+  WriteOp(NpuWrite32Op w32) : op(w32.getOperation()), address(w32.getAddress()) {
+    values.push_back(w32.getValue());
+  }
+  
+  WriteOp(NpuBlockWriteOp bw) : op(bw.getOperation()) {
+    auto addr = bw.getAbsoluteAddress();
+    if (!addr) return;
+    address = *addr;
+    
+    auto dataWords = bw.getDataWords();
+    if (!dataWords) return;
+    
+    for (auto val : dataWords.getValues<APInt>()) {
+      values.push_back(val.getZExtValue());
+    }
+  }
+  
+  bool isValid() const {
+    return op != nullptr && !values.empty();
+  }
+  
+  size_t numWords() const {
+    return values.size();
+  }
+};
+
+// Represents a sequence of consecutive write operations (write32 or blockwrite)
+struct WriteSequence {
+  SmallVector<WriteOp, 0> ops;  // Don't inline - WriteOp is large
+  uint32_t startAddress = 0;
+  SmallVector<uint32_t, 32> values;
   std::optional<Location> firstLoc;
   
-  bool isContiguous() const {
+  bool isCoalescable() const {
     return ops.size() >= 2;
   }
   
@@ -76,72 +109,105 @@ private:
   void coalesceWrite32sInSequence(RuntimeSequenceOp seqOp) {
     OpBuilder builder(seqOp.getContext());
     
-    // Walk through the sequence and find consecutive write32 operations
+    // Walk through the sequence and find consecutive write operations
     for (Block &block : seqOp.getBody()) {
-      SmallVector<Write32Sequence> sequences;
-      Write32Sequence currentSeq;
+      SmallVector<WriteSequence> sequences;
+      WriteSequence currentSeq;
       uint32_t expectedNextAddr = 0;
       bool inSequence = false;
       
       for (Operation &op : llvm::make_early_inc_range(block)) {
+        WriteOp writeOp;
+        
+        // Skip get_global operations as they don't interrupt sequences
+        if (isa<memref::GetGlobalOp>(&op)) {
+          continue;
+        }
+        
         if (auto write32Op = dyn_cast<NpuWrite32Op>(&op)) {
           // Check if this write32 has the required attributes
           // (must have address but no buffer/column/row for coalescing)
           if (write32Op.getBuffer() || write32Op.getColumn() || 
               write32Op.getRow()) {
             // Cannot coalesce symbolic writes
-            if (inSequence && currentSeq.isContiguous()) {
+            if (inSequence && currentSeq.isCoalescable()) {
               sequences.push_back(currentSeq);
             }
-            currentSeq = Write32Sequence();
+            currentSeq = WriteSequence();
             inSequence = false;
             expectedNextAddr = 0;
             continue;
           }
           
-          uint32_t addr = write32Op.getAddress();
-          uint32_t value = write32Op.getValue();
-          
-          if (!inSequence) {
-            // Start a new sequence
-            currentSeq = Write32Sequence();
-            currentSeq.startAddress = addr;
-            currentSeq.ops.push_back(write32Op);
-            currentSeq.values.push_back(value);
-            currentSeq.firstLoc = write32Op.getLoc();
-            expectedNextAddr = addr + 4;
-            inSequence = true;
-          } else if (addr == expectedNextAddr) {
-            // Continue the sequence
-            currentSeq.ops.push_back(write32Op);
-            currentSeq.values.push_back(value);
-            expectedNextAddr = addr + 4;
-          } else {
-            // Address not contiguous, save current sequence if valid
-            if (currentSeq.isContiguous()) {
+          writeOp = WriteOp(write32Op);
+        } else if (auto blockWriteOp = dyn_cast<NpuBlockWriteOp>(&op)) {
+          // Check if this blockwrite has the required attributes
+          if (blockWriteOp.getBuffer() || blockWriteOp.getColumn() || 
+              blockWriteOp.getRow()) {
+            // Cannot coalesce symbolic writes
+            if (inSequence && currentSeq.isCoalescable()) {
               sequences.push_back(currentSeq);
             }
-            // Start a new sequence
-            currentSeq = Write32Sequence();
-            currentSeq.startAddress = addr;
-            currentSeq.ops.push_back(write32Op);
-            currentSeq.values.push_back(value);
-            currentSeq.firstLoc = write32Op.getLoc();
-            expectedNextAddr = addr + 4;
+            currentSeq = WriteSequence();
+            inSequence = false;
+            expectedNextAddr = 0;
+            continue;
+          }
+          
+          writeOp = WriteOp(blockWriteOp);
+          if (!writeOp.isValid()) {
+            // Invalid blockwrite (couldn't get address or data), skip coalescing
+            if (inSequence && currentSeq.isCoalescable()) {
+              sequences.push_back(currentSeq);
+            }
+            currentSeq = WriteSequence();
+            inSequence = false;
+            expectedNextAddr = 0;
+            continue;
           }
         } else {
-          // Non-write32 operation interrupts the sequence
-          if (inSequence && currentSeq.isContiguous()) {
+          // Non-write operation interrupts the sequence
+          if (inSequence && currentSeq.isCoalescable()) {
             sequences.push_back(currentSeq);
           }
-          currentSeq = Write32Sequence();
+          currentSeq = WriteSequence();
           inSequence = false;
           expectedNextAddr = 0;
+          continue;
+        }
+        
+        // Process the write operation
+        if (!inSequence) {
+          // Start a new sequence
+          currentSeq = WriteSequence();
+          currentSeq.startAddress = writeOp.address;
+          currentSeq.ops.push_back(writeOp);
+          currentSeq.values.append(writeOp.values.begin(), writeOp.values.end());
+          currentSeq.firstLoc = writeOp.op->getLoc();
+          expectedNextAddr = writeOp.address + writeOp.numWords() * 4;
+          inSequence = true;
+        } else if (writeOp.address == expectedNextAddr) {
+          // Continue the sequence
+          currentSeq.ops.push_back(writeOp);
+          currentSeq.values.append(writeOp.values.begin(), writeOp.values.end());
+          expectedNextAddr = writeOp.address + writeOp.numWords() * 4;
+        } else {
+          // Address not contiguous, save current sequence if valid
+          if (currentSeq.isCoalescable()) {
+            sequences.push_back(currentSeq);
+          }
+          // Start a new sequence
+          currentSeq = WriteSequence();
+          currentSeq.startAddress = writeOp.address;
+          currentSeq.ops.push_back(writeOp);
+          currentSeq.values.append(writeOp.values.begin(), writeOp.values.end());
+          currentSeq.firstLoc = writeOp.op->getLoc();
+          expectedNextAddr = writeOp.address + writeOp.numWords() * 4;
         }
       }
       
       // Don't forget the last sequence
-      if (inSequence && currentSeq.isContiguous()) {
+      if (inSequence && currentSeq.isCoalescable()) {
         sequences.push_back(currentSeq);
       }
       
@@ -153,7 +219,7 @@ private:
   }
   
   void replaceSequenceWithBlockWrite(OpBuilder &builder, 
-                                     const Write32Sequence &seq,
+                                     const WriteSequence &seq,
                                      RuntimeSequenceOp seqOp) {
     if (seq.ops.empty())
       return;
@@ -203,8 +269,8 @@ private:
         /*constant=*/true,
         /*alignment=*/nullptr);
     
-    // Create a GetGlobalOp and BlockWriteOp at the position of the first write32
-    builder.setInsertionPoint(seq.ops[0]);
+    // Create a GetGlobalOp and BlockWriteOp at the position of the first operation
+    builder.setInsertionPoint(seq.ops[0].op);
     auto getGlobalOp = builder.create<memref::GetGlobalOp>(
         loc, memrefType, globalName);
     
@@ -217,9 +283,9 @@ private:
         nullptr  // row
     );
     
-    // Erase all the original write32 operations
-    for (auto op : seq.ops) {
-      op.erase();
+    // Erase all the original operations
+    for (const auto &writeOp : seq.ops) {
+      writeOp.op->erase();
     }
   }
 };
