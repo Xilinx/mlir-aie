@@ -342,7 +342,7 @@ def transform_parallel_binary(first, second, output, binary_op):
             [0, 0, 0, 1],
         )
         for i in range(num_columns)
-    ]   
+    ]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
