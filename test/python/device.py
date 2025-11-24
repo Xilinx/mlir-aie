@@ -1,5 +1,12 @@
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2025 AMD Inc.
+
+# RUN: %run_on_npu1% %pytest %s
+# RUN: %run_on_npu2% %pytest %s
+# REQUIRES: xrt_python_bindings
 
 import pytest
 from aie.iron.device import NPU1Col1, NPU1Col2, NPU1, NPU2
