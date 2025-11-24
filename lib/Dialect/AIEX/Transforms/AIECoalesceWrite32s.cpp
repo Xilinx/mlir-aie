@@ -15,6 +15,14 @@
 // register writes act as barriers and cannot be reordered. Duplicate writes
 // to the same address are eliminated (keeping the last value).
 //
+// Masked writes (npu.maskwrite32) are handled as follows:
+// - If a maskwrite is done to an address after a previous write32/blockwrite,
+//   the maskwrite supersedes the earlier write (earlier write is removed)
+// - If a write32/blockwrite is done after a maskwrite to the same address,
+//   the later write supersedes the maskwrite (maskwrite is removed)
+// - Maskwrite operations cannot be coalesced into blockwrites and act as
+//   barriers for coalescing (similar to special register writes)
+//
 // A configurable threshold controls the minimum number of contiguous writes
 // required for coalescing into a blockwrite.
 //
@@ -46,11 +54,14 @@ namespace {
 struct WriteWord {
   uint32_t address;
   uint32_t value;
+  std::optional<uint32_t> mask;  // If present, this is a masked write
   Operation *op;  // The original operation that created this write
   
   bool operator<(const WriteWord &other) const {
     return address < other.address;
   }
+  
+  bool isMaskWrite() const { return mask.has_value(); }
 };
 
 // Represents a slice of execution between special register barriers
@@ -117,7 +128,30 @@ private:
             if (isSpecialWrite) {
               currentSlice.specialOps.push_back(&op);
             } else {
-              WriteWord word{addr, write32Op.getValue(), &op};
+              WriteWord word{addr, write32Op.getValue(), std::nullopt, &op};
+              currentSlice.writes.push_back(word);
+            }
+          } else {
+            // Symbolic write creates a barrier
+            if (!currentSlice.isEmpty()) {
+              slices.push_back(std::move(currentSlice));
+              currentSlice = WriteSlice();
+            }
+            currentSlice.otherOps.push_back(&op);
+          }
+        }
+        // Check if this is a maskwrite operation
+        else if (auto maskWriteOp = dyn_cast<NpuMaskWrite32Op>(&op)) {
+          // Only handle writes with absolute addresses (no buffer/col/row)
+          if (!maskWriteOp.getBuffer() && !maskWriteOp.getColumn() && 
+              !maskWriteOp.getRow()) {
+            uint32_t addr = maskWriteOp.getAddress();
+            isSpecialWrite = tm.isSpecialRegister(addr);
+            
+            if (isSpecialWrite) {
+              currentSlice.specialOps.push_back(&op);
+            } else {
+              WriteWord word{addr, maskWriteOp.getValue(), maskWriteOp.getMask(), &op};
               currentSlice.writes.push_back(word);
             }
           } else {
@@ -158,6 +192,7 @@ private:
                   WriteWord word{
                     static_cast<uint32_t>(baseAddr + idx * 4),
                     static_cast<uint32_t>(val.getZExtValue()),
+                    std::nullopt,  // blockwrites don't have masks
                     &op
                   };
                   currentSlice.writes.push_back(word);
@@ -249,15 +284,36 @@ private:
     // Sort writes by address to enable coalescing
     llvm::sort(slice.writes);
     
-    // Find contiguous sequences and coalesce them
+    // Separate mask writes from regular writes
+    // Mask writes act as barriers for coalescing
+    DenseSet<uint32_t> maskWriteAddresses;
+    for (auto &write : slice.writes) {
+      if (write.isMaskWrite()) {
+        maskWriteAddresses.insert(write.address);
+      }
+    }
+    
+    // Find contiguous sequences of non-masked writes and coalesce them
+    // Masked writes cannot be coalesced and act as barriers
     SmallVector<SmallVector<WriteWord>> sequences;
     SmallVector<WriteWord> currentSeq;
     
     for (auto &write : slice.writes) {
+      // Mask writes cannot be part of coalesced sequences
+      if (write.isMaskWrite()) {
+        // Save current sequence if it meets threshold
+        if (currentSeq.size() >= minWritesToCoalesce) {
+          sequences.push_back(currentSeq);
+        }
+        currentSeq.clear();
+        continue;
+      }
+      
       if (currentSeq.empty()) {
         currentSeq.push_back(write);
-      } else if (write.address == currentSeq.back().address + 4) {
-        // Contiguous with previous write
+      } else if (write.address == currentSeq.back().address + 4 &&
+                 !maskWriteAddresses.count(write.address)) {
+        // Contiguous with previous write and not a mask write address
         currentSeq.push_back(write);
       } else {
         // Not contiguous, start new sequence

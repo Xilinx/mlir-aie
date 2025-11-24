@@ -759,6 +759,9 @@ public:
       return (offset >= 0x15000 && offset <= 0x15010) ||
              offset == 0x1D204 || offset == 0x1D20C ||
              offset == 0x1D214 || offset == 0x1D21C ||
+             offset == 0x1D200 || offset == 0x1D208 ||
+             offset == 0x1D210 || offset == 0x1D218 ||
+             offset == 0x1F000 || offset == 0x1F004 ||
              offset == 0x40000;
     } else if (isMemTile(col, row)) {
       // Memory tile special registers
