@@ -222,9 +222,7 @@ class ObjectFifo(Resolvable):
                 )
             tiles += [self._prod.endpoint.tile]
         if self._cons == []:
-            raise ValueError(
-                "Cannot return cons tiles because cons were not created."
-            )
+            raise ValueError("Cannot return cons tiles because cons were not created.")
         tiles += [cons.endpoint.tile for cons in self._cons]
         return tiles
 
