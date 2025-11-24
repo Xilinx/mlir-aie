@@ -155,7 +155,7 @@ def transform_parallel(input, output, func):
     if isinstance(iron.get_current_device(), NPU2):
         num_columns = 8
     num_elements = np.size(input)
-    per_tile_elements = 16 # TODO should be larger or configurable
+    per_tile_elements = 16  # TODO should be larger or configurable
     n = per_tile_elements * num_channels * num_columns
     if num_elements % n != 0:
         raise ValueError(
