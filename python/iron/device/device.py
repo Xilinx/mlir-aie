@@ -195,7 +195,7 @@ class Device(Resolvable):
             int: Number of connections (channels) available on the tile
         """
         if not isinstance(source_tile, Tile):
-            raise ValueError(f"Expected a source Tile, but got {t}")
+            raise ValueError(f"Expected a source Tile, but got {source_tile}")
         for t in tiles:
             if not isinstance(t, Tile):
                 raise ValueError(f"Expected a Tile, but got {t}")

@@ -29,45 +29,45 @@ def device(request):
     return request.param()
 
 
-def test_has_legal_mem_affinity(device):
+def test_can_used_shared_mem(device):
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
     # Legal affinity
     of_legal = ObjectFifo(n_ty)
     of_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
     of_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    assert of_legal.has_legal_mem_affinity(device)
-    assert of_legal.has_legal_mem_affinity(device, cons_only=True)
+    assert of_legal.can_used_shared_mem(device)
+    assert of_legal.can_used_shared_mem(device, cons_only=True)
 
     # Illegal affinity
     of_illegal = ObjectFifo(n_ty)
     of_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
     of_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    assert not of_illegal.has_legal_mem_affinity(device)
-    assert of_illegal.has_legal_mem_affinity(device, cons_only=True)
+    assert not of_illegal.can_used_shared_mem(device)
+    assert of_illegal.can_used_shared_mem(device, cons_only=True)
 
     # Multiple consumers, legal
     of_mult_cons_legal = ObjectFifo(n_ty)
     of_mult_cons_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
     of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 4))
-    assert of_mult_cons_legal.has_legal_mem_affinity(device)
-    assert of_mult_cons_legal.has_legal_mem_affinity(device, cons_only=True)
+    assert of_mult_cons_legal.can_used_shared_mem(device)
+    assert of_mult_cons_legal.can_used_shared_mem(device, cons_only=True)
 
     # Multiple consumers, illegal
     of_mult_cons_illegal = ObjectFifo(n_ty)
     of_mult_cons_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
     of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    assert not of_mult_cons_illegal.has_legal_mem_affinity(device)
-    assert not of_mult_cons_illegal.has_legal_mem_affinity(device, cons_only=True)
+    assert not of_mult_cons_illegal.can_used_shared_mem(device)
+    assert not of_mult_cons_illegal.can_used_shared_mem(device, cons_only=True)
 
     # Illegal producer, legal consumer
     of_illegal_prod = ObjectFifo(n_ty)
     of_illegal_prod.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
     of_illegal_prod.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    assert not of_illegal_prod.has_legal_mem_affinity(device)
-    assert of_illegal_prod.has_legal_mem_affinity(device, cons_only=True)
+    assert not of_illegal_prod.can_used_shared_mem(device)
+    assert of_illegal_prod.can_used_shared_mem(device, cons_only=True)
 
     # Forwarded ObjectFifo
     of_forward = ObjectFifo(n_ty)
@@ -75,23 +75,23 @@ def test_has_legal_mem_affinity(device):
     forwarded = of_forward.cons().forward(placement=AnyMemTile)
     forwarded.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     with pytest.raises(ValueError):
-        of_forward.has_legal_mem_affinity(device)
+        of_forward.can_used_shared_mem(device)
     with pytest.raises(ValueError):
-        forwarded.has_legal_mem_affinity(device)
+        forwarded.can_used_shared_mem(device)
 
     # AnyComputeTile
     of_any_compute = ObjectFifo(n_ty)
     of_any_compute.prod().endpoint = ObjectFifoEndpoint(AnyComputeTile)
     of_any_compute.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     with pytest.raises(ValueError):
-        of_any_compute.has_legal_mem_affinity(device)
+        of_any_compute.can_used_shared_mem(device)
 
     # AnyShimTile
     of_any_shim = ObjectFifo(n_ty)
     of_any_shim.prod().endpoint = ObjectFifoEndpoint(AnyShimTile)
     of_any_shim.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     with pytest.raises(ValueError):
-        of_any_shim.has_legal_mem_affinity(device)
+        of_any_shim.can_used_shared_mem(device)
 
 
 def test_set_iter_count():

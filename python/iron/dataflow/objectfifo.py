@@ -226,9 +226,13 @@ class ObjectFifo(Resolvable):
         tiles += [cons.endpoint.tile for cons in self._cons]
         return tiles
 
-    def has_legal_mem_affinity(self, device: Device, cons_only: bool = False) -> bool:
+    def can_used_shared_mem(self, device: Device, cons_only: bool = False) -> bool:
         """Checks if all endpoints of the object fifo have a legal memory affinity."""
-        return device.is_legal_mem_affinity(*self.tiles(cons_only))
+        tiles = self.tiles(cons_only=cons_only)
+        for t in tiles:
+            if device.is_mem_accessible(t, tiles):
+                return True
+        return False
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:

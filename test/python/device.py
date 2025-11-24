@@ -41,8 +41,8 @@ def test_legal_mem_affinity(device):
     assert not device.is_mem_accessible(Tile(0, 1), [Tile(0, 0)])
 
     # Test adjacent mem and compute tiles
-    assert not device.is_mem_accessible(Tile(0, 1), Tile(0, 2))
-    assert not device.is_mem_accessible(Tile(0, 2), Tile(0, 1))
+    assert not device.is_mem_accessible(Tile(0, 1), [Tile(0, 2)])
+    assert not device.is_mem_accessible(Tile(0, 2), [Tile(0, 1)])
 
     # Test multiple adjacent compute tiles
     assert not device.is_mem_accessible(Tile(1, 2), [Tile(1, 3), Tile(1, 4)])
