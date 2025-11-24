@@ -139,6 +139,7 @@ def transform_binary(first, second, output, binary_op):
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
+
 @iron.jit(is_placed=False)
 def transform_parallel(input, output, func):
     """     
