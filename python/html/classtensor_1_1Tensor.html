@@ -124,6 +124,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:ac7f1355524306747f7e5b54ab581d96b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5346d43c066d89bc3bc8f5120b7444a5" id="r_a5346d43c066d89bc3bc8f5120b7444a5"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#a5346d43c066d89bc3bc8f5120b7444a5">__setitem__</a> (self, index, value)</td></tr>
 <tr class="separator:a5346d43c066d89bc3bc8f5120b7444a5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4f915886a28a2faf06898e80323dcb6b" id="r_a4f915886a28a2faf06898e80323dcb6b"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#a4f915886a28a2faf06898e80323dcb6b">__len__</a> (self)</td></tr>
+<tr class="separator:a4f915886a28a2faf06898e80323dcb6b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a73a8dddaf015abf9461cb2c2be5accc8" id="r_a73a8dddaf015abf9461cb2c2be5accc8"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#a73a8dddaf015abf9461cb2c2be5accc8">nbytes</a> (self)</td></tr>
 <tr class="separator:a73a8dddaf015abf9461cb2c2be5accc8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5952b9151df34dff44d64fe659788ea7" id="r_a5952b9151df34dff44d64fe659788ea7"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#a5952b9151df34dff44d64fe659788ea7">element_size</a> (self)</td></tr>
@@ -132,6 +134,10 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a07f7d3fa03db536d3f487da5f4d1f32e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acbedb30b6a909713b426143ab7eb1fae" id="r_acbedb30b6a909713b426143ab7eb1fae"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#acbedb30b6a909713b426143ab7eb1fae">numpy</a> (self)</td></tr>
 <tr class="separator:acbedb30b6a909713b426143ab7eb1fae"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1c7bfccbeb422c4d9831f7f06fb50934" id="r_a1c7bfccbeb422c4d9831f7f06fb50934"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#a1c7bfccbeb422c4d9831f7f06fb50934">to_torch</a> (self)</td></tr>
+<tr class="separator:a1c7bfccbeb422c4d9831f7f06fb50934"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5c8ae3c8e6201507e5237736d5e3253a" id="r_a5c8ae3c8e6201507e5237736d5e3253a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#a5c8ae3c8e6201507e5237736d5e3253a">from_torch</a> (cls, torch_tensor, <a class="el" href="classtensor_1_1Tensor.html#a5142bc709a097a453bfec047ec5da71a">device</a>=None, **kwargs)</td></tr>
+<tr class="separator:a5c8ae3c8e6201507e5237736d5e3253a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a961275e000683616d90fa28db553220a" id="r_a961275e000683616d90fa28db553220a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#a961275e000683616d90fa28db553220a">fill_</a> (self, value)</td></tr>
 <tr class="separator:a961275e000683616d90fa28db553220a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5be2e7388fc556912e1fd7091034f423" id="r_a5be2e7388fc556912e1fd7091034f423"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classtensor_1_1Tensor.html#a5be2e7388fc556912e1fd7091034f423">numel</a> (self)</td></tr>
@@ -374,6 +380,24 @@ Returns:
 Note: For NPU tensors, this method causes implicit data synchronization from device to host
 to ensure the retrieved value reflects the current device state.
 </pre> 
+</div>
+</div>
+<a id="a4f915886a28a2faf06898e80323dcb6b" name="a4f915886a28a2faf06898e80323dcb6b"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4f915886a28a2faf06898e80323dcb6b">&#9670;&#160;</a></span>__len__()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">tensor.Tensor.__len__ </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
 </div>
 </div>
 <a id="a9d08d04fe4422ab9499770e9127be451" name="a9d08d04fe4422ab9499770e9127be451"></a>
@@ -646,6 +670,47 @@ Parameters:
     value: The scalar value to fill the tensor with.
 
 Note: For NPU tensors, this method syncs the filled data to device after modification.
+</pre> 
+</div>
+</div>
+<a id="a5c8ae3c8e6201507e5237736d5e3253a" name="a5c8ae3c8e6201507e5237736d5e3253a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5c8ae3c8e6201507e5237736d5e3253a">&#9670;&#160;</a></span>from_torch()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">tensor.Tensor.from_torch </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>cls</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>torch_tensor</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>device</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">**&#160;</td>
+          <td class="paramname"><em>kwargs</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Returns a tensor with a copy of the data in the torch_tensor.
 </pre> 
 </div>
 </div>
@@ -979,6 +1044,25 @@ Parameters:
 
 Returns:
    The tensor object on the target device.
+</pre> 
+</div>
+</div>
+<a id="a1c7bfccbeb422c4d9831f7f06fb50934" name="a1c7bfccbeb422c4d9831f7f06fb50934"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1c7bfccbeb422c4d9831f7f06fb50934">&#9670;&#160;</a></span>to_torch()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">tensor.Tensor.to_torch </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Returns a torch tensor with a copy of the data in this tensor.
 </pre> 
 </div>
 </div>

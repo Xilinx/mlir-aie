@@ -9,5 +9,6 @@ var searchData=
   ['finishtaskgrouptask_6',['FinishTaskGroupTask',['../classiron_1_1runtime_1_1task_1_1FinishTaskGroupTask.html',1,'iron::runtime::task']]],
   ['fn_5fargs_7',['fn_args',['../classiron_1_1worker_1_1Worker.html#ae62c026d16faacefe8d6945eaec9be4c',1,'iron::worker::Worker']]],
   ['forward_8',['forward',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a561542d6ea1f6141cea7a525722078cf',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
-  ['from_5ftaps_9',['from_taps',['../classtaplib_1_1tas_1_1TensorAccessSequence.html#a7d98cd6c1c47023f8906ec89f7ecc68d',1,'taplib::tas::TensorAccessSequence']]]
+  ['from_5ftaps_9',['from_taps',['../classtaplib_1_1tas_1_1TensorAccessSequence.html#a7d98cd6c1c47023f8906ec89f7ecc68d',1,'taplib::tas::TensorAccessSequence']]],
+  ['from_5ftorch_10',['from_torch',['../classtensor_1_1Tensor.html#a5c8ae3c8e6201507e5237736d5e3253a',1,'tensor::Tensor']]]
 ];
