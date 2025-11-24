@@ -73,7 +73,7 @@ public:
 //===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
   DenseMap<std::tuple<Value, DMAChannelDir, int>, int> channelsPerTile;
-  DenseMap<std::tuple<Value, DMAChannelDir, int>, int> aiestreamsPerTile;
+  DenseMap<std::tuple<Value, DMAChannelDir, int>, int> aieStreamsPerTile;
 
 public:
   DMAChannelAnalysis(DeviceOp &device) {
@@ -107,10 +107,10 @@ public:
     }
     for (auto flowOp : device.getOps<FlowOp>()) {
       if (flowOp.getSourceBundle() == WireBundle::Core)
-        aiestreamsPerTile[{flowOp.getSource(), DMAChannelDir::MM2S,
+        aieStreamsPerTile[{flowOp.getSource(), DMAChannelDir::MM2S,
                            flowOp.getSourceChannel()}] = 1;
       if (flowOp.getDestBundle() == WireBundle::Core)
-        aiestreamsPerTile[{flowOp.getDest(), DMAChannelDir::S2MM,
+        aieStreamsPerTile[{flowOp.getDest(), DMAChannelDir::S2MM,
                            flowOp.getDestChannel()}] = 1;
     }
   }
@@ -146,12 +146,12 @@ public:
     return -1;
   }
 
-  /// Given a tile and DMAChannel, adds entry to aie4StreamsPerTile or
+  /// Given a tile and DMAChannel, adds entry to aieStreamsPerTile or
   /// throws an error if the stream is already used.
   void checkAIEStreamIndex(TileOp tileOp, DMAChannel chan) {
-    if (aiestreamsPerTile.find({tileOp.getResult(), chan.direction,
-                                chan.channel}) == aiestreamsPerTile.end()) {
-      aiestreamsPerTile[{tileOp.getResult(), chan.direction, chan.channel}] = 1;
+    if (aieStreamsPerTile.find({tileOp.getResult(), chan.direction,
+                                chan.channel}) == aieStreamsPerTile.end()) {
+      aieStreamsPerTile[{tileOp.getResult(), chan.direction, chan.channel}] = 1;
     } else {
       if (chan.direction == DMAChannelDir::MM2S)
         tileOp.emitOpError("number of output Core channels exceeded!");
@@ -2000,7 +2000,7 @@ struct AIEObjectFifoStatefulTransformPass
       }
 
       for (auto consumer : consumers) {
-        // if not aie4 stream, create consumer tile DMA
+        // if not aie stream, create consumer tile DMA
         int consumerChanIndex = -1;
         DMAChannel consumerChan;
         if (consumer.getAieStream()) {
@@ -2028,11 +2028,6 @@ struct AIEObjectFifoStatefulTransformPass
             // generate objectFifo allocation info
             builder.setInsertionPoint(device.getBody()->getTerminator());
             if (consumer.getProducerTileOp().isShimTile())
-              // createObjectFifoAllocationInfo(
-              //     builder, ctx, SymbolRefAttr::get(ctx, producer.getName()),
-              //     consumer.getProducerTileOp().colIndex(),
-              //     consumerChan.direction, consumerChan.channel,
-              //     producer.getPlio(), {});
               createObjectFifoAllocationInfo(
                   builder, ctx, producer,
                   consumer.getProducerTileOp().colIndex(),
@@ -2070,29 +2065,6 @@ struct AIEObjectFifoStatefulTransformPass
               consumerWireType = WireBundle::Core;
           }
         }
-
-        // if (clPacketSwObjectFifos) {
-        //   builder.setInsertionPointToStart(&packetflow.getPorts().front());
-        //   builder.create<PacketDestOp>(builder.getUnknownLoc(),
-        //                                consumer.getProducerTile(),
-        //                                WireBundle::DMA,
-        //                                consumerChan.channel);
-        // }
-
-        // BDDimLayoutArrayAttr consumerDims =
-        //     consumer.getDimensionsFromStreamPerConsumer()[0];
-        // createDMA(device, builder, consumer, consumerChan.direction,
-        //           consumerChan.channel, 1, consumerDims, nullptr, {});
-        // // generate objectFifo allocation info
-        // builder.setInsertionPoint(device.getBody()->getTerminator());
-
-        // if (consumer.getProducerTileOp().isShimTile())
-        //   createObjectFifoAllocationInfo(
-        //       builder, ctx, producer,
-        //       consumer.getProducerTileOp().colIndex(),
-        //       consumerChan.direction, consumerChan.channel,
-        //       producer.getPlio(),
-        //       {});
 
         if (!clPacketSwObjectFifos) {
           // create flow
