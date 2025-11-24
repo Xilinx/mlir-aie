@@ -9,7 +9,6 @@
 import os
 import functools
 import hashlib
-import shutil
 import fcntl
 import contextlib
 import time
