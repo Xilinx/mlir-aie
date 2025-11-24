@@ -327,7 +327,7 @@ def transform_parallel_binary(first, second, output, binary_op):
             ],
         )
         for i in range(num_columns)
-    ]   
+    ]
 
     # Create a TensorAccessPattern for each channel
     # to describe the data movement
