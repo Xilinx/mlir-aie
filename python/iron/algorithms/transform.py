@@ -300,18 +300,9 @@ def transform_parallel_binary(first, second, output, binary_op):
     tile_ty = np.ndarray[(per_tile_elements,), np.dtype[dtype]]
 
     # AIE-array data movement with object fifos
-    of_in1s = [
-        ObjectFifo(tile_ty, name=f"in1_{i}")
-        for i in range(num_columns)
-    ]
-    of_in2s = [
-        ObjectFifo(tile_ty, name=f"in2_{i}")
-        for i in range(num_columns)
-    ]
-    of_outs = [
-        ObjectFifo(tile_ty, name=f"out_{i}")
-        for i in range(num_columns)
-    ]
+    of_in1s = [ObjectFifo(tile_ty, name=f"in1_{i}") for i in range(num_columns)]
+    of_in2s = [ObjectFifo(tile_ty, name=f"in2_{i}") for i in range(num_columns)]
+    of_outs = [ObjectFifo(tile_ty, name=f"out_{i}") for i in range(num_columns)]
 
     # Define a task that will run on a compute tile
     def core_body(of_in1, of_in2, of_out):
