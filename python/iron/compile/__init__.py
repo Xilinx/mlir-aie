@@ -6,5 +6,13 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
-from .compile import compile_cxx_core_function, compile_mlir_module
+import os
+from pathlib import Path
+
 from .link import merge_object_files
+from .utils import compile_cxx_core_function, compile_mlir_module
+
+# The `iron.compiledesign` decorator below caches compiled kenrels inside the `IRON_CACHE_HOME` directory.
+# Kernels are cached based on their hash value of the MLIR module string. If during compilation,
+# we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
+IRON_CACHE_HOME = os.environ.get("IRON_CACHE_HOME", Path.home() / ".iron" / "cache")
