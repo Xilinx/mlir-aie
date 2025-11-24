@@ -186,8 +186,6 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             else:
                 return
 
-    from . import compile_cxx_core_function
-
     if source_file:
         try:
             compile_cxx_core_function(
