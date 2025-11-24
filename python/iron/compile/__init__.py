@@ -8,8 +8,15 @@
 import os
 from pathlib import Path
 
+import os
+from pathlib import Path
+
 from .link import merge_object_files
-from .utils import compile_cxx_core_function, compile_mlir_module
+from .utils import (
+    compile_cxx_core_function,
+    compile_mlir_module,
+    compile_external_kernel,
+)
 
 # The `iron.compiledesign` decorator below caches compiled kenrels inside the `IRON_CACHE_HOME` directory.
 # Kernels are cached based on their hash value of the MLIR module string. If during compilation,

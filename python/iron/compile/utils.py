@@ -88,8 +88,7 @@ def compile_mlir_module(
     options=None,
 ):
     """
-    Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module.
-
+    Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module
     This function supports only the Peano compiler.
 
     Parameters:
@@ -140,7 +139,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         return
 
     # Check if object file already exists in kernel directory
-    output_file = os.path.join(kernel_dir, func._object_file_name)
+    output_file = os.path.join(kernel_dir, func.bin_name)
     if os.path.exists(output_file):
         return
 

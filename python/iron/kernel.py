@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
+import hashlib
 import numpy as np
 
 from .. import ir  # type: ignore
@@ -184,8 +185,6 @@ class ExternalFunction(Kernel):
         Compute a hash for the ExternalFunction based on its properties.
         This allows ExternalFunction instances to be used in cache keys.
         """
-        import hashlib
-
         # Create a string representation of the function's key properties
         hash_parts = [
             self._name,
