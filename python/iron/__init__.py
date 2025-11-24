@@ -9,4 +9,9 @@ from .compile.context import CompileContext, get_compile_arg
 from .compile.compileconfig import compileconfig
 from .run.jit import jit, CallableDesign
 from .compile.compilabledesign import CompilableDesign
-from .config import set_current_device, get_current_device, detect_npu_device, set_iron_tensor_class
+from .config import (
+    set_current_device,
+    get_current_device,
+    detect_npu_device,
+    set_iron_tensor_class,
+)
