@@ -14,11 +14,12 @@ class NPUKernel:
             device_index (int, optional): Index of the device. Defaults to 0.
             kernel_name (str, optional): Name of the kernel. Defaults to "PP_FD_PRE".
         """
+        import pyxrt as xrt
 
         self.__device = xrt.device(device_index)
 
         # Find kernel by name in the xclbin
-        self.__xclbin = xrt.xclbin(xclbin_path)
+        self.__xclbin = xrt.xclbin(str(xclbin_path))
         kernels = self.__xclbin.get_kernels()
 
         try:
