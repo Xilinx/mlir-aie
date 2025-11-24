@@ -8,7 +8,6 @@
 # RUN: %run_on_npu2% %pytest %s
 
 import pytest
-import numpy as np
 import os
 import tempfile
 import subprocess

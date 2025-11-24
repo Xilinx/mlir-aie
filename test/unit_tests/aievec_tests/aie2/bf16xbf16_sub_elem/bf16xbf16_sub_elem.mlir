@@ -10,9 +10,6 @@
 // RUN: FileCheck --input-file=./xca_udm_dbg.stdout %s
 // CHECK: TEST PASSED
 
-// failing as of 10/2025
-// XFAIL: *
-
 module {
   func.func @dut(%arg0: memref<1024xbf16>, %arg1: memref<1024xbf16>, %arg2: memref<1024xbf16>) {
     %cst = arith.constant 0.000000e+00 : bf16

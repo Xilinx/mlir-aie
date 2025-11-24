@@ -12,7 +12,6 @@ from contextlib import contextmanager
 import numpy as np
 from typing import Callable
 
-# import aie.utils.trace as trace_utils
 from ...utils import trace as trace_utils
 
 from ... import ir  # type: ignore
@@ -47,8 +46,15 @@ class Runtime(Resolvable):
 
     def __init__(
         self,
+        strict_task_groups: bool = True,
     ) -> Runtime:
-        """Initialize a runtime object."""
+        """Initialize a runtime object.
+
+        Args:
+            check_task_groups: Disallows mixing the default group and explicit task groups during resolution.
+                This can catch common errors, but can be set to False to disable the checks.
+
+        """
         self._rt_data = []
         self._tasks: list[RuntimeTask] = []
         self._fifos = set()
@@ -57,6 +63,7 @@ class Runtime(Resolvable):
         self._trace_size = None
         self._trace_offset = None
         self._trace_workers = None
+        self._strict_task_groups = strict_task_groups
         self.ddr_id = None
 
     @contextmanager
@@ -319,36 +326,64 @@ class Runtime(Resolvable):
             for rt_data, rt_data_val in zip(self._rt_data, args):
                 rt_data.op = rt_data_val
 
-            no_waits = []
+            def finish_task_group(tg, task_group_actions):
+                actions = task_group_actions[tg]
+
+                # We want to keep order, EXCEPT do waits before frees
+                wait_tasks = [
+                    (fn, args) for (fn, args) in actions if fn == dma_await_task
+                ]
+                free_tasks = [
+                    (fn, args) for (fn, args) in actions if fn == dma_free_task
+                ]
+
+                # Check for anything known -- this shouldn't happen, but we'll catch it gracefully anyways.
+                if len(wait_tasks) + len(free_tasks) != len(actions):
+                    unknown_actions = [
+                        (fn, args)
+                        for (fn, args) in actions
+                        if fn != dma_await_task and fn != dma_free_task
+                    ]
+                    raise Exception(
+                        f"Unknown action type detected: {','.join(unknown_actions)}"
+                    )
+
+                for fn, args in wait_tasks + free_tasks:
+                    fn(*args)
+                task_group_actions[tg] = None
+
+            default_task_group = self.task_group()
+            default_tasks = False
+            task_group_tasks = False
             for task in self._tasks:
+
                 task.resolve()
                 if isinstance(task, DMATask):
-                    if task.will_wait():
-                        if task.task_group:
-                            task_group_actions[task.task_group].append(
-                                (dma_await_task, [task.task])
-                            )
-                        else:
-                            dma_await_task(task.task)
-                            for t in no_waits:
-                                dma_free_task(t.task)
-                            no_waits = []
+                    if task.task_group:
+                        task_group_tasks = True
+                        current_task_group = task.task_group
                     else:
-                        if task.task_group:
-                            task_group_actions[task.task_group].append(
-                                (dma_free_task, [task.task])
-                            )
-                        else:
-                            no_waits.append(task)
+                        default_tasks = True
+                        current_task_group = default_task_group
+                    if task.will_wait():
+                        task_group_actions[current_task_group].append(
+                            (dma_await_task, [task.task])
+                        )
+                    else:
+                        task_group_actions[current_task_group].append(
+                            (dma_free_task, [task.task])
+                        )
                 if isinstance(task, FinishTaskGroupTask):
-                    actions = task_group_actions[task.task_group]
-                    for fn, args in actions:
-                        if fn == dma_await_task:
-                            fn(*args)
-                    for fn, args in actions:
-                        if fn != dma_await_task:
-                            fn(*args)
-                    task_group_actions[task.task_group] = None
+                    finish_task_group(task.task_group, task_group_actions)
+
+            if self._strict_task_groups and default_tasks and task_group_tasks:
+                raise Exception(
+                    f"Mixing explicit task groups and the default task group is prohibitted. "
+                    f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
+                )
+
+            if task_group_actions[default_task_group]:
+                finish_task_group(default_task_group, task_group_actions)
 
             if self._trace_size is not None:
                 trace_utils.gen_trace_done_aie2(trace_shim_tile)

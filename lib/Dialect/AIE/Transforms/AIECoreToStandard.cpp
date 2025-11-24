@@ -16,9 +16,11 @@
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Ptr/IR/PtrOps.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
@@ -623,6 +625,11 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     }
     const auto &targetModel = deviceOp.getTargetModel();
 
+    // Copy data layout attribute from DeviceOp to ModuleOp if present
+    if (auto dlAttr = deviceOp->getAttr(DLTIDialect::kDataLayoutAttrName)) {
+      m->setAttr(DLTIDialect::kDataLayoutAttrName, dlAttr);
+    }
+
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
     m->setAttr(LLVM::LLVMDialect::getTargetTripleAttrName(),
@@ -649,7 +656,8 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     target.addLegalDialect<ub::UBDialect>();
     target.addLegalDialect<math::MathDialect>();
     target.addLegalDialect<index::IndexDialect>();
-    target.addLegalOp<func::FuncOp, ModuleOp>();
+    target.addLegalDialect<ptr::PtrDialect>();
+    target.addLegalOp<func::FuncOp, ModuleOp, UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,

@@ -11,7 +11,7 @@
 // RUN: aie-opt %s -aie-legalize-ctrl-packet | FileCheck %s
 
 aie.device(npu2) {
-  aiex.runtime_sequence @run() {
+  aie.runtime_sequence @run() {
 
     // CHECK: aiex.control_packet {address = 8 : ui32, data = array<i32: 1, 2, 3, 4>, opcode = 0 : i32, stream_id = 1 : i32}
     // CHECK: aiex.control_packet {address = 24 : ui32, data = array<i32: 5, 6>, opcode = 0 : i32, stream_id = 1 : i32}
