@@ -10,7 +10,7 @@ import fcntl
 import os
 import time
 
-from ...tensor import Tensor
+from ...hostruntime.tensor import Tensor
 from ...kernel import ExternalFunction
 
 

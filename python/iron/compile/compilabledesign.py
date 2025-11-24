@@ -17,7 +17,7 @@ from typing import Callable
 from aie.extras.context import mlir_mod_ctx
 from . import compile_mlir_module, IRON_CACHE_HOME
 from .context import CompileContext
-from ..config import get_current_device
+from ..hostruntime.config import get_current_device
 from aie.dialects.aie import AIEDevice
 from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from .cache.utils import file_lock
