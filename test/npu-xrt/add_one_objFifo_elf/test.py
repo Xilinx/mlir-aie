@@ -17,6 +17,7 @@ import argparse
 import pyxrt as xrt
 import numpy as np
 import os
+import struct
 
 IN_SIZE = 64
 OUT_SIZE = 64
