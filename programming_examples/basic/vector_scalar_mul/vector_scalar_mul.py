@@ -18,9 +18,6 @@ import aie.iron as iron
 def vector_scalar_mul(input, factor, output, dummy_input0, trace):
 
     in1_dtype = input.dtype
-    in2_dtype = factor.dtype
-    out_dtype = output.dtype
-
     tensor_size = input.numel()
     num_sub_vectors = 4
     tile_size = tensor_size // num_sub_vectors
@@ -101,18 +98,17 @@ def vector_scalar_mul(input, factor, output, dummy_input0, trace):
 
 
 def main():
+
     num_elements = 1024
 
+    # Tensor setup
     input = iron.randint(0, 100, (num_elements,), dtype=np.int16, device="npu")
-
     factor = iron.tensor([3], dtype=np.int32, device="npu")
-
     dummy_input = iron.zeros_like(input)
-
     output = iron.zeros_like(input)
-
     trace = iron.zeros(128, dtype=np.uint32)
 
+    # Function call
     vector_scalar_mul(input, factor, output, dummy_input, trace)
 
     with open("trace.txt", "w") as f:
