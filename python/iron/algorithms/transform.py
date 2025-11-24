@@ -316,6 +316,7 @@ def transform_parallel_binary(first, second, output, binary_op):
             of_in1.release(1)
             of_in2.release(1)
             of_out.release(1)
+
     # Create a worker to run the task on a compute tile
     my_workers = [
         Worker(
