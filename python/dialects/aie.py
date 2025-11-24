@@ -469,7 +469,9 @@ class object_fifo(ObjectFifoCreateOp):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
     def register_external_buffers(self, tile, external_buffers):
-        return objectfifo_register_external_buffers(self.sym_name.value, tile, external_buffers)
+        return objectfifo_register_external_buffers(
+            self.sym_name.value, tile, external_buffers
+        )
 
     def allocate(self, tile):
         return objectfifo_allocate(self.sym_name.value, tile)
