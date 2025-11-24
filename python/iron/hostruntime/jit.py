@@ -23,11 +23,7 @@ from .kernelrunner import NPUKernel
 from aie.dialects.aie import AIEDevice
 from ..compile.cache.circular_cache import CircularCache
 from ..compile.cache.utils import _create_function_cache_key
-
-# The `iron.jit` decorator below caches compiled kenrels inside the `IRON_CACHE_HOME` directory.
-# Kernels are cached based on their hash value of the MLIR module string. If during compilation,
-# we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
-IRON_CACHE_HOME = os.environ.get("IRON_CACHE_HOME", os.path.expanduser("~/.iron/cache"))
+from ..compile import IRON_CACHE_HOME
 
 
 def _cleanup_failed_compilation(cache_dir):
