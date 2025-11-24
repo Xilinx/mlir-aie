@@ -6,6 +6,9 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
+# RUN: %run_on_npu1% %pytest %s
+# RUN: %run_on_npu2% %pytest %s
+# REQUIRES: xrt_python_bindings
 
 import aie.iron as iron
 from aie.iron.algorithms import transform
@@ -27,7 +30,7 @@ def test_transform_add(dtype, num_elements):
     assert np.allclose(input.numpy() + 1, output.numpy())
 
 
-# FIXME: Need to regenerate the kernel AND looks like there is some state in the placement algorithm that breaks if I regenerate the kernel
+# TODO(erika): Need to regenerate the kernel AND looks like there is some state in the placement algorithm that breaks if I regenerate the kernel
 # @pytest.mark.parametrize(
 #    "dtype,num_elements",
 #    [(np.float32, 1024)],
