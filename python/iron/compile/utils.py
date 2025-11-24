@@ -125,6 +125,7 @@ def compile_mlir_module(
 def compile_external_kernel(func, kernel_dir, target_arch):
     """
     Compile an ExternalFunction to an object file in the kernel directory.
+
     Args:
         func: ExternalFunction instance to compile
         kernel_dir: Directory to place the compiled object file
@@ -135,7 +136,7 @@ def compile_external_kernel(func, kernel_dir, target_arch):
         return
 
     # Check if object file already exists in kernel directory
-    output_file = os.path.join(kernel_dir, func._object_file_name)
+    output_file = os.path.join(kernel_dir, func.bin_name)
     if os.path.exists(output_file):
         return
 
@@ -152,65 +153,29 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             raise
     elif func._source_file is not None:
         # Use source_file (copy existing file)
-        if isinstance(func._source_file, list):
-            for f in func._source_file:
-                if os.path.exists(f):
-                    try:
-                        shutil.copy2(f, kernel_dir)
-                        source_file = os.path.join(kernel_dir, os.path.basename(f))
-                    except Exception as e:
-                        raise
-                else:
-                    return
+        # Check if source file exists before copying
+        if os.path.exists(func._source_file):
+            try:
+                shutil.copy2(func._source_file, source_file)
+            except Exception as e:
+                raise
         else:
-            if os.path.exists(func._source_file):
-                try:
-                    shutil.copy2(func._source_file, source_file)
-                    source_file = os.path.join(kernel_dir, os.path.basename(f))
-                except Exception as e:
-                    raise
-            else:
-                return
+            return
+    else:
+        raise ValueError("Neither source_string nor source_file is provided")
 
-    object_files_to_link = []
-    if func._object_files is not None:
-        for f in func._object_files:
-            if os.path.exists(f):
-                try:
-                    shutil.copy2(f, kernel_dir)
-                    object_files_to_link.append(
-                        os.path.join(kernel_dir, os.path.basename(f))
-                    )
-                except Exception as e:
-                    raise
-            else:
-                return
-
-    if source_file:
-        try:
-            compile_cxx_core_function(
-                source_path=source_file,
-                target_arch=target_arch,
-                output_path=output_file,
-                include_dirs=func._include_dirs,
-                compile_args=func._compile_flags,
-                cwd=kernel_dir,
-                verbose=False,
-            )
-            object_files_to_link.append(output_file)
-        except Exception as e:
-            raise e
-
-    if object_files_to_link:
-        try:
-            merge_object_files(
-                object_files_to_link,
-                output_path=output_file,
-                cwd=kernel_dir,
-                verbose=False,
-            )
-        except Exception as e:
-            raise
+    try:
+        compile_cxx_core_function(
+            source_path=source_file,
+            target_arch=target_arch,
+            output_path=output_file,
+            include_dirs=func._include_dirs,
+            compile_args=func._compile_flags,
+            cwd=kernel_dir,
+            verbose=False,
+        )
+    except Exception as e:
+        raise
 
     # Mark the function as compiled
     func._compiled = True

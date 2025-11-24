@@ -1,3 +1,13 @@
+# kernelrunner.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2025 Advanced Micro Devices, Inc.
+import numpy as np
+
+
 class NPUKernel:
     """
     NPUKernel class wrapper for NPU kernels.
@@ -14,6 +24,8 @@ class NPUKernel:
             device_index (int, optional): Index of the device. Defaults to 0.
             kernel_name (str, optional): Name of the kernel. Defaults to "PP_FD_PRE".
         """
+        import pyxrt as xrt
+        from ...utils.xrt import read_insts_binary
 
         self.__device = xrt.device(device_index)
 
@@ -59,9 +71,11 @@ class NPUKernel:
     def __call__(self, *args):
         """
         Allows the kernel to be called as a function with the provided arguments.
+
         Parameters:
             args (IRON Tensors): Arguments to pass to the kernel.
         """
+        import pyxrt as xrt
 
         opcode = 3
         kernel_args = []
