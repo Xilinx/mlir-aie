@@ -277,7 +277,7 @@ def transform_parallel_binary(first, second, output, binary_op):
     if isinstance(iron.get_current_device(), NPU2):
         num_columns = 8
     num_elements = np.size(first)
-    per_tile_elements = 16 # TODO should be larger or configurable
+    per_tile_elements = 16  # TODO should be larger or configurable
     n = per_tile_elements * num_columns
     if num_elements % n != 0:
         raise ValueError(
