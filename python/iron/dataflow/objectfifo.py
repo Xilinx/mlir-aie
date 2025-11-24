@@ -204,7 +204,7 @@ class ObjectFifo(Resolvable):
         )
         return self._cons[-1]
 
-    def tiles(self) -> list[PlacementTile]:
+    def tiles(self, cons_only: bool = False) -> list[PlacementTile]:
         """The list of placement tiles corresponding to the endpoints of all handles of this ObjectFifo
 
         Raises:
@@ -214,15 +214,23 @@ class ObjectFifo(Resolvable):
         Returns:
             list[PlacementTile]: A list of tiles of the endpoints of this ObjectFifo.
         """
-        if self._prod == None:
-            raise ValueError("Cannot return prod.tile.op because prod was not created.")
+        tiles = []
+        if not cons_only:
+            if self._prod == None:
+                raise ValueError(
+                    "Cannot return prod.tile.op because prod was not created."
+                )
+            tiles += [self._prod.endpoint.tile]
         if self._cons == []:
-            raise ValueError("Cannot return cons.tile.op because prod was not created.")
-        return [self._prod.endpoint.tile] + [cons.endpoint.tile for cons in self._cons]
+            raise ValueError(
+                "Cannot return cons.tile.op because cons were not created."
+            )
+        tiles += [cons.endpoint.tile for cons in self._cons]
+        return tiles
 
-    def has_legal_mem_affinity(self, device: Device) -> bool:
+    def has_legal_mem_affinity(self, device: Device, cons_only: bool = False) -> bool:
         """Checks if all endpoints of the object fifo have a legal memory affinity."""
-        return device.is_legal_mem_affinity(*self.tiles())
+        return device.is_legal_mem_affinity(*self.tiles(cons_only))
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:

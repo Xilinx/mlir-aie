@@ -37,12 +37,14 @@ def test_has_legal_mem_affinity(device):
     of_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
     of_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     assert of_legal.has_legal_mem_affinity(device)
+    assert of_legal.has_legal_mem_affinity(device, cons_only=True)
 
     # Illegal affinity
     of_illegal = ObjectFifo(n_ty)
     of_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
     of_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
     assert not of_illegal.has_legal_mem_affinity(device)
+    assert of_illegal.has_legal_mem_affinity(device, cons_only=True)
 
     # Multiple consumers, legal
     of_mult_cons_legal = ObjectFifo(n_ty)
@@ -50,6 +52,7 @@ def test_has_legal_mem_affinity(device):
     of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 4))
     assert of_mult_cons_legal.has_legal_mem_affinity(device)
+    assert of_mult_cons_legal.has_legal_mem_affinity(device, cons_only=True)
 
     # Multiple consumers, illegal
     of_mult_cons_illegal = ObjectFifo(n_ty)
@@ -57,6 +60,14 @@ def test_has_legal_mem_affinity(device):
     of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(0, 0))
     assert not of_mult_cons_illegal.has_legal_mem_affinity(device)
+    assert not of_mult_cons_illegal.has_legal_mem_affinity(device, cons_only=True)
+
+    # Illegal producer, legal consumer
+    of_illegal_prod = ObjectFifo(n_ty)
+    of_illegal_prod.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
+    of_illegal_prod.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
+    assert not of_illegal_prod.has_legal_mem_affinity(device)
+    assert of_illegal_prod.has_legal_mem_affinity(device, cons_only=True)
 
     # Forwarded ObjectFifo
     of_forward = ObjectFifo(n_ty)
