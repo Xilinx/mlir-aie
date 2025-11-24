@@ -10,7 +10,7 @@ import functools
 from typing import Callable
 from pathlib import Path
 from ..compile.compilabledesign import CompilableDesign
-from ..compile.cache.circularcache import CircularCache
+from ..compile.cache.circular_cache import CircularCache
 from ..compile.cache.utils import _create_function_cache_key
 from .kernelrunner import NPUKernel
 

@@ -8,9 +8,6 @@
 import os
 from pathlib import Path
 
-import os
-from pathlib import Path
-
 from .link import merge_object_files
 from .utils import (
     compile_cxx_core_function,
