@@ -261,7 +261,7 @@ def transform_parallel(input, output, func):
 
 @iron.jit(is_placed=False)
 def transform_parallel_binary(first, second, output, binary_op):
-    """     
+    """
     AIE-array parallel binary transform function.
     This function applies a given binary operation to each element of the input arrays in parallel.
     """
