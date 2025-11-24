@@ -370,7 +370,7 @@ def transform_parallel_binary(first, second, output, binary_op):
                 wait=True,  # wait for the transfer to complete and data to be available
                 task_group=tg_out,
             )
-        rt.finish_task_group(tg_out)    
+        rt.finish_task_group(tg_out)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
