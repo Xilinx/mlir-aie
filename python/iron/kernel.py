@@ -116,7 +116,6 @@ class ExternalFunction(Kernel):
         self._compiled = False
         self._arg_types = arg_types
         self._op: FuncOp | None = None
-        self._debug = debug
 
         if self._debug:
             print(f"Initializing ExternalFunction: {name}")
