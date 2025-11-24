@@ -114,15 +114,16 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    You can install a specific version of `mlir-aie` from the release wheels. To see available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
 
    ```bash
-   # Install IRON library and mlir-aie from a specific release
+   # Install IRON library and mlir-aie from a specific release,
+   # e.g., <verison> in the following command could be replaced with v1.1.3
    python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
    ```
 
    Alternatively, you can install the latest released version of `mlir-aie`.
    ```bash
    # Get the latest release version
-   latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq '.tag_name')
-   latest_tag=${latest_tag_with_v#v}
+   latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq -r '.tag_name')
+   latest_tag="${latest_tag_with_v#v}"
 
    # Install IRON library and mlir-aie from the latest stable release
    python3 -m pip install mlir_aie==${latest_tag} -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${latest_tag_with_v}
