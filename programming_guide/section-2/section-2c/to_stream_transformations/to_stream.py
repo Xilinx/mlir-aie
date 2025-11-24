@@ -23,7 +23,7 @@ if len(sys.argv) > 1:
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 n_workers = 3
-depth = 2
+depth = 1
 
 # Define tensor types
 data_ty = np.ndarray[(48,), np.dtype[np.int32]]
