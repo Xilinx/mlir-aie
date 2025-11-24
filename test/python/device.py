@@ -20,27 +20,40 @@ def device(request):
 
 def test_legal_mem_affinity(device):
     # Test single tile
-    assert device.is_legal_mem_affinity(Tile(1, 2))
+    assert device.is_mem_accessible(Tile(1, 2), [Tile(1, 2)])
+
     # Test adjacent compute tiles
-    assert device.is_legal_mem_affinity(Tile(1, 2), Tile(1, 3))
+    assert device.is_mem_accessible(Tile(1, 2), [Tile(1, 3)])
+    assert device.is_mem_accessible(Tile(1, 2), [Tile(1, 3)])
+
     # Test adjacent memory tiles
-    assert device.is_legal_mem_affinity(Tile(1, 1), Tile(2, 1))
+    assert device.is_mem_accessible(Tile(1, 1), [Tile(2, 1)])
+    assert device.is_mem_accessible(Tile(2, 1), [Tile(1, 1)])
+
     # Test non-adjacent tiles
-    assert not device.is_legal_mem_affinity(Tile(1, 2), Tile(3, 4))
-    # Test same tile
-    assert device.is_legal_mem_affinity(Tile(1, 2), Tile(1, 2))
+    assert not device.is_mem_accessible(Tile(1, 2), [Tile(3, 4)])
+
     # Test diagonal compute tiles
-    assert not device.is_legal_mem_affinity(Tile(1, 2), Tile(2, 3))
+    assert not device.is_mem_accessible(Tile(1, 2), [Tile(2, 3)])
+
     # Test adjacent shim and mem tiles
-    assert not device.is_legal_mem_affinity(Tile(0, 0), Tile(0, 1))
+    assert not device.is_mem_accessible(Tile(0, 0), [Tile(0, 1)])
+    assert not device.is_mem_accessible(Tile(0, 1), [Tile(0, 0)])
+
     # Test adjacent mem and compute tiles
-    assert not device.is_legal_mem_affinity(Tile(0, 1), Tile(0, 2))
+    assert not device.is_mem_accessible(Tile(0, 1), Tile(0, 2))
+    assert not device.is_mem_accessible(Tile(0, 2), Tile(0, 1))
+
     # Test multiple adjacent compute tiles
-    assert device.is_legal_mem_affinity(Tile(1, 2), Tile(1, 3), Tile(1, 4))
+    assert not device.is_mem_accessible(Tile(1, 2), [Tile(1, 3), Tile(1, 4)])
+    assert device.is_mem_accessible(Tile(1, 3), [Tile(1, 2), Tile(1, 4)])
+    assert not device.is_mem_accessible(Tile(1, 4), [Tile(1, 2), Tile(1, 3)])
+
     # Test multiple non-adjacent compute tiles
-    assert not device.is_legal_mem_affinity(Tile(1, 2), Tile(1, 3), Tile(1, 5))
+    assert not device.is_mem_accessible(Tile(1, 2), [Tile(1, 3), Tile(1, 5)])
+
     # Test multiple tiles of different types
-    assert not device.is_legal_mem_affinity(Tile(0, 0), Tile(1, 2))
+    assert not device.is_mem_accessible(Tile(0, 0), [Tile(1, 2), Tile(1, 1)])
 
 
 def test_get_tiles(device):

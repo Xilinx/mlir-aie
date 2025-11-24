@@ -189,37 +189,45 @@ class Device(Resolvable):
         else:
             return self.get_num_dest_switchbox_connections(tile)
 
-    def is_legal_mem_affinity(self, *tiles: Tile) -> bool:
-        """Returns whether there exists a memory region which all tiles can access.
+    def is_mem_accessible(self, source_tile: Tile, tiles: list[Tile]) -> bool:
+        """Returns whether there exists a memory region on source_tile which all destination tiles can access.
         Returns:
             int: Number of connections (channels) available on the tile
         """
+        if not isinstance(source_tile, Tile):
+            raise ValueError(f"Expected a source Tile, but got {t}")
         for t in tiles:
             if not isinstance(t, Tile):
                 raise ValueError(f"Expected a Tile, but got {t}")
         if not tiles:
             return True
-        if len(tiles) == 1:
-            return True
 
-        first_tile = tiles[0]
-        is_first_compute = self._tm.is_core_tile(first_tile.col, first_tile.row)
-        is_first_mem = self._tm.is_mem_tile(first_tile.col, first_tile.row)
+        source_is_compute = self._tm.is_core_tile(source_tile.col, source_tile.row)
+        source_is_mem = self._tm.is_mem_tile(source_tile.col, source_tile.row)
+        source_is_shim = self._tm.is_shim_noc_or_pl_tile(
+            source_tile.col, source_tile.row
+        )
 
-        for i in range(len(tiles) - 1):
-            src_tile = tiles[i]
-            dst_tile = tiles[i + 1]
-            is_dst_compute = self._tm.is_core_tile(dst_tile.col, dst_tile.row)
-            is_dst_mem = self._tm.is_mem_tile(dst_tile.col, dst_tile.row)
+        if source_is_compute and not all(
+            [self._tm.is_core_tile(dst_tile.col, dst_tile.row) for dst_tile in tiles]
+        ):
+            return False
+        if source_is_mem and not all(
+            [self._tm.is_mem_tile(dst_tile.col, dst_tile.row) for dst_tile in tiles]
+        ):
+            return False
+        if source_is_shim or any(
+            [
+                self._tm.is_shim_noc_or_pl_tile(dst_tile.col, dst_tile.row)
+                for dst_tile in tiles
+            ]
+        ):
+            # No neighbor sharing from shim tiles.
+            return False
 
-            if is_first_compute != is_dst_compute:
-                return False
-
-            if is_first_mem != is_dst_mem:
-                return False
-
+        for t in tiles:
             if not self._tm.is_legal_mem_affinity(
-                src_tile.col, src_tile.row, dst_tile.col, dst_tile.row
+                source_tile.col, source_tile.row, t.col, t.row
             ):
                 return False
         return True
