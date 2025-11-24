@@ -9,7 +9,6 @@ from .hostruntime.jit import jit
 from .hostruntime.config import (
     get_current_device,
     set_current_device,
-    set_iron_tensor_class,
 )
 from .hostruntime.tensor import (
     tensor,
