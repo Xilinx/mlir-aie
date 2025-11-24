@@ -24,21 +24,7 @@ from aie.dialects.aie import AIEDevice
 from ..compile.cache.circular_cache import CircularCache
 from ..compile.cache.utils import _create_function_cache_key
 from ..compile import IRON_CACHE_HOME
-
-
-def _cleanup_failed_compilation(cache_dir):
-    """Clean up cache directory after failed compilation, preserving the lock file."""
-    if not os.path.exists(cache_dir):
-        return
-
-    for item in os.listdir(cache_dir):
-        if item == ".lock":
-            continue
-        item_path = os.path.join(cache_dir, item)
-        if os.path.isfile(item_path):
-            os.remove(item_path)
-        elif os.path.isdir(item_path):
-            shutil.rmtree(item_path)
+from ..compile.utils import _cleanup_failed_compilation
 
 
 @contextlib.contextmanager

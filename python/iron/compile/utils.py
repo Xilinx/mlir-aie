@@ -26,7 +26,7 @@ def compile_cxx_core_function(
     Compile a C++ core function.
     This function supports only the Peano compiler.
     Parameters:
-        source_path (list[str]): Path to C++ source.
+        source_path (str): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
         output_path (str): Output object file path.
         include_dirs (list[str], optional): List of include directories to add with -I.
