@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=11"/>
 <meta name="generator" content="Doxygen 1.9.8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>IRON: iron.compile.compile Namespace Reference</title>
+<title>IRON: iron.compile.utils Namespace Reference</title>
 <link href="tabs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="jquery.js"></script>
 <script type="text/javascript" src="dynsections.js"></script>
@@ -69,32 +69,62 @@ $(function() {
 
 <div id="nav-path" class="navpath">
   <ul>
-<li class="navelem"><a class="el" href="namespaceiron.html">iron</a></li><li class="navelem"><a class="el" href="namespaceiron_1_1compile.html">compile</a></li><li class="navelem"><a class="el" href="namespaceiron_1_1compile_1_1compile.html">compile</a></li>  </ul>
+<li class="navelem"><a class="el" href="namespaceiron.html">iron</a></li><li class="navelem"><a class="el" href="namespaceiron_1_1compile.html">compile</a></li><li class="navelem"><a class="el" href="namespaceiron_1_1compile_1_1utils.html">utils</a></li>  </ul>
 </div>
 </div><!-- top -->
 <div class="header">
   <div class="summary">
 <a href="#func-members">Functions</a>  </div>
-  <div class="headertitle"><div class="title">iron.compile.compile Namespace Reference</div></div>
+  <div class="headertitle"><div class="title">iron.compile.utils Namespace Reference</div></div>
 </div><!--header-->
 <div class="contents">
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:ae142d95d768bf0007aa714f4a0edcb01" id="r_ae142d95d768bf0007aa714f4a0edcb01"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#ae142d95d768bf0007aa714f4a0edcb01">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, list[str]|None include_dirs=None, list[str]|None compile_args=None, str|None cwd=None, verbose=False)</td></tr>
-<tr class="separator:ae142d95d768bf0007aa714f4a0edcb01"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a80d48525c972017856266ff0a3b74d75" id="r_a80d48525c972017856266ff0a3b74d75"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1compile.html#a80d48525c972017856266ff0a3b74d75">compile_mlir_module</a> (str mlir_module, str|None insts_path=None, str|None pdi_path=None, str|None xclbin_path=None, verbose=False, str|None work_dir=None, options=None)</td></tr>
-<tr class="separator:a80d48525c972017856266ff0a3b74d75"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a52c56cf5a5deb842ece4dc4a3b6f5773" id="r_a52c56cf5a5deb842ece4dc4a3b6f5773"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1utils.html#a52c56cf5a5deb842ece4dc4a3b6f5773">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, list[str]|None include_dirs=None, list[str]|None compile_args=None, str|None cwd=None, verbose=False)</td></tr>
+<tr class="separator:a52c56cf5a5deb842ece4dc4a3b6f5773"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a922e9d6b090314e2c9c30abbcf2755eb" id="r_a922e9d6b090314e2c9c30abbcf2755eb"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1utils.html#a922e9d6b090314e2c9c30abbcf2755eb">compile_mlir_module</a> (str mlir_module, str|None insts_path=None, str|None pdi_path=None, str|None xclbin_path=None, verbose=False, str|None work_dir=None, options=None)</td></tr>
+<tr class="separator:a922e9d6b090314e2c9c30abbcf2755eb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a64d96c2fcab24b8a913fe077fe23ccd0" id="r_a64d96c2fcab24b8a913fe077fe23ccd0"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1utils.html#a64d96c2fcab24b8a913fe077fe23ccd0">compile_external_kernel</a> (func, kernel_dir, target_arch)</td></tr>
+<tr class="separator:a64d96c2fcab24b8a913fe077fe23ccd0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a87ab9bb2020ae899704e71360c994fc2" id="r_a87ab9bb2020ae899704e71360c994fc2"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1compile_1_1utils.html#a87ab9bb2020ae899704e71360c994fc2">_cleanup_failed_compilation</a> (cache_dir)</td></tr>
+<tr class="separator:a87ab9bb2020ae899704e71360c994fc2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
-<a id="ae142d95d768bf0007aa714f4a0edcb01" name="ae142d95d768bf0007aa714f4a0edcb01"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae142d95d768bf0007aa714f4a0edcb01">&#9670;&#160;</a></span>compile_cxx_core_function()</h2>
+<a id="a87ab9bb2020ae899704e71360c994fc2" name="a87ab9bb2020ae899704e71360c994fc2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a87ab9bb2020ae899704e71360c994fc2">&#9670;&#160;</a></span>_cleanup_failed_compilation()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.compile.utils._cleanup_failed_compilation </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>cache_dir</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Clean up cache directory after failed compilation, preserving the lock file.</pre> 
+</div>
+</div>
+<a id="a52c56cf5a5deb842ece4dc4a3b6f5773" name="a52c56cf5a5deb842ece4dc4a3b6f5773"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a52c56cf5a5deb842ece4dc4a3b6f5773">&#9670;&#160;</a></span>compile_cxx_core_function()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">iron.compile.compile.compile_cxx_core_function </td>
+          <td class="memname">iron.compile.utils.compile_cxx_core_function </td>
           <td>(</td>
           <td class="paramtype">str&#160;</td>
           <td class="paramname"><em>source_path</em>, </td>
@@ -143,9 +173,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 <pre class="fragment">Compile a C++ core function.
-
 This function supports only the Peano compiler.
-
 Parameters:
     source_path (str): Path to C++ source.
     target_arch (str): Target architecture, e.g., aie2.
@@ -157,14 +185,54 @@ Parameters:
 </pre> 
 </div>
 </div>
-<a id="a80d48525c972017856266ff0a3b74d75" name="a80d48525c972017856266ff0a3b74d75"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a80d48525c972017856266ff0a3b74d75">&#9670;&#160;</a></span>compile_mlir_module()</h2>
+<a id="a64d96c2fcab24b8a913fe077fe23ccd0" name="a64d96c2fcab24b8a913fe077fe23ccd0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a64d96c2fcab24b8a913fe077fe23ccd0">&#9670;&#160;</a></span>compile_external_kernel()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">iron.compile.compile.compile_mlir_module </td>
+          <td class="memname">iron.compile.utils.compile_external_kernel </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>func</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>kernel_dir</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>target_arch</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Compile an ExternalFunction to an object file in the kernel directory.
+
+Args:
+    func: ExternalFunction instance to compile
+    kernel_dir: Directory to place the compiled object file
+    target_arch: Target architecture (e.g., "aie2" or "aie2p")
+</pre> 
+</div>
+</div>
+<a id="a922e9d6b090314e2c9c30abbcf2755eb" name="a922e9d6b090314e2c9c30abbcf2755eb"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a922e9d6b090314e2c9c30abbcf2755eb">&#9670;&#160;</a></span>compile_mlir_module()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.compile.utils.compile_mlir_module </td>
           <td>(</td>
           <td class="paramtype">str&#160;</td>
           <td class="paramname"><em>mlir_module</em>, </td>
@@ -213,9 +281,7 @@ Parameters:
       </table>
 </div><div class="memdoc">
 <pre class="fragment">Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module.
-
 This function supports only the Peano compiler.
-
 Parameters:
     mlir_module (str): MLIR module to compile.
     insts_path (str): Path to the instructions binary file.
