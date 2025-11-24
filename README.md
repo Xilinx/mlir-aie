@@ -111,38 +111,33 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Install IRON library, mlir-aie and llvm-aie compilers from wheels and dependencies:
 
-   For release v1.1.0:
+   You can install a specific version of `mlir-aie` from the release wheels. To see available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
+
    ```bash
-   # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/v1.1.0
-
-   # Install Peano from a llvm-aie wheel
-   python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-20.0.0.2025090701+8c084497-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-
-   # Install MLIR Python Extras
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
-   ```
-   
-   For release v1.0:
-   ```bash
-   # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/v1.0
-
-   # Install Peano from a llvm-aie wheel
-   python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025041501+b2a279c1-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-
-   # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
-   python3 -m pip install -r python/requirements.txt
-
-   # Install MLIR Python Extras
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   # Install IRON library and mlir-aie from a specific release,
+   # e.g., <verison> in the following command could be replaced with v1.1.3
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
    ```
 
-   For daily latest:
+   Alternatively, you can install the latest released version of `mlir-aie`.
    ```bash
-   # Install IRON library and mlir-aie from a wheel
+   # Get the latest release version
+   latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq -r '.tag_name')
+   latest_tag="${latest_tag_with_v#v}"
+
+   # Install IRON library and mlir-aie from the latest stable release
+   python3 -m pip install mlir_aie==${latest_tag} -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${latest_tag_with_v}
+   ```
+
+   For the latest wheels (not necessarily a release):
+   ```bash
+   # Install IRON library and mlir-aie from the latest wheel
    python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
+   ```
 
+   You will also need to install the `llvm-aie` wheel for the Peano compiler and the `mlir-aie` python extras.
+
+   ```bash
    # Install Peano from llvm-aie wheel
    python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 
