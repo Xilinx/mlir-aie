@@ -190,7 +190,7 @@ class Device(Resolvable):
             return self.get_num_dest_switchbox_connections(tile)
 
     def is_legal_mem_affinity(self, *tiles: Tile) -> bool:
-        """Returns whether memory on a destination can be accessed by a source.
+        """Returns whether there exists a memory region which all tiles can access.
         Returns:
             int: Number of connections (channels) available on the tile
         """
