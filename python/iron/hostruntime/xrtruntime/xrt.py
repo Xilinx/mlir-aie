@@ -6,12 +6,12 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import numpy as np
-import copy
 import time
 import pyxrt as xrt
-import os
 
-from .tensor import XRTTensor
+from ..iron.hostruntime.hostruntime import HostRuntime
+
+read_insts = HostRuntime.read_insts
 
 
 #
