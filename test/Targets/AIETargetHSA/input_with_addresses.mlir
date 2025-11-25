@@ -49,8 +49,8 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @in0(MM2S, 0, 6)
-    aie.shim_dma_allocation @out0(S2MM, 0, 6)
+    aie.shim_dma_allocation @in0 (%tile_6_0, MM2S, 0)
+    aie.shim_dma_allocation @out0 (%tile_6_0, S2MM, 0)
 
     aie.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
       aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @out0} : memref<64xi32>

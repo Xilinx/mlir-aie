@@ -203,7 +203,7 @@
 // CHECK:         memref.store %29, %buffer_0_2[%c0] : memref<2xi32>
 // CHECK:         aie.end
 // CHECK:       }
-// CHECK:       aie.shim_dma_allocation @input_fifo_shim_alloc(MM2S, 0, 0)
+// CHECK:       aie.shim_dma_allocation @input_fifo_shim_alloc (%tile_0_0, MM2S, 0)
 
 
 module {

@@ -11,7 +11,7 @@ module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
 
-    aie.shim_dma_allocation @alloc0 (MM2S, 0, 0)
+    aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0)
 
     aie.bd_chain @simple_chain(%arg0: memref<8xi16>, %arg1: memref<12xi16>) {
             aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {packet = #aie.packet_info<pkt_type = 1, pkt_id = 1>}
