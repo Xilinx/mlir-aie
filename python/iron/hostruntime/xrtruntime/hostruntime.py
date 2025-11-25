@@ -10,7 +10,7 @@ from pathlib import Path
 import pyxrt
 
 from ..hostruntime import HostRuntime, KernelHandle
-from ...device import Device
+from ...device import Device, NPU1, NPU2
 
 
 class XRTKernelHandle(KernelHandle):
