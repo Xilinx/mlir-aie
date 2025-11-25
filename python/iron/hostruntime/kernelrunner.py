@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 import numpy as np
+from .hostruntime import DEFAULT_IRON_RUNTIME
 
 
 class NPUKernel:
@@ -20,48 +21,11 @@ class NPUKernel:
             xclbin_path (str): Path to the XCLBIN file containing the kernel.
             insts_path (str): Path to the instruction binary file for the kernel.
         """
-        import pyxrt as xrt
-        from ...utils.xrt import read_insts_binary
+        self._xclbin_path = xclbin_path
+        self._insts_path = insts_path
 
-        self.__device = xrt.device(device_index)
-
-        # Find kernel by name in the xclbin
-        self.__xclbin = xrt.xclbin(xclbin_path)
-        kernels = self.__xclbin.get_kernels()
-
-        try:
-            xkernel = [k for k in kernels if kernel_name == k.get_name()][0]
-        except KeyError:
-            raise NPUKernel_Error("No such kernel: " + kernel_name)
-
-        self.__device.register_xclbin(self.__xclbin)
-        self.__context = xrt.hw_context(self.__device, self.__xclbin.get_uuid())
-        self.__kernel = xrt.kernel(self.__context, xkernel.get_name())
-
-        # Set up instruction stream
-        insts = read_insts_binary(insts_path)
-        self.__n_insts = len(insts)
-        insts_buffers_bytes = self.__n_insts * np.dtype(insts.dtype).itemsize
-
-        # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
-        # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621
-        group_id = 1
-
-        self.__insts_buffer_bo = xrt.bo(
-            self.__device,
-            insts_buffers_bytes,
-            xrt.bo.cacheable,
-            group_id,
-        )
-
-        # Copy into a temporary numpy buffer
-        insts_buffer_bo_np = np.frombuffer(
-            self.__insts_buffer_bo.map(), dtype=insts.dtype
-        ).reshape(insts.shape)
-        insts_buffer_bo_np[:] = insts
-
-        # Always sync to the device in the constructor
-        self.__insts_buffer_bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+    def load(self):
+        DEFAULT_IRON_RUNTIME.load(self._xclbin_path, self._insts_path)
 
     # Blocking call.
     def __call__(self, *args):
