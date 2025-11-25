@@ -13,16 +13,12 @@ class NPUKernel:
     NPUKernel class wrapper for NPU kernels.
     """
 
-    def __init__(
-        self, xclbin_path, insts_path, device_index=0, kernel_name="PP_FD_PRE"
-    ):
+    def __init__(self, xclbin_path, insts_path):
         """
         Initialize the NPUKernel object.
         Parameters:
             xclbin_path (str): Path to the XCLBIN file containing the kernel.
             insts_path (str): Path to the instruction binary file for the kernel.
-            device_index (int, optional): Index of the device. Defaults to 0.
-            kernel_name (str, optional): Name of the kernel. Defaults to "PP_FD_PRE".
         """
         import pyxrt as xrt
         from .xrtruntime.xrt import read_insts_binary

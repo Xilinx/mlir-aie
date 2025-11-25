@@ -17,7 +17,6 @@ from aie.extras.context import mlir_mod_ctx
 from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from ..compile import compile_mlir_module, compile_external_kernel
 from ..kernel import ExternalFunction
-from .hostruntime import DEFAULT_IRON_RUNTIME
 from .kernelrunner import NPUKernel
 from aie.dialects.aie import AIEDevice
 from ..compile.cache.circular_cache import CircularCache
