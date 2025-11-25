@@ -32,5 +32,5 @@ var searchData=
   ['iron_3a_3aruntime_3a_3ataskgroup_29',['taskgroup',['../namespaceiron_1_1runtime_1_1taskgroup.html',1,'iron::runtime']]],
   ['iron_3a_3aworker_30',['worker',['../namespaceiron_1_1worker.html',1,'iron']]],
   ['iron_5fcache_5fhome_31',['IRON_CACHE_HOME',['../namespaceiron_1_1compile.html#a7c7ba4881e396ff62367592b4d239837',1,'iron::compile']]],
-  ['is_5flegal_5fmem_5faffinity_32',['is_legal_mem_affinity',['../classiron_1_1device_1_1device_1_1Device.html#a54f229c7c941e51070c09345cbbc07e2',1,'iron::device::device::Device']]]
+  ['is_5fmem_5faccessible_32',['is_mem_accessible',['../classiron_1_1device_1_1device_1_1Device.html#a1d138bfd235611c9db379c05ab22336a',1,'iron::device::device::Device']]]
 ];

@@ -135,8 +135,10 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a99b554ace7626a3b65076e54123aced2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9074a9e04b32080262f3755b0f24b36a" id="r_a9074a9e04b32080262f3755b0f24b36a"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9074a9e04b32080262f3755b0f24b36a">cons</a> (self, int|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52fa60e2e75287e53008e22c5b0b3be8">depth</a>=None, list[Sequence[int]]|None dims_from_stream=None)</td></tr>
 <tr class="separator:a9074a9e04b32080262f3755b0f24b36a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ae14c7290250bde522bcfdde7a5685e06" id="r_ae14c7290250bde522bcfdde7a5685e06"><td class="memItemLeft" align="right" valign="top">list[PlacementTile]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#ae14c7290250bde522bcfdde7a5685e06">tiles</a> (self)</td></tr>
-<tr class="separator:ae14c7290250bde522bcfdde7a5685e06"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:addaa438e03fde9d546e54fd042c3866c" id="r_addaa438e03fde9d546e54fd042c3866c"><td class="memItemLeft" align="right" valign="top">list[PlacementTile]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#addaa438e03fde9d546e54fd042c3866c">tiles</a> (self, bool cons_only=False)</td></tr>
+<tr class="separator:addaa438e03fde9d546e54fd042c3866c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1375c3b7a192dcc58819524d9b6eb549" id="r_a1375c3b7a192dcc58819524d9b6eb549"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a1375c3b7a192dcc58819524d9b6eb549">can_used_shared_mem</a> (self, <a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a> device, bool cons_only=False)</td></tr>
+<tr class="separator:a1375c3b7a192dcc58819524d9b6eb549"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8bc442cf0fc403d0e1c8de9807800111" id="r_a8bc442cf0fc403d0e1c8de9807800111"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a8bc442cf0fc403d0e1c8de9807800111">resolve</a> (self, ir.Location|None loc=None, ir.InsertionPoint|None ip=None)</td></tr>
 <tr class="separator:a8bc442cf0fc403d0e1c8de9807800111"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -514,6 +516,40 @@ Raises:
 
 </div>
 </div>
+<a id="a1375c3b7a192dcc58819524d9b6eb549" name="a1375c3b7a192dcc58819524d9b6eb549"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1375c3b7a192dcc58819524d9b6eb549">&#9670;&#160;</a></span>can_used_shared_mem()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> bool iron.dataflow.objectfifo.ObjectFifo.can_used_shared_mem </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a>&#160;</td>
+          <td class="paramname"><em>device</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool &#160;</td>
+          <td class="paramname"><em>cons_only</em> = <code>False</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Checks if all endpoints of the object fifo have a legal memory affinity.</pre> 
+</div>
+</div>
 <a id="a9074a9e04b32080262f3755b0f24b36a" name="a9074a9e04b32080262f3755b0f24b36a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a9074a9e04b32080262f3755b0f24b36a">&#9670;&#160;</a></span>cons()</h2>
 
@@ -804,8 +840,8 @@ Raises:
 <pre class="fragment">The shape of each buffer belonging to the ObjectFifo</pre> 
 </div>
 </div>
-<a id="ae14c7290250bde522bcfdde7a5685e06" name="ae14c7290250bde522bcfdde7a5685e06"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ae14c7290250bde522bcfdde7a5685e06">&#9670;&#160;</a></span>tiles()</h2>
+<a id="addaa438e03fde9d546e54fd042c3866c" name="addaa438e03fde9d546e54fd042c3866c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#addaa438e03fde9d546e54fd042c3866c">&#9670;&#160;</a></span>tiles()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -814,8 +850,18 @@ Raises:
           <td class="memname"> list[PlacementTile] iron.dataflow.objectfifo.ObjectFifo.tiles </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>self</em></td><td>)</td>
+          <td class="paramname"><em>self</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">bool &#160;</td>
+          <td class="paramname"><em>cons_only</em> = <code>False</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
 </div><div class="memdoc">
