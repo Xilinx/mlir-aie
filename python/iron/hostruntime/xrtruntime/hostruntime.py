@@ -5,6 +5,8 @@
 XRT-based implementation of the HostRuntime
 """
 import logging
+from pathlib import Path
+import numpy as np
 import pyxrt
 
 from ..hostruntime import HostRuntime, KernelHandle
@@ -12,9 +14,10 @@ from ...device import Device, NPU1, NPU2
 
 
 class XRTKernelHandle(KernelHandle):
-    def __init__(self, xclbin_path, kernel_name):
+    def __init__(self, xclbin_path, kernel_name, instr_path=None):
         self.xclbin_path = xclbin_path
         self.kernel_name = kernel_name
+        self.instr_path = instr_path
 
 
 class XRTHostRuntime(HostRuntime):
@@ -58,7 +61,7 @@ class XRTHostRuntime(HostRuntime):
         self._contexts = {}  # xclbin_path -> (context, xclbin)
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
 
-    def load(self, xclbin_path, kernel_name=None) -> XRTKernelHandle:
+    def load(self, xclbin_path, kernel_name=None, instr_path=None) -> XRTKernelHandle:
         if xclbin_path not in self._contexts:
             xclbin = pyxrt.xclbin(xclbin_path)
             self._device.register_xclbin(xclbin)
@@ -78,7 +81,20 @@ class XRTHostRuntime(HostRuntime):
 
         kernel_key = (xclbin_path, kernel_name)
         if kernel_key not in self._kernels:
-            self._kernels[kernel_key] = pyxrt.kernel(context, kernel_name)
+            kernel = pyxrt.kernel(context, kernel_name)
+            insts_bo = None
+            insts_len = 0
+            if instr_path:
+                instr_binary_nbytes = Path(instr_path).stat().st_size
+                insts_bo = pyxrt.bo(
+                    self._device,
+                    instr_binary_nbytes,
+                    pyxrt.bo.cacheable,
+                    kernel.group_id(1),
+                )
+                insts_len = instr_binary_nbytes // 4
+
+            self._kernels[kernel_key] = (kernel, insts_bo, insts_len, instr_path)
             logging.debug(
                 f"Created new kernel {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
@@ -86,19 +102,28 @@ class XRTHostRuntime(HostRuntime):
             logging.debug(
                 f"Reusing kernel: {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
-        return XRTKernelHandle(xclbin_path, kernel_name)
+        return XRTKernelHandle(xclbin_path, kernel_name, instr_path)
 
     def run(self, kernel_handle: XRTKernelHandle, *args, **kwargs):
-        _, kernel = self._kernels[
+        kernel, insts_bo, insts_len, instr_path = self._kernels[
             (kernel_handle.xclbin_path, kernel_handle.kernel_name)
         ]
-        kernel(*args, **kwargs)
+        if insts_bo:
+            with open(instr_path, "rb") as f:
+                instr_binary = np.frombuffer(f.read(), dtype=np.uint32)
+            insts_bo.write(instr_binary.view(np.uint8), 0)
+            kernel(3, insts_bo, insts_len, *args)
+        else:
+            kernel(*args, **kwargs)
 
     def device(self) -> Device:
         return self._device_type()
 
     def cleanup(self):
         """Clean up all XRT resources"""
+        for _kernel, insts_bo, _insts_len, _instr_path in self._kernels.values():
+            if insts_bo:
+                del insts_bo
         self._kernels.clear()
 
         # Clear contexts
