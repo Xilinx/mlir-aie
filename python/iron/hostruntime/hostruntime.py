@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from abc import ABC, abstractmethod
-from numpy import np
+import numpy as np
 from pathlib import Path
 
 from ..compile.cache.circular_cache import CircularCache
