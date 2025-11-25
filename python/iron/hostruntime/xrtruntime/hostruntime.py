@@ -10,7 +10,7 @@ from pathlib import Path
 import pyxrt
 
 from ..hostruntime import HostRuntime, KernelHandle
-from ..config import detect_npu_device
+from ...device import Device
 
 
 class XRTKernelHandle(KernelHandle):
@@ -30,8 +30,33 @@ class XRTHostRuntime(HostRuntime):
         return cls._instance
 
     def __init__(self):
+        # TODO: what is there is more than one device?
         self._device = pyxrt.device(0)
-        self._device_type = detect_npu_device()
+        device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
+
+        # Fetch the device type by matching strings for NPU2 or NPU1
+        # TODO: how to use only a portion of the device rather than whole array?
+        if any(
+            keyword in device_type_str
+            for keyword in [
+                "NPU Strix",
+                "NPU Strix Halo",
+                "NPU Krackan",
+                "RyzenAI-npu4",
+                "RyzenAI-npu6",
+            ]
+        ):
+            self._device_type = NPU2
+        elif any(
+            keyword in device_type_str
+            for keyword in [
+                "NPU",
+                "NPU Phoenix",
+                "RyzenAI-npu1",
+            ]
+        ):
+            self._device_type = NPU1
+
         self._contexts = {}  # xclbin_path -> (context, xclbin)
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
 
@@ -71,8 +96,8 @@ class XRTHostRuntime(HostRuntime):
         ]
         kernel(*args, **kwargs)
 
-    def device_str(self) -> str:
-        return self._device_type.resolve().name
+    def device(self) -> Device:
+        return self._device_type()
 
     def cleanup(self):
         """Clean up all XRT resources"""

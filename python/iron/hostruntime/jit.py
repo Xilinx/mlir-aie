@@ -17,7 +17,7 @@ from aie.extras.context import mlir_mod_ctx
 from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from ..compile import compile_mlir_module, compile_external_kernel
 from ..kernel import ExternalFunction
-from .config import get_current_device
+from .hostruntime import DEFAULT_IRON_RUNTIME
 from .kernelrunner import NPUKernel
 from aie.dialects.aie import AIEDevice
 from ..compile.cache.circular_cache import CircularCache
@@ -131,7 +131,7 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         # Determine target architecture based on device type
         try:
-            current_device = get_current_device()
+            current_device = DEFAULT_IRON_RUNTIME.device()
 
             # Determine target architecture based on device type
             if isinstance(current_device, (NPU2, NPU2Col1)):

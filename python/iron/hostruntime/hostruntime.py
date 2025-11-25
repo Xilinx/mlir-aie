@@ -3,6 +3,8 @@
 
 from abc import ABC, abstractmethod
 
+from ..device import Device
+
 
 class KernelHandle:
     pass
@@ -24,7 +26,7 @@ class HostRuntime(ABC):
         self.run(handle, run_args)
 
     @abstractmethod
-    def device_str(self) -> str:
+    def device(self) -> Device:
         pass
 
     @abstractmethod
@@ -36,3 +38,13 @@ class HostRuntime(ABC):
     def reset(self):
         """Reset the runtime"""
         pass
+
+
+# Set default tensor class
+try:
+    from .xrtruntime.hostruntime import XRTHostRuntime
+
+    # For now we assume runtimes are singletons, and go ahead and instantiate here.
+    DEFAULT_IRON_RUNTIME = XRTHostRuntime()
+except ImportError:
+    DEFAULT_IRON_RUNTIME = None
