@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pyxrt
 
-from ..hostruntime import HostRuntime, KernelHandle
+from ..hostruntime import HostRuntime, IronRuntimeError, KernelHandle
 from ...device import Device, NPU1, NPU2
 
 
@@ -62,7 +62,7 @@ class XRTHostRuntime(HostRuntime):
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
 
     def load(
-        self, xclbin_path: Path, instr_path: Path, kernel_name=None
+        self, xclbin_path: Path, instr_path: Path, kernel_name="PP_FD_PRE"
     ) -> XRTKernelHandle:
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise IronRuntimeError(
@@ -74,7 +74,7 @@ class XRTHostRuntime(HostRuntime):
             )
 
         if xclbin_path not in self._contexts:
-            xclbin = pyxrt.xclbin(xclbin_path)
+            xclbin = pyxrt.xclbin(str(xclbin_path))
             self._device.register_xclbin(xclbin)
             xclbin_uuid = xclbin.get_uuid()
             context = pyxrt.hw_context(self._device, xclbin_uuid)
@@ -90,11 +90,11 @@ class XRTHostRuntime(HostRuntime):
                 raise RuntimeError("No kernels found in xclbin")
             kernel_name = kernels[0].get_name()
 
-        kernel_key = (xclbin_path, kernel_name)
-        if kernel_key not in self._kernels:
+        kernel_handle = XRTKernelHandle(xclbin_path, kernel_name, instr_path)
+        if kernel_handle not in self._kernels:
             kernel = pyxrt.kernel(context, kernel_name)
             instr_binary_nbytes = Path(instr_path).stat().st_size
-            self._kernels[kernel_key] = (kernel, instr_binary_nbytes, instr_path)
+            self._kernels[kernel_handle] = (kernel, instr_binary_nbytes, instr_path)
             logging.debug(
                 f"Created new kernel {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
@@ -102,12 +102,10 @@ class XRTHostRuntime(HostRuntime):
             logging.debug(
                 f"Reusing kernel: {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
-        return XRTKernelHandle(xclbin_path, kernel_name, instr_path)
+        return kernel_handle
 
-    def run(self, kernel_handle: XRTKernelHandle, *args, **kwargs):
-        kernel, insts_len, instr_path = self._kernels[
-            (kernel_handle.xclbin_path, kernel_handle.kernel_name)
-        ]
+    def run(self, kernel_handle: XRTKernelHandle, *args):
+        kernel, insts_len, instr_path = self._kernels[kernel_handle]
         insts_bo = pyxrt.bo(
             self._device,
             insts_len,
@@ -121,20 +119,19 @@ class XRTHostRuntime(HostRuntime):
             instr_binary = np.frombuffer(f.read(), dtype=np.uint32)
 
         insts_bo.write(instr_binary.view(np.uint8), 0)
+        insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+
         # TODO: handle magic number 3
         r = kernel(3, insts_bo, num_insts, *args)
 
         if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise IronRuntimeError(f"Kernel returned {r}")
+            raise IronRuntimeError(f"Kernel returned {str(r)}")
 
     def device(self) -> Device:
         return self._device_type()
 
     def cleanup(self):
         """Clean up all XRT resources"""
-        for _kernel, insts_bo, _insts_len, _instr_path in self._kernels.values():
-            if insts_bo:
-                del insts_bo
         self._kernels.clear()
 
         # Clear contexts
@@ -159,11 +156,3 @@ class XRTHostRuntime(HostRuntime):
         """Reset the device manager (for debugging)"""
         self.cleanup()
         XRTHostRuntime._instance = None
-
-
-class IronRuntimeError(Exception):
-    """
-    Error raised when a NPU kernel encounters an error during runtime operations.
-    """
-
-    pass

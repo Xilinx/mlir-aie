@@ -5,6 +5,7 @@ from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
 from .dtype import str_to_dtype, dtype_to_str
+from .hostruntime import get_current_device
 from .hostruntime.jit import jit
 from .hostruntime.tensor import (
     tensor,

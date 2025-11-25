@@ -20,54 +20,10 @@ from ..kernel import ExternalFunction
 from .kernelrunner import NPUKernel
 from aie.dialects.aie import AIEDevice
 from ..compile.cache.circular_cache import CircularCache
-from ..compile.cache.utils import _create_function_cache_key
+from ..compile.cache.utils import _create_function_cache_key, file_lock
 from ..compile import IRON_CACHE_HOME
 from ..compile.utils import _cleanup_failed_compilation
-
-
-@contextlib.contextmanager
-def file_lock(lock_file_path, timeout_seconds=60):
-    """
-    Context manager for file locking using flock to prevent race conditions.
-
-    Args:
-        lock_file_path (str): Path to the lock file
-        timeout_seconds (int): Maximum time to wait for lock acquisition in seconds
-    """
-    lock_file = None
-    try:
-        # Create lock file if it doesn't exist
-        os.makedirs(os.path.dirname(lock_file_path), exist_ok=True)
-        try:
-            f = os.open(lock_file_path, os.O_CREAT | os.O_EXCL)
-            os.close(f)
-        except FileExistsError:
-            pass  # File already exists
-        lock_file = open(lock_file_path, "a")
-
-        # Try to acquire exclusive lock with timeout
-        start_time = time.time()
-        while True:
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                # Lock is held by another process
-                if time.time() - start_time > timeout_seconds:
-                    raise TimeoutError(
-                        f"Could not acquire lock on {lock_file_path} within {timeout_seconds} seconds"
-                    )
-                time.sleep(0.1)
-
-        yield lock_file
-
-    finally:
-        if lock_file is not None:
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            except OSError:
-                pass  # Ignore errors when releasing lock
-            lock_file.close()
+from .hostruntime import DEFAULT_IRON_RUNTIME
 
 
 # Global cache for compiled kernels at the function level
@@ -148,9 +104,9 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)
-        kernel_dir = os.path.join(IRON_CACHE_HOME, f"{module_hash}")
-        lock_file_path = os.path.join(kernel_dir, ".lock")
-        mlir_path = os.path.join(kernel_dir, "aie.mlir")
+        kernel_dir = IRON_CACHE_HOME / f"{module_hash}"
+        lock_file_path = kernel_dir / ".lock"
+        mlir_path = kernel_dir / "aie.mlir"
 
         # Use file locking to prevent race conditions when accessing cache directory
         with file_lock(lock_file_path):
@@ -160,8 +116,8 @@ def jit(function=None, is_placed=True, use_cache=True):
             # Write MLIR to file if not already cached
             inst_filename = "insts.bin"
             xclbin_filename = "final.xclbin"
-            xclbin_path = os.path.join(kernel_dir, xclbin_filename)
-            inst_path = os.path.join(kernel_dir, inst_filename)
+            xclbin_path = kernel_dir / xclbin_filename
+            inst_path = kernel_dir / inst_filename
 
             xclbin_exists = os.path.exists(xclbin_path)
             inst_exists = os.path.exists(inst_path)

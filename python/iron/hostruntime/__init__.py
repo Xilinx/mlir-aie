@@ -5,3 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
+from .hostruntime import DEFAULT_IRON_RUNTIME
+
+
+def get_current_device():
+    return DEFAULT_IRON_RUNTIME.device()
