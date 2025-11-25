@@ -91,7 +91,7 @@ class XRTHostRuntime(HostRuntime):
             kernel_name = kernels[0].get_name()
 
         kernel_handle = XRTKernelHandle(xclbin_path, kernel_name, instr_path)
-        if kernel_handle not in self._kernels:
+        if kernel_handle not in self._kernels.keys():
             kernel = pyxrt.kernel(context, kernel_name)
             instr_binary_nbytes = Path(instr_path).stat().st_size
             self._kernels[kernel_handle] = (kernel, instr_binary_nbytes, instr_path)
@@ -105,15 +105,13 @@ class XRTHostRuntime(HostRuntime):
         return kernel_handle
 
     def run(self, kernel_handle: XRTKernelHandle, *args):
-        kernel, insts_len, instr_path = self._kernels[kernel_handle]
+        kernel, instr_binary_nbytes, instr_path = self._kernels[kernel_handle]
         insts_bo = pyxrt.bo(
             self._device,
-            insts_len,
+            instr_binary_nbytes,
             pyxrt.bo.cacheable,
             kernel.group_id(1),
         )
-        # TODO: handle magic number 4
-        num_insts = insts_len // 4
 
         with open(instr_path, "rb") as f:
             instr_binary = np.frombuffer(f.read(), dtype=np.uint32)
@@ -122,12 +120,13 @@ class XRTHostRuntime(HostRuntime):
         insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
         # TODO: handle magic number 3
-        r = kernel(3, insts_bo, num_insts, *args)
+        r = kernel(3, insts_bo, len(instr_binary), *args)
 
         if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise IronRuntimeError(f"Kernel returned {str(r)}")
 
     def device(self) -> Device:
+        # return an instance of the device type
         return self._device_type()
 
     def cleanup(self):
