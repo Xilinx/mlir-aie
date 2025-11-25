@@ -22,7 +22,7 @@ from ...util import single_elem_or_list_to_list
 
 from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint
-from ..device import PlacementTile, AnyMemTile, Tile
+from ..device import Device, PlacementTile, AnyMemTile, Tile
 
 
 class ObjectFifo(Resolvable):
@@ -204,7 +204,7 @@ class ObjectFifo(Resolvable):
         )
         return self._cons[-1]
 
-    def tiles(self) -> list[PlacementTile]:
+    def tiles(self, cons_only: bool = False) -> list[PlacementTile]:
         """The list of placement tiles corresponding to the endpoints of all handles of this ObjectFifo
 
         Raises:
@@ -214,11 +214,25 @@ class ObjectFifo(Resolvable):
         Returns:
             list[PlacementTile]: A list of tiles of the endpoints of this ObjectFifo.
         """
-        if self._prod == None:
-            raise ValueError("Cannot return prod.tile.op because prod was not created.")
+        tiles = []
+        if not cons_only:
+            if self._prod == None:
+                raise ValueError(
+                    "Cannot return prod.tile.op because prod was not created."
+                )
+            tiles += [self._prod.endpoint.tile]
         if self._cons == []:
-            raise ValueError("Cannot return cons.tile.op because prod was not created.")
-        return [self._prod.tile] + [cons.tile for cons in self._cons]
+            raise ValueError("Cannot return cons tiles because cons were not created.")
+        tiles += [cons.endpoint.tile for cons in self._cons]
+        return tiles
+
+    def can_used_shared_mem(self, device: Device, cons_only: bool = False) -> bool:
+        """Checks if all endpoints of the object fifo have a legal memory affinity."""
+        tiles = self.tiles(cons_only=cons_only)
+        for t in tiles:
+            if device.is_mem_accessible(t, tiles):
+                return True
+        return False
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:
