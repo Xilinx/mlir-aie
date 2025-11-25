@@ -62,7 +62,7 @@ class XRTHostRuntime(HostRuntime):
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
 
     def load(
-        self, xclbin_path: Path, instr_path: Path, kernel_name="PP_FD_PRE"
+        self, xclbin_path: Path, instr_path: Path, kernel_name: str | None = None
     ) -> XRTKernelHandle:
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise IronRuntimeError(
@@ -72,6 +72,8 @@ class XRTHostRuntime(HostRuntime):
             raise IronRuntimeError(
                 f"instr {instr_path} does not exist or is not a file."
             )
+        if not kernel_name:
+            kernel_name = "PP_FD_PRE"
 
         if xclbin_path not in self._contexts:
             xclbin = pyxrt.xclbin(str(xclbin_path))
