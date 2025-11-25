@@ -34,13 +34,7 @@ else
   echo "Environment is WSL"
   NPU="${NPU:-$(/mnt/c/Windows/System32/AMD/xrt-smi.exe examine 2>/dev/null | tr -d '\r' | grep -E 'NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]' || true)}"
 fi
-# Check if the current environment is NPU2
-# npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
-if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]"; then
-    export NPU2=1
-else
-    export NPU2=0
-fi
+
 if hash python3.12; then
    echo "Using python version `python3.12 --version`"
    my_python=python3.12
