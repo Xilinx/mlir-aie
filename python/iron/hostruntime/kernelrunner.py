@@ -14,7 +14,7 @@ class NPUKernel:
     NPUKernel class wrapper for NPU kernels.
     """
 
-    def __init__(self, xclbin_path, insts_path):
+    def __init__(self, xclbin_path, insts_path, kernel_name: str | None = None):
         """
         Initialize the NPUKernel object.
         Parameters:
@@ -26,9 +26,7 @@ class NPUKernel:
 
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
-
-    def load(self):
-        DEFAULT_IRON_RUNTIME.load(self._xclbin_path, self._insts_path)
+        self._kernel_name = kernel_name
 
     # Blocking call.
     def __call__(self, *args):
@@ -38,50 +36,9 @@ class NPUKernel:
         Parameters:
             args (IRON Tensors): Arguments to pass to the kernel.
         """
-        import pyxrt as xrt
-
-        opcode = 3
-        kernel_args = []
-
-        for tensor in args:
-            # Skip callable arguments since these are inlined in the kernel
-            if callable(tensor):
-                continue
-            if not hasattr(tensor, "buffer_object"):
-                raise TypeError(
-                    f"Expected Tensor with .buffer_object(), got {type(tensor)}"
-                )
-            kernel_args.append(tensor.buffer_object())
-
-        h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
-        r = h.wait()
-        if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise NPUKernel_Error(f"Kernel returned {r}")
-
-    def __del__(self):
-        """
-        Destructor to clean up resources and delete the kernel and device objects.
-        """
-        if hasattr(self, "_NPUKernel__insts_buffer_bo"):
-            del self.__insts_buffer_bo
-            self.__insts_buffer_bo = None
-        if hasattr(self, "_NPUKernel__kernel"):
-            del self.__kernel
-            self.__kernel = None
-        if hasattr(self, "_NPUKernel__context"):
-            del self.__context
-            self.__context = None
-        if hasattr(self, "_NPUKernel__xclbin"):
-            del self.__xclbin
-            self.__xclbin = None
-        if hasattr(self, "_NPUKernel__device"):
-            del self.__device
-            self.__device = None
-
-
-class NPUKernel_Error(Exception):
-    """
-    Error raised when a NPU kernel encounters an error during execution.
-    """
-
-    pass
+        # Skip callable arguments since these are inlined in the kernel
+        tensors = [t for t in args if not callable(t)]
+        handle = DEFAULT_IRON_RUNTIME.load(
+            self._xclbin_path, self._insts_path, kernel_name=self._kernel_name
+        )
+        DEFAULT_IRON_RUNTIME.run(handle, *tensors)

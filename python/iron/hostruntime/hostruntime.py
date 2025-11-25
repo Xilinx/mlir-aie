@@ -18,7 +18,7 @@ class HostRuntime(ABC):
         pass
 
     @abstractmethod
-    def run(self, kernel_handle: KernelHandle, *args, **kwargs):
+    def run(self, kernel_handle: KernelHandle, *args):
         pass
 
     def load_and_run(self, load_args: list, run_args: list):
@@ -38,6 +38,14 @@ class HostRuntime(ABC):
     def reset(self):
         """Reset the runtime"""
         pass
+
+
+class IronRuntimeError(Exception):
+    """
+    Error raised when a NPU kernel encounters an error during runtime operations.
+    """
+
+    pass
 
 
 # Set default tensor class
