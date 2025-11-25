@@ -46,7 +46,7 @@ module @passThroughLine_aie2 {
             aie.end
         } { link_with="passThrough.cc.o" } // indicate kernel object name used by this core
 
-        aiex.runtime_sequence(%in : memref<1152xi32>, %arg1 : memref<1xi32>, %out : memref<1152xi32>) {
+        aie.runtime_sequence(%in : memref<1152xi32>, %arg1 : memref<1xi32>, %out : memref<1152xi32>) {
             %c0 = arith.constant 0 : i64
             %c1 = arith.constant 1 : i64
             %tileheight = arith.constant 9  : i64

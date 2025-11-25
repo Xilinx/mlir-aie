@@ -120,6 +120,11 @@ class Tensor(ABC):
         if self.device == "npu":
             self._sync_to_device()
 
+    def __len__(self):
+        if self.data.ndim == 0:
+            raise TypeError("len() of a 0-d tensor")
+        return self.shape[0]
+
     @cached_property
     def nbytes(self) -> int:
         """
@@ -210,6 +215,44 @@ class Tensor(ABC):
             self._sync_from_device()
         return self.data
 
+    def to_torch(self):
+        """
+        Returns a torch tensor with a copy of the data in this tensor.
+        """
+        try:
+            import torch
+            from ml_dtypes import bfloat16
+        except ImportError:
+            raise ImportError(
+                "torch is not installed. Please install it with 'pip install torch'"
+            )
+        if self.dtype == bfloat16:
+            return torch.from_numpy(self.numpy().astype(np.float16))
+        return torch.from_numpy(self.numpy().copy())
+
+    @classmethod
+    def from_torch(cls, torch_tensor, device=None, **kwargs):
+        """
+        Returns a tensor with a copy of the data in the torch_tensor.
+        """
+        try:
+            import torch
+            from ml_dtypes import bfloat16
+        except ImportError:
+            raise ImportError(
+                "torch is not installed. Please install it with 'pip install torch'"
+            )
+        if torch_tensor.dtype == torch.bfloat16:
+            np_array = torch_tensor.to(torch.float32).numpy().astype(bfloat16)
+        else:
+            np_array = torch_tensor.numpy()
+        return cls(
+            np_array,
+            dtype=np_array.dtype,
+            device=device or cls.DEFAULT_DEVICE,
+            **kwargs,
+        )
+
     def fill_(self, value):
         """
         Fills the tensor with a scalar value (in-place operation).
@@ -296,8 +339,12 @@ class Tensor(ABC):
         dtype = dtype or np.int64
         device = device or cls.DEFAULT_DEVICE
 
-        t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
-        t.data[:] = np.random.randint(low, high, size=size, dtype=dtype)
+        t = cls.__check_or_create(size, out=out, dtype=dtype, device=device, **kwargs)
+        random_val = np.random.randint(low, high, size=size, dtype=dtype)
+        if size == ():
+            t.data.fill(random_val)
+        else:
+            t.data[:] = random_val
         if device == "npu":
             t._sync_to_device()
         return t
@@ -319,11 +366,17 @@ class Tensor(ABC):
         Returns:
             Tensor: A tensor with random values in [0, 1).
         """
+        if not size:
+            raise ValueError("rand() received no arguments")
         dtype = dtype or np.float32
         device = device or cls.DEFAULT_DEVICE
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
-        t.data[:] = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
+        random_val = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
+        if t.shape == ():
+            t.data.fill(random_val)
+        else:
+            t.data[:] = random_val
         if device == "npu":
             t._sync_to_device()
         return t

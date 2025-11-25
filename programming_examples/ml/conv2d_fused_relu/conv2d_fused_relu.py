@@ -8,7 +8,7 @@ import numpy as np
 import sys
 
 from aie.iron import (
-    GlobalBuffer,
+    Buffer,
     Kernel,
     ObjectFifo,
     Program,
@@ -80,9 +80,7 @@ def conv2dk1(dev):
     of_outOFL2L3 = of_out_02_L2.cons().forward(name="outOFL2L3", obj_type=bufOut_ty)
 
     # Create a buffer to hold runtime parameters
-    rtp = GlobalBuffer(
-        np.ndarray[(16,), np.dtype[np.int32]], name="rtp", use_write_rtp=True
-    )
+    rtp = Buffer(np.ndarray[(16,), np.dtype[np.int32]], name="rtp", use_write_rtp=True)
 
     rtp_barrier = WorkerRuntimeBarrier()
 

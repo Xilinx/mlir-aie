@@ -151,7 +151,7 @@ module {
       aie.end
     }
     aie.shim_dma_allocation @in1(MM2S, 0, 0)
-    aiex.runtime_sequence(%arg0: memref<256xi32>, %arg1: memref<256xi32>, %arg2: memref<256xi32>) {
+    aie.runtime_sequence(%arg0: memref<256xi32>, %arg1: memref<256xi32>, %arg2: memref<256xi32>) {
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1]) {id = 1 : i64, metadata = @in1} : memref<256xi32>
       aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1]) {id = 0 : i64, metadata = @out} : memref<256xi32>
       aiex.npu.dma_wait {symbol = @out}

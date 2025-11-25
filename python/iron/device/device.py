@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-from abc import abstractmethod
 from typing import Generator
 
 from ... import ir  # type: ignore
@@ -191,14 +189,48 @@ class Device(Resolvable):
         else:
             return self.get_num_dest_switchbox_connections(tile)
 
-    def is_legal_mem_affinity(self, src_tile: Tile, dst_tile: Tile) -> bool:
-        """Returns whether memory on a destination can be accessed by a source.
+    def is_mem_accessible(self, source_tile: Tile, tiles: list[Tile]) -> bool:
+        """Returns whether there exists a memory region on source_tile which all destination tiles can access.
         Returns:
             int: Number of connections (channels) available on the tile
         """
-        return self._tm.is_legal_mem_affinity(
-            src_tile.col, src_tile.row, dst_tile.col, dst_tile.rol
+        if not isinstance(source_tile, Tile):
+            raise ValueError(f"Expected a source Tile, but got {source_tile}")
+        for t in tiles:
+            if not isinstance(t, Tile):
+                raise ValueError(f"Expected a Tile, but got {t}")
+        if not tiles:
+            return True
+
+        source_is_compute = self._tm.is_core_tile(source_tile.col, source_tile.row)
+        source_is_mem = self._tm.is_mem_tile(source_tile.col, source_tile.row)
+        source_is_shim = self._tm.is_shim_noc_or_pl_tile(
+            source_tile.col, source_tile.row
         )
+
+        if source_is_compute and not all(
+            [self._tm.is_core_tile(dst_tile.col, dst_tile.row) for dst_tile in tiles]
+        ):
+            return False
+        if source_is_mem and not all(
+            [self._tm.is_mem_tile(dst_tile.col, dst_tile.row) for dst_tile in tiles]
+        ):
+            return False
+        if source_is_shim or any(
+            [
+                self._tm.is_shim_noc_or_pl_tile(dst_tile.col, dst_tile.row)
+                for dst_tile in tiles
+            ]
+        ):
+            # No neighbor sharing from shim tiles.
+            return False
+
+        for t in tiles:
+            if not self._tm.is_legal_mem_affinity(
+                source_tile.col, source_tile.row, t.col, t.row
+            ):
+                return False
+        return True
 
     def resolve_tile(
         self,

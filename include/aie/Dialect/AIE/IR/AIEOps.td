@@ -1707,6 +1707,16 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
                            }, 2 : i32
                           ) : !aie.objectfifo<memref<256xi32>>
     ```
+    
+    The behavior of the objectFifo is further controlled by optional parameters.
+    The `repeat_count` parameter specifies the number of times each individual 
+    object is repeated during transfer. When `repeat_count == 1`, each object 
+    is transferred once.
+
+    The `iter_count` parameter specifies the number of iterations of 
+    the buffer descriptor chain generated at the lower level. The total number 
+    of objects transferred is calculated as `iter_count * elemNumber * repeat_count`.
+    When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
   }];
 
   let arguments = (
@@ -1730,7 +1740,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<2>]>>:$aie_stream,
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
         InitValuesArrayAttr:$initValues,
-        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions
+        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        OptionalAttr<AIEI32Attr>:$iter_count
   );
 
   let assemblyFormat = [{
@@ -2108,6 +2119,36 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   }];
   let hasCustomAssemblyFormat = 1;
 
+}
+
+def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
+  Symbol,
+  NoTerminator, 
+  HasParent<"DeviceOp">, 
+]> {
+  let summary = "Program the configuration co-processor of the AI Engine array";
+  let description = [{
+    Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
+    These instructions will execute on the configuration co-processor of the AI Engine array.
+
+    Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
+    The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
+  }];
+  let arguments = (
+    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name
+  );
+  let regions = (region
+    AnyRegion:$body
+  );
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    static llvm::StringRef getDefaultRuntimeSequenceName() { return "sequence"; }
+    static RuntimeSequenceOp getForSymbolInDevice(DeviceOp module, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp module, llvm::StringRef symbol);
+  }];
+  let extraClassDefinition = [{
+  }];
 }
 
 #endif // AIE_OPS
