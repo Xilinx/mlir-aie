@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# IRON Python Binding Configurations
+# IRON Python Configurations
 
 There are several options that exist to configure the IRON Python programming environment.
 
@@ -42,4 +42,6 @@ If the IRON device is not set, many designs will try it fetch it on demand using
 <abc.NPU1 object at 0x722a65903a10>
 ```
 
+## IRON Cache Location
 
+The IRON jit feature caches compiled objects in a directory defined by ```IRON_CACHE_DIR```. By default this value is the user's home directory.

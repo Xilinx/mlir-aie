@@ -5,7 +5,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-import contextvars
 import sys
 from typing import Callable
 
