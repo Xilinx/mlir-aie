@@ -4,9 +4,7 @@
 """
 XRT-based implementation of the HostRuntime
 """
-
 import logging
-from pathlib import Path
 import pyxrt
 
 from ..hostruntime import HostRuntime, KernelHandle
