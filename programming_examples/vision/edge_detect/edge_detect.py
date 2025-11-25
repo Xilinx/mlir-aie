@@ -96,21 +96,22 @@ def edge_detect(dev, width, height):
         )
     )
 
+    v0 = 0
+    v1 = 4096
+    v_minus4 = -16384
+    initial_value = np.array(
+        [[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16
+    )
     filter_kernel_buff = Buffer(
         np.ndarray[(3, 3), np.dtype[np.int16]],
         name="kernel",
-        initial_value=np.array(
-            [[v0, v1, v0], [v1, v_minus4, v1], [v0, v1, v0]], dtype=np.int16
-        ),
+        initial_value=initial_value,
     )
 
     # Task for the core to perform
     def filter_fn(of_in, of_out, kernel, filter2d_line):
         # OF_2to3 -> intermediates[0]
         # OF_3to4 -> intermediates[1]
-        v0 = 0
-        v1 = 4096
-        v_minus4 = -16384
 
         for _ in range_(sys.maxsize):
             # Preamble : Top Border
@@ -162,6 +163,7 @@ def edge_detect(dev, width, height):
             [
                 of_intermediates[0].cons(),
                 of_intermediates[1].prod(),
+                filter_kernel_buff,
                 filter2d_line_kernel,
             ],
             while_true=False,
