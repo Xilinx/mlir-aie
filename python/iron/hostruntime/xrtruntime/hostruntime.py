@@ -31,12 +31,10 @@ class XRTHostRuntime(HostRuntime):
         return cls._instance
 
     def __init__(self):
-        # TODO: what is there is more than one device?
         self._device = pyxrt.device(0)
         device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
         # Fetch the device type by matching strings for NPU2 or NPU1
-        # TODO: how to use only a portion of the device rather than whole array?
         if any(
             keyword in device_type_str
             for keyword in [
