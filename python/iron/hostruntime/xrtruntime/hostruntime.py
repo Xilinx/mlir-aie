@@ -14,7 +14,7 @@ from ...device import Device, NPU1, NPU2
 
 
 class XRTKernelHandle(KernelHandle):
-    def __init__(self, xclbin_path, kernel_name, instr_path=None):
+    def __init__(self, xclbin_path, kernel_name, instr_path):
         self.xclbin_path = xclbin_path
         self.kernel_name = kernel_name
         self.instr_path = instr_path
@@ -61,7 +61,18 @@ class XRTHostRuntime(HostRuntime):
         self._contexts = {}  # xclbin_path -> (context, xclbin)
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
 
-    def load(self, xclbin_path, kernel_name=None, instr_path=None) -> XRTKernelHandle:
+    def load(
+        self, xclbin_path: Path, instr_path: Path, kernel_name=None
+    ) -> XRTKernelHandle:
+        if not xclbin_path.exists() or not xclbin_path.is_file():
+            raise IronRuntimeError(
+                f"xclbin {xclbin_path} does not exist or is not a file."
+            )
+        if not instr_path.exists() or not instr_path.is_file():
+            raise IronRuntimeError(
+                f"instr {instr_path} does not exist or is not a file."
+            )
+
         if xclbin_path not in self._contexts:
             xclbin = pyxrt.xclbin(xclbin_path)
             self._device.register_xclbin(xclbin)
@@ -82,19 +93,8 @@ class XRTHostRuntime(HostRuntime):
         kernel_key = (xclbin_path, kernel_name)
         if kernel_key not in self._kernels:
             kernel = pyxrt.kernel(context, kernel_name)
-            insts_bo = None
-            insts_len = 0
-            if instr_path:
-                instr_binary_nbytes = Path(instr_path).stat().st_size
-                insts_bo = pyxrt.bo(
-                    self._device,
-                    instr_binary_nbytes,
-                    pyxrt.bo.cacheable,
-                    kernel.group_id(1),
-                )
-                insts_len = instr_binary_nbytes // 4
-
-            self._kernels[kernel_key] = (kernel, insts_bo, insts_len, instr_path)
+            instr_binary_nbytes = Path(instr_path).stat().st_size
+            self._kernels[kernel_key] = (kernel, instr_binary_nbytes, instr_path)
             logging.debug(
                 f"Created new kernel {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
@@ -105,16 +105,27 @@ class XRTHostRuntime(HostRuntime):
         return XRTKernelHandle(xclbin_path, kernel_name, instr_path)
 
     def run(self, kernel_handle: XRTKernelHandle, *args, **kwargs):
-        kernel, insts_bo, insts_len, instr_path = self._kernels[
+        kernel, insts_len, instr_path = self._kernels[
             (kernel_handle.xclbin_path, kernel_handle.kernel_name)
         ]
-        if insts_bo:
-            with open(instr_path, "rb") as f:
-                instr_binary = np.frombuffer(f.read(), dtype=np.uint32)
-            insts_bo.write(instr_binary.view(np.uint8), 0)
-            kernel(3, insts_bo, insts_len, *args)
-        else:
-            kernel(*args, **kwargs)
+        insts_bo = pyxrt.bo(
+            self._device,
+            insts_len,
+            pyxrt.bo.cacheable,
+            kernel.group_id(1),
+        )
+        # TODO: handle magic number 4
+        num_insts = insts_len // 4
+
+        with open(instr_path, "rb") as f:
+            instr_binary = np.frombuffer(f.read(), dtype=np.uint32)
+
+        insts_bo.write(instr_binary.view(np.uint8), 0)
+        # TODO: handle magic number 3
+        r = kernel(3, insts_bo, num_insts, *args)
+
+        if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise IronRuntimeError(f"Kernel returned {r}")
 
     def device(self) -> Device:
         return self._device_type()
@@ -131,8 +142,7 @@ class XRTHostRuntime(HostRuntime):
             try:
                 del context
             except Exception as e:
-                # TODO(erika): why might this throw exceptions?
-                raise e
+                raise IronRuntimeError(str(e))
         self._contexts.clear()
 
         # Clear device
@@ -140,8 +150,7 @@ class XRTHostRuntime(HostRuntime):
             try:
                 del self._device
             except Exception as e:
-                # TODO(erika): why might this throw exceptions?
-                raise e
+                IronRuntimeError(str(e))
             self._device = None
 
         logging.debug("Cleaned up AIE device manager")
@@ -150,3 +159,11 @@ class XRTHostRuntime(HostRuntime):
         """Reset the device manager (for debugging)"""
         self.cleanup()
         XRTHostRuntime._instance = None
+
+
+class IronRuntimeError(Exception):
+    """
+    Error raised when a NPU kernel encounters an error during runtime operations.
+    """
+
+    pass
