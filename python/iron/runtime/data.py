@@ -9,7 +9,7 @@
 import numpy as np
 from typing import Sequence
 
-from ...extras.dialects.memref import MemRef  # type: ignore
+from ...extras.dialects.memref import MemRefValue  # type: ignore
 from ...helpers.util import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
@@ -50,13 +50,13 @@ class RuntimeData:
         return TensorTiler2D.simple_tiler(self.shape)[0]
 
     @property
-    def op(self) -> MemRef:
+    def op(self) -> MemRefValue:
         if self._op is None:
             raise ValueError("Cannot get operation for RuntimeData before it is set.")
         return self._op
 
     @op.setter
-    def op(self, op: MemRef):
+    def op(self, op: MemRefValue):
         if self._op:
             raise ValueError("Cannot set operation for RuntimeData more than once.")
         self._op = op
