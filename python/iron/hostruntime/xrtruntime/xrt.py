@@ -11,8 +11,6 @@ import pyxrt as xrt
 
 from ..iron.hostruntime.hostruntime import HostRuntime
 
-read_insts = HostRuntime.read_insts
-
 
 #
 # AI Engine Application class
@@ -43,7 +41,7 @@ class AIE_Application:
         self.kernel = xrt.kernel(self.context, xkernel.get_name())
 
         ## Set up instruction stream
-        insts = read_insts(insts_path)
+        insts = HostRuntime.read_insts(insts_path)
         self.n_insts = len(insts)
         self.insts_buffer = XRTTensor(
             insts, insts.dtype, flags=xrt.bo.cacheable, group_id=1
