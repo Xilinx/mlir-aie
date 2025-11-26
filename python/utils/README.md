@@ -580,7 +580,6 @@ In particular, `setup_and_run_aie` is a helpful convenience wrapper to simplify 
     * `sync_to_device` - Wrapper for xrt.bo.sync call (to device)
     * `sync_from_device` - Wrapper for xrt.bo.sync call (from device)
 * class `AIE_Application_Error`
-* `read_insts` - Read instruction stream from text file and reformat it to be passed into the instructoin buffer for the xrt.kernel call
 * `setup_aie`
     * Sets up the AIE application with support for up to 2 input buffers, 1 output buffer, and an optional trace buffer. Under the hood, we call declare an AIE_Application object and register the buffers used given the buffer datatype and shapes. 
 * `execute`

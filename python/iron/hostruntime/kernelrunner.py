@@ -5,6 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
+# kernelrunner.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2025 Advanced Micro Devices, Inc.
 import numpy as np
 
 
@@ -30,7 +37,7 @@ class NPUKernel:
         self.__device = xrt.device(device_index)
 
         # Find kernel by name in the xclbin
-        self.__xclbin = xrt.xclbin(xclbin_path)
+        self.__xclbin = xrt.xclbin(str(xclbin_path))
         kernels = self.__xclbin.get_kernels()
 
         try:
