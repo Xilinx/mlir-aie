@@ -112,7 +112,6 @@ class IronRuntimeError(Exception):
 try:
     from .xrtruntime.hostruntime import XRTHostRuntime
 
-    # For now we assume runtimes are singletons, and go ahead and instantiate here.
     DEFAULT_IRON_RUNTIME = XRTHostRuntime()
 except ImportError:
     DEFAULT_IRON_RUNTIME = None
