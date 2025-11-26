@@ -68,7 +68,7 @@ include(MLIRDetectPythonEnv)
 include(AddMLIRPython)
 mlir_configure_python_dev_packages()
 
-add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
+add_compile_definitions("EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie.")
 
 if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
   find_package(XRT)

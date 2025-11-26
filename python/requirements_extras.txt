@@ -3,7 +3,6 @@
 
 # MLIR-extras (Python bindings/helpers for MLIR)
 # For installing this, the following environment variables must be set:
-# MLIR_PYTHON_EXTRAS_SET_VERSION="0.0.8.3"
-# HOST_MLIR_PYTHON_PACKAGE_PREFIX="aie"
-git+https://github.com/erwei-xilinx/mlir-python-extras@a801853ac0eef50a0f2779cfbbd7dabc931806ee
--f https://github.com/llvm/eudsl/releases/expanded_assets/latest
+# EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX="aie"
+eudsl-python-extras
+-f https://llvm.github.io/eudsl/latest
