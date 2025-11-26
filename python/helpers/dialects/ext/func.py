@@ -18,7 +18,7 @@ from ....ir import (
     TypeAttr,
     Value,
 )
-from ....extras.dialects.ext.arith import Scalar
+from ....extras.dialects.ext.arith import ScalarValue
 
 
 def call(
@@ -57,7 +57,9 @@ def call(
                 # Get the type to convert the python value to based on the expected input to the function
                 # TODO: should check if it's safe to do this? What is int value is outside range?
                 args.append(
-                    Scalar(a, dtype=callee_or_results.function_type.value.inputs[i])
+                    ScalarValue(
+                        a, dtype=callee_or_results.function_type.value.inputs[i]
+                    )
                 )
             else:
                 args.append(a)
