@@ -11,8 +11,8 @@ import pytest
 import os
 import tempfile
 
-from aie.iron.compile import compile_cxx_core_function
-from aie.iron.compile import merge_object_files
+from aie.iron.compile.utils import compile_cxx_core_function
+from aie.iron.compile.link import merge_object_files
 
 SOURCE_STRING1 = """
 extern "C" {

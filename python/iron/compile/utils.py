@@ -14,7 +14,7 @@ from .link import merge_object_files
 
 
 def compile_cxx_core_function(
-    source_path: str,
+    source_paths: list[str],
     target_arch: str,
     output_path: str,
     include_dirs: list[str] | None = None,
@@ -24,9 +24,11 @@ def compile_cxx_core_function(
 ):
     """
     Compile a C++ core function.
+
     This function supports only the Peano compiler.
+
     Parameters:
-        source_path (str): Path to C++ source.
+        source_paths (list[str]): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
         output_path (str): Output object file path.
         include_dirs (list[str], optional): List of include directories to add with -I.
@@ -36,7 +38,7 @@ def compile_cxx_core_function(
     """
     cmd = [
         config.peano_cxx_path(),
-        source_path,
+        *source_paths,
         "-c",
         "-o",
         f"{output_path}",
@@ -86,8 +88,9 @@ def compile_mlir_module(
     options=None,
 ):
     """
-    Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module.
+    Compile an MLIR module to instruction, PDI, and/or xbclbin files using the aiecc module
     This function supports only the Peano compiler.
+
     Parameters:
         mlir_module (str): MLIR module to compile.
         insts_path (str): Path to the instructions binary file.
@@ -143,39 +146,81 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     # Create source file in kernel directory
     source_file = os.path.join(kernel_dir, f"{func._name}.cc")
 
+    files_to_compile = []
     # Handle both source_string and source_file cases
     if func._source_string is not None:
         # Use source_string (write to file)
         try:
             with open(source_file, "w") as f:
                 f.write(func._source_string)
+            files_to_compile.append(source_file)
         except Exception as e:
             raise
     elif func._source_file is not None:
         # Use source_file (copy existing file)
-        # Check if source file exists before copying
-        if os.path.exists(func._source_file):
-            try:
-                shutil.copy2(func._source_file, source_file)
-            except Exception as e:
-                raise
+        if isinstance(func._source_file, list):
+            for f in func._source_file:
+                if os.path.exists(f):
+                    try:
+                        shutil.copy2(f, kernel_dir)
+                        files_to_compile.append(
+                            os.path.join(kernel_dir, os.path.basename(f))
+                        )
+                    except Exception as e:
+                        raise
+                else:
+                    return
         else:
-            return
-    else:
-        raise ValueError("Neither source_string nor source_file is provided")
+            if os.path.exists(func._source_file):
+                try:
+                    shutil.copy2(func._source_file, source_file)
+                    files_to_compile.append(source_file)
+                except Exception as e:
+                    raise
+            else:
+                return
 
-    try:
-        compile_cxx_core_function(
-            source_path=source_file,
-            target_arch=target_arch,
-            output_path=output_file,
-            include_dirs=func._include_dirs,
-            compile_args=func._compile_flags,
-            cwd=kernel_dir,
-            verbose=False,
-        )
-    except Exception as e:
-        raise
+    object_files_to_link = []
+    if func._object_files is not None:
+        for f in func._object_files:
+            if os.path.exists(f):
+                try:
+                    shutil.copy2(f, kernel_dir)
+                    object_files_to_link.append(
+                        os.path.join(kernel_dir, os.path.basename(f))
+                    )
+                except Exception as e:
+                    raise
+            else:
+                return
+
+    from . import compile_cxx_core_function
+
+    if files_to_compile:
+        try:
+            compile_cxx_core_function(
+                source_paths=files_to_compile,
+                target_arch=target_arch,
+                output_path=output_file,
+                include_dirs=func._include_dirs,
+                compile_args=func._compile_flags,
+                cwd=kernel_dir,
+                verbose=False,
+            )
+            object_files_to_link.append(output_file)
+        except Exception as e:
+            raise
+
+    if object_files_to_link:
+        try:
+            merge_object_files(
+                object_files_to_link,
+                output_path=output_file,
+                cwd=kernel_dir,
+                verbose=False,
+            )
+        except Exception as e:
+            raise
 
     # Mark the function as compiled
     func._compiled = True
