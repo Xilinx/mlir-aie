@@ -567,18 +567,11 @@ XRT wrapped utilities. These classes and utilities help simplify the the declara
 In particular, `setup_and_run_aie` is a helpful convenience wrapper to simplify the setup and runnin of kernel with 1 or 2 inputs buffers and 1 output buffer. See [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul/) for an template example of how this is ued.
 
 * class `AIE_Application`
-    * This class configures and invokes the XRT components needed to run an AIE Application. This includes xrt.device, xrt.kernel, xrt.hw_context and XRT buffers as enacpuslated by the AIE_Buffer class. You can use this class to simplify and reduce the amount of code needed to set up an AIE application.
+    * This class configures and invokes the XRT components needed to run an AIE Application. This includes xrt.device, xrt.kernel, xrt.hw_contex. You can use this class to simplify and reduce the amount of code needed to set up an AIE application.
         * `__init__` - Registers xclbin to set up the device, hw context and kernel. This also sets up the instruction stream
-        * `register_buffer` - Registers an AIE_Buffer class object given group_id, datatype and shape
+        * `register_buffer` - Registers an XRTTensor object given group_id
         * `run` - This syncs the instruction buffer to the device and then invokes the `call` function before wait for the call to complete
         * `call` - Wrapper for xrt.kernel function passing in opcode and buffers objects
-* class `AIE_Buffer`
-    * This class wraps up access to the xrt.bo buffer object where sync calls are added to read and write calls to ensure data is synchronized.
-    * `__init__` - Declare xrt.bo object given group_id, datatype, shape
-    * `read` - Synchronize data from device before reading xrt.bo data
-    * `write` - Write data to xrt.bo and synchronize data to device
-    * `sync_to_device` - Wrapper for xrt.bo.sync call (to device)
-    * `sync_from_device` - Wrapper for xrt.bo.sync call (from device)
 * class `AIE_Application_Error`
 * `read_insts` - Read instruction stream from text file and reformat it to be passed into the instructoin buffer for the xrt.kernel call
 * `setup_aie`
