@@ -43,7 +43,7 @@ def detect_npu_device():
                 "RyzenAI-npu6",
             ]
         ):
-            return NPU2()
+            return NPU2
         elif any(
             keyword.lower() in output.lower()
             for keyword in [
@@ -52,7 +52,7 @@ def detect_npu_device():
                 "RyzenAI-npu1",
             ]
         ):
-            return NPU1()
+            return NPU1
         else:
             raise RuntimeError("No supported NPU device found.")
 
@@ -89,5 +89,4 @@ def get_current_device():
     global config
     if "device" not in config:
         config["device"] = detect_npu_device()
-
-    return config["device"]
+    return config["device"]() if config["device"] else None
