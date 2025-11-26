@@ -1,5 +1,5 @@
 from .buffer import Buffer
-from .kernel import ExternalFunction, Kernel
+from .kernel import ExternalFunction, CoreFunction, Kernel
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
