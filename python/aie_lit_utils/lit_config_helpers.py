@@ -440,6 +440,7 @@ class LitConfigHelper:
         print("opencv found")
         config.found = True
         config.features.append("opencv")
+        config.available_features.add("opencv")
 
         # Build compiler flags
         flags = f" -I{opencv_include_dir}"
