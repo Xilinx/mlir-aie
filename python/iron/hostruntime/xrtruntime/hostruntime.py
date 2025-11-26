@@ -72,8 +72,6 @@ class XRTHostRuntime(HostRuntime):
             raise IronRuntimeError(
                 f"insts {insts_path} does not exist or is not a file."
             )
-        if not kernel_name:
-            kernel_name = "MLIR_AIE"
 
         if xclbin_path not in self._contexts:
             xclbin = pyxrt.xclbin(str(xclbin_path))
@@ -91,6 +89,11 @@ class XRTHostRuntime(HostRuntime):
             if not kernels:
                 raise RuntimeError("No kernels found in xclbin")
             kernel_name = kernels[0].get_name()
+        else:
+            if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
+                raise IronRuntimeError(
+                    f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
+                )
 
         kernel_handle = XRTKernelHandle(xclbin_path, kernel_name, insts_path)
         if kernel_handle not in self._kernels.keys():
@@ -116,7 +119,7 @@ class XRTHostRuntime(HostRuntime):
         insts_bo = pyxrt.bo(
             self._device,
             insts.nbytes,
-            pyxrt.bo.host_only,
+            pyxrt.bo.cacheable,
             kernel.group_id(1),
         )
         insts_bo.write(insts.view(np.uint8), 0)
