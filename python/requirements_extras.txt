@@ -4,5 +4,5 @@
 # MLIR-extras (Python bindings/helpers for MLIR)
 # For installing this, the following environment variables must be set:
 # EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX="aie"
-eudsl-python-extras
--f https://llvm.github.io/eudsl/latest
+eudsl-python-extras==0.1.0.20251125.512+c0b80b5
+-f https://llvm.github.io/eudsl
