@@ -7,8 +7,9 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-import aie.utils.xrt as xrt_utils
+import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils
 import aie.utils.test as test_utils
+import aie.iron as iron
 
 
 def main(opts):
@@ -41,26 +42,22 @@ def main(opts):
     scale_factor = 3
 
     # Initialize data
-    in1_data = np.arange(1, in1_volume + 1, dtype=in1_dtype)
-    in2_data = np.array([scale_factor], dtype=in2_dtype)
-    out_data = np.zeros([out_volume], dtype=out_dtype)
+    ref = np.arange(1, in1_volume + 1, dtype=in1_dtype)
+    in1 = iron.tensor(in1_data)
+
+    in2 = iron.tensor([scale_factor], dtype=in2_dtype)
+    out = iron.zeros([out_volume], dtype=out_dtype)
 
     # Define reference data
-    ref = np.arange(1, in1_volume + 1, dtype=out_dtype) * scale_factor
+    ref = ref * scale_factor
 
     # --------------------------------------------------------------------------
 
     print("Running...\n")
     res = xrt_utils.setup_and_run_aie(
-        in1_dtype,
-        in2_dtype,
-        out_dtype,
-        in1_data,
-        in2_data,
-        out_data,
-        in1_volume,
-        in2_volume,
-        out_volume,
+        in1,
+        in2,
+        out,
         ref,
         opts,
     )

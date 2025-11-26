@@ -11,14 +11,16 @@ import time
 import pyxrt as xrt
 import os
 
+from .tensor import XRTTensor
+
 
 #
 # AI Engine Application class
 #
 # This class configures and invokes the XRT components needed to run an AIE
-# Application. This includes xrt.device, xrt.kernel, xrt.hw_context and XRT
-# buffers as enacpuslated by the AIE_Buffer class. You can use this class to
-# simplify and reduce the amount of code needed to set up an AIE application.
+# Application. This includes xrt.device, xrt.kernel, xrt.hw_context and XRTTensors.
+# You can use this class to simplify and reduce the amount of code needed to
+# set up an AIE application.
 #
 class AIE_Application:
     # Registers xclbin to set up the device, hw context and kernel. This
@@ -43,14 +45,11 @@ class AIE_Application:
         ## Set up instruction stream
         insts = read_insts(insts_path)
         self.n_insts = len(insts)
-        self.insts_buffer = AIE_Buffer(
-            self, 1, insts.dtype, insts.shape, xrt.bo.cacheable
-        )
-        self.insts_buffer.write(insts)
+        self.insts_buffer = XRTTensor(insts, insts.dtype, flags=xrt.bo.cacheable)
 
-    # Registers an AIE_Buffer class object given group_id, datatype and shape
-    def register_buffer(self, group_id, *args, **kwargs):
-        self.buffers[group_id] = AIE_Buffer(self, group_id, *args, **kwargs)
+    # Registers an XRTTensor object given group_id
+    def register_buffer(self, group_id, tensor):
+        self.buffers[group_id] = tensor
 
     # This syncs the instruction buffer to the device and then invokes the
     # `call` function before wait for the call to complete
@@ -61,8 +60,7 @@ class AIE_Application:
         if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise Exception(f"Kernel returned {r}")
 
-    # Wrapper for xrt.kernel function passing in opcode and buffers objects
-    # class `AIE_Buffer`
+    # Wrapper for xrt.kernel function passing in opcode and XRTTensor objects
     def call(self):
         opcode = 3
         h = self.kernel(
@@ -80,47 +78,6 @@ class AIE_Application:
         if hasattr(self, "device"):
             del self.device
             self.device = None
-
-
-# This class wraps up access to the xrt.bo buffer object where sync calls are added
-# to read and write calls to ensure data is synchronized.
-class AIE_Buffer:
-
-    # Declare xrt.bo object given group_id, datatype, shape
-    def __init__(self, application, group_id, dtype, shape, flags=xrt.bo.host_only):
-        self.application = application
-        self.dtype = dtype
-        self.shape = shape
-        self.len_bytes = np.prod(shape) * np.dtype(dtype).itemsize
-        self.bo = xrt.bo(
-            application.device,
-            self.len_bytes,
-            flags,
-            application.kernel.group_id(group_id),
-        )
-
-    # Synchronize data from device before reading xrt.bo data
-    def read(self):
-        self.sync_from_device()
-        return self.bo.read(self.len_bytes, 0).view(self.dtype).reshape(self.shape)
-
-    # Write data to xrt.bo and synchronize data to device
-    def write(self, v, offset=0):
-        self.bo.write(v.view(np.uint8), offset)
-        self.sync_to_device()
-
-    # Wrapper for xrt.bo.sync call (to device)
-    def sync_to_device(self):
-        return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
-
-    # Wrapper for xrt.bo.sync call (from device)
-    def sync_from_device(self):
-        return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
-
-    def __del__(self):
-        if hasattr(self, "bo"):
-            del self.bo
-            self.bo = None
 
 
 class AIE_Application_Error(Exception):
@@ -188,12 +145,9 @@ def read_insts(insts_path):
 def setup_aie(
     xclbin_path,
     insts_path,
-    in_0_shape,
-    in_0_dtype,
-    in_1_shape,
-    in_1_dtype,
-    out_buf_shape,
-    out_buf_dtype,
+    in0,
+    in1,
+    out,
     enable_trace=False,
     kernel_name="MLIR_AIE",
     trace_size=16384,
@@ -202,71 +156,50 @@ def setup_aie(
 ):
     app = AIE_Application(xclbin_path, insts_path, kernel_name)
 
-    if in_0_shape and in_0_dtype:
+    if in0:
         if verbosity >= 1:
-            print(
-                f"register 1st input to group_id 3: size: {in_0_shape}, dtype: {in_0_dtype}"
-            )
-        app.register_buffer(3, shape=in_0_shape, dtype=in_0_dtype)
-    if in_1_shape and in_1_dtype:
+            print(f"register 1st input to group_id 3: {in0}")
+        app.register_buffer(3, in0)
+    if in1:
         if verbosity >= 1:
-            print(
-                f"register 2nd input to group_id 4: size: {in_1_shape}, dtype: {in_1_dtype}"
-            )
-        app.register_buffer(4, shape=in_1_shape, dtype=in_1_dtype)
+            print(f"register 2nd input to group_id 4: {in1}")
+        app.register_buffer(4, in1)
 
-    if enable_trace:
-        if trace_after_output:
-            out_buf_len_bytes = (
-                np.prod(out_buf_shape) * np.dtype(out_buf_dtype).itemsize
-            )
-            out_buf_shape = (out_buf_len_bytes + trace_size,)
-            out_buf_dtype = np.uint8
+    if enable_trace and trace_after_output:
+        # Create a new, extended out tensor.
+        out_size = trace_size
+        if out:
+            out_size += out.nbytes
+        out = XRTTensor(out_buf_shape, dtype=np.uint8)
+    if not out:
+        # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
+        out = XRTTensor((1,), dtype=np.uint32)
 
-    if in_1_shape and in_1_dtype:
+    if verbosity >= 1:
+        print(
+            f"register output to group_id 5: size: {out_buf_shape}, dtype: {out_buf_dtype}"
+        )
+    app.register_buffer(5, out)
+
+    if enable_trace and not trace_after_output:
+        # trace_buf_shape = (trace_size,)
+        # trace_buf_shape = (trace_size+8,)
+        trace_buff = XRTTensor(trace_buf_shape, dtype=trace_buf_dtype)
+
         if verbosity >= 1:
-            print(
-                f"register output to group_id 5: size: {out_buf_shape}, dtype: {out_buf_dtype}"
-            )
-        app.register_buffer(5, shape=out_buf_shape, dtype=out_buf_dtype)
-    else:
-        if verbosity >= 1:
-            print(
-                f"register output to group_id 4: size: {out_buf_shape}, dtype: {out_buf_dtype}"
-            )
-        app.register_buffer(4, shape=out_buf_shape, dtype=out_buf_dtype)
-        if verbosity >= 1:
-            print(
-                "register placeholder buffer (32b) to group_id 5: size: 1, dtype: uint32"
-            )
+            # print("register placeholder buffer (32b) to group_id 6")
+            # print("register 2x 32b words for ctrl packets to group_id 6")
+            print("register for ctrl packets to group_id 6: size: 8, dtype: uint32")
         app.register_buffer(
-            5, shape=(1,), dtype=np.uint32
+            # 6, shape=(1,), dtype=np.uint32
+            # 6, shape=(2,), dtype=np.uint32
+            6,
+            XRTTensor((8,), dtype=np.uint32),
         )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
 
-    if enable_trace:
-        if not trace_after_output:
-            # trace_buf_shape = (trace_size,)
-            # trace_buf_shape = (trace_size+8,)
-            trace_buf_shape = (trace_size * 4,)
-            trace_buf_dtype = np.uint8
-
-            if verbosity >= 1:
-                # print("register placeholder buffer (32b) to group_id 6")
-                # print("register 2x 32b words for ctrl packets to group_id 6")
-                print("register for ctrl packets to group_id 6: size: 8, dtype: uint32")
-            app.register_buffer(
-                # 6, shape=(1,), dtype=np.uint32
-                # 6, shape=(2,), dtype=np.uint32
-                6,
-                shape=(8,),
-                dtype=np.uint32,
-            )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
-
-            if verbosity >= 1:
-                print(
-                    f"register trace on 7: size: {trace_buf_shape}, dtype: {trace_buf_dtype}"
-                )
-            app.register_buffer(7, shape=trace_buf_shape, dtype=trace_buf_dtype)
+        if verbosity >= 1:
+            print(f"register trace on 7: {trace_buff}")
+        app.register_buffer(7, trace_buff)
 
     return app
 
@@ -346,47 +279,17 @@ def return_buffer_results(
             return app.buffers[4].read(), app.buffers[7].read()
 
 
-# Wrapper function to write buffer arguments into registered input buffers, then call
-# `run` function for AIE Application, and finally return the output buffer data.
-def execute(
-    app,
-    input_one=None,
-    input_two=None,
-    enable_trace=False,
-    enable_ctrl_pkts=False,
-    trace_after_output=False,
-    verbosity=False,
-):
-    setup_buffer_data(
-        app, input_one, input_two, enable_trace, enable_ctrl_pkts, verbosity
-    )
-    app.run()
-    return return_buffer_results(
-        app, input_one, input_two, enable_trace, trace_after_output
-    )
-
-
 # Wrapper for execute but we do the host time delta directly around the app.run() call
 # so buffer init and read are not included
 def execute_timed(
     app,
-    input_one=None,
-    input_two=None,
     enable_trace=False,
-    enable_ctrl_pkts=False,
-    trace_after_output=False,
     verbosity=False,
 ):
-    setup_buffer_data(
-        app, input_one, input_two, enable_trace, enable_ctrl_pkts, verbosity
-    )
     start = time.time_ns()
     app.run()
     stop = time.time_ns()
     npu_time = stop - start
-    ret = return_buffer_results(
-        app, input_one, input_two, enable_trace, trace_after_output
-    )
     if enable_trace:
         return ret + (npu_time,)
     else:
@@ -427,15 +330,9 @@ def write_out_trace(trace, file_name):
 # to compare it against. Trace buffers is also written out to a text file if trace is
 # enabled.
 def setup_and_run_aie(
-    in1_dtype,
-    in2_dtype,
-    out_dtype,
-    in1_data,
-    in2_data,
-    out_data,
-    in1_volume,
-    in2_volume,
-    out_volume,
+    in1,
+    in2,
+    out,
     ref,
     opts,
     trace_after_output=False,
@@ -449,45 +346,31 @@ def setup_and_run_aie(
     app = setup_aie(
         opts.xclbin,
         opts.instr,
-        in1_volume,
-        in1_dtype,
-        in2_volume,
-        in2_dtype,
-        out_volume,
-        out_dtype,
+        in1,
+        in2,
+        out,
         enable_trace=enable_trace,
         trace_size=opts.trace_size,
         verbosity=opts.verbosity,
         trace_after_output=trace_after_output,
     )
 
-    out_size = out_volume * out_data.itemsize
-    if opts.verbosity >= 1:
-        print("out_size: " + str(out_size))
-
     if enable_trace:
-        full_output, trace_and_ctrl_buffer, npu_time = execute_timed(
+        execute_timed(
             app,
-            in1_data,
-            in2_data,
             enable_trace,
-            enable_ctrl_pkts,
-            trace_after_output,
             opts.verbosity,
         )
     else:
-        full_output, npu_time = execute_timed(
+        execute_timed(
             app,
-            in1_data,
-            in2_data,
             enable_trace,
-            enable_ctrl_pkts,
-            trace_after_output,
             opts.verbosity,
         )
 
     print("npu_time: ", npu_time / 1000.0, " us")
 
+    """
     aie_output = full_output[:out_size].view(out_dtype)
     if enable_trace:
         # trace_size_words = opts.trace_size // 4
@@ -538,3 +421,4 @@ def setup_and_run_aie(
         print("\nError count: ", errors)
         print("\nFailed.\n")
         return 1
+    """

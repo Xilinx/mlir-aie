@@ -22,7 +22,13 @@ class XRTTensor(Tensor):
 
     """
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
+    def __init__(
+        self,
+        shape_or_data,
+        dtype=np.uint32,
+        device="npu",
+        flags=xrt.bo.host_only,
+    ):
         super().__init__(shape_or_data, dtype=dtype, device=device)
         device_index = 0
         self.xrt_device = xrt.device(device_index)
@@ -49,7 +55,7 @@ class XRTTensor(Tensor):
         self.bo = xrt.bo(
             self.xrt_device,
             int(np.prod(self._shape) * np.dtype(self.dtype).itemsize),
-            xrt.bo.host_only,
+            flags,
             group_id,
         )
         ptr = self.bo.map()
