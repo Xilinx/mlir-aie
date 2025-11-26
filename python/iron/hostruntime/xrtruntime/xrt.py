@@ -6,10 +6,10 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import numpy as np
+import copy
 import time
 import pyxrt as xrt
-
-from ..iron.hostruntime.hostruntime import HostRuntime
+import os
 
 
 #
@@ -41,7 +41,7 @@ class AIE_Application:
         self.kernel = xrt.kernel(self.context, xkernel.get_name())
 
         ## Set up instruction stream
-        insts = HostRuntime.read_insts(insts_path)
+        insts = read_insts(insts_path)
         self.n_insts = len(insts)
         self.insts_buffer = XRTTensor(
             insts, insts.dtype, flags=xrt.bo.cacheable, group_id=1
