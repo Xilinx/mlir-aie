@@ -69,6 +69,10 @@ from ..ir import (
     _arrayAttr,
 )
 
+# Comes from _aie
+register_dialect(get_dialect_registry())
+# assert _cext.globals._check_dialect_module_loaded("aie")
+
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
 from ._aiex_ops_gen import NpuWriteRTPOp
 
