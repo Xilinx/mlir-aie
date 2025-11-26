@@ -125,13 +125,11 @@ class XRTHostRuntime(HostRuntime):
         insts_bo.write(insts.view(np.uint8), 0)
         insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
-        # TODO: handle magic number 3
-        buffers = [a.buffer_object for a in args]
-        print(buffers)
-        r = kernel(3, insts_bo, insts.nbytes, buffers)
+        buffers = [a.buffer_object() for a in args]
+        h = kernel(3, insts_bo, insts.nbytes, buffers)  # TODO: handle magic number 3
+        r = h.wait()
         if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise IronRuntimeError(f"Kernel returned {str(r)}")
-
         # delete insts buffer
         del insts_bo
 

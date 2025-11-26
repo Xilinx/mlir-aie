@@ -137,14 +137,10 @@ def jit(function=None, is_placed=True, use_cache=True):
                     _cleanup_failed_compilation(kernel_dir)
                     raise e
 
-        kernel_name = "MLIR_AIE"
-        kernel = NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
-
-        # Cache the kernel for this function signature
-        _compiled_kernels[cache_key] = kernel
-
-        result = kernel(*args, **kwargs)
-        return result
+        _compiled_kernels[cache_key] = NPUKernel(
+            xclbin_path, inst_path, kernel_name="MLIR_AIE"
+        )
+        _compiled_kernels[cache_key](*args)
 
     return decorator
 
@@ -158,7 +154,6 @@ def hash_module(module, external_kernels=None, target_arch=None):
     # Include ExternalFunction compiler options and source code in the hash
     if external_kernels:
         running_hash = ""
-        source_contents = []
         for func in external_kernels:
             running_hash += str(hash(func))
 
