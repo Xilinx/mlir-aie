@@ -11,19 +11,21 @@ import pyxrt
 
 from ..hostruntime import HostRuntime, IronRuntimeError, KernelHandle
 from ...device import Device, NPU1, NPU2
+from .tensor import XRTTensor
 
 
 class XRTKernelHandle(KernelHandle):
-    def __init__(self, xclbin_path, kernel_name, instr_path):
+    def __init__(self, xclbin_path, kernel_name, insts_path):
         self.xclbin_path = xclbin_path
         self.kernel_name = kernel_name
-        self.instr_path = instr_path
+        self.insts_path = insts_path
 
 
 class XRTHostRuntime(HostRuntime):
     """Singleton manager for AIE XRT resources"""
 
     _instance = None
+    _tensor_class = XRTTensor
 
     def __new__(cls):
         if cls._instance is None:
@@ -60,18 +62,18 @@ class XRTHostRuntime(HostRuntime):
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
 
     def load(
-        self, xclbin_path: Path, instr_path: Path, kernel_name: str | None = None
+        self, xclbin_path: Path, insts_path: Path, kernel_name: str | None = None
     ) -> XRTKernelHandle:
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise IronRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
             )
-        if not instr_path.exists() or not instr_path.is_file():
+        if not insts_path.exists() or not insts_path.is_file():
             raise IronRuntimeError(
-                f"instr {instr_path} does not exist or is not a file."
+                f"insts {insts_path} does not exist or is not a file."
             )
         if not kernel_name:
-            kernel_name = "PP_FD_PRE"
+            kernel_name = "MLIR_AIE"
 
         if xclbin_path not in self._contexts:
             xclbin = pyxrt.xclbin(str(xclbin_path))
@@ -90,11 +92,11 @@ class XRTHostRuntime(HostRuntime):
                 raise RuntimeError("No kernels found in xclbin")
             kernel_name = kernels[0].get_name()
 
-        kernel_handle = XRTKernelHandle(xclbin_path, kernel_name, instr_path)
+        kernel_handle = XRTKernelHandle(xclbin_path, kernel_name, insts_path)
         if kernel_handle not in self._kernels.keys():
             kernel = pyxrt.kernel(context, kernel_name)
-            instr_binary_nbytes = Path(instr_path).stat().st_size
-            self._kernels[kernel_handle] = (kernel, instr_binary_nbytes, instr_path)
+            insts = self.read_insts(insts_path)
+            self._kernels[kernel_handle] = (kernel, insts)
             logging.debug(
                 f"Created new kernel {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
@@ -105,25 +107,30 @@ class XRTHostRuntime(HostRuntime):
         return kernel_handle
 
     def run(self, kernel_handle: XRTKernelHandle, *args):
-        kernel, instr_binary_nbytes, instr_path = self._kernels[kernel_handle]
+        if not all([isinstance(a, self._tensor_class) for a in args]):
+            raise IronRuntimeError(
+                f"The {self.__class__.__name__} can only take {self._tensor_class.__name__} as arguments, but got: {args}"
+            )
+
+        kernel, insts = self._kernels[kernel_handle]
         insts_bo = pyxrt.bo(
             self._device,
-            instr_binary_nbytes,
-            pyxrt.bo.cacheable,
+            insts.nbytes,
+            pyxrt.bo.host_only,
             kernel.group_id(1),
         )
-
-        with open(instr_path, "rb") as f:
-            instr_binary = np.frombuffer(f.read(), dtype=np.uint32)
-
-        insts_bo.write(instr_binary.view(np.uint8), 0)
+        insts_bo.write(insts.view(np.uint8), 0)
         insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
         # TODO: handle magic number 3
-        r = kernel(3, insts_bo, len(instr_binary), *args)
-
+        buffers = [a.buffer_object for a in args]
+        print(buffers)
+        r = kernel(3, insts_bo, insts.nbytes, buffers)
         if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise IronRuntimeError(f"Kernel returned {str(r)}")
+
+        # delete insts buffer
+        del insts_bo
 
     def device(self) -> Device:
         # return an instance of the device type
@@ -131,6 +138,7 @@ class XRTHostRuntime(HostRuntime):
 
     def cleanup(self):
         """Clean up all XRT resources"""
+        self.clear_insts_cache()
         self._kernels.clear()
 
         # Clear contexts

@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
-import numpy as np
 from .hostruntime import DEFAULT_IRON_RUNTIME
+from .tensor import Tensor
 
 
 class NPUKernel:
@@ -37,7 +37,7 @@ class NPUKernel:
             args (IRON Tensors): Arguments to pass to the kernel.
         """
         # Skip callable arguments since these are inlined in the kernel
-        tensors = [t for t in args if not callable(t)]
+        tensors = [t for t in args if isinstance(t, Tensor)]
         handle = DEFAULT_IRON_RUNTIME.load(
             self._xclbin_path, self._insts_path, kernel_name=self._kernel_name
         )

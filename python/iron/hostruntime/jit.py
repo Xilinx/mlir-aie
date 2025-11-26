@@ -9,9 +9,6 @@
 import os
 import functools
 import hashlib
-import fcntl
-import contextlib
-import time
 
 from aie.extras.context import mlir_mod_ctx
 from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
@@ -45,6 +42,9 @@ def jit(function=None, is_placed=True, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
+        if DEFAULT_IRON_RUNTIME is None:
+            raise Exception("Cannot use JIT; DEFAULT_IRON_RUNTIME not set.")
+
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
         if cache_key in _compiled_kernels:
@@ -64,18 +64,15 @@ def jit(function=None, is_placed=True, use_cache=True):
                 external_kernels.append(value)
 
         # Execute the function to generate MLIR
-        try:
-            if is_placed:
-                with mlir_mod_ctx() as ctx:
-                    function(*args, **kwargs)
-                    assert (
-                        ctx.module.operation.verify()
-                    ), f"Verification failed for '{function.__name__}'"
-                    mlir_module = ctx.module
-            else:
-                mlir_module = function(*args, **kwargs)
-        except Exception as e:
-            raise
+        if is_placed:
+            with mlir_mod_ctx() as ctx:
+                function(*args, **kwargs)
+                assert (
+                    ctx.module.operation.verify()
+                ), f"Verification failed for '{function.__name__}'"
+                mlir_module = ctx.module
+        else:
+            mlir_module = function(*args, **kwargs)
 
         # Compile all ExternalFunction instances that were created during this JIT compilation
         for func in ExternalFunction._instances:
@@ -85,22 +82,19 @@ def jit(function=None, is_placed=True, use_cache=True):
                 external_kernels.append(func)
 
         # Determine target architecture based on device type
-        try:
-            current_device = DEFAULT_IRON_RUNTIME.device()
+        current_device = DEFAULT_IRON_RUNTIME.device()
 
-            # Determine target architecture based on device type
-            if isinstance(current_device, (NPU2, NPU2Col1)):
-                target_arch = "aie2p"
-            elif isinstance(current_device, (NPU1, NPU1Col1)):
-                target_arch = "aie2"
-            elif current_device in (AIEDevice.npu2, AIEDevice.npu2_1col):
-                target_arch = "aie2p"
-            elif current_device in (AIEDevice.npu1, AIEDevice.npu1_1col):
-                target_arch = "aie2"
-            else:
-                raise RuntimeError(f"Unsupported device type: {type(current_device)}")
-        except Exception as e:
-            raise
+        # Determine target architecture based on device type
+        if isinstance(current_device, (NPU2, NPU2Col1)):
+            target_arch = "aie2p"
+        elif isinstance(current_device, (NPU1, NPU1Col1)):
+            target_arch = "aie2"
+        elif current_device in (AIEDevice.npu2, AIEDevice.npu2_1col):
+            target_arch = "aie2p"
+        elif current_device in (AIEDevice.npu1, AIEDevice.npu1_1col):
+            target_arch = "aie2"
+        else:
+            raise RuntimeError(f"Unsupported device type: {type(current_device)}")
 
         # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)
@@ -144,16 +138,13 @@ def jit(function=None, is_placed=True, use_cache=True):
                     raise e
 
         kernel_name = "MLIR_AIE"
-        try:
-            kernel = NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
+        kernel = NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
 
-            # Cache the kernel for this function signature
-            _compiled_kernels[cache_key] = kernel
+        # Cache the kernel for this function signature
+        _compiled_kernels[cache_key] = kernel
 
-            result = kernel(*args, **kwargs)
-            return result
-        except Exception as e:
-            raise
+        result = kernel(*args, **kwargs)
+        return result
 
     return decorator
 
