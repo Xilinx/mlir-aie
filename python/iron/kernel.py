@@ -10,8 +10,8 @@ import hashlib
 import numpy as np
 
 from .. import ir  # type: ignore
-from ..extras.dialects.ext.func import FuncOp  # type: ignore
-from ..helpers.dialects.ext.func import call
+from ..extras.dialects.func import FuncOp  # type: ignore
+from ..helpers.dialects.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable
 from .buffer import Buffer

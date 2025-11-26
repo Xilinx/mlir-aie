@@ -1,4 +1,14 @@
+[![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml) [![Build and Test with AIE tools on Ryzen™ AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml) [![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
+
 # IRON API and MLIR-based AI Engine Toolchain
+
+[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls) [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug) ![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue) ![GitHub Downloads 2 (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-2/total?color=blue) ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie)
+
+<p align="left">
+  <img src="https://github.com/llvm/mlir-www/blob/main/website/static/LogoAssets/logo/PNG/full_color/mlir-identity-03.png" alt="MLIR logo" height="80" />
+  <img src="https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/community/logos/python-logo-only.png" alt="Python logo" height="80" />
+  <img src="https://em-content.zobj.net/source/apple/271/mechanical-arm_1f9be.png" alt="Mechanical Arm" height="80" />
+</p>
 
 This project emphasizes fast, open-source toolchains for NPU devices including LLVM-based code generation. IRON contains a close-to-metal toolkit that empowers performance engineers to create fast and efficient designs for Ryzen™ AI NPUs powered by AI Engines. It provides Python APIs that enable developers to harness the unique architectural capabilities of AMD’s NPUs. However, this project is not intended to represent an end-to-end compilation flow for all application designs---it is designed to complement, not replace, mainstream NPU tooling for inference like the [AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/). Targeting researchers and enthusiasts, IRON is designed to unlock the full potential of NPUs for a wide range of workloads, from machine learning to digital signal processing and beyond. This repository includes programming guides and examples demonstrating the APIs. Additionally, the [Peano](https://github.com/Xilinx/llvm-aie) component extends the LLVM framework by adding support for the AI Engine processor as a target architecture, enabling integration with popular compiler frontends such as `clang`. Developers can leverage the [AIE API header library](https://xilinx.github.io/aie_api/topics.html) to implement efficient vectorized AIE core code in C++ that can be compiled by Peano.
 
@@ -8,7 +18,9 @@ The IRON Python API for Ryzen™ AI NPUs is described in the following paper:
 
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
-<img src="assets/images/iron_linux_stack.svg" alt="Iron Linux Stack" style="width:50%; display:block; margin:auto;" />
+<p align="left">
+  <img src="docs/assets/images/iron_linux_stack.svg" alt="Iron Linux Software Stack" width="50%">
+</p>
 
 # Getting Started for AMD Ryzen™ AI on Linux
 
@@ -64,6 +76,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    >  [0000:66:00.1]  :  NPU Strix
    >  ```
 
+   IRON requires that `xrt-smi` be in your path.
+
 ### Install IRON and MLIR-AIE Prerequisites
 
 1. Install the following packages needed for MLIR-AIE:
@@ -97,36 +111,38 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Install IRON library, mlir-aie and llvm-aie compilers from wheels and dependencies:
 
-   For release v1.0:
+   You can install a specific version of `mlir-aie` from the release wheels. To see available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
+
    ```bash
-   # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/v1.0
-
-   # Install Peano from a llvm-aie wheel
-   python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025041501+b2a279c1-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-
-   # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
-   python3 -m pip install -r python/requirements.txt
-
-   # Install MLIR Python Extras
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   # Install IRON library and mlir-aie from a specific release,
+   # e.g., <verison> in the following command could be replaced with v1.1.3
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
    ```
 
-   For daily latest:
+   Alternatively, you can install the latest released version of `mlir-aie`.
    ```bash
-   # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
+   # Get the latest release version
+   latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq -r '.tag_name')
+   latest_tag="${latest_tag_with_v#v}"
 
+   # Install IRON library and mlir-aie from the latest stable release
+   python3 -m pip install mlir_aie==${latest_tag} -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${latest_tag_with_v}
+   ```
+
+   For the latest wheels (not necessarily a release):
+   ```bash
+   # Install IRON library and mlir-aie from the latest wheel
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
+   ```
+
+   You will also need to install the `llvm-aie` wheel for the Peano compiler and the `mlir-aie` python extras.
+
+   ```bash
    # Install Peano from llvm-aie wheel
    python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 
    # Install MLIR Python Extras
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
-   ```
-
-1. Setup environment
-   ```bash
-   source utils/env_setup.sh
+   EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
 1. (Optional) Install Python packages required for development and testing:
@@ -136,6 +152,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
+   ```
+
+1. Setup environment
+   ```bash
+   source utils/env_setup.sh
    ```
 
 1. (Optional) Install ML Python packages for ml programming examples:
@@ -187,6 +208,8 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
 
+1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please contact the [AMD University Program](mailto:aup@amd.com)
+
 ## Optional: Install AIETools
 
 > You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials.
@@ -237,33 +260,15 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 # Detailed Getting Started Guides and Documentation:
 
-[IRON AIE Application Programming Guide](../programming_guide)
+[IRON AIE Application Programming Guide](programming_guide)
 
-[Device Descriptions](Devices.md)
+[Device Descriptions](docs/Devices.md)
 
-[Building mlir-aie from source](Building.md)
+[Building mlir-aie tools from source](docs/Building.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
 Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
-
------
-
-[Github sources](https://github.com/Xilinx/mlir-aie)
-
-![](dialects.png)
-
-Generated Code Documentation
-- [AIE Dialect](AIEDialect.md) - [AIE Passes](AIEPasses.md)
-- [AIEX Experimental Dialect](AIEXDialect.md) - [AIEX Experimental Passes](AIEXPasses.md)
-- [AIEVec Dialect](AIEVecDialect.md) - [AIEVec Passes](AIEVecPasses.md)
-- [ADF Dialect](ADFDialect.md) - [ADF Passes](ADFPasses.md)
-
-MLIR Tutorials
-- [Step-by-step Tutorial](../mlir_tutorials/README.md)
-- [AIE Design Patterns](AIEDesignPatterns)
-- [AIE Routing](AIERouting)
-- [AIE Vectorization of Scalar Code](AIEVectorization)
 
 -----
 
