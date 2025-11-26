@@ -48,7 +48,7 @@ def vector_vector_add(input0, input1, output):
 
     buffer_depth = 2
 
-    @device(iron.get_current_device())
+    @device(iron.get_current_device().resolve())
     def device_body():
         tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
         tile_ty = np.ndarray[(n,), np.dtype[dtype]]
@@ -97,21 +97,9 @@ def vector_vector_add(input0, input1, output):
 
 
 def main():
-    device_map = {
-        "npu": AIEDevice.npu1_1col,
-        "npu2": AIEDevice.npu2_1col,
-        "xcvc1902": AIEDevice.xcvc1902,
-    }
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Enable verbose output"
-    )
-    parser.add_argument(
-        "-d",
-        "--device",
-        choices=["npu", "npu2", "xcvc1902"],
-        help="Target device",
     )
     parser.add_argument(
         "-n",
@@ -127,9 +115,6 @@ def main():
     input0 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
     input1 = iron.randint(0, 100, (args.num_elements,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input0)
-
-    if args.device:
-        iron.set_current_device(device_map[args.device])
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects

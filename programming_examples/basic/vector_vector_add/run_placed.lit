@@ -3,4 +3,4 @@
 //
 // REQUIRES: ryzen_ai, peano
 //
-// RUN: %run_on_npu1% python3 %S/vector_vector_add_placed.py --device=npu
+// RUN: %run_on_npu1% python3 %S/vector_vector_add_placed.py
