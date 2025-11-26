@@ -12,11 +12,11 @@ from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp
-from ..helpers.dialects.ext.func import call
-from ..extras.dialects.ext.arith import ScalarValue, constant
-from ..extras.dialects.ext._shaped_value import ShapedValue
-from ..extras.dialects.ext.memref import (
-    MemRef,
+from ..helpers.dialects.func import call
+from ..extras.dialects.arith import ScalarValue, constant
+from ..extras.dialects._shaped_value import ShapedValue
+from ..extras.dialects.memref import (
+    MemRefValue,
     store as memref_store,
     load as memref_load,
 )
@@ -318,7 +318,7 @@ class buffer(BufferOp):
     def owner(self):
         return self.result.owner
 
-    def __getitem__(self, idx: tuple | ScalarValue) -> "MemRef":
+    def __getitem__(self, idx: tuple | ScalarValue) -> "MemRefValue":
         loc = get_user_code_loc()
 
         if not self.has_rank():
@@ -379,7 +379,7 @@ class buffer(BufferOp):
 # Create an aie external buffer of (shape x datatype).
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the ExternalBufferOp and instead pretends to be a MemRef
-class external_buffer(MemRef):
+class external_buffer(MemRefValue):
     def __init__(self):
         raise ValueError("Should never be called")
 

@@ -9,7 +9,7 @@
 import numpy as np
 from typing import Sequence
 
-from ...extras.dialects.ext.memref import MemRef  # type: ignore
+from ...extras.dialects.memref import MemRef  # type: ignore
 from ...helpers.util import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
