@@ -97,6 +97,8 @@ class object_fifo:
 
 Our compiler directly lowers Object FIFOs that make use of the aforementioned data layout transformations to `AIE_DMABDOp`. You can use the `dimensionsToStream` input to describe in which order the `producerTile`'s DMA should push the objects onto the stream. Similarly, the `dimensionsFromStreamPerConsumer` input describes to the DMAs of each individual tile in the `consumerTiles` in what layout to retrieve the objects from the stream.
 
+> **NOTE:**  Data layout transformations in the Object FIFO are applied at object granularity.
+
 As an example, the Object FIFO in the code below contains objects with datatype `<4x8xi8>`. Using the `dimensionsToStream` input it performs a data layout transformation on the producer tile side that pushes elements from memory onto the stream as follows: For every even length-8 row, select the first three even-indexed elements.
 ```python
 A = tile(1, 1)
@@ -129,6 +131,8 @@ and further represented as in the image below:
 <img height="300" src="./../../assets/DataLayoutTransformation.svg">
 
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
+
+When using the implicit copy feature of the Object FIFO for a join or distribute data movement pattern, the data layout transformations must be at the granularity of the object with the smallest size. This entails that the Object FIFO abstraction does not support data layout transformations on the output of a join pattern or on the input of a distribute one. The reasoning behind this decision is largely due to the complexity of the DMA program that is required to achieve a data layout transformation across the larger data tensore while ensuring race-free execution of the DMA buffer descriptor logic. This is further detailed in [this](TODO link) discussion.
 
 ### Data Layout Transformations with the Runtime Sequence
 
