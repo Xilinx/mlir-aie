@@ -130,9 +130,11 @@ and further represented as in the image below:
 
 <img height="300" src="./../../assets/DataLayoutTransformation.svg">
 
+Please see the [`to_stream_transformations`](./to_stream_transformations/) and [`from_stream_transformations`](./from_stream_transformations/) designs for end-to-end IRON examples of each pattern.
+
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
 
-When using the implicit copy feature of the Object FIFO for a join or distribute data movement pattern, the data layout transformations must be at the granularity of the object with the smallest size. This entails that the Object FIFO abstraction does not support data layout transformations on the output of a join pattern or on the input of a distribute one. The reasoning behind this decision is largely due to the complexity of the DMA program that is required to achieve a data layout transformation across the larger data tensore while ensuring race-free execution of the DMA buffer descriptor logic. This is further detailed in [this](TODO link) discussion.
+When using the implicit copy feature of the Object FIFO for a join or distribute data movement pattern, the data layout transformations must be at the granularity of the object with the smallest size. This entails that the Object FIFO abstraction does not support data layout transformations on the output of a join pattern or on the input of a distribute one. The reasoning behind this decision is largely due to the complexity of the DMA program that is required to achieve a data layout transformation across the larger data tensore while ensuring race-free execution of the DMA buffer descriptor logic. Users may however program the DMA buffer descriptors themselves for specific designs; this is further detailed in [this](TODO link) discussion.
 
 ### Data Layout Transformations with the Runtime Sequence
 
