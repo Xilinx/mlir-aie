@@ -1605,22 +1605,43 @@ struct AIEObjectFifoStatefulTransformPass
         for (auto extBuff : regOp.getExternalBuffers())
           addExternalBuffer(child, extBuff.getDefiningOp<ExternalBufferOp>());
   }
-
-  /// Function used to replace uses of split objectFifos.
-  void replaceSplitFifo(ObjectFifoCreateOp originalOp, ObjectFifoCreateOp newOp,
+    /// Function used to replace uses of split objectFifos.
+    void replaceSplitFifo(ObjectFifoCreateOp originalOp, ObjectFifoCreateOp newOp,
                         TileOp tile) {
     auto original =
         originalOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
     auto newSymbol =
         newOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
+    
+    // Replace symbol uses in the designated tile
     for (auto user : tile->getUsers())
       if (isa<CoreOp>(user))
         if (auto res =
                 SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
             res.failed())
           llvm_unreachable("unreachable");
+    
+    // Also replace symbol uses in neighboring tiles that share memory
+    auto device = tile->getParentOfType<DeviceOp>();
+    
+    for (auto otherTile : device.getOps<TileOp>()) {
+      if (otherTile == tile) continue;  // Skip the designated tile (already handled)
+      
+      int shareDir = 0;
+      if (isSharedMemory(tile, otherTile, &shareDir) && shareDir != 0) {
+        // This tile shares memory with the designated tile
+        for (auto user : otherTile->getUsers()) {
+          if (isa<CoreOp>(user)) {
+            if (auto res = SymbolTable::replaceAllSymbolUses(original, newSymbol, user);
+                res.failed()) {
+              llvm_unreachable("unreachable");
+            }
+          }
+        }
+      }
+    }
   }
-
+}
   /// Function used to find the size of an objectFifo after split based on
   /// the maximum number of elements (of the original objectFifo) acquired
   /// by a process running on given tile. If no CoreOp exists for this tile
