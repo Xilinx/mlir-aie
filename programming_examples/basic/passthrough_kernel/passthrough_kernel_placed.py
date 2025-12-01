@@ -51,7 +51,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
 
         # AIE-array data movement with object fifos
         of_in = object_fifo("in", ShimTile, ComputeTile3, 2, line_ty)
-        of_out = object_fifo("out", ComputeTile3, ShimTile, 2, line_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
 
 
         # Set up compute tiles
