@@ -25,7 +25,7 @@ class NPUKernel:
             kernel_name (str, optional): Name of the kernel. Defaults to "PP_FD_PRE".
         """
         import pyxrt as xrt
-        from ...utils.xrt import read_insts_binary
+        from .xrtruntime.xrt import read_insts_binary
 
         self.__device = xrt.device(device_index)
 

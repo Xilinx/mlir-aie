@@ -14,7 +14,6 @@ The python utilties are designed to simplify commonly repeated tasks and wrap th
 ```
 import aie.utils.trace as trace_utils
 import aie.utils.test as test_utils
-improt aie.utils.xrt as xrt_utils
 ```
 Thereafter, functions defined in the particular utils file such as `trace_utils` can be called via `trace_utils.configure_packet_tracing_aie2(...)`.
 
