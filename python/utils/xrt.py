@@ -239,9 +239,6 @@ def setup_aie(
             print(
                 "register placeholder buffer (32b) to group_id 5: size: 1, dtype: uint32"
             )
-        app.register_buffer(
-            5, shape=(1,), dtype=np.uint32
-        )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
 
     if enable_trace:
         if not trace_after_output:
@@ -254,13 +251,6 @@ def setup_aie(
                 # print("register placeholder buffer (32b) to group_id 6")
                 # print("register 2x 32b words for ctrl packets to group_id 6")
                 print("register for ctrl packets to group_id 6: size: 8, dtype: uint32")
-            app.register_buffer(
-                # 6, shape=(1,), dtype=np.uint32
-                # 6, shape=(2,), dtype=np.uint32
-                6,
-                shape=(8,),
-                dtype=np.uint32,
-            )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
 
             if verbosity >= 1:
                 print(
