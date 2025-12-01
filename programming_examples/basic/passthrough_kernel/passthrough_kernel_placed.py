@@ -42,6 +42,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
         # Tile declarations
         ShimTile = tile(0, 0)
         ComputeTile2 = tile(0, 2)
+        ComputeTile3 = tile(0, 3)
 
         # Set up a packet-switched flow from core to shim for tracing information
         tiles_to_trace = [ComputeTile2, ShimTile]
@@ -49,8 +50,9 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
             trace_utils.configure_packet_tracing_flow(tiles_to_trace, ShimTile)
 
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
-        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile3, 2, line_ty)
+        of_out = object_fifo("out", ComputeTile3, ShimTile, 2, line_ty)
+
 
         # Set up compute tiles
 
