@@ -54,11 +54,12 @@ class AIE_Application:
     # This syncs the instruction buffer to the device and then invokes the
     # `call` function before wait for the call to complete
     def run(self):
-        self.insts_buffer.sync_to_device()
+        self.insts_buffer._sync_to_device()
         h = self.call()
         r = h.wait()
         if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise Exception(f"Kernel returned {r}")
+        return r
 
     # Wrapper for xrt.kernel function passing in opcode and XRTTensor objects
     def call(self):
@@ -283,17 +284,12 @@ def return_buffer_results(
 # so buffer init and read are not included
 def execute_timed(
     app,
-    enable_trace=False,
-    verbosity=False,
 ):
     start = time.time_ns()
-    app.run()
+    ret = app.run()
     stop = time.time_ns()
     npu_time = stop - start
-    if enable_trace:
-        return ret + (npu_time,)
-    else:
-        return (ret, npu_time)
+    return (ret, npu_time)
 
 
 # Wrapper function to separate output data and trace data from a single output buffer stream
@@ -355,18 +351,9 @@ def setup_and_run_aie(
         trace_after_output=trace_after_output,
     )
 
-    if enable_trace:
-        execute_timed(
-            app,
-            enable_trace,
-            opts.verbosity,
-        )
-    else:
-        execute_timed(
-            app,
-            enable_trace,
-            opts.verbosity,
-        )
+    (ret, npu_time) = execute_timed(
+        app,
+    )
 
     print("npu_time: ", npu_time / 1000.0, " us")
 
