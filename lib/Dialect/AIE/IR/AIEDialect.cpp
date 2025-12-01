@@ -232,6 +232,41 @@ static TileElement getParentTileElement(Operation *op) {
   return llvm::dyn_cast<TileElement>(parent);
 }
 
+// Let objectfifo be directly accessed from its neighbor
+static bool tilesShareMemory(Value tileA, Value tileB) {
+  if (tileA == tileB) 
+    return true;
+    
+  auto tileAOp = dyn_cast<TileOp>(tileA.getDefiningOp());
+  auto tileBOp = dyn_cast<TileOp>(tileB.getDefiningOp());
+  if (!tileAOp || !tileBOp)
+    return false;
+    
+  const auto &targetModel = getTargetModel(tileAOp.getOperation());
+  
+  // Check if tileA and tileB are both shim tiles or both non-shim tiles
+  if ((tileAOp.isShimTile() && !tileBOp.isShimTile()) ||
+      (!tileAOp.isShimTile() && tileBOp.isShimTile())) {
+    return false;
+  }
+  
+  // Check if one is mem tile and other is not
+  if ((targetModel.isMemTile(tileAOp.getCol(), tileAOp.getRow()) &&
+       !targetModel.isMemTile(tileBOp.getCol(), tileBOp.getRow())) ||
+      (!targetModel.isMemTile(tileAOp.getCol(), tileAOp.getRow()) &&
+       targetModel.isMemTile(tileBOp.getCol(), tileBOp.getRow()))) {
+    return false;
+  }
+  
+  // Check memory affinity in both directions
+  bool rightShared = targetModel.isLegalMemAffinity(
+      tileAOp.colIndex(), tileAOp.rowIndex(), tileBOp.colIndex(), tileBOp.rowIndex());
+  bool leftShared = targetModel.isLegalMemAffinity(
+      tileBOp.colIndex(), tileBOp.rowIndex(), tileAOp.colIndex(), tileAOp.rowIndex());
+  
+  return rightShared || leftShared;
+}
+
 namespace {
 
 struct UsesAreAccessible {
@@ -813,14 +848,15 @@ LogicalResult ObjectFifoAcquireOp::verify() {
   if (!objFifo)
     return emitError("cannot retrieve associated object FIFO");
   if (getPort() == ObjectFifoPort::Produce) {
-    if (coreTile != objFifo.getProducerTile())
+    if (coreTile != objFifo.getProducerTile() && 
+        !tilesShareMemory(coreTile, objFifo.getProducerTile()))
       return parent.emitOpError(
           "producer port of objectFifo accessed by core running "
           "on non-producer tile");
   } else if (getPort() == ObjectFifoPort::Consume) {
     bool found = false;
     for (auto consumerTile : objFifo.getConsumerTiles()) {
-      if (coreTile == consumerTile) {
+      if (coreTile == consumerTile || tilesShareMemory(coreTile, consumerTile)) {
         found = true;
         break;
       }
