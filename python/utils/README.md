@@ -23,7 +23,6 @@ Thereafter, functions defined in the particular utils file such as `trace_utils`
     - [Trace Mechanisms and Explanations](#trace-mechanisms-and-explanations)
     - [Trace parser](#trace-parser-parse_tracepy) ([parse_trace.py](./parse_trace.py))
     - [Trace parser - eventIR based](#trace-parser---eventir-based-parse_eventirpy) ([parse_eventIR.py](./parse_eventIR.py))
-- [XRT utilities](#xrt-utilites-xrtpy) ([xrt.py](./xrt.py))
 - [Machine Learning (ML) utilities](#machine-language-ml-utilites-mlpyss) ([ml.py](./ml.py))
 
 ## Test utilites ([test.py](./test.py))
@@ -560,30 +559,6 @@ to
 0x0005d0f7
 ```
 which reduces the timer from 11,091,042 cycles to 381,175 seems to fix it.
-
-## XRT utilites ([xrt.py](./xrt.py))
-XRT wrapped utilities. These classes and utilities help simplify the the declaration and instantiation of XRT components in the host code.
-
-In particular, `setup_and_run_aie` is a helpful convenience wrapper to simplify the setup and runnin of kernel with 1 or 2 inputs buffers and 1 output buffer. See [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul/) for an template example of how this is ued.
-
-* class `AIE_Application`
-    * This class configures and invokes the XRT components needed to run an AIE Application. This includes xrt.device, xrt.kernel, xrt.hw_contex. You can use this class to simplify and reduce the amount of code needed to set up an AIE application.
-        * `__init__` - Registers xclbin to set up the device, hw context and kernel. This also sets up the instruction stream
-        * `register_buffer` - Registers an XRTTensor object given group_id
-        * `run` - This syncs the instruction buffer to the device and then invokes the `call` function before wait for the call to complete
-        * `call` - Wrapper for xrt.kernel function passing in opcode and buffers objects
-* class `AIE_Application_Error`
-* `read_insts` - Read instruction stream from text file and reformat it to be passed into the instructoin buffer for the xrt.kernel call
-* `setup_aie`
-    * Sets up the AIE application with support for up to 2 input buffers, 1 output buffer, and an optional trace buffer. Under the hood, we call declare an AIE_Application object and register the buffers used given the buffer datatype and shapes. 
-* `execute`
-    * Wrapper function to write buffer arguments into registered input buffers, then call `run` function for AIE Application, and finally return the output buffer data.
-* `extract_trace`
-    * Wrapper function to separate output data and trace data from a single output buffer stream
-* `write_out_trace`
-    * Wrapper function to write trace buffer values to a text file
-* `setup_and_run_aie`
-    * This wrapper function abstracts the full set of functions to setup the aie and run the kernel program including check for functional correctness and reporting the run time. Under the hood, we call `setup_aie` to set up the AIE application before calling `execute` and checking results. The datatypes and shape for the 2 inputs and 1 output buffers are passed in as arguments, along with the gold reference data to compare it against. Trace buffers is also written out to a text file if trace is enabled. 
 
 ## Machine Language (ML) utilites ([ml.py](./ml.py))
 ML related utilties
