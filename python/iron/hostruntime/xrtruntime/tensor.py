@@ -29,7 +29,7 @@ class XRTTensor(Tensor):
         device="npu",
         flags=xrt.bo.host_only,
     ):
-        super().__init__(shape_or_data, dtype=dtype, device=device)
+        super().__init__(shape_or_data, dtype=dtype, device=device, group_id=0)
         device_index = 0
         self.xrt_device = xrt.device(device_index)
 
@@ -50,9 +50,8 @@ class XRTTensor(Tensor):
 
         # Ideally, we use xrt::ext::bo host-only BO but there are no bindings for that currently.
 
-        # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
-        # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621
-        group_id = 1
+        # Eventually, xrt:ext::bo uses the 0 magic number that shall be fixed in the future, so that is used as a default.
+        # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
         self.bo = xrt.bo(
             self.xrt_device,
             int(np.prod(self._shape) * np.dtype(self.dtype).itemsize),

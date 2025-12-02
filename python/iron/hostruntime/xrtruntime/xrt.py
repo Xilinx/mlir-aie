@@ -45,7 +45,9 @@ class AIE_Application:
         ## Set up instruction stream
         insts = read_insts(insts_path)
         self.n_insts = len(insts)
-        self.insts_buffer = XRTTensor(insts, insts.dtype, flags=xrt.bo.cacheable)
+        self.insts_buffer = XRTTensor(
+            insts, insts.dtype, flags=xrt.bo.cacheable, group_id=1
+        )
 
     # Registers an XRTTensor object given group_id
     def register_buffer(self, group_id, tensor):
@@ -85,41 +87,24 @@ class AIE_Application_Error(Exception):
     pass
 
 
-insts_cache = {}
-
-
 # Read instruction stream from text file and reformat it to be passed into the
 # instruction buffer for the xrt.kernel call
 def read_insts_sequence(insts_path):
     """Reads instructions from a text file (hex numbers, one per line)."""
-    global insts_cache
-    if insts_path in insts_cache:
-        # Speed up things if we re-configure the array a lot: Don't re-parse
-        # the insts.txt each time
-        return insts_cache[insts_path]
     with open(insts_path, "r") as f:
         insts_text = f.readlines()
-        insts_text = [l for l in insts_text if l != ""]
-        insts_v = np.array([int(c, 16) for c in insts_text], dtype=np.uint32)
-        insts_cache[insts_path] = insts_v
-    return insts_v
+    insts_text = [l for l in insts_text if l != ""]
+    return np.array([int(c, 16) for c in insts_text], dtype=np.uint32)
 
 
 # Read instruction stream from bin file and reformat it to be passed into the
 # instruction buffer for the xrt.kernel call
 def read_insts_binary(insts_path):
     """Reads instructions from a binary file."""
-    global insts_cache
-    if insts_path in insts_cache:
-        # Speed up things if we re-configure the array a lot: Don't re-parse
-        # the insts.bin each time
-        return insts_cache[insts_path]
     with open(insts_path, "rb") as f:
         data = f.read()
     # Interpret the binary data as an array of uint32 values.
-    insts_v = np.frombuffer(data, dtype=np.uint32)
-    insts_cache[insts_path] = insts_v
-    return insts_v
+    return np.frombuffer(data, dtype=np.uint32)
 
 
 def read_insts(insts_path):
