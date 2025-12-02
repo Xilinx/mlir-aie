@@ -10,6 +10,7 @@ import copy
 import time
 import pyxrt as xrt
 import os
+from .tensor import XRTTensor
 
 
 #
