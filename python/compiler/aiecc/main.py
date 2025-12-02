@@ -409,7 +409,7 @@ def set_elf_file_for_core(core, path):
         result = IndexType.get()
         new_core = aiedialect.CoreOp(result, core.tile)
         for attr in core.attributes:
-            new_core.attributes[attr.name] = core.attributes[attr.name]
+            new_core.attributes[attr] = core.attributes[attr]
         new_core.attributes["elf_file"] = StringAttr.get(path)
         new_core_block = new_core.body.blocks.append()
         with InsertionPoint(new_core_block):
