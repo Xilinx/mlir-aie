@@ -38,6 +38,7 @@ from .._mlir_libs._aie import (
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
     transaction_binary_to_mlir,
+    control_packets_binary_to_mlir,
 )
 from ..extras import types as T
 from ..extras.meta import region_op
