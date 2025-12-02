@@ -155,7 +155,7 @@ def setup_aie(
         out_size = trace_size
         if out:
             out_size += out.nbytes
-        out = XRTTensor(out_buf_shape, dtype=np.uint8)
+        out = XRTTensor(out_size, dtype=np.uint8)
     if not out:
         # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
         out = XRTTensor((1,), dtype=np.uint32)
@@ -167,9 +167,7 @@ def setup_aie(
     app.register_buffer(5, out)
 
     if enable_trace and not trace_after_output:
-        # trace_buf_shape = (trace_size,)
-        # trace_buf_shape = (trace_size+8,)
-        trace_buff = XRTTensor(trace_buf_shape, dtype=trace_buf_dtype)
+        trace_buff = XRTTensor((trace_size,), dtype=np.uint8)
 
         if verbosity >= 1:
             # print("register placeholder buffer (32b) to group_id 6")
@@ -205,47 +203,6 @@ def create_ctrl_pkt(
     header = (ctrl_pkt_read_id << 24) | (operation << 22) | (beats << 20) | addr
     header |= (0x1 ^ parity(header)) << 31
     return header
-
-
-def setup_buffer_data(
-    app,
-    input_one=None,
-    input_two=None,
-    enable_trace=False,
-    enable_ctrl_pkts=False,
-    verbosity=False,
-):
-    if not (input_one is None):
-        app.buffers[3].write(input_one)
-    if not (input_two is None):
-        app.buffers[4].write(input_two)
-
-    deadbeef_string = "EFBEADDE" * 10
-
-    # Convert the hex string to a bytes object
-    byte_data = bytes.fromhex(deadbeef_string)
-
-    # Create the NumPy array from the bytes object
-    init_trace_data = np.frombuffer(byte_data, dtype=np.uint32)
-
-    if enable_trace:
-        if enable_ctrl_pkts:
-            # write ctrl packets
-            header = np.array(
-                [
-                    create_ctrl_pkt(1, 0, 0x32004),  # core status
-                    create_ctrl_pkt(1, 0, 0x340D8),  # trace status
-                ],
-                dtype=np.uint32,
-            )
-            if verbosity:
-                print("header", [hex(x) for x in header])
-            app.buffers[6].write(header)
-
-        app.buffers[7].write(init_trace_data)
-
-    # print("ctrl, buffers[6]: ", [hex(x) for x in app.buffers[6].read()])
-    # print("init, buffers[7]: ", [hex(x) for x in app.buffers[7].read()])
 
 
 def return_buffer_results(
@@ -341,7 +298,6 @@ def setup_and_run_aie(
 
     print("npu_time: ", npu_time / 1000.0, " us")
 
-    """
     aie_output = full_output[:out_size].view(out_dtype)
     if enable_trace:
         # trace_size_words = opts.trace_size // 4
@@ -392,4 +348,3 @@ def setup_and_run_aie(
         print("\nError count: ", errors)
         print("\nFailed.\n")
         return 1
-    """
