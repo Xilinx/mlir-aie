@@ -28,8 +28,9 @@ class XRTTensor(Tensor):
         dtype=np.uint32,
         device="npu",
         flags=xrt.bo.host_only,
+        group_id=0,
     ):
-        super().__init__(shape_or_data, dtype=dtype, device=device, group_id=0)
+        super().__init__(shape_or_data, dtype=dtype, device=device)
         device_index = 0
         self.xrt_device = xrt.device(device_index)
 
