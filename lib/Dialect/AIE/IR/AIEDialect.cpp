@@ -639,14 +639,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
                            "dimensionsFromStreamPerConsumer.");
     }
 
-    for (auto fifoOut : getOutputObjectFifos()) {
-      for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
-        if (!dims.empty())
-          return emitOpError("currently does not support objectFifos with "
-                             "dimensionsFromStreamPerConsumer.");
-      }
-    }
-
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
       if (fifoOut.getRepeatCount().has_value())
