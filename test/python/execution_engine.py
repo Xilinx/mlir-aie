@@ -125,11 +125,7 @@ def testNanoTime():
         execution_engine = ExecutionEngine(
             lowerToLLVM(module),
             opt_level=3,
-            shared_libs=[
-                str(mlir_runner_utils),
-                str(mlir_c_runner_utils),
-                str(mlir_apfloat_wrappers),
-            ],
+            shared_libs=[str(mlir_runner_utils), str(mlir_c_runner_utils)],
         )
         execution_engine.invoke("main")
         # CHECK: Unranked Memref
