@@ -104,8 +104,8 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @ctrl0(S2MM, 0, 0)
-    aie.shim_dma_allocation @out0(S2MM, 1, 0)
+    aie.shim_dma_allocation @ctrl0 (%tile_0_0, S2MM, 0)
+    aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 1)
 
     memref.global "private" constant @blockwrite_data_0 : memref<8xi32> = dense<[2, 0, 0x40090000, 0, 0x40000000, 0, 0, 0x2000000]>
     aie.runtime_sequence @seq(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: memref<8xi32>) {

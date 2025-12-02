@@ -111,10 +111,16 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
       return failure();
     }
 
+    AIE::TileOp tile = infoOp.getTileOp();
+    if (!tile) {
+      op.emitOpError("shim_dma_allocation op must reference a valid TileOp");
+      return failure();
+    }
+
     auto channelDir = infoOp.getChannelDir();
     uint32_t ChannelId = infoOp.getChannelIndex();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int col = infoOp.getCol();
+    int col = tile.getCol();
     bool isPlio = infoOp.getPlio();
 
     llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
