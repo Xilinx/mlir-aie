@@ -212,6 +212,10 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -272,6 +276,10 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
     size_t getNumSourceConnections(WireBundle bundle);
     size_t getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -314,6 +322,10 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -377,6 +389,10 @@ def AIE_CoreOp: AIE_Op<"core", [
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
     TileOp getTileOp();
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
+    }
   }];
 
   let builders = [
@@ -1119,6 +1135,10 @@ def AIE_MemOp: AIE_Op<"mem", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -1162,6 +1182,10 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
