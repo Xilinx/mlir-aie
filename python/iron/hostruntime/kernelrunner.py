@@ -33,6 +33,7 @@ class NPUKernel:
         """
         import pyxrt as xrt
         from ..hostruntime import DEFAULT_IRON_RUNTIME
+        from .tensor import tensor
 
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -55,28 +56,14 @@ class NPUKernel:
 
         # Set up instruction stream
         insts = DEFAULT_IRON_RUNTIME.read_insts(insts_path)
-        self.__n_insts = len(insts)
-        insts_buffers_bytes = self.__n_insts * np.dtype(insts.dtype).itemsize
 
         # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
         # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621
-        group_id = 1
-
-        self.__insts_buffer_bo = xrt.bo(
-            self.__device,
-            insts_buffers_bytes,
-            xrt.bo.cacheable,
-            group_id,
+        self.__insts_buffer = tensor(
+            insts, insts.dtype, flags=xrt.bo.cacheable, group_id=1
         )
-
-        # Copy into a temporary numpy buffer
-        insts_buffer_bo_np = np.frombuffer(
-            self.__insts_buffer_bo.map(), dtype=insts.dtype
-        ).reshape(insts.shape)
-        insts_buffer_bo_np[:] = insts
-
         # Always sync to the device in the constructor
-        self.__insts_buffer_bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+        # self.__insts_buffer.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     # Blocking call.
     def __call__(self, *args):
@@ -101,7 +88,9 @@ class NPUKernel:
                 )
             kernel_args.append(tensor.buffer_object())
 
-        h = self.__kernel(opcode, self.__insts_buffer_bo, self.__n_insts, *kernel_args)
+        h = self.__kernel(
+            opcode, self.__insts_buffer.bo, self.__insts_buffer.shape[0], *kernel_args
+        )
         r = h.wait()
         if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise NPUKernel_Error(f"Kernel returned {r}")
@@ -110,9 +99,9 @@ class NPUKernel:
         """
         Destructor to clean up resources and delete the kernel and device objects.
         """
-        if self.__insts_buffer_bo:
-            del self.__insts_buffer_bo
-            self.__insts_buffer_bo = None
+        if self.__insts_buffer:
+            del self.__insts_buffer
+            self.__insts_buffer = None
         if self.__kernel:
             del self.__kernel
             self.__kernel = None
