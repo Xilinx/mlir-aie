@@ -50,7 +50,6 @@ def core_fn(of_in, of_out):
 
 # Create a worker to perform the task
 my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
-    
 # To/from AIE-array runtime data movement
 rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
