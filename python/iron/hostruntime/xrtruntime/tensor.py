@@ -53,14 +53,14 @@ class XRTTensor(Tensor):
 
         # Eventually, xrt:ext::bo uses the 0 magic number that shall be fixed in the future, so that is used as a default.
         # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
-        self.bo = xrt.bo(
+        self._bo = xrt.bo(
             self.xrt_device,
             int(np.prod(self._shape) * np.dtype(self.dtype).itemsize),
             flags,
             group_id,
         )
 
-        ptr = self.bo.map()
+        ptr = self._bo.map()
         self._data = np.frombuffer(ptr, dtype=self.dtype).reshape(self._shape)
 
         if not isinstance(shape_or_data, tuple):
@@ -80,10 +80,10 @@ class XRTTensor(Tensor):
         return self._shape
 
     def _sync_to_device(self):
-        return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+        return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def _sync_from_device(self):
-        return self.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
+        return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):
         """
@@ -92,14 +92,14 @@ class XRTTensor(Tensor):
         Releases associated device memory (e.g., XRT buffer object).
         """
         if hasattr(self, "bo"):
-            del self.bo
-            self.bo = None
+            del self._bo
+            self._bo = None
 
     def buffer_object(self):
         """
         Returns the XRT buffer object associated with this tensor.
 
         Returns:
-           xrt.bo: The XRT buffer object associated with this tensor.
+            buffer_object: The XRT buffer object associated with this tensor.
         """
-        return self.bo
+        return self._bo

@@ -69,9 +69,9 @@ class AIE_Application:
         opcode = 3
         h = self.kernel(
             opcode,
-            self.insts_buffer.bo,
+            self.insts_buffer.buffer_object(),
             self.n_insts,
-            *[b.bo for b in self.buffers if b is not None],
+            *[b.buffer_object() for b in self.buffers if b is not None],
         )
         return h
 

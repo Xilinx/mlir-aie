@@ -89,7 +89,10 @@ class NPUKernel:
             kernel_args.append(tensor.buffer_object())
 
         h = self.__kernel(
-            opcode, self.__insts_buffer.bo, self.__insts_buffer.shape[0], *kernel_args
+            opcode,
+            self.__insts_buffer.buffer_object(),
+            self.__insts_buffer.shape[0],
+            *kernel_args,
         )
         r = h.wait()
         if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
