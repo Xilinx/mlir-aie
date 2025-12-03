@@ -46,7 +46,7 @@ environment-pass = [
     "ENABLE_RTTI",
 ]
 repair-wheel-command = [
-    "auditwheel repair -w {dest_dir} {wheel} --exclude libmlir_float16_utils.so"
+    "auditwheel repair -w {dest_dir} {wheel} --exclude libmlir_async_runtime.so --exclude libmlir_c_runner_utils.so --exclude libmlir_float16_utils.so --exclude libmlir_runner_utils.so --exclude libmlir_apfloat_wrappers.so"
 ]
 
 [tool.cibuildwheel.macos]
