@@ -359,6 +359,7 @@ target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AI
 
 # Copy the runtime libs into the _mlir_libs directory for convenience.
 set(_runtime_deps
+  mlir_apfloat_wrappers
   mlir_async_runtime
   mlir_c_runner_utils
   mlir_float16_utils
