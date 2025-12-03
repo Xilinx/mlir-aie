@@ -159,7 +159,7 @@ jobs:
 
             popd
 
-            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
+            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_async_runtime.so --exclude libmlir_c_runner_utils.so --exclude libmlir_float16_utils.so --exclude libmlir_runner_utils.so --exclude libmlir_apfloat_wrappers.so
 
       - name: Upload mlir_aie
         uses: actions/upload-artifact@v4
