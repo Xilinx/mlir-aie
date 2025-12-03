@@ -29,7 +29,9 @@ tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
 # Dataflow with ObjectFifos
 # Input
 of_in0 = ObjectFifo(tile24_ty, name="in0")
-of_in1 = of_in0.cons().forward(name="in1", obj_type=tile24_ty, dims_from_stream=[(8, 3), (1, 8)])
+of_in1 = of_in0.cons().forward(
+    name="in1", obj_type=tile24_ty, dims_from_stream=[(8, 3), (1, 8)]
+)
 
 # Output
 of_out1 = ObjectFifo(tile24_ty, name="out1")
