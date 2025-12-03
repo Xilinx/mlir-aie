@@ -19,6 +19,10 @@
 #include <xrt/xrt_device.h>
 #include <xrt/xrt_kernel.h>
 
+#ifndef VARIANT_NAME
+#define VARIANT_NAME "fused_transactions_write32s"
+#endif
+
 constexpr int EMBEDDING_DIM = 2048;
 constexpr int HIDDEN_DIM = 8192;
 constexpr int NUM_ITERATIONS = 1000;
@@ -251,7 +255,7 @@ int main(int argc, const char *argv[]) {
 
   // Output CSV format: variant,iteration,time_us
   for (int i = 0; i < NUM_ITERATIONS; i++) {
-    std::cout << "fused_transactions_write32s," << i << "," << iteration_times[i] << std::endl;
+    std::cout << VARIANT_NAME << "," << i << "," << iteration_times[i] << std::endl;
   }
 
   return 0;

@@ -14,7 +14,9 @@ MLIR_AIE_DIR = $(shell python3 -c "from aie.utils.config import root_path; print
 CLANG_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw -I$(AIE_KERNELS_DIR) -I$(MLIR_AIE_DIR)/include
 HOST_FLAGS = -std=c++23 -Wall -I/opt/xilinx/xrt/include -I/scratch/roesti/mlir-aie/runtime_lib/test_lib -L/opt/xilinx/xrt/lib -lxrt_core -lxrt_coreutil -lrt -lstdc++
 
-.PHONY: all clean test
+VARIANT_NAME?=fused_transactions_write32s
+
+.PHONY: all clean test all_reset_modes build_reset_always build_reset_ifused build_reset_ifchanged build_reset_ifchangedfinegrained build_reset_never
 
 all: build/test
 
@@ -25,6 +27,15 @@ build/mul.o: $(KERNEL_DIR)/mul.cc | build
 	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
 
 build/silu.o: $(KERNEL_DIR)/silu.cc | build
+	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
+
+$(BUILD_DIR)/mv.o: $(KERNEL_DIR)/mv.cc | $(BUILD_DIR)
+	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
+
+$(BUILD_DIR)/mul.o: $(KERNEL_DIR)/mul.cc | $(BUILD_DIR)
+	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
+
+$(BUILD_DIR)/silu.o: $(KERNEL_DIR)/silu.cc | $(BUILD_DIR)
 	$(PEANO_CLANG) $(CLANG_FLAGS) -c $< -o $@
 
 build/swiglu_gemv_1.mlir: $(OPERATOR_DIR)/matrix_vector_mul.py | build
@@ -42,17 +53,42 @@ build/swiglu_eltwise_mul.mlir: $(OPERATOR_DIR)/eltwise_mul.py | build
 $(COMBINED_MLIR): $(MLIR_FILES) combine_mlir.py
 	python3 combine_mlir.py $(MLIR_FILES) $(COMBINED_MLIR)
 
-$(ELF_FILE): $(COMBINED_MLIR) build/mv.o build/mul.o build/silu.o
-	cd build && $(AIECC) -v --generate-full-elf --expand-load-pdis --no-xchesscc --no-xbridge aie.mlir -o aie.elf
+RESET_MODE?=always
+BUILD_DIR?=build
 
-build/test: test.cpp $(ELF_FILE)
-	g++-13 $< -o $@ $(HOST_FLAGS)
+$(BUILD_DIR)/aie.elf: $(COMBINED_MLIR) $(BUILD_DIR)/mv.o $(BUILD_DIR)/mul.o $(BUILD_DIR)/silu.o | $(BUILD_DIR)
+	cp $(COMBINED_MLIR) $(BUILD_DIR)/aie.mlir
+	cd $(BUILD_DIR) && $(AIECC) -v --no-coalesce-write32s --generate-full-elf --expand-load-pdis --reset-mode=$(RESET_MODE) --reset-tiles=core,mem --no-xchesscc --no-xbridge aie.mlir -o aie.elf
+
+$(BUILD_DIR)/test: test.cpp $(BUILD_DIR)/aie.elf
+	g++-13 $< -o $@ $(HOST_FLAGS) -DVARIANT_NAME=\"$(VARIANT_NAME)\"
+
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
 build:
 	mkdir -p build
 
-test: build/test
-	cd build && ./test
+# Build all reset mode variants
+all_reset_modes: _build_reset_always _build_reset_ifused _build_reset_ifchanged _build_reset_ifchangedfinegrained _build_reset_never
+
+_build_reset_always:
+	$(MAKE) BUILD_DIR=build_reset_always RESET_MODE=always VARIANT_NAME=fused_write32s_reset_always build_reset_always/test
+
+_build_reset_ifused:
+	$(MAKE) BUILD_DIR=build_reset_ifused RESET_MODE=ifused VARIANT_NAME=fused_write32s_reset_ifused build_reset_ifused/test
+
+_build_reset_ifchanged:
+	$(MAKE) BUILD_DIR=build_reset_ifchanged RESET_MODE=ifchanged VARIANT_NAME=fused_write32s_reset_ifchanged build_reset_ifchanged/test
+
+_build_reset_ifchangedfinegrained:
+	$(MAKE) BUILD_DIR=build_reset_ifchangedfinegrained RESET_MODE=ifchangedfinegrained VARIANT_NAME=fused_write32s_reset_ifchangedfinegrained build_reset_ifchangedfinegrained/test
+
+_build_reset_never:
+	$(MAKE) BUILD_DIR=build_reset_never RESET_MODE=never VARIANT_NAME=fused_write32s_reset_never build_reset_never/test
+
+test: $(BUILD_DIR)/test
+	cd $(BUILD_DIR) && ./test
 
 clean:
-	rm -rf build aie.mlir.prj
+	rm -rf build build_reset_* aie.mlir.prj
