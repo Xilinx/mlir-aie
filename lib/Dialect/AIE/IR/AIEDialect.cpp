@@ -634,7 +634,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
               "on input objectFifos.");
       }
     }
-
+  }
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
       return emitOpError("number of provided dst offsets must be equal "
