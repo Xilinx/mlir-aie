@@ -206,19 +206,32 @@ def create_ctrl_pkt(
 
 
 def return_buffer_results(
-    app, input_one=None, input_two=None, enable_trace=False, trace_after_output=False
+    app,
+    input_one=None,
+    input_two=None,
+    output=None,
+    trace_size=0,
+    trace_after_output=False,
+    enable_ctrl_pkts=False,
 ):
-    if trace_after_output or not enable_trace:
-        if not (input_two is None):
-            return app.buffers[5].read()
-        else:
-            return app.buffers[4].read()
+    trace_buff = None
+    ctrl_buff = None
+    if not (input_two is None):
+        out_buff = app.buffers[5].numpy()
     else:
+        out_buff = app.buffers[4].numpy()
 
-        if not (input_two is None):
-            return app.buffers[5].read(), app.buffers[7].read()
+    if trace_size:
+        if trace_after_output:
+            out_buff, trace_buff = extract_prefix(out_buf, output.shape, output.dtype)
         else:
-            return app.buffers[4].read(), app.buffers[7].read()
+            trace_buff = app.buffers[7].numpy()
+
+        if enable_ctrl_pkts:
+            trace_buff, ctrl_buff = extract_prefix(trace_buff, trace_size, np.uint8)
+        trace_buff = trace_buff.view(np.uint32).reshape(trace_size // 4)
+
+    return out_buff, trace_buff, ctrl_buff
 
 
 # Wrapper for execute but we do the host time delta directly around the app.run() call
@@ -234,14 +247,12 @@ def execute_timed(
 
 
 # Wrapper function to separate output data and trace data from a single output buffer stream
-def extract_trace(out_buf, out_buf_shape, out_buf_dtype, trace_size):
-    trace_size_words = trace_size // 4
-    out_buf_flat = out_buf.reshape((-1,)).view(np.uint32)
-    output_prefix = (
-        out_buf_flat[:-trace_size_words].view(out_buf_dtype).reshape(out_buf_shape)
-    )
-    trace_suffix = out_buf_flat[-trace_size_words:]
-    return output_prefix, trace_suffix
+def extract_prefix(out_buf, prefix_shape, prefix_dtype):
+    out_buf_flat = out_buf.reshape((-1,)).view(np.uint8)
+    prefix_bytes = np.prod(prefix_shape) * prefix.dtype.itemsize
+    output_prefix = out_buf_flat[:prefix_bytes].view(prefix_dtype).reshape(prefix_shape)
+    output_suffix = out_buf_flat[-prefix_bytes:]
+    return output_prefix, output_suffix
 
 
 def extract_tile(data):
@@ -297,34 +308,27 @@ def setup_and_run_aie(
     )
 
     print("npu_time: ", npu_time / 1000.0, " us")
-
-    aie_output = full_output[:out_size].view(out_dtype)
-    if enable_trace:
-        # trace_size_words = opts.trace_size // 4
-
-        if trace_after_output:
-            trace_buffer = full_output[out_size:].view(np.uint32)
-        else:
-            if opts.verbosity >= 1:
-                print("trace_and_ctrl_buffer shape: ", trace_and_ctrl_buffer.shape)
-                print("trace_and_ctrl_buffer dtype: ", trace_and_ctrl_buffer.dtype)
-            trace_buffer = trace_and_ctrl_buffer[: opts.trace_size].view(np.uint32)
-            if enable_ctrl_pkts:
-                ctrl_buffer = trace_and_ctrl_buffer[opts.trace_size :].view(np.uint32)
+    output, trace_buffer, ctrl_buffer = return_buffer_results(
+        app,
+        in1,
+        in2,
+        out,
+        trace_size=opts.trace_size,
+        trace_after_output=trace_after_output,
+        enable_ctrl_pkts=enable_ctrl_pkts,
+    )
 
     if enable_trace:
         if opts.verbosity >= 1:
             print("trace_buffer shape: ", trace_buffer.shape)
             print("trace_buffer dtype: ", trace_buffer.dtype)
-            if enable_ctrl_pkts:
-                print("ctrl_buffer shape: ", ctrl_buffer.shape)
-                print("ctrl_buffer dtype: ", ctrl_buffer.dtype)
-                print("ctrl buffer: ", [hex(d) for d in ctrl_buffer])
-                # [hex(ctrl_buffer[0]), hex(ctrl_buffer[1])])
-
         write_out_trace(trace_buffer, str(opts.trace_file))
 
         if enable_ctrl_pkts:
+            if opts.verbosity >= 1:
+                print("ctrl_buffer shape: ", ctrl_buffer.shape)
+                print("ctrl_buffer dtype: ", ctrl_buffer.dtype)
+                print("ctrl buffer: ", [hex(d) for d in ctrl_buffer])
             for i in range(ctrl_buffer.size // 2):
                 col, row, pkt_type, pkt_id = extract_tile(ctrl_buffer[i * 2])
                 overflow = True if (ctrl_buffer[i * 2 + 1] >> 8) == 3 else False
@@ -338,7 +342,7 @@ def setup_and_run_aie(
     if opts.verify:
         if opts.verbosity >= 1:
             print("Verifying results ...")
-        e = np.equal(ref, aie_output)
+        e = np.equal(ref, output)
         errors = np.size(e) - np.count_nonzero(e)
 
     if not errors:
