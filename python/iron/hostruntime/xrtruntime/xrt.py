@@ -11,6 +11,7 @@ import time
 import pyxrt as xrt
 import os
 from .tensor import XRTTensor
+from ..hostruntime import DEFAULT_IRON_RUNTIME
 
 
 #
@@ -42,7 +43,7 @@ class AIE_Application:
         self.kernel = xrt.kernel(self.context, xkernel.get_name())
 
         ## Set up instruction stream
-        insts = read_insts(insts_path)
+        insts = DEFAULT_IRON_RUNTIME.read_insts(insts_path)
         self.n_insts = len(insts)
         self.insts_buffer = XRTTensor(
             insts, insts.dtype, flags=xrt.bo.cacheable, group_id=1
@@ -84,43 +85,6 @@ class AIE_Application:
 
 class AIE_Application_Error(Exception):
     pass
-
-
-# Read instruction stream from text file and reformat it to be passed into the
-# instruction buffer for the xrt.kernel call
-def read_insts_sequence(insts_path):
-    """Reads instructions from a text file (hex numbers, one per line)."""
-    with open(insts_path, "r") as f:
-        insts_text = f.readlines()
-    insts_text = [l for l in insts_text if l != ""]
-    return np.array([int(c, 16) for c in insts_text], dtype=np.uint32)
-
-
-# Read instruction stream from bin file and reformat it to be passed into the
-# instruction buffer for the xrt.kernel call
-def read_insts_binary(insts_path):
-    """Reads instructions from a binary file."""
-    with open(insts_path, "rb") as f:
-        data = f.read()
-    # Interpret the binary data as an array of uint32 values.
-    return np.frombuffer(data, dtype=np.uint32)
-
-
-def read_insts(insts_path):
-    """
-    Reads instructions from the given file.
-    If the file extension is .bin, uses binary read.
-    If the file extension is .txt, uses sequence (text) read.
-    """
-    _, ext = os.path.splitext(insts_path)
-    ext = ext.lower()
-
-    if ext == ".bin":
-        return read_insts_binary(insts_path)
-    elif ext == ".txt":
-        return read_insts_sequence(insts_path)
-    else:
-        raise ValueError("Unsupported file extension: expected .bin or .txt")
 
 
 # Sets up the AIE application with support for up to 2 input buffers, 1 output

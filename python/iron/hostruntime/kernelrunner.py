@@ -32,7 +32,7 @@ class NPUKernel:
             kernel_name (str, optional): Name of the kernel. Defaults to "PP_FD_PRE".
         """
         import pyxrt as xrt
-        from .xrtruntime.xrt import read_insts_binary
+        from ..hostruntime import DEFAULT_IRON_RUNTIME
 
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -54,7 +54,7 @@ class NPUKernel:
         self.__kernel = xrt.kernel(self.__context, xkernel.get_name())
 
         # Set up instruction stream
-        insts = read_insts_binary(insts_path)
+        insts = DEFAULT_IRON_RUNTIME.read_insts(insts_path)
         self.__n_insts = len(insts)
         insts_buffers_bytes = self.__n_insts * np.dtype(insts.dtype).itemsize
 
