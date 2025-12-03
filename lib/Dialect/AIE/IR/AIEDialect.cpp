@@ -629,9 +629,9 @@ LogicalResult ObjectFifoLinkOp::verify() {
     for (auto fifoIn : getInputObjectFifos()) {
       for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
         if (!dims.empty())
-          return emitOpError("currently does not support dimensionsFromStreamPerConsumer "
-                            "on input objectFifos.");
-        }
+          return emitOpError(
+              "currently does not support dimensionsFromStreamPerConsumer "
+              "on input objectFifos.");
       }
     }
 
