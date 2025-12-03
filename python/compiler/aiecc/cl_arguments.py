@@ -471,6 +471,28 @@ def parse_args(args=None):
     )
 
     opts = parser.parse_args(args)
+    
+    # Set defaults for specific reset options if not specified
+    if opts.reset_dmas_tiles is None:
+        opts.reset_dmas_tiles = opts.reset_tiles
+    if opts.reset_dmas_mode is None:
+        opts.reset_dmas_mode = opts.reset_mode
+    
+    if opts.reset_switches_tiles is None:
+        opts.reset_switches_tiles = opts.reset_tiles
+    if opts.reset_switches_mode is None:
+        opts.reset_switches_mode = opts.reset_mode
+    
+    if opts.reset_locks_tiles is None:
+        opts.reset_locks_tiles = opts.reset_tiles
+    if opts.reset_locks_mode is None:
+        opts.reset_locks_mode = opts.reset_mode
+    
+    if opts.reset_cores_tiles is None:
+        opts.reset_cores_tiles = opts.reset_tiles
+    if opts.reset_cores_mode is None:
+        opts.reset_cores_mode = opts.reset_mode
+    
     return opts
 
 
