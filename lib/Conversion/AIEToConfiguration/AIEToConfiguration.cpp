@@ -1441,6 +1441,9 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
             // For each possible destination, check all channels (0-7 is typical)
             for (auto dstBundle : possibleDests) {
               for (int dstChan = 0; dstChan < 8; dstChan++) {
+                if (!targetModel.isLegalTileConnection(col, row, srcBundle, srcChan, dstBundle, dstChan)) {
+                  continue;
+                }
                 // Check if this specific connection exists in current design
                 bool isUsed = false;
                 for (auto [cSrcBundle, cSrcChan, cDstBundle, cDstChan] : currentConns) {
@@ -1467,6 +1470,9 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
           
           // Find connections that were in previous but are NOT in current
           for (auto [pSrcBundle, pSrcChan, pDstBundle, pDstChan] : prevConns) {
+            if (!targetModel.isLegalTileConnection(col, row, pSrcBundle, pSrcChan, pDstBundle, pDstChan)) {
+              continue;
+            }
             bool stillUsed = false;
             for (auto [cSrcBundle, cSrcChan, cDstBundle, cDstChan] : currentConns) {
               if (pSrcBundle == cSrcBundle && pSrcChan == cSrcChan &&
