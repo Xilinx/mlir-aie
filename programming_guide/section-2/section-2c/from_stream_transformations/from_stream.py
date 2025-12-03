@@ -20,7 +20,6 @@ if len(sys.argv) > 1:
         dev = NPU2Col1()
     else:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-    
 n_workers = 2
 
 # Define tensor types
