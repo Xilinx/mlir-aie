@@ -5,20 +5,38 @@ OUTPUT_CSV="benchmark_results.csv"
 # Write CSV header
 echo "variant,iteration,time_us" > "$OUTPUT_CSV"
 
-VARIANTS=("separate_xclbins" "runlist" "fused_transactions_loadpdi" "fused_transactions_write32s")
+# Array of base variants and their build directories
+declare -A VARIANTS
+VARIANTS["separate_xclbins"]="build"
+VARIANTS["runlist"]="build"
+VARIANTS["fused_transactions_loadpdi"]="build"
+VARIANTS["fused_write32s_reset_always"]="build_reset_always"
+VARIANTS["fused_write32s_reset_ifused"]="build_reset_ifused"
+VARIANTS["fused_write32s_reset_ifchanged"]="build_reset_ifchanged"
+VARIANTS["fused_write32s_reset_ifchangedfinegrained"]="build_reset_ifchangedfinegrained"
+VARIANTS["fused_write32s_reset_never"]="build_reset_never"
 
-for variant in "${VARIANTS[@]}"; do
+for variant in "${!VARIANTS[@]}"; do
+    build_dir="${VARIANTS[$variant]}"
+    
     echo "Running benchmark for $variant..." >&2
     
-    pushd "swiglu/$variant" > /dev/null
+    # Determine the directory based on variant name
+    if [[ $variant == fused_write32s_* ]]; then
+        base_dir="swiglu/fused_transactions_write32s"
+    else
+        base_dir="swiglu/$variant"
+    fi
     
-    if [ ! -f "build/test" ]; then
-        echo "Error: build/test not found in $variant. Please run 'make' first." >&2
+    pushd "$base_dir" > /dev/null
+    
+    if [ ! -f "$build_dir/test" ]; then
+        echo "Error: $build_dir/test not found in $variant. Please run 'make' first." >&2
         popd > /dev/null
         continue
     fi
     
-    cd build
+    cd "$build_dir"
     # Redirect stdout to CSV, stderr stays on terminal
     ./test 1>> "../../../$OUTPUT_CSV" 
     
