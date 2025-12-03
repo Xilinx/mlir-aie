@@ -535,6 +535,8 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
         .replace("captures(none)", "nocapture")
         .replace("getelementptr inbounds nuw", "getelementptr inbounds")
     )
+    # Remove nocreateundeforpoison attribute (not supported by older LLVM in Chess toolchain)
+    llvmir_chesslinked = re.sub(r"\bnocreateundeforpoison\s+", "", llvmir_chesslinked)
     return llvmir_chesslinked
 
 
