@@ -29,22 +29,12 @@ tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
 # Input
-of_offsets = [24 * worker for worker in range(n_workers)]
-of_in = ObjectFifo(data_ty, name="in")
-of_ins = of_in.cons().split(
-    of_offsets,
-    obj_types=[tile24_ty] * n_workers,
-    dims_from_stream=([(8, 1), (3, 8)], [(8, 1), (3, 8)]),
-    names=[f"in{worker}" for worker in range(n_workers)],
-)
+of_in0 = ObjectFifo(tile24_ty, name="in0")
+of_in1 = of_in0.cons().forward(name="in1", obj_type=tile24_ty, dims_from_stream=[(8, 3), (1, 8)])
 
 # Output
-of_out = ObjectFifo(data_ty, name="out")
-of_outs = of_out.prod().join(
-    of_offsets,
-    obj_types=[tile24_ty] * n_workers,
-    names=[f"out{worker}" for worker in range(n_workers)],
-)
+of_out1 = ObjectFifo(tile24_ty, name="out1")
+of_out0 = of_out1.cons().forward(name="out0", obj_type=tile24_ty)
 
 
 # Task for the core to perform
@@ -57,25 +47,15 @@ def core_fn(of_in, of_out):
     of_out.release(1)
 
 
-# Create workers to perform the tasks
-workers = []
-for worker in range(n_workers):
-    workers.append(
-        Worker(
-            core_fn,
-            [
-                of_ins[worker].cons(),
-                of_outs[worker].prod(),
-            ],
-        )
-    )
+# Create a worker to perform the task
+my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
     
 # To/from AIE-array runtime data movement
 rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
-    rt.start(*workers)
-    rt.fill(of_in.prod(), a_in)
-    rt.drain(of_out.cons(), c_out, wait=True)
+    rt.start(my_worker)
+    rt.fill(of_in0.prod(), a_in)
+    rt.drain(of_out0.cons(), c_out, wait=True)
 
 # Create the program from the device type and runtime
 my_program = Program(dev, rt)

@@ -22,12 +22,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int IN_HEIGHT = 6;
-constexpr int IN_WIDTH = 8;
-constexpr int IN_SIZE = IN_HEIGHT * IN_WIDTH;
-constexpr int OUT_HEIGHT = 6;
-constexpr int OUT_WIDTH = 8;
-constexpr int OUT_SIZE = OUT_HEIGHT * OUT_WIDTH;
+constexpr int IN_SIZE = 48;
+constexpr int OUT_SIZE = 48;
 
 int main(int argc, const char *argv[]) {
 
@@ -98,9 +94,8 @@ int main(int argc, const char *argv[]) {
 
   uint32_t *bufInA = bo_inA.map<uint32_t *>();
   std::vector<uint32_t> srcVecA;
-  for (int i = 0; i < IN_HEIGHT; i++)
-    for (int j = 0; j < IN_WIDTH; j++)
-      srcVecA.push_back(i + 1);
+  for (int i = 0; i < IN_SIZE; i++)
+    srcVecA.push_back(i);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
@@ -121,12 +116,16 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
+  int index0 = 0;
+  int index1 = -1;
+  uint32_t ref = -1;
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
-    uint32_t ref = -1;
-    if (i < OUT_SIZE / 2)
-      ref = i % 3 + 1;
-    else
-      ref = i % 3 + 4;
+    if (i % 3 == 0)
+      index1++;
+    if (i == OUT_SIZE / 2)
+      index1 = OUT_SIZE / 2;
+    ref = (index0 % 3) * 8 + index1;
+    index0++;
     if (*(bufOut + i) != ref) {
       std::cout << "Error in output " << *(bufOut + i) << " != " << ref
                 << std::endl;
