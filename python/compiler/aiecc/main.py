@@ -1237,13 +1237,13 @@ class FlowRunner:
         file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
             f"{device_name}_ctrlpkt_dma_seq.mlir"
         )
-        ctrlpkt_mlir_str = run_passes(
+        ctrlpkt_mlir_str = self.run_passes(
             "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
             + self.tmpdirname
             + "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))",
             module_str,
-            file_ctrlpkt_mlir,
-            self.opts.verbose,
+            outputfile=file_ctrlpkt_mlir,
+            description="Transaction binary to control packet conversion",
         )
 
         # aie-translate --aie-ctrlpkt-to-bin -o ctrlpkt.bin
