@@ -31,8 +31,8 @@ class HostRuntime(ABC):
         pass
 
     def load_and_run(self, load_args: list, run_args: list):
-        handle = self.load(load_args)
-        self.run(handle, run_args)
+        handle = self.load(*load_args)
+        self.run(handle, list(run_args))
 
     @abstractmethod
     def device(self) -> Device:

@@ -13,6 +13,8 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 import numpy as np
+from pathlib import Path
+from ..hostruntime import DEFAULT_IRON_RUNTIME
 
 
 class NPUKernel:
@@ -31,39 +33,9 @@ class NPUKernel:
             device_index (int, optional): Index of the device. Defaults to 0.
             kernel_name (str, optional): Name of the kernel. Defaults to "PP_FD_PRE".
         """
-        import pyxrt as xrt
-        from ..hostruntime import DEFAULT_IRON_RUNTIME
-        from .tensor import tensor
-
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
         self._kernel_name = kernel_name
-
-        self.__device = xrt.device(device_index)
-
-        # Find kernel by name in the xclbin
-        self.__xclbin = xrt.xclbin(str(xclbin_path))
-        kernels = self.__xclbin.get_kernels()
-
-        try:
-            xkernel = [k for k in kernels if kernel_name == k.get_name()][0]
-        except KeyError:
-            raise NPUKernel_Error("No such kernel: " + kernel_name)
-
-        self.__device.register_xclbin(self.__xclbin)
-        self.__context = xrt.hw_context(self.__device, self.__xclbin.get_uuid())
-        self.__kernel = xrt.kernel(self.__context, xkernel.get_name())
-
-        # Set up instruction stream
-        insts = DEFAULT_IRON_RUNTIME.read_insts(insts_path)
-
-        # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
-        # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621
-        self.__insts_buffer = tensor(
-            insts, insts.dtype, flags=xrt.bo.cacheable, group_id=1
-        )
-        # Always sync to the device in the constructor
-        # self.__insts_buffer.bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     # Blocking call.
     def __call__(self, *args):
@@ -73,55 +45,7 @@ class NPUKernel:
         Parameters:
             args (IRON Tensors): Arguments to pass to the kernel.
         """
-        import pyxrt as xrt
-
-        opcode = 3
-        kernel_args = []
-
-        for tensor in args:
-            # Skip callable arguments since these are inlined in the kernel
-            if callable(tensor):
-                continue
-            if not hasattr(tensor, "buffer_object"):
-                raise TypeError(
-                    f"Expected Tensor with .buffer_object(), got {type(tensor)}"
-                )
-            kernel_args.append(tensor.buffer_object())
-
-        h = self.__kernel(
-            opcode,
-            self.__insts_buffer.buffer_object(),
-            self.__insts_buffer.shape[0],
-            *kernel_args,
+        return DEFAULT_IRON_RUNTIME.load_and_run(
+            [Path(self._xclbin_path), Path(self._insts_path), self._kernel_name],
+            list(args),
         )
-        r = h.wait()
-        if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise NPUKernel_Error(f"Kernel returned {r}")
-
-    def __del__(self):
-        """
-        Destructor to clean up resources and delete the kernel and device objects.
-        """
-        if self.__insts_buffer:
-            del self.__insts_buffer
-            self.__insts_buffer = None
-        if self.__kernel:
-            del self.__kernel
-            self.__kernel = None
-        if self.__context:
-            del self.__context
-            self.__context = None
-        if self.__xclbin:
-            del self.__xclbin
-            self.__xclbin = None
-        if self.__device:
-            del self.__device
-            self.__device = None
-
-
-class NPUKernel_Error(Exception):
-    """
-    Error raised when a NPU kernel encounters an error during execution.
-    """
-
-    pass
