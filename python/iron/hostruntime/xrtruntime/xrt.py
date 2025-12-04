@@ -13,6 +13,7 @@ import pyxrt as xrt
 import os
 from .tensor import XRTTensor
 from .. import DEFAULT_IRON_RUNTIME
+from ..npukernel import NPUKernel
 
 
 #
@@ -27,28 +28,8 @@ class AIE_Application:
     # Registers xclbin to set up the device, hw context and kernel. This
     # also sets up the instruction stream
     def __init__(self, xclbin_path, insts_path, kernel_name="PP_FD_PRE"):
-        self.device = None
-        self.kernel = None
         self.buffers = [None] * 8
-        self.device = xrt.device(0)
-
-        # Find kernel by name in the xclbin
-        self.xclbin = xrt.xclbin(xclbin_path)
-        kernels = self.xclbin.get_kernels()
-        try:
-            xkernel = [k for k in kernels if kernel_name == k.get_name()][0]
-        except KeyError:
-            raise AIE_Application_Error("No such kernel: " + kernel_name)
-        self.device.register_xclbin(self.xclbin)
-        self.context = xrt.hw_context(self.device, self.xclbin.get_uuid())
-        self.kernel = xrt.kernel(self.context, xkernel.get_name())
-
-        ## Set up instruction stream
-        insts = DEFAULT_IRON_RUNTIME.read_insts(Path(insts_path))
-        self.n_insts = len(insts)
-        self.insts_buffer = XRTTensor(
-            insts, insts.dtype, flags=xrt.bo.cacheable, group_id=1
-        )
+        self._npu_kernel = NPUKernel(xclbin_path, insts_path, kernel_name=kernel_name)
 
     # Registers an XRTTensor object given group_id
     def register_buffer(self, group_id, tensor):
@@ -57,35 +38,10 @@ class AIE_Application:
     # This syncs the instruction buffer to the device and then invokes the
     # `call` function before wait for the call to complete
     def run(self):
-        self.insts_buffer._sync_to_device()
-        h = self.call()
-        r = h.wait()
-        if r != xrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise Exception(f"Kernel returned {r}")
-        return r
-
-    # Wrapper for xrt.kernel function passing in opcode and XRTTensor objects
-    def call(self):
-        opcode = 3
-        h = self.kernel(
-            opcode,
-            self.insts_buffer.buffer_object(),
-            self.n_insts,
-            *[b.buffer_object() for b in self.buffers if b is not None],
-        )
-        return h
+        return self._npu_kernel(*[b for b in self.buffers if not (b is None)])
 
     def __del__(self):
-        if hasattr(self, "kernel"):
-            del self.kernel
-            self.kernel = None
-        if hasattr(self, "device"):
-            del self.device
-            self.device = None
-
-
-class AIE_Application_Error(Exception):
-    pass
+        del self._npu_kernel
 
 
 # Sets up the AIE application with support for up to 2 input buffers, 1 output
