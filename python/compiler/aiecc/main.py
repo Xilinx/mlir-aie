@@ -484,7 +484,7 @@ echo ""
 
 
 def generate_repeater_script(
-    mlir_file, pass_pipeline, output_file, description=None, diagnostics=None
+    mlir_file, pass_pipeline, output_file, timenow, description=None, diagnostics=None
 ):
     """
     Generate a bash repeater script for reproducing a pass pipeline failure.
@@ -496,14 +496,12 @@ def generate_repeater_script(
         description: Optional description of what was being compiled
         diagnostics: List of MLIR diagnostic messages
     """
-    import datetime
-
     diag_section = format_diagnostics_for_script(diagnostics)
 
     script_content = f"""#!/bin/bash
 #
 # AIECC Repeater Script
-# Generated: {datetime.datetime.now().isoformat()}
+# Generated: {timenow.isoformat()}
 #
 # This script reproduces a compilation failure from aiecc.py
 # Description: {description or 'N/A'}
@@ -579,7 +577,8 @@ def handle_pass_failure(
     import datetime
 
     # Generate unique filename
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timenow = datetime.datetime.now()
+    timestamp = timenow.strftime("%Y%m%d_%H%M%S")
     failure_id = str(uuid.uuid4())[:8]
 
     # Save MLIR to output directory
@@ -599,6 +598,7 @@ def handle_pass_failure(
         mlir_file=mlir_filename,
         pass_pipeline=pass_pipeline,
         output_file=repeater_filename,
+        timenow=timenow,
         description=description,
         diagnostics=diagnostics,
     )
@@ -737,7 +737,7 @@ class FlowRunner:
         if self.opts.verbose:
             print("Running:", pass_pipeline)
         diags = []
-        asm_for_error_report = None  # Will be set before pass execution
+        mlir_for_error_report = None  # Will be set before pass execution
 
         def diagnostic_handler(d):
             severity = str(d.severity).replace("DiagnosticSeverity.", "").lower()
@@ -749,7 +749,7 @@ class FlowRunner:
                 if self.opts.enable_repeater:
                     handle_pass_failure(
                         pass_pipeline=pass_pipeline,
-                        mlir_ir=asm_for_error_report,
+                        mlir_ir=mlir_for_error_report,
                         description=description,
                         output_dir=self.repeater_output_dir,
                         diagnostics=diags,
@@ -762,7 +762,7 @@ class FlowRunner:
         with mlir_module.context, Location.unknown():
             mlir_module.context.emit_error_diagnostics = True
             h = mlir_module.context.attach_diagnostic_handler(diagnostic_handler)
-            asm_for_error_report = str(mlir_module)  # Save IR before transformation
+            mlir_for_error_report = str(mlir_module)  # Save IR before transformation
             pm = PassManager.parse(pass_pipeline)
             pm.run(mlir_module.operation)
             h.detach()
