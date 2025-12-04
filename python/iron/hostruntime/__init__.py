@@ -18,15 +18,17 @@ except ImportError as e:
     )
     has_xrt = False
 
-DEFAULT_IRON_RUNTIME = None
-DEFAULT_IRON_TENSOR_CLASS = CPUOnlyTensor
-
 if has_xrt:
     from .xrtruntime.hostruntime import XRTHostRuntime
     from .xrtruntime.tensor import XRTTensor
 
     DEFAULT_IRON_RUNTIME = XRTHostRuntime()
     DEFAULT_IRON_TENSOR_CLASS = XRTTensor
+else:
+    from .tensor import CPUOnlyTensor
+
+    DEFAULT_IRON_RUNTIME = None
+    DEFAULT_IRON_TENSOR_CLASS = CPUOnlyTensor
 
 
 def get_current_device():
