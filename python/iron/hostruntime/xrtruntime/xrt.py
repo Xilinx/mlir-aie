@@ -27,18 +27,18 @@ from ..npukernel import NPUKernel
 class AIE_Application:
     # Registers xclbin to set up the device, hw context and kernel. This
     # also sets up the instruction stream
-    def __init__(self, xclbin_path, insts_path, kernel_name="PP_FD_PRE"):
-        self.buffers = [None] * 8
+    def __init__(self, xclbin_path, insts_path, kernel_name="MLIR_AIE"):
+        self.buffers = []
         self._npu_kernel = NPUKernel(xclbin_path, insts_path, kernel_name=kernel_name)
 
     # Registers an XRTTensor object given group_id
-    def register_buffer(self, group_id, tensor):
-        self.buffers[group_id] = tensor
+    def register_buffer(self, tensor):
+        self.buffers.append(tensor)
 
     # This syncs the instruction buffer to the device and then invokes the
     # `call` function before wait for the call to complete
     def run(self):
-        return self._npu_kernel(*[b for b in self.buffers if not (b is None)])
+        return self._npu_kernel(*[b for b in self.buffers])
 
     def __del__(self):
         del self._npu_kernel
@@ -55,21 +55,15 @@ def setup_aie(
     in1,
     out,
     enable_trace=False,
-    kernel_name="MLIR_AIE",
     trace_size=16384,
-    verbosity=0,
     trace_after_output=False,
 ):
-    app = AIE_Application(xclbin_path, insts_path, kernel_name)
+    app = AIE_Application(xclbin_path, insts_path)
 
     if in0:
-        if verbosity >= 1:
-            print(f"register 1st input to group_id 3: {in0}")
-        app.register_buffer(3, in0)
+        app.register_buffer(in0)
     if in1:
-        if verbosity >= 1:
-            print(f"register 2nd input to group_id 4: {in1}")
-        app.register_buffer(4, in1)
+        app.register_buffer(in1)
 
     if enable_trace and trace_after_output:
         # Create a new, extended out tensor.
@@ -77,33 +71,22 @@ def setup_aie(
         if out:
             out_size += out.nbytes
         out = XRTTensor(out_size, dtype=np.uint8)
-    if not out:
+        app.register_buffer(out)
+    elif not out:
         # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
         out = XRTTensor((1,), dtype=np.uint32)
-
-    if verbosity >= 1:
-        print(
-            f"register output to group_id 5: size: {out_buf_shape}, dtype: {out_buf_dtype}"
-        )
-    app.register_buffer(5, out)
+        app.register_buffer(out)
+    else:
+        app.register_buffer(out)
 
     if enable_trace and not trace_after_output:
-        trace_buff = XRTTensor((trace_size,), dtype=np.uint8)
-
-        if verbosity >= 1:
-            # print("register placeholder buffer (32b) to group_id 6")
-            # print("register 2x 32b words for ctrl packets to group_id 6")
-            print("register for ctrl packets to group_id 6: size: 8, dtype: uint32")
+        # This is a dummy buffer
         app.register_buffer(
-            # 6, shape=(1,), dtype=np.uint32
-            # 6, shape=(2,), dtype=np.uint32
-            6,
             XRTTensor((8,), dtype=np.uint32),
         )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
 
-        if verbosity >= 1:
-            print(f"register trace on 7: {trace_buff}")
-        app.register_buffer(7, trace_buff)
+        trace_buff = XRTTensor((trace_size,), dtype=np.uint8)
+        app.register_buffer(trace_buff)
 
     return app
 
@@ -138,15 +121,15 @@ def return_buffer_results(
     trace_buff = None
     ctrl_buff = None
     if not (input_two is None):
-        out_buff = app.buffers[5].numpy()
+        out_buff = app.buffers[2].numpy()
     else:
-        out_buff = app.buffers[4].numpy()
+        out_buff = app.buffers[1].numpy()
 
     if trace_size:
         if trace_after_output:
             out_buff, trace_buff = extract_prefix(out_buf, output.shape, output.dtype)
         else:
-            trace_buff = app.buffers[7].numpy()
+            trace_buff = app.buffers[-1].numpy()
 
         if enable_ctrl_pkts:
             trace_buff, ctrl_buff = extract_prefix(trace_buff, trace_size, np.uint8)
@@ -208,10 +191,6 @@ def setup_and_run_aie(
     enable_ctrl_pkts=False,
 ):
     enable_trace = opts.trace_size > 0
-    if opts.verbosity >= 1:
-        print("trace size = ", str(opts.trace_size))
-        print("enable_trace = ", str(enable_trace))
-
     app = setup_aie(
         opts.xclbin,
         opts.instr,
@@ -220,7 +199,6 @@ def setup_and_run_aie(
         out,
         enable_trace=enable_trace,
         trace_size=opts.trace_size,
-        verbosity=opts.verbosity,
         trace_after_output=trace_after_output,
     )
 

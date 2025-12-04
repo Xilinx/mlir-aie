@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 import sys
+from .tensor import Tensor
 
 try:
     import pyxrt
