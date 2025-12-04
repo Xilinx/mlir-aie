@@ -110,6 +110,7 @@ class XRTHostRuntime(HostRuntime):
         return kernel_handle
 
     def run(self, kernel_handle: XRTKernelHandle, args):
+        args = [a for a in args if not callable(a)]  # Filter out callable functions
         if not all([isinstance(a, self._tensor_class) for a in args]):
             raise IronRuntimeError(
                 f"The {self.__class__.__name__} can only take {self._tensor_class.__name__} as arguments, but got: {args}"
