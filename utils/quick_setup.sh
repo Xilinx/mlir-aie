@@ -40,6 +40,7 @@ if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456
     export NPU2=1
 else
     export NPU2=0
+fi
 
 if hash python3.12; then
    echo "Using python version `python3.12 --version`"
