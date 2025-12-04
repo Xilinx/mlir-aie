@@ -14,7 +14,7 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 import numpy as np
 from pathlib import Path
-from ..hostruntime import DEFAULT_IRON_RUNTIME
+from . import DEFAULT_IRON_RUNTIME
 
 
 class NPUKernel:

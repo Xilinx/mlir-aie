@@ -20,7 +20,7 @@ from ..compile.cache.circular_cache import CircularCache
 from ..compile.cache.utils import _create_function_cache_key, file_lock
 from ..compile import IRON_CACHE_HOME
 from ..compile.utils import _cleanup_failed_compilation
-from .hostruntime import DEFAULT_IRON_RUNTIME
+from . import DEFAULT_IRON_RUNTIME
 
 
 # Global cache for compiled kernels at the function level
