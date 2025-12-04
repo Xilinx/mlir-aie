@@ -12,7 +12,7 @@ from pathlib import Path
 import pyxrt as xrt
 import os
 from .tensor import XRTTensor
-from ..hostruntime import DEFAULT_IRON_RUNTIME
+from .hostruntime import HostRuntime
 
 
 #
@@ -44,7 +44,7 @@ class AIE_Application:
         self.kernel = xrt.kernel(self.context, xkernel.get_name())
 
         ## Set up instruction stream
-        insts = DEFAULT_IRON_RUNTIME.read_insts(Path(insts_path))
+        insts = HostRuntime.read_insts(Path(insts_path))
         self.n_insts = len(insts)
         self.insts_buffer = XRTTensor(
             insts, insts.dtype, flags=xrt.bo.cacheable, group_id=1
