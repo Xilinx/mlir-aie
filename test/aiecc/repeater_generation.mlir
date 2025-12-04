@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %python aiecc.py --repeater-output-dir=. %s 2>&1 | FileCheck %s
+// RUN: %python aiecc.py --compile --repeater-output-dir=. %s 2>&1 | FileCheck %s
 // RUN: cat ./aiecc_repeater_*.sh | FileCheck --check-prefix=DIAG %s
 // RUN: cat ./aiecc_failure_*.mlir | FileCheck --check-prefix=MLIR %s
 
