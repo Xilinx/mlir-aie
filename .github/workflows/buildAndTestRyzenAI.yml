@@ -129,12 +129,17 @@ jobs:
             $CMAKE_ARGS
 
           # Create runner-specific cache directory
-          mkdir -p $IRON_CACHE_HOME
+          rm -rf $IRON_CACHE_HOME
+          mkdir $IRON_CACHE_HOME
 
           ninja install
           ninja check-aie
           ninja check-aie-concurrency
           popd
+
+      - name: Cleanup IRON_CACHE_HOME
+        if: always()
+        run: rm -rf $IRON_CACHE_HOME
 
   build-quick-setup:
     name: Run Examples on Ryzen AI
@@ -192,9 +197,14 @@ jobs:
           fi
 
           # Create runner-specific cache directory
-          mkdir -p $IRON_CACHE_HOME
+          rm -rf $IRON_CACHE_HOME
+          mkdir $IRON_CACHE_HOME
 
           ninja install
           ninja check-reference-designs
           ninja check-programming-guide
           popd
+
+      - name: Cleanup IRON_CACHE_HOME
+        if: always()
+        run: rm -rf $IRON_CACHE_HOME
