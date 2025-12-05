@@ -49,11 +49,11 @@ class XRTKernelHandle(KernelHandle):
 
 class XRTHostRuntime(HostRuntime):
     """Singleton manager for AIE XRT resources.
-    There is a simple LRU cache of loaded kernels."""
+    There is a simple LRU cache of loaded XCLBINs."""
 
     _instance = None
     _tensor_class = XRTTensor
-    MAX_LOADED_KERNELS = 16
+    MAX_CACHED_CONTEXTS = 16
 
     def __new__(cls):
         if cls._instance is None:
@@ -89,7 +89,7 @@ class XRTHostRuntime(HostRuntime):
         self._contexts = (
             OrderedDict()
         )  # (xclbin_path, xclbin_mtime) -> (context, xclbin)
-        self._kernels = OrderedDict()  # (xclbin_path, kernel_name) -> kernel
+        self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
         atexit.register(self.cleanup)
 
     def _load_with_race_check(
@@ -107,10 +107,10 @@ class XRTHostRuntime(HostRuntime):
         return result
 
     def _evict_context_if_needed(self, fail_if_full):
-        if len(self._contexts) >= self.MAX_LOADED_KERNELS:
+        if len(self._contexts) >= self.MAX_CACHED_CONTEXTS:
             if fail_if_full:
                 raise IronRuntimeError(
-                    f"Cache is full ({self.MAX_LOADED_KERNELS} contexts) and fail_if_full is True."
+                    f"Cache is full ({self.MAX_CACHED_CONTEXTS} contexts) and fail_if_full is True."
                 )
             # Evict oldest context
             (
@@ -195,7 +195,6 @@ class XRTHostRuntime(HostRuntime):
             xclbin_path, kernel_name, insts_path, xclbin_mtime, insts_mtime
         )
         if kernel_handle in self._kernels:
-            self._kernels.move_to_end(kernel_handle)
             logging.debug(
                 f"Reusing kernel: {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
@@ -220,18 +219,18 @@ class XRTHostRuntime(HostRuntime):
             )
 
         if only_if_loaded:
-            if kernel_handle not in self._kernels:
+            context_key = (kernel_handle.xclbin_path, kernel_handle.xclbin_mtime)
+            if context_key not in self._contexts:
                 raise IronRuntimeError(
-                    f"Kernel {kernel_handle.kernel_name} is not loaded and only_if_loaded=True."
+                    f"Context for kernel {kernel_handle.kernel_name} is not loaded and only_if_loaded=True."
                 )
-            self._kernels.move_to_end(kernel_handle)
-        else:
-            # Ensure kernel is loaded and MRU
-            self.load(
-                kernel_handle.xclbin_path,
-                kernel_handle.insts_path,
-                kernel_handle.kernel_name,
-            )
+
+        # Ensure kernel is loaded and MRU
+        self.load(
+            kernel_handle.xclbin_path,
+            kernel_handle.insts_path,
+            kernel_handle.kernel_name,
+        )
 
         kernel, insts = self._kernels[kernel_handle]
         insts_bo = pyxrt.bo(
@@ -286,4 +285,4 @@ class XRTHostRuntime(HostRuntime):
     def reset(self):
         """Reset the device manager (for debugging)"""
         self.cleanup()
-        XRTHostRuntime._instance = None
+        self.__init__()

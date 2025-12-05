@@ -41,7 +41,9 @@ def mock_xrt_runtime():
         k2.get_name.return_value = "k2"
         k3 = MagicMock()
         k3.get_name.return_value = "k3"
-        mock_xclbin.get_kernels.return_value = [k1, k2, k3]
+        k4 = MagicMock()
+        k4.get_name.return_value = "k4"
+        mock_xclbin.get_kernels.return_value = [k1, k2, k3, k4]
 
         mock_pyxrt.xclbin.return_value = mock_xclbin
 
@@ -148,15 +150,18 @@ def test_fail_if_full(mock_xrt_runtime):
 
         # Cache is full
 
-        # Should fail
+        # Should succeed because it reuses context A
+        mock_xrt_runtime.load(Path("a.xclbin"), Path("i3.txt"), "k3", fail_if_full=True)
+
+        # Should fail because it needs a new context (C)
         with pytest.raises(IronRuntimeError, match="Cache is full"):
             mock_xrt_runtime.load(
-                Path("c.xclbin"), Path("i3.txt"), "k3", fail_if_full=True
+                Path("c.xclbin"), Path("i4.txt"), "k4", fail_if_full=True
             )
 
         # Should succeed if fail_if_full=False (evicts)
         mock_xrt_runtime.load(
-            Path("c.xclbin"), Path("i3.txt"), "k3", fail_if_full=False
+            Path("c.xclbin"), Path("i4.txt"), "k4", fail_if_full=False
         )
 
     finally:
@@ -240,3 +245,56 @@ def test_race_condition(mock_xrt_runtime):
     ):
         with pytest.raises(IronRuntimeError, match="modified during loading"):
             mock_xrt_runtime.load(Path("race_insts.xclbin"), Path("i2.txt"), "k1")
+
+
+def test_context_lru_with_shared_kernels(mock_xrt_runtime):
+    # Set cache size to 2 contexts
+    original_max = XRTHostRuntime.MAX_LOADED_KERNELS
+    XRTHostRuntime.MAX_LOADED_KERNELS = 2
+
+    try:
+        # 1. Load k1 from a.xclbin -> Context A created
+        h1 = mock_xrt_runtime.load(Path("a.xclbin"), Path("i1.txt"), "k1")
+
+        # 2. Load k2 from b.xclbin -> Context B created
+        h2 = mock_xrt_runtime.load(Path("b.xclbin"), Path("i2.txt"), "k2")
+
+        assert len(mock_xrt_runtime._contexts) == 2
+        # Order should be A, B (B is MRU)
+
+        # 3. Load k3 from a.xclbin -> Reuses Context A, makes it MRU
+        h3 = mock_xrt_runtime.load(Path("a.xclbin"), Path("i3.txt"), "k3")
+
+        # Order should be B, A (A is MRU)
+
+        # 4. Load k4 from c.xclbin -> Context C created, should evict B
+        h4 = mock_xrt_runtime.load(Path("c.xclbin"), Path("i4.txt"), "k4")
+
+        assert len(mock_xrt_runtime._contexts) == 2
+
+        # Check that Context A (used by h1 and h3) is still there
+        # Check that Context C (used by h4) is there
+        # Check that Context B (used by h2) is gone
+
+        # We can check via handles
+        # h1 and h3 share context key (path, mtime)
+        # h2 has different key
+        # h4 has different key
+
+        # Since we mock stat to return 12345 for all, keys are:
+        key_a = (Path("a.xclbin"), 12345)
+        key_b = (Path("b.xclbin"), 12345)
+        key_c = (Path("c.xclbin"), 12345)
+
+        assert key_a in mock_xrt_runtime._contexts
+        assert key_c in mock_xrt_runtime._contexts
+        assert key_b not in mock_xrt_runtime._contexts
+
+        # Also check kernels
+        assert h1 in mock_xrt_runtime._kernels
+        assert h3 in mock_xrt_runtime._kernels
+        assert h4 in mock_xrt_runtime._kernels
+        assert h2 not in mock_xrt_runtime._kernels
+
+    finally:
+        XRTHostRuntime.MAX_LOADED_KERNELS = original_max
