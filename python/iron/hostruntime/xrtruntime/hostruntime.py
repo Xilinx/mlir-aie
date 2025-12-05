@@ -126,7 +126,10 @@ class XRTHostRuntime(HostRuntime):
                     raise IronRuntimeError(
                         f"Cache is full ({self.MAX_LOADED_KERNELS} kernels) and fail_if_full is True."
                     )
-                self._kernels.popitem(last=False)
+                k, (kernel, insts) = self._kernels.popitem(last=False)
+                del kernel
+                del insts
+                del k
 
             kernel = pyxrt.kernel(context, kernel_name)
             insts = self.read_insts(insts_path)
@@ -180,15 +183,22 @@ class XRTHostRuntime(HostRuntime):
 
     def cleanup(self):
         """Clean up all XRT resources"""
-        self._kernels.clear()
+        while self._kernels:
+            k, (kernel, insts) = self._kernels.popitem()
+            del kernel
+            del insts
+            del k
 
         # Clear contexts
-        for context, _xclbin in self._contexts.values():
+        contexts = list(self._contexts.values())
+        self._contexts.clear()
+
+        for context, xclbin in contexts:
             try:
                 del context
+                del xclbin
             except Exception as e:
                 raise IronRuntimeError(str(e))
-        self._contexts.clear()
 
         # Clear device
         if self._device is not None:
