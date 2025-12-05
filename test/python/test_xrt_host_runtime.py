@@ -193,8 +193,8 @@ def test_mtime_logic(mock_xrt_runtime):
     assert hash(h1) != hash(h2)
 
 
-def test_race_condition(mock_xrt_runtime):
-    # Test xclbin race condition
+def test_filemodtime_condition(mock_xrt_runtime):
+    # Test xclbin filemodtime race condition
     mock_stat_100 = MagicMock()
     mock_stat_100.st_mtime = 100
 
@@ -219,9 +219,11 @@ def test_race_condition(mock_xrt_runtime):
         ],
     ):
         with pytest.raises(IronRuntimeError, match="modified during loading"):
-            mock_xrt_runtime.load(Path("race_xclbin.xclbin"), Path("i1.txt"), "k1")
+            mock_xrt_runtime.load(
+                Path("filemodtime_xclbin.xclbin"), Path("i1.txt"), "k1"
+            )
 
-    # Test insts race condition
+    # Test insts filemodtime race condition
     mock_stat_201 = MagicMock()
     mock_stat_201.st_mtime = 201
 
@@ -244,7 +246,9 @@ def test_race_condition(mock_xrt_runtime):
         ],
     ):
         with pytest.raises(IronRuntimeError, match="modified during loading"):
-            mock_xrt_runtime.load(Path("race_insts.xclbin"), Path("i2.txt"), "k1")
+            mock_xrt_runtime.load(
+                Path("filemodtime_insts.xclbin"), Path("i2.txt"), "k1"
+            )
 
 
 def test_context_lru_with_shared_kernels(mock_xrt_runtime):

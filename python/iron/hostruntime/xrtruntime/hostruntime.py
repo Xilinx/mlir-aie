@@ -92,7 +92,7 @@ class XRTHostRuntime(HostRuntime):
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
         atexit.register(self.cleanup)
 
-    def _load_with_race_check(
+    def _load_with_filemodtime_check(
         self, path: Path, load_func, expected_mtime: float, name: str
     ):
         mtime_before = path.stat().st_mtime
@@ -163,7 +163,7 @@ class XRTHostRuntime(HostRuntime):
         if context_key not in self._contexts:
             self._evict_context_if_needed(fail_if_full)
 
-            xclbin = self._load_with_race_check(
+            xclbin = self._load_with_filemodtime_check(
                 xclbin_path,
                 lambda p: pyxrt.xclbin(str(p)),
                 xclbin_mtime,
@@ -201,7 +201,7 @@ class XRTHostRuntime(HostRuntime):
         else:
             kernel = pyxrt.kernel(context, kernel_name)
 
-            insts = self._load_with_race_check(
+            insts = self._load_with_filemodtime_check(
                 insts_path, self.read_insts, insts_mtime, "insts"
             )
 
