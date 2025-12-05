@@ -28,7 +28,7 @@ class HostRuntime(ABC):
         pass
 
     @abstractmethod
-    def run(self, kernel_handle: KernelHandle, *args):
+    def run(self, kernel_handle: KernelHandle, *args, only_if_loaded=False):
         pass
 
     def load_and_run(self, load_args: list, run_args: list):

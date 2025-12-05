@@ -5,6 +5,7 @@
 XRT-based implementation of the HostRuntime
 """
 import logging
+from collections import OrderedDict
 from pathlib import Path
 import numpy as np
 import pyxrt
@@ -34,10 +35,12 @@ class XRTKernelHandle(KernelHandle):
 
 
 class XRTHostRuntime(HostRuntime):
-    """Singleton manager for AIE XRT resources"""
+    """Singleton manager for AIE XRT resources.
+    There is a simple LRU cache of loaded kernels."""
 
     _instance = None
     _tensor_class = XRTTensor
+    MAX_LOADED_KERNELS = 16
 
     def __new__(cls):
         if cls._instance is None:
@@ -71,10 +74,14 @@ class XRTHostRuntime(HostRuntime):
             self._device_type = NPU1
 
         self._contexts = {}  # xclbin_path -> (context, xclbin)
-        self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
+        self._kernels = OrderedDict()  # (xclbin_path, kernel_name) -> kernel
 
     def load(
-        self, xclbin_path: Path, insts_path: Path, kernel_name: str | None = None
+        self,
+        xclbin_path: Path,
+        insts_path: Path,
+        kernel_name: str | None = None,
+        fail_if_full: bool = False,
     ) -> XRTKernelHandle:
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise IronRuntimeError(
@@ -108,24 +115,46 @@ class XRTHostRuntime(HostRuntime):
                 )
 
         kernel_handle = XRTKernelHandle(xclbin_path, kernel_name, insts_path)
-        if kernel_handle not in self._kernels.keys():
+        if kernel_handle in self._kernels:
+            self._kernels.move_to_end(kernel_handle)
+            logging.debug(
+                f"Reusing kernel: {kernel_name} from xclbin {Path(xclbin_path).name}"
+            )
+        else:
+            if len(self._kernels) >= self.MAX_LOADED_KERNELS:
+                if fail_if_full:
+                    raise IronRuntimeError(
+                        f"Cache is full ({self.MAX_LOADED_KERNELS} kernels) and fail_if_full is True."
+                    )
+                self._kernels.popitem(last=False)
+
             kernel = pyxrt.kernel(context, kernel_name)
             insts = self.read_insts(insts_path)
             self._kernels[kernel_handle] = (kernel, insts)
             logging.debug(
                 f"Created new kernel {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
-        else:
-            logging.debug(
-                f"Reusing kernel: {kernel_name} from xclbin {Path(xclbin_path).name}"
-            )
         return kernel_handle
 
-    def run(self, kernel_handle: XRTKernelHandle, args):
+    def run(self, kernel_handle: XRTKernelHandle, args, only_if_loaded=False):
         args = [a for a in args if not callable(a)]  # Filter out callable functions
         if not all([isinstance(a, self._tensor_class) for a in args]):
             raise IronRuntimeError(
                 f"The {self.__class__.__name__} can only take {self._tensor_class.__name__} as arguments, but got: {args}"
+            )
+
+        if only_if_loaded:
+            if kernel_handle not in self._kernels:
+                raise IronRuntimeError(
+                    f"Kernel {kernel_handle.kernel_name} is not loaded and only_if_loaded=True."
+                )
+            self._kernels.move_to_end(kernel_handle)
+        else:
+            # Ensure kernel is loaded and MRU
+            self.load(
+                kernel_handle.xclbin_path,
+                kernel_handle.insts_path,
+                kernel_handle.kernel_name,
             )
 
         kernel, insts = self._kernels[kernel_handle]
