@@ -160,3 +160,82 @@ def test_fail_if_full(mock_xrt_runtime):
 
     finally:
         XRTHostRuntime.MAX_LOADED_KERNELS = original_max
+
+
+def test_mtime_logic(mock_xrt_runtime):
+    # Initial load with mtime=100
+    mock_stat_old = MagicMock()
+    mock_stat_old.st_mtime = 100
+
+    with patch("pathlib.Path.stat", return_value=mock_stat_old):
+        h1 = mock_xrt_runtime.load(Path("a.xclbin"), Path("i1.txt"), "k1")
+
+    assert h1.xclbin_mtime == 100
+    assert h1.insts_mtime == 100
+
+    # Load again with mtime=200
+    mock_stat_new = MagicMock()
+    mock_stat_new.st_mtime = 200
+
+    with patch("pathlib.Path.stat", return_value=mock_stat_new):
+        h2 = mock_xrt_runtime.load(Path("a.xclbin"), Path("i1.txt"), "k1")
+
+    assert h2.xclbin_mtime == 200
+    assert h2.insts_mtime == 200
+
+    assert h1 != h2
+    assert hash(h1) != hash(h2)
+
+
+def test_race_condition(mock_xrt_runtime):
+    # Test xclbin race condition
+    mock_stat_100 = MagicMock()
+    mock_stat_100.st_mtime = 100
+
+    mock_stat_200 = MagicMock()
+    mock_stat_200.st_mtime = 200
+
+    mock_stat_101 = MagicMock()
+    mock_stat_101.st_mtime = 101
+
+    # Sequence:
+    # 1. xclbin initial -> 100
+    # 2. insts initial -> 200
+    # 3. xclbin before load -> 100
+    # 4. xclbin after load -> 101 (changed!)
+    with patch(
+        "pathlib.Path.stat",
+        side_effect=[
+            mock_stat_100,
+            mock_stat_200,
+            mock_stat_100,
+            mock_stat_101,
+        ],
+    ):
+        with pytest.raises(IronRuntimeError, match="modified during loading"):
+            mock_xrt_runtime.load(Path("race_xclbin.xclbin"), Path("i1.txt"), "k1")
+
+    # Test insts race condition
+    mock_stat_201 = MagicMock()
+    mock_stat_201.st_mtime = 201
+
+    # Sequence:
+    # 1. xclbin initial -> 100
+    # 2. insts initial -> 200
+    # 3. xclbin before load -> 100
+    # 4. xclbin after load -> 100
+    # 5. insts before load -> 200
+    # 6. insts after load -> 201 (changed!)
+    with patch(
+        "pathlib.Path.stat",
+        side_effect=[
+            mock_stat_100,
+            mock_stat_200,
+            mock_stat_100,
+            mock_stat_100,
+            mock_stat_200,
+            mock_stat_201,
+        ],
+    ):
+        with pytest.raises(IronRuntimeError, match="modified during loading"):
+            mock_xrt_runtime.load(Path("race_insts.xclbin"), Path("i2.txt"), "k1")

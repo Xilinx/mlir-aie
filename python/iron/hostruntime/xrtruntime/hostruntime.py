@@ -106,15 +106,39 @@ class XRTHostRuntime(HostRuntime):
                 f"insts {insts_path} does not exist or is not a file."
             )
 
+        xclbin_mtime = xclbin_path.stat().st_mtime
+        insts_mtime = insts_path.stat().st_mtime
+
+        if xclbin_path in self._contexts:
+            _, _, stored_mtime = self._contexts[xclbin_path]
+            if stored_mtime != xclbin_mtime:
+                # xclbin has changed, remove old context
+                context, xclbin, _ = self._contexts.pop(xclbin_path)
+                del context
+                del xclbin
+                logging.debug(
+                    f"xclbin {Path(xclbin_path).name} changed, reloading context"
+                )
+
         if xclbin_path not in self._contexts:
+            # Check for race condition during load
+            mtime_before = xclbin_path.stat().st_mtime
             xclbin = pyxrt.xclbin(str(xclbin_path))
+            mtime_after = xclbin_path.stat().st_mtime
+            if mtime_before != mtime_after:
+                raise IronRuntimeError(f"xclbin {xclbin_path} modified during loading.")
+            if mtime_after != xclbin_mtime:
+                raise IronRuntimeError(
+                    f"xclbin {xclbin_path} modified during loading (mtime mismatch)."
+                )
+
             self._device.register_xclbin(xclbin)
             xclbin_uuid = xclbin.get_uuid()
             context = pyxrt.hw_context(self._device, xclbin_uuid)
-            self._contexts[xclbin_path] = (context, xclbin)
+            self._contexts[xclbin_path] = (context, xclbin, xclbin_mtime)
             logging.debug(f"Created new context for {Path(xclbin_path).name}")
         else:
-            context, xclbin = self._contexts[xclbin_path]
+            context, xclbin, _ = self._contexts[xclbin_path]
             logging.debug(f"Reusing context for {Path(xclbin_path).name}")
 
         if kernel_name is None:
@@ -128,8 +152,6 @@ class XRTHostRuntime(HostRuntime):
                     f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
                 )
 
-        xclbin_mtime = xclbin_path.stat().st_mtime
-        insts_mtime = insts_path.stat().st_mtime
         kernel_handle = XRTKernelHandle(
             xclbin_path, kernel_name, insts_path, xclbin_mtime, insts_mtime
         )
@@ -150,7 +172,18 @@ class XRTHostRuntime(HostRuntime):
                 del k
 
             kernel = pyxrt.kernel(context, kernel_name)
+
+            # Check for race condition during load
+            mtime_before = insts_path.stat().st_mtime
             insts = self.read_insts(insts_path)
+            mtime_after = insts_path.stat().st_mtime
+            if mtime_before != mtime_after:
+                raise IronRuntimeError(f"insts {insts_path} modified during loading.")
+            if mtime_after != insts_mtime:
+                raise IronRuntimeError(
+                    f"insts {insts_path} modified during loading (mtime mismatch)."
+                )
+
             self._kernels[kernel_handle] = (kernel, insts)
             logging.debug(
                 f"Created new kernel {kernel_name} from xclbin {Path(xclbin_path).name}"
@@ -211,7 +244,7 @@ class XRTHostRuntime(HostRuntime):
         contexts = list(self._contexts.values())
         self._contexts.clear()
 
-        for context, xclbin in contexts:
+        for context, xclbin, _ in contexts:
             try:
                 del context
                 del xclbin
