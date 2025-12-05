@@ -4,6 +4,7 @@
 """
 XRT-based implementation of the HostRuntime
 """
+import atexit
 import logging
 from collections import OrderedDict
 from pathlib import Path
@@ -75,6 +76,7 @@ class XRTHostRuntime(HostRuntime):
 
         self._contexts = {}  # xclbin_path -> (context, xclbin)
         self._kernels = OrderedDict()  # (xclbin_path, kernel_name) -> kernel
+        atexit.register(self.cleanup)
 
     def load(
         self,
