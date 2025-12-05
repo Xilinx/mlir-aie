@@ -102,8 +102,9 @@ def test_lru_cache(mock_xrt_runtime):
 
     try:
         h1 = mock_xrt_runtime.load(Path("a.xclbin"), Path("i1.txt"), "k1")
-        h2 = mock_xrt_runtime.load(Path("a.xclbin"), Path("i2.txt"), "k2")
+        h2 = mock_xrt_runtime.load(Path("b.xclbin"), Path("i2.txt"), "k2")
 
+        assert len(mock_xrt_runtime._contexts) == 2
         assert len(mock_xrt_runtime._kernels) == 2
         assert h1 in mock_xrt_runtime._kernels
         assert h2 in mock_xrt_runtime._kernels
@@ -112,9 +113,9 @@ def test_lru_cache(mock_xrt_runtime):
         mock_xrt_runtime.load(Path("a.xclbin"), Path("i1.txt"), "k1")
 
         # Load h3, should evict h2 (LRU)
-        h3 = mock_xrt_runtime.load(Path("a.xclbin"), Path("i3.txt"), "k3")
+        h3 = mock_xrt_runtime.load(Path("c.xclbin"), Path("i3.txt"), "k3")
 
-        assert len(mock_xrt_runtime._kernels) == 2
+        assert len(mock_xrt_runtime._contexts) == 2
         assert h1 in mock_xrt_runtime._kernels
         assert h3 in mock_xrt_runtime._kernels
         assert h2 not in mock_xrt_runtime._kernels
@@ -143,19 +144,19 @@ def test_fail_if_full(mock_xrt_runtime):
 
     try:
         mock_xrt_runtime.load(Path("a.xclbin"), Path("i1.txt"), "k1")
-        mock_xrt_runtime.load(Path("a.xclbin"), Path("i2.txt"), "k2")
+        mock_xrt_runtime.load(Path("b.xclbin"), Path("i2.txt"), "k2")
 
         # Cache is full
 
         # Should fail
         with pytest.raises(IronRuntimeError, match="Cache is full"):
             mock_xrt_runtime.load(
-                Path("a.xclbin"), Path("i3.txt"), "k3", fail_if_full=True
+                Path("c.xclbin"), Path("i3.txt"), "k3", fail_if_full=True
             )
 
         # Should succeed if fail_if_full=False (evicts)
         mock_xrt_runtime.load(
-            Path("a.xclbin"), Path("i3.txt"), "k3", fail_if_full=False
+            Path("c.xclbin"), Path("i3.txt"), "k3", fail_if_full=False
         )
 
     finally:

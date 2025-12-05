@@ -86,9 +86,58 @@ class XRTHostRuntime(HostRuntime):
         ):
             self._device_type = NPU1
 
-        self._contexts = {}  # xclbin_path -> (context, xclbin)
+        self._contexts = (
+            OrderedDict()
+        )  # (xclbin_path, xclbin_mtime) -> (context, xclbin)
         self._kernels = OrderedDict()  # (xclbin_path, kernel_name) -> kernel
         atexit.register(self.cleanup)
+
+    def _load_with_race_check(
+        self, path: Path, load_func, expected_mtime: float, name: str
+    ):
+        mtime_before = path.stat().st_mtime
+        result = load_func(path)
+        mtime_after = path.stat().st_mtime
+        if mtime_before != mtime_after:
+            raise IronRuntimeError(f"{name} {path} modified during loading.")
+        if mtime_after != expected_mtime:
+            raise IronRuntimeError(
+                f"{name} {path} modified during loading (mtime mismatch)."
+            )
+        return result
+
+    def _evict_context_if_needed(self, fail_if_full):
+        if len(self._contexts) >= self.MAX_LOADED_KERNELS:
+            if fail_if_full:
+                raise IronRuntimeError(
+                    f"Cache is full ({self.MAX_LOADED_KERNELS} contexts) and fail_if_full is True."
+                )
+            # Evict oldest context
+            (
+                evicted_key,
+                (evicted_context, evicted_xclbin),
+            ) = self._contexts.popitem(last=False)
+
+            # Remove associated kernels
+            kernels_to_remove = [
+                k
+                for k in self._kernels
+                if (k.xclbin_path, k.xclbin_mtime) == evicted_key
+            ]
+            for k in kernels_to_remove:
+                kernel, insts = self._kernels.pop(k)
+                try:
+                    del kernel
+                    del insts
+                except Exception as e:
+                    raise IronRuntimeError(str(e))
+
+            try:
+                del evicted_context
+                del evicted_xclbin
+            except Exception as e:
+                raise IronRuntimeError(str(e))
+            logging.debug(f"Evicted context for {evicted_key[0]}")
 
     def load(
         self,
@@ -109,36 +158,26 @@ class XRTHostRuntime(HostRuntime):
         xclbin_mtime = xclbin_path.stat().st_mtime
         insts_mtime = insts_path.stat().st_mtime
 
-        if xclbin_path in self._contexts:
-            _, _, stored_mtime = self._contexts[xclbin_path]
-            if stored_mtime != xclbin_mtime:
-                # xclbin has changed, remove old context
-                context, xclbin, _ = self._contexts.pop(xclbin_path)
-                del context
-                del xclbin
-                logging.debug(
-                    f"xclbin {Path(xclbin_path).name} changed, reloading context"
-                )
+        context_key = (xclbin_path, xclbin_mtime)
 
-        if xclbin_path not in self._contexts:
-            # Check for race condition during load
-            mtime_before = xclbin_path.stat().st_mtime
-            xclbin = pyxrt.xclbin(str(xclbin_path))
-            mtime_after = xclbin_path.stat().st_mtime
-            if mtime_before != mtime_after:
-                raise IronRuntimeError(f"xclbin {xclbin_path} modified during loading.")
-            if mtime_after != xclbin_mtime:
-                raise IronRuntimeError(
-                    f"xclbin {xclbin_path} modified during loading (mtime mismatch)."
-                )
+        if context_key not in self._contexts:
+            self._evict_context_if_needed(fail_if_full)
+
+            xclbin = self._load_with_race_check(
+                xclbin_path,
+                lambda p: pyxrt.xclbin(str(p)),
+                xclbin_mtime,
+                "xclbin",
+            )
 
             self._device.register_xclbin(xclbin)
             xclbin_uuid = xclbin.get_uuid()
             context = pyxrt.hw_context(self._device, xclbin_uuid)
-            self._contexts[xclbin_path] = (context, xclbin, xclbin_mtime)
+            self._contexts[context_key] = (context, xclbin)
             logging.debug(f"Created new context for {Path(xclbin_path).name}")
         else:
-            context, xclbin, _ = self._contexts[xclbin_path]
+            self._contexts.move_to_end(context_key)
+            context, xclbin = self._contexts[context_key]
             logging.debug(f"Reusing context for {Path(xclbin_path).name}")
 
         if kernel_name is None:
@@ -161,28 +200,11 @@ class XRTHostRuntime(HostRuntime):
                 f"Reusing kernel: {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
         else:
-            if len(self._kernels) >= self.MAX_LOADED_KERNELS:
-                if fail_if_full:
-                    raise IronRuntimeError(
-                        f"Cache is full ({self.MAX_LOADED_KERNELS} kernels) and fail_if_full is True."
-                    )
-                k, (kernel, insts) = self._kernels.popitem(last=False)
-                del kernel
-                del insts
-                del k
-
             kernel = pyxrt.kernel(context, kernel_name)
 
-            # Check for race condition during load
-            mtime_before = insts_path.stat().st_mtime
-            insts = self.read_insts(insts_path)
-            mtime_after = insts_path.stat().st_mtime
-            if mtime_before != mtime_after:
-                raise IronRuntimeError(f"insts {insts_path} modified during loading.")
-            if mtime_after != insts_mtime:
-                raise IronRuntimeError(
-                    f"insts {insts_path} modified during loading (mtime mismatch)."
-                )
+            insts = self._load_with_race_check(
+                insts_path, self.read_insts, insts_mtime, "insts"
+            )
 
             self._kernels[kernel_handle] = (kernel, insts)
             logging.debug(
@@ -244,7 +266,7 @@ class XRTHostRuntime(HostRuntime):
         contexts = list(self._contexts.values())
         self._contexts.clear()
 
-        for context, xclbin, _ in contexts:
+        for context, xclbin in contexts:
             try:
                 del context
                 del xclbin
