@@ -628,20 +628,24 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getSrcOffsets().empty())
       return emitOpError("src offsets should be empty for distribute");
 
-    // ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    // for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
-    //   if (!dims.empty())
-    //     return emitOpError(
-    //         "currently does not support dimensionsFromStreamPerConsumer "
-    //         "on input objectFifo.");
-    // }
+    ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
+    if (!fifoIn.getDimensionsToStream().empty()) {
+      return emitOpError("currently does not support objectFifos with "
+                         "dimensionsToStream.");
+    }
+    for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
+      if (!dims.empty())
+        return emitOpError("currently does not support objectFifos with "
+                           "dimensionsFromStreamPerConsumer.");
+    }
 
-    // for (auto fifoOut : getOutputObjectFifos()) {
-    //   if (!fifoOut.getDimensionsToStream().empty()) {
-    //     return emitOpError("currently does not support dimensionsToStream "
-    //                        "on output objectFifos.");
-    //   }
-    // }
+    for (auto fifoOut : getOutputObjectFifos()) {
+      for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
+        if (!dims.empty())
+          return emitOpError("currently does not support objectFifos with "
+                             "dimensionsFromStreamPerConsumer.");
+      }
+    }
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
