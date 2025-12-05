@@ -20,6 +20,18 @@ class XRTKernelHandle(KernelHandle):
         self.kernel_name = kernel_name
         self.insts_path = insts_path
 
+    def __eq__(self, other):
+        if isinstance(other, XRTKernelHandle):
+            return (
+                self.xclbin_path == other.xclbin_path
+                and self.kernel_name == other.kernel_name
+                and self.insts_path == other.insts_path
+            )
+        return False
+
+    def __hash__(self):
+        return hash((self.xclbin_path, self.kernel_name, self.insts_path))
+
 
 class XRTHostRuntime(HostRuntime):
     """Singleton manager for AIE XRT resources"""
@@ -139,7 +151,6 @@ class XRTHostRuntime(HostRuntime):
 
     def cleanup(self):
         """Clean up all XRT resources"""
-        self.clear_insts_cache()
         self._kernels.clear()
 
         # Clear contexts

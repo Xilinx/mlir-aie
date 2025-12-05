@@ -8,8 +8,16 @@ from pathlib import Path
 from ..device import Device
 
 
-class KernelHandle:
-    pass
+class KernelHandle(ABC):
+    """KernelHandles may be used a cache keys, and so should implement these methods."""
+
+    @abstractmethod
+    def __hash__(self):
+        pass
+
+    @abstractmethod
+    def __eq__(self, other):
+        pass
 
 
 class HostRuntime(ABC):
