@@ -620,21 +620,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
-    ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    if (!fifoOut.getDimensionsToStream().empty()) {
-      return emitOpError("currently does not support dimensionsToStream "
-                         "on output objectFifo.");
-    }
-
-    for (auto fifoIn : getInputObjectFifos()) {
-      for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
-        if (!dims.empty())
-          return emitOpError(
-              "currently does not support dimensionsFromStreamPerConsumer "
-              "on input objectFifos.");
-      }
-    }
-  }
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
       return emitOpError("number of provided dst offsets must be equal "
@@ -643,20 +628,20 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getSrcOffsets().empty())
       return emitOpError("src offsets should be empty for distribute");
 
-    ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
-      if (!dims.empty())
-        return emitOpError(
-            "currently does not support dimensionsFromStreamPerConsumer "
-            "on input objectFifo.");
-    }
+    // ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
+    // for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
+    //   if (!dims.empty())
+    //     return emitOpError(
+    //         "currently does not support dimensionsFromStreamPerConsumer "
+    //         "on input objectFifo.");
+    // }
 
-    for (auto fifoOut : getOutputObjectFifos()) {
-      if (!fifoOut.getDimensionsToStream().empty()) {
-        return emitOpError("currently does not support dimensionsToStream "
-                           "on output objectFifos.");
-      }
-    }
+    // for (auto fifoOut : getOutputObjectFifos()) {
+    //   if (!fifoOut.getDimensionsToStream().empty()) {
+    //     return emitOpError("currently does not support dimensionsToStream "
+    //                        "on output objectFifos.");
+    //   }
+    // }
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
