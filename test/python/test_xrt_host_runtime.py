@@ -71,9 +71,11 @@ def mock_xrt_runtime():
         )
 
         # Mock Path checks
+        mock_stat = MagicMock()
+        mock_stat.st_mtime = 12345
         with patch("pathlib.Path.exists", return_value=True), patch(
             "pathlib.Path.is_file", return_value=True
-        ):
+        ), patch("pathlib.Path.stat", return_value=mock_stat):
             yield runtime
 
     # Cleanup
@@ -82,8 +84,8 @@ def mock_xrt_runtime():
 
 
 def test_kernel_handle_equality():
-    h1 = XRTKernelHandle(Path("a.xclbin"), "kernel", Path("insts.txt"))
-    h2 = XRTKernelHandle(Path("a.xclbin"), "kernel", Path("insts.txt"))
+    h1 = XRTKernelHandle(Path("a.xclbin"), "kernel", Path("insts.txt"), 100, 200)
+    h2 = XRTKernelHandle(Path("a.xclbin"), "kernel", Path("insts.txt"), 100, 200)
 
     assert h1 == h2
     assert hash(h1) == hash(h2)
@@ -122,7 +124,7 @@ def test_lru_cache(mock_xrt_runtime):
 
 
 def test_only_if_loaded(mock_xrt_runtime):
-    h1 = XRTKernelHandle(Path("a.xclbin"), "k1", Path("i1.txt"))
+    h1 = XRTKernelHandle(Path("a.xclbin"), "k1", Path("i1.txt"), 12345, 12345)
 
     # Should fail because not loaded
     with pytest.raises(IronRuntimeError, match="is not loaded"):

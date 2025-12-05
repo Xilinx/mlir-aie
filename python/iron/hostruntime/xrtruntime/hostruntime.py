@@ -17,10 +17,12 @@ from .tensor import XRTTensor
 
 
 class XRTKernelHandle(KernelHandle):
-    def __init__(self, xclbin_path, kernel_name, insts_path):
+    def __init__(self, xclbin_path, kernel_name, insts_path, xclbin_mtime, insts_mtime):
         self.xclbin_path = xclbin_path
         self.kernel_name = kernel_name
         self.insts_path = insts_path
+        self.xclbin_mtime = xclbin_mtime
+        self.insts_mtime = insts_mtime
 
     def __eq__(self, other):
         if isinstance(other, XRTKernelHandle):
@@ -28,11 +30,21 @@ class XRTKernelHandle(KernelHandle):
                 self.xclbin_path == other.xclbin_path
                 and self.kernel_name == other.kernel_name
                 and self.insts_path == other.insts_path
+                and self.xclbin_mtime == other.xclbin_mtime
+                and self.insts_mtime == other.insts_mtime
             )
         return False
 
     def __hash__(self):
-        return hash((self.xclbin_path, self.kernel_name, self.insts_path))
+        return hash(
+            (
+                self.xclbin_path,
+                self.kernel_name,
+                self.insts_path,
+                self.xclbin_mtime,
+                self.insts_mtime,
+            )
+        )
 
 
 class XRTHostRuntime(HostRuntime):
@@ -116,7 +128,11 @@ class XRTHostRuntime(HostRuntime):
                     f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
                 )
 
-        kernel_handle = XRTKernelHandle(xclbin_path, kernel_name, insts_path)
+        xclbin_mtime = xclbin_path.stat().st_mtime
+        insts_mtime = insts_path.stat().st_mtime
+        kernel_handle = XRTKernelHandle(
+            xclbin_path, kernel_name, insts_path, xclbin_mtime, insts_mtime
+        )
         if kernel_handle in self._kernels:
             self._kernels.move_to_end(kernel_handle)
             logging.debug(
