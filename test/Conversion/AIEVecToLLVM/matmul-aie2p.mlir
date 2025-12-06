@@ -22,31 +22,27 @@ func.func @matmul_aie2p_8x8x8(%A : vector<8x8xbf16>, %B : vector<8x8xbf16>,
 // CHECK-DAG:  %[[FA:.*]] = vector.shape_cast %[[A]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK-DAG:  %[[FB:.*]] = vector.shape_cast %[[B]] : vector<8x8xbf16> to vector<64xbf16>
 // CHECK-DAG:  %[[FC:.*]] = vector.shape_cast %[[C]] : vector<8x8xf32> to vector<64xf32>
-// Convert LHS and RHS to v64accfloat
+// Convert LHS to v64accfloat
 // CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
 // CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
 // CHECK:      vector.shuffle {{.*}} : vector<32xf32>, vector<32xf32>
-// CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
-// CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
-// CHECK:      vector.shuffle {{.*}} : vector<32xf32>, vector<32xf32>
-// Transpose RHS using vshuffle intrinsics
-// CHECK:      llvm.bitcast {{.*}} : vector<64xf32> to vector<64xi32>
-// CHECK:      vector.shuffle {{.*}} [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<64xi32>, vector<64xi32>
-// CHECK:      vector.shuffle {{.*}} [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<64xi32>, vector<64xi32>
+// Transpose RHS in bf16 format (more efficient than transposing in f32)
+// CHECK:      llvm.bitcast %[[FB]] : vector<64xbf16> to vector<32xi32>
+// CHECK:      vector.shuffle {{.*}} [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<32xi32>, vector<32xi32>
+// CHECK:      vector.shuffle {{.*}} [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<32xi32>, vector<32xi32>
 // CHECK:      llvm.mlir.constant(52 : i32) : i32
 // CHECK:      llvm.mlir.constant(53 : i32) : i32
 // CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
 // CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
-// CHECK:      vector.shuffle {{.*}} : vector<16xi32>, vector<16xi32>
-// CHECK:      vector.shuffle {{.*}} [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47] : vector<64xi32>, vector<64xi32>
-// CHECK:      vector.shuffle {{.*}} [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] : vector<64xi32>, vector<64xi32>
-// CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
-// CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
-// CHECK:      vector.shuffle {{.*}} : vector<16xi32>, vector<16xi32>
-// CHECK:      vector.shuffle {{.*}} : vector<32xi32>, vector<32xi32>
-// CHECK:      llvm.bitcast {{.*}} : vector<64xi32> to vector<64xf32>
+// CHECK:      vector.shuffle {{.*}} [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<16xi32>, vector<16xi32>
+// CHECK:      llvm.bitcast {{.*}} : vector<32xi32> to vector<64xbf16>
+// Convert transposed RHS to v64accfloat
+// CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
+// CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
+// CHECK:      vector.shuffle {{.*}} : vector<32xf32>, vector<32xf32>
 // Uses BFP16 format with conf=780
 // CHECK:      llvm.mlir.constant(780 : i32) : i32
+// CHECK:      llvm.bitcast %[[FC]] : vector<64xf32> to vector<64xi32>
 // CHECK:      "xllvm.intr.aie2p.v64accfloat.to.v64bfp16ebs8"
 // CHECK:      "xllvm.intr.aie2p.v64accfloat.to.v64bfp16ebs8"
 // CHECK:      "xllvm.intr.aie2p.BFP576.BFP576.ACC2048.mac.conf"
@@ -89,28 +85,20 @@ func.func @matmul_aie2p_4x8x8(%A : vector<4x8xbf16>, %B : vector<8x8xbf16>,
 // Convert LHS v32bf16 to v32accfloat and pad to v64accfloat
 // CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"(%[[FA]]) : (vector<32xbf16>) -> vector<32xf32>
 // CHECK:      vector.shuffle {{.*}}, {{.*}} {{.*}}-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1{{.*}} : vector<32xf32>, vector<32xf32>
-// Convert RHS v64bf16 to v64accfloat
-// CHECK:      vector.shuffle %[[FB]], %[[FB]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
-// CHECK:      vector.shuffle %[[FB]], %[[FB]] [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-// CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
-// CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
-// CHECK:      vector.shuffle {{.*}} : vector<32xf32>, vector<32xf32>
-// Transpose RHS using vshuffle intrinsics
-// CHECK:      llvm.bitcast {{.*}} : vector<64xf32> to vector<64xi32>
-// CHECK:      vector.shuffle {{.*}} [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<64xi32>, vector<64xi32>
-// CHECK:      vector.shuffle {{.*}} [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<64xi32>, vector<64xi32>
+// Transpose RHS in bf16 format (more efficient than transposing in f32)
+// CHECK:      llvm.bitcast %[[FB]] : vector<64xbf16> to vector<32xi32>
+// CHECK:      vector.shuffle {{.*}} [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<32xi32>, vector<32xi32>
+// CHECK:      vector.shuffle {{.*}} [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<32xi32>, vector<32xi32>
 // CHECK:      llvm.mlir.constant(52 : i32) : i32
 // CHECK:      llvm.mlir.constant(53 : i32) : i32
 // CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
 // CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
-// CHECK:      vector.shuffle {{.*}} : vector<16xi32>, vector<16xi32>
-// CHECK:      vector.shuffle {{.*}} [32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47] : vector<64xi32>, vector<64xi32>
-// CHECK:      vector.shuffle {{.*}} [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] : vector<64xi32>, vector<64xi32>
-// CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
-// CHECK:      "xllvm.intr.aie2p.vshuffle"({{.*}}, {{.*}}, {{.*}}) : (vector<16xi32>, vector<16xi32>, i32) -> vector<16xi32>
-// CHECK:      vector.shuffle {{.*}} : vector<16xi32>, vector<16xi32>
-// CHECK:      vector.shuffle {{.*}} : vector<32xi32>, vector<32xi32>
-// CHECK:      llvm.bitcast {{.*}} : vector<64xi32> to vector<64xf32>
+// CHECK:      vector.shuffle {{.*}} [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<16xi32>, vector<16xi32>
+// CHECK:      llvm.bitcast {{.*}} : vector<32xi32> to vector<64xbf16>
+// Convert transposed RHS to v64accfloat
+// CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
+// CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
+// CHECK:      vector.shuffle {{.*}} : vector<32xf32>, vector<32xf32>
 // Pad ACC and use BFP16 format with conf=780
 // CHECK:      llvm.bitcast %[[FC]] : vector<32xf32> to vector<32xi32>
 // CHECK:      vector.shuffle {{.*}}, {{.*}} {{.*}}-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1{{.*}} : vector<32xi32>, vector<32xi32>
