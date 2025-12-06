@@ -99,8 +99,8 @@ def test_kernel_handle_equality():
 
 def test_lru_cache(mock_xrt_runtime):
     # Set cache size to 2
-    original_max = XRTHostRuntime.MAX_LOADED_KERNELS
-    XRTHostRuntime.MAX_LOADED_KERNELS = 2
+    original_max = XRTHostRuntime.MAX_CACHED_CONTEXTS
+    XRTHostRuntime.MAX_CACHED_CONTEXTS = 2
 
     try:
         h1 = mock_xrt_runtime.load(Path("a.xclbin"), Path("i1.txt"), "k1")
@@ -123,7 +123,7 @@ def test_lru_cache(mock_xrt_runtime):
         assert h2 not in mock_xrt_runtime._kernels
 
     finally:
-        XRTHostRuntime.MAX_LOADED_KERNELS = original_max
+        XRTHostRuntime.MAX_CACHED_CONTEXTS = original_max
 
 
 def test_only_if_loaded(mock_xrt_runtime):
@@ -141,8 +141,8 @@ def test_only_if_loaded(mock_xrt_runtime):
 
 
 def test_fail_if_full(mock_xrt_runtime):
-    original_max = XRTHostRuntime.MAX_LOADED_KERNELS
-    XRTHostRuntime.MAX_LOADED_KERNELS = 2
+    original_max = XRTHostRuntime.MAX_CACHED_CONTEXTS
+    XRTHostRuntime.MAX_CACHED_CONTEXTS = 2
 
     try:
         mock_xrt_runtime.load(Path("a.xclbin"), Path("i1.txt"), "k1")
@@ -165,7 +165,7 @@ def test_fail_if_full(mock_xrt_runtime):
         )
 
     finally:
-        XRTHostRuntime.MAX_LOADED_KERNELS = original_max
+        XRTHostRuntime.MAX_CACHED_CONTEXTS = original_max
 
 
 def test_mtime_logic(mock_xrt_runtime):
@@ -253,8 +253,8 @@ def test_filemodtime_condition(mock_xrt_runtime):
 
 def test_context_lru_with_shared_kernels(mock_xrt_runtime):
     # Set cache size to 2 contexts
-    original_max = XRTHostRuntime.MAX_LOADED_KERNELS
-    XRTHostRuntime.MAX_LOADED_KERNELS = 2
+    original_max = XRTHostRuntime.MAX_CACHED_CONTEXTS
+    XRTHostRuntime.MAX_CACHED_CONTEXTS = 2
 
     try:
         # 1. Load k1 from a.xclbin -> Context A created
@@ -301,4 +301,4 @@ def test_context_lru_with_shared_kernels(mock_xrt_runtime):
         assert h2 not in mock_xrt_runtime._kernels
 
     finally:
-        XRTHostRuntime.MAX_LOADED_KERNELS = original_max
+        XRTHostRuntime.MAX_CACHED_CONTEXTS = original_max

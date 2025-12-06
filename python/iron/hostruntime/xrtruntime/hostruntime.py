@@ -173,7 +173,18 @@ class XRTHostRuntime(HostRuntime):
 
             self._device.register_xclbin(xclbin)
             xclbin_uuid = xclbin.get_uuid()
-            context = pyxrt.hw_context(self._device, xclbin_uuid)
+            try:
+                context = pyxrt.hw_context(self._device, xclbin_uuid)
+            except RuntimeError as e:
+                if "DRM_IOCTL_AMDXDNA_CREATE_HWCTX" in str(e):
+                    if not xclbin_path.exists():
+                        raise RuntimeError(
+                            f"Failed to create hw_context because xclbin file is missing: {xclbin_path}"
+                        ) from e
+                    raise RuntimeError(
+                        f"Failed to create hw_context. xclbin file exists at {xclbin_path}. Original error: {e}"
+                    ) from e
+                raise e
             self._contexts[context_key] = (context, xclbin)
             logging.debug(f"Created new context for {Path(xclbin_path).name}")
         else:
