@@ -563,6 +563,12 @@ _Types and operations for external LLVM dialect_
 
 ### `xllvm.intr.aie2.v16accfloat.to.v16bf16` (::xilinx::xllvm::Vector16AccFloatToV16BF16AIE2IntrOp)
 
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
 #### Operands:
 
 | Operand | Description |
@@ -578,6 +584,12 @@ _Types and operations for external LLVM dialect_
 
 
 ### `xllvm.intr.aie2.v16bf16.to.v16accfloat` (::xilinx::xllvm::Vector16BF16ToV16AccFloatAIE2IntrOp)
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -918,6 +930,12 @@ _Types and operations for external LLVM dialect_
 
 
 ### `xllvm.intr.aie2.vshuffle` (::xilinx::xllvm::VectorShuffleIntrOp)
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -1466,6 +1484,12 @@ _Types and operations for external LLVM dialect_
 
 ### `xllvm.intr.aie2p.v16accfloat.to.v16bf16` (::xilinx::xllvm::Vector16AccFloatToV16BF16AIE2pIntrOp)
 
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
 #### Operands:
 
 | Operand | Description |
@@ -1481,6 +1505,12 @@ _Types and operations for external LLVM dialect_
 
 
 ### `xllvm.intr.aie2p.v16bf16.to.v16accfloat` (::xilinx::xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp)
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -1498,6 +1528,12 @@ _Types and operations for external LLVM dialect_
 
 ### `xllvm.intr.aie2p.v32accfloat.to.v32bf16` (::xilinx::xllvm::Vector32AccFloatToV32BF16AIE2pIntrOp)
 
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
 #### Operands:
 
 | Operand | Description |
@@ -1514,6 +1550,12 @@ _Types and operations for external LLVM dialect_
 
 ### `xllvm.intr.aie2p.v32bf16.to.v32accfloat` (::xilinx::xllvm::Vector32BF16ToV32AccFloatAIE2pIntrOp)
 
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
 #### Operands:
 
 | Operand | Description |
@@ -1529,6 +1571,12 @@ _Types and operations for external LLVM dialect_
 
 
 ### `xllvm.intr.aie2p.v64accfloat.to.v64bfp16ebs8` (::xilinx::xllvm::Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp)
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
@@ -1725,6 +1773,12 @@ _Types and operations for external LLVM dialect_
 
 
 ### `xllvm.intr.aie2p.vshuffle` (::xilinx::xllvm::VectorShuffleAIE2pIntrOp)
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
 
 #### Operands:
 
