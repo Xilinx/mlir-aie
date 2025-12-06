@@ -99,7 +99,7 @@ func.func @matmul_aie2p_4x8x8(%A : vector<4x8xbf16>, %B : vector<8x8xbf16>,
 // CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
 // CHECK:      "xllvm.intr.aie2p.v32bf16.to.v32accfloat"
 // CHECK:      vector.shuffle {{.*}} : vector<32xf32>, vector<32xf32>
-// Pad ACC and use BFP16 format
+// Pad ACC and use BFP16 format with conf=780
 // CHECK:      llvm.bitcast %[[FC]] : vector<32xf32> to vector<32xi32>
 // CHECK:      vector.shuffle {{.*}}, {{.*}} {{.*}}-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1{{.*}} : vector<32xi32>, vector<32xi32>
 // CHECK:      "xllvm.intr.aie2p.v64accfloat.to.v64bfp16ebs8"
