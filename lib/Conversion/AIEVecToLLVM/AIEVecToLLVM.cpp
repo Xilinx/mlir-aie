@@ -4029,15 +4029,79 @@ class MatMulOpAIE2pConversion
       auto rhs64f32 = rewriter.create<vector::ShuffleOp>(
           loc, rhs32f32_lo, rhs32f32_hi, concatMask);
 
-      // Step 3: Transpose RHS 8×8 matrix
-      SmallVector<int64_t> transposeMask;
-      for (int c = 0; c < 8; ++c) {
-        for (int r = 0; r < 8; ++r) {
-          transposeMask.push_back(r * 8 + c);
-        }
+      // Step 3: Transpose RHS 8×8 matrix using vshuffle intrinsics
+      // Bitcast <64 x f32> to <64 x i32>
+      auto rhs64i32 = rewriter.create<LLVM::BitcastOp>(
+          loc, VectorType::get({64}, i32ty), rhs64f32);
+
+      // Extract two <16 x i32> chunks from lower half [0-31]
+      SmallVector<int64_t> chunk0Mask, chunk1Mask;
+      for (int i = 0; i < 16; ++i) {
+        chunk0Mask.push_back(i);
+        chunk1Mask.push_back(16 + i);
       }
-      auto rhsTransposed = rewriter.create<vector::ShuffleOp>(
-          loc, rhs64f32, rhs64f32, transposeMask);
+      auto rhs16i32_0 = rewriter.create<vector::ShuffleOp>(
+          loc, rhs64i32, rhs64i32, chunk0Mask);
+      auto rhs16i32_1 = rewriter.create<vector::ShuffleOp>(
+          loc, rhs64i32, rhs64i32, chunk1Mask);
+
+      // Apply vshuffle with modes 52 and 53
+      auto shuffleMode52 = rewriter.create<LLVM::ConstantOp>(
+          loc, i32ty, rewriter.getI32IntegerAttr(52));
+      auto shuffleMode53 = rewriter.create<LLVM::ConstantOp>(
+          loc, i32ty, rewriter.getI32IntegerAttr(53));
+
+      auto shuffled52_lo = rewriter.create<xllvm::VectorShuffleAIE2pIntrOp>(
+          loc, VectorType::get({16}, i32ty), rhs16i32_0, rhs16i32_1,
+          shuffleMode52);
+      auto shuffled53_lo = rewriter.create<xllvm::VectorShuffleAIE2pIntrOp>(
+          loc, VectorType::get({16}, i32ty), rhs16i32_0, rhs16i32_1,
+          shuffleMode53);
+
+      // Concatenate to get transposed lower 32 elements
+      SmallVector<int64_t> concatLowerMask;
+      for (int i = 0; i < 32; ++i)
+        concatLowerMask.push_back(i);
+      auto transposedLower32 = rewriter.create<vector::ShuffleOp>(
+          loc, shuffled52_lo, shuffled53_lo, concatLowerMask);
+
+      // Extract two <16 x i32> chunks from upper half [32-63]
+      SmallVector<int64_t> chunk2Mask, chunk3Mask;
+      for (int i = 0; i < 16; ++i) {
+        chunk2Mask.push_back(32 + i);
+        chunk3Mask.push_back(48 + i);
+      }
+      auto rhs16i32_2 = rewriter.create<vector::ShuffleOp>(
+          loc, rhs64i32, rhs64i32, chunk2Mask);
+      auto rhs16i32_3 = rewriter.create<vector::ShuffleOp>(
+          loc, rhs64i32, rhs64i32, chunk3Mask);
+
+      // Apply vshuffle with modes 52 and 53 to upper half
+      auto shuffled52_hi = rewriter.create<xllvm::VectorShuffleAIE2pIntrOp>(
+          loc, VectorType::get({16}, i32ty), rhs16i32_2, rhs16i32_3,
+          shuffleMode52);
+      auto shuffled53_hi = rewriter.create<xllvm::VectorShuffleAIE2pIntrOp>(
+          loc, VectorType::get({16}, i32ty), rhs16i32_2, rhs16i32_3,
+          shuffleMode53);
+
+      // Concatenate to get transposed upper 32 elements
+      SmallVector<int64_t> concatUpperMask;
+      for (int i = 0; i < 32; ++i)
+        concatUpperMask.push_back(i);
+      auto transposedUpper32 = rewriter.create<vector::ShuffleOp>(
+          loc, shuffled52_hi, shuffled53_hi, concatUpperMask);
+
+      // Concatenate lower and upper to get full <64 x i32> transposed result
+      SmallVector<int64_t> finalConcatMask;
+      for (int i = 0; i < 64; ++i)
+        finalConcatMask.push_back(i);
+      auto rhsTransposed64i32 = rewriter.create<vector::ShuffleOp>(
+          loc, transposedLower32, transposedUpper32, finalConcatMask);
+
+      // Cast back to <64 x f32>
+      auto rhsTransposed = rewriter.create<LLVM::BitcastOp>(
+          loc, VectorType::get({64}, rewriter.getF32Type()),
+          rhsTransposed64i32);
 
       // Step 4: Use shared BFP16 8×8 matmul helper
       auto conf780 = rewriter.create<LLVM::ConstantOp>(
@@ -4096,15 +4160,79 @@ class MatMulOpAIE2pConversion
       auto rhs64f32 = rewriter.create<vector::ShuffleOp>(
           loc, rhs32f32_lo, rhs32f32_hi, concatMask);
 
-      // Step 3: Transpose RHS 8×8 matrix
-      SmallVector<int64_t> transposeMask;
-      for (int c = 0; c < 8; ++c) {
-        for (int r = 0; r < 8; ++r) {
-          transposeMask.push_back(r * 8 + c);
-        }
+      // Step 3: Transpose RHS 8×8 matrix using vshuffle intrinsics
+      // Bitcast <64 x f32> to <64 x i32>
+      auto rhs64i32 = rewriter.create<LLVM::BitcastOp>(
+          loc, VectorType::get({64}, i32ty), rhs64f32);
+
+      // Extract two <16 x i32> chunks from lower half [0-31]
+      SmallVector<int64_t> chunk0Mask, chunk1Mask;
+      for (int i = 0; i < 16; ++i) {
+        chunk0Mask.push_back(i);
+        chunk1Mask.push_back(16 + i);
       }
-      auto rhsTransposed = rewriter.create<vector::ShuffleOp>(
-          loc, rhs64f32, rhs64f32, transposeMask);
+      auto rhs16i32_0 = rewriter.create<vector::ShuffleOp>(
+          loc, rhs64i32, rhs64i32, chunk0Mask);
+      auto rhs16i32_1 = rewriter.create<vector::ShuffleOp>(
+          loc, rhs64i32, rhs64i32, chunk1Mask);
+
+      // Apply vshuffle with modes 52 and 53
+      auto shuffleMode52 = rewriter.create<LLVM::ConstantOp>(
+          loc, i32ty, rewriter.getI32IntegerAttr(52));
+      auto shuffleMode53 = rewriter.create<LLVM::ConstantOp>(
+          loc, i32ty, rewriter.getI32IntegerAttr(53));
+
+      auto shuffled52_lo = rewriter.create<xllvm::VectorShuffleAIE2pIntrOp>(
+          loc, VectorType::get({16}, i32ty), rhs16i32_0, rhs16i32_1,
+          shuffleMode52);
+      auto shuffled53_lo = rewriter.create<xllvm::VectorShuffleAIE2pIntrOp>(
+          loc, VectorType::get({16}, i32ty), rhs16i32_0, rhs16i32_1,
+          shuffleMode53);
+
+      // Concatenate to get transposed lower 32 elements
+      SmallVector<int64_t> concatLowerMask;
+      for (int i = 0; i < 32; ++i)
+        concatLowerMask.push_back(i);
+      auto transposedLower32 = rewriter.create<vector::ShuffleOp>(
+          loc, shuffled52_lo, shuffled53_lo, concatLowerMask);
+
+      // Extract two <16 x i32> chunks from upper half [32-63]
+      SmallVector<int64_t> chunk2Mask, chunk3Mask;
+      for (int i = 0; i < 16; ++i) {
+        chunk2Mask.push_back(32 + i);
+        chunk3Mask.push_back(48 + i);
+      }
+      auto rhs16i32_2 = rewriter.create<vector::ShuffleOp>(
+          loc, rhs64i32, rhs64i32, chunk2Mask);
+      auto rhs16i32_3 = rewriter.create<vector::ShuffleOp>(
+          loc, rhs64i32, rhs64i32, chunk3Mask);
+
+      // Apply vshuffle with modes 52 and 53 to upper half
+      auto shuffled52_hi = rewriter.create<xllvm::VectorShuffleAIE2pIntrOp>(
+          loc, VectorType::get({16}, i32ty), rhs16i32_2, rhs16i32_3,
+          shuffleMode52);
+      auto shuffled53_hi = rewriter.create<xllvm::VectorShuffleAIE2pIntrOp>(
+          loc, VectorType::get({16}, i32ty), rhs16i32_2, rhs16i32_3,
+          shuffleMode53);
+
+      // Concatenate to get transposed upper 32 elements
+      SmallVector<int64_t> concatUpperMask;
+      for (int i = 0; i < 32; ++i)
+        concatUpperMask.push_back(i);
+      auto transposedUpper32 = rewriter.create<vector::ShuffleOp>(
+          loc, shuffled52_hi, shuffled53_hi, concatUpperMask);
+
+      // Concatenate lower and upper to get full <64 x i32> transposed result
+      SmallVector<int64_t> finalConcatMask;
+      for (int i = 0; i < 64; ++i)
+        finalConcatMask.push_back(i);
+      auto rhsTransposed64i32 = rewriter.create<vector::ShuffleOp>(
+          loc, transposedLower32, transposedUpper32, finalConcatMask);
+
+      // Cast back to <64 x f32>
+      auto rhsTransposed = rewriter.create<LLVM::BitcastOp>(
+          loc, VectorType::get({64}, rewriter.getF32Type()),
+          rhsTransposed64i32);
 
       // Step 4: Pad ACC from 32 to 64 i32
       SmallVector<int64_t> accPadMask;
