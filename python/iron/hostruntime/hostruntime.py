@@ -28,12 +28,12 @@ class HostRuntime(ABC):
         pass
 
     @abstractmethod
-    def run(self, kernel_handle: KernelHandle, *args, only_if_loaded=False):
+    def run(self, kernel_handle: KernelHandle, *args, only_if_loaded=False) -> int:
         pass
 
-    def load_and_run(self, load_args: list, run_args: list):
+    def load_and_run(self, load_args: list, run_args: list) -> int:
         handle = self.load(*load_args)
-        self.run(handle, list(run_args))
+        return self.run(handle, list(run_args))
 
     @abstractmethod
     def device(self) -> Device:

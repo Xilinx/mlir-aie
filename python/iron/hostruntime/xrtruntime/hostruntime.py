@@ -6,6 +6,7 @@ XRT-based implementation of the HostRuntime
 """
 import atexit
 import logging
+import time
 from collections import OrderedDict
 from pathlib import Path
 import numpy as np
@@ -211,7 +212,7 @@ class XRTHostRuntime(HostRuntime):
             )
         return kernel_handle
 
-    def run(self, kernel_handle: XRTKernelHandle, args, only_if_loaded=False):
+    def run(self, kernel_handle: XRTKernelHandle, args, only_if_loaded=False) -> int:
         args = [a for a in args if not callable(a)]  # Filter out callable functions
         if not all([isinstance(a, self._tensor_class) for a in args]):
             raise IronRuntimeError(
@@ -242,12 +243,17 @@ class XRTHostRuntime(HostRuntime):
         insts_bo.write(insts.view(np.uint8), 0)
         insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
         buffers = [a.buffer_object() for a in args]
+
+        start = time.time_ns()
         h = kernel(3, insts_bo, insts.nbytes, *buffers)
         r = h.wait()
+        stop = time.time_ns()
+
         if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise IronRuntimeError(f"Kernel returned {str(r)}")
         # delete insts buffer
         del insts_bo
+        return stop - start
 
     def device(self) -> Device:
         # return an instance of the device type

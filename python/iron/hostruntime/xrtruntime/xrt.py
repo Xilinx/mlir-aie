@@ -7,7 +7,6 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import numpy as np
 import copy
-import time
 from pathlib import Path
 import pyxrt as xrt
 import os
@@ -138,18 +137,6 @@ def return_buffer_results(
     return out_buff, trace_buff, ctrl_buff
 
 
-# Wrapper for execute but we do the host time delta directly around the app.run() call
-# so buffer init and read are not included
-def execute_timed(
-    app,
-):
-    start = time.time_ns()
-    ret = app.run()
-    stop = time.time_ns()
-    npu_time = stop - start
-    return (ret, npu_time)
-
-
 # Wrapper function to separate output data and trace data from a single output buffer stream
 def extract_prefix(out_buf, prefix_shape, prefix_dtype):
     out_buf_flat = out_buf.reshape((-1,)).view(np.uint8)
@@ -202,9 +189,7 @@ def setup_and_run_aie(
         trace_after_output=trace_after_output,
     )
 
-    (ret, npu_time) = execute_timed(
-        app,
-    )
+    npu_time = app.run()
 
     print("npu_time: ", npu_time / 1000.0, " us")
     output, trace_buffer, ctrl_buffer = return_buffer_results(
