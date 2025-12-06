@@ -3650,7 +3650,7 @@ static Value transposeAndConvertRHS(OpBuilder &rewriter, Location loc,
                                     Type i32ty, Value rhs64bf16) {
   auto v32f32Ty = VectorType::get({32}, rewriter.getF32Type());
 
-  // Transpose RHS 8×8 matrix in bf16 format (more efficient)
+  // Transpose RHS 8x8 matrix in bf16 format (more efficient)
   // Cast v64bf16 to v32i32 for transpose operations
   auto rhs64i32 = forceCastValueToType(
       rewriter, loc, rhs64bf16, VectorType::get({32}, rewriter.getI32Type()));
