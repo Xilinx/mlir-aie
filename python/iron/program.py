@@ -46,11 +46,6 @@ class Program:
             module (Module): The module containing the MLIR context information.
         """
         with mlir_mod_ctx() as ctx:
-            # Create a fresh device instance of the same type to avoid stale MLIR operations
-            # This preserves the device configuration while ensuring clean state
-            device_type = type(self._device)
-            # For dynamically created device classes, the constructor takes no arguments
-            self._device = device_type()
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
