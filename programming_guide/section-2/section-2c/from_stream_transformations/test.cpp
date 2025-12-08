@@ -22,8 +22,8 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-constexpr int IN_SIZE = 48;
-constexpr int OUT_SIZE = 48;
+constexpr int IN_SIZE = 24;
+constexpr int OUT_SIZE = 24;
 
 int main(int argc, const char *argv[]) {
 
@@ -122,8 +122,6 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
     if (i % 3 == 0)
       index1++;
-    if (i == OUT_SIZE / 2)
-      index1 = OUT_SIZE / 2;
     ref = (index0 % 3) * 8 + index1;
     index0++;
     if (*(bufOut + i) != ref) {

@@ -23,19 +23,18 @@ if len(sys.argv) > 1:
 n_workers = 2
 
 # Define tensor types
-data_ty = np.ndarray[(48,), np.dtype[np.int32]]
-tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
+data_ty = np.ndarray[(24,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
 # Input
-of_in0 = ObjectFifo(tile24_ty, name="in0")
+of_in0 = ObjectFifo(data_ty, name="in0")
 of_in1 = of_in0.cons().forward(
-    name="in1", obj_type=tile24_ty, dims_from_stream=[(8, 3), (1, 8)]
+    name="in1", obj_type=data_ty, dims_from_stream=[(3, 1), (8, 3)]
 )
 
 # Output
-of_out1 = ObjectFifo(tile24_ty, name="out1")
-of_out0 = of_out1.cons().forward(name="out0", obj_type=tile24_ty)
+of_out1 = ObjectFifo(data_ty, name="out1")
+of_out0 = of_out1.cons().forward(name="out0", obj_type=data_ty)
 
 
 # Task for the core to perform

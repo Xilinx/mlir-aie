@@ -22,17 +22,16 @@ if len(sys.argv) > 1:
         raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 # Define tensor types
-data_ty = np.ndarray[(48,), np.dtype[np.int32]]
-tile24_ty = np.ndarray[(24,), np.dtype[np.int32]]
+data_ty = np.ndarray[(24,), np.dtype[np.int32]]
 
 # Dataflow with ObjectFifos
 # Input
-of_in0 = ObjectFifo(tile24_ty, name="in0")
-of_in1 = of_in0.cons().forward(name="in1", obj_type=tile24_ty)
+of_in0 = ObjectFifo(data_ty, name="in0")
+of_in1 = of_in0.cons().forward(name="in1", obj_type=data_ty)
 
 # Output
-of_out1 = ObjectFifo(tile24_ty, name="out1", dims_to_stream=[(8, 1), (3, 8)])
-of_out0 = of_out1.cons().forward(name="out0", obj_type=tile24_ty)
+of_out1 = ObjectFifo(data_ty, name="out1", dims_to_stream=[(8, 1), (3, 8)])
+of_out0 = of_out1.cons().forward(name="out0", obj_type=data_ty)
 
 
 # Task for the core to perform
