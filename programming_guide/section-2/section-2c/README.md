@@ -61,6 +61,10 @@ for(int i = 0; i < size_2; i++)
             //                                   + k * stride_0]
 ```
 
+It is important to note that data layout transformations are interpreted differently depending on whether data is pushed onto or read from the AXI stream:
+- when data is pushed to the AXI stream from local memory, the tile DMA can directly access the data following the desired access pattern.
+- when data is read from the AXI stream, the tile DMA writes the data into local memory according to the desired access pattern, however, it does not have control over the order in which the data arrives.
+
 As a practical example, here is an access pattern that corresponds to alternating between even and odd elements every 8 elements in a 128 element buffer/stream:
 ```mlir
 aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
