@@ -54,7 +54,7 @@ class XRTHostRuntime(HostRuntime):
 
     _instance = None
     _tensor_class = XRTTensor
-    MAX_CACHED_CONTEXTS = 16
+    MAX_CACHED_CONTEXTS = 6
 
     def __new__(cls):
         if cls._instance is None:
@@ -64,6 +64,9 @@ class XRTHostRuntime(HostRuntime):
     def __init__(self):
         self._device = pyxrt.device(0)
         device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
+
+        # Mostly for debugging, but also interesting to keep track of stats
+        self._contexts_created = 0
 
         # Fetch the device type by matching strings for NPU2 or NPU1
         if any(
@@ -175,8 +178,12 @@ class XRTHostRuntime(HostRuntime):
             xclbin_uuid = xclbin.get_uuid()
             try:
                 context = pyxrt.hw_context(self._device, xclbin_uuid)
+                self._contexts_created += 1
             except RuntimeError as e:
                 if "DRM_IOCTL_AMDXDNA_CREATE_HWCTX" in str(e):
+                    print(
+                        f"Total contexts created: {self._contexts_created}, cached contexts: {len(self._contexts)}"
+                    )
                     if not xclbin_path.exists():
                         raise RuntimeError(
                             f"Failed to create hw_context because xclbin file is missing: {xclbin_path}"
