@@ -66,8 +66,8 @@ def test_objectfifo_bd_chain_scenarios_placed():
             of_shim_to_mem = object_fifo("shim_to_mem", ShimTile, MemTile, 1, input_ty, iter_count=1)
             
             # Output: 16 elements per chunk, multiple iterations
-            of_mem_to_shim = object_fifo("mem_to_shim", MemTile, ShimTile, 1, chunk_ty, iter_count=wrap_count)
-            of_mem_to_shim.set_repeat_count(task_repeat_count)  
+            of_mem_to_shim = object_fifo("mem_to_shim", MemTile, ShimTile, 1, chunk_ty, iter_count=task_repeat_count)
+            of_mem_to_shim.set_repeat_count(wrap_count)  
             
             # Link them - should read from the 128-element buffer
             object_fifo_link([of_shim_to_mem], [of_mem_to_shim], [], [0])
