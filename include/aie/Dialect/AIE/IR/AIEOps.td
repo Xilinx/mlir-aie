@@ -937,7 +937,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
         // should never be assigned by user...
-        OptionalAttr<AIEI32Attr>:$next_bd_id
+        OptionalAttr<AIEI32Attr>:$next_bd_id,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$repeat_count
   );
 
   let hasVerifier = 1;
