@@ -1205,10 +1205,20 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     auto rhs = adaptor.getRhs();
     auto lhsDefOp = lhs.getDefiningOp();
     auto rhsDefOp = rhs.getDefiningOp();
-    if ((lhsDefOp && isa<arith::MulIOp>(lhsDefOp)) ||
-        (rhsDefOp && isa<arith::MulIOp>(rhsDefOp)) ||
-        (lhsDefOp && isa<arith::MulFOp>(lhsDefOp)) ||
-        (rhsDefOp && isa<arith::MulFOp>(rhsDefOp)))
+    // Check if this is part of a MAC/FMA pattern (mul + add).
+    // We only skip conversion if BOTH operands could potentially be part of an
+    // FMA pattern (i.e., neither is a constant). Constants can never be the
+    // multiply result in an FMA, so we should allow conversion in those cases.
+    bool lhsIsMul = lhsDefOp && (isa<arith::MulIOp>(lhsDefOp) ||
+                                 isa<arith::MulFOp>(lhsDefOp));
+    bool rhsIsMul = rhsDefOp && (isa<arith::MulIOp>(rhsDefOp) ||
+                                 isa<arith::MulFOp>(rhsDefOp));
+    bool lhsIsConst = lhsDefOp && isa<arith::ConstantOp>(lhsDefOp);
+    bool rhsIsConst = rhsDefOp && isa<arith::ConstantOp>(rhsDefOp);
+
+    // Only fail if we have a multiply that could be part of FMA, and the other
+    // operand is NOT a constant
+    if ((lhsIsMul && !rhsIsConst) || (rhsIsMul && !lhsIsConst))
       return failure();
 
     Type scalarType = resultType.getElementType();

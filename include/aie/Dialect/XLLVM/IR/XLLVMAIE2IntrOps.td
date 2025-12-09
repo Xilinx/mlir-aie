@@ -349,22 +349,22 @@ def I512V64Acc32SrsAIE2pIntrOp :
 
 def Vector16AccFloatToV16BF16AIE2IntrOp :
     AIEVec2_IntrOp<"v16accfloat.to.v16bf16",
-        [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[8], [I64]>:$src)>;
 
 def Vector16AccFloatToV16BF16AIE2pIntrOp :
     AIEVec2p_IntrOp<"v16accfloat.to.v16bf16",
-        [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
 
 def Vector32AccFloatToV32BF16AIE2pIntrOp :
     AIEVec2p_IntrOp<"v32accfloat.to.v32bf16",
-        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[32], [F32]>:$src)>;
 
 def Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp :
     AIEVec2p_IntrOp<"v64accfloat.to.v64bfp16ebs8",
-        [TypeIs<"res",
+        [Pure, TypeIs<"res",
             LLVM_StructOf<[
                 VectorOfLengthAndType<[64], [I8]>,
                 VectorOfLengthAndType<[8], [I8]>]>
@@ -449,14 +449,14 @@ def ConcatI1024I512IntrOp :
 
 def VectorShuffleIntrOp :
     AIEVec2_IntrOp<"vshuffle",
-        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
                    VectorOfLengthAndType<[16], [I32]>:$rhs,
                    I32:$mode)>;
 
 def VectorShuffleAIE2pIntrOp :
     AIEVec2p_IntrOp<"vshuffle",
-        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
                    VectorOfLengthAndType<[16], [I32]>:$rhs,
                    I32:$mode)>;
@@ -578,17 +578,17 @@ def Acc64V8I256UpsAIE2pIntrOp :
 
 def Vector16BF16ToV16AccFloatAIE2IntrOp :
     AIEVec2_IntrOp<"v16bf16.to.v16accfloat",
-        [TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[8], [I64]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$src)>;
 
 def Vector16BF16ToV16AccFloatAIE2pIntrOp :
     AIEVec2p_IntrOp<"v16bf16.to.v16accfloat",
-        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$src)>;
 
 def Vector32BF16ToV32AccFloatAIE2pIntrOp :
     AIEVec2p_IntrOp<"v32bf16.to.v32accfloat",
-        [TypeIs<"res", VectorOfLengthAndType<[32], [F32]>>]>,
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[32], [F32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$src)>;
 
 // ----- EXP2 -----
