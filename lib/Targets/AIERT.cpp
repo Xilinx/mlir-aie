@@ -366,7 +366,7 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
   if (shouldApplyIteration) {
     // Use the same parameters as the working aie-ipu test
     u32 stepSize = 32; // advance by 32 32-bit words = 128 bytes per iteration  
-    u8 wrap = 4;       // wrap after 4 iterations
+    u8 wrap = bdRepeatCount;       // wrap after 4 iterations
     u8 current = 0;    // start at iteration 0
     
     llvm::errs() << "DEBUG: Setting BD iteration EARLY - stepSize=" << stepSize 
