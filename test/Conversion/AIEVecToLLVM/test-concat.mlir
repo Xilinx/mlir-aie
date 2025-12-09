@@ -1,4 +1,15 @@
+//===- test-concat.mlir -----------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2025, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt %s -split-input-file --convert-aievec-to-llvm | FileCheck %s
+// RUN: aie-opt %s -convert-aievec-to-llvm="aie-target=aie2p" -split-input-file | FileCheck %s --check-prefix=AIE2P
 
 func.func @v64i8_concat_v32i8(%arg0 : vector<32xi8>, %arg1 : vector<32xi8>) -> vector<64xi8> {
   %0 = aievec.concat %arg0, %arg1 : vector<32xi8>, vector<64xi8>
@@ -15,6 +26,12 @@ func.func @v64i8_concat_v32i8(%arg0 : vector<32xi8>, %arg1 : vector<32xi8>) -> v
 // CHECK-SAME: (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
 // CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<16xi32> to vector<64xi8>
 // CHECK-NEXT: return %[[RES]] : vector<64xi8>
+
+// AIE2P-LABEL: @v64i8_concat_v32i8
+// AIE2P-SAME: %[[ARG0:.*]]: vector<32xi8>,
+// AIE2P-SAME: %[[ARG1:.*]]: vector<32xi8>
+// AIE2P: %[[RES:.*]] = vector.shuffle %[[ARG0]], %[[ARG1]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63] : vector<32xi8>, vector<32xi8>
+// AIE2P-NEXT: return %[[RES]] : vector<64xi8>
 
 // -----
 
@@ -125,6 +142,12 @@ func.func @v16i32_concat_v8i32(%arg0 : vector<8xi32>, %arg1 : vector<8xi32>) -> 
 // CHECK-SAME: (vector<8xi32>, vector<8xi32>) -> vector<16xi32>
 // CHECK-NEXT: return %[[CONCAT]] : vector<16xi32>
 
+// AIE2P-LABEL: @v16i32_concat_v8i32
+// AIE2P-SAME: %[[ARG0:.*]]: vector<8xi32>,
+// AIE2P-SAME: %[[ARG1:.*]]: vector<8xi32>
+// AIE2P: %[[RES:.*]] = vector.shuffle %[[ARG0]], %[[ARG1]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<8xi32>, vector<8xi32>
+// AIE2P-NEXT: return %[[RES]] : vector<16xi32>
+
 // -----
 
 func.func @v32i32_concat_v8i32(%arg0 : vector<8xi32>, %arg1 : vector<8xi32>,
@@ -139,6 +162,13 @@ func.func @v32i32_concat_v8i32(%arg0 : vector<8xi32>, %arg1 : vector<8xi32>,
 // CHECK-SAME: %[[ARG0]], %[[ARG1]], %[[ARG2]], %[[ARG3]]) : 
 // CHECK-SAME: (vector<8xi32>, vector<8xi32>, vector<8xi32>, vector<8xi32>) -> vector<32xi32>
 // CHECK-NEXT: return %[[CONCAT]] : vector<32xi32>
+
+// AIE2P-LABEL: @v32i32_concat_v8i32
+// AIE2P-SAME: %[[ARG0:.*]]: vector<8xi32>, %[[ARG1:.*]]: vector<8xi32>, %[[ARG2:.*]]: vector<8xi32>, %[[ARG3:.*]]: vector<8xi32>
+// AIE2P: %[[PAIR0:.*]] = vector.shuffle %[[ARG0]], %[[ARG1]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<8xi32>, vector<8xi32>
+// AIE2P-NEXT: %[[PAIR1:.*]] = vector.shuffle %[[ARG2]], %[[ARG3]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] : vector<8xi32>, vector<8xi32>
+// AIE2P-NEXT: %[[RES:.*]] = vector.shuffle %[[PAIR0]], %[[PAIR1]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] : vector<16xi32>, vector<16xi32>
+// AIE2P-NEXT: return %[[RES]] : vector<32xi32>
 
 // -----
 

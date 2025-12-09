@@ -8,7 +8,7 @@
 
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, LocalBuffer
+from aie.iron import Program, Runtime, Worker, Buffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, Tile
 from aie.iron.controlflow import range_
@@ -19,16 +19,17 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 # Dataflow configuration
 # described in a future section of the guide...
 
+buffer = Buffer(data_ty, name="buff")
+
 
 # Task for the worker to perform
-def core_fn():
-    local = LocalBuffer(data_ty, name="local")
+def core_fn(buff):
     for i in range_(data_size):
-        local[i] = 0
+        buff[i] = 0
 
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [], placement=Tile(0, 2), while_true=False)
+my_worker = Worker(core_fn, [buffer], placement=Tile(0, 2), while_true=False)
 
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()

@@ -1205,10 +1205,20 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     auto rhs = adaptor.getRhs();
     auto lhsDefOp = lhs.getDefiningOp();
     auto rhsDefOp = rhs.getDefiningOp();
-    if ((lhsDefOp && isa<arith::MulIOp>(lhsDefOp)) ||
-        (rhsDefOp && isa<arith::MulIOp>(rhsDefOp)) ||
-        (lhsDefOp && isa<arith::MulFOp>(lhsDefOp)) ||
-        (rhsDefOp && isa<arith::MulFOp>(rhsDefOp)))
+    // Check if this is part of a MAC/FMA pattern (mul + add).
+    // We only skip conversion if BOTH operands could potentially be part of an
+    // FMA pattern (i.e., neither is a constant). Constants can never be the
+    // multiply result in an FMA, so we should allow conversion in those cases.
+    bool lhsIsMul = lhsDefOp && (isa<arith::MulIOp>(lhsDefOp) ||
+                                 isa<arith::MulFOp>(lhsDefOp));
+    bool rhsIsMul = rhsDefOp && (isa<arith::MulIOp>(rhsDefOp) ||
+                                 isa<arith::MulFOp>(rhsDefOp));
+    bool lhsIsConst = lhsDefOp && isa<arith::ConstantOp>(lhsDefOp);
+    bool rhsIsConst = rhsDefOp && isa<arith::ConstantOp>(rhsDefOp);
+
+    // Only fail if we have a multiply that could be part of FMA, and the other
+    // operand is NOT a constant
+    if ((lhsIsMul && !rhsIsConst) || (rhsIsMul && !lhsIsConst))
       return failure();
 
     Type scalarType = resultType.getElementType();
@@ -1965,6 +1975,24 @@ struct FuseExtIntoUPDPattern : OpConversionPattern<aievec::ExtOp> {
         extOp, extOp.getType(), updOp.getSource(), updOp.getIndices(),
         updOp.getOffset(), updOp.getIndex(), updOp.getVector());
 
+    return success();
+  }
+};
+
+// Convert math.exp to aievec.exp for AIE2P (will be further lowered to exp2
+// intrinsic)
+struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    if (!matchExpOpForLUT(adaptor))
+      return failure();
+
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    rewriter.replaceOpWithNewOp<aievec::ExpOp>(expOp, srcType,
+                                               adaptor.getOperand());
     return success();
   }
 };
@@ -3153,7 +3181,8 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   } else if (backend == TargetBackend::LLVMIR){
       patterns.add<
-      ComputeExpOpByLUTLLVMPattern, LowerVectorAddFOpToAIEVecAddElemOp
+      LowerVectorAddFOpToAIEVecAddElemOp,
+      LowerVectorSubFOpToAIEVecSubElemOp
       >(patterns.getContext());
   }
   patterns.add<
@@ -3202,13 +3231,72 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   populateAIEVecV2CommonConversionPatterns(patterns, backend);
   patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2>(
       patterns.getContext(), backend == TargetBackend::CPP);
+  // For AIE2 with LLVMIR backend, use LUT-based exp
+  if (backend == TargetBackend::LLVMIR) {
+    patterns.add<ComputeExpOpByLUTLLVMPattern>(patterns.getContext());
+  }
 }
+
+// AIE2p-specific version of ConvertSplatToAIEBroadcast that supports direct
+// 256-bit broadcasts without extract
+struct ConvertSplatToAIEBroadcastAIE2p
+    : OpConversionPattern<vector::BroadcastOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::BroadcastOp bcastOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    if (adaptor.getSource().getDefiningOp<vector::ExtractOp>())
+      return failure();
+
+    auto resultType = cast<VectorType>(bcastOp.getResult().getType());
+    auto flatResultType = getFlattenedVectorType(resultType);
+    Type scalarType = resultType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+    auto src = bcastOp.getSource();
+
+    // AIE2p supports both 256-bit and 512-bit broadcast directly
+    if (laneSize * elWidth == 512 || laneSize * elWidth == 256) {
+      Value newOp = rewriter.create<aievec::BroadcastScalarOp>(
+          bcastOp.getLoc(), flatResultType, src);
+      if (resultType != flatResultType)
+        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
+                                                     resultType, newOp);
+      rewriter.replaceOp(bcastOp, newOp);
+      return success();
+    }
+
+    if (laneSize * elWidth == 1024) {
+      VectorType vecType = createVectorType(512 / elWidth, scalarType);
+      auto aieBcastOp = rewriter.create<aievec::BroadcastScalarOp>(
+          bcastOp.getLoc(), vecType, src);
+      Value newOp = rewriter.create<aievec::ConcatOp>(
+          bcastOp.getLoc(), flatResultType,
+          SmallVector<Value>({aieBcastOp.getResult(), aieBcastOp.getResult()}));
+      if (resultType != flatResultType)
+        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
+                                                     resultType, newOp);
+      rewriter.replaceOp(bcastOp, newOp);
+      return success();
+    }
+
+    return failure();
+  }
+};
 
 static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
                                                 TargetBackend backend) {
   populateAIEVecV2CommonConversionPatterns(patterns, backend);
   patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2P>(
       patterns.getContext(), backend == TargetBackend::CPP);
+  // AIE2p-specific broadcast pattern that handles 256-bit directly
+  patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
+  // For AIE2P with LLVMIR backend, use aievec.exp instead of LUT
+  if (backend == TargetBackend::LLVMIR) {
+    patterns.add<ConvertMathExpToAIEVecExpOpPattern>(patterns.getContext());
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -3768,7 +3856,14 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     return laneSize != 16;
   });
 
-  target.addLegalOp<arith::SubFOp>();
+  target.addDynamicallyLegalOp<arith::SubFOp>([](arith::SubFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    unsigned laneSize = getVectorLaneSize(resultType);
+    return laneSize != 16;
+  });
 
   target.addDynamicallyLegalOp<arith::MulIOp>([](arith::MulIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
