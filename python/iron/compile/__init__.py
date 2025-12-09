@@ -19,4 +19,4 @@ from .utils import (
 # The `iron.compiledesign` decorator below caches compiled kenrels inside the `IRON_CACHE_HOME` directory.
 # Kernels are cached based on their hash value of the MLIR module string. If during compilation,
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
-IRON_CACHE_HOME = os.environ.get("IRON_CACHE_HOME", Path.home() / ".iron" / "cache")
+IRON_CACHE_HOME = Path(os.environ.get("IRON_CACHE_HOME", Path.home() / ".iron" / "cache"))
