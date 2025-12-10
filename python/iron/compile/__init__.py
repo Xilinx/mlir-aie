@@ -21,4 +21,4 @@ from .utils import (
 # we hit in the cache, the `iron.jit` will load the xclbin and instruction binary files from the cache.
 IRON_CACHE_HOME = Path(
     os.environ.get("IRON_CACHE_HOME", Path.home() / ".iron" / "cache")
-)
+).resolve()

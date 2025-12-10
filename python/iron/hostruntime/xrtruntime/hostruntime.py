@@ -54,7 +54,6 @@ class XRTHostRuntime(HostRuntime):
 
     _instance = None
     _tensor_class = XRTTensor
-    MAX_CACHED_CONTEXTS = 6
 
     def __new__(cls):
         if cls._instance is None:
@@ -90,6 +89,11 @@ class XRTHostRuntime(HostRuntime):
         ):
             self._device_type = NPU1
 
+        if self._device_type == NPU2:
+            self._cache_size = 32
+        else:
+            self._cache_size = 1
+
         self._contexts = (
             OrderedDict()
         )  # (xclbin_path, xclbin_mtime) -> (context, xclbin)
@@ -111,10 +115,10 @@ class XRTHostRuntime(HostRuntime):
         return result
 
     def _evict_context_if_needed(self, fail_if_full):
-        if len(self._contexts) >= self.MAX_CACHED_CONTEXTS:
+        if len(self._contexts) >= self._cache_size:
             if fail_if_full:
                 raise IronRuntimeError(
-                    f"Cache is full ({self.MAX_CACHED_CONTEXTS} contexts) and fail_if_full is True."
+                    f"Cache is full ({self._cache_size} contexts) and fail_if_full is True."
                 )
             # Evict oldest context
             (
@@ -150,6 +154,9 @@ class XRTHostRuntime(HostRuntime):
         kernel_name: str | None = None,
         fail_if_full: bool = False,
     ) -> XRTKernelHandle:
+        xclbin_path = xclbin_path.resolve()
+        insts_path = insts_path.resolve()
+
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise IronRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
