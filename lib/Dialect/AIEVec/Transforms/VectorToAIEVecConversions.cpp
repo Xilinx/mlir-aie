@@ -2225,6 +2225,48 @@ struct ComputeSqrtOpPattern : OpConversionPattern<math::SqrtOp> {
   }
 };
 
+struct ComputeRsqrtOpLLVMPattern : OpConversionPattern<math::RsqrtOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::RsqrtOp rsqrtOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    if (!srcType)
+      return failure();
+
+    Type scalarType = srcType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(srcType);
+
+    // Only support v16bf16 for LLVM backend
+    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
+      return failure();
+
+    StringRef funcName = "getRsqrtBf16";
+
+    VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
+    VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
+    func::FuncOp fnOp = getOrInsertFuncDecl(
+        rewriter, rsqrtOp->getParentWithTrait<OpTrait::SymbolTable>(), funcName,
+        TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
+
+    SmallVector<Value> rsqrtOperands = {adaptor.getOperand()};
+
+    Type accTypeNative = getVectorOpDestType(srcType, /*AIE2 =*/true);
+    auto callOp =
+        rewriter.create<func::CallOp>(rsqrtOp.getLoc(), fnOp, rsqrtOperands);
+    auto resCastOp = rewriter.create<vector::BitCastOp>(
+        rsqrtOp.getLoc(), accTypeNative, callOp.getResults());
+    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
+        rsqrtOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        rsqrtOp, srcType, resCastOp.getResult(), shiftParamOp.getResult());
+
+    return success();
+  }
+};
+
 // Convert math.rsqrt to a function call to compute 1.0f / sqrt(x) for
 // v16bfloat16 and v32bfloat16 types
 struct ComputeRsqrtOpPattern : OpConversionPattern<math::RsqrtOp> {
@@ -3174,6 +3216,7 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
         ComputeExpOpByLUTPattern,
+        ComputeRsqrtOpPattern,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
         LowerVectorAddIOpToAIEVecAddElemOp,
@@ -3189,7 +3232,6 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpPattern,
-      ComputeRsqrtOpPattern,
       ComputeErfOpPattern,
       ComputeAbsFOpPattern,
       ComputeAbsIOpPattern,
@@ -3231,9 +3273,10 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   populateAIEVecV2CommonConversionPatterns(patterns, backend);
   patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2>(
       patterns.getContext(), backend == TargetBackend::CPP);
-  // For AIE2 with LLVMIR backend, use LUT-based exp
+  // For AIE2 with LLVMIR backend, use LUT-based exp and rsqrt
   if (backend == TargetBackend::LLVMIR) {
-    patterns.add<ComputeExpOpByLUTLLVMPattern>(patterns.getContext());
+    patterns.add<ComputeExpOpByLUTLLVMPattern, ComputeRsqrtOpLLVMPattern>(
+        patterns.getContext());
   }
 }
 

@@ -247,6 +247,12 @@ def VectorSetI512I256IntrOp :
     Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src,
                    I32:$pos)>;
 
+def VectorSetBF512BF256IntrOp :
+    AIEVec2_IntrOp<"set.bf512.bf256",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$src,
+                   I32:$pos)>;
+
 // ----- SRS ----- 
 
 def I256V16Acc32SrsAIE2IntrOp :
@@ -422,6 +428,12 @@ def ExtI128I512IntrOp :
     AIEVec2_IntrOp<"extract.I128.I512",
         [TypeIs<"res", VectorOfLengthAndType<[4], [I32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src)>;
+
+def ExtBF256BF512IntrOp :
+    AIEVec2_IntrOp<"ext.bf256.bf512",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$src,
+                   I32:$idx)>;
   
 // ----- CONCAT ----- 
 
@@ -445,6 +457,12 @@ def ConcatI1024I512IntrOp :
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
                    VectorOfLengthAndType<[16], [I32]>:$rhs)>;
 
+def ConcatBF512BF256IntrOp :
+    AIEVec2_IntrOp<"concat.bf512.bf256",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[16], [BF16]>:$rhs)>;
+
 // ----- SHUFFLE ----- 
 
 def VectorShuffleIntrOp :
@@ -466,6 +484,10 @@ def VectorShuffleAIE2pIntrOp :
 def UndefV16I32IntrOp :
     AIEVec2_IntrOp<"v16int32",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>;
+
+def V16BFloat16IntrOp :
+    AIEVec2_IntrOp<"v16bfloat16",
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>;
 
 // ----- UPD ----- 
 
