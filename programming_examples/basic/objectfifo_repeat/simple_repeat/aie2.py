@@ -49,24 +49,24 @@ def test_objectfifo_bd_chain_scenarios_placed():
             # Input: 128 elements, BD reads 16 elements per execution, step by 32 elements
             input_size = 128    # Input: elements 0,1,2,...,127
             chunk_size = 16     # Each BD execution reads 16 elements (like aie-ipu test)  
-            input_ty = np.ndarray[(input_size,), np.dtype[np.uint8]]
-            chunk_ty = np.ndarray[(chunk_size,), np.dtype[np.uint8]]
+            input_ty = np.ndarray[(input_size,), np.dtype[np.uint32]]
+            chunk_ty = np.ndarray[(chunk_size,), np.dtype[np.uint32]]
             
             # Expected pattern: [1-16], [33-48], [65-80], [97-112] (4 groups total)
             # BD iter_count=4 gives us 4 different address offsets
             task_repeat_count = 1    
             wrap_count = 4
-            output_ty = np.ndarray[(chunk_size * wrap_count,), np.dtype[np.uint8]]  # 64 elements total 
+            output_ty = np.ndarray[(chunk_size * wrap_count,), np.dtype[np.uint32]]  # 64 elements total 
 
             ShimTile = tile(col, 0)
             MemTile = tile(col, 1)
 
             # ObjectFifos:
             # Input: 128 elements, read once
-            of_shim_to_mem = object_fifo("shim_to_mem", ShimTile, MemTile, 1, input_ty, iter_count=1)
+            of_shim_to_mem = object_fifo("shim_to_mem", ShimTile, MemTile, 1, input_ty)
             
             # Output: 16 elements per chunk, multiple iterations
-            of_mem_to_shim = object_fifo("mem_to_shim", MemTile, ShimTile, 1, chunk_ty, iter_count=task_repeat_count)
+            of_mem_to_shim = object_fifo("mem_to_shim", MemTile, ShimTile, 1, chunk_ty)
             of_mem_to_shim.set_repeat_count(wrap_count)  
             
             # Link them - should read from the 128-element buffer
@@ -97,7 +97,7 @@ def test_objectfifo_bd_chain_error_zero_placed():
         with mlir_mod_ctx() as ctx:
             @device(dev)
             def device_body():
-                line_ty = np.ndarray[(1024,), np.dtype[np.uint8]]
+                line_ty = np.ndarray[(1024,), np.dtype[np.uint32]]
                 ShimTile = tile(col, 0)
                 MemTile = tile(col, 1)
                 # This should cause an error - iter_count = 0
@@ -114,7 +114,7 @@ def test_objectfifo_bd_chain_error_high_placed():
         with mlir_mod_ctx() as ctx:
             @device(dev)
             def device_body():
-                line_ty = np.ndarray[(1024,), np.dtype[np.uint8]]
+                line_ty = np.ndarray[(1024,), np.dtype[np.uint32]]
                 ShimTile = tile(col, 0)
                 MemTile = tile(col, 1)
                 # This should cause an error - iter_count = 257
