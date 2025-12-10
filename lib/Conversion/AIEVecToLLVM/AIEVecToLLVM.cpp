@@ -1174,13 +1174,42 @@ public:
                rewriter.getI32Type()}));
     } else if (decodedMulElemOp.kind ==
                DecodedMulElemOp::Kind::BF16_BF16_FP32_16x1x2x1) {
+      // Create zero vector using the exact pattern from working reference:
+      // vbroadcast16.I512(0) -> bitcast to bf16 -> extract lower 256 bits
+      auto zero32 = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(0));
+      auto zeros_i16 = rewriter.create<xllvm::VectorBroadcast16I512IntrOp>(
+          loc, VectorType::get({32}, rewriter.getI16Type()), zero32);
+      auto zeros_bf16 = rewriter.create<LLVM::BitcastOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()), zeros_i16);
+      auto zeroVec = rewriter.create<xllvm::ExtBF256BF512IntrOp>(
+          loc, VectorType::get({16}, rewriter.getBF16Type()), zeros_bf16,
+          zero32);
+
+      // Use set+upd pattern to match working reference
+      auto idx1 = rewriter.create<LLVM::ConstantOp>(
+          loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+
+      // Set lhs at lower 256 bits, then update upper 256 bits with zeros
+      auto lhsSet = rewriter.create<xllvm::VectorSetBF512BF256IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()), adaptor.getLhs(),
+          zero32);
+      auto lhsConcat = rewriter.create<xllvm::UpdBF512BF256IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()), lhsSet, zeroVec,
+          idx1);
+
+      // Set rhs at lower 256 bits, then update upper 256 bits with zeros
+      auto rhsSet = rewriter.create<xllvm::VectorSetBF512BF256IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()), adaptor.getRhs(),
+          zero32);
+      auto rhsConcat = rewriter.create<xllvm::UpdBF512BF256IntrOp>(
+          loc, VectorType::get({32}, rewriter.getBF16Type()), rhsSet, zeroVec,
+          idx1);
+
+      // Call bf.mul16.conf with padded vectors
       mulElemOp = rewriter.create<xllvm::MulConfBF16IntrOp>(
-          loc, VectorType::get({8}, rewriter.getI64Type()),
-          forceCastOperandsToSignature(
-              rewriter, loc, operands,
-              {VectorType::get({32}, rewriter.getBF16Type()),
-               VectorType::get({32}, rewriter.getBF16Type()),
-               rewriter.getI32Type()}));
+          loc, VectorType::get({8}, rewriter.getI64Type()), lhsConcat,
+          rhsConcat, confCst);
     }
 
     // create bitcast/shape_cast for result
