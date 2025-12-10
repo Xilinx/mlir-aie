@@ -30,13 +30,16 @@ def main(opts):
     out = iron.zeros((OUT_SIZE,), dtype=np.uint32)
     ref_data = ref_data + 42
 
-    xrt_utils.setup_and_run_aie(
+    if not xrt_utils.setup_and_run_aie(
         inA,
         inB,
         out,
         ref_data,
         opts,
-    )
+    ):
+        print("PASS!")
+    else:
+        print("Failed.")
 
 
 if __name__ == "__main__":

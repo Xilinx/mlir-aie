@@ -230,9 +230,9 @@ def setup_and_run_aie(
         errors = np.size(e) - np.count_nonzero(e)
 
     if not errors:
-        print("\nPASS!\n")
         return 0
     else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
+        if opts.verbosity >= 1:
+            print("\nError count: ", errors)
+            print("\nFailed.\n")
         return 1

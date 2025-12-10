@@ -79,7 +79,7 @@ def main(opts):
     # Start the XRT context and load the kernel
     if opts.verbosity >= 1:
         print("Running...\n")
-    xrt_utils.setup_and_run_aie(
+    if xrt_utils.setup_and_run_aie(
         in1,
         None,
         out,
@@ -87,7 +87,9 @@ def main(opts):
         opts,
         enable_trace=True,
         trace_size=IN_OUT_SIZE * 4,
-    )
+    ):
+        print("Failed.")
+        return 1
 
     # Read trace from file
     with open(opts.trace_file, "rb") as f:

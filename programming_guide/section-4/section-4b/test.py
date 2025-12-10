@@ -61,6 +61,10 @@ def main(opts):
         ref,
         opts,
     )
+    if not res:
+        print("PASS!")
+    else:
+        print("Failed.")
     sys.exit(res)
 
 
