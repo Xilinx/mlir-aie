@@ -96,36 +96,3 @@ def create_default_argparser():
 def parse_args(args):
     p = create_default_argparser()
     return p.parse_args(args)
-
-
-#
-# Create new device and kernel based on xclbin
-#
-# If you want to setup XRT buffers as well, look at xrt.py/setup_aie
-# to setup your environment
-#
-def init_xrt_load_kernel(opts):
-    # Get a device handle
-    device = xrt.device(0)
-
-    # Load the xclbin
-    xclbin = xrt.xclbin(opts.xclbin)
-
-    # Load the kernel
-    kernels = xclbin.get_kernels()
-    try:
-        xkernel = [k for k in kernels if opts.kernel in k.get_name()][0]
-    except:
-        print(f"Kernel '{opts.kernel}' not found in '{opts.xclbin}'")
-        exit(-1)
-
-    # Register xclbin
-    device.register_xclbin(xclbin)
-
-    # Get a hardware context
-    context = xrt.hw_context(device, xclbin.get_uuid())
-
-    # get a kernel handle
-    kernel = xrt.kernel(context, xkernel.get_name())
-
-    return (device, kernel)

@@ -32,12 +32,6 @@ Test/ Host code utilities.
 * `parse_args` 
     * Calls create_default_argparser and returns the parsed results
     * Useful if you don't need additional custom args
-* `init_xrt_load_kernel`
-    * Helpful wrapper for a number of commonly used XRT calls in `test.py`
-        * Declare an XRT `device`
-        * Load the xclbin file and register the `xclbin`
-        * Declare hardware context and use that to return the `device` and `kernel`
-
 
 ## Trace utilites ([trace.py](./trace.py))
 
