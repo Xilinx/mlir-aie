@@ -233,8 +233,8 @@ struct AIEObjectFifoStatefulTransformPass
     if (createOp.getVia_DMA())
       return true;
 
-    if (createOp.getRepeatCount().has_value())
-      return true;
+    // if (createOp.getRepeatCount().has_value())
+    //   return true;
 
     if (createOp.getConsumerTiles().size() == 1 &&
         createOp.getDimensionsToStream().empty()) {
@@ -351,8 +351,8 @@ struct AIEObjectFifoStatefulTransformPass
                                             LockAnalysis &lockAnalysis,
                                             ObjectFifoCreateOp op, int numElem,
                                             int joinDistribFactor,
-                                            TileOp creation_tile
-                                            ) {
+                                            TileOp creation_tile,
+                                            int repeatCount) {
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
@@ -387,7 +387,7 @@ struct AIEObjectFifoStatefulTransformPass
                               : 0;
         int prodLockID = lockAnalysis.getLockID(creation_tile);
         assert(prodLockID >= 0 && "No more locks to allocate!");
-        int prodLockValue = (numElem - initValues);
+        int prodLockValue = (numElem - initValues) * repeatCount;
         auto prodLock = builder.create<LockOp>(
             builder.getUnknownLoc(), creation_tile, prodLockID, prodLockValue);
         prodLock.getOperation()->setAttr(
@@ -398,7 +398,7 @@ struct AIEObjectFifoStatefulTransformPass
 
         int consLockID = lockAnalysis.getLockID(creation_tile);
         assert(consLockID >= 0 && "No more locks to allocate!");
-        int consLockValue = initValues;
+        int consLockValue = initValues * repeatCount;
         auto consLock = builder.create<LockOp>(
             builder.getUnknownLoc(), creation_tile, consLockID, consLockValue);
         consLock.getOperation()->setAttr(
@@ -721,7 +721,7 @@ struct AIEObjectFifoStatefulTransformPass
       of_elem_index++;
     }
 
-    // int repeatCount = 1;
+    int repeatCount = 1;
     int joinDistribFactor = 1;
     // if (op.getRepeatCount().has_value())
     //   repeatCount = op.getRepeatCount().value();
@@ -736,7 +736,7 @@ struct AIEObjectFifoStatefulTransformPass
     }
     std::vector<LockOp> locks =
         createObjectFifoLocks(builder, lockAnalysis, op, numElem,
-                              joinDistribFactor, creation_tile);
+                              joinDistribFactor, creation_tile, repeatCount);
     buffersPerFifo[op] = buffers;
     locksPerFifo[op] = locks;
   }
@@ -757,8 +757,7 @@ struct AIEObjectFifoStatefulTransformPass
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ,
                 BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions,
-                std::optional<PacketInfoAttr> bdPacket,
-                std::optional<int> bdRepeatCount = std::nullopt) {
+                std::optional<PacketInfoAttr> bdPacket, std::optional<int> bdRepeatCount = std::nullopt) {
     if (acqLock)
       builder.create<UseLockOp>(builder.getUnknownLoc(), acqLock, acqLockAction,
                                 acqMode);
@@ -767,18 +766,14 @@ struct AIEObjectFifoStatefulTransformPass
                                     bdPacket->getPktType(),
                                     bdPacket->getPktId());
     }
-    // Convert repeat count to int32_t  
     int32_t repeatCount = 0;
     if (bdRepeatCount.has_value()) {
       repeatCount = static_cast<int32_t>(bdRepeatCount.value());
     }
-    
-    // Handle optional packet attribute - convert to actual value or nullptr
     PacketInfoAttr packetAttr = nullptr;
     if (bdPacket.has_value()) {
       packetAttr = bdPacket.value();
     }
-    
     if (!dims.getValue().empty() && padDimensions) {
       builder.create<DMABDOp>(builder.getUnknownLoc(), buff, 
                               static_cast<int32_t>(offset), 
@@ -818,7 +813,7 @@ struct AIEObjectFifoStatefulTransformPass
                      BDPadLayoutArrayAttr padDimensions,
                      std::optional<PacketInfoAttr> bdPacket,
                      bool distribOrJoin = false,
-                     std::optional<int> dmaRepeatCount = std::nullopt) {
+                     int repeatCount = 1) {
     LockOp acqLock;
     LockOp relLock;
     int acqMode = 1;
@@ -850,12 +845,8 @@ struct AIEObjectFifoStatefulTransformPass
                       : locksPerFifo[op][prodLockIndex];
       }
     }
-    IntegerAttr repeatCountAttr = nullptr;
-    if (dmaRepeatCount.has_value()) {
-      repeatCountAttr = builder.getI32IntegerAttr(dmaRepeatCount.value());
-    }
     createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
-             offset, len, succ, dims, padDimensions, bdPacket, dmaRepeatCount);
+             offset, len, succ, dims, padDimensions, bdPacket, repeatCount);
   }
 
   /// Function that either calls createAIETileDMA(), createShimDMA() or
@@ -899,8 +890,9 @@ struct AIEObjectFifoStatefulTransformPass
 
     // check for repeat count
     int repeatCount = 1;
-    // if (op.getRepeatCount().has_value())
-    //   repeatCount = op.getRepeatCount().value();
+    int repeat_count = 1;
+    if (op.getRepeatCount().has_value())
+      repeat_count = op.getRepeatCount().value();
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
@@ -968,16 +960,10 @@ struct AIEObjectFifoStatefulTransformPass
           succ = builder.createBlock(endBlock);
 
         builder.setInsertionPointToStart(curr);
-
-        // check for repeat count
-        int dmaRepeatCount = 0;
-        if (op.getRepeatCount().has_value()) { 
-          dmaRepeatCount = op.getRepeatCount().value() - 1;
-        }
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                                 buffersPerFifo[target][elemIndex], /*offset*/ 0,
                                 len, channelDir, elemIndex, succ, dims, nullptr,
-                                bdPacket, dmaRepeatCount);
+                                bdPacket, false, repeat_count);
         curr = succ;
         totalBlocks++;
       }
@@ -1050,16 +1036,10 @@ struct AIEObjectFifoStatefulTransformPass
       MemRefType buffer = externalBuffersPerFifo[op][elemIndex].getType();
       int len = buffer.getNumElements();
       builder.setInsertionPointToStart(curr);
-
-      // check for repeat count
-      int dmaRepeatCount = 0;
-      if (op.getRepeatCount().has_value()) { 
-        dmaRepeatCount = op.getRepeatCount().value() - 1;
-      }
       createBdBlock<ExternalBufferOp>(builder, op, lockMode, acqNum, relNum,
                                       externalBuffersPerFifo[op][elemIndex],
                                       /*offset*/ 0, len, channelDir, elemIndex,
-                                      succ, dims, nullptr, bdPacket, dmaRepeatCount);
+                                      succ, dims, nullptr, bdPacket, false, 1);
       curr = succ;
       elemIndex++;
     }
@@ -1084,13 +1064,10 @@ struct AIEObjectFifoStatefulTransformPass
     int relNum = 1;
 
     // check for repeat count
-    int dmaRepeatCount = 0;
-    if (op.getRepeatCount().has_value()) { 
-      dmaRepeatCount = op.getRepeatCount().value() - 1;
-    }
     int repeatCount = 1;
-    // if (op.getRepeatCount().has_value())
-    //   repeatCount = op.getRepeatCount().value();
+    int repeat_count = 1;
+    if (op.getRepeatCount().has_value())
+      repeat_count = op.getRepeatCount().value();
 
     // check for BD chain repeat count
     auto bdChainIterCount = op.getIterCount();
@@ -1111,10 +1088,10 @@ struct AIEObjectFifoStatefulTransformPass
         auto dstOffsets = linkOp->getDstOffsets();
 
         // if (linkOp->getRepeatCount().has_value())
-        //   if (linkOp->getInputObjectFifos()[0] == op) {
-        //     acqNum *= linkOp->getRepeatCount().value();
-        //     relNum *= linkOp->getRepeatCount().value();
-        //   }
+          // if (linkOp->getInputObjectFifos()[0] == op) {
+          //   acqNum *= linkOp->getRepeatCount().value();
+          //   relNum *= linkOp->getRepeatCount().value();
+          // }
 
         if (linkOp->isJoin()) {
           // compute offset and length
@@ -1261,7 +1238,7 @@ struct AIEObjectFifoStatefulTransformPass
         createBdBlock<BufferOp>(builder, target, lockMode, acqNum, relNum,
                                 buffersPerFifo[target][elemIndex], offset,
                                 lenOut, channelDir, lockIndex, succ, dims,
-                                padDimensions, bdPacket, distribOrJoin, dmaRepeatCount);
+                                padDimensions, bdPacket, distribOrJoin, repeat_count);
         curr = succ;
         totalBlocks++;
       }
@@ -1883,12 +1860,6 @@ struct AIEObjectFifoStatefulTransformPass
         if (auto bdChainIterCount = createOp.getIterCount()) {
           consumerFifo.setIterCountAttr(
               builder.getI32IntegerAttr(*bdChainIterCount));
-        }
-        // Propagate repeat_count attribute from the original createOp
-        // to the new consumerFifo
-        if (auto repeatCount = createOp.getRepeatCount()) {
-          consumerFifo.setRepeatCountAttr(
-              builder.getI32IntegerAttr(*repeatCount));
         }
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
 
