@@ -193,15 +193,17 @@ class HostRuntime(ABC):
             trace_buff, ctrl_buff = cls._extract_prefix(
                 trace_buff, trace_config.trace_size, np.uint8
             )
-        trace_buff = trace_buff.view(np.uint32).reshape(
-            trace_config.trace_size // np.uint32.itemsize
+        trace_buff = (
+            trace_buff.numpy()
+            .view(np.uint32)
+            .reshape(trace_config.trace_size // np.uint32.itemsize)
         )
         return trace_buff, ctrl_buff
 
     @classmethod
     def _extract_prefix(cls, tensor: Tensor, prefix_shape, prefix_dtype):
         # Wrapper function to separate output data and trace data from a single output buffer stream
-        flat_tensor = tensor.reshape((-1,)).view(np.uint8)
+        flat_tensor = tensor.reshape((-1,)).numpy().view(np.uint8)
         prefix_bytes = np.prod(prefix_shape) * prefix_dtype.itemsize
         output_prefix = (
             flat_tensor[:prefix_bytes].view(prefix_dtype).reshape(prefix_shape)
