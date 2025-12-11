@@ -116,6 +116,16 @@ class XRTHostRuntime(HostRuntime):
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
         atexit.register(self.cleanup)
 
+    @classmethod
+    def read_insts(cls, insts_path: Path):
+        # Overload the function in the generic class so we can use xrt-specific handling of elf files.
+        ext = insts_path.suffix.lower()
+        if ext == ".elf":
+            elf = xrt.elf(str(insts_path))
+            return xrt.module(elf)
+        else:
+            return super().read_insts(insts_path)
+
     def _load_with_filemodtime_check(
         self, path: Path, load_func, expected_mtime: float, name: str
     ):

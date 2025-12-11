@@ -136,17 +136,17 @@ class HostRuntime(ABC):
     def read_insts(cls, insts_path: Path):
         """
         Reads instructions from the given file.
-        If the file extension is .bin or .elf, uses binary read.
+        If the file extension is .bin or uses binary read.
         If the file extension is .txt, uses sequence (text) read.
         """
         ext = insts_path.suffix.lower()
-        if ext == ".bin" or ext == ".elf":
+        if ext == ".bin":
             return cls.read_insts_binary(insts_path)
         elif ext == ".txt":
             return cls.read_insts_sequence(insts_path)
         else:
             raise HostRuntimeError(
-                "Unsupported file extension for instruction file: expected .bin, .elf, or .txt"
+                "Unsupported file extension for instruction file: expected .bin or .txt"
             )
 
     @classmethod
@@ -171,8 +171,8 @@ class HostRuntime(ABC):
                 filler = tensor((1,), dtype=np.uint32)
                 args.append(filler)
 
-                trace_buff = tensor((trace_config.trace_size,), dtype=np.uint8)
-                args.append(trace_buff)
+            trace_buff = tensor((trace_config.trace_size,), dtype=np.uint8)
+            args.append(trace_buff)
 
     @classmethod
     def extract_trace_from_args(
