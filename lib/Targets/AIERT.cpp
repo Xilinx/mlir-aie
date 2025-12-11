@@ -342,58 +342,15 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 
   auto bdOp = *block.getOps<AIE::DMABDOp>().begin();
 
-  // Apply BD iteration EARLY - before address/length setup (like working aie-ipu test)
-  llvm::errs() << "DEBUG: Checking BD repeat count for BD " << bdId 
-               << " at tile (" << col << "," << row << ")\n";
-               
-  // Apply BD iteration to BDs on memory tile (0,1) regardless of repeat_count
-  // This ensures the actual data transfer BD gets the iteration
-  bool shouldApplyIteration = (col == 0 && row == 1);
   auto bdRepeatCount = bdOp.getRepeatCount();
   
-  if (bdRepeatCount) {
-    llvm::errs() << "DEBUG: Found BD repeat count = " << bdRepeatCount << "\n";
-  } else {
-    llvm::errs() << "DEBUG: No BD repeat count found";
-    if (shouldApplyIteration) {
-      llvm::errs() << " - but applying BD iteration to memory tile BD";
-    } else {
-      llvm::errs() << " - skipping BD iteration setup";
-    }
-    llvm::errs() << "\n";
-  }
+  uint32_t stepSize = 4; // advance by 4 32-bit words : fixed for now for testing
+  uint8_t wrap = bdRepeatCount;       // wrap after 4 iterations
+  uint8_t current = 0;    // start at iteration 0
   
-  if (shouldApplyIteration) {
-    // Use the same parameters as the working aie-ipu test
-    u32 stepSize = 32; // advance by 32 32-bit words : fixed for now for testing
-    u8 wrap = bdRepeatCount;       // wrap after 4 iterations
-    u8 current = 0;    // start at iteration 0
-    
-    llvm::errs() << "DEBUG: Setting BD iteration EARLY - stepSize=" << stepSize 
-                 << ", wrap=" << (int)wrap << ", current=" << (int)current << "\n";
-    
-    AieRC result = XAie_DmaSetBdIteration(&dmaTileBd, stepSize, wrap, current);
-    llvm::errs() << "DEBUG: XAie_DmaSetBdIteration returned: " << result;
-    if (result == XAIE_OK) {
-      llvm::errs() << " (XAIE_OK)";
-    } else if (result == XAIE_FEATURE_NOT_SUPPORTED) {
-      llvm::errs() << " (XAIE_FEATURE_NOT_SUPPORTED)";
-    } else {
-      llvm::errs() << " (OTHER: ";
-      if (AIERCTOSTR.count(result)) {
-        llvm::errs() << AIERCTOSTR.at(result);
-      } else {
-        llvm::errs() << "UNKNOWN";
-      }
-      llvm::errs() << ")";
-    }
-    llvm::errs() << "\n";
-    
-    if (result != XAIE_OK) {
-      return bdOp.emitOpError() << "XAie_DmaSetBdIteration failed with " << AIERCTOSTR.at(result);
-    }
-    llvm::errs() << "DEBUG: Successfully set BD iteration EARLY\n";
-  }
+  AieRC result = XAie_DmaSetBdIteration(&dmaTileBd, stepSize, wrap, current);
+  if (result != XAIE_OK) 
+    return bdOp.emitOpError() << "XAie_DmaSetBdIteration failed with " << AIERCTOSTR.at(result);
 
   if (targetModel.isShimNOCTile(col, row)) {
     // write them out like this so they show up with names in debug prints
