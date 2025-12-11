@@ -13,8 +13,11 @@ from aie.utils.ml import DataShaper
 import time
 import os
 import numpy as np
-from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
+from aie.iron.hostruntime.xrtruntime.xrt import write_out_trace
 import aie.utils.test as test_utils
+import aie.iron as iron
+from aie.iron.hostruntime import TraceConfig, HostRuntime
+from pathlib import Path
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
@@ -152,17 +155,8 @@ def main(opts):
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-    app = setup_aie(
-        xclbin_path,
-        insts_path,
-        shape_in_act,
-        dtype_in,
-        shape_total_wts,
-        dtype_wts,
-        shape_out,
-        dtype_out,
-        enable_trace=enable_trace,
-        trace_size=trace_size,
+    kernel_handle = iron.hostruntime.DEFAULT_IRON_RUNTIME.load(
+        Path(xclbin_path), Path(insts_path)
     )
 
     # ------------------------------------------------------
@@ -440,19 +434,32 @@ def main(opts):
     # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(total_wts3, dtype=dtype_wts)
+    out_size = np.prod(shape_out) * dtype_out.itemsize
+    out = iron.tensor(out_size, dtype=dtype_out)
+
+    buffers = [in1, in2, out]
+
+    trace_config = None
+    if enable_trace:
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_after_last_tensor=False,
+            enable_ctrl_pkts=False,
+            last_tensor_shape=out.shape,
+            last_tensor_dtype=out.dtype,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
     for i in range(num_iter):
-        start = time.time_ns()
-        aie_output = execute(app, ifm_mem_fmt, total_wts3) * block_2_relu_3
-        stop = time.time_ns()
+        ret = iron.hostruntime.DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
 
-        if enable_trace:
-            aie_output, trace = extract_trace(
-                aie_output, shape_out, dtype_out, trace_size
-            )
-            write_out_trace(trace, trace_file)
-
-        npu_time = stop - start
-        npu_time_total = npu_time_total + npu_time
+        if trace_config:
+            trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
+            trace_buffer = trace_buffer.view(np.uint32)
+            write_out_trace(trace_buffer, trace_file)
+        aie_output = out.numpy() * block_2_relu_3
+        npu_time_total = npu_time_total + ret.npu_time
 
     # ------------------------------------------------------
     # Reorder output data-layout
