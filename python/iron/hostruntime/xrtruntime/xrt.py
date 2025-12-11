@@ -6,6 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import numpy as np
+from pathlib import Path
 from .tensor import XRTTensor
 from .. import DEFAULT_IRON_RUNTIME
 
@@ -35,18 +36,23 @@ def return_buffer_results(
     trace_size=0,
     trace_after_output=False,
     enable_ctrl_pkts=False,
+    trace_tensor=None,
 ):
     trace_buff = None
     ctrl_buff = None
+    out_buff = output.numpy() if output is not None else None
+
     if trace_size:
         if trace_after_output:
             out_buff, trace_buff = extract_prefix(out_buff, output.shape, output.dtype)
         else:
-            trace_buff = app.buffers[-1].numpy()
+            if trace_tensor is not None:
+                trace_buff = trace_tensor.numpy()
 
-        if enable_ctrl_pkts:
-            trace_buff, ctrl_buff = extract_prefix(trace_buff, trace_size, np.uint8)
-        trace_buff = trace_buff.view(np.uint32).reshape(trace_size // 4)
+        if trace_buff is not None:
+            if enable_ctrl_pkts:
+                trace_buff, ctrl_buff = extract_prefix(trace_buff, trace_size, np.uint8)
+            trace_buff = trace_buff.view(np.uint32).reshape(trace_size // 4)
 
     return out_buff, trace_buff, ctrl_buff
 
@@ -92,7 +98,7 @@ def setup_and_run_aie(
     enable_ctrl_pkts=False,
 ):
     enable_trace = opts.trace_size > 0
-    kernel_handle = DEFAULT_IRON_RUNTIME.load(opts.xclbin_path, opts.insts_path)
+    kernel_handle = DEFAULT_IRON_RUNTIME.load(Path(opts.xclbin), Path(opts.instr))
 
     buffers = []
     if in1:
@@ -114,14 +120,15 @@ def setup_and_run_aie(
     else:
         buffers.append(out)
 
+    trace_tensor = None
     if enable_trace and not trace_after_output:
         # This is a dummy buffer
         buffers.append(
             XRTTensor((8,), dtype=np.uint32),
         )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
 
-        trace_buff = XRTTensor((opts.trace_size,), dtype=np.uint8)
-        buffers.append(trace_buff)
+        trace_tensor = XRTTensor((opts.trace_size,), dtype=np.uint8)
+        buffers.append(trace_tensor)
 
     ret = DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
 
@@ -134,6 +141,7 @@ def setup_and_run_aie(
         trace_size=opts.trace_size,
         trace_after_output=trace_after_output,
         enable_ctrl_pkts=enable_ctrl_pkts,
+        trace_tensor=trace_tensor,
     )
 
     if enable_trace:

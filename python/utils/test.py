@@ -54,35 +54,35 @@ def create_default_argparser():
     )
     p.add_argument(
         "-t",
-        "--trace_sz",
+        "--trace-sz",
         dest="trace_size",
         default=0,
         type=int,
         help="trace size in bytes",
     )
     p.add_argument(
-        "--trace_file",
+        "--trace-file",
         dest="trace_file",
         default="trace.txt",
         help="where to store trace output",
     )
     p.add_argument(
         "-i1s",
-        "--in1_size",
+        "--in1-size",
         dest="in1_size",
         default=0,
         help="Input 1 buffer size in bytes",
     )
     p.add_argument(
         "-i2s",
-        "--in2_size",
+        "--in2-size",
         dest="in2_size",
         default=0,
         help="Input 2 buffer size in bytes",
     )
     p.add_argument(
         "-os",
-        "--out_size",
+        "--out-size",
         dest="out_size",
         default=0,
         help="Output buffer size in bytes",

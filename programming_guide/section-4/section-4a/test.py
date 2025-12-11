@@ -48,9 +48,10 @@ def main(opts):
     # ------------------------------------------------------
     for i in range(num_iter):
         # Run kernel
-        npu_time = iron.hostruntime.DEFAULT_IRON_RUNTIME.run(
+        result = iron.hostruntime.DEFAULT_IRON_RUNTIME.run(
             kernel_handle, [in_buffer, in_factor, out]
         )
+        npu_time = result.npu_time
 
         # Warmup iterations do not count towards average runtime.
         if i < opts.warmup_iters:

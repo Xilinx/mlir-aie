@@ -71,22 +71,25 @@ def main(opts):
 
     rng = np.random.default_rng(seed=42)
     ref_data = rng.integers(1, 100, size=IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
-    in1 = iron.tensor(rng.integers(1, 100, size=IN_OUT_SIZE, dtype=IN_OUT_DTYPE))
-    in1 = iron.tensor([SCALAR_FACTOR], dtype=IN_OUT_DTYPE)
+    in1 = iron.tensor(
+        rng.integers(1, 100, size=IN_OUT_SIZE, dtype=IN_OUT_DTYPE), dtype=IN_OUT_DTYPE
+    )
+    in2 = iron.tensor([SCALAR_FACTOR], dtype=IN_OUT_DTYPE)
     out = iron.zeros(IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
     ref_data = ref_data * SCALAR_FACTOR
 
     # Start the XRT context and load the kernel
     if opts.verbosity >= 1:
         print("Running...\n")
+
+    opts.trace_size = IN_OUT_SIZE * 4
+
     if xrt_utils.setup_and_run_aie(
         in1,
-        None,
+        in2,
         out,
         ref_data,
         opts,
-        enable_trace=True,
-        trace_size=IN_OUT_SIZE * 4,
     ):
         print("Failed.")
         return 1
@@ -146,5 +149,6 @@ def main(opts):
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
+    p.add_argument("--mlir", dest="mlir", help="MLIR file for trace parsing")
     opts = p.parse_args(sys.argv[1:])
     sys.exit(main(opts))
