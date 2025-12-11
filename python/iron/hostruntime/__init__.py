@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 import sys
-from .tensor import Tensor
+from .tensor_class import Tensor
 
 try:
     import pyxrt
@@ -26,7 +26,7 @@ if has_xrt:
     DEFAULT_IRON_RUNTIME = XRTHostRuntime()
     DEFAULT_IRON_TENSOR_CLASS = XRTTensor
 else:
-    from .tensor import CPUOnlyTensor
+    from .tensor_class import CPUOnlyTensor
 
     DEFAULT_IRON_RUNTIME = None
     DEFAULT_IRON_TENSOR_CLASS = CPUOnlyTensor
@@ -36,7 +36,7 @@ def get_current_device():
     return DEFAULT_IRON_RUNTIME.device()
 
 
-def tensor(*args, **kwargs):
+def tensor_class(*args, **kwargs):
     return DEFAULT_IRON_TENSOR_CLASS(*args, **kwargs)
 
 

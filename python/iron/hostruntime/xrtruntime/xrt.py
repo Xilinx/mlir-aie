@@ -123,10 +123,10 @@ def setup_and_run_aie(
         trace_buff = XRTTensor((opts.trace_size,), dtype=np.uint8)
         buffers.append(trace_buff)
 
-    npu_time = DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
+    ret = DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
 
     if opts.verbosity >= 1:
-        print("npu_time: ", npu_time / 1000.0, " us")
+        print("npu_time: ", ret.npu_time / 1000.0, " us")
     output, trace_buffer, ctrl_buffer = return_buffer_results(
         in1,
         in2,

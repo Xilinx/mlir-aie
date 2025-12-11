@@ -254,7 +254,11 @@ class XRTHostRuntime(HostRuntime):
         return kernel_handle
 
     def run(
-        self, kernel_handle: XRTKernelHandle, args, only_if_loaded=False
+        self,
+        kernel_handle: XRTKernelHandle,
+        args,
+        only_if_loaded=False,
+        fail_on_error=True,
     ) -> XRTKernelResult:
         args = [a for a in args if not callable(a)]  # Filter out callable functions
         if not all([isinstance(a, self._tensor_class) for a in args]):
@@ -292,10 +296,11 @@ class XRTHostRuntime(HostRuntime):
         r = h.wait()
         stop = time.time_ns()
 
-        if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise HostRuntimeError(f"Kernel returned {str(r)}")
         # delete insts buffer
         del insts_bo
+
+        if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise HostRuntimeError(f"Kernel returned {str(r)}")
 
         return KernelResult(r, stop - start, None)
 

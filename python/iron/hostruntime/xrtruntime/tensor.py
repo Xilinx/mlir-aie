@@ -9,7 +9,7 @@
 import numpy as np
 import pyxrt as xrt
 
-from ..tensor import Tensor
+from ..tensor_class import Tensor
 from ....helpers.util import np_ndarray_type_get_shape
 
 
