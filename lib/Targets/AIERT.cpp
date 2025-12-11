@@ -344,13 +344,15 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
 
   auto bdRepeatCount = bdOp.getRepeatCount();
   
-  uint32_t stepSize = 4; // advance by 4 32-bit words : fixed for now for testing
-  uint8_t wrap = bdRepeatCount;       // wrap after 4 iterations
-  uint8_t current = 0;    // start at iteration 0
-  
-  AieRC result = XAie_DmaSetBdIteration(&dmaTileBd, stepSize, wrap, current);
-  if (result != XAIE_OK) 
-    return bdOp.emitOpError() << "XAie_DmaSetBdIteration failed with " << AIERCTOSTR.at(result);
+  if (bdRepeatCount > 1) {
+    uint32_t stepSize = 0; // advance by 4 32-bit words : fixed for now for testing
+    uint8_t wrap = bdRepeatCount;       // wrap after 4 iterations
+    uint8_t current = 0;    // start at iteration 0
+    
+    AieRC result = XAie_DmaSetBdIteration(&dmaTileBd, stepSize, wrap, current);
+    if (result != XAIE_OK) 
+      return bdOp.emitOpError() << "XAie_DmaSetBdIteration failed with " << AIERCTOSTR.at(result);
+  }
 
   if (targetModel.isShimNOCTile(col, row)) {
     // write them out like this so they show up with names in debug prints
