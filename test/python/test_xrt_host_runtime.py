@@ -23,7 +23,7 @@ from aie.iron.controlflow import range_
 from aie.iron.hostruntime.xrtruntime.hostruntime import (
     XRTHostRuntime,
     XRTKernelHandle,
-    IronRuntimeError,
+    HostRuntimeError,
 )
 from aie.iron.compile import IRON_CACHE_HOME
 
@@ -176,7 +176,7 @@ def test_only_if_loaded(xrt_runtime, temp_xclbins):
     h1 = XRTKernelHandle(x_path, "MLIR_AIE", i_path, x_mtime, i_mtime)
 
     # Should fail because not loaded
-    with pytest.raises(IronRuntimeError, match="is not loaded"):
+    with pytest.raises(HostRuntimeError, match="is not loaded"):
         xrt_runtime.run(h1, [], only_if_loaded=True)
 
     # Load it
@@ -222,7 +222,7 @@ def test_fail_if_full(xrt_runtime, temp_xclbins):
         xrt_runtime.load(files["a"][0], files["c"][1], "MLIR_AIE", fail_if_full=True)
 
         # Should fail because it needs a new context (C)
-        with pytest.raises(IronRuntimeError, match="Cache is full"):
+        with pytest.raises(HostRuntimeError, match="Cache is full"):
             xrt_runtime.load(
                 files["c"][0], files["c"][1], "MLIR_AIE", fail_if_full=True
             )

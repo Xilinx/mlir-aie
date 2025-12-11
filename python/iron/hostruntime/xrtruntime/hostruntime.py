@@ -302,7 +302,7 @@ class XRTHostRuntime(HostRuntime):
         if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise HostRuntimeError(f"Kernel returned {str(r)}")
 
-        return KernelResult(r, stop - start, None)
+        return XRTKernelResult(r, stop - start, None)
 
     def device(self) -> Device:
         # return an instance of the device type
