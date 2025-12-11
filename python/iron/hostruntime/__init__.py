@@ -36,7 +36,7 @@ def get_current_device():
     return DEFAULT_IRON_RUNTIME.device()
 
 
-def tensor_class(*args, **kwargs):
+def tensor(*args, **kwargs):
     return DEFAULT_IRON_TENSOR_CLASS(*args, **kwargs)
 
 

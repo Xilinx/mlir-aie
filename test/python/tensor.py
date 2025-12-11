@@ -11,7 +11,7 @@
 import pytest
 import numpy as np
 import aie.iron as iron
-from aie.iron.hostruntime.tensor import CPUOnlyTensor, Tensor
+from aie.iron.hostruntime.tensor_class import CPUOnlyTensor, Tensor
 from aie.iron.hostruntime.xrtruntime.tensor import XRTTensor
 from ml_dtypes import bfloat16
 
