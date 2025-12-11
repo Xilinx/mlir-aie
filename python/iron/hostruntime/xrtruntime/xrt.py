@@ -7,8 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import numpy as np
 from .tensor import XRTTensor
-from ..npukernel import NPUKernel
-from . import DEFAULT_IRON_RUNTIME
+from .. import DEFAULT_IRON_RUNTIME
 
 
 # checks # of bits. Odd number returns a 1. Even returns 0.
@@ -30,7 +29,6 @@ def create_ctrl_pkt(
 
 
 def return_buffer_results(
-    app,
     input_one=None,
     input_two=None,
     output=None,
@@ -40,14 +38,9 @@ def return_buffer_results(
 ):
     trace_buff = None
     ctrl_buff = None
-    if not (input_two is None):
-        out_buff = app.buffers[2].numpy()
-    else:
-        out_buff = app.buffers[1].numpy()
-
     if trace_size:
         if trace_after_output:
-            out_buff, trace_buff = extract_prefix(out_buf, output.shape, output.dtype)
+            out_buff, trace_buff = extract_prefix(out_buff, output.shape, output.dtype)
         else:
             trace_buff = app.buffers[-1].numpy()
 
@@ -130,14 +123,11 @@ def setup_and_run_aie(
         trace_buff = XRTTensor((opts.trace_size,), dtype=np.uint8)
         buffers.append(trace_buff)
 
-    kernel_handle = iron.DEFAULt_IRON_RUNTIME.run()
-
-    npu_time = app.run()
+    npu_time = DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
 
     if opts.verbosity >= 1:
         print("npu_time: ", npu_time / 1000.0, " us")
     output, trace_buffer, ctrl_buffer = return_buffer_results(
-        app,
         in1,
         in2,
         out,

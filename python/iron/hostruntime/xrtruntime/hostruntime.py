@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import pyxrt
 
-from ..hostruntime import HostRuntime, IronRuntimeError, KernelHandle
+from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from ...device import Device, NPU1, NPU2
 from .tensor import XRTTensor
 
@@ -46,6 +46,22 @@ class XRTKernelHandle(KernelHandle):
                 self.insts_mtime,
             )
         )
+
+
+class XRTKernelResult(KernelResult):
+    """A wrapper around data produced as the result of running a kernel with the PyXRT runtime"""
+
+    def __init__(
+        self,
+        ret: pyxrt.ert_cmd_state,
+        npu_time: int,
+        trace_data: XRTTensor | None = None,
+    ):
+        super().__init__(npu_time, trace_data)
+        self.ret = ret
+
+    def is_success(self) -> bool:
+        return self.ret == pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED
 
 
 class XRTHostRuntime(HostRuntime):
@@ -107,9 +123,9 @@ class XRTHostRuntime(HostRuntime):
         result = load_func(path)
         mtime_after = path.stat().st_mtime
         if mtime_before != mtime_after:
-            raise IronRuntimeError(f"{name} {path} modified during loading.")
+            raise HostRuntimeError(f"{name} {path} modified during loading.")
         if mtime_after != expected_mtime:
-            raise IronRuntimeError(
+            raise HostRuntimeError(
                 f"{name} {path} modified during loading (mtime mismatch)."
             )
         return result
@@ -117,7 +133,7 @@ class XRTHostRuntime(HostRuntime):
     def _evict_context_if_needed(self, fail_if_full):
         if len(self._contexts) >= self._cache_size:
             if fail_if_full:
-                raise IronRuntimeError(
+                raise HostRuntimeError(
                     f"Cache is full ({self._cache_size} contexts) and fail_if_full is True."
                 )
             # Evict oldest context
@@ -138,13 +154,13 @@ class XRTHostRuntime(HostRuntime):
                     del kernel
                     del insts
                 except Exception as e:
-                    raise IronRuntimeError(str(e))
+                    raise HostRuntimeError(str(e))
 
             try:
                 del evicted_context
                 del evicted_xclbin
             except Exception as e:
-                raise IronRuntimeError(str(e))
+                raise HostRuntimeError(str(e))
             logging.debug(f"Evicted context for {evicted_key[0]}")
 
     def load(
@@ -158,11 +174,11 @@ class XRTHostRuntime(HostRuntime):
         insts_path = insts_path.resolve()
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
-            raise IronRuntimeError(
+            raise HostRuntimeError(
                 f"xclbin {xclbin_path} does not exist or is not a file."
             )
         if not insts_path.exists() or not insts_path.is_file():
-            raise IronRuntimeError(
+            raise HostRuntimeError(
                 f"insts {insts_path} does not exist or is not a file."
             )
 
@@ -213,7 +229,7 @@ class XRTHostRuntime(HostRuntime):
             kernel_name = kernels[0].get_name()
         else:
             if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
-                raise IronRuntimeError(
+                raise HostRuntimeError(
                     f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
                 )
 
@@ -237,21 +253,23 @@ class XRTHostRuntime(HostRuntime):
             )
         return kernel_handle
 
-    def run(self, kernel_handle: XRTKernelHandle, args, only_if_loaded=False) -> int:
+    def run(
+        self, kernel_handle: XRTKernelHandle, args, only_if_loaded=False
+    ) -> XRTKernelResult:
         args = [a for a in args if not callable(a)]  # Filter out callable functions
         if not all([isinstance(a, self._tensor_class) for a in args]):
-            raise IronRuntimeError(
+            raise HostRuntimeError(
                 f"The {self.__class__.__name__} can only take {self._tensor_class.__name__} as arguments, but got: {args}"
             )
 
         if only_if_loaded:
             context_key = (kernel_handle.xclbin_path, kernel_handle.xclbin_mtime)
             if context_key not in self._contexts:
-                raise IronRuntimeError(
+                raise HostRuntimeError(
                     f"Context for kernel {kernel_handle.kernel_name} is not loaded and only_if_loaded=True."
                 )
 
-        # Ensure kernel is loaded and MRU
+        # Ensure kernel is loaded
         self.load(
             kernel_handle.xclbin_path,
             kernel_handle.insts_path,
@@ -275,10 +293,11 @@ class XRTHostRuntime(HostRuntime):
         stop = time.time_ns()
 
         if r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise IronRuntimeError(f"Kernel returned {str(r)}")
+            raise HostRuntimeError(f"Kernel returned {str(r)}")
         # delete insts buffer
         del insts_bo
-        return stop - start
+
+        return KernelResult(r, stop - start, None)
 
     def device(self) -> Device:
         # return an instance of the device type
@@ -301,14 +320,14 @@ class XRTHostRuntime(HostRuntime):
                 del context
                 del xclbin
             except Exception as e:
-                raise IronRuntimeError(str(e))
+                raise HostRuntimeError(str(e))
 
         # Clear device
         if self._device is not None:
             try:
                 del self._device
             except Exception as e:
-                IronRuntimeError(str(e))
+                HostRuntimeError(str(e))
             self._device = None
 
         logging.debug("Cleaned up AIE device manager")

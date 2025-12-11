@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 
 from ..device import Device
+from .tensor import Tensor
 
 
 class KernelHandle(ABC):
@@ -20,6 +21,36 @@ class KernelHandle(ABC):
         pass
 
 
+class KernelResult(ABC):
+    """A wrapper around data produced as the result of running a kernel"""
+
+    def __init__(self, npu_time: int, trace_data: Tensor | None = None):
+        self._npu_time = npu_time
+        self._trace_data = trace_data
+
+    @property
+    def npu_execution_time(self) -> int:
+        return self._npu_time
+
+    @property
+    def trace_data(self) -> Tensor | None:
+        return self._trace_data
+
+    @property
+    def trace_size(self) -> int:
+        if self._trace_data:
+            return self._trace_data.size()
+        else:
+            return 0
+
+    def has_trace(self) -> bool:
+        return not (self._trace_data is None)
+
+    @abstractmethod
+    def is_success(self) -> bool:
+        pass
+
+
 class HostRuntime(ABC):
     """An abstract class for a generic host runtime"""
 
@@ -28,12 +59,16 @@ class HostRuntime(ABC):
         pass
 
     @abstractmethod
-    def run(self, kernel_handle: KernelHandle, *args, only_if_loaded=False) -> int:
+    def run(
+        self, kernel_handle: KernelHandle, *args, only_if_loaded=False
+    ) -> KernelResult:
         pass
 
-    def load_and_run(self, load_args: list, run_args: list) -> int:
+    def load_and_run(
+        self, load_args: list, run_args: list
+    ) -> tuple[KernelHandle, KernelResult]:
         handle = self.load(*load_args)
-        return self.run(handle, list(run_args))
+        return handle, self.run(handle, list(run_args))
 
     @abstractmethod
     def device(self) -> Device:
@@ -67,7 +102,7 @@ class HostRuntime(ABC):
     def read_insts(cls, insts_path: Path):
         """
         Reads instructions from the given file.
-        If the file extension is .bin, uses binary read.
+        If the file extension is .bin or .elf, uses binary read.
         If the file extension is .txt, uses sequence (text) read.
         """
         ext = insts_path.suffix.lower()
@@ -76,12 +111,12 @@ class HostRuntime(ABC):
         elif ext == ".txt":
             return cls.read_insts_sequence(insts_path)
         else:
-            raise IronRuntimeError(
-                "Unsupported file extension for instruction file: expected .bin or .txt"
+            raise HostRuntimeError(
+                "Unsupported file extension for instruction file: expected .bin, .elf, or .txt"
             )
 
 
-class IronRuntimeError(Exception):
+class HostRuntimeError(Exception):
     """
     Error raised when a NPU kernel encounters an error during runtime operations.
     """
