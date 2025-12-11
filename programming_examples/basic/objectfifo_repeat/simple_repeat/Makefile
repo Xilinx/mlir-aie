@@ -14,7 +14,7 @@ include ${srcdir}/../../../makefile-common
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = simple_repeat
-N = 4096 # input size in int32 elements
+N = 128 # input size in int32 elements
 memtile_repeat_count = 4
 data_out_size = $(shell echo $$(($(N) * $(memtile_repeat_count))))
 
