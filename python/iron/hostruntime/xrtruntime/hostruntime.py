@@ -251,11 +251,14 @@ class XRTHostRuntime(HostRuntime):
                 f"Reusing kernel: {kernel_name} from xclbin {Path(xclbin_path).name}"
             )
         else:
-            kernel = pyxrt.kernel(context, kernel_name)
-
             insts = self._load_with_filemodtime_check(
                 insts_path, self.read_insts, insts_mtime, "insts"
             )
+
+            if isinstance(insts, pyxrt.module):
+                kernel = pyxrt.kernel(context, insts, kernel_name)
+            else:
+                kernel = pyxrt.kernel(context, kernel_name)
 
             self._kernels[kernel_handle] = (kernel, insts)
             logging.debug(
@@ -291,23 +294,29 @@ class XRTHostRuntime(HostRuntime):
         )
 
         kernel, insts = self._kernels[kernel_handle]
-        insts_bo = pyxrt.bo(
-            self._device,
-            insts.nbytes,
-            pyxrt.bo.cacheable,
-            kernel.group_id(1),
-        )
-        insts_bo.write(insts.view(np.uint8), 0)
-        insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
         buffers = [a.buffer_object() for a in args]
 
+        insts_bo = None
+        insts_bytes = 0
+        if not isinstance(insts, pyxrt.module):
+            insts_bytes = insts.nbytes
+            insts_bo = pyxrt.bo(
+                self._device,
+                insts_bytes,
+                pyxrt.bo.cacheable,
+                kernel.group_id(1),
+            )
+            insts_bo.write(insts.view(np.uint8), 0)
+            insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+
         start = time.time_ns()
-        h = kernel(3, insts_bo, insts.nbytes, *buffers)
+        h = kernel(3, insts_bo, insts_bytes, *buffers)
         r = h.wait()
         stop = time.time_ns()
 
         # delete insts buffer
-        del insts_bo
+        if insts_bo:
+            del insts_bo
 
         if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
             raise HostRuntimeError(f"Kernel returned {str(r)}")

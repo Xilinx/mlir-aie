@@ -9,6 +9,7 @@ import numpy as np
 from pathlib import Path
 from .tensor import XRTTensor
 from .. import DEFAULT_IRON_RUNTIME
+from ..hostruntime import HostRuntime, TraceConfig
 
 
 # checks # of bits. Odd number returns a 1. Even returns 0.
@@ -27,43 +28,6 @@ def create_ctrl_pkt(
     header = (ctrl_pkt_read_id << 24) | (operation << 22) | (beats << 20) | addr
     header |= (0x1 ^ parity(header)) << 31
     return header
-
-
-def return_buffer_results(
-    input_one=None,
-    input_two=None,
-    output=None,
-    trace_size=0,
-    trace_after_output=False,
-    enable_ctrl_pkts=False,
-    trace_tensor=None,
-):
-    trace_buff = None
-    ctrl_buff = None
-    out_buff = output.numpy() if output is not None else None
-
-    if trace_size:
-        if trace_after_output:
-            out_buff, trace_buff = extract_prefix(out_buff, output.shape, output.dtype)
-        else:
-            if trace_tensor is not None:
-                trace_buff = trace_tensor.numpy()
-
-        if trace_buff is not None:
-            if enable_ctrl_pkts:
-                trace_buff, ctrl_buff = extract_prefix(trace_buff, trace_size, np.uint8)
-            trace_buff = trace_buff.view(np.uint32).reshape(trace_size // 4)
-
-    return out_buff, trace_buff, ctrl_buff
-
-
-# Wrapper function to separate output data and trace data from a single output buffer stream
-def extract_prefix(out_buf, prefix_shape, prefix_dtype):
-    out_buf_flat = out_buf.reshape((-1,)).view(np.uint8)
-    prefix_bytes = np.prod(prefix_shape) * prefix_dtype.itemsize
-    output_prefix = out_buf_flat[:prefix_bytes].view(prefix_dtype).reshape(prefix_shape)
-    output_suffix = out_buf_flat[-prefix_bytes:]
-    return output_prefix, output_suffix
 
 
 def extract_tile(data):
@@ -97,7 +61,6 @@ def setup_and_run_aie(
     trace_after_output=False,
     enable_ctrl_pkts=False,
 ):
-    enable_trace = opts.trace_size > 0
     kernel_handle = DEFAULT_IRON_RUNTIME.load(Path(opts.xclbin), Path(opts.instr))
 
     buffers = []
@@ -105,46 +68,35 @@ def setup_and_run_aie(
         buffers.append(in1)
     if in2:
         buffers.append(in2)
-
-    if enable_trace and trace_after_output:
-        # Create a new, extended out tensor.
-        out_size = opts.trace_size
-        if out:
-            out_size += out.nbytes
-        out = XRTTensor(out_size, dtype=np.uint8)
-        buffers.append(out)
-    elif not out:
-        # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
-        out = XRTTensor((1,), dtype=np.uint32)
-        buffers.append(out)
-    else:
+    if out:
         buffers.append(out)
 
-    trace_tensor = None
-    if enable_trace and not trace_after_output:
-        # This is a dummy buffer
-        buffers.append(
-            XRTTensor((8,), dtype=np.uint32),
-        )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
-
-        trace_tensor = XRTTensor((opts.trace_size,), dtype=np.uint8)
-        buffers.append(trace_tensor)
+    trace_config = None
+    if opts.trace_size > 0:
+        trace_config = TraceConfig(
+            trace_size=opts.trace_size,
+            trace_after_last_tensor=trace_after_output,
+            enable_ctrl_pkts=enable_ctrl_pkts,
+            last_tensor_shape=out.shape if out else None,
+            last_tensor_dtype=out.dtype if out else None,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
 
     ret = DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
 
     if opts.verbosity >= 1:
         print("npu_time: ", ret.npu_time / 1000.0, " us")
-    output, trace_buffer, ctrl_buffer = return_buffer_results(
-        in1,
-        in2,
-        out,
-        trace_size=opts.trace_size,
-        trace_after_output=trace_after_output,
-        enable_ctrl_pkts=enable_ctrl_pkts,
-        trace_tensor=trace_tensor,
-    )
 
-    if enable_trace:
+    trace_buffer = None
+    ctrl_buffer = None
+    if trace_config:
+        trace_buffer, ctrl_buffer = HostRuntime.extract_trace_from_args(
+            buffers, trace_config
+        )
+
+    output = out.numpy() if out else None
+
+    if trace_config:
         if opts.verbosity >= 1:
             print("trace_buffer shape: ", trace_buffer.shape)
             print("trace_buffer dtype: ", trace_buffer.dtype)

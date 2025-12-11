@@ -18,7 +18,7 @@ class HostRuntimeError(Exception):
 
 
 class TraceConfig:
-    DEFAULT_TRACE_BUFFER_INDEX = 7
+    DEFAULT_TRACE_BUFFER_INDEX = 4
 
     def __init__(
         self,
