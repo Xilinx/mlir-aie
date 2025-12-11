@@ -6,88 +6,9 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import numpy as np
-import copy
-from pathlib import Path
-import pyxrt as xrt
-import os
 from .tensor import XRTTensor
-from .. import DEFAULT_IRON_RUNTIME
 from ..npukernel import NPUKernel
-
-
-#
-# AI Engine Application class
-#
-# This class configures and invokes the XRT components needed to run an AIE
-# Application. This includes xrt.device, xrt.kernel, xrt.hw_context and XRTTensors.
-# You can use this class to simplify and reduce the amount of code needed to
-# set up an AIE application.
-#
-class AIE_Application:
-    # Registers xclbin to set up the device, hw context and kernel. This
-    # also sets up the instruction stream
-    def __init__(self, xclbin_path, insts_path, kernel_name="MLIR_AIE"):
-        self.buffers = []
-        self._npu_kernel = NPUKernel(xclbin_path, insts_path, kernel_name=kernel_name)
-
-    # Registers an XRTTensor object given group_id
-    def register_buffer(self, tensor):
-        self.buffers.append(tensor)
-
-    # This syncs the instruction buffer to the device and then invokes the
-    # `call` function before wait for the call to complete
-    def run(self):
-        return self._npu_kernel(*[b for b in self.buffers])
-
-    def __del__(self):
-        del self._npu_kernel
-
-
-# Sets up the AIE application with support for up to 2 input buffers, 1 output
-# buffer, and an optional trace buffer. Under the hood, we call declare an
-# AIE_Application object and register the buffers used given the buffer datatype
-# and shapes.
-def setup_aie(
-    xclbin_path,
-    insts_path,
-    in0,
-    in1,
-    out,
-    enable_trace=False,
-    trace_size=16384,
-    trace_after_output=False,
-):
-    app = AIE_Application(xclbin_path, insts_path)
-
-    if in0:
-        app.register_buffer(in0)
-    if in1:
-        app.register_buffer(in1)
-
-    if enable_trace and trace_after_output:
-        # Create a new, extended out tensor.
-        out_size = trace_size
-        if out:
-            out_size += out.nbytes
-        out = XRTTensor(out_size, dtype=np.uint8)
-        app.register_buffer(out)
-    elif not out:
-        # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
-        out = XRTTensor((1,), dtype=np.uint32)
-        app.register_buffer(out)
-    else:
-        app.register_buffer(out)
-
-    if enable_trace and not trace_after_output:
-        # This is a dummy buffer
-        app.register_buffer(
-            XRTTensor((8,), dtype=np.uint32),
-        )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
-
-        trace_buff = XRTTensor((trace_size,), dtype=np.uint8)
-        app.register_buffer(trace_buff)
-
-    return app
+from . import DEFAULT_IRON_RUNTIME
 
 
 # checks # of bits. Odd number returns a 1. Even returns 0.
@@ -140,7 +61,7 @@ def return_buffer_results(
 # Wrapper function to separate output data and trace data from a single output buffer stream
 def extract_prefix(out_buf, prefix_shape, prefix_dtype):
     out_buf_flat = out_buf.reshape((-1,)).view(np.uint8)
-    prefix_bytes = np.prod(prefix_shape) * prefix.dtype.itemsize
+    prefix_bytes = np.prod(prefix_shape) * prefix_dtype.itemsize
     output_prefix = out_buf_flat[:prefix_bytes].view(prefix_dtype).reshape(prefix_shape)
     output_suffix = out_buf_flat[-prefix_bytes:]
     return output_prefix, output_suffix
@@ -178,20 +99,43 @@ def setup_and_run_aie(
     enable_ctrl_pkts=False,
 ):
     enable_trace = opts.trace_size > 0
-    app = setup_aie(
-        opts.xclbin,
-        opts.instr,
-        in1,
-        in2,
-        out,
-        enable_trace=enable_trace,
-        trace_size=opts.trace_size,
-        trace_after_output=trace_after_output,
-    )
+    kernel_handle = DEFAULT_IRON_RUNTIME.load(opts.xclbin_path, opts.insts_path)
+
+    buffers = []
+    if in1:
+        buffers.append(in1)
+    if in2:
+        buffers.append(in2)
+
+    if enable_trace and trace_after_output:
+        # Create a new, extended out tensor.
+        out_size = opts.trace_size
+        if out:
+            out_size += out.nbytes
+        out = XRTTensor(out_size, dtype=np.uint8)
+        buffers.append(out)
+    elif not out:
+        # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
+        out = XRTTensor((1,), dtype=np.uint32)
+        buffers.append(out)
+    else:
+        buffers.append(out)
+
+    if enable_trace and not trace_after_output:
+        # This is a dummy buffer
+        buffers.append(
+            XRTTensor((8,), dtype=np.uint32),
+        )  # TODO Needed so register buf 7 succeeds (not needed in C/C++ host code)
+
+        trace_buff = XRTTensor((opts.trace_size,), dtype=np.uint8)
+        buffers.append(trace_buff)
+
+    kernel_handle = iron.DEFAULt_IRON_RUNTIME.run()
 
     npu_time = app.run()
 
-    print("npu_time: ", npu_time / 1000.0, " us")
+    if opts.verbosity >= 1:
+        print("npu_time: ", npu_time / 1000.0, " us")
     output, trace_buffer, ctrl_buffer = return_buffer_results(
         app,
         in1,

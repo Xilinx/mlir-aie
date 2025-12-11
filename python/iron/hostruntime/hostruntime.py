@@ -71,7 +71,7 @@ class HostRuntime(ABC):
         If the file extension is .txt, uses sequence (text) read.
         """
         ext = insts_path.suffix.lower()
-        if ext == ".bin":
+        if ext == ".bin" or ext == ".elf":
             return cls.read_insts_binary(insts_path)
         elif ext == ".txt":
             return cls.read_insts_sequence(insts_path)
