@@ -121,8 +121,8 @@ class XRTHostRuntime(HostRuntime):
         # Overload the function in the generic class so we can use xrt-specific handling of elf files.
         ext = insts_path.suffix.lower()
         if ext == ".elf":
-            elf = xrt.elf(str(insts_path))
-            return xrt.module(elf)
+            elf = pyxrt.elf(str(insts_path))
+            return pyxrt.module(elf)
         else:
             return super().read_insts(insts_path)
 
