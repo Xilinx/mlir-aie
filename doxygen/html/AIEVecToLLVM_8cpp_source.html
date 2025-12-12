@@ -4519,313 +4519,371 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l04278" name="l04278"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1FoldAIECastOps.html"> 4278</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1FoldAIECastOps.html">FoldAIECastOps</a> : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::CastOp&gt; {</div>
 <div class="line"><a id="l04279" name="l04279"></a><span class="lineno"> 4279</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::CastOp&gt;::ConvertOpToLLVMPattern;</div>
 <div class="line"><a id="l04280" name="l04280"></a><span class="lineno"> 4280</span> </div>
-<div class="line"><a id="l04281" name="l04281"></a><span class="lineno"> 4281</span>  LogicalResult</div>
-<div class="line"><a id="l04282" name="l04282"></a><span class="lineno"> 4282</span>  matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,</div>
-<div class="line"><a id="l04283" name="l04283"></a><span class="lineno"> 4283</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l04284" name="l04284"></a><span class="lineno"> 4284</span>    rewriter.replaceOp(castOp, adaptor.getSource());</div>
-<div class="line"><a id="l04285" name="l04285"></a><span class="lineno"> 4285</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l04286" name="l04286"></a><span class="lineno"> 4286</span>  }</div>
-<div class="line"><a id="l04287" name="l04287"></a><span class="lineno"> 4287</span>};</div>
-</div>
-<div class="line"><a id="l04288" name="l04288"></a><span class="lineno"> 4288</span> </div>
-<div class="foldopen" id="foldopen04289" data-start="{" data-end="};">
-<div class="line"><a id="l04289" name="l04289"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ShuffleOpConversion.html"> 4289</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1ShuffleOpConversion.html">ShuffleOpConversion</a></div>
-<div class="line"><a id="l04290" name="l04290"></a><span class="lineno"> 4290</span>    : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::ShuffleOp&gt; {</div>
-<div class="line"><a id="l04291" name="l04291"></a><span class="lineno"> 4291</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::ShuffleOp&gt;::ConvertOpToLLVMPattern;</div>
-<div class="line"><a id="l04292" name="l04292"></a><span class="lineno"> 4292</span> </div>
-<div class="line"><a id="l04293" name="l04293"></a><span class="lineno"> 4293</span>  LogicalResult</div>
-<div class="line"><a id="l04294" name="l04294"></a><span class="lineno"> 4294</span>  matchAndRewrite(aievec::ShuffleOp shuffleOp, OpAdaptor adaptor,</div>
-<div class="line"><a id="l04295" name="l04295"></a><span class="lineno"> 4295</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l04296" name="l04296"></a><span class="lineno"> 4296</span>    <span class="keyword">auto</span> loc = shuffleOp.getLoc();</div>
-<div class="line"><a id="l04297" name="l04297"></a><span class="lineno"> 4297</span>    <span class="keyword">auto</span> lhs = adaptor.getLhs();</div>
-<div class="line"><a id="l04298" name="l04298"></a><span class="lineno"> 4298</span>    <span class="keyword">auto</span> rhs = adaptor.getRhs();</div>
-<div class="line"><a id="l04299" name="l04299"></a><span class="lineno"> 4299</span>    <span class="keyword">auto</span> i32ty = rewriter.getI32Type();</div>
-<div class="line"><a id="l04300" name="l04300"></a><span class="lineno"> 4300</span>    <span class="keyword">auto</span> v16xi32ty = VectorType::get({16}, i32ty);</div>
-<div class="line"><a id="l04301" name="l04301"></a><span class="lineno"> 4301</span>    <span class="keywordflow">if</span> (!rhs)</div>
-<div class="line"><a id="l04302" name="l04302"></a><span class="lineno"> 4302</span>      rhs = rewriter.create&lt;xllvm::UndefV16I32IntrOp&gt;(loc, v16xi32ty);</div>
+<div class="line"><a id="l04281" name="l04281"></a><span class="lineno"> 4281</span>  <span class="comment">// Helper to check if a value is a constant zero</span></div>
+<div class="line"><a id="l04282" name="l04282"></a><span class="lineno"> 4282</span>  <span class="keyword">static</span> <span class="keywordtype">bool</span> isConstantZero(Value val) {</div>
+<div class="line"><a id="l04283" name="l04283"></a><span class="lineno"> 4283</span>    DenseElementsAttr denseAttr;</div>
+<div class="line"><a id="l04284" name="l04284"></a><span class="lineno"> 4284</span> </div>
+<div class="line"><a id="l04285" name="l04285"></a><span class="lineno"> 4285</span>    <span class="comment">// Check for both arith.constant and llvm.mlir.constant</span></div>
+<div class="line"><a id="l04286" name="l04286"></a><span class="lineno"> 4286</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> arithConstOp = val.getDefiningOp&lt;arith::ConstantOp&gt;()) {</div>
+<div class="line"><a id="l04287" name="l04287"></a><span class="lineno"> 4287</span>      denseAttr = dyn_cast&lt;DenseElementsAttr&gt;(arithConstOp.getValue());</div>
+<div class="line"><a id="l04288" name="l04288"></a><span class="lineno"> 4288</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> llvmConstOp = val.getDefiningOp&lt;LLVM::ConstantOp&gt;()) {</div>
+<div class="line"><a id="l04289" name="l04289"></a><span class="lineno"> 4289</span>      denseAttr = dyn_cast&lt;DenseElementsAttr&gt;(llvmConstOp.getValue());</div>
+<div class="line"><a id="l04290" name="l04290"></a><span class="lineno"> 4290</span>    }</div>
+<div class="line"><a id="l04291" name="l04291"></a><span class="lineno"> 4291</span> </div>
+<div class="line"><a id="l04292" name="l04292"></a><span class="lineno"> 4292</span>    <span class="keywordflow">if</span> (!denseAttr || !denseAttr.isSplat())</div>
+<div class="line"><a id="l04293" name="l04293"></a><span class="lineno"> 4293</span>      <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a id="l04294" name="l04294"></a><span class="lineno"> 4294</span> </div>
+<div class="line"><a id="l04295" name="l04295"></a><span class="lineno"> 4295</span>    <span class="keyword">auto</span> splatAttr = denseAttr.getSplatValue&lt;Attribute&gt;();</div>
+<div class="line"><a id="l04296" name="l04296"></a><span class="lineno"> 4296</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> floatAttr = dyn_cast&lt;FloatAttr&gt;(splatAttr))</div>
+<div class="line"><a id="l04297" name="l04297"></a><span class="lineno"> 4297</span>      <span class="keywordflow">return</span> floatAttr.getValue().isZero();</div>
+<div class="line"><a id="l04298" name="l04298"></a><span class="lineno"> 4298</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> intAttr = dyn_cast&lt;IntegerAttr&gt;(splatAttr))</div>
+<div class="line"><a id="l04299" name="l04299"></a><span class="lineno"> 4299</span>      <span class="keywordflow">return</span> intAttr.getValue().isZero();</div>
+<div class="line"><a id="l04300" name="l04300"></a><span class="lineno"> 4300</span> </div>
+<div class="line"><a id="l04301" name="l04301"></a><span class="lineno"> 4301</span>    <span class="keywordflow">return</span> <span class="keyword">false</span>;</div>
+<div class="line"><a id="l04302" name="l04302"></a><span class="lineno"> 4302</span>  }</div>
 <div class="line"><a id="l04303" name="l04303"></a><span class="lineno"> 4303</span> </div>
-<div class="line"><a id="l04304" name="l04304"></a><span class="lineno"> 4304</span>    <span class="keyword">auto</span> modeAttrVal =</div>
-<div class="line"><a id="l04305" name="l04305"></a><span class="lineno"> 4305</span>        rewriter</div>
-<div class="line"><a id="l04306" name="l04306"></a><span class="lineno"> 4306</span>            .create&lt;LLVM::ConstantOp&gt;(loc, i32ty,</div>
-<div class="line"><a id="l04307" name="l04307"></a><span class="lineno"> 4307</span>                                      <span class="keyword">static_cast&lt;</span>int32_t<span class="keyword">&gt;</span>(shuffleOp.getMode()))</div>
-<div class="line"><a id="l04308" name="l04308"></a><span class="lineno"> 4308</span>            .getResult();</div>
-<div class="line"><a id="l04309" name="l04309"></a><span class="lineno"> 4309</span>    <span class="keyword">auto</span> vShuffleVal = rewriter</div>
-<div class="line"><a id="l04310" name="l04310"></a><span class="lineno"> 4310</span>                           .create&lt;xllvm::VectorShuffleIntrOp&gt;(</div>
-<div class="line"><a id="l04311" name="l04311"></a><span class="lineno"> 4311</span>                               loc, v16xi32ty,</div>
-<div class="line"><a id="l04312" name="l04312"></a><span class="lineno"> 4312</span>                               forceCastOperandsToSignature(</div>
-<div class="line"><a id="l04313" name="l04313"></a><span class="lineno"> 4313</span>                                   rewriter, loc,</div>
-<div class="line"><a id="l04314" name="l04314"></a><span class="lineno"> 4314</span>                                   <span class="comment">/*operands=*/</span>{lhs, rhs, modeAttrVal},</div>
-<div class="line"><a id="l04315" name="l04315"></a><span class="lineno"> 4315</span>                                   <span class="comment">/*signature=*/</span>{v16xi32ty, v16xi32ty, i32ty}))</div>
-<div class="line"><a id="l04316" name="l04316"></a><span class="lineno"> 4316</span>                           .getResult();</div>
-<div class="line"><a id="l04317" name="l04317"></a><span class="lineno"> 4317</span> </div>
-<div class="line"><a id="l04318" name="l04318"></a><span class="lineno"> 4318</span>    vShuffleVal = forceCastValueToType(rewriter, loc, vShuffleVal,</div>
-<div class="line"><a id="l04319" name="l04319"></a><span class="lineno"> 4319</span>                                       shuffleOp.getResult().getType());</div>
+<div class="line"><a id="l04304" name="l04304"></a><span class="lineno"> 4304</span>  LogicalResult</div>
+<div class="line"><a id="l04305" name="l04305"></a><span class="lineno"> 4305</span>  matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,</div>
+<div class="line"><a id="l04306" name="l04306"></a><span class="lineno"> 4306</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l04307" name="l04307"></a><span class="lineno"> 4307</span>    <span class="comment">// Special handling for isResAcc=true with zero constant source</span></div>
+<div class="line"><a id="l04308" name="l04308"></a><span class="lineno"> 4308</span>    <span class="comment">// The backend cannot handle zeroinitializer for accumulator types,</span></div>
+<div class="line"><a id="l04309" name="l04309"></a><span class="lineno"> 4309</span>    <span class="comment">// so we must use the vbroadcast.zero.acc1024 intrinsic instead</span></div>
+<div class="line"><a id="l04310" name="l04310"></a><span class="lineno"> 4310</span>    <span class="keywordflow">if</span> (!castOp.getIsResAcc() || !isConstantZero(adaptor.getSource())) {</div>
+<div class="line"><a id="l04311" name="l04311"></a><span class="lineno"> 4311</span>      <span class="comment">// Default behavior: fold the cast</span></div>
+<div class="line"><a id="l04312" name="l04312"></a><span class="lineno"> 4312</span>      rewriter.replaceOp(castOp, adaptor.getSource());</div>
+<div class="line"><a id="l04313" name="l04313"></a><span class="lineno"> 4313</span>      <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l04314" name="l04314"></a><span class="lineno"> 4314</span>    }</div>
+<div class="line"><a id="l04315" name="l04315"></a><span class="lineno"> 4315</span> </div>
+<div class="line"><a id="l04316" name="l04316"></a><span class="lineno"> 4316</span>    Location loc = castOp.getLoc();</div>
+<div class="line"><a id="l04317" name="l04317"></a><span class="lineno"> 4317</span>    <span class="keyword">auto</span> srcVecType = cast&lt;VectorType&gt;(castOp.getSource().getType());</div>
+<div class="line"><a id="l04318" name="l04318"></a><span class="lineno"> 4318</span>    Type srcElemType = srcVecType.getElementType();</div>
+<div class="line"><a id="l04319" name="l04319"></a><span class="lineno"> 4319</span>    <span class="keywordtype">int</span> lanes = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(srcVecType);</div>
 <div class="line"><a id="l04320" name="l04320"></a><span class="lineno"> 4320</span> </div>
-<div class="line"><a id="l04321" name="l04321"></a><span class="lineno"> 4321</span>    rewriter.replaceOp(shuffleOp, vShuffleVal);</div>
-<div class="line"><a id="l04322" name="l04322"></a><span class="lineno"> 4322</span> </div>
-<div class="line"><a id="l04323" name="l04323"></a><span class="lineno"> 4323</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l04324" name="l04324"></a><span class="lineno"> 4324</span>  }</div>
-<div class="line"><a id="l04325" name="l04325"></a><span class="lineno"> 4325</span>};</div>
+<div class="line"><a id="l04321" name="l04321"></a><span class="lineno"> 4321</span>    <span class="comment">// For f32 vectors (accfloat), use vbroadcast.zero.acc1024</span></div>
+<div class="line"><a id="l04322" name="l04322"></a><span class="lineno"> 4322</span>    <span class="keywordflow">if</span> (srcElemType.isF32() &amp;&amp; lanes == 16) {</div>
+<div class="line"><a id="l04323" name="l04323"></a><span class="lineno"> 4323</span>      <span class="comment">// Call vbroadcast.zero.acc1024 to get vector&lt;16xi64&gt;</span></div>
+<div class="line"><a id="l04324" name="l04324"></a><span class="lineno"> 4324</span>      <span class="keyword">auto</span> zeroAcc1024 =</div>
+<div class="line"><a id="l04325" name="l04325"></a><span class="lineno"> 4325</span>          rewriter.create&lt;xllvm::VectorBroadcastZeroAcc1024IntrOp&gt;(</div>
+<div class="line"><a id="l04326" name="l04326"></a><span class="lineno"> 4326</span>              loc, VectorType::get({16}, rewriter.getI64Type()));</div>
+<div class="line"><a id="l04327" name="l04327"></a><span class="lineno"> 4327</span> </div>
+<div class="line"><a id="l04328" name="l04328"></a><span class="lineno"> 4328</span>      <span class="comment">// Extract lower 8 elements to get vector&lt;8xi64&gt; (512-bit accumulator)</span></div>
+<div class="line"><a id="l04329" name="l04329"></a><span class="lineno"> 4329</span>      SmallVector&lt;int64_t&gt; extractMask = {0, 1, 2, 3, 4, 5, 6, 7};</div>
+<div class="line"><a id="l04330" name="l04330"></a><span class="lineno"> 4330</span>      <span class="keyword">auto</span> zeroAcc512 = rewriter.create&lt;vector::ShuffleOp&gt;(</div>
+<div class="line"><a id="l04331" name="l04331"></a><span class="lineno"> 4331</span>          loc, zeroAcc1024, zeroAcc1024, extractMask);</div>
+<div class="line"><a id="l04332" name="l04332"></a><span class="lineno"> 4332</span> </div>
+<div class="line"><a id="l04333" name="l04333"></a><span class="lineno"> 4333</span>      <span class="comment">// Bitcast back to vector&lt;16xf32&gt; to match the cast result type</span></div>
+<div class="line"><a id="l04334" name="l04334"></a><span class="lineno"> 4334</span>      <span class="keyword">auto</span> result = rewriter.create&lt;LLVM::BitcastOp&gt;(</div>
+<div class="line"><a id="l04335" name="l04335"></a><span class="lineno"> 4335</span>          loc, VectorType::get({16}, rewriter.getF32Type()), zeroAcc512);</div>
+<div class="line"><a id="l04336" name="l04336"></a><span class="lineno"> 4336</span> </div>
+<div class="line"><a id="l04337" name="l04337"></a><span class="lineno"> 4337</span>      rewriter.replaceOp(castOp, result);</div>
+<div class="line"><a id="l04338" name="l04338"></a><span class="lineno"> 4338</span>      <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l04339" name="l04339"></a><span class="lineno"> 4339</span>    }</div>
+<div class="line"><a id="l04340" name="l04340"></a><span class="lineno"> 4340</span> </div>
+<div class="line"><a id="l04341" name="l04341"></a><span class="lineno"> 4341</span>    <span class="comment">// Fallback: fold the cast (should not reach here for supported cases)</span></div>
+<div class="line"><a id="l04342" name="l04342"></a><span class="lineno"> 4342</span>    rewriter.replaceOp(castOp, adaptor.getSource());</div>
+<div class="line"><a id="l04343" name="l04343"></a><span class="lineno"> 4343</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l04344" name="l04344"></a><span class="lineno"> 4344</span>  }</div>
+<div class="line"><a id="l04345" name="l04345"></a><span class="lineno"> 4345</span>};</div>
 </div>
-<div class="line"><a id="l04326" name="l04326"></a><span class="lineno"> 4326</span> </div>
-<div class="line"><a id="l04327" name="l04327"></a><span class="lineno"> 4327</span><span class="comment">// Convert aievec.exp to xllvm.exp2 intrinsic for AIE2P</span></div>
-<div class="line"><a id="l04328" name="l04328"></a><span class="lineno"> 4328</span><span class="comment">// Uses the identity: exp(x) = exp2(x * log2(e))</span></div>
-<div class="foldopen" id="foldopen04329" data-start="{" data-end="};">
-<div class="line"><a id="l04329" name="l04329"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html"> 4329</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html">ExpOpAIE2pConversion</a></div>
-<div class="line"><a id="l04330" name="l04330"></a><span class="lineno"> 4330</span>    : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::ExpOp&gt; {</div>
-<div class="line"><a id="l04331" name="l04331"></a><span class="lineno"> 4331</span><span class="keyword">public</span>:</div>
-<div class="line"><a id="l04332" name="l04332"></a><span class="lineno"> 4332</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::ExpOp&gt;::ConvertOpToLLVMPattern;</div>
-<div class="line"><a id="l04333" name="l04333"></a><span class="lineno"> 4333</span> </div>
-<div class="line"><a id="l04334" name="l04334"></a><span class="lineno"> 4334</span>  LogicalResult</div>
-<div class="foldopen" id="foldopen04335" data-start="{" data-end="}">
-<div class="line"><a id="l04335" name="l04335"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html#a5878b14968d44c5cc1ab1683a766c758"> 4335</a></span>  <a class="code hl_function" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html#a5878b14968d44c5cc1ab1683a766c758">matchAndRewrite</a>(aievec::ExpOp expOp, OpAdaptor adaptor,</div>
-<div class="line"><a id="l04336" name="l04336"></a><span class="lineno"> 4336</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l04337" name="l04337"></a><span class="lineno"> 4337</span>    <span class="keyword">auto</span> loc = expOp.getLoc();</div>
-<div class="line"><a id="l04338" name="l04338"></a><span class="lineno"> 4338</span>    <span class="keyword">auto</span> srcType = cast&lt;VectorType&gt;(adaptor.getSource().getType());</div>
-<div class="line"><a id="l04339" name="l04339"></a><span class="lineno"> 4339</span>    <span class="keyword">auto</span> srcElemType = srcType.getElementType();</div>
-<div class="line"><a id="l04340" name="l04340"></a><span class="lineno"> 4340</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(srcType);</div>
-<div class="line"><a id="l04341" name="l04341"></a><span class="lineno"> 4341</span> </div>
-<div class="line"><a id="l04342" name="l04342"></a><span class="lineno"> 4342</span>    <span class="comment">// Only support v16bfloat16 for now</span></div>
-<div class="line"><a id="l04343" name="l04343"></a><span class="lineno"> 4343</span>    <span class="keywordflow">if</span> (laneSize != 16 || !srcElemType.isBF16())</div>
-<div class="line"><a id="l04344" name="l04344"></a><span class="lineno"> 4344</span>      <span class="keywordflow">return</span> expOp.emitWarning()</div>
-<div class="line"><a id="l04345" name="l04345"></a><span class="lineno"> 4345</span>             &lt;&lt; <span class="stringliteral">&quot;aievec.exp conversion only supports v16bfloat16.\n&quot;</span>;</div>
 <div class="line"><a id="l04346" name="l04346"></a><span class="lineno"> 4346</span> </div>
-<div class="line"><a id="l04347" name="l04347"></a><span class="lineno"> 4347</span>    <span class="comment">// Step 1: Create bf16 constant for log2(e) ≈ 1.442695</span></div>
-<div class="line"><a id="l04348" name="l04348"></a><span class="lineno"> 4348</span>    <span class="keyword">auto</span> log2eBF16Const = rewriter.create&lt;LLVM::ConstantOp&gt;(</div>
-<div class="line"><a id="l04349" name="l04349"></a><span class="lineno"> 4349</span>        loc, rewriter.getBF16Type(),</div>
-<div class="line"><a id="l04350" name="l04350"></a><span class="lineno"> 4350</span>        rewriter.getFloatAttr(rewriter.getBF16Type(), 1.442695));</div>
-<div class="line"><a id="l04351" name="l04351"></a><span class="lineno"> 4351</span> </div>
-<div class="line"><a id="l04352" name="l04352"></a><span class="lineno"> 4352</span>    <span class="comment">// Broadcast log2(e) to v16bfloat16</span></div>
-<div class="line"><a id="l04353" name="l04353"></a><span class="lineno"> 4353</span>    SmallVector&lt;int64_t&gt; broadcastMask;</div>
-<div class="line"><a id="l04354" name="l04354"></a><span class="lineno"> 4354</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; 16; ++i)</div>
-<div class="line"><a id="l04355" name="l04355"></a><span class="lineno"> 4355</span>      broadcastMask.push_back(0);</div>
-<div class="line"><a id="l04356" name="l04356"></a><span class="lineno"> 4356</span> </div>
-<div class="line"><a id="l04357" name="l04357"></a><span class="lineno"> 4357</span>    <span class="keyword">auto</span> v1bf16 = rewriter.create&lt;LLVM::UndefOp&gt;(</div>
-<div class="line"><a id="l04358" name="l04358"></a><span class="lineno"> 4358</span>        loc, VectorType::get({1}, rewriter.getBF16Type()));</div>
-<div class="line"><a id="l04359" name="l04359"></a><span class="lineno"> 4359</span>    <span class="keyword">auto</span> v1bf16Inserted = rewriter.create&lt;LLVM::InsertElementOp&gt;(</div>
-<div class="line"><a id="l04360" name="l04360"></a><span class="lineno"> 4360</span>        loc, v1bf16, log2eBF16Const,</div>
-<div class="line"><a id="l04361" name="l04361"></a><span class="lineno"> 4361</span>        rewriter.create&lt;LLVM::ConstantOp&gt;(loc, rewriter.getI32Type(), 0));</div>
-<div class="line"><a id="l04362" name="l04362"></a><span class="lineno"> 4362</span> </div>
-<div class="line"><a id="l04363" name="l04363"></a><span class="lineno"> 4363</span>    <span class="keyword">auto</span> log2eVec = rewriter.create&lt;vector::ShuffleOp&gt;(</div>
-<div class="line"><a id="l04364" name="l04364"></a><span class="lineno"> 4364</span>        loc, v1bf16Inserted, v1bf16Inserted, broadcastMask);</div>
-<div class="line"><a id="l04365" name="l04365"></a><span class="lineno"> 4365</span> </div>
-<div class="line"><a id="l04366" name="l04366"></a><span class="lineno"> 4366</span>    <span class="comment">// Step 2: Multiply input by log2(e) in bf16 domain using MulElemOp</span></div>
-<div class="line"><a id="l04367" name="l04367"></a><span class="lineno"> 4367</span>    <span class="comment">// This will use the I512.I512.ACC512 bf16 mul intrinsic</span></div>
-<div class="line"><a id="l04368" name="l04368"></a><span class="lineno"> 4368</span>    <span class="keyword">auto</span> v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());</div>
-<div class="line"><a id="l04369" name="l04369"></a><span class="lineno"> 4369</span>    <span class="keyword">auto</span> v16f32Ty = VectorType::get({16}, rewriter.getF32Type());</div>
-<div class="line"><a id="l04370" name="l04370"></a><span class="lineno"> 4370</span> </div>
-<div class="line"><a id="l04371" name="l04371"></a><span class="lineno"> 4371</span>    <span class="comment">// Multiply in bf16: x * log2(e)</span></div>
-<div class="line"><a id="l04372" name="l04372"></a><span class="lineno"> 4372</span>    <span class="keyword">auto</span> mulResult = rewriter.create&lt;aievec::MulElemOp&gt;(</div>
-<div class="line"><a id="l04373" name="l04373"></a><span class="lineno"> 4373</span>        loc, v16f32Ty, adaptor.getSource(), log2eVec);</div>
-<div class="line"><a id="l04374" name="l04374"></a><span class="lineno"> 4374</span> </div>
-<div class="line"><a id="l04375" name="l04375"></a><span class="lineno"> 4375</span>    <span class="comment">// Step 3: Call exp2 intrinsic</span></div>
-<div class="line"><a id="l04376" name="l04376"></a><span class="lineno"> 4376</span>    <span class="comment">// exp2 takes v16float and returns v16bfloat16</span></div>
-<div class="line"><a id="l04377" name="l04377"></a><span class="lineno"> 4377</span>    <span class="keyword">auto</span> exp2Op =</div>
-<div class="line"><a id="l04378" name="l04378"></a><span class="lineno"> 4378</span>        rewriter.create&lt;xllvm::Exp2AIE2pIntrOp&gt;(loc, v16bf16Ty, mulResult);</div>
-<div class="line"><a id="l04379" name="l04379"></a><span class="lineno"> 4379</span> </div>
-<div class="line"><a id="l04380" name="l04380"></a><span class="lineno"> 4380</span>    rewriter.replaceOp(expOp, exp2Op.getResult());</div>
-<div class="line"><a id="l04381" name="l04381"></a><span class="lineno"> 4381</span> </div>
-<div class="line"><a id="l04382" name="l04382"></a><span class="lineno"> 4382</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l04383" name="l04383"></a><span class="lineno"> 4383</span>  }</div>
+<div class="foldopen" id="foldopen04347" data-start="{" data-end="};">
+<div class="line"><a id="l04347" name="l04347"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ShuffleOpConversion.html"> 4347</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1ShuffleOpConversion.html">ShuffleOpConversion</a></div>
+<div class="line"><a id="l04348" name="l04348"></a><span class="lineno"> 4348</span>    : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::ShuffleOp&gt; {</div>
+<div class="line"><a id="l04349" name="l04349"></a><span class="lineno"> 4349</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::ShuffleOp&gt;::ConvertOpToLLVMPattern;</div>
+<div class="line"><a id="l04350" name="l04350"></a><span class="lineno"> 4350</span> </div>
+<div class="line"><a id="l04351" name="l04351"></a><span class="lineno"> 4351</span>  LogicalResult</div>
+<div class="line"><a id="l04352" name="l04352"></a><span class="lineno"> 4352</span>  matchAndRewrite(aievec::ShuffleOp shuffleOp, OpAdaptor adaptor,</div>
+<div class="line"><a id="l04353" name="l04353"></a><span class="lineno"> 4353</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l04354" name="l04354"></a><span class="lineno"> 4354</span>    <span class="keyword">auto</span> loc = shuffleOp.getLoc();</div>
+<div class="line"><a id="l04355" name="l04355"></a><span class="lineno"> 4355</span>    <span class="keyword">auto</span> lhs = adaptor.getLhs();</div>
+<div class="line"><a id="l04356" name="l04356"></a><span class="lineno"> 4356</span>    <span class="keyword">auto</span> rhs = adaptor.getRhs();</div>
+<div class="line"><a id="l04357" name="l04357"></a><span class="lineno"> 4357</span>    <span class="keyword">auto</span> i32ty = rewriter.getI32Type();</div>
+<div class="line"><a id="l04358" name="l04358"></a><span class="lineno"> 4358</span>    <span class="keyword">auto</span> v16xi32ty = VectorType::get({16}, i32ty);</div>
+<div class="line"><a id="l04359" name="l04359"></a><span class="lineno"> 4359</span>    <span class="keywordflow">if</span> (!rhs)</div>
+<div class="line"><a id="l04360" name="l04360"></a><span class="lineno"> 4360</span>      rhs = rewriter.create&lt;xllvm::UndefV16I32IntrOp&gt;(loc, v16xi32ty);</div>
+<div class="line"><a id="l04361" name="l04361"></a><span class="lineno"> 4361</span> </div>
+<div class="line"><a id="l04362" name="l04362"></a><span class="lineno"> 4362</span>    <span class="keyword">auto</span> modeAttrVal =</div>
+<div class="line"><a id="l04363" name="l04363"></a><span class="lineno"> 4363</span>        rewriter</div>
+<div class="line"><a id="l04364" name="l04364"></a><span class="lineno"> 4364</span>            .create&lt;LLVM::ConstantOp&gt;(loc, i32ty,</div>
+<div class="line"><a id="l04365" name="l04365"></a><span class="lineno"> 4365</span>                                      <span class="keyword">static_cast&lt;</span>int32_t<span class="keyword">&gt;</span>(shuffleOp.getMode()))</div>
+<div class="line"><a id="l04366" name="l04366"></a><span class="lineno"> 4366</span>            .getResult();</div>
+<div class="line"><a id="l04367" name="l04367"></a><span class="lineno"> 4367</span>    <span class="keyword">auto</span> vShuffleVal = rewriter</div>
+<div class="line"><a id="l04368" name="l04368"></a><span class="lineno"> 4368</span>                           .create&lt;xllvm::VectorShuffleIntrOp&gt;(</div>
+<div class="line"><a id="l04369" name="l04369"></a><span class="lineno"> 4369</span>                               loc, v16xi32ty,</div>
+<div class="line"><a id="l04370" name="l04370"></a><span class="lineno"> 4370</span>                               forceCastOperandsToSignature(</div>
+<div class="line"><a id="l04371" name="l04371"></a><span class="lineno"> 4371</span>                                   rewriter, loc,</div>
+<div class="line"><a id="l04372" name="l04372"></a><span class="lineno"> 4372</span>                                   <span class="comment">/*operands=*/</span>{lhs, rhs, modeAttrVal},</div>
+<div class="line"><a id="l04373" name="l04373"></a><span class="lineno"> 4373</span>                                   <span class="comment">/*signature=*/</span>{v16xi32ty, v16xi32ty, i32ty}))</div>
+<div class="line"><a id="l04374" name="l04374"></a><span class="lineno"> 4374</span>                           .getResult();</div>
+<div class="line"><a id="l04375" name="l04375"></a><span class="lineno"> 4375</span> </div>
+<div class="line"><a id="l04376" name="l04376"></a><span class="lineno"> 4376</span>    vShuffleVal = forceCastValueToType(rewriter, loc, vShuffleVal,</div>
+<div class="line"><a id="l04377" name="l04377"></a><span class="lineno"> 4377</span>                                       shuffleOp.getResult().getType());</div>
+<div class="line"><a id="l04378" name="l04378"></a><span class="lineno"> 4378</span> </div>
+<div class="line"><a id="l04379" name="l04379"></a><span class="lineno"> 4379</span>    rewriter.replaceOp(shuffleOp, vShuffleVal);</div>
+<div class="line"><a id="l04380" name="l04380"></a><span class="lineno"> 4380</span> </div>
+<div class="line"><a id="l04381" name="l04381"></a><span class="lineno"> 4381</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l04382" name="l04382"></a><span class="lineno"> 4382</span>  }</div>
+<div class="line"><a id="l04383" name="l04383"></a><span class="lineno"> 4383</span>};</div>
 </div>
-<div class="line"><a id="l04384" name="l04384"></a><span class="lineno"> 4384</span>};</div>
-</div>
-<div class="line"><a id="l04385" name="l04385"></a><span class="lineno"> 4385</span> </div>
-<div class="foldopen" id="foldopen04386" data-start="{" data-end="}">
-<div class="line"><a id="l04386" name="l04386"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a4470a607f048ef6c205656ec46edd4cb"> 4386</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a4470a607f048ef6c205656ec46edd4cb">populateAIEVecToLLVMCommonConversionPatterns</a>(</div>
-<div class="line"><a id="l04387" name="l04387"></a><span class="lineno"> 4387</span>    mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns) {</div>
-<div class="line"><a id="l04388" name="l04388"></a><span class="lineno"> 4388</span>  <span class="comment">// clang-format off</span></div>
-<div class="line"><a id="l04389" name="l04389"></a><span class="lineno"> 4389</span>  <span class="comment">// Patterns that work for all backends (AIE1, AIE2, AIE2p)</span></div>
-<div class="line"><a id="l04390" name="l04390"></a><span class="lineno"> 4390</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1AddOpConversion.html">AddOpConversion</a>,</div>
-<div class="line"><a id="l04391" name="l04391"></a><span class="lineno"> 4391</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1SubOpConversion.html">SubOpConversion</a>,</div>
-<div class="line"><a id="l04392" name="l04392"></a><span class="lineno"> 4392</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1FMAOpConversion.html">FMAOpConversion</a>,</div>
-<div class="line"><a id="l04393" name="l04393"></a><span class="lineno"> 4393</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1MulOpConversion.html">MulOpConversion</a>,</div>
-<div class="line"><a id="l04394" name="l04394"></a><span class="lineno"> 4394</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1UPDOpConversion.html">UPDOpConversion</a>,</div>
-<div class="line"><a id="l04395" name="l04395"></a><span class="lineno"> 4395</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1ExtOpConversion.html">ExtOpConversion</a>,</div>
-<div class="line"><a id="l04396" name="l04396"></a><span class="lineno"> 4396</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1SelectOpConversion.html">SelectOpConversion</a>,</div>
-<div class="line"><a id="l04397" name="l04397"></a><span class="lineno"> 4397</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1PackOpConversion.html">PackOpConversion</a>,</div>
-<div class="line"><a id="l04398" name="l04398"></a><span class="lineno"> 4398</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1UnpackOpConversion.html">UnpackOpConversion</a>,</div>
-<div class="line"><a id="l04399" name="l04399"></a><span class="lineno"> 4399</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1BroadcastOpConversion.html">BroadcastOpConversion</a>,</div>
-<div class="line"><a id="l04400" name="l04400"></a><span class="lineno"> 4400</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1BroadcastScalarOpConversion.html">BroadcastScalarOpConversion</a>,</div>
-<div class="line"><a id="l04401" name="l04401"></a><span class="lineno"> 4401</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1FMAElemOpConversion.html">FMAElemOpConversion</a>,</div>
-<div class="line"><a id="l04402" name="l04402"></a><span class="lineno"> 4402</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1MatMulOpConversion.html">MatMulOpConversion</a>,</div>
-<div class="line"><a id="l04403" name="l04403"></a><span class="lineno"> 4403</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1FoldAIECastOps.html">FoldAIECastOps</a>,</div>
-<div class="line"><a id="l04404" name="l04404"></a><span class="lineno"> 4404</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1ShuffleOpConversion.html">ShuffleOpConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04405" name="l04405"></a><span class="lineno"> 4405</span>  <span class="comment">// clang-format on</span></div>
-<div class="line"><a id="l04406" name="l04406"></a><span class="lineno"> 4406</span>}</div>
-</div>
-<div class="line"><a id="l04407" name="l04407"></a><span class="lineno"> 4407</span> </div>
-<div class="foldopen" id="foldopen04408" data-start="{" data-end="}">
-<div class="line"><a id="l04408" name="l04408"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#aa007806b60b12dbc823e0b9f3465b384"> 4408</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a8379b1de5f1dd72662b4af08d7a5b894">populateAIEVecToLLVMAIE2ConversionPatterns</a>(</div>
-<div class="line"><a id="l04409" name="l04409"></a><span class="lineno"> 4409</span>    mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns,</div>
-<div class="line"><a id="l04410" name="l04410"></a><span class="lineno"> 4410</span>    Aie2Fp32Emulation aie2Fp32EmulationOption) {</div>
-<div class="line"><a id="l04411" name="l04411"></a><span class="lineno"> 4411</span>  <span class="comment">// Patterns specific to AIE2 backend</span></div>
-<div class="line"><a id="l04412" name="l04412"></a><span class="lineno"> 4412</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1AddElemOpAIE2Conversion.html">AddElemOpAIE2Conversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1SubElemOpAIE2Conversion.html">SubElemOpAIE2Conversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04413" name="l04413"></a><span class="lineno"> 4413</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MulElemOpConversion.html">MulElemOpConversion</a>&gt;(converter, aie2Fp32EmulationOption);</div>
-<div class="line"><a id="l04414" name="l04414"></a><span class="lineno"> 4414</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1UPSOpAIE2Conversion.html">UPSOpAIE2Conversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1SRSOpAIE2Conversion.html">SRSOpAIE2Conversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04415" name="l04415"></a><span class="lineno"> 4415</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ShiftOpConversion.html">ShiftOpConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04416" name="l04416"></a><span class="lineno"> 4416</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MaxOpConversion.html">MaxOpConversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1MinOpConversion.html">MinOpConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04417" name="l04417"></a><span class="lineno"> 4417</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ExtractElemOpConversion.html">ExtractElemOpConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04418" name="l04418"></a><span class="lineno"> 4418</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ConcatOpConversion.html">ConcatOpConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04419" name="l04419"></a><span class="lineno"> 4419</span>}</div>
-</div>
+<div class="line"><a id="l04384" name="l04384"></a><span class="lineno"> 4384</span> </div>
+<div class="line"><a id="l04385" name="l04385"></a><span class="lineno"> 4385</span><span class="comment">// Convert aievec.exp to xllvm.exp2 intrinsic for AIE2P</span></div>
+<div class="line"><a id="l04386" name="l04386"></a><span class="lineno"> 4386</span><span class="comment">// Uses the identity: exp(x) = exp2(x * log2(e))</span></div>
+<div class="foldopen" id="foldopen04387" data-start="{" data-end="};">
+<div class="line"><a id="l04387" name="l04387"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html"> 4387</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html">ExpOpAIE2pConversion</a></div>
+<div class="line"><a id="l04388" name="l04388"></a><span class="lineno"> 4388</span>    : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::ExpOp&gt; {</div>
+<div class="line"><a id="l04389" name="l04389"></a><span class="lineno"> 4389</span><span class="keyword">public</span>:</div>
+<div class="line"><a id="l04390" name="l04390"></a><span class="lineno"> 4390</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::ExpOp&gt;::ConvertOpToLLVMPattern;</div>
+<div class="line"><a id="l04391" name="l04391"></a><span class="lineno"> 4391</span> </div>
+<div class="line"><a id="l04392" name="l04392"></a><span class="lineno"> 4392</span>  LogicalResult</div>
+<div class="foldopen" id="foldopen04393" data-start="{" data-end="}">
+<div class="line"><a id="l04393" name="l04393"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html#a5878b14968d44c5cc1ab1683a766c758"> 4393</a></span>  <a class="code hl_function" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html#a5878b14968d44c5cc1ab1683a766c758">matchAndRewrite</a>(aievec::ExpOp expOp, OpAdaptor adaptor,</div>
+<div class="line"><a id="l04394" name="l04394"></a><span class="lineno"> 4394</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l04395" name="l04395"></a><span class="lineno"> 4395</span>    <span class="keyword">auto</span> loc = expOp.getLoc();</div>
+<div class="line"><a id="l04396" name="l04396"></a><span class="lineno"> 4396</span>    <span class="keyword">auto</span> srcType = cast&lt;VectorType&gt;(adaptor.getSource().getType());</div>
+<div class="line"><a id="l04397" name="l04397"></a><span class="lineno"> 4397</span>    <span class="keyword">auto</span> srcElemType = srcType.getElementType();</div>
+<div class="line"><a id="l04398" name="l04398"></a><span class="lineno"> 4398</span>    <span class="keywordtype">unsigned</span> laneSize = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(srcType);</div>
+<div class="line"><a id="l04399" name="l04399"></a><span class="lineno"> 4399</span> </div>
+<div class="line"><a id="l04400" name="l04400"></a><span class="lineno"> 4400</span>    <span class="comment">// Only support v16bfloat16 for now</span></div>
+<div class="line"><a id="l04401" name="l04401"></a><span class="lineno"> 4401</span>    <span class="keywordflow">if</span> (laneSize != 16 || !srcElemType.isBF16())</div>
+<div class="line"><a id="l04402" name="l04402"></a><span class="lineno"> 4402</span>      <span class="keywordflow">return</span> expOp.emitWarning()</div>
+<div class="line"><a id="l04403" name="l04403"></a><span class="lineno"> 4403</span>             &lt;&lt; <span class="stringliteral">&quot;aievec.exp conversion only supports v16bfloat16.\n&quot;</span>;</div>
+<div class="line"><a id="l04404" name="l04404"></a><span class="lineno"> 4404</span> </div>
+<div class="line"><a id="l04405" name="l04405"></a><span class="lineno"> 4405</span>    <span class="comment">// Step 1: Create bf16 constant for log2(e) ≈ 1.442695</span></div>
+<div class="line"><a id="l04406" name="l04406"></a><span class="lineno"> 4406</span>    <span class="keyword">auto</span> log2eBF16Const = rewriter.create&lt;LLVM::ConstantOp&gt;(</div>
+<div class="line"><a id="l04407" name="l04407"></a><span class="lineno"> 4407</span>        loc, rewriter.getBF16Type(),</div>
+<div class="line"><a id="l04408" name="l04408"></a><span class="lineno"> 4408</span>        rewriter.getFloatAttr(rewriter.getBF16Type(), 1.442695));</div>
+<div class="line"><a id="l04409" name="l04409"></a><span class="lineno"> 4409</span> </div>
+<div class="line"><a id="l04410" name="l04410"></a><span class="lineno"> 4410</span>    <span class="comment">// Broadcast log2(e) to v16bfloat16</span></div>
+<div class="line"><a id="l04411" name="l04411"></a><span class="lineno"> 4411</span>    SmallVector&lt;int64_t&gt; broadcastMask;</div>
+<div class="line"><a id="l04412" name="l04412"></a><span class="lineno"> 4412</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; 16; ++i)</div>
+<div class="line"><a id="l04413" name="l04413"></a><span class="lineno"> 4413</span>      broadcastMask.push_back(0);</div>
+<div class="line"><a id="l04414" name="l04414"></a><span class="lineno"> 4414</span> </div>
+<div class="line"><a id="l04415" name="l04415"></a><span class="lineno"> 4415</span>    <span class="keyword">auto</span> v1bf16 = rewriter.create&lt;LLVM::UndefOp&gt;(</div>
+<div class="line"><a id="l04416" name="l04416"></a><span class="lineno"> 4416</span>        loc, VectorType::get({1}, rewriter.getBF16Type()));</div>
+<div class="line"><a id="l04417" name="l04417"></a><span class="lineno"> 4417</span>    <span class="keyword">auto</span> v1bf16Inserted = rewriter.create&lt;LLVM::InsertElementOp&gt;(</div>
+<div class="line"><a id="l04418" name="l04418"></a><span class="lineno"> 4418</span>        loc, v1bf16, log2eBF16Const,</div>
+<div class="line"><a id="l04419" name="l04419"></a><span class="lineno"> 4419</span>        rewriter.create&lt;LLVM::ConstantOp&gt;(loc, rewriter.getI32Type(), 0));</div>
 <div class="line"><a id="l04420" name="l04420"></a><span class="lineno"> 4420</span> </div>
-<div class="line"><a id="l04421" name="l04421"></a><span class="lineno"> 4421</span><span class="comment">// AIE2p version of ExtractElemOp conversion using LLVM extractelement</span></div>
-<div class="foldopen" id="foldopen04422" data-start="{" data-end="};">
-<div class="line"><a id="l04422" name="l04422"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html"> 4422</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html">ExtractElemOpAIE2pConversion</a></div>
-<div class="line"><a id="l04423" name="l04423"></a><span class="lineno"> 4423</span>    : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::ExtElemOp&gt; {</div>
-<div class="line"><a id="l04424" name="l04424"></a><span class="lineno"> 4424</span><span class="keyword">public</span>:</div>
-<div class="line"><a id="l04425" name="l04425"></a><span class="lineno"> 4425</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::ExtElemOp&gt;::ConvertOpToLLVMPattern;</div>
-<div class="line"><a id="l04426" name="l04426"></a><span class="lineno"> 4426</span> </div>
-<div class="line"><a id="l04427" name="l04427"></a><span class="lineno"> 4427</span>  LogicalResult</div>
-<div class="foldopen" id="foldopen04428" data-start="{" data-end="}">
-<div class="line"><a id="l04428" name="l04428"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html#a04005a79a0b31f4eb80d0555a9d626f9"> 4428</a></span>  <a class="code hl_function" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html#a04005a79a0b31f4eb80d0555a9d626f9">matchAndRewrite</a>(aievec::ExtElemOp op, OpAdaptor adaptor,</div>
-<div class="line"><a id="l04429" name="l04429"></a><span class="lineno"> 4429</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l04430" name="l04430"></a><span class="lineno"> 4430</span>    Location loc = op.getLoc();</div>
-<div class="line"><a id="l04431" name="l04431"></a><span class="lineno"> 4431</span> </div>
-<div class="line"><a id="l04432" name="l04432"></a><span class="lineno"> 4432</span>    <span class="comment">// AIE2p doesn&#39;t have dedicated vextract intrinsics, so use LLVM</span></div>
-<div class="line"><a id="l04433" name="l04433"></a><span class="lineno"> 4433</span>    <span class="comment">// extractelement</span></div>
-<div class="line"><a id="l04434" name="l04434"></a><span class="lineno"> 4434</span>    Value extracted = rewriter.create&lt;LLVM::ExtractElementOp&gt;(</div>
-<div class="line"><a id="l04435" name="l04435"></a><span class="lineno"> 4435</span>        loc, adaptor.getSource(), adaptor.getIndex());</div>
-<div class="line"><a id="l04436" name="l04436"></a><span class="lineno"> 4436</span> </div>
-<div class="line"><a id="l04437" name="l04437"></a><span class="lineno"> 4437</span>    rewriter.replaceOp(op, extracted);</div>
-<div class="line"><a id="l04438" name="l04438"></a><span class="lineno"> 4438</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l04439" name="l04439"></a><span class="lineno"> 4439</span>  }</div>
+<div class="line"><a id="l04421" name="l04421"></a><span class="lineno"> 4421</span>    <span class="keyword">auto</span> log2eVec = rewriter.create&lt;vector::ShuffleOp&gt;(</div>
+<div class="line"><a id="l04422" name="l04422"></a><span class="lineno"> 4422</span>        loc, v1bf16Inserted, v1bf16Inserted, broadcastMask);</div>
+<div class="line"><a id="l04423" name="l04423"></a><span class="lineno"> 4423</span> </div>
+<div class="line"><a id="l04424" name="l04424"></a><span class="lineno"> 4424</span>    <span class="comment">// Step 2: Multiply input by log2(e) in bf16 domain using MulElemOp</span></div>
+<div class="line"><a id="l04425" name="l04425"></a><span class="lineno"> 4425</span>    <span class="comment">// This will use the I512.I512.ACC512 bf16 mul intrinsic</span></div>
+<div class="line"><a id="l04426" name="l04426"></a><span class="lineno"> 4426</span>    <span class="keyword">auto</span> v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());</div>
+<div class="line"><a id="l04427" name="l04427"></a><span class="lineno"> 4427</span>    <span class="keyword">auto</span> v16f32Ty = VectorType::get({16}, rewriter.getF32Type());</div>
+<div class="line"><a id="l04428" name="l04428"></a><span class="lineno"> 4428</span> </div>
+<div class="line"><a id="l04429" name="l04429"></a><span class="lineno"> 4429</span>    <span class="comment">// Multiply in bf16: x * log2(e)</span></div>
+<div class="line"><a id="l04430" name="l04430"></a><span class="lineno"> 4430</span>    <span class="keyword">auto</span> mulResult = rewriter.create&lt;aievec::MulElemOp&gt;(</div>
+<div class="line"><a id="l04431" name="l04431"></a><span class="lineno"> 4431</span>        loc, v16f32Ty, adaptor.getSource(), log2eVec);</div>
+<div class="line"><a id="l04432" name="l04432"></a><span class="lineno"> 4432</span> </div>
+<div class="line"><a id="l04433" name="l04433"></a><span class="lineno"> 4433</span>    <span class="comment">// Step 3: Call exp2 intrinsic</span></div>
+<div class="line"><a id="l04434" name="l04434"></a><span class="lineno"> 4434</span>    <span class="comment">// exp2 takes v16float and returns v16bfloat16</span></div>
+<div class="line"><a id="l04435" name="l04435"></a><span class="lineno"> 4435</span>    <span class="keyword">auto</span> exp2Op =</div>
+<div class="line"><a id="l04436" name="l04436"></a><span class="lineno"> 4436</span>        rewriter.create&lt;xllvm::Exp2AIE2pIntrOp&gt;(loc, v16bf16Ty, mulResult);</div>
+<div class="line"><a id="l04437" name="l04437"></a><span class="lineno"> 4437</span> </div>
+<div class="line"><a id="l04438" name="l04438"></a><span class="lineno"> 4438</span>    rewriter.replaceOp(expOp, exp2Op.getResult());</div>
+<div class="line"><a id="l04439" name="l04439"></a><span class="lineno"> 4439</span> </div>
+<div class="line"><a id="l04440" name="l04440"></a><span class="lineno"> 4440</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l04441" name="l04441"></a><span class="lineno"> 4441</span>  }</div>
 </div>
-<div class="line"><a id="l04440" name="l04440"></a><span class="lineno"> 4440</span>};</div>
+<div class="line"><a id="l04442" name="l04442"></a><span class="lineno"> 4442</span>};</div>
 </div>
-<div class="line"><a id="l04441" name="l04441"></a><span class="lineno"> 4441</span> </div>
-<div class="line"><a id="l04442" name="l04442"></a><span class="lineno"> 4442</span><span class="comment">// AIE2p version of ConcatOp conversion using vector.shuffle</span></div>
-<div class="foldopen" id="foldopen04443" data-start="{" data-end="};">
-<div class="line"><a id="l04443" name="l04443"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html"> 4443</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html">ConcatOpAIE2pConversion</a></div>
-<div class="line"><a id="l04444" name="l04444"></a><span class="lineno"> 4444</span>    : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::ConcatOp&gt; {</div>
-<div class="line"><a id="l04445" name="l04445"></a><span class="lineno"> 4445</span><span class="keyword">public</span>:</div>
-<div class="line"><a id="l04446" name="l04446"></a><span class="lineno"> 4446</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::ConcatOp&gt;::ConvertOpToLLVMPattern;</div>
-<div class="line"><a id="l04447" name="l04447"></a><span class="lineno"> 4447</span> </div>
-<div class="line"><a id="l04448" name="l04448"></a><span class="lineno"> 4448</span>  LogicalResult</div>
-<div class="foldopen" id="foldopen04449" data-start="{" data-end="}">
-<div class="line"><a id="l04449" name="l04449"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html#a192d57234644779671a339343dc047d2"> 4449</a></span>  <a class="code hl_function" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html#a192d57234644779671a339343dc047d2">matchAndRewrite</a>(aievec::ConcatOp op, OpAdaptor adaptor,</div>
-<div class="line"><a id="l04450" name="l04450"></a><span class="lineno"> 4450</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l04451" name="l04451"></a><span class="lineno"> 4451</span>    Location loc = op.getLoc();</div>
-<div class="line"><a id="l04452" name="l04452"></a><span class="lineno"> 4452</span> </div>
-<div class="line"><a id="l04453" name="l04453"></a><span class="lineno"> 4453</span>    SmallVector&lt;Value&gt; sources = adaptor.getSources();</div>
-<div class="line"><a id="l04454" name="l04454"></a><span class="lineno"> 4454</span> </div>
-<div class="line"><a id="l04455" name="l04455"></a><span class="lineno"> 4455</span>    <span class="keywordflow">if</span> (sources.empty()) {</div>
-<div class="line"><a id="l04456" name="l04456"></a><span class="lineno"> 4456</span>      op.emitWarning() &lt;&lt; <span class="stringliteral">&quot;aievec.concat with no sources is not supported.\n&quot;</span>;</div>
-<div class="line"><a id="l04457" name="l04457"></a><span class="lineno"> 4457</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l04458" name="l04458"></a><span class="lineno"> 4458</span>    }</div>
-<div class="line"><a id="l04459" name="l04459"></a><span class="lineno"> 4459</span> </div>
-<div class="line"><a id="l04460" name="l04460"></a><span class="lineno"> 4460</span>    <span class="comment">// AIE2p doesn&#39;t have dedicated concat intrinsics, use vector.shuffle</span></div>
-<div class="line"><a id="l04461" name="l04461"></a><span class="lineno"> 4461</span>    Value result = sources[0];</div>
-<div class="line"><a id="l04462" name="l04462"></a><span class="lineno"> 4462</span> </div>
-<div class="line"><a id="l04463" name="l04463"></a><span class="lineno"> 4463</span>    <span class="comment">// Build shuffle mask that concatenates all sources</span></div>
-<div class="line"><a id="l04464" name="l04464"></a><span class="lineno"> 4464</span>    <span class="keyword">auto</span> srcType = cast&lt;VectorType&gt;(sources[0].getType());</div>
-<div class="line"><a id="l04465" name="l04465"></a><span class="lineno"> 4465</span>    int64_t srcLanes = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(srcType);</div>
-<div class="line"><a id="l04466" name="l04466"></a><span class="lineno"> 4466</span> </div>
-<div class="line"><a id="l04467" name="l04467"></a><span class="lineno"> 4467</span>    <span class="keywordflow">if</span> (sources.size() == 2) {</div>
-<div class="line"><a id="l04468" name="l04468"></a><span class="lineno"> 4468</span>      <span class="comment">// Concatenate two vectors using shuffle</span></div>
-<div class="line"><a id="l04469" name="l04469"></a><span class="lineno"> 4469</span>      SmallVector&lt;int64_t&gt; mask;</div>
-<div class="line"><a id="l04470" name="l04470"></a><span class="lineno"> 4470</span>      <span class="keywordflow">for</span> (int64_t i = 0; i &lt; srcLanes * 2; ++i)</div>
-<div class="line"><a id="l04471" name="l04471"></a><span class="lineno"> 4471</span>        mask.push_back(i);</div>
-<div class="line"><a id="l04472" name="l04472"></a><span class="lineno"> 4472</span> </div>
-<div class="line"><a id="l04473" name="l04473"></a><span class="lineno"> 4473</span>      result =</div>
-<div class="line"><a id="l04474" name="l04474"></a><span class="lineno"> 4474</span>          rewriter.create&lt;vector::ShuffleOp&gt;(loc, sources[0], sources[1], mask);</div>
-<div class="line"><a id="l04475" name="l04475"></a><span class="lineno"> 4475</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (sources.size() == 4) {</div>
-<div class="line"><a id="l04476" name="l04476"></a><span class="lineno"> 4476</span>      <span class="comment">// Concatenate four vectors: first concat pairs, then concat results</span></div>
-<div class="line"><a id="l04477" name="l04477"></a><span class="lineno"> 4477</span>      SmallVector&lt;int64_t&gt; pairMask;</div>
-<div class="line"><a id="l04478" name="l04478"></a><span class="lineno"> 4478</span>      <span class="keywordflow">for</span> (int64_t i = 0; i &lt; srcLanes * 2; ++i)</div>
-<div class="line"><a id="l04479" name="l04479"></a><span class="lineno"> 4479</span>        pairMask.push_back(i);</div>
-<div class="line"><a id="l04480" name="l04480"></a><span class="lineno"> 4480</span> </div>
-<div class="line"><a id="l04481" name="l04481"></a><span class="lineno"> 4481</span>      <span class="keyword">auto</span> pair0 = rewriter.create&lt;vector::ShuffleOp&gt;(loc, sources[0],</div>
-<div class="line"><a id="l04482" name="l04482"></a><span class="lineno"> 4482</span>                                                      sources[1], pairMask);</div>
-<div class="line"><a id="l04483" name="l04483"></a><span class="lineno"> 4483</span>      <span class="keyword">auto</span> pair1 = rewriter.create&lt;vector::ShuffleOp&gt;(loc, sources[2],</div>
-<div class="line"><a id="l04484" name="l04484"></a><span class="lineno"> 4484</span>                                                      sources[3], pairMask);</div>
-<div class="line"><a id="l04485" name="l04485"></a><span class="lineno"> 4485</span> </div>
-<div class="line"><a id="l04486" name="l04486"></a><span class="lineno"> 4486</span>      SmallVector&lt;int64_t&gt; finalMask;</div>
-<div class="line"><a id="l04487" name="l04487"></a><span class="lineno"> 4487</span>      <span class="keywordflow">for</span> (int64_t i = 0; i &lt; srcLanes * 4; ++i)</div>
-<div class="line"><a id="l04488" name="l04488"></a><span class="lineno"> 4488</span>        finalMask.push_back(i);</div>
+<div class="line"><a id="l04443" name="l04443"></a><span class="lineno"> 4443</span> </div>
+<div class="foldopen" id="foldopen04444" data-start="{" data-end="}">
+<div class="line"><a id="l04444" name="l04444"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a4470a607f048ef6c205656ec46edd4cb"> 4444</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a4470a607f048ef6c205656ec46edd4cb">populateAIEVecToLLVMCommonConversionPatterns</a>(</div>
+<div class="line"><a id="l04445" name="l04445"></a><span class="lineno"> 4445</span>    mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns) {</div>
+<div class="line"><a id="l04446" name="l04446"></a><span class="lineno"> 4446</span>  <span class="comment">// clang-format off</span></div>
+<div class="line"><a id="l04447" name="l04447"></a><span class="lineno"> 4447</span>  <span class="comment">// Patterns that work for all backends (AIE1, AIE2, AIE2p)</span></div>
+<div class="line"><a id="l04448" name="l04448"></a><span class="lineno"> 4448</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1AddOpConversion.html">AddOpConversion</a>,</div>
+<div class="line"><a id="l04449" name="l04449"></a><span class="lineno"> 4449</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1SubOpConversion.html">SubOpConversion</a>,</div>
+<div class="line"><a id="l04450" name="l04450"></a><span class="lineno"> 4450</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1FMAOpConversion.html">FMAOpConversion</a>,</div>
+<div class="line"><a id="l04451" name="l04451"></a><span class="lineno"> 4451</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1MulOpConversion.html">MulOpConversion</a>,</div>
+<div class="line"><a id="l04452" name="l04452"></a><span class="lineno"> 4452</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1UPDOpConversion.html">UPDOpConversion</a>,</div>
+<div class="line"><a id="l04453" name="l04453"></a><span class="lineno"> 4453</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1ExtOpConversion.html">ExtOpConversion</a>,</div>
+<div class="line"><a id="l04454" name="l04454"></a><span class="lineno"> 4454</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1SelectOpConversion.html">SelectOpConversion</a>,</div>
+<div class="line"><a id="l04455" name="l04455"></a><span class="lineno"> 4455</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1PackOpConversion.html">PackOpConversion</a>,</div>
+<div class="line"><a id="l04456" name="l04456"></a><span class="lineno"> 4456</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1UnpackOpConversion.html">UnpackOpConversion</a>,</div>
+<div class="line"><a id="l04457" name="l04457"></a><span class="lineno"> 4457</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1BroadcastOpConversion.html">BroadcastOpConversion</a>,</div>
+<div class="line"><a id="l04458" name="l04458"></a><span class="lineno"> 4458</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1BroadcastScalarOpConversion.html">BroadcastScalarOpConversion</a>,</div>
+<div class="line"><a id="l04459" name="l04459"></a><span class="lineno"> 4459</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1FMAElemOpConversion.html">FMAElemOpConversion</a>,</div>
+<div class="line"><a id="l04460" name="l04460"></a><span class="lineno"> 4460</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1MatMulOpConversion.html">MatMulOpConversion</a>,</div>
+<div class="line"><a id="l04461" name="l04461"></a><span class="lineno"> 4461</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1FoldAIECastOps.html">FoldAIECastOps</a>,</div>
+<div class="line"><a id="l04462" name="l04462"></a><span class="lineno"> 4462</span>               <a class="code hl_class" href="classxilinx_1_1aievec_1_1ShuffleOpConversion.html">ShuffleOpConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04463" name="l04463"></a><span class="lineno"> 4463</span>  <span class="comment">// clang-format on</span></div>
+<div class="line"><a id="l04464" name="l04464"></a><span class="lineno"> 4464</span>}</div>
+</div>
+<div class="line"><a id="l04465" name="l04465"></a><span class="lineno"> 4465</span> </div>
+<div class="foldopen" id="foldopen04466" data-start="{" data-end="}">
+<div class="line"><a id="l04466" name="l04466"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#aa007806b60b12dbc823e0b9f3465b384"> 4466</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a8379b1de5f1dd72662b4af08d7a5b894">populateAIEVecToLLVMAIE2ConversionPatterns</a>(</div>
+<div class="line"><a id="l04467" name="l04467"></a><span class="lineno"> 4467</span>    mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns,</div>
+<div class="line"><a id="l04468" name="l04468"></a><span class="lineno"> 4468</span>    Aie2Fp32Emulation aie2Fp32EmulationOption) {</div>
+<div class="line"><a id="l04469" name="l04469"></a><span class="lineno"> 4469</span>  <span class="comment">// Patterns specific to AIE2 backend</span></div>
+<div class="line"><a id="l04470" name="l04470"></a><span class="lineno"> 4470</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1AddElemOpAIE2Conversion.html">AddElemOpAIE2Conversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1SubElemOpAIE2Conversion.html">SubElemOpAIE2Conversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04471" name="l04471"></a><span class="lineno"> 4471</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MulElemOpConversion.html">MulElemOpConversion</a>&gt;(converter, aie2Fp32EmulationOption);</div>
+<div class="line"><a id="l04472" name="l04472"></a><span class="lineno"> 4472</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1UPSOpAIE2Conversion.html">UPSOpAIE2Conversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1SRSOpAIE2Conversion.html">SRSOpAIE2Conversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04473" name="l04473"></a><span class="lineno"> 4473</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ShiftOpConversion.html">ShiftOpConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04474" name="l04474"></a><span class="lineno"> 4474</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MaxOpConversion.html">MaxOpConversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1MinOpConversion.html">MinOpConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04475" name="l04475"></a><span class="lineno"> 4475</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ExtractElemOpConversion.html">ExtractElemOpConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04476" name="l04476"></a><span class="lineno"> 4476</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ConcatOpConversion.html">ConcatOpConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04477" name="l04477"></a><span class="lineno"> 4477</span>}</div>
+</div>
+<div class="line"><a id="l04478" name="l04478"></a><span class="lineno"> 4478</span> </div>
+<div class="line"><a id="l04479" name="l04479"></a><span class="lineno"> 4479</span><span class="comment">// AIE2p version of ExtractElemOp conversion using LLVM extractelement</span></div>
+<div class="foldopen" id="foldopen04480" data-start="{" data-end="};">
+<div class="line"><a id="l04480" name="l04480"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html"> 4480</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html">ExtractElemOpAIE2pConversion</a></div>
+<div class="line"><a id="l04481" name="l04481"></a><span class="lineno"> 4481</span>    : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::ExtElemOp&gt; {</div>
+<div class="line"><a id="l04482" name="l04482"></a><span class="lineno"> 4482</span><span class="keyword">public</span>:</div>
+<div class="line"><a id="l04483" name="l04483"></a><span class="lineno"> 4483</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::ExtElemOp&gt;::ConvertOpToLLVMPattern;</div>
+<div class="line"><a id="l04484" name="l04484"></a><span class="lineno"> 4484</span> </div>
+<div class="line"><a id="l04485" name="l04485"></a><span class="lineno"> 4485</span>  LogicalResult</div>
+<div class="foldopen" id="foldopen04486" data-start="{" data-end="}">
+<div class="line"><a id="l04486" name="l04486"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html#a04005a79a0b31f4eb80d0555a9d626f9"> 4486</a></span>  <a class="code hl_function" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html#a04005a79a0b31f4eb80d0555a9d626f9">matchAndRewrite</a>(aievec::ExtElemOp op, OpAdaptor adaptor,</div>
+<div class="line"><a id="l04487" name="l04487"></a><span class="lineno"> 4487</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l04488" name="l04488"></a><span class="lineno"> 4488</span>    Location loc = op.getLoc();</div>
 <div class="line"><a id="l04489" name="l04489"></a><span class="lineno"> 4489</span> </div>
-<div class="line"><a id="l04490" name="l04490"></a><span class="lineno"> 4490</span>      result = rewriter.create&lt;vector::ShuffleOp&gt;(loc, pair0, pair1, finalMask);</div>
-<div class="line"><a id="l04491" name="l04491"></a><span class="lineno"> 4491</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l04492" name="l04492"></a><span class="lineno"> 4492</span>      op.emitWarning() &lt;&lt; <span class="stringliteral">&quot;aievec.concat with &quot;</span> &lt;&lt; sources.size()</div>
-<div class="line"><a id="l04493" name="l04493"></a><span class="lineno"> 4493</span>                       &lt;&lt; <span class="stringliteral">&quot; operands is not supported for AIE2p.\n&quot;</span>;</div>
-<div class="line"><a id="l04494" name="l04494"></a><span class="lineno"> 4494</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l04495" name="l04495"></a><span class="lineno"> 4495</span>    }</div>
-<div class="line"><a id="l04496" name="l04496"></a><span class="lineno"> 4496</span> </div>
-<div class="line"><a id="l04497" name="l04497"></a><span class="lineno"> 4497</span>    rewriter.replaceOp(op, result);</div>
-<div class="line"><a id="l04498" name="l04498"></a><span class="lineno"> 4498</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l04499" name="l04499"></a><span class="lineno"> 4499</span>  }</div>
+<div class="line"><a id="l04490" name="l04490"></a><span class="lineno"> 4490</span>    <span class="comment">// AIE2p doesn&#39;t have dedicated vextract intrinsics, so use LLVM</span></div>
+<div class="line"><a id="l04491" name="l04491"></a><span class="lineno"> 4491</span>    <span class="comment">// extractelement</span></div>
+<div class="line"><a id="l04492" name="l04492"></a><span class="lineno"> 4492</span>    Value extracted = rewriter.create&lt;LLVM::ExtractElementOp&gt;(</div>
+<div class="line"><a id="l04493" name="l04493"></a><span class="lineno"> 4493</span>        loc, adaptor.getSource(), adaptor.getIndex());</div>
+<div class="line"><a id="l04494" name="l04494"></a><span class="lineno"> 4494</span> </div>
+<div class="line"><a id="l04495" name="l04495"></a><span class="lineno"> 4495</span>    rewriter.replaceOp(op, extracted);</div>
+<div class="line"><a id="l04496" name="l04496"></a><span class="lineno"> 4496</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l04497" name="l04497"></a><span class="lineno"> 4497</span>  }</div>
 </div>
-<div class="line"><a id="l04500" name="l04500"></a><span class="lineno"> 4500</span>};</div>
+<div class="line"><a id="l04498" name="l04498"></a><span class="lineno"> 4498</span>};</div>
 </div>
-<div class="line"><a id="l04501" name="l04501"></a><span class="lineno"> 4501</span> </div>
-<div class="foldopen" id="foldopen04502" data-start="{" data-end="}">
-<div class="line"><a id="l04502" name="l04502"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a839c8414e0ef7b5a6882350523efc8bf"> 4502</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a839c8414e0ef7b5a6882350523efc8bf">populateAIEVecToLLVMAIE2pConversionPatterns</a>(</div>
-<div class="line"><a id="l04503" name="l04503"></a><span class="lineno"> 4503</span>    mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns) {</div>
-<div class="line"><a id="l04504" name="l04504"></a><span class="lineno"> 4504</span>  <span class="comment">// Patterns specific to AIE2p backend</span></div>
-<div class="line"><a id="l04505" name="l04505"></a><span class="lineno"> 4505</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1AddElemOpAIE2pConversion.html">AddElemOpAIE2pConversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1SubElemOpAIE2pConversion.html">SubElemOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04506" name="l04506"></a><span class="lineno"> 4506</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MulElemOpAIE2pConversion.html">MulElemOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04507" name="l04507"></a><span class="lineno"> 4507</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1UPSOpAIE2pConversion.html">UPSOpAIE2pConversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1SRSOpAIE2pConversion.html">SRSOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04508" name="l04508"></a><span class="lineno"> 4508</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MatMulOpAIE2pConversion.html">MatMulOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04509" name="l04509"></a><span class="lineno"> 4509</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ShiftOpAIE2pConversion.html">ShiftOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04510" name="l04510"></a><span class="lineno"> 4510</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MaxOpAIE2pConversion.html">MaxOpAIE2pConversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1MinOpAIE2pConversion.html">MinOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04511" name="l04511"></a><span class="lineno"> 4511</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html">ExtractElemOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04512" name="l04512"></a><span class="lineno"> 4512</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html">ConcatOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04513" name="l04513"></a><span class="lineno"> 4513</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html">ExpOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04514" name="l04514"></a><span class="lineno"> 4514</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1BroadcastScalarOpAIE2pConversion.html">BroadcastScalarOpAIE2pConversion</a>&gt;(converter);</div>
-<div class="line"><a id="l04515" name="l04515"></a><span class="lineno"> 4515</span>}</div>
-</div>
-<div class="line"><a id="l04516" name="l04516"></a><span class="lineno"> 4516</span> </div>
-<div class="foldopen" id="foldopen04517" data-start="{" data-end="}">
-<div class="line"><a id="l04517" name="l04517"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a6ccaf1484220db800ea433e4dd5f4f94"> 4517</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#af3c5e2eb8e12d97d5e634f8a2ffca316">populateAIEVecToLLVMConversionPatterns</a>(</div>
-<div class="line"><a id="l04518" name="l04518"></a><span class="lineno"> 4518</span>    mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns,</div>
-<div class="line"><a id="l04519" name="l04519"></a><span class="lineno"> 4519</span>    Aie2Fp32Emulation aie2Fp32EmulationOption, StringRef aieTarget) {</div>
-<div class="line"><a id="l04520" name="l04520"></a><span class="lineno"> 4520</span>  <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a4470a607f048ef6c205656ec46edd4cb">populateAIEVecToLLVMCommonConversionPatterns</a>(converter, patterns);</div>
-<div class="line"><a id="l04521" name="l04521"></a><span class="lineno"> 4521</span>  <span class="keywordflow">if</span> (aieTarget == <span class="stringliteral">&quot;aie2p&quot;</span>)</div>
-<div class="line"><a id="l04522" name="l04522"></a><span class="lineno"> 4522</span>    <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a839c8414e0ef7b5a6882350523efc8bf">populateAIEVecToLLVMAIE2pConversionPatterns</a>(converter, patterns);</div>
-<div class="line"><a id="l04523" name="l04523"></a><span class="lineno"> 4523</span>  <span class="keywordflow">else</span></div>
-<div class="line"><a id="l04524" name="l04524"></a><span class="lineno"> 4524</span>    <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a8379b1de5f1dd72662b4af08d7a5b894">populateAIEVecToLLVMAIE2ConversionPatterns</a>(converter, patterns,</div>
-<div class="line"><a id="l04525" name="l04525"></a><span class="lineno"> 4525</span>                                               aie2Fp32EmulationOption);</div>
-<div class="line"><a id="l04526" name="l04526"></a><span class="lineno"> 4526</span>}</div>
-</div>
-<div class="line"><a id="l04527" name="l04527"></a><span class="lineno"> 4527</span> </div>
-<div class="foldopen" id="foldopen04528" data-start="{" data-end="};">
-<div class="line"><a id="l04528" name="l04528"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html"> 4528</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html">ConvertAIEVecToLLVMPass</a></div>
-<div class="line"><a id="l04529" name="l04529"></a><span class="lineno"> 4529</span>    : <a class="code hl_class" href="classConvertAIEVecToLLVMBase.html">ConvertAIEVecToLLVMBase</a>&lt;ConvertAIEVecToLLVMPass&gt; {</div>
-<div class="foldopen" id="foldopen04530" data-start="{" data-end="}">
-<div class="line"><a id="l04530" name="l04530"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html#a49872ef77d5261bc50c03c3bdc18818f"> 4530</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html#a49872ef77d5261bc50c03c3bdc18818f">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l04531" name="l04531"></a><span class="lineno"> 4531</span>    RewritePatternSet patterns(&amp;getContext());</div>
-<div class="line"><a id="l04532" name="l04532"></a><span class="lineno"> 4532</span>    LLVMTypeConverter converter(&amp;getContext());</div>
-<div class="line"><a id="l04533" name="l04533"></a><span class="lineno"> 4533</span> </div>
-<div class="line"><a id="l04534" name="l04534"></a><span class="lineno"> 4534</span>    <span class="comment">// Don&#39;t convert vector types, we want to handle multi-dimensional</span></div>
-<div class="line"><a id="l04535" name="l04535"></a><span class="lineno"> 4535</span>    <span class="comment">// vector on our own.</span></div>
-<div class="line"><a id="l04536" name="l04536"></a><span class="lineno"> 4536</span>    converter.addConversion(</div>
-<div class="line"><a id="l04537" name="l04537"></a><span class="lineno"> 4537</span>        [&amp;](VectorType type) -&gt; std::optional&lt;Type&gt; { <span class="keywordflow">return</span> type; });</div>
+<div class="line"><a id="l04499" name="l04499"></a><span class="lineno"> 4499</span> </div>
+<div class="line"><a id="l04500" name="l04500"></a><span class="lineno"> 4500</span><span class="comment">// AIE2p version of ConcatOp conversion using vector.shuffle</span></div>
+<div class="foldopen" id="foldopen04501" data-start="{" data-end="};">
+<div class="line"><a id="l04501" name="l04501"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html"> 4501</a></span><span class="keyword">class </span><a class="code hl_class" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html">ConcatOpAIE2pConversion</a></div>
+<div class="line"><a id="l04502" name="l04502"></a><span class="lineno"> 4502</span>    : <span class="keyword">public</span> mlir::ConvertOpToLLVMPattern&lt;aievec::ConcatOp&gt; {</div>
+<div class="line"><a id="l04503" name="l04503"></a><span class="lineno"> 4503</span><span class="keyword">public</span>:</div>
+<div class="line"><a id="l04504" name="l04504"></a><span class="lineno"> 4504</span>  <span class="keyword">using </span>ConvertOpToLLVMPattern&lt;aievec::ConcatOp&gt;::ConvertOpToLLVMPattern;</div>
+<div class="line"><a id="l04505" name="l04505"></a><span class="lineno"> 4505</span> </div>
+<div class="line"><a id="l04506" name="l04506"></a><span class="lineno"> 4506</span>  LogicalResult</div>
+<div class="foldopen" id="foldopen04507" data-start="{" data-end="}">
+<div class="line"><a id="l04507" name="l04507"></a><span class="lineno"><a class="line" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html#a192d57234644779671a339343dc047d2"> 4507</a></span>  <a class="code hl_function" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html#a192d57234644779671a339343dc047d2">matchAndRewrite</a>(aievec::ConcatOp op, OpAdaptor adaptor,</div>
+<div class="line"><a id="l04508" name="l04508"></a><span class="lineno"> 4508</span>                  ConversionPatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l04509" name="l04509"></a><span class="lineno"> 4509</span>    Location loc = op.getLoc();</div>
+<div class="line"><a id="l04510" name="l04510"></a><span class="lineno"> 4510</span> </div>
+<div class="line"><a id="l04511" name="l04511"></a><span class="lineno"> 4511</span>    SmallVector&lt;Value&gt; sources = adaptor.getSources();</div>
+<div class="line"><a id="l04512" name="l04512"></a><span class="lineno"> 4512</span> </div>
+<div class="line"><a id="l04513" name="l04513"></a><span class="lineno"> 4513</span>    <span class="keywordflow">if</span> (sources.empty()) {</div>
+<div class="line"><a id="l04514" name="l04514"></a><span class="lineno"> 4514</span>      op.emitWarning() &lt;&lt; <span class="stringliteral">&quot;aievec.concat with no sources is not supported.\n&quot;</span>;</div>
+<div class="line"><a id="l04515" name="l04515"></a><span class="lineno"> 4515</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l04516" name="l04516"></a><span class="lineno"> 4516</span>    }</div>
+<div class="line"><a id="l04517" name="l04517"></a><span class="lineno"> 4517</span> </div>
+<div class="line"><a id="l04518" name="l04518"></a><span class="lineno"> 4518</span>    <span class="comment">// AIE2p doesn&#39;t have dedicated concat intrinsics, use vector.shuffle</span></div>
+<div class="line"><a id="l04519" name="l04519"></a><span class="lineno"> 4519</span>    Value result = sources[0];</div>
+<div class="line"><a id="l04520" name="l04520"></a><span class="lineno"> 4520</span> </div>
+<div class="line"><a id="l04521" name="l04521"></a><span class="lineno"> 4521</span>    <span class="comment">// Build shuffle mask that concatenates all sources</span></div>
+<div class="line"><a id="l04522" name="l04522"></a><span class="lineno"> 4522</span>    <span class="keyword">auto</span> srcType = cast&lt;VectorType&gt;(sources[0].getType());</div>
+<div class="line"><a id="l04523" name="l04523"></a><span class="lineno"> 4523</span>    int64_t srcLanes = <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">getVectorLaneSize</a>(srcType);</div>
+<div class="line"><a id="l04524" name="l04524"></a><span class="lineno"> 4524</span> </div>
+<div class="line"><a id="l04525" name="l04525"></a><span class="lineno"> 4525</span>    <span class="keywordflow">if</span> (sources.size() == 2) {</div>
+<div class="line"><a id="l04526" name="l04526"></a><span class="lineno"> 4526</span>      <span class="comment">// Concatenate two vectors using shuffle</span></div>
+<div class="line"><a id="l04527" name="l04527"></a><span class="lineno"> 4527</span>      SmallVector&lt;int64_t&gt; mask;</div>
+<div class="line"><a id="l04528" name="l04528"></a><span class="lineno"> 4528</span>      <span class="keywordflow">for</span> (int64_t i = 0; i &lt; srcLanes * 2; ++i)</div>
+<div class="line"><a id="l04529" name="l04529"></a><span class="lineno"> 4529</span>        mask.push_back(i);</div>
+<div class="line"><a id="l04530" name="l04530"></a><span class="lineno"> 4530</span> </div>
+<div class="line"><a id="l04531" name="l04531"></a><span class="lineno"> 4531</span>      result =</div>
+<div class="line"><a id="l04532" name="l04532"></a><span class="lineno"> 4532</span>          rewriter.create&lt;vector::ShuffleOp&gt;(loc, sources[0], sources[1], mask);</div>
+<div class="line"><a id="l04533" name="l04533"></a><span class="lineno"> 4533</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (sources.size() == 4) {</div>
+<div class="line"><a id="l04534" name="l04534"></a><span class="lineno"> 4534</span>      <span class="comment">// Concatenate four vectors: first concat pairs, then concat results</span></div>
+<div class="line"><a id="l04535" name="l04535"></a><span class="lineno"> 4535</span>      SmallVector&lt;int64_t&gt; pairMask;</div>
+<div class="line"><a id="l04536" name="l04536"></a><span class="lineno"> 4536</span>      <span class="keywordflow">for</span> (int64_t i = 0; i &lt; srcLanes * 2; ++i)</div>
+<div class="line"><a id="l04537" name="l04537"></a><span class="lineno"> 4537</span>        pairMask.push_back(i);</div>
 <div class="line"><a id="l04538" name="l04538"></a><span class="lineno"> 4538</span> </div>
-<div class="line"><a id="l04539" name="l04539"></a><span class="lineno"> 4539</span>    <a class="code hl_function" href="namespacexilinx_1_1aievec.html#af3c5e2eb8e12d97d5e634f8a2ffca316">populateAIEVecToLLVMConversionPatterns</a>(converter, patterns,</div>
-<div class="line"><a id="l04540" name="l04540"></a><span class="lineno"> 4540</span>                                           aie2Fp32Emulation, aieTarget);</div>
-<div class="line"><a id="l04541" name="l04541"></a><span class="lineno"> 4541</span> </div>
-<div class="line"><a id="l04542" name="l04542"></a><span class="lineno"> 4542</span>    LLVMConversionTarget target(getContext());</div>
-<div class="line"><a id="l04543" name="l04543"></a><span class="lineno"> 4543</span>    target.addIllegalDialect&lt;xilinx::aievec::AIEVecDialect,</div>
-<div class="line"><a id="l04544" name="l04544"></a><span class="lineno"> 4544</span>                             xilinx::aievec::aie1::AIEVecAIE1Dialect&gt;();</div>
-<div class="line"><a id="l04545" name="l04545"></a><span class="lineno"> 4545</span>    target.addLegalDialect&lt;arith::ArithDialect, vector::VectorDialect,</div>
-<div class="line"><a id="l04546" name="l04546"></a><span class="lineno"> 4546</span>                           xilinx::xllvm::XLLVMDialect, ub::UBDialect&gt;();</div>
-<div class="line"><a id="l04547" name="l04547"></a><span class="lineno"> 4547</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(getOperation(), target,</div>
-<div class="line"><a id="l04548" name="l04548"></a><span class="lineno"> 4548</span>                                      std::move(patterns))))</div>
-<div class="line"><a id="l04549" name="l04549"></a><span class="lineno"> 4549</span>      signalPassFailure();</div>
-<div class="line"><a id="l04550" name="l04550"></a><span class="lineno"> 4550</span>  }</div>
+<div class="line"><a id="l04539" name="l04539"></a><span class="lineno"> 4539</span>      <span class="keyword">auto</span> pair0 = rewriter.create&lt;vector::ShuffleOp&gt;(loc, sources[0],</div>
+<div class="line"><a id="l04540" name="l04540"></a><span class="lineno"> 4540</span>                                                      sources[1], pairMask);</div>
+<div class="line"><a id="l04541" name="l04541"></a><span class="lineno"> 4541</span>      <span class="keyword">auto</span> pair1 = rewriter.create&lt;vector::ShuffleOp&gt;(loc, sources[2],</div>
+<div class="line"><a id="l04542" name="l04542"></a><span class="lineno"> 4542</span>                                                      sources[3], pairMask);</div>
+<div class="line"><a id="l04543" name="l04543"></a><span class="lineno"> 4543</span> </div>
+<div class="line"><a id="l04544" name="l04544"></a><span class="lineno"> 4544</span>      SmallVector&lt;int64_t&gt; finalMask;</div>
+<div class="line"><a id="l04545" name="l04545"></a><span class="lineno"> 4545</span>      <span class="keywordflow">for</span> (int64_t i = 0; i &lt; srcLanes * 4; ++i)</div>
+<div class="line"><a id="l04546" name="l04546"></a><span class="lineno"> 4546</span>        finalMask.push_back(i);</div>
+<div class="line"><a id="l04547" name="l04547"></a><span class="lineno"> 4547</span> </div>
+<div class="line"><a id="l04548" name="l04548"></a><span class="lineno"> 4548</span>      result = rewriter.create&lt;vector::ShuffleOp&gt;(loc, pair0, pair1, finalMask);</div>
+<div class="line"><a id="l04549" name="l04549"></a><span class="lineno"> 4549</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l04550" name="l04550"></a><span class="lineno"> 4550</span>      op.emitWarning() &lt;&lt; <span class="stringliteral">&quot;aievec.concat with &quot;</span> &lt;&lt; sources.size()</div>
+<div class="line"><a id="l04551" name="l04551"></a><span class="lineno"> 4551</span>                       &lt;&lt; <span class="stringliteral">&quot; operands is not supported for AIE2p.\n&quot;</span>;</div>
+<div class="line"><a id="l04552" name="l04552"></a><span class="lineno"> 4552</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l04553" name="l04553"></a><span class="lineno"> 4553</span>    }</div>
+<div class="line"><a id="l04554" name="l04554"></a><span class="lineno"> 4554</span> </div>
+<div class="line"><a id="l04555" name="l04555"></a><span class="lineno"> 4555</span>    rewriter.replaceOp(op, result);</div>
+<div class="line"><a id="l04556" name="l04556"></a><span class="lineno"> 4556</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l04557" name="l04557"></a><span class="lineno"> 4557</span>  }</div>
 </div>
-<div class="line"><a id="l04551" name="l04551"></a><span class="lineno"> 4551</span>};</div>
+<div class="line"><a id="l04558" name="l04558"></a><span class="lineno"> 4558</span>};</div>
 </div>
-<div class="line"><a id="l04552" name="l04552"></a><span class="lineno"> 4552</span> </div>
-<div class="line"><a id="l04553" name="l04553"></a><span class="lineno"> 4553</span>std::unique_ptr&lt;mlir::OperationPass&lt;mlir::ModuleOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen04554" data-start="{" data-end="}">
-<div class="line"><a id="l04554" name="l04554"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#adaaa96f89dfc8552e4539f7b1db04c73"> 4554</a></span><a class="code hl_function" href="namespacexilinx_1_1aievec.html#adaaa96f89dfc8552e4539f7b1db04c73">createConvertAIEVecToLLVMPass</a>() {</div>
-<div class="line"><a id="l04555" name="l04555"></a><span class="lineno"> 4555</span>  <span class="keywordflow">return</span> std::make_unique&lt;ConvertAIEVecToLLVMPass&gt;();</div>
-<div class="line"><a id="l04556" name="l04556"></a><span class="lineno"> 4556</span>}</div>
+<div class="line"><a id="l04559" name="l04559"></a><span class="lineno"> 4559</span> </div>
+<div class="foldopen" id="foldopen04560" data-start="{" data-end="}">
+<div class="line"><a id="l04560" name="l04560"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a839c8414e0ef7b5a6882350523efc8bf"> 4560</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a839c8414e0ef7b5a6882350523efc8bf">populateAIEVecToLLVMAIE2pConversionPatterns</a>(</div>
+<div class="line"><a id="l04561" name="l04561"></a><span class="lineno"> 4561</span>    mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns) {</div>
+<div class="line"><a id="l04562" name="l04562"></a><span class="lineno"> 4562</span>  <span class="comment">// Patterns specific to AIE2p backend</span></div>
+<div class="line"><a id="l04563" name="l04563"></a><span class="lineno"> 4563</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1AddElemOpAIE2pConversion.html">AddElemOpAIE2pConversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1SubElemOpAIE2pConversion.html">SubElemOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04564" name="l04564"></a><span class="lineno"> 4564</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MulElemOpAIE2pConversion.html">MulElemOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04565" name="l04565"></a><span class="lineno"> 4565</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1UPSOpAIE2pConversion.html">UPSOpAIE2pConversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1SRSOpAIE2pConversion.html">SRSOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04566" name="l04566"></a><span class="lineno"> 4566</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MatMulOpAIE2pConversion.html">MatMulOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04567" name="l04567"></a><span class="lineno"> 4567</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ShiftOpAIE2pConversion.html">ShiftOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04568" name="l04568"></a><span class="lineno"> 4568</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1MaxOpAIE2pConversion.html">MaxOpAIE2pConversion</a>, <a class="code hl_class" href="classxilinx_1_1aievec_1_1MinOpAIE2pConversion.html">MinOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04569" name="l04569"></a><span class="lineno"> 4569</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html">ExtractElemOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04570" name="l04570"></a><span class="lineno"> 4570</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html">ConcatOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04571" name="l04571"></a><span class="lineno"> 4571</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html">ExpOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04572" name="l04572"></a><span class="lineno"> 4572</span>  patterns.add&lt;<a class="code hl_class" href="classxilinx_1_1aievec_1_1BroadcastScalarOpAIE2pConversion.html">BroadcastScalarOpAIE2pConversion</a>&gt;(converter);</div>
+<div class="line"><a id="l04573" name="l04573"></a><span class="lineno"> 4573</span>}</div>
 </div>
-<div class="line"><a id="l04557" name="l04557"></a><span class="lineno"> 4557</span> </div>
-<div class="line"><a id="l04558" name="l04558"></a><span class="lineno"> 4558</span>} <span class="comment">// namespace xilinx::aievec</span></div>
+<div class="line"><a id="l04574" name="l04574"></a><span class="lineno"> 4574</span> </div>
+<div class="foldopen" id="foldopen04575" data-start="{" data-end="}">
+<div class="line"><a id="l04575" name="l04575"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#a6ccaf1484220db800ea433e4dd5f4f94"> 4575</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="namespacexilinx_1_1aievec.html#af3c5e2eb8e12d97d5e634f8a2ffca316">populateAIEVecToLLVMConversionPatterns</a>(</div>
+<div class="line"><a id="l04576" name="l04576"></a><span class="lineno"> 4576</span>    mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns,</div>
+<div class="line"><a id="l04577" name="l04577"></a><span class="lineno"> 4577</span>    Aie2Fp32Emulation aie2Fp32EmulationOption, StringRef aieTarget) {</div>
+<div class="line"><a id="l04578" name="l04578"></a><span class="lineno"> 4578</span>  <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a4470a607f048ef6c205656ec46edd4cb">populateAIEVecToLLVMCommonConversionPatterns</a>(converter, patterns);</div>
+<div class="line"><a id="l04579" name="l04579"></a><span class="lineno"> 4579</span>  <span class="keywordflow">if</span> (aieTarget == <span class="stringliteral">&quot;aie2p&quot;</span>)</div>
+<div class="line"><a id="l04580" name="l04580"></a><span class="lineno"> 4580</span>    <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a839c8414e0ef7b5a6882350523efc8bf">populateAIEVecToLLVMAIE2pConversionPatterns</a>(converter, patterns);</div>
+<div class="line"><a id="l04581" name="l04581"></a><span class="lineno"> 4581</span>  <span class="keywordflow">else</span></div>
+<div class="line"><a id="l04582" name="l04582"></a><span class="lineno"> 4582</span>    <a class="code hl_function" href="namespacexilinx_1_1aievec.html#a8379b1de5f1dd72662b4af08d7a5b894">populateAIEVecToLLVMAIE2ConversionPatterns</a>(converter, patterns,</div>
+<div class="line"><a id="l04583" name="l04583"></a><span class="lineno"> 4583</span>                                               aie2Fp32EmulationOption);</div>
+<div class="line"><a id="l04584" name="l04584"></a><span class="lineno"> 4584</span>}</div>
+</div>
+<div class="line"><a id="l04585" name="l04585"></a><span class="lineno"> 4585</span> </div>
+<div class="foldopen" id="foldopen04586" data-start="{" data-end="};">
+<div class="line"><a id="l04586" name="l04586"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html"> 4586</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html">ConvertAIEVecToLLVMPass</a></div>
+<div class="line"><a id="l04587" name="l04587"></a><span class="lineno"> 4587</span>    : <a class="code hl_class" href="classConvertAIEVecToLLVMBase.html">ConvertAIEVecToLLVMBase</a>&lt;ConvertAIEVecToLLVMPass&gt; {</div>
+<div class="foldopen" id="foldopen04588" data-start="{" data-end="}">
+<div class="line"><a id="l04588" name="l04588"></a><span class="lineno"><a class="line" href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html#a49872ef77d5261bc50c03c3bdc18818f"> 4588</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html#a49872ef77d5261bc50c03c3bdc18818f">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l04589" name="l04589"></a><span class="lineno"> 4589</span>    RewritePatternSet patterns(&amp;getContext());</div>
+<div class="line"><a id="l04590" name="l04590"></a><span class="lineno"> 4590</span>    LLVMTypeConverter converter(&amp;getContext());</div>
+<div class="line"><a id="l04591" name="l04591"></a><span class="lineno"> 4591</span> </div>
+<div class="line"><a id="l04592" name="l04592"></a><span class="lineno"> 4592</span>    <span class="comment">// Don&#39;t convert vector types, we want to handle multi-dimensional</span></div>
+<div class="line"><a id="l04593" name="l04593"></a><span class="lineno"> 4593</span>    <span class="comment">// vector on our own.</span></div>
+<div class="line"><a id="l04594" name="l04594"></a><span class="lineno"> 4594</span>    converter.addConversion(</div>
+<div class="line"><a id="l04595" name="l04595"></a><span class="lineno"> 4595</span>        [&amp;](VectorType type) -&gt; std::optional&lt;Type&gt; { <span class="keywordflow">return</span> type; });</div>
+<div class="line"><a id="l04596" name="l04596"></a><span class="lineno"> 4596</span> </div>
+<div class="line"><a id="l04597" name="l04597"></a><span class="lineno"> 4597</span>    <a class="code hl_function" href="namespacexilinx_1_1aievec.html#af3c5e2eb8e12d97d5e634f8a2ffca316">populateAIEVecToLLVMConversionPatterns</a>(converter, patterns,</div>
+<div class="line"><a id="l04598" name="l04598"></a><span class="lineno"> 4598</span>                                           aie2Fp32Emulation, aieTarget);</div>
+<div class="line"><a id="l04599" name="l04599"></a><span class="lineno"> 4599</span> </div>
+<div class="line"><a id="l04600" name="l04600"></a><span class="lineno"> 4600</span>    LLVMConversionTarget target(getContext());</div>
+<div class="line"><a id="l04601" name="l04601"></a><span class="lineno"> 4601</span>    target.addIllegalDialect&lt;xilinx::aievec::AIEVecDialect,</div>
+<div class="line"><a id="l04602" name="l04602"></a><span class="lineno"> 4602</span>                             xilinx::aievec::aie1::AIEVecAIE1Dialect&gt;();</div>
+<div class="line"><a id="l04603" name="l04603"></a><span class="lineno"> 4603</span>    target.addLegalDialect&lt;arith::ArithDialect, vector::VectorDialect,</div>
+<div class="line"><a id="l04604" name="l04604"></a><span class="lineno"> 4604</span>                           xilinx::xllvm::XLLVMDialect, ub::UBDialect&gt;();</div>
+<div class="line"><a id="l04605" name="l04605"></a><span class="lineno"> 4605</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(getOperation(), target,</div>
+<div class="line"><a id="l04606" name="l04606"></a><span class="lineno"> 4606</span>                                      std::move(patterns))))</div>
+<div class="line"><a id="l04607" name="l04607"></a><span class="lineno"> 4607</span>      signalPassFailure();</div>
+<div class="line"><a id="l04608" name="l04608"></a><span class="lineno"> 4608</span>  }</div>
+</div>
+<div class="line"><a id="l04609" name="l04609"></a><span class="lineno"> 4609</span>};</div>
+</div>
+<div class="line"><a id="l04610" name="l04610"></a><span class="lineno"> 4610</span> </div>
+<div class="line"><a id="l04611" name="l04611"></a><span class="lineno"> 4611</span>std::unique_ptr&lt;mlir::OperationPass&lt;mlir::ModuleOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen04612" data-start="{" data-end="}">
+<div class="line"><a id="l04612" name="l04612"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1aievec.html#adaaa96f89dfc8552e4539f7b1db04c73"> 4612</a></span><a class="code hl_function" href="namespacexilinx_1_1aievec.html#adaaa96f89dfc8552e4539f7b1db04c73">createConvertAIEVecToLLVMPass</a>() {</div>
+<div class="line"><a id="l04613" name="l04613"></a><span class="lineno"> 4613</span>  <span class="keywordflow">return</span> std::make_unique&lt;ConvertAIEVecToLLVMPass&gt;();</div>
+<div class="line"><a id="l04614" name="l04614"></a><span class="lineno"> 4614</span>}</div>
+</div>
+<div class="line"><a id="l04615" name="l04615"></a><span class="lineno"> 4615</span> </div>
+<div class="line"><a id="l04616" name="l04616"></a><span class="lineno"> 4616</span>} <span class="comment">// namespace xilinx::aievec</span></div>
 <div class="ttc" id="aAIEVecAIE1Ops_8h_html"><div class="ttname"><a href="AIEVecAIE1Ops_8h.html">AIEVecAIE1Ops.h</a></div></div>
 <div class="ttc" id="aAIEVecOps_8h_html"><div class="ttname"><a href="AIEVecOps_8h.html">AIEVecOps.h</a></div></div>
 <div class="ttc" id="aAIEVecToLLVM_8h_html"><div class="ttname"><a href="AIEVecToLLVM_8h.html">AIEVecToLLVM.h</a></div></div>
@@ -4847,16 +4905,16 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1BroadcastScalarOpAIE2pConversion_html_a4da69e4123fa5721792fd1ab9405cfe7"><div class="ttname"><a href="classxilinx_1_1aievec_1_1BroadcastScalarOpAIE2pConversion.html#a4da69e4123fa5721792fd1ab9405cfe7">xilinx::aievec::BroadcastScalarOpAIE2pConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::BroadcastScalarOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03140">AIEVecToLLVM.cpp:3140</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1BroadcastScalarOpConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1BroadcastScalarOpConversion.html">xilinx::aievec::BroadcastScalarOpConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03059">AIEVecToLLVM.cpp:3060</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1BroadcastScalarOpConversion_html_a64135be420880c6e6f0dbd5783f66d7a"><div class="ttname"><a href="classxilinx_1_1aievec_1_1BroadcastScalarOpConversion.html#a64135be420880c6e6f0dbd5783f66d7a">xilinx::aievec::BroadcastScalarOpConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::BroadcastScalarOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03066">AIEVecToLLVM.cpp:3066</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1ConcatOpAIE2pConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html">xilinx::aievec::ConcatOpAIE2pConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04443">AIEVecToLLVM.cpp:4444</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1ConcatOpAIE2pConversion_html_a192d57234644779671a339343dc047d2"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html#a192d57234644779671a339343dc047d2">xilinx::aievec::ConcatOpAIE2pConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ConcatOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04449">AIEVecToLLVM.cpp:4449</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1ConcatOpAIE2pConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html">xilinx::aievec::ConcatOpAIE2pConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04501">AIEVecToLLVM.cpp:4502</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1ConcatOpAIE2pConversion_html_a192d57234644779671a339343dc047d2"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ConcatOpAIE2pConversion.html#a192d57234644779671a339343dc047d2">xilinx::aievec::ConcatOpAIE2pConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ConcatOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04507">AIEVecToLLVM.cpp:4507</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ConcatOpConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ConcatOpConversion.html">xilinx::aievec::ConcatOpConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l02344">AIEVecToLLVM.cpp:2345</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ConcatOpConversion_html_a1d43f954af7bcd33c1a9214c7ab38bb3"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ConcatOpConversion.html#a1d43f954af7bcd33c1a9214c7ab38bb3">xilinx::aievec::ConcatOpConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ConcatOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l02350">AIEVecToLLVM.cpp:2350</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1ExpOpAIE2pConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html">xilinx::aievec::ExpOpAIE2pConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04329">AIEVecToLLVM.cpp:4330</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1ExpOpAIE2pConversion_html_a5878b14968d44c5cc1ab1683a766c758"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html#a5878b14968d44c5cc1ab1683a766c758">xilinx::aievec::ExpOpAIE2pConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ExpOp expOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04335">AIEVecToLLVM.cpp:4335</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1ExpOpAIE2pConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html">xilinx::aievec::ExpOpAIE2pConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04387">AIEVecToLLVM.cpp:4388</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1ExpOpAIE2pConversion_html_a5878b14968d44c5cc1ab1683a766c758"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExpOpAIE2pConversion.html#a5878b14968d44c5cc1ab1683a766c758">xilinx::aievec::ExpOpAIE2pConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ExpOp expOp, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04393">AIEVecToLLVM.cpp:4393</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ExtOpConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExtOpConversion.html">xilinx::aievec::ExtOpConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l02416">AIEVecToLLVM.cpp:2416</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ExtOpConversion_html_ad72e9d843f019cb393b8f95bd1a0ef02"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExtOpConversion.html#ad72e9d843f019cb393b8f95bd1a0ef02">xilinx::aievec::ExtOpConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ExtOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l02421">AIEVecToLLVM.cpp:2421</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html">xilinx::aievec::ExtractElemOpAIE2pConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04422">AIEVecToLLVM.cpp:4423</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion_html_a04005a79a0b31f4eb80d0555a9d626f9"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html#a04005a79a0b31f4eb80d0555a9d626f9">xilinx::aievec::ExtractElemOpAIE2pConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ExtElemOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04428">AIEVecToLLVM.cpp:4428</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html">xilinx::aievec::ExtractElemOpAIE2pConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04480">AIEVecToLLVM.cpp:4481</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion_html_a04005a79a0b31f4eb80d0555a9d626f9"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExtractElemOpAIE2pConversion.html#a04005a79a0b31f4eb80d0555a9d626f9">xilinx::aievec::ExtractElemOpAIE2pConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ExtElemOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04486">AIEVecToLLVM.cpp:4486</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ExtractElemOpConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExtractElemOpConversion.html">xilinx::aievec::ExtractElemOpConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03312">AIEVecToLLVM.cpp:3313</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ExtractElemOpConversion_html_a81df5e091abacbcfbe3b3ac0d501ab89"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ExtractElemOpConversion.html#a81df5e091abacbcfbe3b3ac0d501ab89">xilinx::aievec::ExtractElemOpConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ExtElemOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03318">AIEVecToLLVM.cpp:3318</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1FMAElemOpConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1FMAElemOpConversion.html">xilinx::aievec::FMAElemOpConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03393">AIEVecToLLVM.cpp:3394</a></div></div>
@@ -4900,7 +4958,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ShiftOpAIE2pConversion_html_ae19d0fe86fea0dfab499d80a40386624"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ShiftOpAIE2pConversion.html#ae19d0fe86fea0dfab499d80a40386624">xilinx::aievec::ShiftOpAIE2pConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ShiftOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03258">AIEVecToLLVM.cpp:3258</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ShiftOpConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ShiftOpConversion.html">xilinx::aievec::ShiftOpConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03192">AIEVecToLLVM.cpp:3192</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1ShiftOpConversion_html_a64858cb3020b64e702fc39435e756f09"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ShiftOpConversion.html#a64858cb3020b64e702fc39435e756f09">xilinx::aievec::ShiftOpConversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::ShiftOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l03197">AIEVecToLLVM.cpp:3197</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1aievec_1_1ShuffleOpConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ShuffleOpConversion.html">xilinx::aievec::ShuffleOpConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04289">AIEVecToLLVM.cpp:4290</a></div></div>
+<div class="ttc" id="aclassxilinx_1_1aievec_1_1ShuffleOpConversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1ShuffleOpConversion.html">xilinx::aievec::ShuffleOpConversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04347">AIEVecToLLVM.cpp:4348</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1SubElemOpAIE2Conversion_html"><div class="ttname"><a href="classxilinx_1_1aievec_1_1SubElemOpAIE2Conversion.html">xilinx::aievec::SubElemOpAIE2Conversion</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00313">AIEVecToLLVM.cpp:314</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1SubElemOpAIE2Conversion_html_a5e627bd1955081f9adc140b73b8a8405"><div class="ttname"><a href="classxilinx_1_1aievec_1_1SubElemOpAIE2Conversion.html#a5e627bd1955081f9adc140b73b8a8405">xilinx::aievec::SubElemOpAIE2Conversion::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(aievec::SubElemOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00344">AIEVecToLLVM.cpp:344</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1aievec_1_1SubElemOpAIE2Conversion_html_a6f6c7f41446f968c3b95a23c9fd3208d"><div class="ttname"><a href="classxilinx_1_1aievec_1_1SubElemOpAIE2Conversion.html#a6f6c7f41446f968c3b95a23c9fd3208d">xilinx::aievec::SubElemOpAIE2Conversion::decodeSubElemOp</a></div><div class="ttdeci">static DecodedSubElemOp decodeSubElemOp(OpAdaptor op)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00324">AIEVecToLLVM.cpp:324</a></div></div>
@@ -4925,15 +4983,15 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a0c13850a29b0c31c74c42d32a3c50c4b"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a0c13850a29b0c31c74c42d32a3c50c4b">xilinx::aievec::getVectorSizeInBits</a></div><div class="ttdeci">int32_t getVectorSizeInBits(mlir::VectorType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecUtils_8h_source.html#l00066">AIEVecUtils.h:66</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a0d7b9b07a42d95108724a2987cf0a5ad"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a0d7b9b07a42d95108724a2987cf0a5ad">xilinx::aievec::getVectorLaneSize</a></div><div class="ttdeci">unsigned getVectorLaneSize(mlir::VectorType type)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecUtils_8h_source.html#l00055">AIEVecUtils.h:55</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a144f18e73a75f872424ecf58a5057572"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a144f18e73a75f872424ecf58a5057572">xilinx::aievec::encodeSquare</a></div><div class="ttdeci">uint32_t encodeSquare(uint32_t square)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00210">AIEVecToLLVM.cpp:210</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1aievec_html_a4470a607f048ef6c205656ec46edd4cb"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a4470a607f048ef6c205656ec46edd4cb">xilinx::aievec::populateAIEVecToLLVMCommonConversionPatterns</a></div><div class="ttdeci">void populateAIEVecToLLVMCommonConversionPatterns(mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04386">AIEVecToLLVM.cpp:4386</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1aievec_html_a4470a607f048ef6c205656ec46edd4cb"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a4470a607f048ef6c205656ec46edd4cb">xilinx::aievec::populateAIEVecToLLVMCommonConversionPatterns</a></div><div class="ttdeci">void populateAIEVecToLLVMCommonConversionPatterns(mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04444">AIEVecToLLVM.cpp:4444</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a51514c9fb495313d56fc00eadc41630f"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a51514c9fb495313d56fc00eadc41630f">xilinx::aievec::encodeConf</a></div><div class="ttdeci">void encodeConf(uint32_t conf[2], const BufferParams &amp;x, const BufferParams &amp;z, bool sub)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00221">AIEVecToLLVM.cpp:221</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a8379b1de5f1dd72662b4af08d7a5b894"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a8379b1de5f1dd72662b4af08d7a5b894">xilinx::aievec::populateAIEVecToLLVMAIE2ConversionPatterns</a></div><div class="ttdeci">void populateAIEVecToLLVMAIE2ConversionPatterns(mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns)</div></div>
-<div class="ttc" id="anamespacexilinx_1_1aievec_html_a839c8414e0ef7b5a6882350523efc8bf"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a839c8414e0ef7b5a6882350523efc8bf">xilinx::aievec::populateAIEVecToLLVMAIE2pConversionPatterns</a></div><div class="ttdeci">void populateAIEVecToLLVMAIE2pConversionPatterns(mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04502">AIEVecToLLVM.cpp:4502</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1aievec_html_a839c8414e0ef7b5a6882350523efc8bf"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a839c8414e0ef7b5a6882350523efc8bf">xilinx::aievec::populateAIEVecToLLVMAIE2pConversionPatterns</a></div><div class="ttdeci">void populateAIEVecToLLVMAIE2pConversionPatterns(mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04560">AIEVecToLLVM.cpp:4560</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a99d3cb72f0764f395feb55a379e792c9"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9">xilinx::aievec::AIEArch</a></div><div class="ttdeci">AIEArch</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l01351">AIEVecToLLVM.cpp:1351</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5">xilinx::aievec::AIEArch::AIE2</a></div><div class="ttdeci">@ AIE2</div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_a99d3cb72f0764f395feb55a379e792c9abd3bcf3e028c7a365b4fca53544bdafa"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9abd3bcf3e028c7a365b4fca53544bdafa">xilinx::aievec::AIEArch::AIE2p</a></div><div class="ttdeci">@ AIE2p</div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_abe2805124486ca450c313931605821ad"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#abe2805124486ca450c313931605821ad">xilinx::aievec::getMulOrFMAIntrinsicName</a></div><div class="ttdeci">std::string getMulOrFMAIntrinsicName(Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00182">AIEVecToLLVM.cpp:182</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1aievec_html_adaaa96f89dfc8552e4539f7b1db04c73"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#adaaa96f89dfc8552e4539f7b1db04c73">xilinx::aievec::createConvertAIEVecToLLVMPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt; createConvertAIEVecToLLVMPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04554">AIEVecToLLVM.cpp:4554</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1aievec_html_adaaa96f89dfc8552e4539f7b1db04c73"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#adaaa96f89dfc8552e4539f7b1db04c73">xilinx::aievec::createConvertAIEVecToLLVMPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt; createConvertAIEVecToLLVMPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04612">AIEVecToLLVM.cpp:4612</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_ae9f6f26184cce2e2cb9cb76a3f610077"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#ae9f6f26184cce2e2cb9cb76a3f610077">xilinx::aievec::getVectorTypeString</a></div><div class="ttdeci">std::string getVectorTypeString(VectorType type, bool abbrev=false, bool acc=false)</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00169">AIEVecToLLVM.cpp:169</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1aievec_html_af3c5e2eb8e12d97d5e634f8a2ffca316"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#af3c5e2eb8e12d97d5e634f8a2ffca316">xilinx::aievec::populateAIEVecToLLVMConversionPatterns</a></div><div class="ttdeci">void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &amp;converter, mlir::RewritePatternSet &amp;patterns, Aie2Fp32Emulation aie2Fp32EmulationOption, llvm::StringRef aieTarget)</div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1AddElemOpAIE2Conversion_1_1DecodedAddElemOp_html"><div class="ttname"><a href="structxilinx_1_1aievec_1_1AddElemOpAIE2Conversion_1_1DecodedAddElemOp.html">xilinx::aievec::AddElemOpAIE2Conversion::DecodedAddElemOp</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00247">AIEVecToLLVM.cpp:247</a></div></div>
@@ -4954,8 +5012,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructxilinx_1_1aievec_1_1BufferParams_html_ae80712bb3ea51a930a7d27bfe68c4814"><div class="ttname"><a href="structxilinx_1_1aievec_1_1BufferParams.html#ae80712bb3ea51a930a7d27bfe68c4814">xilinx::aievec::BufferParams::start</a></div><div class="ttdeci">uint32_t start</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00135">AIEVecToLLVM.cpp:135</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1BufferParams_html_af57748b46b389df61de7348bf49fce9a"><div class="ttname"><a href="structxilinx_1_1aievec_1_1BufferParams.html#af57748b46b389df61de7348bf49fce9a">xilinx::aievec::BufferParams::offsets</a></div><div class="ttdeci">uint32_t offsets</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00136">AIEVecToLLVM.cpp:136</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1BufferParams_html_af81040ed2a85064a4ea7e1d7039ffc58"><div class="ttname"><a href="structxilinx_1_1aievec_1_1BufferParams.html#af81040ed2a85064a4ea7e1d7039ffc58">xilinx::aievec::BufferParams::square</a></div><div class="ttdeci">uint32_t square</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l00139">AIEVecToLLVM.cpp:139</a></div></div>
-<div class="ttc" id="astructxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass_html"><div class="ttname"><a href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html">xilinx::aievec::ConvertAIEVecToLLVMPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04528">AIEVecToLLVM.cpp:4529</a></div></div>
-<div class="ttc" id="astructxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass_html_a49872ef77d5261bc50c03c3bdc18818f"><div class="ttname"><a href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html#a49872ef77d5261bc50c03c3bdc18818f">xilinx::aievec::ConvertAIEVecToLLVMPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04530">AIEVecToLLVM.cpp:4530</a></div></div>
+<div class="ttc" id="astructxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass_html"><div class="ttname"><a href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html">xilinx::aievec::ConvertAIEVecToLLVMPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04586">AIEVecToLLVM.cpp:4587</a></div></div>
+<div class="ttc" id="astructxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass_html_a49872ef77d5261bc50c03c3bdc18818f"><div class="ttname"><a href="structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html#a49872ef77d5261bc50c03c3bdc18818f">xilinx::aievec::ConvertAIEVecToLLVMPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l04588">AIEVecToLLVM.cpp:4588</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1MulElemOpAIE2pConversion_1_1DecodedMulElemOp_html"><div class="ttname"><a href="structxilinx_1_1aievec_1_1MulElemOpAIE2pConversion_1_1DecodedMulElemOp.html">xilinx::aievec::MulElemOpAIE2pConversion::DecodedMulElemOp</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l01229">AIEVecToLLVM.cpp:1229</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1MulElemOpAIE2pConversion_1_1DecodedMulElemOp_html_a131dd96bfef5debefe7fb2523255ac98"><div class="ttname"><a href="structxilinx_1_1aievec_1_1MulElemOpAIE2pConversion_1_1DecodedMulElemOp.html#a131dd96bfef5debefe7fb2523255ac98">xilinx::aievec::MulElemOpAIE2pConversion::DecodedMulElemOp::kind</a></div><div class="ttdeci">Kind kind</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l01236">AIEVecToLLVM.cpp:1236</a></div></div>
 <div class="ttc" id="astructxilinx_1_1aievec_1_1MulElemOpAIE2pConversion_1_1DecodedMulElemOp_html_a3b85662ee6a7058c57e4554be40060ad"><div class="ttname"><a href="structxilinx_1_1aievec_1_1MulElemOpAIE2pConversion_1_1DecodedMulElemOp.html#a3b85662ee6a7058c57e4554be40060ad">xilinx::aievec::MulElemOpAIE2pConversion::DecodedMulElemOp::Kind</a></div><div class="ttdeci">Kind</div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8cpp_source.html#l01230">AIEVecToLLVM.cpp:1230</a></div></div>
@@ -4989,7 +5047,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Dec 10 2025 19:50:21 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 04:58:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

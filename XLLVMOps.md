@@ -682,6 +682,22 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `xllvm.intr.aie2.vbroadcast.zero.acc1024` (::xilinx::xllvm::VectorBroadcastZeroAcc1024IntrOp)
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2.vbroadcast16.bf512` (::xilinx::xllvm::VectorBroadcast16BF512IntrOp)
 
 #### Operands:
