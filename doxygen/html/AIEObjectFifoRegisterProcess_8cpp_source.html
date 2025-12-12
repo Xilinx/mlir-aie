@@ -99,14 +99,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span> </div>
 <div class="foldopen" id="foldopen00039" data-start="{" data-end="}">
 <div class="line"><a id="l00039" name="l00039"></a><span class="lineno"><a class="line" href="structAIEObjectFifoRegisterProcessPass.html#aefbca0fd975c6f5aecef4ec1c487b744">   39</a></span>  scf::ForOp <a class="code hl_function" href="structAIEObjectFifoRegisterProcessPass.html#aefbca0fd975c6f5aecef4ec1c487b744">createForLoop</a>(OpBuilder &amp;builder, <span class="keywordtype">int</span> length) {</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    <span class="keyword">auto</span> lowerBound = builder.create&lt;arith::ConstantOp&gt;(</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>        builder.getUnknownLoc(), builder.getIndexAttr(0));</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <span class="keyword">auto</span> upperBound = builder.create&lt;arith::ConstantOp&gt;(</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>        builder.getUnknownLoc(), builder.getIndexAttr(length));</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="keyword">auto</span> step = builder.create&lt;arith::ConstantOp&gt;(builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>                                                  builder.getIndexAttr(1));</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">auto</span> forLoop = builder.create&lt;scf::ForOp&gt;(builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>                                              lowerBound, upperBound, step);</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>    <span class="keyword">auto</span> lowerBound = arith::ConstantOp::create(</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>        builder, builder.getUnknownLoc(), builder.getIndexAttr(0));</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <span class="keyword">auto</span> upperBound = arith::ConstantOp::create(</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>        builder, builder.getUnknownLoc(), builder.getIndexAttr(length));</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    <span class="keyword">auto</span> step = arith::ConstantOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>                                          builder.getIndexAttr(1));</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">auto</span> forLoop = scf::ForOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>                                      lowerBound, upperBound, step);</div>
 <div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="keywordflow">return</span> forLoop;</div>
 <div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  }</div>
 </div>
@@ -127,14 +127,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    <span class="comment">// acquires</span></div>
 <div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>    <span class="keywordflow">if</span> (acqNumber.getInt() &gt; 0) {</div>
 <div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>      <span class="keyword">auto</span> acqType = AIEObjectFifoSubviewType::get(elementType);</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>      <span class="keyword">auto</span> acqOp = builder.create&lt;ObjectFifoAcquireOp&gt;(</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>          builder.getUnknownLoc(), acqType, regOp.getPortAttr(),</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>      <span class="keyword">auto</span> acqOp = ObjectFifoAcquireOp::create(</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>          builder, builder.getUnknownLoc(), acqType, regOp.getPortAttr(),</div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);</div>
 <div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
 <div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>      <span class="comment">// subview accesses</span></div>
 <div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>      <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; acqNumber.getInt(); i++)</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>        (<span class="keywordtype">void</span>)builder.create&lt;ObjectFifoSubviewAccessOp&gt;(</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>            builder.getUnknownLoc(), elementType, acqOp.getSubview(),</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>        (<span class="keywordtype">void</span>)ObjectFifoSubviewAccessOp::create(</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>            builder, builder.getUnknownLoc(), elementType, acqOp.getSubview(),</div>
 <div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>            builder.getIntegerAttr(builder.getI32Type(), i));</div>
 <div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span> </div>
 <div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>      <span class="comment">// apply kernel</span></div>
@@ -145,14 +145,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>          <span class="keywordflow">break</span>;</div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>        }</div>
 <div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>      }</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>      builder.create&lt;func::CallOp&gt;(builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>                                   func <span class="comment">/*, acc.output()*/</span>);</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>      func::CallOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>                           func <span class="comment">/*, acc.output()*/</span>);</div>
 <div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    }</div>
 <div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
 <div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>    <span class="comment">// releases</span></div>
 <div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    <span class="keywordflow">if</span> (relNumber.getInt() &gt; 0) {</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>      <span class="keyword">auto</span> relOp = builder.create&lt;ObjectFifoReleaseOp&gt;(</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>          builder.getUnknownLoc(), regOp.getPortAttr(),</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>      <span class="keyword">auto</span> relOp = ObjectFifoReleaseOp::create(</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>          builder, builder.getUnknownLoc(), regOp.getPortAttr(),</div>
 <div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>          SymbolRefAttr::get(ctx, regOp.getObjFifoName()), relNumber);</div>
 <div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>      builder.setInsertionPointAfter(relOp);</div>
 <div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    }</div>
@@ -203,13 +203,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>          <span class="comment">/*AllowRepeats=*/</span><span class="keyword">false</span>);</div>
 <div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>      <span class="comment">// retrieve core associated to above tile or create new one</span></div>
 <div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>      <span class="keywordflow">if</span> (!op) {</div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>        CoreOp coreOp = builder.create&lt;CoreOp&gt;(builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>                                               builder.getIndexType(), tile);</div>
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>        CoreOp coreOp = CoreOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>                                       builder.getIndexType(), tile);</div>
 <div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>        Region &amp;r = coreOp.getBody();</div>
 <div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>        r.push_back(<span class="keyword">new</span> Block);</div>
 <div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>        Block &amp;block = r.back();</div>
 <div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>        builder.setInsertionPointToStart(&amp;block);</div>
-<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>        builder.create&lt;EndOp&gt;(builder.getUnknownLoc());</div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>        EndOp::create(builder, builder.getUnknownLoc());</div>
 <div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>        builder.setInsertionPointToStart(&amp;block);</div>
 <div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>      } <span class="keywordflow">else</span> {</div>
 <div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>        CoreOp coreOp = llvm::dyn_cast&lt;CoreOp&gt;(op);</div>
@@ -314,7 +314,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

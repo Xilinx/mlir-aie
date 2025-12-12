@@ -1295,8 +1295,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01215" name="l01215"></a><span class="lineno"> 1215</span>    OpBuilder::InsertionGuard guard(builder);</div>
 <div class="line"><a id="l01216" name="l01216"></a><span class="lineno"> 1216</span>    mlir::Block &amp;device_start_block = *device.getBodyRegion().begin();</div>
 <div class="line"><a id="l01217" name="l01217"></a><span class="lineno"> 1217</span>    builder.setInsertionPointToStart(&amp;device_start_block);</div>
-<div class="line"><a id="l01218" name="l01218"></a><span class="lineno"> 1218</span>    tile = builder.create&lt;TileOp&gt;(builder.getUnknownLoc(),</div>
-<div class="line"><a id="l01219" name="l01219"></a><span class="lineno"> 1219</span>                                  builder.getIndexType(), <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l01218" name="l01218"></a><span class="lineno"> 1218</span>    tile = TileOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l01219" name="l01219"></a><span class="lineno"> 1219</span>                          builder.getIndexType(), <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
 <div class="line"><a id="l01220" name="l01220"></a><span class="lineno"> 1220</span>  }</div>
 <div class="line"><a id="l01221" name="l01221"></a><span class="lineno"> 1221</span>  <span class="keywordflow">return</span> tile;</div>
 <div class="line"><a id="l01222" name="l01222"></a><span class="lineno"> 1222</span>}</div>
@@ -2619,7 +2619,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

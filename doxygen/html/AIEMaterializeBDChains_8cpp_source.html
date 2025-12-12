@@ -110,9 +110,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
 <div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    <span class="keyword">const</span> <span class="keywordtype">int</span> col = alloc_op.getCol();</div>
 <div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    DMAStartBdChainOp new_op = rewriter.create&lt;DMAStartBdChainOp&gt;(</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        op.getLoc(), rewriter.getIndexType(), op.getSymbol(), op.getArgs(),</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        tile.getResult(), alloc_op.getChannelDir(),</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    DMAStartBdChainOp new_op = DMAStartBdChainOp::create(</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(),</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        op.getArgs(), tile.getResult(), alloc_op.getChannelDir(),</div>
 <div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),</div>
 <div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>        op.getRepeatCount());</div>
 <div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());</div>
@@ -147,9 +147,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>    Region &amp;source_region = chain_def.getBody();</div>
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span> </div>
 <div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="comment">// Create BD op into which the result will be inlined</span></div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    DMAConfigureTaskOp configure_op = rewriter.create&lt;DMAConfigureTaskOp&gt;(</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>        start_op.getLoc(), rewriter.getIndexType(), start_op.getTile(),</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>        start_op.getDirection(), start_op.getChannel(),</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    DMAConfigureTaskOp configure_op = DMAConfigureTaskOp::create(</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>        rewriter, start_op.getLoc(), rewriter.getIndexType(),</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>        start_op.getTile(), start_op.getDirection(), start_op.getChannel(),</div>
 <div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>        start_op.getIssueToken(), start_op.getRepeatCount());</div>
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>    Region &amp;target_region = configure_op.getBody();</div>
 <div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
@@ -169,8 +169,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>    rewriter.replaceAllUsesWith(start_op.getResult(), configure_op.getResult());</div>
 <div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span> </div>
 <div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>    <span class="comment">// Add a start BDs instruction</span></div>
-<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>    rewriter.create&lt;DMAStartTaskOp&gt;(start_op.getLoc(),</div>
-<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>                                    configure_op.getResult());</div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>    DMAStartTaskOp::create(rewriter, start_op.getLoc(),</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>                           configure_op.getResult());</div>
 <div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span> </div>
 <div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    <span class="comment">// After fully inlining, remove the original instruction</span></div>
 <div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>    rewriter.eraseOp(start_op);</div>
@@ -241,7 +241,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

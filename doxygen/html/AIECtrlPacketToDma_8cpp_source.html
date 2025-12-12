@@ -142,7 +142,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>      IRMapping mapping;</div>
 <div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>      <span class="keyword">auto</span> newSeq =</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>          builder.create&lt;AIE::RuntimeSequenceOp&gt;(loc, f.getSymNameAttr());</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>          AIE::RuntimeSequenceOp::create(builder, loc, f.getSymNameAttr());</div>
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>      newSeq.getBody().push_back(<span class="keyword">new</span> Block);</div>
 <div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>      <span class="comment">// Copy the arguments from the old sequence to the new one.</span></div>
@@ -250,11 +250,11 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span> </div>
 <div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>        SymbolRefAttr metadata =</div>
 <div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>            SymbolRefAttr::get(builder.getContext(), batchIt-&gt;shimDmaAllocName);</div>
-<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>        builder.create&lt;NpuDmaMemcpyNdOp&gt;(</div>
-<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>            builder.getUnknownLoc(), newBlockArg, SmallVector&lt;Value&gt;{},</div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>            SmallVector&lt;Value&gt;{}, SmallVector&lt;Value&gt;{}, ArrayRef(staticOffsets),</div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>            ArrayRef(staticSizes), ArrayRef(staticStrides), <span class="keyword">nullptr</span>, metadata,</div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>            0, <span class="keyword">true</span>, 0, 0, 0, 0, 0, 0);</div>
+<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>        NpuDmaMemcpyNdOp::create(builder, builder.getUnknownLoc(), newBlockArg,</div>
+<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>                                 SmallVector&lt;Value&gt;{}, SmallVector&lt;Value&gt;{},</div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>                                 SmallVector&lt;Value&gt;{}, ArrayRef(staticOffsets),</div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>                                 ArrayRef(staticSizes), ArrayRef(staticStrides),</div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>                                 <span class="keyword">nullptr</span>, metadata, 0, <span class="keyword">true</span>, 0, 0, 0, 0, 0, 0);</div>
 <div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span> </div>
 <div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>        <span class="keyword">auto</span> shimRow = builder.getI32IntegerAttr(0);</div>
 <div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>        <span class="keyword">auto</span> shimCol = builder.getI32IntegerAttr(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>);</div>
@@ -262,8 +262,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>        <span class="keyword">auto</span> chan = builder.getI32IntegerAttr(batchIt-&gt;shimChan);</div>
 <div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>        <span class="keyword">auto</span> col_num = builder.getI32IntegerAttr(1);</div>
 <div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>        <span class="keyword">auto</span> row_num = builder.getI32IntegerAttr(1);</div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>        builder.create&lt;AIEX::NpuSyncOp&gt;(loc, shimCol, shimRow, dir, chan,</div>
-<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>                                        col_num, row_num);</div>
+<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>        AIEX::NpuSyncOp::create(builder, loc, shimCol, shimRow, dir, chan,</div>
+<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>                                col_num, row_num);</div>
 <div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>        ++batchIt;</div>
 <div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>      }</div>
 <div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span> </div>
@@ -312,7 +312,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

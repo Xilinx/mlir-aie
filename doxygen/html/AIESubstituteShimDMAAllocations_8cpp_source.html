@@ -104,8 +104,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span> </div>
 <div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    <span class="keyword">const</span> <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = alloc_op.getCol();</div>
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    DMAConfigureTaskOp new_op = rewriter.create&lt;DMAConfigureTaskOp&gt;(</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        op.getLoc(), rewriter.getIndexType(), tile.getResult(),</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    DMAConfigureTaskOp new_op = DMAConfigureTaskOp::create(</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>        rewriter, op.getLoc(), rewriter.getIndexType(), tile.getResult(),</div>
 <div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>        alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),</div>
 <div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        op.getIssueToken(), op.getRepeatCount(),</div>
 <div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        alloc_op.getPacket().value_or(<span class="keyword">nullptr</span>));</div>
@@ -151,7 +151,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

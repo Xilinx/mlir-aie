@@ -103,9 +103,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    <span class="keywordflow">while</span> (dev.lookupSymbol(name + std::to_string(cachedId)))</div>
 <div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>      cachedId++;</div>
 <div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>    name += std::to_string(cachedId);</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    global = builder.create&lt;memref::GlobalOp&gt;(</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>        loc, name, builder.getStringAttr(<span class="stringliteral">&quot;private&quot;</span>), memrefType, initVal, <span class="keyword">true</span>,</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>        <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    global = memref::GlobalOp::create(builder, loc, name,</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>                                      builder.getStringAttr(<span class="stringliteral">&quot;private&quot;</span>),</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>                                      memrefType, initVal, <span class="keyword">true</span>, <span class="keyword">nullptr</span>);</div>
 <div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>  }</div>
 <div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  <span class="keywordflow">return</span> global;</div>
 <div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>}</div>
@@ -117,7 +117,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

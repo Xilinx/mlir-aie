@@ -213,7 +213,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    device.walk([&amp;](DMAAwaitTaskOp op) {</div>
 <div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>      OpBuilder builder(op);</div>
 <div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>      builder.setInsertionPointAfter(op);</div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>      builder.create&lt;DMAFreeTaskOp&gt;(op.getLoc(), op.getTask());</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>      DMAFreeTaskOp::create(builder, op.getLoc(), op.getTask());</div>
 <div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>    });</div>
 <div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span> </div>
 <div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>    <span class="comment">// TODO: Only walk the sequence function</span></div>
@@ -265,7 +265,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

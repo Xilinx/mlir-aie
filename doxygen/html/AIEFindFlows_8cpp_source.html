@@ -316,20 +316,20 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>        Operation *destOp = portConnection.<a class="code hl_variable" href="structPortConnection.html#a9017e2bfa76d93363c1c181d28e25bf2">op</a>;</div>
 <div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>        <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> destPort = portConnection.<a class="code hl_variable" href="structPortConnection.html#a8d6cbf9c7c5b6719870acc83ee7b56a4">port</a>;</div>
 <div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>        <span class="keywordflow">if</span> (maskValue.<a class="code hl_variable" href="structMaskValue.html#a6cd75dff3bbb76d2ffe3a7d91be57168">mask</a> == 0) {</div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>          rewriter.create&lt;FlowOp&gt;(Op-&gt;getLoc(), Op-&gt;getResult(0), bundle, i,</div>
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>                                  destOp-&gt;getResult(0), destPort.bundle,</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>                                  destPort.channel);</div>
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>          FlowOp::create(rewriter, Op-&gt;getLoc(), Op-&gt;getResult(0), bundle, i,</div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>                         destOp-&gt;getResult(0), destPort.bundle,</div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>                         destPort.channel);</div>
 <div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>          <span class="keyword">auto</span> flowOp = rewriter.create&lt;PacketFlowOp&gt;(</div>
-<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>              Op-&gt;getLoc(), maskValue.<a class="code hl_variable" href="structMaskValue.html#ab6d49dd2bd39b53d7dfc3132d5ec8c99">value</a>, <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>          <span class="keyword">auto</span> flowOp = PacketFlowOp::create(rewriter, Op-&gt;getLoc(),</div>
+<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>                                             maskValue.<a class="code hl_variable" href="structMaskValue.html#ab6d49dd2bd39b53d7dfc3132d5ec8c99">value</a>, <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
 <div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>          PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter,</div>
 <div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>                                         Op-&gt;getLoc());</div>
 <div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>          OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();</div>
 <div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>          rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());</div>
-<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>          rewriter.create&lt;PacketSourceOp&gt;(Op-&gt;getLoc(), Op-&gt;getResult(0),</div>
-<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>                                          bundle, i);</div>
-<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>          rewriter.create&lt;PacketDestOp&gt;(Op-&gt;getLoc(), destOp-&gt;getResult(0),</div>
-<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>                                        destPort.bundle, destPort.channel);</div>
+<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>          PacketSourceOp::create(rewriter, Op-&gt;getLoc(), Op-&gt;getResult(0),</div>
+<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>                                 bundle, i);</div>
+<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>          PacketDestOp::create(rewriter, Op-&gt;getLoc(), destOp-&gt;getResult(0),</div>
+<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>                               destPort.bundle, destPort.channel);</div>
 <div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>          rewriter.restoreInsertionPoint(ip);</div>
 <div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>        }</div>
 <div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>      }</div>
@@ -396,7 +396,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

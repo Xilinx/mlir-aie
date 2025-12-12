@@ -106,8 +106,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keyword">auto</span> point = rewriter.saveInsertionPoint();</div>
 <div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    rewriter.setInsertionPoint(b.getTerminator());</div>
 <div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    rewriter.create&lt;ConnectOp&gt;(rewriter.getUnknownLoc(), inBundle, inIndex,</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>                               outBundle, outIndex);</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    ConnectOp::create(rewriter, rewriter.getUnknownLoc(), inBundle, inIndex,</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>                      outBundle, outIndex);</div>
 <div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span> </div>
 <div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    rewriter.restoreInsertionPoint(point);</div>
 <div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span> </div>
@@ -918,8 +918,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00847" name="l00847"></a><span class="lineno">  847</span>        <span class="keywordflow">if</span> (amselOpNeededVector[amselValue]) {</div>
 <div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span>          <span class="keywordtype">int</span> arbiterID = a;</div>
 <div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>          <span class="keywordtype">int</span> msel = i;</div>
-<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>          <span class="keyword">auto</span> amsel =</div>
-<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>              builder.create&lt;AMSelOp&gt;(builder.getUnknownLoc(), arbiterID, msel);</div>
+<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>          <span class="keyword">auto</span> amsel = AMSelOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>                                       arbiterID, msel);</div>
 <div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>          amselOps[amselValue] = amsel;</div>
 <div class="line"><a id="l00853" name="l00853"></a><span class="lineno">  853</span>        }</div>
 <div class="line"><a id="l00854" name="l00854"></a><span class="lineno">  854</span>      }</div>
@@ -944,9 +944,9 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00873" name="l00873"></a><span class="lineno">  873</span>        amsels.push_back(amselOps[msel]);</div>
 <div class="line"><a id="l00874" name="l00874"></a><span class="lineno">  874</span>      }</div>
 <div class="line"><a id="l00875" name="l00875"></a><span class="lineno">  875</span> </div>
-<div class="line"><a id="l00876" name="l00876"></a><span class="lineno">  876</span>      builder.create&lt;MasterSetOp&gt;(</div>
-<div class="line"><a id="l00877" name="l00877"></a><span class="lineno">  877</span>          builder.getUnknownLoc(), builder.getIndexType(), bundle, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>,</div>
-<div class="line"><a id="l00878" name="l00878"></a><span class="lineno">  878</span>          amsels, keepPktHeaderAttr[{tileId, tileMaster}]);</div>
+<div class="line"><a id="l00876" name="l00876"></a><span class="lineno">  876</span>      MasterSetOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l00877" name="l00877"></a><span class="lineno">  877</span>                          builder.getIndexType(), bundle, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>, amsels,</div>
+<div class="line"><a id="l00878" name="l00878"></a><span class="lineno">  878</span>                          keepPktHeaderAttr[{tileId, tileMaster}]);</div>
 <div class="line"><a id="l00879" name="l00879"></a><span class="lineno">  879</span>    }</div>
 <div class="line"><a id="l00880" name="l00880"></a><span class="lineno">  880</span> </div>
 <div class="line"><a id="l00881" name="l00881"></a><span class="lineno">  881</span>    <span class="comment">// Generate the packet rules</span></div>
@@ -974,8 +974,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00903" name="l00903"></a><span class="lineno">  903</span> </div>
 <div class="line"><a id="l00904" name="l00904"></a><span class="lineno">  904</span>      PacketRulesOp packetrules;</div>
 <div class="line"><a id="l00905" name="l00905"></a><span class="lineno">  905</span>      <span class="keywordflow">if</span> (slaveRules.count(slave) == 0) {</div>
-<div class="line"><a id="l00906" name="l00906"></a><span class="lineno">  906</span>        packetrules = builder.create&lt;PacketRulesOp&gt;(builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00907" name="l00907"></a><span class="lineno">  907</span>                                                    bundle, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>);</div>
+<div class="line"><a id="l00906" name="l00906"></a><span class="lineno">  906</span>        packetrules = PacketRulesOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l00907" name="l00907"></a><span class="lineno">  907</span>                                            bundle, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a13c075c9d7c2571066fd7cf9c0633472">channel</a>);</div>
 <div class="line"><a id="l00908" name="l00908"></a><span class="lineno">  908</span>        PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,</div>
 <div class="line"><a id="l00909" name="l00909"></a><span class="lineno">  909</span>                                        builder.getUnknownLoc());</div>
 <div class="line"><a id="l00910" name="l00910"></a><span class="lineno">  910</span>        slaveRules[slave] = packetrules;</div>
@@ -997,7 +997,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00926" name="l00926"></a><span class="lineno">  926</span>      }</div>
 <div class="line"><a id="l00927" name="l00927"></a><span class="lineno">  927</span> </div>
 <div class="line"><a id="l00928" name="l00928"></a><span class="lineno">  928</span>      builder.setInsertionPoint(rules.getTerminator());</div>
-<div class="line"><a id="l00929" name="l00929"></a><span class="lineno">  929</span>      builder.create&lt;PacketRuleOp&gt;(builder.getUnknownLoc(), mask, ID, amsel);</div>
+<div class="line"><a id="l00929" name="l00929"></a><span class="lineno">  929</span>      PacketRuleOp::create(builder, builder.getUnknownLoc(), mask, ID, amsel);</div>
 <div class="line"><a id="l00930" name="l00930"></a><span class="lineno">  930</span>    }</div>
 <div class="line"><a id="l00931" name="l00931"></a><span class="lineno">  931</span>  }</div>
 <div class="line"><a id="l00932" name="l00932"></a><span class="lineno">  932</span> </div>
@@ -1054,13 +1054,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00983" name="l00983"></a><span class="lineno">  983</span>          pktrules.setSourceBundle(WireBundle::South);</div>
 <div class="line"><a id="l00984" name="l00984"></a><span class="lineno">  984</span>          <span class="keywordflow">if</span> (pktrules.getSourceChannel() == 0) {</div>
 <div class="line"><a id="l00985" name="l00985"></a><span class="lineno">  985</span>            pktrules.setSourceChannel(3);</div>
-<div class="line"><a id="l00986" name="l00986"></a><span class="lineno">  986</span>            builder.create&lt;ConnectOp&gt;(builder.getUnknownLoc(), WireBundle::DMA,</div>
-<div class="line"><a id="l00987" name="l00987"></a><span class="lineno">  987</span>                                      0, WireBundle::North, 3);</div>
+<div class="line"><a id="l00986" name="l00986"></a><span class="lineno">  986</span>            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,</div>
+<div class="line"><a id="l00987" name="l00987"></a><span class="lineno">  987</span>                              0, WireBundle::North, 3);</div>
 <div class="line"><a id="l00988" name="l00988"></a><span class="lineno">  988</span>          }</div>
 <div class="line"><a id="l00989" name="l00989"></a><span class="lineno">  989</span>          <span class="keywordflow">if</span> (pktrules.getSourceChannel() == 1) {</div>
 <div class="line"><a id="l00990" name="l00990"></a><span class="lineno">  990</span>            pktrules.setSourceChannel(7);</div>
-<div class="line"><a id="l00991" name="l00991"></a><span class="lineno">  991</span>            builder.create&lt;ConnectOp&gt;(builder.getUnknownLoc(), WireBundle::DMA,</div>
-<div class="line"><a id="l00992" name="l00992"></a><span class="lineno">  992</span>                                      1, WireBundle::North, 7);</div>
+<div class="line"><a id="l00991" name="l00991"></a><span class="lineno">  991</span>            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,</div>
+<div class="line"><a id="l00992" name="l00992"></a><span class="lineno">  992</span>                              1, WireBundle::North, 7);</div>
 <div class="line"><a id="l00993" name="l00993"></a><span class="lineno">  993</span>          }</div>
 <div class="line"><a id="l00994" name="l00994"></a><span class="lineno">  994</span>        }</div>
 <div class="line"><a id="l00995" name="l00995"></a><span class="lineno">  995</span>      }</div>
@@ -1085,13 +1085,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01014" name="l01014"></a><span class="lineno"> 1014</span>          mtset.setDestBundle(WireBundle::South);</div>
 <div class="line"><a id="l01015" name="l01015"></a><span class="lineno"> 1015</span>          <span class="keywordflow">if</span> (mtset.getDestChannel() == 0) {</div>
 <div class="line"><a id="l01016" name="l01016"></a><span class="lineno"> 1016</span>            mtset.setDestChannel(2);</div>
-<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span>            builder.create&lt;ConnectOp&gt;(builder.getUnknownLoc(),</div>
-<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>                                      WireBundle::North, 2, WireBundle::DMA, 0);</div>
+<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span>            ConnectOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>                              WireBundle::North, 2, WireBundle::DMA, 0);</div>
 <div class="line"><a id="l01019" name="l01019"></a><span class="lineno"> 1019</span>          }</div>
 <div class="line"><a id="l01020" name="l01020"></a><span class="lineno"> 1020</span>          <span class="keywordflow">if</span> (mtset.getDestChannel() == 1) {</div>
 <div class="line"><a id="l01021" name="l01021"></a><span class="lineno"> 1021</span>            mtset.setDestChannel(3);</div>
-<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"> 1022</span>            builder.create&lt;ConnectOp&gt;(builder.getUnknownLoc(),</div>
-<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>                                      WireBundle::North, 3, WireBundle::DMA, 1);</div>
+<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"> 1022</span>            ConnectOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>                              WireBundle::North, 3, WireBundle::DMA, 1);</div>
 <div class="line"><a id="l01024" name="l01024"></a><span class="lineno"> 1024</span>          }</div>
 <div class="line"><a id="l01025" name="l01025"></a><span class="lineno"> 1025</span>        }</div>
 <div class="line"><a id="l01026" name="l01026"></a><span class="lineno"> 1026</span>      }</div>
@@ -1140,66 +1140,65 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01067" name="l01067"></a><span class="lineno"> 1067</span>        <span class="comment">// connections east-west between stream switches</span></div>
 <div class="line"><a id="l01068" name="l01068"></a><span class="lineno"> 1068</span>        <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({col - 1, row})) {</div>
 <div class="line"><a id="l01069" name="l01069"></a><span class="lineno"> 1069</span>          <span class="keyword">auto</span> westsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> - 1, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>}];</div>
-<div class="line"><a id="l01070" name="l01070"></a><span class="lineno"> 1070</span>          builder.create&lt;WireOp&gt;(builder.getUnknownLoc(), westsw,</div>
-<div class="line"><a id="l01071" name="l01071"></a><span class="lineno"> 1071</span>                                 WireBundle::East, sw, WireBundle::West);</div>
+<div class="line"><a id="l01070" name="l01070"></a><span class="lineno"> 1070</span>          WireOp::create(builder, builder.getUnknownLoc(), westsw,</div>
+<div class="line"><a id="l01071" name="l01071"></a><span class="lineno"> 1071</span>                         WireBundle::East, sw, WireBundle::West);</div>
 <div class="line"><a id="l01072" name="l01072"></a><span class="lineno"> 1072</span>        }</div>
 <div class="line"><a id="l01073" name="l01073"></a><span class="lineno"> 1073</span>      }</div>
 <div class="line"><a id="l01074" name="l01074"></a><span class="lineno"> 1074</span>      <span class="keywordflow">if</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &gt; 0) {</div>
 <div class="line"><a id="l01075" name="l01075"></a><span class="lineno"> 1075</span>        <span class="comment">// connections between abstract &#39;core&#39; of tile</span></div>
-<div class="line"><a id="l01076" name="l01076"></a><span class="lineno"> 1076</span>        builder.create&lt;WireOp&gt;(builder.getUnknownLoc(), tile, WireBundle::Core,</div>
-<div class="line"><a id="l01077" name="l01077"></a><span class="lineno"> 1077</span>                               sw, WireBundle::Core);</div>
+<div class="line"><a id="l01076" name="l01076"></a><span class="lineno"> 1076</span>        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::Core,</div>
+<div class="line"><a id="l01077" name="l01077"></a><span class="lineno"> 1077</span>                       sw, WireBundle::Core);</div>
 <div class="line"><a id="l01078" name="l01078"></a><span class="lineno"> 1078</span>        <span class="comment">// connections between abstract &#39;dma&#39; of tile</span></div>
-<div class="line"><a id="l01079" name="l01079"></a><span class="lineno"> 1079</span>        builder.create&lt;WireOp&gt;(builder.getUnknownLoc(), tile, WireBundle::DMA,</div>
-<div class="line"><a id="l01080" name="l01080"></a><span class="lineno"> 1080</span>                               sw, WireBundle::DMA);</div>
+<div class="line"><a id="l01079" name="l01079"></a><span class="lineno"> 1079</span>        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::DMA,</div>
+<div class="line"><a id="l01080" name="l01080"></a><span class="lineno"> 1080</span>                       sw, WireBundle::DMA);</div>
 <div class="line"><a id="l01081" name="l01081"></a><span class="lineno"> 1081</span>        <span class="comment">// connections north-south inside array ( including connection to shim</span></div>
 <div class="line"><a id="l01082" name="l01082"></a><span class="lineno"> 1082</span>        <span class="comment">// row)</span></div>
-<div class="line"><a id="l01083" name="l01083"></a><span class="lineno"> 1083</span>        <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> - 1})) {</div>
+<div class="line"><a id="l01083" name="l01083"></a><span class="lineno"> 1083</span>        <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({col, row - 1})) {</div>
 <div class="line"><a id="l01084" name="l01084"></a><span class="lineno"> 1084</span>          <span class="keyword">auto</span> southsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> - 1}];</div>
-<div class="line"><a id="l01085" name="l01085"></a><span class="lineno"> 1085</span>          builder.create&lt;WireOp&gt;(builder.getUnknownLoc(), southsw,</div>
-<div class="line"><a id="l01086" name="l01086"></a><span class="lineno"> 1086</span>                                 WireBundle::North, sw, WireBundle::South);</div>
+<div class="line"><a id="l01085" name="l01085"></a><span class="lineno"> 1085</span>          WireOp::create(builder, builder.getUnknownLoc(), southsw,</div>
+<div class="line"><a id="l01086" name="l01086"></a><span class="lineno"> 1086</span>                         WireBundle::North, sw, WireBundle::South);</div>
 <div class="line"><a id="l01087" name="l01087"></a><span class="lineno"> 1087</span>        }</div>
 <div class="line"><a id="l01088" name="l01088"></a><span class="lineno"> 1088</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> == 0) {</div>
 <div class="line"><a id="l01089" name="l01089"></a><span class="lineno"> 1089</span>        <span class="keywordflow">if</span> (tile.isShimNOCTile()) {</div>
-<div class="line"><a id="l01090" name="l01090"></a><span class="lineno"> 1090</span>          <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a936349436603104f270d1e292f502f43">coordToShimMux</a>.count({<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, 0})) {</div>
+<div class="line"><a id="l01090" name="l01090"></a><span class="lineno"> 1090</span>          <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a936349436603104f270d1e292f502f43">coordToShimMux</a>.count({col, 0})) {</div>
 <div class="line"><a id="l01091" name="l01091"></a><span class="lineno"> 1091</span>            <span class="keyword">auto</span> shimsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a936349436603104f270d1e292f502f43">coordToShimMux</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, 0}];</div>
-<div class="line"><a id="l01092" name="l01092"></a><span class="lineno"> 1092</span>            builder.create&lt;WireOp&gt;(</div>
-<div class="line"><a id="l01093" name="l01093"></a><span class="lineno"> 1093</span>                builder.getUnknownLoc(), shimsw,</div>
+<div class="line"><a id="l01092" name="l01092"></a><span class="lineno"> 1092</span>            WireOp::create(</div>
+<div class="line"><a id="l01093" name="l01093"></a><span class="lineno"> 1093</span>                builder, builder.getUnknownLoc(), shimsw,</div>
 <div class="line"><a id="l01094" name="l01094"></a><span class="lineno"> 1094</span>                WireBundle::North, <span class="comment">// Changed to connect into the north</span></div>
 <div class="line"><a id="l01095" name="l01095"></a><span class="lineno"> 1095</span>                sw, WireBundle::South);</div>
 <div class="line"><a id="l01096" name="l01096"></a><span class="lineno"> 1096</span>            <span class="comment">// PLIO is attached to shim mux</span></div>
 <div class="line"><a id="l01097" name="l01097"></a><span class="lineno"> 1097</span>            <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>.count(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>)) {</div>
 <div class="line"><a id="l01098" name="l01098"></a><span class="lineno"> 1098</span>              <span class="keyword">auto</span> plio = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>];</div>
-<div class="line"><a id="l01099" name="l01099"></a><span class="lineno"> 1099</span>              builder.create&lt;WireOp&gt;(builder.getUnknownLoc(), plio,</div>
-<div class="line"><a id="l01100" name="l01100"></a><span class="lineno"> 1100</span>                                     WireBundle::North, shimsw,</div>
-<div class="line"><a id="l01101" name="l01101"></a><span class="lineno"> 1101</span>                                     WireBundle::South);</div>
-<div class="line"><a id="l01102" name="l01102"></a><span class="lineno"> 1102</span>            }</div>
-<div class="line"><a id="l01103" name="l01103"></a><span class="lineno"> 1103</span> </div>
-<div class="line"><a id="l01104" name="l01104"></a><span class="lineno"> 1104</span>            <span class="comment">// abstract &#39;DMA&#39; connection on tile is attached to shim mux ( in</span></div>
-<div class="line"><a id="l01105" name="l01105"></a><span class="lineno"> 1105</span>            <span class="comment">// row 0 )</span></div>
-<div class="line"><a id="l01106" name="l01106"></a><span class="lineno"> 1106</span>            builder.create&lt;WireOp&gt;(builder.getUnknownLoc(), tile,</div>
-<div class="line"><a id="l01107" name="l01107"></a><span class="lineno"> 1107</span>                                   WireBundle::DMA, shimsw, WireBundle::DMA);</div>
-<div class="line"><a id="l01108" name="l01108"></a><span class="lineno"> 1108</span>          }</div>
-<div class="line"><a id="l01109" name="l01109"></a><span class="lineno"> 1109</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (tile.isShimPLTile()) {</div>
-<div class="line"><a id="l01110" name="l01110"></a><span class="lineno"> 1110</span>          <span class="comment">// PLIO is attached directly to switch</span></div>
-<div class="line"><a id="l01111" name="l01111"></a><span class="lineno"> 1111</span>          <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>.count(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>)) {</div>
-<div class="line"><a id="l01112" name="l01112"></a><span class="lineno"> 1112</span>            <span class="keyword">auto</span> plio = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>];</div>
-<div class="line"><a id="l01113" name="l01113"></a><span class="lineno"> 1113</span>            builder.create&lt;WireOp&gt;(builder.getUnknownLoc(), plio,</div>
-<div class="line"><a id="l01114" name="l01114"></a><span class="lineno"> 1114</span>                                   WireBundle::North, sw, WireBundle::South);</div>
-<div class="line"><a id="l01115" name="l01115"></a><span class="lineno"> 1115</span>          }</div>
-<div class="line"><a id="l01116" name="l01116"></a><span class="lineno"> 1116</span>        }</div>
-<div class="line"><a id="l01117" name="l01117"></a><span class="lineno"> 1117</span>      }</div>
-<div class="line"><a id="l01118" name="l01118"></a><span class="lineno"> 1118</span>    }</div>
-<div class="line"><a id="l01119" name="l01119"></a><span class="lineno"> 1119</span>  }</div>
-<div class="line"><a id="l01120" name="l01120"></a><span class="lineno"> 1120</span>}</div>
+<div class="line"><a id="l01099" name="l01099"></a><span class="lineno"> 1099</span>              WireOp::create(builder, builder.getUnknownLoc(), plio,</div>
+<div class="line"><a id="l01100" name="l01100"></a><span class="lineno"> 1100</span>                             WireBundle::North, shimsw, WireBundle::South);</div>
+<div class="line"><a id="l01101" name="l01101"></a><span class="lineno"> 1101</span>            }</div>
+<div class="line"><a id="l01102" name="l01102"></a><span class="lineno"> 1102</span> </div>
+<div class="line"><a id="l01103" name="l01103"></a><span class="lineno"> 1103</span>            <span class="comment">// abstract &#39;DMA&#39; connection on tile is attached to shim mux ( in</span></div>
+<div class="line"><a id="l01104" name="l01104"></a><span class="lineno"> 1104</span>            <span class="comment">// row 0 )</span></div>
+<div class="line"><a id="l01105" name="l01105"></a><span class="lineno"> 1105</span>            WireOp::create(builder, builder.getUnknownLoc(), tile,</div>
+<div class="line"><a id="l01106" name="l01106"></a><span class="lineno"> 1106</span>                           WireBundle::DMA, shimsw, WireBundle::DMA);</div>
+<div class="line"><a id="l01107" name="l01107"></a><span class="lineno"> 1107</span>          }</div>
+<div class="line"><a id="l01108" name="l01108"></a><span class="lineno"> 1108</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (tile.isShimPLTile()) {</div>
+<div class="line"><a id="l01109" name="l01109"></a><span class="lineno"> 1109</span>          <span class="comment">// PLIO is attached directly to switch</span></div>
+<div class="line"><a id="l01110" name="l01110"></a><span class="lineno"> 1110</span>          <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>.count(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>)) {</div>
+<div class="line"><a id="l01111" name="l01111"></a><span class="lineno"> 1111</span>            <span class="keyword">auto</span> plio = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>];</div>
+<div class="line"><a id="l01112" name="l01112"></a><span class="lineno"> 1112</span>            WireOp::create(builder, builder.getUnknownLoc(), plio,</div>
+<div class="line"><a id="l01113" name="l01113"></a><span class="lineno"> 1113</span>                           WireBundle::North, sw, WireBundle::South);</div>
+<div class="line"><a id="l01114" name="l01114"></a><span class="lineno"> 1114</span>          }</div>
+<div class="line"><a id="l01115" name="l01115"></a><span class="lineno"> 1115</span>        }</div>
+<div class="line"><a id="l01116" name="l01116"></a><span class="lineno"> 1116</span>      }</div>
+<div class="line"><a id="l01117" name="l01117"></a><span class="lineno"> 1117</span>    }</div>
+<div class="line"><a id="l01118" name="l01118"></a><span class="lineno"> 1118</span>  }</div>
+<div class="line"><a id="l01119" name="l01119"></a><span class="lineno"> 1119</span>}</div>
 </div>
-<div class="line"><a id="l01121" name="l01121"></a><span class="lineno"> 1121</span> </div>
-<div class="foldopen" id="foldopen01122" data-start="{" data-end="}">
-<div class="line"><a id="l01122" name="l01122"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf"> 1122</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">createAIEPathfinderPass</a>() {</div>
-<div class="line"><a id="l01123" name="l01123"></a><span class="lineno"> 1123</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEPathfinderPass&gt;();</div>
-<div class="line"><a id="l01124" name="l01124"></a><span class="lineno"> 1124</span>}</div>
+<div class="line"><a id="l01120" name="l01120"></a><span class="lineno"> 1120</span> </div>
+<div class="foldopen" id="foldopen01121" data-start="{" data-end="}">
+<div class="line"><a id="l01121" name="l01121"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf"> 1121</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">createAIEPathfinderPass</a>() {</div>
+<div class="line"><a id="l01122" name="l01122"></a><span class="lineno"> 1122</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEPathfinderPass&gt;();</div>
+<div class="line"><a id="l01123" name="l01123"></a><span class="lineno"> 1123</span>}</div>
 </div>
-<div class="line"><a id="l01125" name="l01125"></a><span class="lineno"> 1125</span> </div>
-<div class="line"><a id="l01126" name="l01126"></a><span class="lineno"> 1126</span>} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a id="l01124" name="l01124"></a><span class="lineno"> 1124</span> </div>
+<div class="line"><a id="l01125" name="l01125"></a><span class="lineno"> 1125</span>} <span class="comment">// namespace xilinx::AIE</span></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
 <div class="ttc" id="aAIEPathFinder_8h_html"><div class="ttname"><a href="AIEPathFinder_8h.html">AIEPathFinder.h</a></div></div>
@@ -1233,7 +1232,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_ab66d81c9b6c34445a229064cf527f089"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ab66d81c9b6c34445a229064cf527f089">xilinx::AIE::port</a></div><div class="ttdeci">Port port</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00100">AIEPathFinder.h:100</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_ac23bcccb7c42df5f5fa7e78e980c1e28"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">xilinx::AIE::srcCoords</a></div><div class="ttdeci">TileID srcCoords</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00039">AIEPathFinder.h:39</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_adb50ec93377e031b4e15ca75547fbd96"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">xilinx::AIE::PathEndPoint</a></div><div class="ttdeci">PathEndPoint { PathEndPoint()=default PathEndPoint</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00095">AIEPathFinder.h:96</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_aebcf56adce24e361f0fb030b53d8adbf"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">xilinx::AIE::createAIEPathfinderPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEPathfinderPass()</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l01122">AIECreatePathFindFlows.cpp:1122</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_aebcf56adce24e361f0fb030b53d8adbf"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">xilinx::AIE::createAIEPathfinderPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEPathfinderPass()</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l01121">AIECreatePathFindFlows.cpp:1121</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">xilinx::AIE::AIEOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00200">AIECreatePathFindFlows.cpp:200</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html_a01da3de9906e76b170348bd6df72022b"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html#a01da3de9906e76b170348bd6df72022b">xilinx::AIE::AIEOpRemoval::AIEOpRemoval</a></div><div class="ttdeci">AIEOpRemoval(MLIRContext *context, PatternBenefit benefit=1)</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00204">AIECreatePathFindFlows.cpp:204</a></div></div>
@@ -1246,7 +1245,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:26 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

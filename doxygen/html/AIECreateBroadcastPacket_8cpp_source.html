@@ -131,25 +131,25 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>          Block &amp;b_bpid = r_bpid.front();</div>
 <div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>          <span class="keywordtype">int</span> flowID = bpid.IDInt();</div>
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>          builder.setInsertionPointAfter(broadcastpacket);</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>          PacketFlowOp pkFlow = builder.create&lt;PacketFlowOp&gt;(</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>              builder.getUnknownLoc(), flowID, <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>          PacketFlowOp pkFlow = PacketFlowOp::create(</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>              builder, builder.getUnknownLoc(), flowID, <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
 <div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>          Region &amp;r_pkFlow = pkFlow.getPorts();</div>
 <div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>          Block *b_pkFlow = builder.createBlock(&amp;r_pkFlow);</div>
 <div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>          builder.setInsertionPointToStart(b_pkFlow);</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>          builder.create&lt;PacketSourceOp&gt;(builder.getUnknownLoc(), srcTile,</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>                                         sourcePort.bundle, sourcePort.channel);</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>          PacketSourceOp::create(builder, builder.getUnknownLoc(), srcTile,</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>                                 sourcePort.bundle, sourcePort.channel);</div>
 <div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>          <span class="keywordflow">for</span> (Operation &amp;op : b_bpid.getOperations()) {</div>
 <div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>            <span class="keywordflow">if</span> (BPDestOp bpdest = dyn_cast&lt;BPDestOp&gt;(op)) {</div>
 <div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>              TileOp destTile =</div>
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>                  dyn_cast&lt;TileOp&gt;(bpdest.getTile().getDefiningOp());</div>
 <div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>              <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a8c09d85b0744aa9892c2d8a89a6df55c">Port</a> destPort = bpdest.port();</div>
 <div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>              builder.setInsertionPointToEnd(b_pkFlow);</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>              builder.create&lt;PacketDestOp&gt;(builder.getUnknownLoc(), destTile,</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>                                           destPort.bundle, destPort.channel);</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>              PacketDestOp::create(builder, builder.getUnknownLoc(), destTile,</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>                                   destPort.bundle, destPort.channel);</div>
 <div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>            }</div>
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>          }</div>
 <div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>          builder.setInsertionPointToEnd(b_pkFlow);</div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>          builder.create&lt;EndOp&gt;(builder.getUnknownLoc());</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>          EndOp::create(builder, builder.getUnknownLoc());</div>
 <div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>        }</div>
 <div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>      }</div>
 <div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    }</div>
@@ -185,15 +185,15 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructAIEBroadcastPacketPass_html"><div class="ttname"><a href="structAIEBroadcastPacketPass.html">AIEBroadcastPacketPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIECreateBroadcastPacket_8cpp_source.html#l00048">AIECreateBroadcastPacket.cpp:49</a></div></div>
 <div class="ttc" id="astructAIEBroadcastPacketPass_html_a0da2db11602764e31965e52bbd690e0c"><div class="ttname"><a href="structAIEBroadcastPacketPass.html#a0da2db11602764e31965e52bbd690e0c">AIEBroadcastPacketPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIECreateBroadcastPacket_8cpp_source.html#l00050">AIECreateBroadcastPacket.cpp:50</a></div></div>
-<div class="ttc" id="astructAIEOpRemoval_html"><div class="ttname"><a href="structAIEOpRemoval.html">AIEOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00170">AIECoreToStandard.cpp:170</a></div></div>
+<div class="ttc" id="astructAIEOpRemoval_html"><div class="ttname"><a href="structAIEOpRemoval.html">AIEOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00169">AIECoreToStandard.cpp:169</a></div></div>
 <div class="ttc" id="astructAIEOpRemoval_html_a3116240b01b2f6826c506f9e4b684dbe"><div class="ttname"><a href="structAIEOpRemoval.html#a3116240b01b2f6826c506f9e4b684dbe">AIEOpRemoval::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(MyOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIECreateBroadcastPacket_8cpp_source.html#l00039">AIECreateBroadcastPacket.cpp:39</a></div></div>
 <div class="ttc" id="astructAIEOpRemoval_html_abab1d33036522ed487ddd443013e7142"><div class="ttname"><a href="structAIEOpRemoval.html#abab1d33036522ed487ddd443013e7142">AIEOpRemoval::AIEOpRemoval</a></div><div class="ttdeci">AIEOpRemoval(MLIRContext *context, PatternBenefit benefit=1)</div><div class="ttdef"><b>Definition</b> <a href="AIECreateBroadcastPacket_8cpp_source.html#l00035">AIECreateBroadcastPacket.cpp:35</a></div></div>
-<div class="ttc" id="astructAIEOpRemoval_html_ace139d3f456acf13f0324bd4a62e7eee"><div class="ttname"><a href="structAIEOpRemoval.html#ace139d3f456acf13f0324bd4a62e7eee">AIEOpRemoval::OpAdaptor</a></div><div class="ttdeci">typename MyAIEOp::Adaptor OpAdaptor</div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00172">AIECoreToStandard.cpp:172</a></div></div>
+<div class="ttc" id="astructAIEOpRemoval_html_ace139d3f456acf13f0324bd4a62e7eee"><div class="ttname"><a href="structAIEOpRemoval.html#ace139d3f456acf13f0324bd4a62e7eee">AIEOpRemoval::OpAdaptor</a></div><div class="ttdeci">typename MyAIEOp::Adaptor OpAdaptor</div><div class="ttdef"><b>Definition</b> <a href="AIECoreToStandard_8cpp_source.html#l00171">AIECoreToStandard.cpp:171</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">xilinx::AIE::AIEOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00200">AIECreatePathFindFlows.cpp:200</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -122,8 +122,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    }</div>
 <div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    std::vector&lt;int32_t&gt; dataVec(data.value_begin&lt;int32_t&gt;(),</div>
 <div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>                                 data.value_end&lt;int32_t&gt;());</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    rewriter.create&lt;AIEX::NpuControlPacketOp&gt;(</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>        op-&gt;getLoc(), op.getAddressAttr(), <span class="keyword">nullptr</span>,</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    AIEX::NpuControlPacketOp::create(</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>        rewriter, op-&gt;getLoc(), op.getAddressAttr(), <span class="keyword">nullptr</span>,</div>
 <div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>        <span class="comment">/*opcode*/</span> rewriter.getI32IntegerAttr(0),</div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>        <span class="comment">/*stream_id*/</span> rewriter.getI32IntegerAttr(0),</div>
 <div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>        DenseI32ArrayAttr::get(op-&gt;getContext(), dataVec));</div>
@@ -169,8 +169,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>      <span class="keyword">auto</span> incrementedAddress = rewriter.getUI32IntegerAttr(</div>
 <div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>          op.getAddress() + (i * 4 * <span class="keyword">sizeof</span>(uint32_t)));</div>
 <div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span> </div>
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>      rewriter.create&lt;AIEX::NpuControlPacketOp&gt;(</div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>          loc, incrementedAddress, <span class="keyword">nullptr</span>, op.getOpcodeAttr(),</div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>      AIEX::NpuControlPacketOp::create(</div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>          rewriter, loc, incrementedAddress, <span class="keyword">nullptr</span>, op.getOpcodeAttr(),</div>
 <div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>          op.getStreamIdAttr(), DenseI32ArrayAttr::get(context, chunkData));</div>
 <div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>    }</div>
 <div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span> </div>
@@ -247,7 +247,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

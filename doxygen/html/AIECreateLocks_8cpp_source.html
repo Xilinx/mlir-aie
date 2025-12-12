@@ -127,8 +127,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> acqLock : <a class="code hl_variable" href="structToken2LockLowering.html#a31d9f5cf90f42271ca51fbb59c845998">acqLocks</a>[op]) {</div>
 <div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>        Value lockFromPair = acqLock.first;</div>
 <div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>        <span class="keywordtype">int</span> lockValueFromPair = acqLock.second;</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>        rewriter.create&lt;UseLockOp&gt;(op.getLoc(), lockFromPair,</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>                                   LockAction::Acquire, lockValueFromPair);</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>        UseLockOp::create(rewriter, op.getLoc(), lockFromPair,</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>                          LockAction::Acquire, lockValueFromPair);</div>
 <div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;Acquire from pair &quot;</span> &lt;&lt; lockFromPair</div>
 <div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>                                &lt;&lt; <span class="stringliteral">&quot; with &quot;</span> &lt;&lt; lockValueFromPair &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>);</div>
 <div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>      }</div>
@@ -141,8 +141,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>        <span class="keywordflow">if</span> (acqOp != Op)</div>
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>          <span class="keywordflow">continue</span>;</div>
 <div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span> </div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>        rewriter.create&lt;UseLockOp&gt;(op.getLoc(), lockFromChain,</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>                                   LockAction::Acquire, lockValueFromChain);</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>        UseLockOp::create(rewriter, op.getLoc(), lockFromChain,</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>                          LockAction::Acquire, lockValueFromChain);</div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;Acquire from chain &quot;</span> &lt;&lt; lockFromChain</div>
 <div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>                                &lt;&lt; <span class="stringliteral">&quot; with &quot;</span> &lt;&lt; lockValueFromChain &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>);</div>
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>      }</div>
@@ -152,8 +152,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> relLock : <a class="code hl_variable" href="structToken2LockLowering.html#af970e7e3e3be82988b40966a72b8c5f8">relLocks</a>[op]) {</div>
 <div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>        Value lockFromPair = relLock.first;</div>
 <div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>        <span class="keywordtype">int</span> lockValueFromPair = relLock.second;</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>        rewriter.create&lt;UseLockOp&gt;(op.getLoc(), lockFromPair,</div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>                                   LockAction::Release, lockValueFromPair);</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>        UseLockOp::create(rewriter, op.getLoc(), lockFromPair,</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>                          LockAction::Release, lockValueFromPair);</div>
 <div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;Release from pair &quot;</span> &lt;&lt; lockFromPair</div>
 <div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>                                &lt;&lt; <span class="stringliteral">&quot; with &quot;</span> &lt;&lt; lockValueFromPair &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>);</div>
 <div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>      }</div>
@@ -166,8 +166,8 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>        <span class="keywordflow">if</span> (relOp != Op)</div>
 <div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>          <span class="keywordflow">continue</span>;</div>
 <div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span> </div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>        rewriter.create&lt;UseLockOp&gt;(op.getLoc(), lockFromChain,</div>
-<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>                                   LockAction::Release, lockValueFromChain);</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>        UseLockOp::create(rewriter, op.getLoc(), lockFromChain,</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>                          LockAction::Release, lockValueFromChain);</div>
 <div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;Release from chain &quot;</span> &lt;&lt; lockFromChain</div>
 <div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>                                &lt;&lt; <span class="stringliteral">&quot; with &quot;</span> &lt;&lt; lockValueFromChain &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>);</div>
 <div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>      }</div>
@@ -263,7 +263,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>      LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot; LockID: &quot;</span> &lt;&lt; lockID &lt;&lt; <span class="charliteral">&#39;\n&#39;</span>);</div>
 <div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>      builder.setInsertionPointAfter(tileOp);</div>
 <div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>      LockOp lock =</div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>          builder.create&lt;LockOp&gt;(builder.getUnknownLoc(), tile, lockID, 0);</div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>          LockOp::create(builder, builder.getUnknownLoc(), tile, lockID, 0);</div>
 <div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span> </div>
 <div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>      lockChains[std::make_pair(release, acquire)] = std::make_pair(lock, 1);</div>
 <div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span> </div>
@@ -331,7 +331,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Dec 12 2025 04:58:27 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Dec 12 2025 21:28:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
