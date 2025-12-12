@@ -527,7 +527,7 @@ static aievec::CastOp generateCastOp(Value source, VectorType resType,
                                      Location loc) {
   // Create the Cast op
   auto castOp =
-      state->builder.create<aievec::CastOp>(loc, resType, source, isResAcc);
+      aievec::CastOp::create(state->builder, loc, resType, source, isResAcc);
 
   assert(castOp && "could not create srs op");
   return castOp;
@@ -547,11 +547,11 @@ static aievec::SRSOp generateSRSOp(Value source, Type scalarType,
   // Now generate the new vector type for the SRS intrinsic
   VectorType srsType = createVectorType(lanes, scalarType);
 
-  auto shiftParamOp = state->builder.create<arith::ConstantOp>(
-      loc, state->builder.getI32IntegerAttr(state->shift));
+  auto shiftParamOp = arith::ConstantOp::create(
+      state->builder, loc, state->builder.getI32IntegerAttr(state->shift));
   // Create the SRS op
-  auto srsOp = state->builder.create<aievec::SRSOp>(loc, srsType, source,
-                                                    shiftParamOp.getResult());
+  auto srsOp = aievec::SRSOp::create(state->builder, loc, srsType, source,
+                                     shiftParamOp.getResult());
 
   assert(srsOp && "could not create srs op");
   return srsOp;
@@ -569,7 +569,7 @@ static aievec::UPSOp generateUPSOp(Value source, VectState *state,
 
   // Create a new UPS instruction
   auto upsOp =
-      state->builder.create<aievec::UPSOp>(loc, accType, source, state->shift);
+      aievec::UPSOp::create(state->builder, loc, accType, source, state->shift);
 
   assert(upsOp && "could not create ups op");
   return upsOp;
@@ -581,7 +581,7 @@ static aievec::BroadcastOp generateBroadcastOp(Value source, int8_t idx,
   auto type = cast<VectorType>(source.getType());
   // Create a new Broadcast instruction
   auto broadcastOp =
-      state->builder.create<aievec::BroadcastOp>(loc, type, source, idx);
+      aievec::BroadcastOp::create(state->builder, loc, type, source, idx);
 
   assert(broadcastOp && "could not create broadcast op");
   return broadcastOp;
@@ -615,7 +615,7 @@ static aievec::ConcatOp generateConcatOp(SmallVector<Value> &sources,
 
   // Create the concat op
   auto concatOp =
-      state->builder.create<aievec::ConcatOp>(loc, concatType, sources);
+      aievec::ConcatOp::create(state->builder, loc, concatType, sources);
 
   assert(concatOp && "could not create concat op");
   return concatOp;
@@ -639,10 +639,10 @@ generateSelectOp(Value xbuff, AIEOpAttributes &opAttr, unsigned lanes,
   VectorType resultType = createVectorType(lanes, xtype.getElementType());
 
   // Create AIE dialect select op
-  auto selectOp = state->builder.create<aievec::aie1::SelectOp>(
-      loc, resultType, xbuff, opAttr.select, opAttr.start[0], opAttr.offset[0],
-      opAttr.offset_hi[0], opAttr.square[0], opAttr.start[1], opAttr.offset[1],
-      opAttr.offset_hi[1], opAttr.square[1], ybuff);
+  auto selectOp = aievec::aie1::SelectOp::create(
+      state->builder, loc, resultType, xbuff, opAttr.select, opAttr.start[0],
+      opAttr.offset[0], opAttr.offset_hi[0], opAttr.square[0], opAttr.start[1],
+      opAttr.offset[1], opAttr.offset_hi[1], opAttr.square[1], ybuff);
 
   assert(selectOp && "could not create select op");
   return selectOp;
@@ -661,7 +661,7 @@ static aievec::aie1::ExtOp generateExtOp(Value source, unsigned lanes,
 
   // Create AIE dialect ext op
   auto extOp =
-      state->builder.create<aievec::aie1::ExtOp>(loc, resultType, source, idx);
+      aievec::aie1::ExtOp::create(state->builder, loc, resultType, source, idx);
 
   assert(extOp && "could not create ext op");
   return extOp;
@@ -677,7 +677,7 @@ static aievec::PackOp generatePackOp(Value source, VectState *state,
   VectorType resultType = createVectorType(lanes, i8Type);
 
   // Create AIE dialect pack op
-  auto packOp = state->builder.create<aievec::PackOp>(loc, resultType, source);
+  auto packOp = aievec::PackOp::create(state->builder, loc, resultType, source);
 
   assert(packOp && "could not create pack op");
   return packOp;
@@ -690,11 +690,11 @@ static aievec::aie1::AddOp generateAddOp(Operation *Op, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  auto addOp = state->builder.create<aievec::aie1::AddOp>(
-      Op->getLoc(), Op->getResult(0).getType(), Op->getOperand(0),
-      Op->getOperand(1), opAttr.start[0], opAttr.offset[0], opAttr.offset_hi[0],
-      opAttr.square[0], opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1],
-      opAttr.square[1]);
+  auto addOp = aievec::aie1::AddOp::create(
+      state->builder, Op->getLoc(), Op->getResult(0).getType(),
+      Op->getOperand(0), Op->getOperand(1), opAttr.start[0], opAttr.offset[0],
+      opAttr.offset_hi[0], opAttr.square[0], opAttr.start[1], opAttr.offset[1],
+      opAttr.offset_hi[1], opAttr.square[1]);
   return addOp;
 }
 
@@ -705,11 +705,11 @@ static aievec::aie1::SubOp generateSubOp(Operation *Op, AIEOpAttributes &opAttr,
   assert(opAttr.start.size() == opAttr.offset.size() &&
          opAttr.start.size() == 2);
 
-  auto subOp = state->builder.create<aievec::aie1::SubOp>(
-      Op->getLoc(), Op->getResult(0).getType(), Op->getOperand(0),
-      Op->getOperand(1), opAttr.start[0], opAttr.offset[0], opAttr.offset_hi[0],
-      opAttr.square[0], opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1],
-      opAttr.square[1]);
+  auto subOp = aievec::aie1::SubOp::create(
+      state->builder, Op->getLoc(), Op->getResult(0).getType(),
+      Op->getOperand(0), Op->getOperand(1), opAttr.start[0], opAttr.offset[0],
+      opAttr.offset_hi[0], opAttr.square[0], opAttr.start[1], opAttr.offset[1],
+      opAttr.offset_hi[1], opAttr.square[1]);
   return subOp;
 }
 
@@ -733,10 +733,10 @@ static aievec::ShiftOp generateShiftOp(Value lhs, Value rhs, int32_t shiftBytes,
     resType = createVectorType(lanes, scalarType);
   }
 
-  auto constOp = state->builder.create<arith::ConstantOp>(
-      loc, state->builder.getI32IntegerAttr(shiftBytes));
-  auto shiftOp = state->builder.create<aievec::ShiftOp>(loc, resType, lhs, rhs,
-                                                        constOp.getResult());
+  auto constOp = arith::ConstantOp::create(
+      state->builder, loc, state->builder.getI32IntegerAttr(shiftBytes));
+  auto shiftOp = aievec::ShiftOp::create(state->builder, loc, resType, lhs, rhs,
+                                         constOp.getResult());
 
   return shiftOp;
 }
@@ -752,8 +752,8 @@ static aievec::LegacyShuffleOp generateShuffleOp(Value source, VectState *state,
     resType = createVectorType(lanes, scalarType);
   }
 
-  auto shuffleOp = state->builder.create<aievec::LegacyShuffleOp>(loc, resType,
-                                                                  source, mode);
+  auto shuffleOp = aievec::LegacyShuffleOp::create(state->builder, loc, resType,
+                                                   source, mode);
 
   return shuffleOp;
 }
@@ -813,14 +813,14 @@ static Operation *generateMulOrFMAConvOpForInt8(Operation *Op,
 
   if (isa<MulIOp>(Op)) {
     convOp =
-        state->builder.create<aievec::MulConvOp>(loc, opType, lhs, rhs, M, N);
+        aievec::MulConvOp::create(state->builder, loc, opType, lhs, rhs, M, N);
   }
 
   if (isa<vector::FMAOp>(Op)) {
     Value acc = Op->getOperand(2);
     bool isSub = state->mscOps.count(Op);
-    convOp = state->builder.create<aievec::FMAConvOp>(loc, opType, lhs, rhs,
-                                                      acc, M, N, isSub);
+    convOp = aievec::FMAConvOp::create(state->builder, loc, opType, lhs, rhs,
+                                       acc, M, N, isSub);
   }
 
   return convOp;
@@ -876,8 +876,8 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
       }
     }
     // Create AIEML dalect fma_elem/msc_elem op
-    xfmaOp = state->builder.create<aievec::FMAElemOp>(fmaOp->getLoc(), lhs, rhs,
-                                                      acc, isSub);
+    xfmaOp = aievec::FMAElemOp::create(state->builder, fmaOp->getLoc(), lhs,
+                                       rhs, acc, isSub);
   } else {
     // If i8xi8_pairedOp is true, then we are trying to generated the paired FMA
     // op for i8xi8 scheme. Find the paired accumulator.
@@ -908,11 +908,11 @@ static Operation *generateFMAOp(vector::FMAOp fmaOp, AIEOpAttributes &opAttr,
       }
     }
     // Create AIE dialect fma/msc op
-    xfmaOp = state->builder.create<aievec::aie1::FMAOp>(
-        fmaOp->getLoc(), lhs, rhs, acc, opAttr.start[0], opAttr.offset[0],
-        opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0], opAttr.start[1],
-        opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1],
-        isSub);
+    xfmaOp = aievec::aie1::FMAOp::create(
+        state->builder, fmaOp->getLoc(), lhs, rhs, acc, opAttr.start[0],
+        opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
+        opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
+        opAttr.square[1], isSub);
   }
 
   assert(xfmaOp && "could not create fma op");
@@ -952,10 +952,11 @@ static Operation *generateMulOp(T mulOp, AIEOpAttributes &opAttr,
   }
 
   // Create AIE dialect mul op
-  Operation *xmulOp = state->builder.create<aievec::aie1::MulOp>(
-      mulOp->getLoc(), lhs, rhs, opType, opAttr.start[0], opAttr.offset[0],
-      opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0], opAttr.start[1],
-      opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1], opAttr.square[1]);
+  Operation *xmulOp = aievec::aie1::MulOp::create(
+      state->builder, mulOp->getLoc(), lhs, rhs, opType, opAttr.start[0],
+      opAttr.offset[0], opAttr.offset_hi[0], opAttr.step[0], opAttr.square[0],
+      opAttr.start[1], opAttr.offset[1], opAttr.offset_hi[1], opAttr.step[1],
+      opAttr.square[1]);
 
   assert(xmulOp && "could not create mul op");
   return xmulOp;
@@ -1064,9 +1065,9 @@ generateUPDOp(TransferReadOp readOp,
     if (lb <= start && ub >= end && (updIndices & idx) == 0) {
       // Generate the upd instruction, and link it with a previous upd op
       // corresponding to the same read.
-      updOp = state->builder.create<aievec::UPDOp>(
-          readOp.getLoc(), updVecType, readOp.getBase(), indices,
-          start - offset, idx - 1,
+      updOp = aievec::UPDOp::create(
+          state->builder, readOp.getLoc(), updVecType, readOp.getBase(),
+          indices, start - offset, idx - 1,
           updOp ? updOp.getResult() : TypedValue<VectorType>(nullptr));
 
       LLVM_DEBUG(llvm::dbgs() << "\n\nCreated UPD op " << updOp
@@ -1409,7 +1410,7 @@ static void fuseMulAndAddOrSubIntoFMAOp(Operation *Op, VectState *state) {
   // Create a new FMA op
   state->builder.setInsertionPointAfter(Op);
   Operation *fmaOp =
-      state->builder.create<vector::FMAOp>(Op->getLoc(), lhs, rhs, acc);
+      vector::FMAOp::create(state->builder, Op->getLoc(), lhs, rhs, acc);
 
   // If Op is a sub op, we tag the generated fma op as msc op
   bool isSub = isa<SubIOp, SubFOp>(Op);
@@ -2243,13 +2244,13 @@ static void fuseMulFMAOpsForInt16(Operation *Op, VectState *state) {
   lhs = curOp->getOperand(0);
 
   if (mulOp)
-    convOp = state->builder.create<aievec::MulConvOp>(loc, opType, lhs,
-                                                      concatRhs, M, N);
+    convOp = aievec::MulConvOp::create(state->builder, loc, opType, lhs,
+                                       concatRhs, M, N);
   else {
     acc = defOp->getOperand(2);
     bool isSub = state->mscOps.count(defOp);
-    convOp = state->builder.create<aievec::FMAConvOp>(
-        loc, opType, lhs, concatRhs, acc, M, N, isSub);
+    convOp = aievec::FMAConvOp::create(state->builder, loc, opType, lhs,
+                                       concatRhs, acc, M, N, isSub);
   }
 
   Op->replaceAllUsesWith(convOp);

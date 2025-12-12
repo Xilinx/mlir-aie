@@ -454,31 +454,30 @@ emitTransactionOps(OpBuilder &builder,
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      builder.create<AIEX::NpuWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
-                                         nullptr, nullptr, nullptr);
+      AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                 nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-      auto memref = builder.create<memref::GetGlobalOp>(loc, payload.getType(),
-                                                        payload.getName());
-      builder.create<AIEX::NpuBlockWriteOp>(
-          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), memref.getResult(),
-          nullptr, nullptr, nullptr);
+      auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
+                                                payload.getName());
+      AIEX::NpuBlockWriteOp::create(
+          builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff),
+          memref.getResult(), nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      builder.create<AIEX::NpuMaskWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
-                                             op.cmd.Mask, nullptr, nullptr,
-                                             nullptr);
+      AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                     op.cmd.Mask, nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT) {
       if (!op.sync) {
         llvm::errs() << "Missing sync payload while emitting transaction\n";
         return failure();
       }
       const TransactionBinaryOperation::SyncPayload &sync = *op.sync;
-      builder.create<AIEX::NpuSyncOp>(
-          loc, builder.getI32IntegerAttr(sync.column),
-          builder.getI32IntegerAttr(sync.row),
-          builder.getI32IntegerAttr(sync.direction),
-          builder.getI32IntegerAttr(sync.channel),
-          builder.getI32IntegerAttr(sync.columnCount),
-          builder.getI32IntegerAttr(sync.rowCount));
+      AIEX::NpuSyncOp::create(builder, loc,
+                              builder.getI32IntegerAttr(sync.column),
+                              builder.getI32IntegerAttr(sync.row),
+                              builder.getI32IntegerAttr(sync.direction),
+                              builder.getI32IntegerAttr(sync.channel),
+                              builder.getI32IntegerAttr(sync.columnCount),
+                              builder.getI32IntegerAttr(sync.rowCount));
     } else if (op.cmd.Opcode == 0x8 /* XAie_TxnOpcode::XAIE_IO_LOAD_PDI */) {
       if (!op.loadPdi) {
         llvm::errs() << "Missing load_pdi payload while emitting transaction\n";
@@ -496,8 +495,8 @@ emitTransactionOps(OpBuilder &builder,
       IntegerAttr addressAttr =
           IntegerAttr::get(ui64Ty, llvm::APInt(64, payloadInfo.address));
 
-      builder.create<AIEX::NpuLoadPdiOp>(loc, nullptr, idAttr, sizeAttr,
-                                         addressAttr);
+      AIEX::NpuLoadPdiOp::create(builder, loc, nullptr, idAttr, sizeAttr,
+                                 addressAttr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH) {
       if (!op.addressPatch) {
         llvm::errs()
@@ -506,15 +505,15 @@ emitTransactionOps(OpBuilder &builder,
       }
       const TransactionBinaryOperation::AddressPatchPayload &patch =
           *op.addressPatch;
-      builder.create<AIEX::NpuAddressPatchOp>(
-          loc, builder.getUI32IntegerAttr(patch.addr),
-          builder.getI32IntegerAttr(patch.argIdx),
-          builder.getI32IntegerAttr(patch.argPlus));
+      AIEX::NpuAddressPatchOp::create(builder, loc,
+                                      builder.getUI32IntegerAttr(patch.addr),
+                                      builder.getI32IntegerAttr(patch.argIdx),
+                                      builder.getI32IntegerAttr(patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
           IntegerType::get(builder.getContext(), 8, IntegerType::Unsigned);
       auto levelAttr = IntegerAttr::get(ui8Ty, llvm::APInt(8, op.cmd.Value));
-      builder.create<AIEX::NpuPreemptOp>(loc, levelAttr);
+      AIEX::NpuPreemptOp::create(builder, loc, levelAttr);
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
       return failure();
@@ -537,8 +536,8 @@ emitControlPacketOps(OpBuilder &builder,
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      builder.create<AIEX::NpuControlPacketOp>(
-          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
+      AIEX::NpuControlPacketOp::create(
+          builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
           DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
@@ -560,8 +559,8 @@ emitControlPacketOps(OpBuilder &builder,
         SmallVector<int32_t> splitData =
             SmallVector<int32_t>(blockWriteDataValues.begin() + i,
                                  blockWriteDataValues.begin() + last);
-        builder.create<AIEX::NpuControlPacketOp>(
-            loc, builder.getUI32IntegerAttr(currAddr), nullptr,
+        AIEX::NpuControlPacketOp::create(
+            builder, loc, builder.getUI32IntegerAttr(currAddr), nullptr,
             /*opcode*/ builder.getI32IntegerAttr(0),
             /*stream_id*/ builder.getI32IntegerAttr(0),
             DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(splitData)));
@@ -569,8 +568,8 @@ emitControlPacketOps(OpBuilder &builder,
       }
 
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      builder.create<AIEX::NpuControlPacketOp>(
-          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
+      AIEX::NpuControlPacketOp::create(
+          builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
           DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
@@ -654,8 +653,8 @@ static LogicalResult convertTransactionOpsToMLIR(
 
     MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
     TensorType tensorType = RankedTensorType::get({size}, builder.getI32Type());
-    auto global = builder.create<memref::GlobalOp>(
-        loc, name, builder.getStringAttr("private"), memrefType,
+    auto global = memref::GlobalOp::create(
+        builder, loc, name, builder.getStringAttr("private"), memrefType,
         DenseElementsAttr::get<uint32_t>(tensorType, data32), true, nullptr);
     global_data.push_back(global);
   }
@@ -675,7 +674,7 @@ static LogicalResult convertTransactionOpsToMLIR(
     while (device.lookupSymbol(seq_name))
       seq_name = "configure" + std::to_string(id++);
     StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-    auto seq = builder.create<AIE::RuntimeSequenceOp>(loc, seq_sym_name);
+    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
     seq.getBody().push_back(new Block);
 
     builder.setInsertionPointToStart(&seq.getBody().front());
@@ -734,8 +733,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   // create aie.device
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
                                  AIEDevice::npu1_3col, AIEDevice::npu1};
-  auto device = builder.create<DeviceOp>(loc, devices[columns - 1],
-                                         StringAttr::get(builder.getContext()));
+  auto device = DeviceOp::create(builder, loc, devices[columns - 1],
+                                 StringAttr::get(builder.getContext()));
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
   builder.setInsertionPointToStart(device.getBody());

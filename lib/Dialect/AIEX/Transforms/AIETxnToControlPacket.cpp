@@ -62,8 +62,8 @@ struct BlockWriteToControlPacketPattern
     }
     std::vector<int32_t> dataVec(data.value_begin<int32_t>(),
                                  data.value_end<int32_t>());
-    rewriter.create<AIEX::NpuControlPacketOp>(
-        op->getLoc(), op.getAddressAttr(), nullptr,
+    AIEX::NpuControlPacketOp::create(
+        rewriter, op->getLoc(), op.getAddressAttr(), nullptr,
         /*opcode*/ rewriter.getI32IntegerAttr(0),
         /*stream_id*/ rewriter.getI32IntegerAttr(0),
         DenseI32ArrayAttr::get(op->getContext(), dataVec));
@@ -109,8 +109,8 @@ struct ControlPacketSplitPattern
       auto incrementedAddress = rewriter.getUI32IntegerAttr(
           op.getAddress() + (i * 4 * sizeof(uint32_t)));
 
-      rewriter.create<AIEX::NpuControlPacketOp>(
-          loc, incrementedAddress, nullptr, op.getOpcodeAttr(),
+      AIEX::NpuControlPacketOp::create(
+          rewriter, loc, incrementedAddress, nullptr, op.getOpcodeAttr(),
           op.getStreamIdAttr(), DenseI32ArrayAttr::get(context, chunkData));
     }
 
