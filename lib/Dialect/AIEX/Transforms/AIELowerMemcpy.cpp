@@ -52,20 +52,20 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     Block *bdBlock = rewriter.createBlock(&endBlock);
 
     rewriter.setInsertionPointToStart(dmaBlock);
-    rewriter.create<DMAStartOp>(rewriter.getUnknownLoc(), dmaDir, channelIndex,
-                                /*repeatCount*/ 0, bdBlock, &endBlock);
+    DMAStartOp::create(rewriter, rewriter.getUnknownLoc(), dmaDir, channelIndex,
+                       /*repeatCount*/ 0, bdBlock, &endBlock);
 
     // Setup bd Block
     // It should contain locking operations (lock or token) as well as DMABD op
     // for specifying DMA Block description (which buffer type (A/B), transfer
     // length/address, etc.)
     rewriter.setInsertionPointToStart(bdBlock);
-    rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName,
-                                acquireTknVal, LockAction::Acquire);
-    rewriter.create<DMABDOp>(rewriter.getUnknownLoc(), buf, offset, len);
-    rewriter.create<UseTokenOp>(rewriter.getUnknownLoc(), tokenName,
-                                releaseTknVal, LockAction::Release);
-    rewriter.create<NextBDOp>(rewriter.getUnknownLoc(), &endBlock);
+    UseTokenOp::create(rewriter, rewriter.getUnknownLoc(), tokenName,
+                       acquireTknVal, LockAction::Acquire);
+    DMABDOp::create(rewriter, rewriter.getUnknownLoc(), buf, offset, len);
+    UseTokenOp::create(rewriter, rewriter.getUnknownLoc(), tokenName,
+                       releaseTknVal, LockAction::Release);
+    NextBDOp::create(rewriter, rewriter.getUnknownLoc(), &endBlock);
   }
 
   LogicalResult
@@ -120,9 +120,8 @@ struct AIELowerMemcpyPass : public AIELowerMemcpyBase<AIELowerMemcpyPass> {
       assert(destChannel[op.getDstTile()] <= 2 &&
              "Could not allocate more than two dest. channel when creating "
              "FlowOp");
-      builder.create<FlowOp>(builder.getUnknownLoc(), srcTile, WireBundle::DMA,
-                             0, dstTile, WireBundle::DMA,
-                             destChannel[op.getDstTile()]);
+      FlowOp::create(builder, builder.getUnknownLoc(), srcTile, WireBundle::DMA,
+                     0, dstTile, WireBundle::DMA, destChannel[op.getDstTile()]);
       destChannel[op.getDstTile()]++;
     }
 

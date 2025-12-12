@@ -153,17 +153,17 @@ convertValueToTargetTypeAIE2(ConversionPatternRewriter &rewriter, Location loc,
          isa<FloatType>(srcElemType)) ||
         (srcLaneSize == 32 && tgtLaneSize == 64 &&
          isa<IntegerType>(srcElemType))) {
-      auto zeroConstOp = rewriter.create<arith::ConstantOp>(
-          loc, srcType.getElementType(),
+      auto zeroConstOp = arith::ConstantOp::create(
+          rewriter, loc, srcType.getElementType(),
           rewriter.getZeroAttr(srcType.getElementType()));
-      auto broadcastZeroOp = rewriter.create<aievec::BroadcastScalarOp>(
-          loc, tgtType, zeroConstOp->getResult(0));
-      auto extOp = rewriter.create<aievec::ExtOp>(
-          loc, srcType, broadcastZeroOp->getResult(0), 0);
+      auto broadcastZeroOp = aievec::BroadcastScalarOp::create(
+          rewriter, loc, tgtType, zeroConstOp->getResult(0));
+      auto extOp = aievec::ExtOp::create(rewriter, loc, srcType,
+                                         broadcastZeroOp->getResult(0), 0);
 
       SmallVector<Value> inputSources = {inputVal, extOp->getResult(0)};
       auto concatOp =
-          rewriter.create<aievec::ConcatOp>(loc, tgtType, inputSources);
+          aievec::ConcatOp::create(rewriter, loc, tgtType, inputSources);
 
       return concatOp.getResult();
     }
@@ -173,9 +173,9 @@ convertValueToTargetTypeAIE2(ConversionPatternRewriter &rewriter, Location loc,
       // Case 1: vector<16xi16> to vector<16xi32> conversion by aievec.ups +
       // aievec.cast
       auto accType = getVectorOpDestType(srcType, /*AIE2 =*/true);
-      auto upsOp = rewriter.create<aievec::UPSOp>(loc, accType, inputVal);
-      auto castOp = rewriter.create<aievec::CastOp>(
-          loc, tgtType, upsOp.getResult(), /*isResAcc*/ false);
+      auto upsOp = aievec::UPSOp::create(rewriter, loc, accType, inputVal);
+      auto castOp = aievec::CastOp::create(
+          rewriter, loc, tgtType, upsOp.getResult(), /*isResAcc*/ false);
       return castOp.getResult();
     }
 
@@ -183,22 +183,24 @@ convertValueToTargetTypeAIE2(ConversionPatternRewriter &rewriter, Location loc,
       // Case 2: vector<16xi8> to vector<16xi32> conversion by aievec.concat +
       // aievec.ups + aievec.cast + aievec.ext
       auto concatOutType = createVectorType(32, srcElemType);
-      auto concatOp = rewriter.create<aievec::ConcatOp>(
-          loc, concatOutType, SmallVector<Value>({inputVal, inputVal}));
+      auto concatOp =
+          aievec::ConcatOp::create(rewriter, loc, concatOutType,
+                                   SmallVector<Value>({inputVal, inputVal}));
       auto accType = getVectorOpDestType(concatOutType, /*AIE2 =*/true);
       auto upsOp =
-          rewriter.create<aievec::UPSOp>(loc, accType, concatOp.getResult());
+          aievec::UPSOp::create(rewriter, loc, accType, concatOp.getResult());
       auto castType = createVectorType(32, tgtElemType);
-      auto castOp = rewriter.create<aievec::CastOp>(
-          loc, castType, upsOp.getResult(), /*isResAcc*/ false);
+      auto castOp = aievec::CastOp::create(
+          rewriter, loc, castType, upsOp.getResult(), /*isResAcc*/ false);
       auto extOp =
-          rewriter.create<aievec::ExtOp>(loc, tgtType, castOp.getResult(), 0);
+          aievec::ExtOp::create(rewriter, loc, tgtType, castOp.getResult(), 0);
       return extOp.getResult();
     }
 
     if (srcBitWidth == 8 && tgtBitWidth == 16 && srcLaneSize == 32) {
       // Case 3: vector<32xi8> to vector<32xi16> conversion by aievec.unpack
-      auto unpackOp = rewriter.create<aievec::UnpackOp>(loc, tgtType, inputVal);
+      auto unpackOp =
+          aievec::UnpackOp::create(rewriter, loc, tgtType, inputVal);
       return unpackOp.getResult();
     }
   }
@@ -343,13 +345,13 @@ template <typename SrcOpTy, typename AIEv2ElemOp>
 static LogicalResult genAddElemAIE2(ConversionPatternRewriter &rewriter,
                                     Value lval, Value rval, VectorType srcType,
                                     SrcOpTy srcOp) {
-  auto lCastOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), srcType, lval,
-                                                 /*isResAcc*/ true);
-  auto rCastOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), srcType, rval,
-                                                 /*isResAcc*/ true);
-  auto elemOp = rewriter.create<AIEv2ElemOp>(
-      srcOp.getLoc(), lCastOp->getResult(0).getType(), lCastOp->getResult(0),
-      rCastOp->getResult(0));
+  auto lCastOp = aievec::CastOp::create(rewriter, srcOp.getLoc(), srcType, lval,
+                                        /*isResAcc*/ true);
+  auto rCastOp = aievec::CastOp::create(rewriter, srcOp.getLoc(), srcType, rval,
+                                        /*isResAcc*/ true);
+  auto elemOp = AIEv2ElemOp::create(
+      rewriter, srcOp.getLoc(), lCastOp->getResult(0).getType(),
+      lCastOp->getResult(0), rCastOp->getResult(0));
   rewriter.replaceOpWithNewOp<aievec::CastOp>(
       srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
   return success();
@@ -395,25 +397,25 @@ static aievec::CmpOp createCmpOpAIE2(ConversionPatternRewriter &rewriter,
                                      Type type, Value lhs, Value rhs) {
   switch (pred) {
   case CmpIPredicate::eq:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "eq");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "eq");
   case CmpIPredicate::ne:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ne");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "ne");
   case CmpIPredicate::slt:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "slt");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "slt");
   case CmpIPredicate::ult:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ult");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "ult");
   case CmpIPredicate::sle:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "sle");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "sle");
   case CmpIPredicate::ule:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ule");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "ule");
   case CmpIPredicate::sgt:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "sgt");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "sgt");
   case CmpIPredicate::ugt:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "ugt");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "ugt");
   case CmpIPredicate::sge:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "sge");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "sge");
   case CmpIPredicate::uge:
-    return rewriter.create<aievec::CmpOp>(loc, type, lhs, rhs, "uge");
+    return aievec::CmpOp::create(rewriter, loc, type, lhs, rhs, "uge");
   }
   return nullptr;
 }
@@ -434,22 +436,22 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
   unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
   for (int id = shiftIndex; id > 0; id /= 2) {
-    auto constOp = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
+    auto constOp = arith::ConstantOp::create(
+        rewriter, loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
 
-    auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-        loc, vecType, curValue, curValue, constOp.getResult());
+    auto shiftBytesOp = aievec::ShiftOp::create(
+        rewriter, loc, vecType, curValue, curValue, constOp.getResult());
 
-    curOp = rewriter.create<DstOpTy>(loc, vecType, curValue,
-                                     shiftBytesOp.getResult());
+    curOp = DstOpTy::create(rewriter, loc, vecType, curValue,
+                            shiftBytesOp.getResult());
 
     curValue = curOp.getResult();
   }
 
   auto zeroConstOp =
-      rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
-  return rewriter.create<aievec::ExtElemOp>(loc, scalarType, curOp,
-                                            zeroConstOp.getResult());
+      arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+  return aievec::ExtElemOp::create(rewriter, loc, scalarType, curOp,
+                                   zeroConstOp.getResult());
 }
 
 static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
@@ -473,8 +475,8 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
     NamedAttribute funcAccess = NamedAttribute(t1, t2);
     FunctionType fnType =
         mlir::FunctionType::get(rewriter.getContext(), inTypes, outTypes);
-    fnOp = rewriter.create<func::FuncOp>(parentSymbolTableOp->getLoc(),
-                                         funcName, fnType, funcAccess);
+    fnOp = func::FuncOp::create(rewriter, parentSymbolTableOp->getLoc(),
+                                funcName, fnType, funcAccess);
   }
   return fnOp;
 }
@@ -520,9 +522,8 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
         return failure();
       auto half = static_cast<int8_t>(posVal / resultType.getNumElements());
       posVal -= half * resultType.getNumElements();
-      src = rewriter
-                .create<aievec::ExtOp>(extOp.getLoc(), resultType, src,
-                                       rewriter.getI8IntegerAttr(half))
+      src = aievec::ExtOp::create(rewriter, extOp.getLoc(), resultType, src,
+                                  rewriter.getI8IntegerAttr(half))
                 .getResult();
     }
 
@@ -537,10 +538,12 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
       // e.g. need v16bf16 due to the subsequent v16accfloat operation
       VectorType aievecBcastType =
           createVectorType(512 / elWidth, resultType.getElementType());
-      auto concatOp = rewriter.create<aievec::ConcatOp>(
-          bcastOp.getLoc(), aievecBcastType, SmallVector<Value>({src, src}));
-      auto aieBcastOp = rewriter.create<aievec::BroadcastOp>(
-          bcastOp.getLoc(), aievecBcastType, concatOp.getResult(), posVal);
+      auto concatOp =
+          aievec::ConcatOp::create(rewriter, bcastOp.getLoc(), aievecBcastType,
+                                   SmallVector<Value>({src, src}));
+      auto aieBcastOp = aievec::BroadcastOp::create(
+          rewriter, bcastOp.getLoc(), aievecBcastType, concatOp.getResult(),
+          posVal);
       rewriter.replaceOpWithNewOp<aievec::ExtOp>(bcastOp, resultType,
                                                  aieBcastOp.getResult(), 0);
     } else if (laneSize * elWidth == 1024) {
@@ -550,10 +553,11 @@ struct FoldVectorExtractAndSplatToAIEBroadcast
       auto half = static_cast<int8_t>(posVal / resultType.getNumElements());
       posVal -= half * resultType.getNumElements();
       auto extOp =
-          rewriter.create<aievec::ExtOp>(bcastOp.getLoc(), aievecBcastType, src,
-                                         rewriter.getI8IntegerAttr(half));
-      auto aieBcastOp = rewriter.create<aievec::BroadcastOp>(
-          bcastOp.getLoc(), aievecBcastType, extOp.getResult(), posVal);
+          aievec::ExtOp::create(rewriter, bcastOp.getLoc(), aievecBcastType,
+                                src, rewriter.getI8IntegerAttr(half));
+      auto aieBcastOp = aievec::BroadcastOp::create(rewriter, bcastOp.getLoc(),
+                                                    aievecBcastType,
+                                                    extOp.getResult(), posVal);
       rewriter.replaceOpWithNewOp<aievec::ConcatOp>(
           bcastOp, resultType,
           SmallVector<Value>({aieBcastOp.getResult(), aieBcastOp.getResult()}));
@@ -583,38 +587,39 @@ struct ConvertSplatToAIEBroadcast : OpConversionPattern<vector::BroadcastOp> {
     auto src = bcastOp.getSource();
 
     if (laneSize * elWidth == 512) {
-      Value newOp = rewriter.create<aievec::BroadcastScalarOp>(
-          bcastOp.getLoc(), flatResultType, src);
+      Value newOp = aievec::BroadcastScalarOp::create(
+          rewriter, bcastOp.getLoc(), flatResultType, src);
       if (resultType != flatResultType)
-        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
-                                                     resultType, newOp);
+        newOp = vector::ShapeCastOp::create(rewriter, bcastOp.getLoc(),
+                                            resultType, newOp);
       rewriter.replaceOp(bcastOp, newOp);
       return success();
     }
 
     if (laneSize * elWidth == 256) {
       VectorType vecType = createVectorType(512 / elWidth, scalarType);
-      auto aieBcastOp = rewriter.create<aievec::BroadcastScalarOp>(
-          bcastOp.getLoc(), vecType, src);
-      Value newOp = rewriter.create<aievec::ExtOp>(
-          bcastOp.getLoc(), flatResultType, aieBcastOp.getResult(), 0);
+      auto aieBcastOp = aievec::BroadcastScalarOp::create(
+          rewriter, bcastOp.getLoc(), vecType, src);
+      Value newOp =
+          aievec::ExtOp::create(rewriter, bcastOp.getLoc(), flatResultType,
+                                aieBcastOp.getResult(), 0);
       if (resultType != flatResultType)
-        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
-                                                     resultType, newOp);
+        newOp = vector::ShapeCastOp::create(rewriter, bcastOp.getLoc(),
+                                            resultType, newOp);
       rewriter.replaceOp(bcastOp, newOp);
       return success();
     }
 
     if (laneSize * elWidth == 1024) {
       VectorType vecType = createVectorType(512 / elWidth, scalarType);
-      auto aieBcastOp = rewriter.create<aievec::BroadcastScalarOp>(
-          bcastOp.getLoc(), vecType, src);
-      Value newOp = rewriter.create<aievec::ConcatOp>(
-          bcastOp.getLoc(), flatResultType,
+      auto aieBcastOp = aievec::BroadcastScalarOp::create(
+          rewriter, bcastOp.getLoc(), vecType, src);
+      Value newOp = aievec::ConcatOp::create(
+          rewriter, bcastOp.getLoc(), flatResultType,
           SmallVector<Value>({aieBcastOp.getResult(), aieBcastOp.getResult()}));
       if (resultType != flatResultType)
-        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
-                                                     resultType, newOp);
+        newOp = vector::ShapeCastOp::create(rewriter, bcastOp.getLoc(),
+                                            resultType, newOp);
       rewriter.replaceOp(bcastOp, newOp);
       return success();
     }
@@ -659,14 +664,14 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
 
     Type accType = getVectorOpDestType(cast<VectorType>(acc.getType()),
                                        /*AIE2 =*/true);
-    auto upsOp = rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, acc,
-                                                shiftParam);
-    auto fmaElemOp = rewriter.create<aievec::FMAElemOp>(
-        addOp.getLoc(), accType, lhs, rhs, upsOp.getResult(),
+    auto upsOp = aievec::UPSOp::create(rewriter, addOp.getLoc(), accType, acc,
+                                       shiftParam);
+    auto fmaElemOp = aievec::FMAElemOp::create(
+        rewriter, addOp.getLoc(), accType, lhs, rhs, upsOp.getResult(),
         /*fmsub=*/false);
 
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        addOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, addOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
         addOp, resultType, fmaElemOp.getResult(), shiftParamOp.getResult());
 
@@ -706,9 +711,9 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
     Value rhs = adaptor.getRhs();
     Value acc = adaptor.getAcc();
     if (resElemTy.isBF16())
-      acc = rewriter.create<aievec::UPSOp>(
-          fmaOp.getLoc(), VectorType::get({16}, rewriter.getF32Type()), acc,
-          shiftParam);
+      acc = aievec::UPSOp::create(rewriter, fmaOp.getLoc(),
+                                  VectorType::get({16}, rewriter.getF32Type()),
+                                  acc, shiftParam);
     else {
       lhs = getSourceOfWideningOp(lhs).value_or(nullptr);
       rhs = getSourceOfWideningOp(rhs).value_or(nullptr);
@@ -722,14 +727,15 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
             fmaOp, "vector.fma operands come from arith.extf, but the source "
                    "of the widening op is not bf16; can't lower to aievec.");
     }
-    Value newOp = rewriter.create<aievec::FMAElemOp>(
-        fmaOp.getLoc(), acc.getType(), lhs, rhs, acc, /*fmsub=*/false);
+    Value newOp =
+        aievec::FMAElemOp::create(rewriter, fmaOp.getLoc(), acc.getType(), lhs,
+                                  rhs, acc, /*fmsub=*/false);
 
     if (resElemTy.isBF16()) {
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          fmaOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
-      newOp = rewriter.create<aievec::SRSOp>(fmaOp.getLoc(), resVecTy, newOp,
-                                             shiftParamOp);
+      auto shiftParamOp = arith::ConstantOp::create(
+          rewriter, fmaOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
+      newOp = aievec::SRSOp::create(rewriter, fmaOp.getLoc(), resVecTy, newOp,
+                                    shiftParamOp);
     }
 
     rewriter.replaceOp(fmaOp, newOp);
@@ -820,8 +826,8 @@ struct ConvertMulFToAIEVecMulElemOpPattern
       return failure();
 
     // Create an aievec.mul_elem op
-    auto mulElemOp =
-        rewriter.create<aievec::MulElemOp>(mulOp.getLoc(), accType, lval, rval);
+    auto mulElemOp = aievec::MulElemOp::create(rewriter, mulOp.getLoc(),
+                                               accType, lval, rval);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();
@@ -832,8 +838,8 @@ struct ConvertMulFToAIEVecMulElemOpPattern
       rewriter.replaceOpWithNewOp<aievec::CastOp>(
           mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
     } else if (mulElemResultElWidth > resultElWidth) {
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          mulOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
+      auto shiftParamOp = arith::ConstantOp::create(
+          rewriter, mulOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           mulOp, resultType, mulElemOp.getResult(), shiftParamOp.getResult());
     } else {
@@ -924,8 +930,8 @@ struct ConvertMulIToAIEVecMulElemOpPattern
       return failure();
 
     // Create an aievec.mul_elem op
-    auto mulElemOp =
-        rewriter.create<aievec::MulElemOp>(mulOp.getLoc(), accType, lval, rval);
+    auto mulElemOp = aievec::MulElemOp::create(rewriter, mulOp.getLoc(),
+                                               accType, lval, rval);
 
     // Create an aievec.cast or an aievec.srs op
     auto mulElemResultType = mulElemOp.getType();
@@ -936,8 +942,8 @@ struct ConvertMulIToAIEVecMulElemOpPattern
       rewriter.replaceOpWithNewOp<aievec::CastOp>(
           mulOp, resultType, mulElemOp.getResult(), /*isResAcc*/ false);
     } else if (mulElemResultElWidth > resultElWidth) {
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          mulOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
+      auto shiftParamOp = arith::ConstantOp::create(
+          rewriter, mulOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           mulOp, resultType, mulElemOp.getResult(), shiftParamOp.getResult());
     } else {
@@ -980,12 +986,12 @@ struct FoldSplatToFMAOp : OpConversionPattern<aievec::aie1::FMAOp> {
 
     auto rhs = extOp.getSource();
     auto concatVecType = cast<VectorType>(concatOp.getResult().getType());
-    auto zvec = rewriter.create<arith::ConstantOp>(
-        concatOp.getLoc(), lhs.getType(), rewriter.getZeroAttr(lhs.getType()));
+    auto zvec =
+        arith::ConstantOp::create(rewriter, concatOp.getLoc(), lhs.getType(),
+                                  rewriter.getZeroAttr(lhs.getType()));
     auto lhsX2 =
-        rewriter
-            .create<aievec::ConcatOp>(concatOp.getLoc(), concatVecType,
-                                      SmallVector<Value, 2>({lhs, zvec}))
+        aievec::ConcatOp::create(rewriter, concatOp.getLoc(), concatVecType,
+                                 SmallVector<Value, 2>({lhs, zvec}))
             .getResult();
     // XXX: We assume a 1D vector
     auto pos = extOp.getStaticPosition();
@@ -1021,18 +1027,18 @@ struct ConvertMulAddToAIEVecFMAOpPattern
         VectorType::get(concatVecShape, vecType.getElementType());
     Type accType = getVectorOpDestType(cast<VectorType>(acc.getType()),
                                        /*AIE2 =*/false);
-    auto lhsX2 = rewriter
-                     .create<aievec::ConcatOp>(addOp.getLoc(), concatVecType,
-                                               SmallVector<Value, 2>(2, lhs))
-                     .getResult();
-    auto upsOp = rewriter.create<aievec::UPSOp>(addOp.getLoc(), accType, acc);
-    auto fmaOp = rewriter.create<aievec::aie1::FMAOp>(
-        addOp.getLoc(), accType, lhsX2, rhs, upsOp.getResult(),
+    auto lhsX2 =
+        aievec::ConcatOp::create(rewriter, addOp.getLoc(), concatVecType,
+                                 SmallVector<Value, 2>(2, lhs))
+            .getResult();
+    auto upsOp = aievec::UPSOp::create(rewriter, addOp.getLoc(), accType, acc);
+    auto fmaOp = aievec::aie1::FMAOp::create(
+        rewriter, addOp.getLoc(), accType, lhsX2, rhs, upsOp.getResult(),
         /*xstart=*/"", /*xoffsets=*/"", /*xoffsets_hi=*/"", /*xstep=*/"",
         /*xsquare=*/"", /*zstart=*/"", /*zoffsets=*/"", /*zoffsets_hi=*/"",
         /*zstep=*/"", /*zsquare=*/"", /*fmsub=*/false);
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        addOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, addOp.getLoc(), rewriter.getI32IntegerAttr(0));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
         addOp, vecType, fmaOp.getResult(), shiftParamOp.getResult());
     return success();
@@ -1092,13 +1098,13 @@ struct LowerVectorTransferReadToAIEUPD
     if ((vSize > minVectorSize) && std::bitset<8>(multiplicity).count() != 1)
       return failure();
 
-    auto updOp = rewriter.create<xilinx::aievec::UPDOp>(
-        readOp.getLoc(), vType, adaptor.getBase(), adaptor.getIndices(), 0, 0,
-        TypedValue<VectorType>(nullptr));
+    auto updOp = xilinx::aievec::UPDOp::create(
+        rewriter, readOp.getLoc(), vType, adaptor.getBase(),
+        adaptor.getIndices(), 0, 0, TypedValue<VectorType>(nullptr));
     if (vSize > maxLoadSize) {
-      updOp = rewriter.create<xilinx::aievec::UPDOp>(
-          readOp.getLoc(), vType, adaptor.getBase(), adaptor.getIndices(),
-          maxLoadSize, 1, updOp.getResult());
+      updOp = xilinx::aievec::UPDOp::create(
+          rewriter, readOp.getLoc(), vType, adaptor.getBase(),
+          adaptor.getIndices(), maxLoadSize, 1, updOp.getResult());
     }
     rewriter.replaceOp(readOp, updOp.getResult());
 
@@ -1170,10 +1176,10 @@ struct LowerVectorMulIOpToAIEVecMulOp : OpConversionPattern<arith::MulIOp> {
     if (!resTy)
       return failure();
     auto accTy = getVectorOpDestType(resTy, /*AIE2 =*/false);
-    auto newMulOp = rewriter.create<aievec::aie1::MulOp>(
-        mulOp.getLoc(), accTy, adaptor.getLhs(), adaptor.getRhs());
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        mulOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    auto newMulOp = aievec::aie1::MulOp::create(
+        rewriter, mulOp.getLoc(), accTy, adaptor.getLhs(), adaptor.getRhs());
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, mulOp.getLoc(), rewriter.getI32IntegerAttr(0));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
         mulOp, resTy, newMulOp.getResult(), shiftParamOp.getResult());
     return success();
@@ -1266,11 +1272,11 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
 
           Type accType = getVectorOpDestType(lSrcType, /*AIE2 =*/true);
           auto lUpsOp =
-              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
+              aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, lval);
           auto rUpsOp =
-              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
-          auto elemOp = rewriter.create<DstOpTy>(
-              srcOp.getLoc(), lUpsOp->getResult(0).getType(),
+              aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, rval);
+          auto elemOp = DstOpTy::create(
+              rewriter, srcOp.getLoc(), lUpsOp->getResult(0).getType(),
               lUpsOp->getResult(0), rUpsOp->getResult(0));
           rewriter.replaceOpWithNewOp<aievec::CastOp>(
               srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
@@ -1300,17 +1306,18 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
             accType = getVectorOpDestType(vType, /*AIE2 =*/true);
             Value valToUps = lhsExt ? lval : rval;
             Value valToCast = lhsExt ? rval : lval;
-            auto upsOp = rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType,
-                                                        valToUps);
-            auto castOp = rewriter.create<aievec::CastOp>(
-                srcOp.getLoc(), resultType, valToCast, /*isResAcc*/ true);
+            auto upsOp = aievec::UPSOp::create(rewriter, srcOp.getLoc(),
+                                               accType, valToUps);
+            auto castOp =
+                aievec::CastOp::create(rewriter, srcOp.getLoc(), resultType,
+                                       valToCast, /*isResAcc*/ true);
             Value lhsToElemOp =
                 lhsExt ? upsOp->getResult(0) : castOp->getResult(0);
             Value rhsToElemOp =
                 lhsExt ? castOp->getResult(0) : upsOp->getResult(0);
-            auto elemOp = rewriter.create<DstOpTy>(
-                srcOp.getLoc(), upsOp->getResult(0).getType(), lhsToElemOp,
-                rhsToElemOp);
+            auto elemOp = DstOpTy::create(rewriter, srcOp.getLoc(),
+                                          upsOp->getResult(0).getType(),
+                                          lhsToElemOp, rhsToElemOp);
             rewriter.replaceOpWithNewOp<aievec::CastOp>(
                 srcOp, srcOp.getType(), elemOp.getResult(), /*isResAcc*/ false);
             return success();
@@ -1319,16 +1326,16 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
           if (bitWidth == 16) {
             accType = getVectorOpDestType(resultType, /*AIE2 =*/true);
             auto lUpsOp =
-                rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
+                aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, lval);
             auto rUpsOp =
-                rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
+                aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, rval);
 
-            auto elemOp = rewriter.create<DstOpTy>(
-                srcOp.getLoc(), lUpsOp->getResult(0).getType(),
+            auto elemOp = DstOpTy::create(
+                rewriter, srcOp.getLoc(), lUpsOp->getResult(0).getType(),
                 lUpsOp->getResult(0), rUpsOp->getResult(0));
 
-            auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-                srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
+            auto shiftParamOp = arith::ConstantOp::create(
+                rewriter, srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
             rewriter.replaceOpWithNewOp<aievec::SRSOp>(
                 srcOp, srcOp.getType(), elemOp.getResult(),
                 shiftParamOp.getResult());
@@ -1368,11 +1375,11 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
 
           Type accType = getVectorOpDestType(vType, /*AIE2 =*/true);
           auto lUpsOp =
-              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
+              aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, lval);
           auto rUpsOp =
-              rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
-          auto elemOp = rewriter.create<DstOpTy>(
-              srcOp.getLoc(), lUpsOp->getResult(0).getType(),
+              aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, rval);
+          auto elemOp = DstOpTy::create(
+              rewriter, srcOp.getLoc(), lUpsOp->getResult(0).getType(),
               lUpsOp->getResult(0), rUpsOp->getResult(0));
           rewriter.replaceOpWithNewOp<aievec::CastOp>(srcOp, srcOp.getType(),
                                                       elemOp.getResult());
@@ -1391,20 +1398,20 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
           aievec::CastOp castOp;
           if (lhsExt) {
             upsOp =
-                rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lval);
-            castOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), resultType,
-                                                     rval,
-                                                     /*isResAcc*/ true);
+                aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, lval);
+            castOp = aievec::CastOp::create(rewriter, srcOp.getLoc(),
+                                            resultType, rval,
+                                            /*isResAcc*/ true);
           } else {
             upsOp =
-                rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rval);
-            castOp = rewriter.create<aievec::CastOp>(srcOp.getLoc(), resultType,
-                                                     lval,
-                                                     /*isResAcc*/ true);
+                aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, rval);
+            castOp = aievec::CastOp::create(rewriter, srcOp.getLoc(),
+                                            resultType, lval,
+                                            /*isResAcc*/ true);
           }
 
-          auto elemOp = rewriter.create<DstOpTy>(
-              srcOp.getLoc(), upsOp->getResult(0).getType(),
+          auto elemOp = DstOpTy::create(
+              rewriter, srcOp.getLoc(), upsOp->getResult(0).getType(),
               upsOp->getResult(0), castOp->getResult(0));
 
           rewriter.replaceOpWithNewOp<aievec::CastOp>(
@@ -1417,14 +1424,14 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
       // v16bfloat16
       Type accType = getVectorOpDestType(resultType, /*AIE2 =*/true);
       auto lUpsOp =
-          rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, lhs);
+          aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, lhs);
       auto rUpsOp =
-          rewriter.create<aievec::UPSOp>(srcOp.getLoc(), accType, rhs);
-      auto elemOp = rewriter.create<DstOpTy>(
-          srcOp.getLoc(), lUpsOp->getResult(0).getType(), lUpsOp->getResult(0),
-          rUpsOp->getResult(0));
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
+          aievec::UPSOp::create(rewriter, srcOp.getLoc(), accType, rhs);
+      auto elemOp = DstOpTy::create(rewriter, srcOp.getLoc(),
+                                    lUpsOp->getResult(0).getType(),
+                                    lUpsOp->getResult(0), rUpsOp->getResult(0));
+      auto shiftParamOp = arith::ConstantOp::create(
+          rewriter, srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           srcOp, srcOp.getType(), elemOp.getResult(), shiftParamOp.getResult());
 
@@ -1573,8 +1580,8 @@ struct LowerVectorSelectOpToAIEVecSelOp : OpConversionPattern<arith::SelectOp> {
         mlir::IntegerType::get(srcOp.getContext(), laneSize <= 32 ? 32 : 64,
                                mlir::IntegerType::Unsigned);
 
-    auto convertOp = rewriter.create<UnrealizedConversionCastOp>(
-        srcOp.getLoc(), type, adaptor.getCondition());
+    auto convertOp = UnrealizedConversionCastOp::create(
+        rewriter, srcOp.getLoc(), type, adaptor.getCondition());
 
     rewriter.replaceOpWithNewOp<aievec::SelOp>(
         srcOp, srcOp.getResult().getType(), srcOp.getTrueValue(),
@@ -1678,12 +1685,12 @@ struct LowerVectorReductionAddIntOp : OpConversionPattern<vector::ReductionOp> {
       VectorType vecType = createVectorType(laneSize / 2, scalarType);
 
       auto lExtOp =
-          rewriter.create<aievec::ExtOp>(loc, vecType, srcOp.getVector(), 0);
+          aievec::ExtOp::create(rewriter, loc, vecType, srcOp.getVector(), 0);
       auto rExtOp =
-          rewriter.create<aievec::ExtOp>(loc, vecType, srcOp.getVector(), 1);
-      auto addElemOp = rewriter.create<aievec::AddElemOp>(
-          loc, lExtOp.getResult().getType(), lExtOp.getResult(),
-          rExtOp.getResult());
+          aievec::ExtOp::create(rewriter, loc, vecType, srcOp.getVector(), 1);
+      auto addElemOp =
+          aievec::AddElemOp::create(rewriter, loc, lExtOp.getResult().getType(),
+                                    lExtOp.getResult(), rExtOp.getResult());
       shiftIndex /= 2;
       auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
           rewriter, srcOp, shiftIndex, addElemOp.getResult());
@@ -1733,29 +1740,29 @@ struct LowerVectorReductionAddFloatOp
     aievec::CastOp curOp = nullptr;
 
     for (int id = shiftIndex; id > 0; id /= 2) {
-      auto constOp = rewriter.create<arith::ConstantOp>(
-          loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
+      auto constOp = arith::ConstantOp::create(
+          rewriter, loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
 
-      auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-          loc, vType, curValue, curValue, constOp.getResult());
+      auto shiftBytesOp = aievec::ShiftOp::create(
+          rewriter, loc, vType, curValue, curValue, constOp.getResult());
 
-      auto lCastOp = rewriter.create<aievec::CastOp>(loc, vType, curValue,
-                                                     /*isResAcc*/ true);
+      auto lCastOp = aievec::CastOp::create(rewriter, loc, vType, curValue,
+                                            /*isResAcc*/ true);
       auto rCastOp =
-          rewriter.create<aievec::CastOp>(loc, vType, shiftBytesOp.getResult(),
-                                          /*isResAcc*/ true);
-      auto elemOp = rewriter.create<aievec::AddElemOp>(
-          loc, lCastOp.getResult().getType(), lCastOp.getResult(),
+          aievec::CastOp::create(rewriter, loc, vType, shiftBytesOp.getResult(),
+                                 /*isResAcc*/ true);
+      auto elemOp = aievec::AddElemOp::create(
+          rewriter, loc, lCastOp.getResult().getType(), lCastOp.getResult(),
           rCastOp.getResult());
-      curOp = rewriter.create<aievec::CastOp>(loc, vType, elemOp.getResult(),
-                                              /*isResAcc*/ false);
+      curOp = aievec::CastOp::create(rewriter, loc, vType, elemOp.getResult(),
+                                     /*isResAcc*/ false);
       curValue = curOp.getResult();
     }
 
     auto zeroConstOp =
-        rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
-    auto reduceResultOp = rewriter.create<aievec::ExtElemOp>(
-        srcOp.getLoc(), scalarType, curOp, zeroConstOp.getResult());
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    auto reduceResultOp = aievec::ExtElemOp::create(
+        rewriter, srcOp.getLoc(), scalarType, curOp, zeroConstOp.getResult());
 
     if (srcOp.getAcc())
       rewriter.replaceOpWithNewOp<arith::AddFOp>(
@@ -1795,7 +1802,7 @@ struct LowerVectorReductionAddBfloat16Op
         dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
 
     auto upsOp =
-        rewriter.create<aievec::UPSOp>(loc, accType, srcOp.getVector());
+        aievec::UPSOp::create(rewriter, loc, accType, srcOp.getVector());
 
     curValue = upsOp.getResult();
 
@@ -1803,27 +1810,28 @@ struct LowerVectorReductionAddBfloat16Op
     aievec::AddElemOp curOp = nullptr;
 
     for (int id = shiftIndex; id > 0; id /= 2) {
-      auto constOp = rewriter.create<arith::ConstantOp>(
-          loc, rewriter.getI32IntegerAttr(id * accWidth / 8));
-      auto shiftBytesOp = rewriter.create<aievec::ShiftOp>(
-          loc, accType, curValue, curValue, constOp, true);
-      curOp = rewriter.create<aievec::AddElemOp>(loc, accType, curValue,
-                                                 shiftBytesOp.getResult());
+      auto constOp = arith::ConstantOp::create(
+          rewriter, loc, rewriter.getI32IntegerAttr(id * accWidth / 8));
+      auto shiftBytesOp = aievec::ShiftOp::create(
+          rewriter, loc, accType, curValue, curValue, constOp, true);
+      curOp = aievec::AddElemOp::create(rewriter, loc, accType, curValue,
+                                        shiftBytesOp.getResult());
       curValue = curOp.getResult();
     }
 
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
-    auto srsOp = rewriter.create<aievec::SRSOp>(loc, vType, curOp.getResult(),
-                                                shiftParamOp.getResult());
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    auto srsOp = aievec::SRSOp::create(rewriter, loc, vType, curOp.getResult(),
+                                       shiftParamOp.getResult());
     SmallVector<Value> concatSources = {srsOp.getResult(), srsOp.getResult()};
     auto concatOp =
-        rewriter.create<aievec::ConcatOp>(loc, vecType, concatSources);
+        aievec::ConcatOp::create(rewriter, loc, vecType, concatSources);
 
     auto zeroConstOp =
-        rewriter.create<arith::ConstantOp>(loc, rewriter.getI32IntegerAttr(0));
-    auto reduceResultOp = rewriter.create<aievec::ExtElemOp>(
-        srcOp.getLoc(), scalarType, concatOp, zeroConstOp.getResult());
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    auto reduceResultOp =
+        aievec::ExtElemOp::create(rewriter, srcOp.getLoc(), scalarType,
+                                  concatOp, zeroConstOp.getResult());
 
     if (srcOp.getAcc())
       rewriter.replaceOpWithNewOp<arith::AddFOp>(
@@ -1863,8 +1871,8 @@ struct LowerVectorExtractStridedSliceOpAIEv1Pattern
       return failure();
 
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
-    auto selectOp = rewriter.create<aievec::aie1::SelectOp>(
-        extractOp.getLoc(), vType, adaptor.getSource(),
+    auto selectOp = aievec::aie1::SelectOp::create(
+        rewriter, extractOp.getLoc(), vType, adaptor.getSource(),
         buildAttributeListForRotationSelectOp(rewriter, vType, offset));
     rewriter.replaceOpWithNewOp<aievec::aie1::ExtOp>(
         extractOp, extractOp.getType(), selectOp.getResult(),
@@ -1897,20 +1905,18 @@ struct LowerVectorExtractStridedSliceOpAIE2Pattern
       return failure();
 
     auto shortVecType = cast<VectorType>(extractOp.getResult().getType());
-    auto bottomHalf = rewriter
-                          .create<aievec::ExtOp>(
-                              extractOp.getLoc(), shortVecType,
+    auto bottomHalf =
+        aievec::ExtOp::create(rewriter, extractOp.getLoc(), shortVecType,
                               adaptor.getSource(), rewriter.getI8IntegerAttr(0))
-                          .getResult();
-    auto topHalf = rewriter
-                       .create<aievec::ExtOp>(extractOp.getLoc(), shortVecType,
-                                              adaptor.getSource(),
-                                              rewriter.getI8IntegerAttr(1))
-                       .getResult();
+            .getResult();
+    auto topHalf =
+        aievec::ExtOp::create(rewriter, extractOp.getLoc(), shortVecType,
+                              adaptor.getSource(), rewriter.getI8IntegerAttr(1))
+            .getResult();
     int64_t offset = cast<IntegerAttr>(adaptor.getOffsets()[0]).getInt();
     int32_t shiftBytes = offset * getElementSizeInBits(vType) / 8;
-    auto shiftBytesConstOp = rewriter.create<arith::ConstantOp>(
-        extractOp.getLoc(), rewriter.getIntegerType(32),
+    auto shiftBytesConstOp = arith::ConstantOp::create(
+        rewriter, extractOp.getLoc(), rewriter.getIntegerType(32),
         rewriter.getI32IntegerAttr(shiftBytes));
     rewriter.replaceOpWithNewOp<aievec::ShiftOp>(
         extractOp, shortVecType, bottomHalf, topHalf, shiftBytesConstOp);
@@ -1939,9 +1945,10 @@ struct ExpandUPDToUPDAndExtPattern : OpConversionPattern<aievec::UPDOp> {
                                      vecType.getShape().end());
     vecShape[vecType.getRank() - 1] *= 2;
     auto longVecType = VectorType::get(vecShape, vecType.getElementType());
-    auto newUpdOp = rewriter.create<aievec::UPDOp>(
-        updOp.getLoc(), longVecType, adaptor.getSource(), adaptor.getIndices(),
-        adaptor.getOffset(), adaptor.getIndex(), adaptor.getVector());
+    auto newUpdOp = aievec::UPDOp::create(
+        rewriter, updOp.getLoc(), longVecType, adaptor.getSource(),
+        adaptor.getIndices(), adaptor.getOffset(), adaptor.getIndex(),
+        adaptor.getVector());
     rewriter.replaceOpWithNewOp<aievec::ExtOp>(
         updOp, vecType, newUpdOp.getResult(), rewriter.getI8IntegerAttr(0));
 
@@ -2020,11 +2027,11 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
 
     Type accTypeNative = getVectorOpDestType(srcType, /*AIE2 =*/true);
     auto callOp =
-        rewriter.create<func::CallOp>(expOp.getLoc(), fnOp, expOperands);
-    auto resCastOp = rewriter.create<vector::BitCastOp>(
-        expOp.getLoc(), accTypeNative, callOp.getResults());
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        expOp.getLoc(), rewriter.getI32IntegerAttr(0));
+        func::CallOp::create(rewriter, expOp.getLoc(), fnOp, expOperands);
+    auto resCastOp = vector::BitCastOp::create(
+        rewriter, expOp.getLoc(), accTypeNative, callOp.getResults());
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, expOp.getLoc(), rewriter.getI32IntegerAttr(0));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
         expOp, srcType, resCastOp.getResult(), shiftParamOp.getResult());
 
@@ -2045,29 +2052,28 @@ struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
     auto moduleOp = expOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(expOp);
 
     auto v16bf16OpaqueTy =
         emitc::OpaqueType::get(rewriter.getContext(), "v16bfloat16");
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(expOp.getLoc(), v16bf16OpaqueTy,
-                                                adaptor.getOperand())
+        UnrealizedConversionCastOp::create(
+            rewriter, expOp.getLoc(), v16bf16OpaqueTy, adaptor.getOperand())
             .getResult(0);
     SmallVector<Value> expOperands = {opaquedOperand};
 
     Type accTypeNative = getVectorOpDestType(srcType, /*AIE2 =*/true);
     Type v16accf32OpaqueTy =
         emitc::OpaqueType::get(rewriter.getContext(), "v16accfloat");
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        expOp.getLoc(), TypeRange{v16accf32OpaqueTy}, "getExpBf16", nullptr,
-        nullptr, expOperands);
-    auto resCastOp = rewriter.create<UnrealizedConversionCastOp>(
-        expOp.getLoc(), accTypeNative, callOp.getResults());
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        expOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    auto callOp = emitc::CallOpaqueOp::create(
+        rewriter, expOp.getLoc(), TypeRange{v16accf32OpaqueTy}, "getExpBf16",
+        nullptr, nullptr, expOperands);
+    auto resCastOp = UnrealizedConversionCastOp::create(
+        rewriter, expOp.getLoc(), accTypeNative, callOp.getResults());
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, expOp.getLoc(), rewriter.getI32IntegerAttr(0));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
         expOp, srcType, resCastOp.getResult(0), shiftParamOp.getResult());
 
@@ -2110,7 +2116,7 @@ struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
     auto moduleOp = divOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     auto truncOp = cast<arith::TruncFOp>(*divOp->getUsers().begin());
 
@@ -2118,9 +2124,9 @@ struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
     Type bf16OpaqueTy =
         emitc::OpaqueType::get(rewriter.getContext(), "bfloat16");
     SmallVector<Value> invOperands = {adaptor.getRhs()};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        truncOp.getLoc(), bf16OpaqueTy, "getInvBf16", nullptr, nullptr,
-        invOperands);
+    auto callOp = emitc::CallOpaqueOp::create(rewriter, truncOp.getLoc(),
+                                              bf16OpaqueTy, "getInvBf16",
+                                              nullptr, nullptr, invOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         truncOp, TypeRange{truncOp.getResult().getType()}, callOp.getResults());
     rewriter.eraseOp(divOp);
@@ -2153,20 +2159,19 @@ struct ComputeTanhOpByLUTPattern : OpConversionPattern<math::TanhOp> {
     auto moduleOp = tanhOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(tanhOp);
     Type v16bf16OpaqueTy =
         emitc::OpaqueType::get(rewriter.getContext(), "v16bfloat16");
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(
-                tanhOp.getLoc(), v16bf16OpaqueTy, adaptor.getOperand())
+        UnrealizedConversionCastOp::create(
+            rewriter, tanhOp.getLoc(), v16bf16OpaqueTy, adaptor.getOperand())
             .getResult(0);
     SmallVector<Value> tanhOperands = {opaquedOperand};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        tanhOp.getLoc(), v16bf16OpaqueTy, "getTanhBf16", nullptr, nullptr,
-        tanhOperands);
+    auto callOp = emitc::CallOpaqueOp::create(rewriter, tanhOp.getLoc(),
+                                              v16bf16OpaqueTy, "getTanhBf16",
+                                              nullptr, nullptr, tanhOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         tanhOp, TypeRange{tanhOp.getResult().getType()}, callOp.getResults());
 
@@ -2199,7 +2204,7 @@ struct ComputeSqrtOpPattern : OpConversionPattern<math::SqrtOp> {
     auto moduleOp = sqrtOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(sqrtOp);
     Type vLNbf16OpaqueTy;
@@ -2210,14 +2215,13 @@ struct ComputeSqrtOpPattern : OpConversionPattern<math::SqrtOp> {
       vLNbf16OpaqueTy =
           emitc::OpaqueType::get(rewriter.getContext(), "v32bfloat16");
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(
-                sqrtOp.getLoc(), vLNbf16OpaqueTy, adaptor.getOperand())
+        UnrealizedConversionCastOp::create(
+            rewriter, sqrtOp.getLoc(), vLNbf16OpaqueTy, adaptor.getOperand())
             .getResult(0);
     SmallVector<Value> sqrtOperands = {opaquedOperand};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        sqrtOp.getLoc(), TypeRange{vLNbf16OpaqueTy}, "getSqrtBf16", nullptr,
-        nullptr, sqrtOperands);
+    auto callOp = emitc::CallOpaqueOp::create(
+        rewriter, sqrtOp.getLoc(), TypeRange{vLNbf16OpaqueTy}, "getSqrtBf16",
+        nullptr, nullptr, sqrtOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         sqrtOp, TypeRange{sqrtOp.getResult().getType()}, callOp.getResults());
 
@@ -2255,11 +2259,11 @@ struct ComputeRsqrtOpLLVMPattern : OpConversionPattern<math::RsqrtOp> {
 
     Type accTypeNative = getVectorOpDestType(srcType, /*AIE2 =*/true);
     auto callOp =
-        rewriter.create<func::CallOp>(rsqrtOp.getLoc(), fnOp, rsqrtOperands);
-    auto resCastOp = rewriter.create<vector::BitCastOp>(
-        rsqrtOp.getLoc(), accTypeNative, callOp.getResults());
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        rsqrtOp.getLoc(), rewriter.getI32IntegerAttr(0));
+        func::CallOp::create(rewriter, rsqrtOp.getLoc(), fnOp, rsqrtOperands);
+    auto resCastOp = vector::BitCastOp::create(
+        rewriter, rsqrtOp.getLoc(), accTypeNative, callOp.getResults());
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, rsqrtOp.getLoc(), rewriter.getI32IntegerAttr(0));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
         rsqrtOp, srcType, resCastOp.getResult(), shiftParamOp.getResult());
 
@@ -2292,7 +2296,7 @@ struct ComputeRsqrtOpPattern : OpConversionPattern<math::RsqrtOp> {
     auto moduleOp = rsqrtOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(rsqrtOp);
     Type vLNbf16OpaqueTy;
@@ -2303,14 +2307,13 @@ struct ComputeRsqrtOpPattern : OpConversionPattern<math::RsqrtOp> {
       vLNbf16OpaqueTy =
           emitc::OpaqueType::get(rewriter.getContext(), "v32bfloat16");
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(
-                rsqrtOp.getLoc(), vLNbf16OpaqueTy, adaptor.getOperand())
+        UnrealizedConversionCastOp::create(
+            rewriter, rsqrtOp.getLoc(), vLNbf16OpaqueTy, adaptor.getOperand())
             .getResult(0);
     SmallVector<Value> rsqrtOperands = {opaquedOperand};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        rsqrtOp.getLoc(), TypeRange{vLNbf16OpaqueTy}, "getRsqrtBf16", nullptr,
-        nullptr, rsqrtOperands);
+    auto callOp = emitc::CallOpaqueOp::create(
+        rewriter, rsqrtOp.getLoc(), TypeRange{vLNbf16OpaqueTy}, "getRsqrtBf16",
+        nullptr, nullptr, rsqrtOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         rsqrtOp, TypeRange{rsqrtOp.getResult().getType()}, callOp.getResults());
 
@@ -2343,7 +2346,7 @@ struct ComputeErfOpPattern : OpConversionPattern<math::ErfOp> {
     auto moduleOp = erfOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(erfOp);
     Type vLNbf16OpaqueTy;
@@ -2354,14 +2357,13 @@ struct ComputeErfOpPattern : OpConversionPattern<math::ErfOp> {
       vLNbf16OpaqueTy =
           emitc::OpaqueType::get(rewriter.getContext(), "v32bfloat16");
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(erfOp.getLoc(), vLNbf16OpaqueTy,
-                                                adaptor.getOperand())
+        UnrealizedConversionCastOp::create(
+            rewriter, erfOp.getLoc(), vLNbf16OpaqueTy, adaptor.getOperand())
             .getResult(0);
     SmallVector<Value> erfOperands = {opaquedOperand};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        erfOp.getLoc(), TypeRange{vLNbf16OpaqueTy}, "getErfBf16", nullptr,
-        nullptr, erfOperands);
+    auto callOp = emitc::CallOpaqueOp::create(
+        rewriter, erfOp.getLoc(), TypeRange{vLNbf16OpaqueTy}, "getErfBf16",
+        nullptr, nullptr, erfOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         erfOp, TypeRange{erfOp.getResult().getType()}, callOp.getResults());
 
@@ -2392,7 +2394,7 @@ struct ComputeAbsOpPattern : OpConversionPattern<SrcOpTy> {
     auto moduleOp = absOp->template getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(absOp);
     std::ostringstream typeName;
@@ -2407,14 +2409,13 @@ struct ComputeAbsOpPattern : OpConversionPattern<SrcOpTy> {
     Type vecOpaqueTy =
         emitc::OpaqueType::get(rewriter.getContext(), typeName.str());
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(absOp.getLoc(), vecOpaqueTy,
-                                                adaptor.getOperand())
+        UnrealizedConversionCastOp::create(rewriter, absOp.getLoc(),
+                                           vecOpaqueTy, adaptor.getOperand())
             .getResult(0);
     SmallVector<Value> absOperands = {opaquedOperand};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        absOp.getLoc(), TypeRange{vecOpaqueTy}, "getAbs", nullptr, nullptr,
-        absOperands);
+    auto callOp = emitc::CallOpaqueOp::create(rewriter, absOp.getLoc(),
+                                              TypeRange{vecOpaqueTy}, "getAbs",
+                                              nullptr, nullptr, absOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         absOp, TypeRange{absOp.getResult().getType()}, callOp.getResults());
 
@@ -2443,11 +2444,11 @@ struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
             ? dstType
             : getVectorOpDestType(srcType, /*AIE2 =*/true);
     auto upsOp =
-        rewriter.create<aievec::UPSOp>(extOp.getLoc(), accType, extOp.getIn());
+        aievec::UPSOp::create(rewriter, extOp.getLoc(), accType, extOp.getIn());
 
     if (dstType.getElementType().getIntOrFloatBitWidth() == 16) {
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          extOp.getLoc(), rewriter.getI32IntegerAttr(0));
+      auto shiftParamOp = arith::ConstantOp::create(
+          rewriter, extOp.getLoc(), rewriter.getI32IntegerAttr(0));
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           extOp, dstType, upsOp.getResult(), shiftParamOp.getResult());
     } else
@@ -2478,16 +2479,16 @@ struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
             ? srcType
             : getVectorOpDestType(srcType, /*AIE2 =*/true);
 
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        truncOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, truncOp.getLoc(), rewriter.getI32IntegerAttr(0));
     if (elWidth == 16) {
-      auto upsOp = rewriter.create<aievec::UPSOp>(truncOp.getLoc(), accType,
-                                                  truncOp.getIn());
+      auto upsOp = aievec::UPSOp::create(rewriter, truncOp.getLoc(), accType,
+                                         truncOp.getIn());
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           truncOp, dstType, upsOp.getResult(), shiftParamOp.getResult());
     } else {
-      auto castOp = rewriter.create<aievec::CastOp>(truncOp.getLoc(), accType,
-                                                    truncOp.getIn(), true);
+      auto castOp = aievec::CastOp::create(rewriter, truncOp.getLoc(), accType,
+                                           truncOp.getIn(), true);
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           truncOp, dstType, castOp.getResult(), shiftParamOp.getResult());
     }
@@ -2674,7 +2675,7 @@ struct ComputeSigmoidOpPattern : OpConversionPattern<arith::DivFOp> {
     auto moduleOp = divfOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(divfOp);
     Type vecOpaqueTy;
@@ -2685,14 +2686,13 @@ struct ComputeSigmoidOpPattern : OpConversionPattern<arith::DivFOp> {
       vecOpaqueTy =
           emitc::OpaqueType::get(rewriter.getContext(), "v32bfloat16");
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(divfOp.getLoc(), vecOpaqueTy,
-                                                negOp.getOperand())
+        UnrealizedConversionCastOp::create(rewriter, divfOp.getLoc(),
+                                           vecOpaqueTy, negOp.getOperand())
             .getResult(0);
     SmallVector<Value> sigmoidOperands = {opaquedOperand};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        divfOp.getLoc(), TypeRange{vecOpaqueTy}, "getSigmoidBf16", nullptr,
-        nullptr, sigmoidOperands);
+    auto callOp = emitc::CallOpaqueOp::create(
+        rewriter, divfOp.getLoc(), TypeRange{vecOpaqueTy}, "getSigmoidBf16",
+        nullptr, nullptr, sigmoidOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         divfOp, TypeRange{adaptor.getLhs().getType()}, callOp.getResults());
 
@@ -2724,7 +2724,7 @@ struct ComputeCeilOpPattern : OpConversionPattern<math::CeilOp> {
     auto moduleOp = ceilOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(ceilOp);
     Type vecOpaqueTy;
@@ -2735,14 +2735,13 @@ struct ComputeCeilOpPattern : OpConversionPattern<math::CeilOp> {
       vecOpaqueTy =
           emitc::OpaqueType::get(rewriter.getContext(), "v32bfloat16");
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(ceilOp.getLoc(), vecOpaqueTy,
-                                                adaptor.getOperand())
+        UnrealizedConversionCastOp::create(rewriter, ceilOp.getLoc(),
+                                           vecOpaqueTy, adaptor.getOperand())
             .getResult(0);
     SmallVector<Value> ceilOperands = {opaquedOperand};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        ceilOp.getLoc(), TypeRange{vecOpaqueTy}, "getCeilBf16", nullptr,
-        nullptr, ceilOperands);
+    auto callOp = emitc::CallOpaqueOp::create(
+        rewriter, ceilOp.getLoc(), TypeRange{vecOpaqueTy}, "getCeilBf16",
+        nullptr, nullptr, ceilOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         ceilOp, TypeRange{ceilOp.getResult().getType()}, callOp.getResults());
 
@@ -2774,7 +2773,7 @@ struct ComputeFloorOpPattern : OpConversionPattern<math::FloorOp> {
     auto moduleOp = floorOp->getParentOfType<mlir::ModuleOp>();
     rewriter.setInsertionPointToStart(
         &moduleOp.getRegion().getBlocks().front());
-    rewriter.create<emitc::IncludeOp>(moduleOp.getLoc(), includeName, false);
+    emitc::IncludeOp::create(rewriter, moduleOp.getLoc(), includeName, false);
 
     rewriter.setInsertionPoint(floorOp);
     Type vecOpaqueTy;
@@ -2785,14 +2784,13 @@ struct ComputeFloorOpPattern : OpConversionPattern<math::FloorOp> {
       vecOpaqueTy =
           emitc::OpaqueType::get(rewriter.getContext(), "v32bfloat16");
     auto opaquedOperand =
-        rewriter
-            .create<UnrealizedConversionCastOp>(floorOp.getLoc(), vecOpaqueTy,
-                                                adaptor.getOperand())
+        UnrealizedConversionCastOp::create(rewriter, floorOp.getLoc(),
+                                           vecOpaqueTy, adaptor.getOperand())
             .getResult(0);
     SmallVector<Value> floorOperands = {opaquedOperand};
-    auto callOp = rewriter.create<emitc::CallOpaqueOp>(
-        floorOp.getLoc(), TypeRange{vecOpaqueTy}, "getFloorBf16", nullptr,
-        nullptr, floorOperands);
+    auto callOp = emitc::CallOpaqueOp::create(
+        rewriter, floorOp.getLoc(), TypeRange{vecOpaqueTy}, "getFloorBf16",
+        nullptr, nullptr, floorOperands);
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
         floorOp, TypeRange{floorOp.getResult().getType()}, callOp.getResults());
 
@@ -2825,18 +2823,18 @@ struct ComputeNegOpPattern : OpConversionPattern<arith::NegFOp> {
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     if (elWidth == 16) {
       auto upsOp =
-          rewriter.create<aievec::UPSOp>(loc, accType, adaptor.getOperand());
+          aievec::UPSOp::create(rewriter, loc, accType, adaptor.getOperand());
       auto aieNegOp =
-          rewriter.create<aievec::NegOp>(loc, accType, upsOp.getResult());
-      auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-          negOp.getLoc(), rewriter.getI32IntegerAttr(0));
+          aievec::NegOp::create(rewriter, loc, accType, upsOp.getResult());
+      auto shiftParamOp = arith::ConstantOp::create(
+          rewriter, negOp.getLoc(), rewriter.getI32IntegerAttr(0));
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           negOp, srcType, aieNegOp.getResult(), shiftParamOp.getResult());
     } else {
-      auto castOp = rewriter.create<aievec::CastOp>(
-          loc, accType, adaptor.getOperand(), /*isResAcc*/ true);
+      auto castOp = aievec::CastOp::create(
+          rewriter, loc, accType, adaptor.getOperand(), /*isResAcc*/ true);
       auto aieNegOp =
-          rewriter.create<aievec::NegOp>(loc, accType, castOp.getResult());
+          aievec::NegOp::create(rewriter, loc, accType, castOp.getResult());
       rewriter.replaceOpWithNewOp<aievec::CastOp>(
           negOp, srcType, aieNegOp.getResult(), /*isResAcc*/ false);
     }
@@ -2963,29 +2961,32 @@ struct ComputeSignedIntRightShiftOpPattern
     if (!bcastOp)
       return failure();
 
-    auto constOp = rewriter.create<arith::ConstantOp>(
-        bcastOp.getLoc(), rewriter.getI32IntegerAttr(bcastOp.getIdx()));
-    auto extElemOp = rewriter.create<aievec::ExtElemOp>(
-        bcastOp.getLoc(), scalarType, bcastOp, constOp.getResult());
+    auto constOp =
+        arith::ConstantOp::create(rewriter, bcastOp.getLoc(),
+                                  rewriter.getI32IntegerAttr(bcastOp.getIdx()));
+    auto extElemOp = aievec::ExtElemOp::create(
+        rewriter, bcastOp.getLoc(), scalarType, bcastOp, constOp.getResult());
     Location loc = rsOp.getLoc();
 
     // The vector with v64int8 type can be divided into two v32int8 vectors and
     // be processed individually and be concatenated at the end.
     if (elWidth == 8) {
       VectorType halfSrcType = createVectorType(laneSize / 2, scalarType);
-      auto rsOpLow =
-          rewriter.create<aievec::ExtOp>(loc, halfSrcType, adaptor.getLhs(), 0);
-      auto rsOpHigh =
-          rewriter.create<aievec::ExtOp>(loc, halfSrcType, adaptor.getLhs(), 1);
+      auto rsOpLow = aievec::ExtOp::create(rewriter, loc, halfSrcType,
+                                           adaptor.getLhs(), 0);
+      auto rsOpHigh = aievec::ExtOp::create(rewriter, loc, halfSrcType,
+                                            adaptor.getLhs(), 1);
       Type accType = getVectorOpDestType(halfSrcType, /*AIE2 =*/true);
       auto upsOpLow =
-          rewriter.create<aievec::UPSOp>(loc, accType, rsOpLow.getResult());
-      auto srsOpLow = rewriter.create<aievec::SRSOp>(
-          loc, halfSrcType, upsOpLow.getResult(), extElemOp.getResult());
+          aievec::UPSOp::create(rewriter, loc, accType, rsOpLow.getResult());
+      auto srsOpLow =
+          aievec::SRSOp::create(rewriter, loc, halfSrcType,
+                                upsOpLow.getResult(), extElemOp.getResult());
       auto upsOpHigh =
-          rewriter.create<aievec::UPSOp>(loc, accType, rsOpHigh.getResult());
-      auto srsOpHigh = rewriter.create<aievec::SRSOp>(
-          loc, halfSrcType, upsOpHigh.getResult(), extElemOp.getResult());
+          aievec::UPSOp::create(rewriter, loc, accType, rsOpHigh.getResult());
+      auto srsOpHigh =
+          aievec::SRSOp::create(rewriter, loc, halfSrcType,
+                                upsOpHigh.getResult(), extElemOp.getResult());
       SmallVector<Value> inputSources = {srsOpLow.getResult(),
                                          srsOpHigh.getResult()};
       rewriter.replaceOpWithNewOp<aievec::ConcatOp>(rsOp, srcType,
@@ -2993,7 +2994,7 @@ struct ComputeSignedIntRightShiftOpPattern
     } else {
       Type accType = getVectorOpDestType(srcType, /*AIE2 =*/true);
       auto upsOp =
-          rewriter.create<aievec::UPSOp>(loc, accType, adaptor.getLhs());
+          aievec::UPSOp::create(rewriter, loc, accType, adaptor.getLhs());
       rewriter.replaceOpWithNewOp<aievec::SRSOp>(
           rsOp, srcType, upsOp.getResult(), extElemOp.getResult());
     }
@@ -3029,7 +3030,7 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     SmallVector<int64_t> newShape(vecShape.begin() + numLeadUnitDims,
                                   vecShape.end());
     auto newVecTy = VectorType::get(newShape, vecTy.getElementType());
-    return b.create<vector::ShapeCastOp>(v.getLoc(), newVecTy, v).getResult();
+    return vector::ShapeCastOp::create(b, v.getLoc(), newVecTy, v).getResult();
   }
 
   LogicalResult
@@ -3041,11 +3042,11 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     bool bReshapedAcc = (acc != adaptor.getAcc());
 
     if (matMoveToAcc)
-      acc = rewriter.create<aievec::CastOp>(contractOp.getLoc(), acc.getType(),
-                                            acc, true);
+      acc = aievec::CastOp::create(rewriter, contractOp.getLoc(), acc.getType(),
+                                   acc, true);
 
-    auto matmulOp = rewriter.create<MatMulOpTy>(contractOp.getLoc(),
-                                                acc.getType(), lhs, rhs, acc);
+    auto matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
+                                       acc.getType(), lhs, rhs, acc);
     Value result;
     {
       // Replace diagnostics handler to silence errors when verifying the
@@ -3067,8 +3068,8 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
         if (wideRhsValue)
           rhs = reshapeLeadingUnitDims(rewriter, wideRhsValue);
 
-        matmulOp = rewriter.create<MatMulOpTy>(contractOp.getLoc(),
-                                               acc.getType(), lhs, rhs, acc);
+        matmulOp = MatMulOpTy::create(rewriter, contractOp.getLoc(),
+                                      acc.getType(), lhs, rhs, acc);
         if (failed(matmulOp.verifyInvariants()))
           return failure();
       }
@@ -3076,11 +3077,11 @@ struct LowerVectorContractionOpToAIEVecMatMulPattern
     result = matmulOp.getResult();
 
     if (matMoveToAcc)
-      result = rewriter.create<aievec::CastOp>(contractOp.getLoc(),
-                                               acc.getType(), result, false);
+      result = aievec::CastOp::create(rewriter, contractOp.getLoc(),
+                                      acc.getType(), result, false);
     if (bReshapedAcc)
-      result = rewriter.create<vector::ShapeCastOp>(
-          contractOp.getLoc(), adaptor.getAcc().getType(), result);
+      result = vector::ShapeCastOp::create(rewriter, contractOp.getLoc(),
+                                           adaptor.getAcc().getType(), result);
     rewriter.replaceOp(contractOp, result);
 
     return success();
@@ -3163,10 +3164,10 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
     auto flatVecTy =
         VectorType::get({512 / elemTyBitWidth}, resTy.getElementType());
     auto loc = transpOp.getLoc();
-    auto flatInput = rewriter.create<vector::ShapeCastOp>(loc, flatVecTy,
-                                                          adaptor.getVector());
-    auto shuffOp = rewriter.create<aievec::ShuffleOp>(loc, flatVecTy, flatInput,
-                                                      nullptr, shuffleMode);
+    auto flatInput = vector::ShapeCastOp::create(rewriter, loc, flatVecTy,
+                                                 adaptor.getVector());
+    auto shuffOp = aievec::ShuffleOp::create(rewriter, loc, flatVecTy,
+                                             flatInput, nullptr, shuffleMode);
     rewriter.replaceOpWithNewOp<vector::ShapeCastOp>(transpOp, resTy, shuffOp);
 
     return success();
@@ -3302,25 +3303,25 @@ struct ConvertSplatToAIEBroadcastAIE2p
 
     // AIE2p supports both 256-bit and 512-bit broadcast directly
     if (laneSize * elWidth == 512 || laneSize * elWidth == 256) {
-      Value newOp = rewriter.create<aievec::BroadcastScalarOp>(
-          bcastOp.getLoc(), flatResultType, src);
+      Value newOp = aievec::BroadcastScalarOp::create(
+          rewriter, bcastOp.getLoc(), flatResultType, src);
       if (resultType != flatResultType)
-        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
-                                                     resultType, newOp);
+        newOp = vector::ShapeCastOp::create(rewriter, bcastOp.getLoc(),
+                                            resultType, newOp);
       rewriter.replaceOp(bcastOp, newOp);
       return success();
     }
 
     if (laneSize * elWidth == 1024) {
       VectorType vecType = createVectorType(512 / elWidth, scalarType);
-      auto aieBcastOp = rewriter.create<aievec::BroadcastScalarOp>(
-          bcastOp.getLoc(), vecType, src);
-      Value newOp = rewriter.create<aievec::ConcatOp>(
-          bcastOp.getLoc(), flatResultType,
+      auto aieBcastOp = aievec::BroadcastScalarOp::create(
+          rewriter, bcastOp.getLoc(), vecType, src);
+      Value newOp = aievec::ConcatOp::create(
+          rewriter, bcastOp.getLoc(), flatResultType,
           SmallVector<Value>({aieBcastOp.getResult(), aieBcastOp.getResult()}));
       if (resultType != flatResultType)
-        newOp = rewriter.create<vector::ShapeCastOp>(bcastOp.getLoc(),
-                                                     resultType, newOp);
+        newOp = vector::ShapeCastOp::create(rewriter, bcastOp.getLoc(),
+                                            resultType, newOp);
       rewriter.replaceOp(bcastOp, newOp);
       return success();
     }

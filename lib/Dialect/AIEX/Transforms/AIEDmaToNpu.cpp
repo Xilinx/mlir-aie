@@ -124,9 +124,9 @@ struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
     uint32_t idx = op.getIndex() * sizeof(uint32_t);
     uint32_t address = buffer.getAddress().value() + idx;
 
-    rewriter.create<NpuWrite32Op>(op->getLoc(), address, op.getValue(), nullptr,
-                                  rewriter.getI32IntegerAttr(tile.getCol()),
-                                  rewriter.getI32IntegerAttr(tile.getRow()));
+    NpuWrite32Op::create(rewriter, op->getLoc(), address, op.getValue(),
+                         nullptr, rewriter.getI32IntegerAttr(tile.getCol()),
+                         rewriter.getI32IntegerAttr(tile.getRow()));
 
     rewriter.eraseOp(op);
     return success();
@@ -160,8 +160,8 @@ public:
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
         uint32_t data = controller_id_attr.getPktId() << 8;
         uint32_t mask = 0x00001F00;
-        rewriter.create<NpuMaskWrite32Op>(op->getLoc(), ctrl_offset, data, mask,
-                                          nullptr, nullptr, nullptr);
+        NpuMaskWrite32Op::create(rewriter, op->getLoc(), ctrl_offset, data,
+                                 mask, nullptr, nullptr, nullptr);
       }
     }
 
@@ -177,8 +177,8 @@ public:
     if (op.getIssueToken())
       cmd |= 0x80000000;
 
-    rewriter.create<NpuWrite32Op>(op->getLoc(), queue_offset, cmd, nullptr,
-                                  nullptr, nullptr);
+    NpuWrite32Op::create(rewriter, op->getLoc(), queue_offset, cmd, nullptr,
+                         nullptr, nullptr);
     rewriter.eraseOp(op);
     return success();
   }
@@ -407,8 +407,8 @@ public:
       op->emitOpError("MemTile supports zero padding only on MM2S direction");
 
     // write the buffer descriptor to the array
-    rewriter.create<NpuWriteBdOp>(
-        op->getLoc(), column, bd_id, buffer_length, buffer_offset,
+    NpuWriteBdOp::create(
+        rewriter, op->getLoc(), column, bd_id, buffer_length, buffer_offset,
         enable_packet, out_of_order_id, packet_id, packet_type, d0_size,
         d0_stride, d1_size, d1_stride, d2_size, d2_stride, iteration_current,
         iteration_size, iteration_stride, next_bd, row, use_next_bd, valid_bd,
@@ -420,11 +420,11 @@ public:
     // instruction to perform the patch.
     uint64_t addr = targetModel.getDmaBdAddress(col, 0, op.getId()) +
                     targetModel.getDmaBdAddressOffset(col, 0);
-    rewriter.create<NpuAddressPatchOp>(op->getLoc(), addr, arg_idx, offset);
+    NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, offset);
 
     // push the patched bd onto the dma task queue
-    rewriter.create<NpuPushQueueOp>(
-        op->getLoc(), column, row, infoOp.getChannelDirAttr(),
+    NpuPushQueueOp::create(
+        rewriter, op->getLoc(), column, row, infoOp.getChannelDirAttr(),
         infoOp.getChannelIndexAttr(), issue_token, repeat_count, bd_id);
 
     rewriter.eraseOp(op);
@@ -605,8 +605,8 @@ public:
       rewriter.setInsertionPoint(op->getParentOfType<AIE::RuntimeSequenceOp>());
       global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words);
     }
-    auto memref = rewriter.create<memref::GetGlobalOp>(
-        op.getLoc(), global.getType(), global.getName());
+    auto memref = memref::GetGlobalOp::create(
+        rewriter, op.getLoc(), global.getType(), global.getName());
 
     (void)rewriter.replaceOpWithNewOp<NpuBlockWriteOp>(
         op, rewriter.getUI32IntegerAttr(bd_addr), memref.getResult(), nullptr,
