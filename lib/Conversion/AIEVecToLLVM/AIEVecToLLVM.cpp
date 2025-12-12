@@ -4278,9 +4278,67 @@ class MatMulOpAIE2pConversion
 class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
   using ConvertOpToLLVMPattern<aievec::CastOp>::ConvertOpToLLVMPattern;
 
+  // Helper to check if a value is a constant zero
+  static bool isConstantZero(Value val) {
+    DenseElementsAttr denseAttr;
+
+    // Check for both arith.constant and llvm.mlir.constant
+    if (auto arithConstOp = val.getDefiningOp<arith::ConstantOp>()) {
+      denseAttr = dyn_cast<DenseElementsAttr>(arithConstOp.getValue());
+    } else if (auto llvmConstOp = val.getDefiningOp<LLVM::ConstantOp>()) {
+      denseAttr = dyn_cast<DenseElementsAttr>(llvmConstOp.getValue());
+    }
+
+    if (!denseAttr || !denseAttr.isSplat())
+      return false;
+
+    auto splatAttr = denseAttr.getSplatValue<Attribute>();
+    if (auto floatAttr = dyn_cast<FloatAttr>(splatAttr))
+      return floatAttr.getValue().isZero();
+    if (auto intAttr = dyn_cast<IntegerAttr>(splatAttr))
+      return intAttr.getValue().isZero();
+
+    return false;
+  }
+
   LogicalResult
   matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    // Special handling for isResAcc=true with zero constant source
+    // The backend cannot handle zeroinitializer for accumulator types,
+    // so we must use the vbroadcast.zero.acc1024 intrinsic instead
+    if (!castOp.getIsResAcc() || !isConstantZero(adaptor.getSource())) {
+      // Default behavior: fold the cast
+      rewriter.replaceOp(castOp, adaptor.getSource());
+      return success();
+    }
+
+    Location loc = castOp.getLoc();
+    auto srcVecType = cast<VectorType>(castOp.getSource().getType());
+    Type srcElemType = srcVecType.getElementType();
+    int lanes = getVectorLaneSize(srcVecType);
+
+    // For f32 vectors (accfloat), use vbroadcast.zero.acc1024
+    if (srcElemType.isF32() && lanes == 16) {
+      // Call vbroadcast.zero.acc1024 to get vector<16xi64>
+      auto zeroAcc1024 =
+          rewriter.create<xllvm::VectorBroadcastZeroAcc1024IntrOp>(
+              loc, VectorType::get({16}, rewriter.getI64Type()));
+
+      // Extract lower 8 elements to get vector<8xi64> (512-bit accumulator)
+      SmallVector<int64_t> extractMask = {0, 1, 2, 3, 4, 5, 6, 7};
+      auto zeroAcc512 = rewriter.create<vector::ShuffleOp>(
+          loc, zeroAcc1024, zeroAcc1024, extractMask);
+
+      // Bitcast back to vector<16xf32> to match the cast result type
+      auto result = rewriter.create<LLVM::BitcastOp>(
+          loc, VectorType::get({16}, rewriter.getF32Type()), zeroAcc512);
+
+      rewriter.replaceOp(castOp, result);
+      return success();
+    }
+
+    // Fallback: fold the cast (should not reach here for supported cases)
     rewriter.replaceOp(castOp, adaptor.getSource());
     return success();
   }
