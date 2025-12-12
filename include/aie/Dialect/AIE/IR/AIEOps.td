@@ -1789,6 +1789,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
       return getOperation()->getAttrOfType<mlir::StringAttr>(
           mlir::SymbolTable::getSymbolAttrName());
     }
+
+    AIE::BDDimLayoutArrayAttr getDimensionsFromStream(mlir::Value consumerTile);
   }];
 
   let builders = [
