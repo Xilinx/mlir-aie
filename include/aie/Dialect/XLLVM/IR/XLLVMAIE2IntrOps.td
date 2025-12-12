@@ -379,6 +379,10 @@ def Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp :
 
 // ----- BROADCAST -----
 
+def VectorBroadcastZeroAcc1024IntrOp :
+    AIEVec2_IntrOp<"vbroadcast.zero.acc1024",
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>;
+
 def VectorBroadcast8I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast8.I512",
         [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
