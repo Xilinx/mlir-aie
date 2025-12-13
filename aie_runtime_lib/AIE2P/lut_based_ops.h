@@ -22,7 +22,8 @@ alignas(aie::vector_decl_align) extern int16 exp_flut_ab[512];
 alignas(aie::vector_decl_align) extern int16 exp_flut_cd[512];
 alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
 
-__attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
+static inline __attribute__((always_inline)) v16accfloat
+getExpBf16(v16bfloat16 x) {
   bfloat16 __aie_dm_resource_a *ilut_ab =
       (bfloat16 __aie_dm_resource_a *)exp_ilut_ab;
   bfloat16 __aie_dm_resource_b *ilut_cd =
@@ -60,7 +61,7 @@ __attribute__((always_inline)) v16accfloat getExpBf16(v16bfloat16 x) {
   return v16accfloat(exp_val);
 }
 
-__attribute__((always_inline)) bfloat16 getInvBf16(float x) {
+static inline __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
   unsigned int *B_x;
   unsigned int exp_mask = 0x7F800000;
   unsigned int mantissa_mask = 0x007FFFFF;
@@ -83,7 +84,7 @@ __attribute__((always_inline)) bfloat16 getInvBf16(float x) {
 extern float tanh_lut_ab[];
 extern float tanh_lut_cd[];
 
-inline __attribute__((always_inline)) v16bfloat16
+static inline __attribute__((always_inline)) v16bfloat16
 getTanhBf16(v16bfloat16 vInput) {
   aie::vector<bfloat16, 16> input = vInput;
 
