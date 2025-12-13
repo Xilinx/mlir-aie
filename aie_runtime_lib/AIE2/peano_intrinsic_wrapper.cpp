@@ -14,14 +14,8 @@
 #include <stdint.h>
 #include <type_traits>
 
-// Include lut_based_ops data declarations
-alignas(aie::vector_decl_align) extern int16 exp_ilut_ab[512];
-alignas(aie::vector_decl_align) extern int16 exp_ilut_cd[512];
-alignas(aie::vector_decl_align) extern int16 exp_flut_ab[512];
-alignas(aie::vector_decl_align) extern int16 exp_flut_cd[512];
-alignas(aie::vector_decl_align) extern unsigned char m_inv_lut[128];
-extern float tanh_lut_ab[];
-extern float tanh_lut_cd[];
+// Include lut_based_ops data definitions directly
+#include "lut_based_ops.cpp"
 
 // Include the C++ implementations
 #include "lut_based_ops.h"
