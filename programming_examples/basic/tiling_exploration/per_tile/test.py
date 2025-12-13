@@ -9,7 +9,10 @@ import argparse
 import numpy as np
 
 from aie.helpers.taplib import TensorTiler2D
-from aie.utils.xrt import setup_aie, execute
+import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils
+import aie.utils.test as test_utils
+import aie.iron as iron
+import sys
 
 
 def main(opts):
@@ -23,57 +26,22 @@ def main(opts):
     )
     reference_access_order = reference_tiler.access_order()
 
-    app = setup_aie(
-        opts.xclbin,
-        opts.instr,
+    out = iron.zeros(data_size, dtype=dtype)
+
+    res = xrt_utils.setup_and_run_aie(
         None,
         None,
-        None,
-        None,
-        data_size,
-        dtype,
+        out,
+        reference_access_order.flatten(),
+        opts,
     )
-    aie_output = execute(app)
-    aie_output = aie_output.reshape((opts.tensor_height, opts.tensor_width))
-
-    # Copy output results and verify they are correct
-    errors = 0
-    if opts.verbosity >= 1:
-        print("Verifying results ...")
-    e = np.equal(reference_access_order, aie_output)
-    errors = np.size(e) - np.count_nonzero(e)
-
-    if not errors:
+    if res == 0:
         print("\nPASS!\n")
-        exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
-        exit(-1)
+    sys.exit(res)
 
 
 def get_arg_parser():
-    p = argparse.ArgumentParser()
-    p.add_argument(
-        "-x", "--xclbin", default="final.xclbin", dest="xclbin", help="the xclbin path"
-    )
-    p.add_argument(
-        "-k",
-        "--kernel",
-        dest="kernel",
-        default="MLIR_AIE",
-        help="the kernel name in the XCLBIN (for instance MLIR_AIE)",
-    )
-    p.add_argument(
-        "-v", "--verbosity", default=0, type=int, help="the verbosity of the output"
-    )
-    p.add_argument(
-        "-i",
-        "--instr",
-        dest="instr",
-        default="instr.bin",
-        help="path of file containing userspace instructions sent to the NPU",
-    )
+    p = test_utils.create_default_argparser()
     p.add_argument("--tensor-height", required=True, help="Tensor height", type=int)
     p.add_argument("--tensor-width", required=True, help="Tensor width", type=int)
     p.add_argument("--tile-height", required=True, help="Tile height", type=int)

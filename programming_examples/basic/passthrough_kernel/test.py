@@ -7,8 +7,9 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-import aie.utils.xrt as xrt_utils
+import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils
 import aie.utils.test as test_utils
+import aie.iron as iron
 
 
 def main(opts):
@@ -37,7 +38,8 @@ def main(opts):
 
     # Initialize data
     in1_data = np.arange(0, in1_volume, dtype=in1_dtype)
-    out_data = np.zeros([out_volume], dtype=out_dtype)
+    in1 = iron.tensor(in1_data, dtype=in1_dtype)
+    out = iron.zeros([out_volume], dtype=out_dtype)
 
     # Define reference data
     ref = in1_data
@@ -46,18 +48,14 @@ def main(opts):
 
     print("Running...\n")
     res = xrt_utils.setup_and_run_aie(
-        in1_dtype,
+        in1,
         None,
-        out_dtype,
-        in1_data,
-        None,
-        out_data,
-        in1_volume,
-        None,
-        out_volume,
+        out,
         ref,
         opts,
     )
+    if res == 0:
+        print("\nPASS!\n")
     sys.exit(res)
 
 
