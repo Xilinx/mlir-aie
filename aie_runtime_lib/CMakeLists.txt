@@ -41,7 +41,7 @@ function(add_aie_runtime_libs arch)
             -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body
             -DNDEBUG
             -I${CMAKE_CURRENT_SOURCE_DIR}
-            -I${AIETOOLS_DIR}/include
+            -I${CMAKE_SOURCE_DIR}/third_party/aie_api/include
             -S -emit-llvm
             -c ${CMAKE_CURRENT_SOURCE_DIR}/peano_intrinsic_wrapper.cpp
             -o ${CMAKE_CURRENT_BINARY_DIR}/peano_intrinsic_wrapper.ll
