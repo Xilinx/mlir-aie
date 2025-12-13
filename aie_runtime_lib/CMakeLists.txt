@@ -30,8 +30,8 @@ function(add_aie_runtime_libs arch)
     add_dependencies(aie-runtime-libs ${arch}_chess_intrinsic_wrapper)
   endif()
 
-  # Precompile the peano intrinsic wrapper for LLVM backend
-  if(DEFINED PEANO_INSTALL_DIR)
+  # Precompile the peano intrinsic wrapper for LLVM backend (AIE2 and AIE2P only)
+  if(DEFINED PEANO_INSTALL_DIR AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/peano_intrinsic_wrapper.cpp)
     string(TOLOWER ${arch} aiearch)
     add_custom_target(${arch}_peano_intrinsic_wrapper ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/peano_intrinsic_wrapper.ll)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/peano_intrinsic_wrapper.ll
