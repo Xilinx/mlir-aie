@@ -153,6 +153,10 @@ class CMakeBuild(build_ext):
             xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
             cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
 
+        if os.getenv("PEANO_INSTALL_DIR"):
+            peano_dir = f"{Path(os.getenv('PEANO_INSTALL_DIR')).absolute()}"
+            cmake_args.append(f"-DPEANO_INSTALL_DIR={peano_dir}")
+
         if platform.system() == "Windows":
             cmake_args += [
                 "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
