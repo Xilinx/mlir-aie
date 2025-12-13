@@ -30,6 +30,32 @@ function(add_aie_runtime_libs arch)
     add_dependencies(aie-runtime-libs ${arch}_chess_intrinsic_wrapper)
   endif()
 
+  # Precompile the peano intrinsic wrapper for LLVM backend
+  if(DEFINED PEANO_INSTALL_DIR)
+    string(TOLOWER ${arch} aiearch)
+    add_custom_target(${arch}_peano_intrinsic_wrapper ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/peano_intrinsic_wrapper.ll)
+    add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/peano_intrinsic_wrapper.ll
+            COMMAND ${PEANO_INSTALL_DIR}/bin/clang++
+            -O2 -std=c++20
+            --target=${aiearch}-none-unknown-elf
+            -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body
+            -DNDEBUG
+            -I${CMAKE_CURRENT_SOURCE_DIR}
+            -I${AIETOOLS_DIR}/include
+            -S -emit-llvm
+            -c ${CMAKE_CURRENT_SOURCE_DIR}/peano_intrinsic_wrapper.cpp
+            -o ${CMAKE_CURRENT_BINARY_DIR}/peano_intrinsic_wrapper.ll
+            COMMAND sed -i s/^target.*//
+            ${CMAKE_CURRENT_BINARY_DIR}/peano_intrinsic_wrapper.ll
+            DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/peano_intrinsic_wrapper.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/vec_math.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/lut_based_ops.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/lut_based_ops.cpp)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/peano_intrinsic_wrapper.ll DESTINATION ${CMAKE_INSTALL_PREFIX}/aie_runtime_lib/${arch})
+    add_dependencies(aie-runtime-libs ${arch}_peano_intrinsic_wrapper)
+  endif()
+
   set(INSTALLS
       lut_based_ops.cpp
       lut_based_ops.h
@@ -60,5 +86,3 @@ endif()
 if(AIETools_AIE2P_FOUND)
   add_subdirectory(AIE2P)
 endif()
-
-
