@@ -31,7 +31,8 @@
 //
 //	return y;
 //}
-inline __attribute__((always_inline)) v32bfloat16 getRsqrtBf16(v32bfloat16 in) {
+static inline __attribute__((always_inline)) v32bfloat16
+getRsqrtBf16(v32bfloat16 in) {
   aie::vector<bfloat16, 32> x = in;
   aie::accum<accfloat, 32> x2 =
       aie::mul(x, bfloat16(0.5f)); // x2 = number * 0.5F;
@@ -51,7 +52,8 @@ inline __attribute__((always_inline)) v32bfloat16 getRsqrtBf16(v32bfloat16 in) {
   return (v32bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v32bfloat16 getSqrtBf16(v32bfloat16 in) {
+static inline __attribute__((always_inline)) v32bfloat16
+getSqrtBf16(v32bfloat16 in) {
   aie::vector<bfloat16, 32> x = in;
   aie::vector<bfloat16, 32> rsqrtX = getRsqrtBf16(in);
   aie::accum<accfloat, 32> sqrtX = aie::mul(x, rsqrtX);
@@ -59,7 +61,8 @@ inline __attribute__((always_inline)) v32bfloat16 getSqrtBf16(v32bfloat16 in) {
   return (v32bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v16bfloat16 getRsqrtBf16(v16bfloat16 in) {
+static inline __attribute__((always_inline)) v16bfloat16
+getRsqrtBf16(v16bfloat16 in) {
   aie::vector<bfloat16, 16> x = in;
   aie::accum<accfloat, 16> x2 =
       aie::mul(x, bfloat16(0.5f)); // x2 = number * 0.5F;
@@ -79,7 +82,8 @@ inline __attribute__((always_inline)) v16bfloat16 getRsqrtBf16(v16bfloat16 in) {
   return (v16bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v16bfloat16 getSqrtBf16(v16bfloat16 in) {
+static inline __attribute__((always_inline)) v16bfloat16
+getSqrtBf16(v16bfloat16 in) {
   aie::vector<bfloat16, 16> x = in;
   aie::vector<bfloat16, 16> rsqrtX = getRsqrtBf16(in);
   aie::accum<accfloat, 16> sqrtX = aie::mul(x, rsqrtX);
@@ -87,7 +91,8 @@ inline __attribute__((always_inline)) v16bfloat16 getSqrtBf16(v16bfloat16 in) {
   return (v16bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v32bfloat16 getErfBf16(v32bfloat16 in) {
+static inline __attribute__((always_inline)) v32bfloat16
+getErfBf16(v32bfloat16 in) {
   // Approximate the erf() using Maclaurin expansion, with x^1, x^3, and x^5
   // degrees generate x^1 - x^5
   constexpr bfloat16 Q1 = 1.128379167095512;
@@ -117,7 +122,8 @@ inline __attribute__((always_inline)) v32bfloat16 getErfBf16(v32bfloat16 in) {
   return (v32bfloat16)vec_out;
 }
 
-inline __attribute__((always_inline)) v16bfloat16 getErfBf16(v16bfloat16 in) {
+static inline __attribute__((always_inline)) v16bfloat16
+getErfBf16(v16bfloat16 in) {
   constexpr bfloat16 Q1 = 1.128379167095512;
   constexpr bfloat16 Q3 = -0.3761263890318375;
   constexpr bfloat16 Q5 = 0.11283791670955;
@@ -146,43 +152,45 @@ inline __attribute__((always_inline)) v16bfloat16 getErfBf16(v16bfloat16 in) {
 }
 
 // Get absolute values using high-level api library
-inline __attribute__((always_inline)) v32bfloat16 getAbs(v32bfloat16 in) {
+static inline __attribute__((always_inline)) v32bfloat16
+getAbs(v32bfloat16 in) {
   aie::vector<bfloat16, 32> x = in;
   aie::vector<bfloat16, 32> absX = aie::abs(x);
   return (v32bfloat16)absX;
 }
 
-inline __attribute__((always_inline)) v16bfloat16 getAbs(v16bfloat16 in) {
+static inline __attribute__((always_inline)) v16bfloat16
+getAbs(v16bfloat16 in) {
   aie::vector<bfloat16, 16> x = in;
   aie::vector<bfloat16, 16> absX = aie::abs(x);
   return (v16bfloat16)absX;
 }
 
-inline __attribute__((always_inline)) v16float getAbs(v16float in) {
+static inline __attribute__((always_inline)) v16float getAbs(v16float in) {
   aie::vector<float, 16> x = in;
   aie::vector<float, 16> absX = aie::abs(x);
   return (v16float)absX;
 }
 
-inline __attribute__((always_inline)) v16int32 getAbs(v16int32 in) {
+static inline __attribute__((always_inline)) v16int32 getAbs(v16int32 in) {
   aie::vector<int32, 16> x = in;
   aie::vector<int32, 16> absX = aie::abs(x);
   return (v16int32)absX;
 }
 
-inline __attribute__((always_inline)) v32int16 getAbs(v32int16 in) {
+static inline __attribute__((always_inline)) v32int16 getAbs(v32int16 in) {
   aie::vector<int16, 32> x = in;
   aie::vector<int16, 32> absX = aie::abs(x);
   return (v32int16)absX;
 }
 
-inline __attribute__((always_inline)) v64int8 getAbs(v64int8 in) {
+static inline __attribute__((always_inline)) v64int8 getAbs(v64int8 in) {
   aie::vector<int8, 64> x = in;
   aie::vector<int8, 64> absX = aie::abs(x);
   return (v64int8)absX;
 }
 
-inline __attribute__((always_inline)) v16bfloat16
+static inline __attribute__((always_inline)) v16bfloat16
 getSigmoidBf16(v16bfloat16 in) {
   constexpr bfloat16 C0 = 0.5;
   constexpr bfloat16 C1 = 0.25;
@@ -206,7 +214,7 @@ getSigmoidBf16(v16bfloat16 in) {
   return (v16bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v32bfloat16
+static inline __attribute__((always_inline)) v32bfloat16
 getSigmoidBf16(v32bfloat16 in) {
   constexpr bfloat16 C0 = 0.5;
   constexpr bfloat16 C1 = 0.25;
@@ -230,7 +238,8 @@ getSigmoidBf16(v32bfloat16 in) {
   return (v32bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v16bfloat16 getCeilBf16(v16bfloat16 in) {
+static inline __attribute__((always_inline)) v16bfloat16
+getCeilBf16(v16bfloat16 in) {
   aie::vector<bfloat16, 16> in_bf16 = in;
   aie::vector<int32, 16> in_int32 = bfloat16_to_int(
       aie::sub(aie::zeros<bfloat16, 16>(), aie::vector<bfloat16, 16>(in)), 0);
@@ -244,7 +253,8 @@ inline __attribute__((always_inline)) v16bfloat16 getCeilBf16(v16bfloat16 in) {
   return (v16bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v32bfloat16 getCeilBf16(v32bfloat16 in) {
+static inline __attribute__((always_inline)) v32bfloat16
+getCeilBf16(v32bfloat16 in) {
   v16bfloat16 in_low = extract_v16bfloat16(in, 0);
   v16bfloat16 in_high = extract_v16bfloat16(in, 1);
   aie::vector<int32, 16> in_int32_low = bfloat16_to_int(
@@ -265,7 +275,8 @@ inline __attribute__((always_inline)) v32bfloat16 getCeilBf16(v32bfloat16 in) {
   return (v32bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v16bfloat16 getFloorBf16(v16bfloat16 in) {
+static inline __attribute__((always_inline)) v16bfloat16
+getFloorBf16(v16bfloat16 in) {
   aie::vector<bfloat16, 16> in_bf16 = in;
   aie::vector<int32, 16> in_int32 = bfloat16_to_int(in, 0);
   constexpr float C0 = 0x1.p31;
@@ -278,7 +289,8 @@ inline __attribute__((always_inline)) v16bfloat16 getFloorBf16(v16bfloat16 in) {
   return (v16bfloat16)out;
 }
 
-inline __attribute__((always_inline)) v32bfloat16 getFloorBf16(v32bfloat16 in) {
+static inline __attribute__((always_inline)) v32bfloat16
+getFloorBf16(v32bfloat16 in) {
   v16bfloat16 in_low = extract_v16bfloat16(in, 0);
   v16bfloat16 in_high = extract_v16bfloat16(in, 1);
   aie::vector<int32, 16> in_int32_low = bfloat16_to_int(in_low, 0);

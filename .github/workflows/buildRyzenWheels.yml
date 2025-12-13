@@ -120,6 +120,10 @@ jobs:
             HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
             pip install -r python/requirements_dev.txt
 
+            # Install llvm-aie (Peano)
+            pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025071101+b3cd09d3-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+            export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+
             export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
 
             NO_RTTI=""  # Set a default value

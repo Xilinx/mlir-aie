@@ -2015,7 +2015,7 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
       return failure();
 
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
-    StringRef funcName = "getExpBf16";
+    StringRef funcName = "getExpBf16_wrapper";
 
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
     VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
@@ -2247,25 +2247,18 @@ struct ComputeRsqrtOpLLVMPattern : OpConversionPattern<math::RsqrtOp> {
     if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return failure();
 
-    StringRef funcName = "getRsqrtBf16";
+    StringRef funcName = "getRsqrtBf16_wrapper";
 
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
-    VectorType v8i64Ty = mlir::VectorType::get({8}, rewriter.getI64Type());
     func::FuncOp fnOp = getOrInsertFuncDecl(
         rewriter, rsqrtOp->getParentWithTrait<OpTrait::SymbolTable>(), funcName,
-        TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
+        TypeRange{v16bf16Ty}, TypeRange{v16bf16Ty});
 
     SmallVector<Value> rsqrtOperands = {adaptor.getOperand()};
 
-    Type accTypeNative = getVectorOpDestType(srcType, /*AIE2 =*/true);
     auto callOp =
         func::CallOp::create(rewriter, rsqrtOp.getLoc(), fnOp, rsqrtOperands);
-    auto resCastOp = vector::BitCastOp::create(
-        rewriter, rsqrtOp.getLoc(), accTypeNative, callOp.getResults());
-    auto shiftParamOp = arith::ConstantOp::create(
-        rewriter, rsqrtOp.getLoc(), rewriter.getI32IntegerAttr(0));
-    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
-        rsqrtOp, srcType, resCastOp.getResult(), shiftParamOp.getResult());
+    rewriter.replaceOp(rsqrtOp, callOp.getResults());
 
     return success();
   }
@@ -3337,9 +3330,11 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
       patterns.getContext(), backend == TargetBackend::CPP);
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
-  // For AIE2P with LLVMIR backend, use aievec.exp instead of LUT
+  // For AIE2P with LLVMIR backend, use aievec.exp instead of LUT, but use
+  // wrapper for rsqrt
   if (backend == TargetBackend::LLVMIR) {
-    patterns.add<ConvertMathExpToAIEVecExpOpPattern>(patterns.getContext());
+    patterns.add<ConvertMathExpToAIEVecExpOpPattern, ComputeRsqrtOpLLVMPattern>(
+        patterns.getContext());
   }
 }
 

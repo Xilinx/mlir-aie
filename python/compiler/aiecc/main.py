@@ -542,8 +542,17 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
 
 def downgrade_ir_for_peano(llvmir):
     llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    llvmir = llvmir.replace("captures(none)", "nocapture")
     # Remove nocreateundeforpoison attribute (not supported by older LLVM in Peano toolchain)
     llvmir = re.sub(r"\bnocreateundeforpoison\s+", "", llvmir)
+    # Remove lifetime intrinsics (signature mismatch between LLVM versions)
+    # LLVM 19 (llvm-aie) expects [i64, ptr], but LLVM 22+ expects [ptr] only
+    llvmir = re.sub(
+        r"\s*call void @llvm\.lifetime\.(start|end)\.p0\([^)]*\)\n", "\n", llvmir
+    )
+    llvmir = re.sub(
+        r"declare void @llvm\.lifetime\.(start|end)\.p0\([^)]*\)[^\n]*\n", "", llvmir
+    )
     return llvmir
 
 
@@ -678,16 +687,60 @@ class FlowRunner:
         return llvmir_chesslinked_path
 
     # In order to run peano on modern ll code, we need a bunch of hacks.
-    async def peanohack(self, llvmir):
+    async def peanohack(self, task, llvmir, aie_target):
         llvmir_peanohack = llvmir + "peanohack.ll"
+        llvmir_peanolinked_path = llvmir + "peanolinked.ll"
         if not self.opts.execute:
-            return llvmir_peanohack
+            return llvmir_peanolinked_path
 
+        install_path = aie.compiler.aiecc.configure.install_path()
+        runtime_lib_path = os.path.join(install_path, "aie_runtime_lib")
+        peano_intrinsic_wrapper_ll_path = os.path.join(
+            runtime_lib_path, aie_target.upper(), "peano_intrinsic_wrapper.ll"
+        )
+
+        # Link with peano_intrinsic_wrapper.ll if it exists, then apply downgrades
+        if os.path.exists(peano_intrinsic_wrapper_ll_path):
+            # Use llvm-link in PATH
+            llvm_link_path = shutil.which("llvm-link")
+            if not llvm_link_path:
+                print(
+                    "Warning: llvm-link not found in PATH, skipping peano_intrinsic_wrapper linking",
+                    file=sys.stderr,
+                )
+                # Fall back to non-linked path with downgrades
+                llvmir_ir = await read_file_async(llvmir)
+                llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
+                llvmir_hacked_ir = drop_alignment_for_peano(llvmir_hacked_ir)
+                await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
+                return llvmir_peanohack
+
+            # Link user code with wrapper
+            await self.do_call(
+                task,
+                [
+                    llvm_link_path,
+                    llvmir,
+                    peano_intrinsic_wrapper_ll_path,
+                    "-S",
+                    "-o",
+                    llvmir_peanolinked_path,
+                ],
+            )
+
+            # Apply downgrades to the result IR
+            llvmir_linked_ir = await read_file_async(llvmir_peanolinked_path)
+            llvmir_linked_ir = downgrade_ir_for_peano(llvmir_linked_ir)
+            llvmir_linked_ir = drop_alignment_for_peano(llvmir_linked_ir)
+            await write_file_async(llvmir_linked_ir, llvmir_peanolinked_path)
+
+            return llvmir_peanolinked_path
+
+        # No wrapper available - downgrade user code only
         llvmir_ir = await read_file_async(llvmir)
         llvmir_hacked_ir = downgrade_ir_for_peano(llvmir_ir)
         llvmir_hacked_ir = drop_alignment_for_peano(llvmir_hacked_ir)
         await write_file_async(llvmir_hacked_ir, llvmir_peanohack)
-
         return llvmir_peanohack
 
     async def process_cores(
@@ -717,7 +770,7 @@ class FlowRunner:
                 file_llvmir_hacked = await self.chesshack(parent_task_id, file_llvmir, aie_target)
                 await self.do_call(parent_task_id, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", unified_file_core_obj])
             elif opts.compile:
-                file_llvmir_hacked = await self.peanohack(file_llvmir)
+                file_llvmir_hacked = await self.peanohack(parent_task_id, file_llvmir, aie_target)
                 file_llvmir_opt = self.prepend_tmp(f"{device_name}_input.opt.ll")
                 opt_level = opts.opt_level
                 # Disable loop idiom memset for O3 and above.
@@ -836,7 +889,7 @@ class FlowRunner:
 
             elif opts.compile:
                 if not opts.unified:
-                    file_core_llvmir_peanohacked = await self.peanohack(file_core_llvmir)
+                    file_core_llvmir_peanohacked = await self.peanohack(task, file_core_llvmir, aie_target)
                     file_core_llvmir_stripped = corefile(self.tmpdirname, device_name, core, "stripped.ll")
                     opt_level = opts.opt_level
                     # Disable loop idiom memset for O3 and above.
