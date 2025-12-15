@@ -1,4 +1,0 @@
-# This can't go in the normal requirements file because the way the wheels build parses requirements.txt
-# does not support github packages
-eudsl-python-extras==0.1.0.20251215.1800+3c7ac1b; --config-settings=EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie
--f https://llvm.github.io/eudsl

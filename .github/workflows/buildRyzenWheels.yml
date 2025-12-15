@@ -117,7 +117,6 @@ jobs:
 
             pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
-            EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
             pip install -r python/requirements_dev.txt
 
             export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
