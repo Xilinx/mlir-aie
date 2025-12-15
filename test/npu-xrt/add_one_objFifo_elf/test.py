@@ -28,7 +28,7 @@ def main(opts):
     inA = iron.tensor(ref_data, dtype=np.uint32)
     inB = iron.tensor(ref_data, dtype=np.uint32)
     out = iron.zeros((OUT_SIZE,), dtype=np.uint32)
-    ref_data = ref_data + 42
+    ref_data = ref_data + 41
 
     if not xrt_utils.setup_and_run_aie(
         [inA, inB],
