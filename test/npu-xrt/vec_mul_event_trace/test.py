@@ -85,14 +85,15 @@ def main(opts):
     opts.trace_size = IN_OUT_SIZE * 4
 
     if xrt_utils.setup_and_run_aie(
-        in1,
-        in2,
-        out,
+        [in1, in2],
+        [out],
         ref_data,
         opts,
     ):
         print("Failed.")
         return 1
+
+    errors = 0
 
     # Read trace from file
     with open(opts.trace_file, "rb") as f:

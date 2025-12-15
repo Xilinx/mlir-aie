@@ -31,9 +31,8 @@ def main(opts):
     ref_data = ref_data + 42
 
     if not xrt_utils.setup_and_run_aie(
-        inA,
-        inB,
-        out,
+        [inA, inB],
+        [out],
         ref_data,
         opts,
     ):
