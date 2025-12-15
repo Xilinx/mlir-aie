@@ -10,7 +10,7 @@ from aie.extras.dialects.ext import arith
 from aie.extras.runtime.passes import Pipeline as p, run_pipeline
 
 from aie.helpers.dialects.ext.func import func
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 from aie.dialects import affine, aievec, tosa, vector
 from aie.dialects.aie import translate_aie_vec_to_cpp

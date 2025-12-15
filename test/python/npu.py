@@ -22,7 +22,7 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.dialects.aiex import dma_wait, npu_dma_memcpy_nd, runtime_sequence
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from util import construct_and_print_module
 
 DMA = WireBundle.DMA

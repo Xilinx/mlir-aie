@@ -1,9 +1,8 @@
 pyyaml
 aiofiles
 dataclasses>=0.6, <=0.8
-numpy>=1.20, <=2.0.2 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
+numpy>=1.21, <=2.0.2 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
 rich
 ml_dtypes
-mlir-python-bindings==20251205+e067be338
 eudsl-python-extras==0.1.0.20251215.1800+3c7ac1b; --config-settings=EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie
 -f https://llvm.github.io/eudsl
