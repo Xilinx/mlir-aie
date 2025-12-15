@@ -1,14 +1,4 @@
-[![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml) [![Build and Test with AIE tools on Ryzen™ AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml) [![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
-
 # IRON API and MLIR-based AI Engine Toolchain
-
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie)](https://github.com/Xilinx/mlir-aie/pulls) [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug) ![GitHub Downloads (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue) ![GitHub Downloads 2 (all assets, specific tag)](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-2/total?color=blue) ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie)
-
-<p align="left">
-  <img src="https://github.com/llvm/mlir-www/blob/main/website/static/LogoAssets/logo/PNG/full_color/mlir-identity-03.png" alt="MLIR logo" height="80" />
-  <img src="https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/community/logos/python-logo-only.png" alt="Python logo" height="80" />
-  <img src="https://em-content.zobj.net/source/apple/271/mechanical-arm_1f9be.png" alt="Mechanical Arm" height="80" />
-</p>
 
 This project emphasizes fast, open-source toolchains for NPU devices including LLVM-based code generation. IRON contains a close-to-metal toolkit that empowers performance engineers to create fast and efficient designs for Ryzen™ AI NPUs powered by AI Engines. It provides Python APIs that enable developers to harness the unique architectural capabilities of AMD’s NPUs. However, this project is not intended to represent an end-to-end compilation flow for all application designs---it is designed to complement, not replace, mainstream NPU tooling for inference like the [AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/). Targeting researchers and enthusiasts, IRON is designed to unlock the full potential of NPUs for a wide range of workloads, from machine learning to digital signal processing and beyond. This repository includes programming guides and examples demonstrating the APIs. Additionally, the [Peano](https://github.com/Xilinx/llvm-aie) component extends the LLVM framework by adding support for the AI Engine processor as a target architecture, enabling integration with popular compiler frontends such as `clang`. Developers can leverage the [AIE API header library](https://xilinx.github.io/aie_api/topics.html) to implement efficient vectorized AIE core code in C++ that can be compiled by Peano.
 
@@ -18,9 +8,7 @@ The IRON Python API for Ryzen™ AI NPUs is described in the following paper:
 
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
-<p align="left">
-  <img src="docs/assets/images/iron_linux_stack.svg" alt="Iron Linux Software Stack" width="50%">
-</p>
+<img src="assets/images/iron_linux_stack.svg" alt="Iron Linux Stack" style="width:50%; display:block; margin:auto;" />
 
 # Getting Started for AMD Ryzen™ AI on Linux
 
@@ -199,7 +187,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ## Learn more about NPU programming with IRON
 
-1. Continue to the [IRON AIE Application Programming Guide](../programming_guide)
+1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
 
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
@@ -257,7 +245,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 # Detailed Getting Started Guides and Documentation:
 
-[IRON AIE Application Programming Guide](programming_guide)
+[IRON AIE Application Programming Guide](../programming_guide)
 
 [Device Descriptions](Devices.md)
 
