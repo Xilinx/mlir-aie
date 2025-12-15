@@ -76,7 +76,7 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
       IRMapping mapping;
 
       auto newSeq =
-          builder.create<AIE::RuntimeSequenceOp>(loc, f.getSymNameAttr());
+          AIE::RuntimeSequenceOp::create(builder, loc, f.getSymNameAttr());
       newSeq.getBody().push_back(new Block);
 
       // Copy the arguments from the old sequence to the new one.
@@ -184,11 +184,11 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
 
         SymbolRefAttr metadata =
             SymbolRefAttr::get(builder.getContext(), batchIt->shimDmaAllocName);
-        builder.create<NpuDmaMemcpyNdOp>(
-            builder.getUnknownLoc(), newBlockArg, SmallVector<Value>{},
-            SmallVector<Value>{}, SmallVector<Value>{}, ArrayRef(staticOffsets),
-            ArrayRef(staticSizes), ArrayRef(staticStrides), nullptr, metadata,
-            0, true, 0, 0, 0, 0, 0, 0);
+        NpuDmaMemcpyNdOp::create(builder, builder.getUnknownLoc(), newBlockArg,
+                                 SmallVector<Value>{}, SmallVector<Value>{},
+                                 SmallVector<Value>{}, ArrayRef(staticOffsets),
+                                 ArrayRef(staticSizes), ArrayRef(staticStrides),
+                                 nullptr, metadata, 0, true, 0, 0, 0, 0, 0, 0);
 
         auto shimRow = builder.getI32IntegerAttr(0);
         auto shimCol = builder.getI32IntegerAttr(col);
@@ -196,8 +196,8 @@ struct AIECtrlPacketToDmaPass : AIECtrlPacketToDmaBase<AIECtrlPacketToDmaPass> {
         auto chan = builder.getI32IntegerAttr(batchIt->shimChan);
         auto col_num = builder.getI32IntegerAttr(1);
         auto row_num = builder.getI32IntegerAttr(1);
-        builder.create<AIEX::NpuSyncOp>(loc, shimCol, shimRow, dir, chan,
-                                        col_num, row_num);
+        AIEX::NpuSyncOp::create(builder, loc, shimCol, shimRow, dir, chan,
+                                col_num, row_num);
         ++batchIt;
       }
 

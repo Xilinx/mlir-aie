@@ -298,11 +298,13 @@ struct AIEHerdRoutingPass : AIEHerdRoutingBase<AIEHerdRoutingPass> {
 
       builder.setInsertionPoint(device.getBody()->getTerminator());
 
-      auto iterx = builder.create<IterOp>(builder.getUnknownLoc(), x, x + 1, 1);
-      auto itery = builder.create<IterOp>(builder.getUnknownLoc(), y, y + 1, 1);
-      auto sel =
-          builder.create<SelectOp>(builder.getUnknownLoc(), herd, iterx, itery);
-      auto swbox = builder.create<SwitchboxOp>(builder.getUnknownLoc(), sel);
+      auto iterx =
+          IterOp::create(builder, builder.getUnknownLoc(), x, x + 1, 1);
+      auto itery =
+          IterOp::create(builder, builder.getUnknownLoc(), y, y + 1, 1);
+      auto sel = SelectOp::create(builder, builder.getUnknownLoc(), herd, iterx,
+                                  itery);
+      auto swbox = SwitchboxOp::create(builder, builder.getUnknownLoc(), sel);
       SwitchboxOp::ensureTerminator(swbox.getConnections(), builder,
                                     builder.getUnknownLoc());
       Block &b = swbox.getConnections().front();
@@ -314,8 +316,8 @@ struct AIEHerdRoutingPass : AIEHerdRoutingBase<AIEHerdRoutingPass> {
         WireBundle destBundle = destPort.bundle;
         int destChannel = destPort.channel;
 
-        builder.create<ConnectOp>(builder.getUnknownLoc(), sourceBundle,
-                                  sourceChannel, destBundle, destChannel);
+        ConnectOp::create(builder, builder.getUnknownLoc(), sourceBundle,
+                          sourceChannel, destBundle, destChannel);
       }
     }
 

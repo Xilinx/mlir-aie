@@ -121,27 +121,27 @@ struct SplitVectorLoadUpsChainPattern : public OpRewritePattern<UPSOp> {
     if (!indices.empty()) {
       Value lastIdx = indices.back();
       Value offsetVal =
-          rewriter.create<arith::ConstantIndexOp>(loc, elementOffset);
+          arith::ConstantIndexOp::create(rewriter, loc, elementOffset);
       Value newLastIdx =
-          rewriter.create<arith::AddIOp>(loc, lastIdx, offsetVal);
+          arith::AddIOp::create(rewriter, loc, lastIdx, offsetVal);
       secondHalfIndices.back() = newLastIdx;
     }
 
     // Create first half load
-    auto loadHalf0 = rewriter.create<vector::LoadOp>(loc, halfSrcVecTy, memRef,
-                                                     firstHalfIndices);
+    auto loadHalf0 = vector::LoadOp::create(rewriter, loc, halfSrcVecTy, memRef,
+                                            firstHalfIndices);
 
     // Create second half load
-    auto loadHalf1 = rewriter.create<vector::LoadOp>(loc, halfSrcVecTy, memRef,
-                                                     secondHalfIndices);
+    auto loadHalf1 = vector::LoadOp::create(rewriter, loc, halfSrcVecTy, memRef,
+                                            secondHalfIndices);
 
     // Create UPS for first half
-    auto upsHalf0 = rewriter.create<UPSOp>(
-        loc, halfResultVecTy, loadHalf0.getResult(), upsOp.getShift());
+    auto upsHalf0 = UPSOp::create(rewriter, loc, halfResultVecTy,
+                                  loadHalf0.getResult(), upsOp.getShift());
 
     // Create UPS for second half
-    auto upsHalf1 = rewriter.create<UPSOp>(
-        loc, halfResultVecTy, loadHalf1.getResult(), upsOp.getShift());
+    auto upsHalf1 = UPSOp::create(rewriter, loc, halfResultVecTy,
+                                  loadHalf1.getResult(), upsOp.getShift());
 
     // Concatenate the two halves using vector.shuffle
     // The mask is sequential from 0 to 63 to concatenate [half0; half1]
@@ -150,8 +150,8 @@ struct SplitVectorLoadUpsChainPattern : public OpRewritePattern<UPSOp> {
       concatMask.push_back(i);
     }
 
-    auto concatOp = rewriter.create<vector::ShuffleOp>(
-        loc, upsHalf0.getResult(), upsHalf1.getResult(), concatMask);
+    auto concatOp = vector::ShuffleOp::create(
+        rewriter, loc, upsHalf0.getResult(), upsHalf1.getResult(), concatMask);
 
     // Replace the original UPS operation with the concatenated result
     rewriter.replaceOp(upsOp, concatOp.getResult());
@@ -247,18 +247,18 @@ struct SplitVectorSrsStoreChainPattern
       secondHalfMask.push_back(halfSrcLanes + i);
     }
 
-    auto srcHalf0 = rewriter.create<vector::ShuffleOp>(
-        loc, srsSource, srsSource, firstHalfMask);
-    auto srcHalf1 = rewriter.create<vector::ShuffleOp>(
-        loc, srsSource, srsSource, secondHalfMask);
+    auto srcHalf0 = vector::ShuffleOp::create(rewriter, loc, srsSource,
+                                              srsSource, firstHalfMask);
+    auto srcHalf1 = vector::ShuffleOp::create(rewriter, loc, srsSource,
+                                              srsSource, secondHalfMask);
 
     // Create SRS for first half
-    auto srsHalf0 = rewriter.create<SRSOp>(
-        loc, halfResultVecTy, srcHalf0.getResult(), srsOp.getShift());
+    auto srsHalf0 = SRSOp::create(rewriter, loc, halfResultVecTy,
+                                  srcHalf0.getResult(), srsOp.getShift());
 
     // Create SRS for second half
-    auto srsHalf1 = rewriter.create<SRSOp>(
-        loc, halfResultVecTy, srcHalf1.getResult(), srsOp.getShift());
+    auto srsHalf1 = SRSOp::create(rewriter, loc, halfResultVecTy,
+                                  srcHalf1.getResult(), srsOp.getShift());
 
     // Calculate offset for second half store
     int64_t elementOffset = halfResultLanes;
@@ -273,19 +273,19 @@ struct SplitVectorSrsStoreChainPattern
     if (!indices.empty()) {
       Value lastIdx = indices.back();
       Value offsetVal =
-          rewriter.create<arith::ConstantIndexOp>(loc, elementOffset);
+          arith::ConstantIndexOp::create(rewriter, loc, elementOffset);
       Value newLastIdx =
-          rewriter.create<arith::AddIOp>(loc, lastIdx, offsetVal);
+          arith::AddIOp::create(rewriter, loc, lastIdx, offsetVal);
       secondHalfIndices.back() = newLastIdx;
     }
 
     // Create first half store
-    rewriter.create<vector::StoreOp>(loc, srsHalf0.getResult(), memRef,
-                                     firstHalfIndices);
+    vector::StoreOp::create(rewriter, loc, srsHalf0.getResult(), memRef,
+                            firstHalfIndices);
 
     // Create second half store
-    rewriter.create<vector::StoreOp>(loc, srsHalf1.getResult(), memRef,
-                                     secondHalfIndices);
+    vector::StoreOp::create(rewriter, loc, srsHalf1.getResult(), memRef,
+                            secondHalfIndices);
 
     // Erase the original store operation
     rewriter.eraseOp(storeOp);
