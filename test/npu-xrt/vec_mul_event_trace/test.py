@@ -9,7 +9,7 @@
 #
 # ===-----------------------------------------------------------------------===#
 #
-# REQUIRES: xrt_python_bindings
+# REQUIRES: ryzen_ai_npu1, xrt_python_bindings
 #
 
 # Build the test
