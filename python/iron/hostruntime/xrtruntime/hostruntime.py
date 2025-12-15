@@ -256,7 +256,7 @@ class XRTHostRuntime(HostRuntime):
             )
 
             if isinstance(insts, pyxrt.module):
-                kernel = pyxrt.kernel(context, insts, kernel_name)
+                kernel = pyxrt.ext.kernel(context, insts, kernel_name)
             else:
                 kernel = pyxrt.kernel(context, kernel_name)
 

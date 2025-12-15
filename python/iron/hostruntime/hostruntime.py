@@ -196,7 +196,7 @@ class HostRuntime(ABC):
         trace_buff = (
             trace_buff.numpy()
             .view(np.uint32)
-            .reshape(trace_config.trace_size // np.uint32.itemsize)
+            .reshape(trace_config.trace_size // np.dtype(np.uint32).itemsize)
         )
         return trace_buff, ctrl_buff
 

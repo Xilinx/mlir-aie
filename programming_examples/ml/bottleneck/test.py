@@ -151,30 +151,31 @@ def main(opts):
     total_wts.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
 
     # ------------------------------------------------------
+    # Setup buffers
+    # ------------------------------------------------------
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(total_wts, dtype=dtype_wts)
+    out_size = np.prod(shape_out) * dtype_out.itemsize
+    out = iron.tensor(out_size, dtype=dtype_out)
+
+    buffers = [in1, in2, out]
+
+    trace_config = None
+    if enable_trace:
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_after_last_tensor=False,
+            enable_ctrl_pkts=False,
+            last_tensor_shape=out.shape,
+            last_tensor_dtype=out.dtype,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
+
+    # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
     for i in range(num_iter):
-        in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-        in2 = iron.tensor(total_wts, dtype=dtype_wts)
-        out_size = np.prod(shape_out) * dtype_out.itemsize
-        out = iron.tensor(out_size, dtype=dtype_out)
-
-        buffers = [in1, in2, out]
-
-        trace_config = None
-        if enable_trace:
-            trace_config = TraceConfig(
-                trace_size=trace_size,
-                trace_after_last_tensor=False,
-                enable_ctrl_pkts=False,
-                last_tensor_shape=out.shape,
-                last_tensor_dtype=out.dtype,
-            )
-            HostRuntime.prepare_args_for_trace(buffers, trace_config)
-
-        start = time.time_ns()
-        iron.hostruntime.DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
-        stop = time.time_ns()
+        ret = iron.hostruntime.DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
 
         if trace_config:
             trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
@@ -182,9 +183,7 @@ def main(opts):
             write_out_trace(trace_buffer, trace_file)
 
         aie_output = out.numpy() * inp_scale4
-
-        npu_time = stop - start
-        npu_time_total = npu_time_total + npu_time
+        npu_time_total = npu_time_total + ret.npu_time
 
     # ------------------------------------------------------
     # Reorder output data-layout
