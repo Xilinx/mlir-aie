@@ -1,7 +1,7 @@
 pyyaml
 aiofiles
 dataclasses>=0.6, <=0.8
-numpy>=1.19.5, <2.0 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
+numpy>=1.19.5, <=2.0.2 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
 rich
 ml_dtypes
 mlir-python-bindings==20251205+e067be338
