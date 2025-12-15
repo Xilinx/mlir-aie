@@ -5,7 +5,6 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.dialects.ext.func import func
-from mlir.ir import Context
 
 # RUN: %python %s | FileCheck %s
 
@@ -62,8 +61,7 @@ def custom_loop_type(loop_dtype):
 # CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
 def range_with_int32():
     print("range_with_int32")
-    with Context():
-        print(custom_loop_type(np.int32))
+    print(custom_loop_type(np.int32))
 
 
 range_with_int32()
@@ -73,8 +71,7 @@ range_with_int32()
 # CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
 def range_with_int64():
     print("range_with_int64")
-    with Context():
-        print(custom_loop_type(np.int64))
+    print(custom_loop_type(np.int64))
 
 
 range_with_int64()
