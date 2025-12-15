@@ -110,9 +110,8 @@ class XRTHostRuntime(HostRuntime):
         else:
             self._cache_size = 1
 
-        self._contexts = (
-            OrderedDict()
-        )  # (xclbin_path, xclbin_mtime) -> (context, xclbin)
+        # (xclbin_path, xclbin_mtime) -> (context, xclbin)
+        self._contexts = OrderedDict()
         self._kernels = {}  # (xclbin_path, kernel_name) -> kernel
         atexit.register(self.cleanup)
 
@@ -140,23 +139,13 @@ class XRTHostRuntime(HostRuntime):
             )
         return result
 
-    def _evict_context_if_needed(self, fail_if_full):
-        if len(self._contexts) >= self._cache_size:
-            if fail_if_full:
-                raise HostRuntimeError(
-                    f"Cache is full ({self._cache_size} contexts) and fail_if_full is True."
-                )
-            # Evict oldest context
-            (
-                evicted_key,
-                (evicted_context, evicted_xclbin),
-            ) = self._contexts.popitem(last=False)
+    def _remove_context(self, key):
+        if key in self._contexts:
+            context, xclbin = self._contexts.pop(key)
 
             # Remove associated kernels
             kernels_to_remove = [
-                k
-                for k in self._kernels
-                if (k.xclbin_path, k.xclbin_mtime) == evicted_key
+                k for k in self._kernels if (k.xclbin_path, k.xclbin_mtime) == key
             ]
             for k in kernels_to_remove:
                 kernel, insts = self._kernels.pop(k)
@@ -167,11 +156,23 @@ class XRTHostRuntime(HostRuntime):
                     raise HostRuntimeError(str(e))
 
             try:
-                del evicted_context
-                del evicted_xclbin
+                del context
+                del xclbin
             except Exception as e:
                 raise HostRuntimeError(str(e))
-            logging.debug(f"Evicted context for {evicted_key[0]}")
+            logging.debug(f"Removed context for {key[0]}")
+
+    def _evict_context_if_needed(self, fail_if_full):
+        if len(self._contexts) >= self._cache_size:
+            if fail_if_full:
+                raise HostRuntimeError(
+                    f"Cache is full ({self._cache_size} contexts) and fail_if_full is True."
+                )
+            # Evict oldest context
+            if len(self._contexts) > 0:
+                evicted_key = next(iter(self._contexts))
+                self._remove_context(evicted_key)
+                logging.debug(f"Evicted context for {evicted_key[0]}")
 
     def load(
         self,
@@ -196,6 +197,13 @@ class XRTHostRuntime(HostRuntime):
         insts_mtime = insts_path.stat().st_mtime
 
         context_key = (xclbin_path, xclbin_mtime)
+
+        # Check for stale contexts for this path
+        stale_keys = [
+            k for k in self._contexts if k[0] == xclbin_path and k != context_key
+        ]
+        for k in stale_keys:
+            self._remove_context(k)
 
         if context_key not in self._contexts:
             self._evict_context_if_needed(fail_if_full)
