@@ -41,32 +41,14 @@ if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456
 else
     export NPU2=0
 fi
-SUPPORTED_PYTHON_VERSIONS=("3.12" "3.10" "3.11" "3.13" "3.14")
-
-# Check if python3 is a supported version
-if hash python3; then
-  py_version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-  for v in "${SUPPORTED_PYTHON_VERSIONS[@]}"; do
-    if [[ "$py_version" == "$v" ]]; then
-      echo "Using python version `python3 --version`"
-      my_python=python3
-      break
-    fi
-  done
-fi
-
-if [ -z "$my_python" ]; then
-  for v in "${SUPPORTED_PYTHON_VERSIONS[@]}"; do
-    if hash python$v; then
-       echo "Using python version `python$v --version`"
-       my_python=python$v
-       break
-    fi
-  done
-fi
-
-if [ -z "$my_python" ]; then
-   echo "This script requires one of the following python versions: ${SUPPORTED_PYTHON_VERSIONS[*]}"
+if hash python3.12; then
+   echo "Using python version `python3.12 --version`"
+   my_python=python3.12
+elif hash python3.10; then
+   echo "Using python version `python3.10 --version`"
+   my_python=python3.10
+else
+   echo "This script requires python3.10 or python3.12"
    return 1
 fi
 
