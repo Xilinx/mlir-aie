@@ -4,7 +4,7 @@
 include(AddMLIRPython)
 
 # The AIE copy of the MLIR bindings is in the `aie.mlir` namespace.
-add_compile_definitions("EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie.")
+add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
 ################################################################################
 # Sources

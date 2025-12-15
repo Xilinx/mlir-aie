@@ -71,7 +71,7 @@ from ..ir import (
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
-# assert _cext.globals._check_dialect_module_loaded("aie")
+assert _cext.globals._check_dialect_module_loaded("aie")
 
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
 from ._aiex_ops_gen import NpuWriteRTPOp
@@ -318,7 +318,7 @@ class buffer(BufferOp):
     def owner(self):
         return self.result.owner
 
-    def __getitem__(self, idx: tuple | ScalarValue) -> "MemRefValue":
+    def __getitem__(self, idx: tuple | ScalarValue) -> MemRefValue:
         loc = get_user_code_loc()
 
         if not self.has_rank():
