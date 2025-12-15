@@ -238,7 +238,8 @@ void registerAIETranslations() {
           shimJSON["channelIndex"] = attrToJSON(channelIndex);
           AIE::TileOp tile = shimDMAMeta.getTileOp();
           if (!tile) {
-            shimDMAMeta.emitError("shim DMA allocation must reference a valid TileOp");
+            shimDMAMeta.emitError(
+                "shim DMA allocation must reference a valid TileOp");
             return failure();
           }
           auto col = tile.getColAttr();

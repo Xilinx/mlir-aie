@@ -46,9 +46,10 @@ struct DMAStartBdChainForOpPattern : RewritePattern {
 
     AIE::TileOp tile = alloc_op.getTileOp();
     if (!tile) {
-      return op.emitOpError("shim DMA allocation must reference a valid TileOp");
+      return op.emitOpError(
+          "shim DMA allocation must reference a valid TileOp");
     }
-    
+
     DMAStartBdChainOp new_op = DMAStartBdChainOp::create(
         rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(), op.getArgs(),
         tile.getResult(), alloc_op.getChannelDir(),

@@ -213,7 +213,8 @@ public:
 
     AIE::TileOp shimTile = infoOp.getTileOp();
     if (!shimTile) {
-      return op->emitOpError("shim_dma_allocation op must reference a valid TileOp.");
+      return op->emitOpError(
+          "shim_dma_allocation op must reference a valid TileOp.");
     }
 
     auto channelDir = infoOp.getChannelDir();
@@ -464,7 +465,8 @@ public:
 
     AIE::TileOp shimTile = shimDmaAllocOp.getTileOp();
     if (!shimTile) {
-      return op->emitError("shim_dma_allocation op must reference a valid TileOp");
+      return op->emitError(
+          "shim_dma_allocation op must reference a valid TileOp");
     }
 
     // Create with `column_num == 1` and `row_num == 1` to check for a single
