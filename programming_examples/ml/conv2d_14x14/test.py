@@ -206,7 +206,7 @@ def main(opts):
     in1 = iron.tensor(ifm_mem_fmt_grp, dtype=dtype_in)
     in2 = iron.tensor(total_wts, dtype=dtype_wts)
     out_size = np.prod(shape_out) * dtype_out.itemsize
-    out = iron.tensor(out_size, dtype=dtype_out)
+    out = iron.zeros(out_size, dtype=dtype_out)
 
     buffers = [in1, in2, out]
 
