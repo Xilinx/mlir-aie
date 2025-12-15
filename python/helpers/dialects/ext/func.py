@@ -1,5 +1,5 @@
 import numpy as np
-from functools import update_wrapper
+from functools import lru_cache, update_wrapper
 import sys
 from typing import get_args, get_origin
 
@@ -190,27 +190,15 @@ class FuncBase:
             sig, return_types
         )
 
-        # if self._is_decl():
-        assert len(self.input_types) == len(
-            sig.parameters
-        ), f"func decl needs all input types annotated"
-        self.sym_visibility = "private"
-        self.emit()
+        if self._is_decl():
+            assert len(self.input_types) == len(
+                sig.parameters
+            ), f"func decl needs all input types annotated"
+            self.sym_visibility = "private"
+            self.emit()
 
-    """
     def _is_decl(self):
-        # magic constant found from looking at the code for an empty fn
-        if sys.version_info.minor == 13:
-            return self.body_builder.__code__.co_code == b"\x95\x00g\x00"
-        elif sys.version_info.minor == 12:
-            return self.body_builder.__code__.co_code == b"\x97\x00y\x00"
-        elif sys.version_info.minor == 11:
-            return self.body_builder.__code__.co_code == b"\x97\x00d\x00S\x00"
-        elif sys.version_info.minor in {8, 9, 10}:
-            return self.body_builder.__code__.co_code == b"d\x00S\x00"
-        else:
-            raise NotImplementedError(f"{sys.version_info.minor} not supported.")
-    """
+        return self.body_builder.__code__.co_code == _get_empty_fn_code()
 
     def __str__(self):
         return str(f"{self.__class__} {self.__dict__}")
@@ -247,10 +235,9 @@ class FuncBase:
             )
             for k, v in self.func_attrs.items():
                 self._func_op.attributes[k] = v
-            # if self._is_decl():
-            return self._func_op
+            if self._is_decl():
+                return self._func_op
 
-            """
             self._func_op.regions[0].blocks.append(*input_types, arg_locs=self.arg_locs)
             builder_wrapper = op_region_builder(
                 self._func_op, self._func_op.regions[0], terminator=self.return_op_ctor
@@ -271,11 +258,18 @@ class FuncBase:
 
             function_type = FunctionType.get(inputs=input_types, results=return_types)
             self._func_op.attributes["function_type"] = TypeAttr.get(function_type)
-            """
-        # return self._func_op
+        return self._func_op
 
     def __call__(self, *call_args):
         return call(self.emit(*call_args), call_args)
+
+
+@lru_cache(maxsize=1)
+def _get_empty_fn_code():
+    def _empty():
+        pass
+
+    return _empty.__code__.co_code
 
 
 @make_maybe_no_args_decorator
