@@ -26,7 +26,7 @@
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of0_shim_alloc (%tile_2_0, MM2S, 0)
+// CHECK:     aie.shim_dma_allocation @of0_shim_alloc(%shim_noc_tile_2_0, MM2S, 0)
 // CHECK:     %mem_1_3 = aie.mem(%{{.*}}tile_1_3) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2

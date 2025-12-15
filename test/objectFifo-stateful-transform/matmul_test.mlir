@@ -76,7 +76,7 @@
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @inA_shim_alloc (%tile_0_0, MM2S, 0)
+// CHECK:           aie.shim_dma_allocation @inA_shim_alloc(%[[VAL_0]], MM2S, 0)
 // CHECK:           %[[VAL_36:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_37:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -116,8 +116,8 @@
 // CHECK:           ^bb9:  // pred: ^bb6
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @inB_shim_alloc (%tile_0_0, MM2S, 1)
-// CHECK:           aie.shim_dma_allocation @outC_shim_alloc (%tile_0_0, S2MM, 0)
+// CHECK:           aie.shim_dma_allocation @inB_shim_alloc(%[[VAL_0]], MM2S, 1)
+// CHECK:           aie.shim_dma_allocation @outC_shim_alloc(%[[VAL_0]], S2MM, 0)
 
 module @matmul {
   aie.device(xcve2302) {

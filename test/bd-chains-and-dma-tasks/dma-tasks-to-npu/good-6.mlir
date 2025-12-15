@@ -13,6 +13,7 @@ module {
     //%tile_2_0 = aie.tile(2, 0)
 
     aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0)
+    %tile_2_0 = aie.tile(2, 0)
     aie.shim_dma_allocation @alloc1 (%tile_2_0, S2MM, 1)
 
     aie.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<10xi32>) {

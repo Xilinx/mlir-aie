@@ -81,7 +81,7 @@
 // CHECK:           ^bb2:  // pred: ^bb0
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @from_memTile_shim_alloc (%tile_2_0, S2MM, 0)
+// CHECK:           aie.shim_dma_allocation @from_memTile_shim_alloc(%[[VAL_0]], S2MM, 0)
 // CHECK:         }
 
 module @link_L1_DDR {

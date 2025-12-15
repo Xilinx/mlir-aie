@@ -60,6 +60,7 @@ module {
       aiex.npu.dma_memcpy_nd (%in[0,2,0,0][1,2,2,8][0,16,8,1]) { metadata = @of_fromMem, id = 0 : i64, burst_length = 64} : memref<4x2x8xi32>
       aiex.npu.dma_memcpy_nd (%out[0,0,0,0][1,1,1,32][0,0,0,1]) { metadata = @of_toMem, id = 1 : i64, burst_length = 510 } : memref<64xi32>
     }
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @of_toMem (%tile_0_0, S2MM, 0)
   }
@@ -76,6 +77,7 @@ module {
       aiex.npu.dma_memcpy_nd (%in[0,2,0,0][1,2,2,8][0,16,8,1]) { metadata = @of_fromMem, id = 0 : i64, burst_length = 64} : memref<4x2x8xi32>
       aiex.npu.dma_memcpy_nd (%out[0,0,0,0][1,1,1,32][0,0,0,1]) { metadata = @of_toMem, id = 1 : i64, burst_length = 512 } : memref<64xi32>
     }
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @of_toMem (%tile_0_0, S2MM, 0)
   }

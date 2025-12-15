@@ -48,7 +48,7 @@
 // CHECK:           ^bb4:  // pred: ^bb2
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @of_in_shim_alloc (%tile_2_0, MM2S, 0)
+// CHECK:           aie.shim_dma_allocation @of_in_shim_alloc(%[[VAL_1]], MM2S, 0)
 // CHECK:           %[[VAL_19:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK:             %[[VAL_20:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -76,7 +76,7 @@
 // CHECK:           ^bb6:  // pred: ^bb3
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @of_out_shim_alloc (%tile_2_0, S2MM, 0)
+// CHECK:           aie.shim_dma_allocation @of_out_shim_alloc(%[[VAL_1]], S2MM, 0)
 // CHECK:         }
 
 module @shim_AIE2 {

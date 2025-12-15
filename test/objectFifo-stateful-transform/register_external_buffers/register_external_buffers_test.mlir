@@ -48,7 +48,7 @@
 // CHECK:           ^bb2:  // pred: ^bb0
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @ext_of_shim_alloc (%tile_7_0, MM2S, 0)
+// CHECK:           aie.shim_dma_allocation @ext_of_shim_alloc(%[[VAL_1]], MM2S, 0)
 // CHECK:           %[[VAL_18:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK:             %[[VAL_19:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb3

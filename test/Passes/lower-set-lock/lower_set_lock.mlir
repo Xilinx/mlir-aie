@@ -30,6 +30,7 @@ module @test_simple_lock_set {
         aie.end
     }
 
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in0 (%tile_0_0, S2MM, 0)
     aie.shim_dma_allocation @out0 (%tile_0_0, MM2S, 0)
 

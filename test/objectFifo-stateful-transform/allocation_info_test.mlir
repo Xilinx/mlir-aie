@@ -20,10 +20,10 @@
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 1, %[[VAL_2]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_2]], DMA : 0, %[[VAL_0]], DMA : 1)
-// CHECK:           aie.shim_dma_allocation @of_in_0_shim_alloc (%tile_2_0, MM2S, 0)
-// CHECK:           aie.shim_dma_allocation @of_out_0_shim_alloc (%tile_2_0, S2MM, 0)
-// CHECK:           aie.shim_dma_allocation @of_in_1_shim_alloc (%tile_2_0, MM2S, 1)
-// CHECK:           aie.shim_dma_allocation @of_out_1_shim_alloc (%tile_2_0, S2MM, 1)
+// CHECK:           aie.shim_dma_allocation @of_in_0_shim_alloc(%[[VAL_0]], MM2S, 0)
+// CHECK:           aie.shim_dma_allocation @of_out_0_shim_alloc(%[[VAL_0]], S2MM, 0)
+// CHECK:           aie.shim_dma_allocation @of_in_1_shim_alloc(%[[VAL_0]], MM2S, 1)
+// CHECK:           aie.shim_dma_allocation @of_out_1_shim_alloc(%[[VAL_0]], S2MM, 1)
 // CHECK:         }
 
 module @alloc {

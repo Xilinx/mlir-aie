@@ -24,6 +24,7 @@ module  {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 16][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @fromMem, id = 0 : i64 } : memref<16xi32>
     }
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @fromMem (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
@@ -49,6 +50,7 @@ module  {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { issue_token = true, metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_wait {symbol = @toMem}
     }
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }
@@ -74,6 +76,7 @@ module  {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { issue_token = true, metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_wait {symbol = @toMem}
     }
+    %tile_1_0 = aie.tile(1, 0)
     aie.shim_dma_allocation @toMem (%tile_1_0, MM2S, 1)
   }
 }
@@ -136,6 +139,7 @@ module {
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1], packet = <pkt_id = 2, pkt_type = 3>) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
     }
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }

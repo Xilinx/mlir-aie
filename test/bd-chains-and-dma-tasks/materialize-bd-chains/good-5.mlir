@@ -12,6 +12,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
 
     aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0)
+    %tile_2_0 = aie.tile(2, 0)
     aie.shim_dma_allocation @alloc1 (%tile_2_0, MM2S, 1)
 
     aie.bd_chain @simple_chain(%arg0: memref<8xi16>, %arg1: memref<12xi16>, %arg2: memref<8xi16>) {

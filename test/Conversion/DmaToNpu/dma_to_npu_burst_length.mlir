@@ -17,6 +17,7 @@ module {
         // CHECK: memref.global "private" constant {{.*}} = dense<[{{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}, -1073741824, {{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}]>
         aiex.npu.writebd { burst_length = 512 : i32, bd_id = 7 : i32, buffer_length = 4 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
     }
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @of_toMem (%tile_0_0, S2MM, 0)
   }
@@ -34,6 +35,7 @@ module {
         // CHECK: memref.global "private" constant {{.*}} = dense<[{{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}, -1073741824, {{[0-9]*}}, {{[0-9]*}}, {{[0-9]*}}]>
         aiex.npu.dma_memcpy_nd (%out[0,0,0,0][1,1,1,32][0,0,0,1]) { metadata = @of_toMem, id = 1 : i64, burst_length = 512 : i64} : memref<64xi32>
     }
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @of_toMem (%tile_0_0, S2MM, 0)
   }

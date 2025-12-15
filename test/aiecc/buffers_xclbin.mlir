@@ -93,6 +93,7 @@ module {
     %02 = aie.tile(0, 2)
     %12 = aie.tile(1, 2)
     %22 = aie.tile(2, 2)
+    %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @in0 (%tile_0_0, S2MM, 0)
     aie.shim_dma_allocation @in1 (%tile_0_0, S2MM, 1)
     aie.shim_dma_allocation @in2 (%tile_0_0, S2MM, 2)
