@@ -73,6 +73,12 @@ jobs:
           - python_version: "3.13"
             ENABLE_RTTI: OFF
 
+          - python_version: "3.14"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.14"
+            ENABLE_RTTI: OFF
+
     steps:
       - name: Free disk space
         uses: descriptinc/free-disk-space@main

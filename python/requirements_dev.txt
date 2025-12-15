@@ -1,5 +1,5 @@
 cmake>=3.29, <4.0
-pybind11>=2.9.0, <=2.10.3
+pybind11>=2.13.0
 setuptools>=61.0
 wheel
 pre-commit

@@ -41,14 +41,23 @@ if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456
 else
     export NPU2=0
 fi
-if hash python3.12; then
+if hash python3.14; then
+   echo "Using python version `python3.14 --version`"
+   my_python=python3.14
+elif hash python3.13; then
+   echo "Using python version `python3.13 --version`"
+   my_python=python3.13
+elif hash python3.12; then
    echo "Using python version `python3.12 --version`"
    my_python=python3.12
+elif hash python3.11; then
+   echo "Using python version `python3.11 --version`"
+   my_python=python3.11
 elif hash python3.10; then
    echo "Using python version `python3.10 --version`"
    my_python=python3.10
 else
-   echo "This script requires python3.10 or python3.12"
+   echo "This script requires python3.10, python3.11, python3.12, python3.13 or python3.14"
    return 1
 fi
 
