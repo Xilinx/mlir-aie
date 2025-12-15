@@ -10,7 +10,7 @@ import numpy as np
 import argparse
 import sys
 
-from aie.extras.dialects.ext import arith
+from aie.extras.dialects import arith
 from aie.dialects.aie import T
 from aie.iron import (
     Kernel,
