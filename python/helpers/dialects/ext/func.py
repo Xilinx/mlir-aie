@@ -190,13 +190,14 @@ class FuncBase:
             sig, return_types
         )
 
-        if self._is_decl():
-            assert len(self.input_types) == len(
-                sig.parameters
-            ), f"func decl needs all input types annotated"
-            self.sym_visibility = "private"
-            self.emit()
+        # if self._is_decl():
+        assert len(self.input_types) == len(
+            sig.parameters
+        ), f"func decl needs all input types annotated"
+        self.sym_visibility = "private"
+        self.emit()
 
+    """
     def _is_decl(self):
         # magic constant found from looking at the code for an empty fn
         if sys.version_info.minor == 13:
@@ -209,12 +210,13 @@ class FuncBase:
             return self.body_builder.__code__.co_code == b"d\x00S\x00"
         else:
             raise NotImplementedError(f"{sys.version_info.minor} not supported.")
+    """
 
     def __str__(self):
         return str(f"{self.__class__} {self.__dict__}")
 
-    def emit(self, *call_args, decl=False, force=False) -> FuncOp:
-        if self._func_op is None or decl or force:
+    def emit(self, *call_args, force=False) -> FuncOp:
+        if self._func_op is None or force:
             input_types = self.input_types[:]
             for i, v in enumerate(input_types):
                 if isinstance(v, str):
@@ -245,9 +247,10 @@ class FuncBase:
             )
             for k, v in self.func_attrs.items():
                 self._func_op.attributes[k] = v
-            if self._is_decl() or decl:
-                return self._func_op
+            # if self._is_decl():
+            return self._func_op
 
+            """
             self._func_op.regions[0].blocks.append(*input_types, arg_locs=self.arg_locs)
             builder_wrapper = op_region_builder(
                 self._func_op, self._func_op.regions[0], terminator=self.return_op_ctor
@@ -268,7 +271,8 @@ class FuncBase:
 
             function_type = FunctionType.get(inputs=input_types, results=return_types)
             self._func_op.attributes["function_type"] = TypeAttr.get(function_type)
-        return self._func_op
+            """
+        # return self._func_op
 
     def __call__(self, *call_args):
         return call(self.emit(*call_args), call_args)
