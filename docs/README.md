@@ -199,7 +199,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ## Learn more about NPU programming with IRON
 
-1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
+1. Continue to the [IRON AIE Application Programming Guide](../programming_guide)
 
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
@@ -259,13 +259,31 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [IRON AIE Application Programming Guide](programming_guide)
 
-[Device Descriptions](docs/Devices.md)
+[Device Descriptions](Devices.md)
 
-[Building mlir-aie tools from source](docs/Building.md)
+[Building mlir-aie tools from source](Building.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
 Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
+
+-----
+
+[Github sources](https://github.com/Xilinx/mlir-aie)
+
+![](dialects.png)
+
+Generated Code Documentation
+- [AIE Dialect](AIEDialect.md) - [AIE Passes](AIEPasses.md)
+- [AIEX Experimental Dialect](AIEXDialect.md) - [AIEX Experimental Passes](AIEXPasses.md)
+- [AIEVec Dialect](AIEVecDialect.md) - [AIEVec Passes](AIEVecPasses.md)
+- [ADF Dialect](ADFDialect.md) - [ADF Passes](ADFPasses.md)
+
+MLIR Tutorials
+- [Step-by-step Tutorial](../mlir_tutorials/README.md)
+- [AIE Design Patterns](AIEDesignPatterns)
+- [AIE Routing](AIERouting)
+- [AIE Vectorization of Scalar Code](AIEVectorization)
 
 -----
 
