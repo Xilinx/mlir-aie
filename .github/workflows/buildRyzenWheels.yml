@@ -113,6 +113,15 @@ jobs:
             MLIR_VERSION=$(git rev-parse --short HEAD)
             echo "Building mlir-aie version $MLIR_VERSION"
 
+            if ! command -v python${{ matrix.python_version }} &> /dev/null; then
+              echo "Python ${{ matrix.python_version }} not found, installing..."
+              apt-get update
+              apt-get install -y software-properties-common
+              add-apt-repository -y ppa:deadsnakes/ppa
+              apt-get update
+              apt-get install -y python${{ matrix.python_version }} python${{ matrix.python_version }}-venv python${{ matrix.python_version }}-dev
+            fi
+
             python${{ matrix.python_version }} -m venv ${{ github.workspace }}/aie-venv
             source ${{ github.workspace }}/aie-venv/bin/activate
 
