@@ -44,11 +44,14 @@ struct DMAStartBdChainForOpPattern : RewritePattern {
       return op.emitOpError("no shim DMA allocation found for symbol");
     }
 
-    const int col = alloc_op.getCol();
-    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);
+    AIE::TileOp tile = alloc_op.getTileOp();
+    if (!tile) {
+      return op.emitOpError("shim DMA allocation must reference a valid TileOp");
+    }
+    
     DMAStartBdChainOp new_op = DMAStartBdChainOp::create(
-        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(),
-        op.getArgs(), tile.getResult(), alloc_op.getChannelDir(),
+        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(), op.getArgs(),
+        tile.getResult(), alloc_op.getChannelDir(),
         (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),
         op.getRepeatCount());
     rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
