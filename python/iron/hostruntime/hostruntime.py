@@ -203,7 +203,7 @@ class HostRuntime(ABC):
     @classmethod
     def _extract_prefix(cls, tensor: Tensor, prefix_shape, prefix_dtype):
         # Wrapper function to separate output data and trace data from a single output buffer stream
-        flat_tensor = tensor.reshape((-1,)).numpy().view(np.uint8)
+        flat_tensor = tensor.numpy().reshape((-1,)).view(np.uint8)
         prefix_bytes = np.prod(prefix_shape) * prefix_dtype.itemsize
         output_prefix = (
             flat_tensor[:prefix_bytes].view(prefix_dtype).reshape(prefix_shape)
