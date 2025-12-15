@@ -23,9 +23,8 @@ def main(opts):
     out = iron.zeros(data_size, dtype=dtype)
 
     res = xrt_utils.setup_and_run_aie(
-        in1,
-        None,
-        out,
+        [in1],
+        [out],
         input_data,
         opts,
     )

@@ -48,14 +48,13 @@ def write_out_trace(trace, file_name):
 # This wrapper function abstracts the full set of functions to setup the aie and run
 # the kernel program including check for functional correctness and reporting the
 # run time. Under the hood, we call `setup_aie` to set up the AIE application before
-# calling `execute` and checking results. The datatypes and shape for the 2 inputs
-# and 1 output buffers are passed in as arguments, along with the gold reference data
+# calling `execute` and checking results. The tensors for the inputs
+# and output buffers are passed in as arguments, along with the gold reference data
 # to compare it against. Trace buffers is also written out to a text file if trace is
 # enabled.
 def setup_and_run_aie(
-    in1,
-    in2,
-    out,
+    inputs,
+    outputs,
     ref,
     opts,
     trace_after_output=False,
@@ -63,22 +62,24 @@ def setup_and_run_aie(
 ):
     kernel_handle = DEFAULT_IRON_RUNTIME.load(Path(opts.xclbin), Path(opts.instr))
 
-    buffers = []
-    if in1:
-        buffers.append(in1)
-    if in2:
-        buffers.append(in2)
-    if out:
-        buffers.append(out)
+    # Ensure inputs and outputs are lists
+    if not isinstance(inputs, list):
+        inputs = [inputs] if inputs else []
+    if not isinstance(outputs, list):
+        outputs = [outputs] if outputs else []
+
+    buffers = inputs + outputs
 
     trace_config = None
+    last_out = outputs[-1] if outputs else None
+
     if opts.trace_size > 0:
         trace_config = TraceConfig(
             trace_size=opts.trace_size,
             trace_after_last_tensor=trace_after_output,
             enable_ctrl_pkts=enable_ctrl_pkts,
-            last_tensor_shape=out.shape if out else None,
-            last_tensor_dtype=out.dtype if out else None,
+            last_tensor_shape=last_out.shape if last_out else None,
+            last_tensor_dtype=last_out.dtype if last_out else None,
         )
         HostRuntime.prepare_args_for_trace(buffers, trace_config)
 
@@ -94,7 +95,7 @@ def setup_and_run_aie(
             buffers, trace_config
         )
 
-    output = out.numpy() if out else None
+    output_data = [o.numpy() for o in outputs]
 
     if trace_config:
         if opts.verbosity >= 1:
@@ -120,8 +121,20 @@ def setup_and_run_aie(
     if opts.verify:
         if opts.verbosity >= 1:
             print("Verifying results ...")
-        e = np.equal(ref, output)
-        errors = np.size(e) - np.count_nonzero(e)
+
+        # Handle ref being list or single
+        if not isinstance(ref, list):
+            ref = [ref]
+
+        if len(ref) != len(output_data):
+            print(
+                f"Error: Number of reference outputs ({len(ref)}) does not match number of actual outputs ({len(output_data)})"
+            )
+            return 1
+
+        for r, o in zip(ref, output_data):
+            e = np.equal(r, o)
+            errors += np.size(e) - np.count_nonzero(e)
 
     if not errors:
         return 0
