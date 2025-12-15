@@ -1676,8 +1676,8 @@ struct AIEObjectFifoStatefulTransformPass
       packetInfo = *packet;
     std::string alloc_name = getShimAllocationName(objFifoOp.getName());
     // SymbolRefAttr::get(ctx, objFifoOp.getName())
-    ShimDMAAllocationOp::create(builder,
-        builder.getUnknownLoc(), StringAttr::get(ctx, alloc_name),
+    ShimDMAAllocationOp::create(
+        builder, builder.getUnknownLoc(), StringAttr::get(ctx, alloc_name),
         shimTile.getResult(), DMAChannelDirAttr::get(ctx, channelDir),
         builder.getI64IntegerAttr(channelIndex), builder.getBoolAttr(plio),
         packetInfo);

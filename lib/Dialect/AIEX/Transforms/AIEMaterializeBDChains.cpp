@@ -51,8 +51,8 @@ struct DMAStartBdChainForOpPattern : RewritePattern {
     }
 
     DMAStartBdChainOp new_op = DMAStartBdChainOp::create(
-        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(), op.getArgs(),
-        tile.getResult(), alloc_op.getChannelDir(),
+        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(),
+        op.getArgs(), tile.getResult(), alloc_op.getChannelDir(),
         (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),
         op.getRepeatCount());
     rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
