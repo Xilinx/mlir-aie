@@ -73,6 +73,12 @@ jobs:
           - python_version: "3.13"
             ENABLE_RTTI: OFF
 
+          - python_version: "3.14"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.14"
+            ENABLE_RTTI: OFF
+
     steps:
       - name: Free disk space
         uses: descriptinc/free-disk-space@main
@@ -106,6 +112,15 @@ jobs:
             git config --global --add safe.directory $PWD
             MLIR_VERSION=$(git rev-parse --short HEAD)
             echo "Building mlir-aie version $MLIR_VERSION"
+
+            if ! command -v python${{ matrix.python_version }} &> /dev/null; then
+              echo "Python ${{ matrix.python_version }} not found, installing..."
+              apt-get update
+              apt-get install -y software-properties-common
+              add-apt-repository -y ppa:deadsnakes/ppa
+              apt-get update
+              apt-get install -y python${{ matrix.python_version }} python${{ matrix.python_version }}-venv python${{ matrix.python_version }}-dev
+            fi
 
             python${{ matrix.python_version }} -m venv ${{ github.workspace }}/aie-venv
             source ${{ github.workspace }}/aie-venv/bin/activate
