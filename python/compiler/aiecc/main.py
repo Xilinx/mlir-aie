@@ -64,8 +64,7 @@ def _create_input_with_addresses_pipeline(
             pipeline.add_pass("aie-hoist-vector-transfer-pointers")
         pipeline.add_pass(
             "convert-vector-to-aievec",
-            aie_target=aie_target.lower(),
-            target_backend="llvmir",
+            **{"aie-target": aie_target.lower(), "target-backend": "llvmir"},
         )
 
     # Build nested device pipeline with conditional passes
@@ -75,8 +74,10 @@ def _create_input_with_addresses_pipeline(
         .add_pass("aie-register-objectFifos")
         .add_pass(
             "aie-objectFifo-stateful-transform",
-            dynamic_objFifos=dynamic_objFifos,
-            packet_sw_objFifos=packet_sw_objFifos,
+            **{
+                "dynamic-objFifos": dynamic_objFifos,
+                "packet-sw-objFifos": packet_sw_objFifos,
+            },
         )
         .add_pass("aie-assign-bd-ids")
         .add_pass("aie-lower-cascade-flows")
@@ -85,10 +86,10 @@ def _create_input_with_addresses_pipeline(
         .add_pass("aie-assign-tile-controller-ids")
         .add_pass(
             "aie-generate-column-control-overlay",
-            route_shim_to_tile_ctrl=ctrl_pkt_overlay,
+            **{"route-shim-to-tile-ctrl": ctrl_pkt_overlay},
         )
         .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme)
-        .add_pass("aie-vector-transfer-lowering", max_transfer_rank=1)
+        .add_pass("aie-vector-transfer-lowering", **{"max-transfer-rank": 1})
     )
 
     # Only add vector-to-pointer-loops for O3 and above
