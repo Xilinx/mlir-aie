@@ -266,6 +266,8 @@ class FuncBase:
 
 # The bytecode of an empty function, determined at Python startup and constant at runtime.
 _EMPTY_FN_CODE = (lambda: None).__code__.co_code
+
+
 @make_maybe_no_args_decorator
 def func(
     f,
