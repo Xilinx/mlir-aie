@@ -1565,6 +1565,28 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `xllvm.intr.aie2p.invsqrt` (::xilinx::xllvm::InvsqrtAIE2pIntrOp)
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | 32-bit float |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2p.v16accfloat.to.v16bf16` (::xilinx::xllvm::Vector16AccFloatToV16BF16AIE2pIntrOp)
 
 Traits: `AlwaysSpeculatableImplTrait`
