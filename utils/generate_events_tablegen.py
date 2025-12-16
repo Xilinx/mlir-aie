@@ -140,7 +140,6 @@ def write_enum_items_tablegen(dict):
     items = []
     for num, name in dict.items():
         items.append(f'    I32EnumAttrCase<"{name}", {num}>')
-    
     return ",\n".join(items)
 
 
@@ -148,7 +147,6 @@ def write_tablegen_file(output_path, arch_config, events):
     """Write a TableGen file for one architecture."""
     suffix = arch_config["suffix"]
     arch_display_name = arch_config["display_name"]
-    
     core_str = write_enum_items_tablegen(events["core"])
     mem_str = write_enum_items_tablegen(events["mem"])
     pl_str = write_enum_items_tablegen(events["pl"])
