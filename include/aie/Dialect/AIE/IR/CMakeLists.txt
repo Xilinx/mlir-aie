@@ -54,9 +54,9 @@ set(EVENTS_HEADER_FILES
 )
 
 set(GENERATED_EVENTS_TD_FILES
-  "${CMAKE_CURRENT_BINARY_DIR}/AIEEvents.td.inc"
-  "${CMAKE_CURRENT_BINARY_DIR}/AIEEventsAIE2.td.inc"
-  "${CMAKE_CURRENT_BINARY_DIR}/AIEEventsAIE2P.td.inc"
+  "${CMAKE_BINARY_DIR}/include/AIEEvents.td.inc"
+  "${CMAKE_BINARY_DIR}/include/AIEEventsAIE2.td.inc"
+  "${CMAKE_BINARY_DIR}/include/AIEEventsAIE2P.td.inc"
 )
 
 add_custom_command(
@@ -64,7 +64,7 @@ add_custom_command(
   COMMAND ${Python3_EXECUTABLE}
     ${AIE_SOURCE_DIR}/utils/generate_events_tablegen.py
     -i ${EVENTS_HEADER_FILES}
-    -o ${CMAKE_CURRENT_BINARY_DIR}
+    -o ${CMAKE_BINARY_DIR}/include
   DEPENDS
     ${AIE_SOURCE_DIR}/utils/generate_events_tablegen.py
     ${EVENTS_HEADER_FILES}
