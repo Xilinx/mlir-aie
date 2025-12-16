@@ -222,7 +222,9 @@ setup(
         ],
     },
     install_requires=[
-        str(ir.requirement).split(";")[0]
+        str(ir.requirement)
         for ir in parse_requirements("requirements.txt", session="hack")
-    ],
+        if ir.requirement.name != "eudsl-python-extras"
+    ]
+    + ["cloudpickle"],
 )

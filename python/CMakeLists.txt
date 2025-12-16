@@ -430,3 +430,17 @@ add_custom_command(
 # during install
 install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py DESTINATION bin)
 
+# Try to find aie.extras in the environment and install it
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" -c "import aie.extras; print(aie.extras.__path__[0], end='')"
+  OUTPUT_VARIABLE AIE_EXTRAS_PATH
+  RESULT_VARIABLE AIE_EXTRAS_FOUND
+  ERROR_QUIET
+)
+
+if (AIE_EXTRAS_FOUND EQUAL 0 AND EXISTS "${AIE_EXTRAS_PATH}")
+  message(STATUS "Found aie.extras at ${AIE_EXTRAS_PATH}, installing into wheel")
+  install(DIRECTORY "${AIE_EXTRAS_PATH}/"
+    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/extras"
+  )
+endif()
