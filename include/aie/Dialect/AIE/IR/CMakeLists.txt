@@ -77,8 +77,8 @@ add_custom_target(GenerateAIEEventsTD
   DEPENDS ${GENERATED_EVENTS_TD_FILES}
 )
 
-# AIEX.td pulls in AIEAttrs.td which includes generated event enums
-add_dependencies(MLIRAIEXIncGen GenerateAIEEventsTD)
+# Ensure generated event enums exist before any headers that depend on them
+add_dependencies(aie-headers GenerateAIEEventsTD)
 
 # Add AIE attributes
 set(LLVM_TARGET_DEFINITIONS AIEAttrs.td)
