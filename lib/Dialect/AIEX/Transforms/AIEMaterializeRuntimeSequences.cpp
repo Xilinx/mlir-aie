@@ -40,19 +40,19 @@ struct RuntimeCallGraphCyclicityAnalysis {
   RuntimeCallGraphCyclicityAnalysis(Operation *op, AnalysisManager &am) 
   : analysisManager(am) 
   {
-    RuntimeSequenceOp runtimeSequenceOp = llvm::dyn_cast<RuntimeSequenceOp>(op);
+    AIE::RuntimeSequenceOp runtimeSequenceOp = llvm::dyn_cast<AIE::RuntimeSequenceOp>(op);
     if (!runtimeSequenceOp) {
       op->emitError("RuntimeCallGraphCyclicityAnalysis can only be called on aiex.runtime_sequence operations.");
       return;
     }
-    llvm::SetVector<RuntimeSequenceOp> visited = {};
+    llvm::SetVector<AIE::RuntimeSequenceOp> visited = {};
     llvm::SetVector<RunOp> todo;
     for (RunOp runOp : runtimeSequenceOp.getOps<RunOp>()) {
       todo.insert(runOp);
     }
     while(!todo.empty()) {
       RunOp curOp = todo.pop_back_val();
-      if (RuntimeSequenceOp calleeRuntimeSequence = curOp.getCalleeRuntimeSequenceOp()) {
+      if (AIE::RuntimeSequenceOp calleeRuntimeSequence = curOp.getCalleeRuntimeSequenceOp()) {
         if (visited.contains(calleeRuntimeSequence)) {
           continue;
         }
@@ -86,7 +86,7 @@ struct InsertLoadPdiForConfigurePattern : RewritePattern {
 
     // LoadPDI resets the whole device, hence cannot do partial reconfiguration;
     // therefore, this only supports top-level configure ops
-    if (!llvm::isa<RuntimeSequenceOp>(configureOp->getParentOp())) {
+    if (!llvm::isa<AIE::RuntimeSequenceOp>(configureOp->getParentOp())) {
       return failure();
     }
 
@@ -103,7 +103,8 @@ struct InsertLoadPdiForConfigurePattern : RewritePattern {
       configureBlock = &configureOp.getBody().front();
     }
     rewriter.setInsertionPointToStart(configureBlock);
-    rewriter.create<AIEX::NpuLoadPdiOp>(
+    AIEX::NpuLoadPdiOp::create(
+      rewriter,
       configureOp.getLoc(),
       FlatSymbolRefAttr::get(referencedDevice.getSymNameAttr()));
 
@@ -265,8 +266,6 @@ LogicalResult inlineReferencedSymbolDefinitions(
           if (!symbolDefOp) {
             return std::make_pair(newSymbolRef, WalkResult::interrupt());
           }
-          Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
-          clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(), StringAttr::get(ctx, uniqueName));
         
           // Collect SSA values referenced by the symbol definition operation
           llvm::SetVector<Value> symbolReferencedValues;
@@ -275,35 +274,18 @@ LogicalResult inlineReferencedSymbolDefinitions(
           // Copy SSA values referenced by the symbol definition
           if (failed(copyReferencedSSAValues(rewriter, symbolReferencedValues,
                                             callerDevice, argMap,
-                                            clonedSymbolInsertionPoint, op))) {
+                                            clonedDefOpsInsertionPoint, op))) {
             return std::make_pair(newSymbolRef, WalkResult::interrupt());
           }
           
           Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
           clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(),
-                                    StringAttr::get(ctx, uniqueName));
+                                     StringAttr::get(ctx, uniqueName));
         } else {
           newSymbolRef = previouslyInlinedSymbolMap[oldSymbolRef];
         }
-        
-        // Collect SSA values referenced by the symbol definition operation
-        llvm::SetVector<Value> symbolReferencedValues;
-        collectReferencedSSAValues(symbolDefOp, argMap, symbolReferencedValues);
-        
-        // Copy SSA values referenced by the symbol definition
-        if (failed(copyReferencedSSAValues(rewriter, symbolReferencedValues,
-                                           callerDevice, argMap,
-                                           clonedDefOpsInsertionPoint, op))) {
-          return std::make_pair(newSymbolRef, WalkResult::interrupt());
-        }
-        
-        //rewriter.restoreInsertionPoint(clonedDefOpsInsertionPoint);
-        Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
-        clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(),
-                                   StringAttr::get(ctx, uniqueName));
-        //clonedDefOpsInsertionPoint = rewriter.saveInsertionPoint();
-      } else {
-        newSymbolRef = previouslyInlinedSymbolMap[oldSymbolRef];
+
+        return std::make_pair(newSymbolRef, WalkResult::advance());
       }
     );
     if (!newAttr) {
@@ -328,7 +310,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
       return failure();
     }
     AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
-    RuntimeSequenceOp calleeRuntimeSequence = runOp.getCalleeRuntimeSequenceOp();
+    AIE::RuntimeSequenceOp calleeRuntimeSequence = runOp.getCalleeRuntimeSequenceOp();
     if (!calleeDevice || !calleeRuntimeSequence) {
       return failure();
     }
@@ -424,14 +406,14 @@ struct AIEMaterializeRuntimeSequencesPass
     for (AIE::DeviceOp deviceOp : moduleOp.getOps<AIE::DeviceOp>()) {
 
       // Verify all runtime sequences before materialization
-      for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
+      for (AIE::RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
         if (failed(runtimeSequenceOp.verifyBeforeMaterialization())) {
           return signalPassFailure();
         }
       }
 
       // Check for cycles in runtime sequence calls
-      for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
+      for (AIE::RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
         AnalysisManager am = getAnalysisManager().nest(deviceOp).nest(runtimeSequenceOp);
         RuntimeCallGraphCyclicityAnalysis cyclicity = am.getAnalysis<RuntimeCallGraphCyclicityAnalysis>();
         if (!cyclicity.isValid) {
@@ -459,7 +441,7 @@ struct AIEMaterializeRuntimeSequencesPass
       }
 
       // Insert LoadPDI ops for each aiex.configure op
-      for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
+      for (AIE::RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
         RewritePatternSet patterns_1(ctx);
         patterns_1.insert<InsertLoadPdiForConfigurePattern>(ctx);
         walkAndApplyPatterns(runtimeSequenceOp, std::move(patterns_1));
@@ -467,7 +449,7 @@ struct AIEMaterializeRuntimeSequencesPass
 
       // Flatten the IR: hoist all operations inside aiex.configure to be direct
       // children of the runtime sequence, preserving order
-      for (RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<RuntimeSequenceOp>()) {
+      for (AIE::RuntimeSequenceOp runtimeSequenceOp : deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
         SmallVector<ConfigureOp> configureOps;
 
         for (ConfigureOp configureOp : runtimeSequenceOp.getOps<ConfigureOp>()) {

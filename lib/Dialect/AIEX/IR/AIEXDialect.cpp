@@ -1072,7 +1072,7 @@ LogicalResult AIEX::ArgSliceOp::verify() {
   // If input is a block argument, verify it belongs to a RuntimeSequenceOp
   if (auto blockArg = dyn_cast<mlir::BlockArgument>(input)) {
     auto *parentOp = blockArg.getOwner()->getParentOp();
-    if (!isa<AIEX::RuntimeSequenceOp>(parentOp)) {
+    if (!isa<AIE::RuntimeSequenceOp>(parentOp)) {
       return emitOpError(
           "input block argument must belong to a RuntimeSequenceOp");
     }

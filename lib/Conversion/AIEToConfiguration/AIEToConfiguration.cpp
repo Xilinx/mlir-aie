@@ -679,7 +679,7 @@ static LogicalResult convertTransactionOpsToMLIR(
       while (device.lookupSymbol(seq_name))
         seq_name = "configure" + std::to_string(id++);
       StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-      auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
+      auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
       seq.getBody().push_back(new Block);
 
       builder.setInsertionPointToStart(&seq.getBody().front());
