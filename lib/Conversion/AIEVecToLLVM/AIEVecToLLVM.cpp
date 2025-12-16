@@ -20,6 +20,7 @@
 #include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/TypeUtilities.h"
 #include <sstream>
@@ -4439,6 +4440,58 @@ public:
   }
 };
 
+// Convert math.rsqrt (scalar f32 or vector f32) to xllvm.intr.aie2p.invsqrt
+// Scalar f32: direct conversion to xllvm.intr.aie2p.invsqrt
+// Vector f32: unroll into scalar xllvm.intr.aie2p.invsqrt operations
+class RsqrtOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<math::RsqrtOp> {
+public:
+  using ConvertOpToLLVMPattern<math::RsqrtOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(math::RsqrtOp rsqrtOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = rsqrtOp.getLoc();
+    auto operandType = adaptor.getOperand().getType();
+
+    // Handle scalar f32 rsqrt
+    if (operandType.isF32()) {
+      auto rsqrtResult = xllvm::InvsqrtAIE2pIntrOp::create(
+          rewriter, loc, rewriter.getF32Type(), adaptor.getOperand());
+      rewriter.replaceOp(rsqrtOp, rsqrtResult);
+      return success();
+    }
+
+    // Handle vector<N x f32> rsqrt
+    auto vecType = dyn_cast<VectorType>(operandType);
+    if (!vecType || !vecType.getElementType().isF32())
+      return failure();
+
+    // Unroll vector rsqrt into scalar operations
+    int numElements = getVectorLaneSize(vecType);
+    Value result = LLVM::PoisonOp::create(rewriter, loc, vecType);
+
+    for (int i = 0; i < numElements; ++i) {
+      // Extract element i
+      auto indexCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI64Type(), rewriter.getI64IntegerAttr(i));
+      auto extractedElem = LLVM::ExtractElementOp::create(
+          rewriter, loc, adaptor.getOperand(), indexCst);
+
+      // Call xllvm.intr.aie2p.invsqrt on the scalar
+      auto rsqrtResult = xllvm::InvsqrtAIE2pIntrOp::create(
+          rewriter, loc, rewriter.getF32Type(), extractedElem);
+
+      // Insert result back into vector
+      result = LLVM::InsertElementOp::create(rewriter, loc, vecType, result,
+                                             rsqrtResult, indexCst);
+    }
+
+    rewriter.replaceOp(rsqrtOp, result);
+    return success();
+  }
+};
+
 void populateAIEVecToLLVMCommonConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
   // clang-format off
@@ -4569,6 +4622,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ConcatOpAIE2pConversion>(converter);
   patterns.add<ExpOpAIE2pConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
+  patterns.add<RsqrtOpAIE2pConversion>(converter);
 }
 
 void populateAIEVecToLLVMConversionPatterns(
