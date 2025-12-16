@@ -77,6 +77,9 @@ add_custom_target(GenerateAIEEventsTD
   DEPENDS ${GENERATED_EVENTS_TD_FILES}
 )
 
+# AIEX.td pulls in AIEAttrs.td which includes generated event enums
+add_dependencies(MLIRAIEXIncGen GenerateAIEEventsTD)
+
 # Add AIE attributes
 set(LLVM_TARGET_DEFINITIONS AIEAttrs.td)
 mlir_tablegen(AIEAttrs.h.inc -gen-attrdef-decls)
