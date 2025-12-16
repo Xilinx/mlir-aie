@@ -6,10 +6,10 @@
 import inspect
 
 from aie.extras import types as T
-from aie.extras.dialects.ext import arith
+from aie.extras.dialects import arith
 from aie.extras.runtime.passes import Pipeline as p, run_pipeline
 
-from aie.helpers.dialects.ext.func import func
+from aie.helpers.dialects.func import func
 from aie.iron.controlflow import range_
 
 from aie.dialects import affine, aievec, tosa, vector

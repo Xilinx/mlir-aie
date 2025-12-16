@@ -20,7 +20,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.iron.controlflow import range_
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import if_, else_
+from aie.helpers.dialects.scf import if_, else_
 
 N = 100
 n_rows = 10

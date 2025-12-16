@@ -6,7 +6,7 @@
 
 # RUN: %python %s | FileCheck %s
 import numpy as np
-from aie.extras.dialects.ext import memref
+from aie.extras.dialects import memref
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
