@@ -22,6 +22,7 @@ mlir_tablegen(AIETypes.h.inc -gen-typedef-decls -typedefs-dialect=aie)
 mlir_tablegen(AIETypes.cpp.inc -gen-typedef-defs -typedefs-dialect=aie)
 add_public_tablegen_target(MLIRAIETypesIncGen)
 add_dependencies(aie-headers MLIRAIETypesIncGen)
+add_dependencies(MLIRAIETypesIncGen GenerateAIEEventsTD)
 
 # Add AIE interfaces
 set(LLVM_TARGET_DEFINITIONS AIEInterfaces.td)
