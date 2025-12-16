@@ -198,7 +198,7 @@ class FuncBase:
             self.emit()
 
     def _is_decl(self):
-        return self.body_builder.__code__.co_code == _get_empty_fn_code()
+        return self.body_builder.__code__.co_code == _EMPTY_FN_CODE
 
     def __str__(self):
         return str(f"{self.__class__} {self.__dict__}")
