@@ -624,6 +624,13 @@ def Exp2AIE2pIntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
 
+// ----- INVSQRT (Reciprocal Square Root) -----
+
+def InvsqrtAIE2pIntrOp :
+    AIEVec2p_IntrOp<"invsqrt",
+        [Pure, TypeIs<"res", F32>]>,
+    Arguments<(ins F32:$src)>;
+
 // ----- SHIFT -----
 
 def VectorShiftI512I512IntrOp :
