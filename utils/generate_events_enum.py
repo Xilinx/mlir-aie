@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https:#llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 """
 Takes the xaie_events_*.h header files from aie-rt and generates:
 1. A JSON database containing all events for all architectures
@@ -42,8 +46,8 @@ ARCH_CONFIGS = {
         "python_name": "aie",  # Python module name
     },
     "xaie_events_aieml.h": {
-        "name": "aieml",
-        "display_name": "AIEML (AIE2)",
+        "name": "aie2",
+        "display_name": "AIE2",
         "prefix": "XAIEML_EVENTS_",
         "python_name": "aie2",  # Python module name
     },

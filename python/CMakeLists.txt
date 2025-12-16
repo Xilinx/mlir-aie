@@ -1,4 +1,4 @@
-# Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022-2025, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include(AddMLIRPython)
@@ -44,6 +44,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/parse_eventIR.py
     utils/get_trace_summary.py
     utils/trace_utils.py
+    utils/trace_events/__init__.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Helpers
@@ -353,7 +354,7 @@ else ()
   )
 
   ################################################################################
-  # Copy generated trace events enum files to Python package directories
+  # Generated trace events enum files and copy to Python package directories
   ################################################################################
 
   # Input header files from aie-rt
@@ -367,14 +368,14 @@ else ()
   # Output directory for generated files in build directory
   set(GENERATED_EVENTS_DIR "${CMAKE_CURRENT_BINARY_DIR}/regdb")
 
-  # Generated Python enum files (one per architecture) with new naming scheme
+  # Generated Python enum files in the build directory
   set(GENERATED_EVENTS_ENUM_FILES
     "${GENERATED_EVENTS_DIR}/aie.py"
     "${GENERATED_EVENTS_DIR}/aie2.py"
     "${GENERATED_EVENTS_DIR}/aie2p.py"
   )
 
-  # Generated JSON database
+  # Generated JSON database in the build directory
   set(GENERATED_EVENTS_JSON_FILENAME "events.json")
   set(GENERATED_EVENTS_JSON "${GENERATED_EVENTS_DIR}/${GENERATED_EVENTS_JSON_FILENAME}")
 
@@ -403,7 +404,7 @@ else ()
   # Ensure AIEPythonModules depends on GenerateTraceEventsEnum
   add_dependencies(AIEPythonModules GenerateTraceEventsEnum)
 
-  # Copy generated files to build Python package directory as a package
+  # Copy generated event enum files to Python package build directory
   foreach(_file ${GENERATED_EVENTS_ENUM_FILES})
     get_filename_component(_filename ${_file} NAME)
     add_custom_command(
@@ -416,22 +417,7 @@ else ()
     )
   endforeach()
 
-  # Copy the checked-in files to build Python package directory
-  set(_source_files
-    __init__.py
-  )
-  foreach(_file ${_source_files})
-    add_custom_command(
-      TARGET AIEPythonModules POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace_events
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/utils/trace_events/${_file}
-        ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace_events/${_file}
-      COMMENT "Copying ${_file} to build Python package"
-    )
-  endforeach()
-
-  # Install generated files as a package
+  # Install generated event enum files
   install(
     FILES 
       ${GENERATED_EVENTS_ENUM_FILES}
@@ -439,15 +425,6 @@ else ()
     COMPONENT aie-python
   )
 
-  # Install the checked-in files
-  foreach(_file ${_source_files})
-    install(
-      FILES 
-        ${CMAKE_CURRENT_SOURCE_DIR}/utils/trace_events/${_file}
-      DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils/trace_events
-      COMPONENT aie-python
-    )
-  endforeach()
 
 endif ()
 
