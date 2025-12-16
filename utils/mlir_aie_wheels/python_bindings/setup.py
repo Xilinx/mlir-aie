@@ -222,7 +222,7 @@ setup(
         ],
     },
     install_requires=[
-        str(ir.requirement)
+        str(ir.requirement).split(";")[0]
         for ir in parse_requirements("requirements.txt", session="hack")
     ],
 )
