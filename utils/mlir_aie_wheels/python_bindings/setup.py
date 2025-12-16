@@ -223,6 +223,11 @@ setup(
     },
     install_requires=[
         str(ir.requirement)
+        + (
+            "; --config-settings=EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie"
+            if ir.requirement.name == "eudsl-python-extras"
+            else ""
+        )
         for ir in parse_requirements("requirements.txt", session="hack")
     ],
 )

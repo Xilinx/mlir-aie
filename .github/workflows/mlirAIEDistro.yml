@@ -227,6 +227,7 @@ jobs:
 
         export PIP_NO_BUILD_ISOLATION=false
 
+        pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r python/requirements_dev.txt
         pip install importlib-metadata
@@ -365,6 +366,7 @@ jobs:
       - name: test
         shell: bash
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
           pip install -r python/requirements_dev.txt
           unzip -o -q dist/mlir_aie\*.whl

@@ -20,6 +20,7 @@ environment-pass = [
     "PIP_NO_BUILD_ISOLATION",
 ]
 before-build = [
+    "pip install --upgrade pip",
     "pip install -r requirements.txt",
     "{project}/scripts/download_mlir.sh",
 ]
@@ -29,6 +30,7 @@ repair-wheel-command = [
 
 [tool.cibuildwheel.macos]
 before-build = [
+    "pip install --upgrade pip",
     "pip install -r requirements.txt",
     "{project}/scripts/download_mlir.sh",
 ]
@@ -39,6 +41,7 @@ repair-wheel-command = [
 [tool.cibuildwheel.windows]
 before-build = [
     "pip install delvewheel",
+    "pip install --upgrade pip",
     "pip install -r requirements.txt",
     "bash {project}\\scripts\\download_mlir.sh",
 ]

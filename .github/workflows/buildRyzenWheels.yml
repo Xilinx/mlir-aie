@@ -130,6 +130,7 @@ jobs:
             tar xfz /workspace/vaie.tgz
             popd
 
+            pip install --upgrade pip
             pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
             pip install -r python/requirements_dev.txt

@@ -40,6 +40,7 @@ jobs:
 
       - name: Install Python packages
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
           pip install -r python/requirements_dev.txt
 
@@ -202,6 +203,7 @@ jobs:
 
       - name: Install Python and other packages
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
           pip install -r python/requirements_dev.txt
 
@@ -237,6 +239,7 @@ jobs:
       - name: Install our python reqs
         if: steps.changed-files.outputs.changed-files != ''
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
           pip install -r python/requirements_dev.txt
 
@@ -301,4 +304,3 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
-
