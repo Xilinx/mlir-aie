@@ -397,7 +397,8 @@ private:
     
     // Insert the global at the beginning of the device
     builder.setInsertionPointToStart(deviceOp.getBody());
-    builder.create<memref::GlobalOp>(
+    memref::GlobalOp::create(
+        builder,
         loc, 
         globalName,
         /*sym_visibility=*/builder.getStringAttr("private"),
@@ -408,10 +409,11 @@ private:
     
     // Create a GetGlobalOp and BlockWriteOp at the position of the first write
     builder.setInsertionPoint(sequence[0].op);
-    auto getGlobalOp = builder.create<memref::GetGlobalOp>(
-        loc, memrefType, globalName);
+    auto getGlobalOp = memref::GetGlobalOp::create(
+        builder, loc, memrefType, globalName);
     
-    builder.create<NpuBlockWriteOp>(
+    NpuBlockWriteOp::create(
+        builder,
         loc,
         startAddr,
         getGlobalOp.getResult(),

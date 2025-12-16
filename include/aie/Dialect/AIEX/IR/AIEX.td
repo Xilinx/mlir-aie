@@ -581,7 +581,7 @@ def AIE_RunOp: AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
 
 def AIE_ArgSliceOp: AIEX_Op<"arg_slice", [
   Pure,
-  ParentOneOf<["RuntimeSequenceOp", "ConfigureOp"]>
+  ParentOneOf<["AIE::RuntimeSequenceOp", "ConfigureOp"]>
 ]>, Results<(outs AnyMemRef:$result)> {
   let summary = "Create a slice of a runtime sequence argument with an offset";
   let description = [{

@@ -147,27 +147,27 @@ struct ExpandLoadPdiPattern : public OpRewritePattern<NpuLoadPdiOp> {
       
       auto deviceType = referencedDevice.getDevice();
       auto loc = rewriter.getUnknownLoc();
-      emptyDevice = rewriter.create<AIE::DeviceOp>(
-          loc, deviceType, rewriter.getStringAttr(emptyName));
+      emptyDevice = AIE::DeviceOp::create(
+        rewriter, loc, deviceType, rewriter.getStringAttr(emptyName));
       emptyDevice.getRegion().emplaceBlock();
       
       Block *deviceBlock = &emptyDevice.getRegion().front();
       rewriter.setInsertionPointToEnd(deviceBlock);
-      rewriter.create<AIE::EndOp>(loc);
+      AIE::EndOp::create(rewriter, loc);
     }
 
     // Create new load_pdi operation
     rewriter.setInsertionPoint(loadPdiOp);
     NpuLoadPdiOp newLoadPdi;
     if (needsEmptyDevice) {
-      newLoadPdi = rewriter.create<NpuLoadPdiOp>(
-          loadPdiOp.getLoc(), FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
+      newLoadPdi = NpuLoadPdiOp::create(
+          rewriter, loadPdiOp.getLoc(), FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
           loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
           loadPdiOp.getAddressAttr());
     } else {
       // First load_pdi with no resets - keep original device reference
-      newLoadPdi = rewriter.create<NpuLoadPdiOp>(
-          loadPdiOp.getLoc(), loadPdiOp.getDeviceRefAttr(),
+      newLoadPdi = NpuLoadPdiOp::create(
+          rewriter, loadPdiOp.getLoc(), loadPdiOp.getDeviceRefAttr(),
           loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
           loadPdiOp.getAddressAttr());
     }

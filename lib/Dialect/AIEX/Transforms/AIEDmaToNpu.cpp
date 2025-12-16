@@ -285,8 +285,8 @@ public:
     }
 
     // arg_idx and offset handling for memref or arg_slice
-    AIEX::RuntimeSequenceOp seq_op =
-        op->getParentOfType<AIEX::RuntimeSequenceOp>();
+    AIE::RuntimeSequenceOp seq_op =
+        op->getParentOfType<AIE::RuntimeSequenceOp>();
     if (!seq_op) {
       op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp parent at "
                       "time of lowering.");
