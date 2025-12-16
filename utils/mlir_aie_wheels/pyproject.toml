@@ -20,7 +20,7 @@ authors = [
 
 [tool.cibuildwheel]
 build-verbosity = 3
-build = "cp312-*"
+build = "cp312-* cp313-* cp314-*"
 skip = ["*-manylinux_i686", "*-musllinux*"]
 manylinux-aarch64-image = "manylinux_2_28"
 manylinux-x86_64-image = "manylinux_2_28"
