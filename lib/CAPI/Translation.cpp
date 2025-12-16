@@ -94,6 +94,17 @@ MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary) {
   return wrap(mod->getOperation());
 }
 
+MlirOperation aieTranslateBinaryToControlPackets(MlirContext ctx,
+                                                 MlirStringRef binary,
+                                                 int device) {
+  std::vector<uint8_t> binaryData(binary.data, binary.data + binary.length);
+  auto mod = convertControlPacketBinaryToMLIR(unwrap(ctx), binaryData,
+                                              static_cast<AIEDevice>(device));
+  if (!mod)
+    return wrap(ModuleOp().getOperation());
+  return wrap(mod->getOperation());
+}
+
 MlirStringRef aieTranslateNpuToBinary(MlirOperation moduleOp,
                                       MlirStringRef deviceNameMlir,
                                       MlirStringRef sequenceNameMlir) {

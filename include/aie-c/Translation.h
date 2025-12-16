@@ -40,6 +40,8 @@ MLIR_CAPI_EXPORTED MlirLogicalResult aieTranslateToCDODirect(
     bool xaieDebug, bool enableCores);
 MLIR_CAPI_EXPORTED MlirOperation aieTranslateBinaryToTxn(MlirContext ctx,
                                                          MlirStringRef binary);
+MLIR_CAPI_EXPORTED MlirOperation aieTranslateBinaryToControlPackets(
+    MlirContext ctx, MlirStringRef binary, int device);
 
 struct AieRtControl {
   void *ptr;
