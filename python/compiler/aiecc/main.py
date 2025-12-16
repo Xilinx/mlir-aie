@@ -141,7 +141,7 @@ def _create_aie_lower_to_llvm_pipeline(
     if int(opt_level) >= 3:
         pipeline.add_pass("aievec-split-load-ups-chains")
 
-    pipeline.add_pass("convert-aievec-to-llvm", aie_target=aie_target.lower())
+    pipeline.add_pass("convert-aievec-to-llvm", **{"aie-target": aie_target.lower()})
 
     return pipeline + LOWER_TO_LLVM_PIPELINE
 
