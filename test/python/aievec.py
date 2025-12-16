@@ -272,7 +272,7 @@ def test_i8xi8_add_elem(module):
         .cse()
         .convert_linalg_to_affine_loops()
         .Func(p().affine_super_vectorize(virtual_vector_size=64))
-        .add_pass("convert-vector-to-aievec", aie_target="aie2")
+        .add_pass("convert-vector-to-aievec", **{"aie-target": "aie2"})
         .lower_affine()
     )
 
