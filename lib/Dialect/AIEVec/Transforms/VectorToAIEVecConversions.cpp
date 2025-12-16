@@ -2181,7 +2181,7 @@ struct ComputeTanhOpByLUTPattern : OpConversionPattern<math::TanhOp> {
 
 // Convert math.sqrt to a function call to compute sqrt(x) for v16bfloat16 and
 // v32bfloat16 types
-struct ComputeSqrtOpPattern : OpConversionPattern<math::SqrtOp> {
+struct ComputeSqrtOpAIE2Pattern : OpConversionPattern<math::SqrtOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -2229,7 +2229,7 @@ struct ComputeSqrtOpPattern : OpConversionPattern<math::SqrtOp> {
   }
 };
 
-struct ComputeRsqrtOpLLVMPattern : OpConversionPattern<math::RsqrtOp> {
+struct ComputeRsqrtOpLLVMAIE2Pattern : OpConversionPattern<math::RsqrtOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
@@ -3232,7 +3232,7 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
   patterns.add<
       ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
-      ComputeSqrtOpPattern,
+      ComputeSqrtOpAIE2Pattern,
       ComputeErfOpPattern,
       ComputeAbsFOpPattern,
       ComputeAbsIOpPattern,
@@ -3276,7 +3276,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
       patterns.getContext(), backend == TargetBackend::CPP);
   // For AIE2 with LLVMIR backend, use LUT-based exp and rsqrt
   if (backend == TargetBackend::LLVMIR) {
-    patterns.add<ComputeExpOpByLUTLLVMPattern, ComputeRsqrtOpLLVMPattern>(
+    patterns.add<ComputeExpOpByLUTLLVMPattern, ComputeRsqrtOpLLVMAIE2Pattern>(
         patterns.getContext());
   }
 }
@@ -3337,7 +3337,8 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
       patterns.getContext(), backend == TargetBackend::CPP);
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
-  // For AIE2P with LLVMIR backend, use aievec.exp instead of LUT
+  // For AIE2P with LLVMIR backend, use aievec.exp
+  // math.rsqrt is kept legal and will be lowered in AIEVecToLLVM pass
   if (backend == TargetBackend::LLVMIR) {
     patterns.add<ConvertMathExpToAIEVecExpOpPattern>(patterns.getContext());
   }
@@ -3528,17 +3529,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
     Type scalarType = srcType.getElementType();
     if (!isa<FloatType>(scalarType))
-      return true;
-
-    unsigned laneSize = getVectorLaneSize(srcType);
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    return elWidth != 16 || (laneSize != 16 && laneSize != 32);
-  });
-
-  target.addDynamicallyLegalOp<math::RsqrtOp>([](math::RsqrtOp rsqrtOp) {
-    auto srcType = dyn_cast<VectorType>(rsqrtOp.getOperand().getType());
-    Type scalarType = srcType.getElementType();
-    if (!srcType || !isa<FloatType>(scalarType))
       return true;
 
     unsigned laneSize = getVectorLaneSize(srcType);
@@ -3768,6 +3758,20 @@ static void configureAIEVecV1Legalizations(ConversionTarget &target,
 
 static void configureAIEVecV2PLegalizations(ConversionTarget &target,
                                             TargetBackend backend) {
+  // AIE2P-specific legalization for rsqrt with LLVMIR backend
+  // Vector bf16 rsqrt is illegal (no hardware support)
+  // Scalar f32 and vector f32 rsqrt are legal (lowered in AIEVecToLLVM pass)
+  if (backend == TargetBackend::LLVMIR) {
+    target.addDynamicallyLegalOp<math::RsqrtOp>([](math::RsqrtOp rsqrtOp) {
+      auto vecType = dyn_cast<VectorType>(rsqrtOp.getOperand().getType());
+      // Vector bf16 rsqrt is illegal
+      if (vecType && vecType.getElementType().isBF16())
+        return false;
+      // Everything else is legal (scalar f32, vector f32)
+      return true;
+    });
+  }
+
   // AIE2P-specific legalization: ExtFOp on vector is always illegal
   target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
     auto srcType = dyn_cast<VectorType>(extfOp.getIn().getType());
@@ -4146,6 +4150,20 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
   target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,
                       vector::FMAOp>();
+
+  target.addDynamicallyLegalOp<math::RsqrtOp>([](math::RsqrtOp rsqrtOp) {
+    auto srcType = dyn_cast<VectorType>(rsqrtOp.getOperand().getType());
+    if (!srcType)
+      return true;
+
+    Type scalarType = srcType.getElementType();
+    if (!isa<FloatType>(scalarType))
+      return true;
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    return elWidth != 16 || (laneSize != 16 && laneSize != 32);
+  });
 }
 
 //===----------------------------------------------------------------------===//
