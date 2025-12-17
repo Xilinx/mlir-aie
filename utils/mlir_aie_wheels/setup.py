@@ -297,6 +297,7 @@ setup(
         "install": InstallWithPth,
     },
     zip_safe=False,
+    packages=[],
     python_requires=">=3.10",
     install_requires=[
         req
