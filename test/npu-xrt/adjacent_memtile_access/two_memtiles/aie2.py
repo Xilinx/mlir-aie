@@ -94,8 +94,8 @@ def my_vector_add():
         flow(ComputeTile2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 0)
 
         # AIE-array data movement
-        shim_dma_allocation("in1", DMAChannelDir.MM2S, 0, 0)
-        shim_dma_allocation("out", DMAChannelDir.S2MM, 0, 0)
+        shim_dma_allocation("in1", ShimTile, DMAChannelDir.MM2S, 0)
+        shim_dma_allocation("out", ShimTile, DMAChannelDir.S2MM, 0)
 
         @memtile_dma(MemTile)
         def m(block):
