@@ -65,8 +65,6 @@ jobs:
 
     name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
-    continue-on-error: true
-
     runs-on: ${{ matrix.OS }}
 
     outputs:
