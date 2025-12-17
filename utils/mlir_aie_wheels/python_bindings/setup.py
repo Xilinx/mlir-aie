@@ -225,6 +225,7 @@ setup(
         str(ir.requirement)
         for ir in parse_requirements("requirements.txt", session="hack")
         if ir.requirement.name != "eudsl-python-extras"
+        and ir.requirement.name != "mlir-python-bindings"
         and not str(ir.requirement).startswith("-")
     ]
     + ["cloudpickle"],

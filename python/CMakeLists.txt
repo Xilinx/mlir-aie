@@ -444,3 +444,17 @@ if (AIE_EXTRAS_FOUND EQUAL 0 AND EXISTS "${AIE_EXTRAS_PATH}")
     DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/extras"
   )
 endif()
+
+# Try to bundle mlir package from MLIR_DIR
+get_filename_component(MLIR_INSTALL_ABS_PATH "${MLIR_DIR}/../../.." ABSOLUTE)
+if (EXISTS "${MLIR_INSTALL_ABS_PATH}/mlir")
+  message(STATUS "Found mlir package at ${MLIR_INSTALL_ABS_PATH}/mlir, installing into wheel")
+  install(DIRECTORY "${MLIR_INSTALL_ABS_PATH}/mlir"
+    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/.."
+  )
+elseif (EXISTS "${MLIR_INSTALL_ABS_PATH}/python/mlir")
+  message(STATUS "Found mlir package at ${MLIR_INSTALL_ABS_PATH}/python/mlir, installing into wheel")
+  install(DIRECTORY "${MLIR_INSTALL_ABS_PATH}/python/mlir"
+    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/.."
+  )
+endif()
