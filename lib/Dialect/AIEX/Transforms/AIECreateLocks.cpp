@@ -63,8 +63,8 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
       for (auto acqLock : acqLocks[op]) {
         Value lockFromPair = acqLock.first;
         int lockValueFromPair = acqLock.second;
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromPair,
-                                   LockAction::Acquire, lockValueFromPair);
+        UseLockOp::create(rewriter, op.getLoc(), lockFromPair,
+                          LockAction::Acquire, lockValueFromPair);
         LLVM_DEBUG(llvm::dbgs() << "Acquire from pair " << lockFromPair
                                 << " with " << lockValueFromPair << "\n");
       }
@@ -77,8 +77,8 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
         if (acqOp != Op)
           continue;
 
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromChain,
-                                   LockAction::Acquire, lockValueFromChain);
+        UseLockOp::create(rewriter, op.getLoc(), lockFromChain,
+                          LockAction::Acquire, lockValueFromChain);
         LLVM_DEBUG(llvm::dbgs() << "Acquire from chain " << lockFromChain
                                 << " with " << lockValueFromChain << "\n");
       }
@@ -88,8 +88,8 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
       for (auto relLock : relLocks[op]) {
         Value lockFromPair = relLock.first;
         int lockValueFromPair = relLock.second;
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromPair,
-                                   LockAction::Release, lockValueFromPair);
+        UseLockOp::create(rewriter, op.getLoc(), lockFromPair,
+                          LockAction::Release, lockValueFromPair);
         LLVM_DEBUG(llvm::dbgs() << "Release from pair " << lockFromPair
                                 << " with " << lockValueFromPair << "\n");
       }
@@ -102,8 +102,8 @@ struct Token2LockLowering : public OpConversionPattern<UseTokenOp> {
         if (relOp != Op)
           continue;
 
-        rewriter.create<UseLockOp>(op.getLoc(), lockFromChain,
-                                   LockAction::Release, lockValueFromChain);
+        UseLockOp::create(rewriter, op.getLoc(), lockFromChain,
+                          LockAction::Release, lockValueFromChain);
         LLVM_DEBUG(llvm::dbgs() << "Release from chain " << lockFromChain
                                 << " with " << lockValueFromChain << "\n");
       }
@@ -195,7 +195,7 @@ struct AIECreateLocksPass : public AIECreateLocksBase<AIECreateLocksPass> {
       LLVM_DEBUG(llvm::dbgs() << " LockID: " << lockID << '\n');
       builder.setInsertionPointAfter(tileOp);
       LockOp lock =
-          builder.create<LockOp>(builder.getUnknownLoc(), tile, lockID, 0);
+          LockOp::create(builder, builder.getUnknownLoc(), tile, lockID, 0);
 
       lockChains[std::make_pair(release, acquire)] = std::make_pair(lock, 1);
 

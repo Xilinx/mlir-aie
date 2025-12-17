@@ -1,5 +1,5 @@
 import numpy as np
-from functools import update_wrapper
+from functools import lru_cache, update_wrapper
 import sys
 from typing import get_args, get_origin
 
@@ -198,23 +198,13 @@ class FuncBase:
             self.emit()
 
     def _is_decl(self):
-        # magic constant found from looking at the code for an empty fn
-        if sys.version_info.minor == 13:
-            return self.body_builder.__code__.co_code == b"\x95\x00g\x00"
-        elif sys.version_info.minor == 12:
-            return self.body_builder.__code__.co_code == b"\x97\x00y\x00"
-        elif sys.version_info.minor == 11:
-            return self.body_builder.__code__.co_code == b"\x97\x00d\x00S\x00"
-        elif sys.version_info.minor in {8, 9, 10}:
-            return self.body_builder.__code__.co_code == b"d\x00S\x00"
-        else:
-            raise NotImplementedError(f"{sys.version_info.minor} not supported.")
+        return self.body_builder.__code__.co_code == _EMPTY_FN_CODE
 
     def __str__(self):
         return str(f"{self.__class__} {self.__dict__}")
 
-    def emit(self, *call_args, decl=False, force=False) -> FuncOp:
-        if self._func_op is None or decl or force:
+    def emit(self, *call_args, force=False) -> FuncOp:
+        if self._func_op is None or force:
             input_types = self.input_types[:]
             for i, v in enumerate(input_types):
                 if isinstance(v, str):
@@ -245,7 +235,7 @@ class FuncBase:
             )
             for k, v in self.func_attrs.items():
                 self._func_op.attributes[k] = v
-            if self._is_decl() or decl:
+            if self._is_decl():
                 return self._func_op
 
             self._func_op.regions[0].blocks.append(*input_types, arg_locs=self.arg_locs)
@@ -272,6 +262,10 @@ class FuncBase:
 
     def __call__(self, *call_args):
         return call(self.emit(*call_args), call_args)
+
+
+# The bytecode of an empty function, determined at Python startup and constant at runtime.
+_EMPTY_FN_CODE = (lambda: None).__code__.co_code
 
 
 @make_maybe_no_args_decorator

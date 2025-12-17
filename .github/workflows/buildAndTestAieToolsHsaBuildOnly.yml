@@ -1,9 +1,9 @@
 name: Build and Test with AIE tools with HSA backend and build only tests
 
 on:
-  push:
-    branches:
-      - main
+#  push:
+#    branches:
+#      - main
 #  pull_request:
   workflow_dispatch:
     inputs:

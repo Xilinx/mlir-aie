@@ -192,10 +192,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       }
       unsigned arg_idx = buf_arg.getArgNumber();
       int64_t offset = bd_op.getOffsetInBytes();
-      builder.create<NpuAddressPatchOp>(bd_op.getLoc(),
-                                        /*addr*/ register_addr,
-                                        /*arg_idx*/ arg_idx,
-                                        /*arg_plus*/ offset);
+      NpuAddressPatchOp::create(builder, bd_op.getLoc(),
+                                /*addr*/ register_addr,
+                                /*arg_idx*/ arg_idx,
+                                /*arg_plus*/ offset);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -206,8 +206,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
             "address.");
       }
       buf_addr = *buffer.getAddress();
-      builder.create<NpuWrite32Op>(bd_op.getLoc(), register_addr, buf_addr,
-                                   nullptr, nullptr, nullptr);
+      NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
+                           nullptr, nullptr, nullptr);
     } else {
       return bd_op->emitOpError("Buffer argument must be either a constant "
                                 "aie.buffer or a runtime "
@@ -404,8 +404,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       packet_id = info.getPktId();
     }
 
-    builder.create<NpuWriteBdOp>(
-        bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity, offset,
+    NpuWriteBdOp::create(
+        builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
+        offset,
         /*enable_packet=*/enable_packet,
         /*out_of_order_id=*/out_of_order_id,
         /*packet_id=*/packet_id,
@@ -458,7 +459,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                                   // verifyBdInBlock() call
         bd_op.setNextBdId(next_dma_bd_op.getBdId().value());
         OpBuilder builder(next_bd_op);
-        builder.create<AIE::EndOp>(next_bd_op.getLoc());
+        AIE::EndOp::create(builder, next_bd_op.getLoc());
         next_bd_op.erase();
       }
     }

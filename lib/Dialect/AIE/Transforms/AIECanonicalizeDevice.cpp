@@ -38,8 +38,9 @@ struct AIECanonicalizeDevicePass
     OpBuilder builder(moduleOp->getContext());
 
     Location location = builder.getUnknownLoc();
-    auto deviceOp = builder.create<DeviceOp>(
-        location, AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902),
+    auto deviceOp = DeviceOp::create(
+        builder, location,
+        AIEDeviceAttr::get(builder.getContext(), AIEDevice::xcvc1902),
         StringAttr::get(builder.getContext(),
                         DeviceOp::getDefaultDeviceName()));
 

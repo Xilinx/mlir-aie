@@ -167,15 +167,16 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
                             memrefType.getLayout(), genericSpace);
 
         // Insert unrealized_conversion_cast to convert to generic_space
-        auto castOp = rewriter.create<UnrealizedConversionCastOp>(
-            loc, newMemrefType, memref);
+        auto castOp = UnrealizedConversionCastOp::create(rewriter, loc,
+                                                         newMemrefType, memref);
         memrefToConvert = castOp.getResult(0);
         genericMemrefType = newMemrefType;
       }
 
       // Create pointer type with generic_space
       auto ptrType = ptr::PtrType::get(rewriter.getContext(), genericSpace);
-      auto ptrOp = rewriter.create<ptr::ToPtrOp>(loc, ptrType, memrefToConvert);
+      auto ptrOp =
+          ptr::ToPtrOp::create(rewriter, loc, ptrType, memrefToConvert);
       memrefToPtrMap[memref] = ptrOp.getResult();
       memrefToGenericTypeMap[memref] = genericMemrefType;
       memrefToConvertedMap[memref] =
@@ -201,7 +202,7 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
 
     // Step 3: Build new init args with pointers
     SmallVector<Value> newInitArgs;
-    Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    Value c0 = arith::ConstantIndexOp::create(rewriter, loc, 0);
 
     for (auto [idx, initArg] : llvm::enumerate(forOp.getInitArgs())) {
       auto it = llvm::find(indexIterArgPositions, idx);
@@ -220,14 +221,14 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
         Value byteOffset = initArg;
         if (elementSizeBytes != 1) {
           Value elementSize =
-              rewriter.create<arith::ConstantIndexOp>(loc, elementSizeBytes);
+              arith::ConstantIndexOp::create(rewriter, loc, elementSizeBytes);
           byteOffset =
-              rewriter.create<arith::MulIOp>(loc, initArg, elementSize);
+              arith::MulIOp::create(rewriter, loc, initArg, elementSize);
         }
 
         // Create: ptr.ptr_add basePtr, byteOffset
         auto initPtrOp =
-            rewriter.create<ptr::PtrAddOp>(loc, basePtr, byteOffset);
+            ptr::PtrAddOp::create(rewriter, loc, basePtr, byteOffset);
         newInitArgs.push_back(initPtrOp.getResult());
       } else {
         // Keep as-is
@@ -236,9 +237,9 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
     }
 
     // Step 4: Create new loop with updated signature
-    auto newForOp = rewriter.create<scf::ForOp>(loc, forOp.getLowerBound(),
-                                                forOp.getUpperBound(),
-                                                forOp.getStep(), newInitArgs);
+    auto newForOp =
+        scf::ForOp::create(rewriter, loc, forOp.getLowerBound(),
+                           forOp.getUpperBound(), forOp.getStep(), newInitArgs);
 
     // Step 5: Transform loop body (simplified - doesn't handle all cases yet)
     IRMapping mapper;
@@ -265,16 +266,17 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
 
           // Get metadata from the converted memref (with generic_space)
           Value convertedMemref = memrefToConvertedMap[loadOp.getBase()];
-          auto metadataOp = rewriter.create<ptr::GetMetadataOp>(
-              loadOp.getLoc(), convertedMemref);
+          auto metadataOp = ptr::GetMetadataOp::create(
+              rewriter, loadOp.getLoc(), convertedMemref);
 
           // Transform: vector.load %memref[%ptr] -> ptr.from_ptr + vector.load
           // [...[0]]
-          auto fromPtrOp = rewriter.create<ptr::FromPtrOp>(
-              loadOp.getLoc(), genericType, mappedIdx, metadataOp.getResult());
-          auto newLoad = rewriter.create<vector::LoadOp>(
-              loadOp.getLoc(), loadOp.getVectorType(), fromPtrOp.getResult(),
-              ValueRange{c0});
+          auto fromPtrOp =
+              ptr::FromPtrOp::create(rewriter, loadOp.getLoc(), genericType,
+                                     mappedIdx, metadataOp.getResult());
+          auto newLoad = vector::LoadOp::create(
+              rewriter, loadOp.getLoc(), loadOp.getVectorType(),
+              fromPtrOp.getResult(), ValueRange{c0});
           mapper.map(loadOp.getResult(), newLoad.getResult());
           continue;
         }
@@ -291,18 +293,18 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
 
           // Get metadata from the converted memref (with generic_space)
           Value convertedMemref = memrefToConvertedMap[storeOp.getBase()];
-          auto metadataOp = rewriter.create<ptr::GetMetadataOp>(
-              storeOp.getLoc(), convertedMemref);
+          auto metadataOp = ptr::GetMetadataOp::create(
+              rewriter, storeOp.getLoc(), convertedMemref);
 
           // Transform: vector.store %val, %memref[%ptr] -> ptr.from_ptr +
           // vector.store[0]
-          auto fromPtrOp = rewriter.create<ptr::FromPtrOp>(
-              storeOp.getLoc(), genericType, mappedIdx, metadataOp.getResult());
+          auto fromPtrOp =
+              ptr::FromPtrOp::create(rewriter, storeOp.getLoc(), genericType,
+                                     mappedIdx, metadataOp.getResult());
           Value valueToStore =
               mapper.lookupOrDefault(storeOp.getValueToStore());
-          rewriter.create<vector::StoreOp>(storeOp.getLoc(), valueToStore,
-                                           fromPtrOp.getResult(),
-                                           ValueRange{c0});
+          vector::StoreOp::create(rewriter, storeOp.getLoc(), valueToStore,
+                                  fromPtrOp.getResult(), ValueRange{c0});
           continue;
         }
       }
@@ -331,15 +333,15 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
 
             // Scale offset by element size: byteOffset = rhs * elementSizeBytes
             if (elementSizeBytes != 1) {
-              Value elementSize = rewriter.create<arith::ConstantIndexOp>(
-                  addiOp.getLoc(), elementSizeBytes);
-              byteOffset = rewriter.create<arith::MulIOp>(addiOp.getLoc(), rhs,
-                                                          elementSize);
+              Value elementSize = arith::ConstantIndexOp::create(
+                  rewriter, addiOp.getLoc(), elementSizeBytes);
+              byteOffset = arith::MulIOp::create(rewriter, addiOp.getLoc(), rhs,
+                                                 elementSize);
             }
           }
 
           auto ptrAddOp =
-              rewriter.create<ptr::PtrAddOp>(addiOp.getLoc(), lhs, byteOffset);
+              ptr::PtrAddOp::create(rewriter, addiOp.getLoc(), lhs, byteOffset);
           mapper.map(addiOp.getResult(), ptrAddOp.getResult());
           continue;
         }
@@ -355,7 +357,7 @@ struct VectorToPointerLoopsPattern : public OpRewritePattern<scf::ForOp> {
     for (Value operand : oldYield.getOperands()) {
       newYieldOperands.push_back(mapper.lookupOrDefault(operand));
     }
-    rewriter.create<scf::YieldOp>(loc, newYieldOperands);
+    scf::YieldOp::create(rewriter, loc, newYieldOperands);
 
     // Step 6: Replace old loop
     rewriter.replaceOp(forOp, newForOp.getResults());

@@ -65,25 +65,25 @@ struct AIEBroadcastPacketPass
           Block &b_bpid = r_bpid.front();
           int flowID = bpid.IDInt();
           builder.setInsertionPointAfter(broadcastpacket);
-          PacketFlowOp pkFlow = builder.create<PacketFlowOp>(
-              builder.getUnknownLoc(), flowID, nullptr, nullptr);
+          PacketFlowOp pkFlow = PacketFlowOp::create(
+              builder, builder.getUnknownLoc(), flowID, nullptr, nullptr);
           Region &r_pkFlow = pkFlow.getPorts();
           Block *b_pkFlow = builder.createBlock(&r_pkFlow);
           builder.setInsertionPointToStart(b_pkFlow);
-          builder.create<PacketSourceOp>(builder.getUnknownLoc(), srcTile,
-                                         sourcePort.bundle, sourcePort.channel);
+          PacketSourceOp::create(builder, builder.getUnknownLoc(), srcTile,
+                                 sourcePort.bundle, sourcePort.channel);
           for (Operation &op : b_bpid.getOperations()) {
             if (BPDestOp bpdest = dyn_cast<BPDestOp>(op)) {
               TileOp destTile =
                   dyn_cast<TileOp>(bpdest.getTile().getDefiningOp());
               Port destPort = bpdest.port();
               builder.setInsertionPointToEnd(b_pkFlow);
-              builder.create<PacketDestOp>(builder.getUnknownLoc(), destTile,
-                                           destPort.bundle, destPort.channel);
+              PacketDestOp::create(builder, builder.getUnknownLoc(), destTile,
+                                   destPort.bundle, destPort.channel);
             }
           }
           builder.setInsertionPointToEnd(b_pkFlow);
-          builder.create<EndOp>(builder.getUnknownLoc());
+          EndOp::create(builder, builder.getUnknownLoc());
         }
       }
     }

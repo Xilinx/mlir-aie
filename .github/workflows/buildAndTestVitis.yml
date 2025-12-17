@@ -124,9 +124,13 @@ jobs:
             $CMAKE_ARGS
 
           # Create runner-specific cache directory
-          mkdir -p $IRON_CACHE_HOME
+          rm -rf $IRON_CACHE_HOME
+          mkdir $IRON_CACHE_HOME
 
           ninja install
           ninja check-aie
           popd
 
+      - name: Cleanup IRON_CACHE_HOME
+        if: always()
+        run: rm -rf $IRON_CACHE_HOME

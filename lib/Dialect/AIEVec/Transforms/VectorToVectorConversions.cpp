@@ -160,10 +160,9 @@ struct SplitUnalignedTransferReadPattern
     Value oldInnerMostIdx = adaptor.getIndices().back();
     auto offsetCorrectionMap =
         AffineMap::get(1, 0, getAffineDimExpr(0, readOp.getContext()) - offset);
-    Value newInnerMostIdx = rewriter
-                                .create<affine::AffineApplyOp>(
-                                    readOp.getLoc(), offsetCorrectionMap,
-                                    SmallVector<Value, 1>({oldInnerMostIdx}))
+    Value newInnerMostIdx = affine::AffineApplyOp::create(
+                                rewriter, readOp.getLoc(), offsetCorrectionMap,
+                                SmallVector<Value, 1>({oldInnerMostIdx}))
                                 .getResult();
     SmallVector<Value, 8> alignedIdx;
     alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
@@ -171,8 +170,9 @@ struct SplitUnalignedTransferReadPattern
 
     // Create the aligned transfer read for a vector 2x as long that covers the
     // elements of the unaligned vector.
-    auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        loc, longVecTy, adaptor.getBase(), alignedIdx, adaptor.getPadding());
+    auto newReadOp = vector::TransferReadOp::create(
+        rewriter, loc, longVecTy, adaptor.getBase(), alignedIdx,
+        adaptor.getPadding());
 
     // Create a `vector.extract_strided_slice` to extract the unaligned vector.
     rewriter.replaceOpWithNewOp<vector::ExtractStridedSliceOp>(
@@ -209,13 +209,12 @@ struct ConvertSplatTransferReadToBroadcastPattern
     int64_t offset = 0;
     // If it's a zero-rank memory access
     if (cast<MemRefType>(srcMemRef.getType()).getRank() == 0) {
-      srcMemRef = rewriter
-                      .create<memref::ExpandShapeOp>(
-                          readOp.getLoc(), SmallVector<int64_t, 1>({1}),
-                          srcMemRef, SmallVector<ReassociationIndices, 1>({}))
+      srcMemRef = memref::ExpandShapeOp::create(
+                      rewriter, readOp.getLoc(), SmallVector<int64_t, 1>({1}),
+                      srcMemRef, SmallVector<ReassociationIndices, 1>({}))
                       .getResult();
-      newIdx = rewriter.create<arith::ConstantOp>(readOp.getLoc(),
-                                                  rewriter.getIndexAttr(0L));
+      newIdx = arith::ConstantOp::create(rewriter, readOp.getLoc(),
+                                         rewriter.getIndexAttr(0L));
       indices.push_back(newIdx);
     } else {
       indices.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
@@ -239,17 +238,17 @@ struct ConvertSplatTransferReadToBroadcastPattern
       auto newAddrMap = AffineMap::get(
           1, 0, getAffineDimExpr(0, readOp.getContext()) + numElemsToSkip);
       newIdx =
-          rewriter
-              .create<affine::AffineApplyOp>(readOp.getLoc(), newAddrMap,
-                                             SmallVector<Value, 1>({newIdx}))
+          affine::AffineApplyOp::create(rewriter, readOp.getLoc(), newAddrMap,
+                                        SmallVector<Value, 1>({newIdx}))
               .getResult();
     }
     indices[indices.size() - 1] = newIdx;
-    auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), readOp.getVector().getType(), srcMemRef, indices,
-        adaptor.getPadding());
-    auto extractOp = rewriter.create<vector::ExtractOp>(
-        readOp.getLoc(), newReadOp.getResult(), ArrayRef<int64_t>{offset});
+    auto newReadOp = vector::TransferReadOp::create(
+        rewriter, readOp.getLoc(), readOp.getVector().getType(), srcMemRef,
+        indices, adaptor.getPadding());
+    auto extractOp = vector::ExtractOp::create(rewriter, readOp.getLoc(),
+                                               newReadOp.getResult(),
+                                               ArrayRef<int64_t>{offset});
     rewriter.replaceOpWithNewOp<vector::BroadcastOp>(
         readOp, newReadOp.getVector().getType(), extractOp.getResult());
     return success();
@@ -289,21 +288,21 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
       if (operandTy == extOpInTy) {
         Type outTy = extOp.getOut().getType();
         inputs.push_back(
-            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+            arith::ExtSIOp::create(rewriter, extOp.getLoc(), outTy, operand)
                 .getOut());
       } else if (extOpInVecTy && extOpInVecTy.getElementType() == operandTy) {
         // Promote from vector to scalar -> scalar conversion for this operand
         Type outTy =
             cast<VectorType>(extOp.getOut().getType()).getElementType();
         inputs.push_back(
-            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+            arith::ExtSIOp::create(rewriter, extOp.getLoc(), outTy, operand)
                 .getOut());
       } else if (operandVecTy && operandVecTy.getElementType() == extOpInTy) {
         // Promote from scalar to vector -> vector conversion for this operand
         Type outTy =
             VectorType::get(operandVecTy.getShape(), extOp.getOut().getType());
         inputs.push_back(
-            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+            arith::ExtSIOp::create(rewriter, extOp.getLoc(), outTy, operand)
                 .getOut());
       } else if (extOpInVecTy && operandVecTy &&
                  (extOpInVecTy.getElementType() ==
@@ -313,7 +312,7 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
             operandVecTy.getShape(),
             cast<VectorType>(extOp.getOut().getType()).getElementType());
         inputs.push_back(
-            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+            arith::ExtSIOp::create(rewriter, extOp.getLoc(), outTy, operand)
                 .getOut());
       } else {
         inputs.push_back(operand);
@@ -359,11 +358,11 @@ struct SwapUnaryOpsPattern : public OpRewritePattern<UnaryOpB> {
     Type newA2BTy = inferTypeB2A(aOp, bOp);
 
     auto newA =
-        rewriter.create<UnaryOpB>(bOp->getLoc(), SmallVector<Type>({newA2BTy}),
-                                  aOp->getOperands(), bOp->getAttrs());
-    auto newB = rewriter.create<UnaryOpA>(
-        bOp->getLoc(), SmallVector<Type>({bOp.getResult().getType()}),
-        newA->getResults(), aOp->getAttrs());
+        UnaryOpB::create(rewriter, bOp->getLoc(), SmallVector<Type>({newA2BTy}),
+                         aOp->getOperands(), bOp->getAttrs());
+    auto newB = UnaryOpA::create(rewriter, bOp->getLoc(),
+                                 SmallVector<Type>({bOp.getResult().getType()}),
+                                 newA->getResults(), aOp->getAttrs());
     rewriter.replaceOp(bOp, newB.getResult());
     return success();
   }
@@ -385,8 +384,8 @@ static SmallVector<Value> collapseInnerMostDimIndices(PatternRewriter &b,
   }
   auto newIndexMap = AffineMap::get(numDims, 0, newIdxExpr);
   Value newInnerMostIdxValue =
-      b.create<affine::AffineApplyOp>(loc, newIndexMap,
-                                      indices.take_back(numDims))
+      affine::AffineApplyOp::create(b, loc, newIndexMap,
+                                    indices.take_back(numDims))
           .getResult();
   SmallVector<Value> newIdxRange;
   for (auto idx : indices.drop_back(numDims))
@@ -411,8 +410,8 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
       memRefTy.getMemorySpace());
   auto reassocIndices =
       getReassociationIndicesForCollapse(shape, newShape).value();
-  return b
-      .create<memref::CollapseShapeOp>(loc, newMemRefTy, val, reassocIndices)
+  return memref::CollapseShapeOp::create(b, loc, newMemRefTy, val,
+                                         reassocIndices)
       .getResult();
 }
 
@@ -450,8 +449,8 @@ struct FlattenMultDimTransferReadPattern
                                     adaptor.getIndices(), memRefShape, layout);
     auto newSource = collapseInnerMostShapeDims(
         rewriter, readOp.getLoc(), vecShape.size(), adaptor.getBase());
-    auto newVector = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, newSource, newIndices,
+    auto newVector = vector::TransferReadOp::create(
+        rewriter, readOp.getLoc(), newVectorTy, newSource, newIndices,
         /*padding*/
         arith::getZeroConstant(rewriter, readOp.getLoc(),
                                newVectorTy.getElementType()));
@@ -504,9 +503,8 @@ struct FlattenMultDimTransferWritePattern
                         vectorTy.getElementType());
     AffineMap layout = memRefTy.getLayout().getAffineMap();
     auto newVector =
-        rewriter
-            .create<vector::ShapeCastOp>(writeOp.getLoc(), newVectorTy,
-                                         adaptor.getValueToStore())
+        vector::ShapeCastOp::create(rewriter, writeOp.getLoc(), newVectorTy,
+                                    adaptor.getValueToStore())
             .getResult();
     auto newIndices =
         collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),
@@ -585,31 +583,27 @@ struct ExtractTransposeFromContractionOp
     rhsPermutation.push_back(nDim - 1);
     rhsPermutation.push_back(nDim - 2);
     auto transpRhsVecTy = getTransposedVectorType(rhsVecTy);
-    rhsVal = rewriter
-                 .create<vector::TransposeOp>(loc, transpRhsVecTy, rhsVal,
-                                              rhsPermutation)
+    rhsVal = vector::TransposeOp::create(rewriter, loc, transpRhsVecTy, rhsVal,
+                                         rhsPermutation)
                  .getResult();
 
     if (doExtF)
       rhsVal =
-          rewriter
-              .create<arith::ExtFOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+          arith::ExtFOp::create(
+              rewriter, loc,
+              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
               .getOut();
     if (doExtSI)
       rhsVal =
-          rewriter
-              .create<arith::ExtSIOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+          arith::ExtSIOp::create(
+              rewriter, loc,
+              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
               .getOut();
     if (doExtUI)
       rhsVal =
-          rewriter
-              .create<arith::ExtUIOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+          arith::ExtUIOp::create(
+              rewriter, loc,
+              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
               .getOut();
 
     SmallVector<AffineMap, 4> oldIdxMaps(contractOp.getIndexingMapsArray());
@@ -658,8 +652,8 @@ static SmallVector<Value> opFoldResultsToValues(PatternRewriter &rewriter,
   for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
     Value indexVal;
     if (auto attr = dyn_cast<Attribute>(offset)) {
-      indexVal = rewriter.create<arith::ConstantIndexOp>(
-          loc, cast<IntegerAttr>(attr).getInt());
+      indexVal = arith::ConstantIndexOp::create(
+          rewriter, loc, cast<IntegerAttr>(attr).getInt());
     } else {
       indexVal = cast<Value>(offset);
     }
@@ -748,9 +742,9 @@ struct CanonicalizeTrivialWriteAccessSubviewOpPattern
         opFoldResultsToValues(rewriter, writeOp.getLoc(), subViewOp);
 
     // Create new transfer_write with direct access to original memref
-    rewriter.create<vector::TransferWriteOp>(
-        writeOp.getLoc(), writeOp.getVector(), subViewOp.getSource(),
-        newIndices, writeOp.getInBoundsValues());
+    vector::TransferWriteOp::create(rewriter, writeOp.getLoc(),
+                                    writeOp.getVector(), subViewOp.getSource(),
+                                    newIndices, writeOp.getInBoundsValues());
 
     // Remove the original transfer_write operation
     rewriter.eraseOp(writeOp);

@@ -250,9 +250,9 @@ static bool skippedOp(Operation *op, CppEmitter &emitter,
   // Ops that must be skipped:
   bool skip =
       TypeSwitch<Operation *, bool>(op)
-          // skip op 1 : all dim op and assume_alignement op
-          .Case<memref::DimOp, memref::AssumeAlignmentOp>(
-              [](auto op) { return true; })
+          // skip op 1 : all dim op, assume_alignment op, alloc and dealloc ops
+          .Case<memref::DimOp, memref::AssumeAlignmentOp, memref::AllocOp,
+                memref::DeallocOp>([](auto op) { return true; })
           // skip op 2 : some aievec::srs for float types
           .Case<aievec::SRSOp>([&](auto srsOp) {
             // Get the datatype of the source accumulator and result vector

@@ -1215,8 +1215,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = builder.create<TileOp>(builder.getUnknownLoc(),
-                                  builder.getIndexType(), col, row);
+    tile = TileOp::create(builder, builder.getUnknownLoc(),
+                          builder.getIndexType(), col, row);
   }
   return tile;
 }

@@ -1047,7 +1047,6 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::Runt
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     std::optional<uint32_t> getFirstBdId();
-    using ::xilinx::AIE::TileElement::Trait<AIEX::DMAConfigureTaskOp>::getAsmResultNames;
   }];
 
   let extraClassDefinition = [{
@@ -1187,7 +1186,6 @@ def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"AIE::Runtim
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     AIE::BDChainOp getBDChainOp();
-    using ::xilinx::AIE::TileElement::Trait<AIEX::DMAStartBdChainOp>::getAsmResultNames;
   }];
 
   let extraClassDefinition = [{

@@ -266,7 +266,7 @@ def test_i8xi8_add_elem(module):
             unknown_type_conversion="identity-layout-map",
         )
         .drop_equivalent_buffer_results()
-        .buffer_results_to_out_params()
+        .buffer_results_to_out_params(modify_public_functions=True)
         .add_pass("buffer-deallocation-pipeline")
         .canonicalize()
         .cse()

@@ -46,8 +46,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     auto point = rewriter.saveInsertionPoint();
     rewriter.setInsertionPoint(b.getTerminator());
 
-    rewriter.create<ConnectOp>(rewriter.getUnknownLoc(), inBundle, inIndex,
-                               outBundle, outIndex);
+    ConnectOp::create(rewriter, rewriter.getUnknownLoc(), inBundle, inIndex,
+                      outBundle, outIndex);
 
     rewriter.restoreInsertionPoint(point);
 
@@ -847,8 +847,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         if (amselOpNeededVector[amselValue]) {
           int arbiterID = a;
           int msel = i;
-          auto amsel =
-              builder.create<AMSelOp>(builder.getUnknownLoc(), arbiterID, msel);
+          auto amsel = AMSelOp::create(builder, builder.getUnknownLoc(),
+                                       arbiterID, msel);
           amselOps[amselValue] = amsel;
         }
       }
@@ -873,9 +873,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         amsels.push_back(amselOps[msel]);
       }
 
-      builder.create<MasterSetOp>(
-          builder.getUnknownLoc(), builder.getIndexType(), bundle, channel,
-          amsels, keepPktHeaderAttr[{tileId, tileMaster}]);
+      MasterSetOp::create(builder, builder.getUnknownLoc(),
+                          builder.getIndexType(), bundle, channel, amsels,
+                          keepPktHeaderAttr[{tileId, tileMaster}]);
     }
 
     // Generate the packet rules
@@ -903,8 +903,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
       PacketRulesOp packetrules;
       if (slaveRules.count(slave) == 0) {
-        packetrules = builder.create<PacketRulesOp>(builder.getUnknownLoc(),
-                                                    bundle, channel);
+        packetrules = PacketRulesOp::create(builder, builder.getUnknownLoc(),
+                                            bundle, channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         builder.getUnknownLoc());
         slaveRules[slave] = packetrules;
@@ -926,7 +926,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       }
 
       builder.setInsertionPoint(rules.getTerminator());
-      builder.create<PacketRuleOp>(builder.getUnknownLoc(), mask, ID, amsel);
+      PacketRuleOp::create(builder, builder.getUnknownLoc(), mask, ID, amsel);
     }
   }
 
@@ -983,13 +983,13 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
           pktrules.setSourceBundle(WireBundle::South);
           if (pktrules.getSourceChannel() == 0) {
             pktrules.setSourceChannel(3);
-            builder.create<ConnectOp>(builder.getUnknownLoc(), WireBundle::DMA,
-                                      0, WireBundle::North, 3);
+            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,
+                              0, WireBundle::North, 3);
           }
           if (pktrules.getSourceChannel() == 1) {
             pktrules.setSourceChannel(7);
-            builder.create<ConnectOp>(builder.getUnknownLoc(), WireBundle::DMA,
-                                      1, WireBundle::North, 7);
+            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,
+                              1, WireBundle::North, 7);
           }
         }
       }
@@ -1014,13 +1014,13 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
           mtset.setDestBundle(WireBundle::South);
           if (mtset.getDestChannel() == 0) {
             mtset.setDestChannel(2);
-            builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                      WireBundle::North, 2, WireBundle::DMA, 0);
+            ConnectOp::create(builder, builder.getUnknownLoc(),
+                              WireBundle::North, 2, WireBundle::DMA, 0);
           }
           if (mtset.getDestChannel() == 1) {
             mtset.setDestChannel(3);
-            builder.create<ConnectOp>(builder.getUnknownLoc(),
-                                      WireBundle::North, 3, WireBundle::DMA, 1);
+            ConnectOp::create(builder, builder.getUnknownLoc(),
+                              WireBundle::North, 3, WireBundle::DMA, 1);
           }
         }
       }
@@ -1067,51 +1067,50 @@ void AIEPathfinderPass::runOnOperation() {
         // connections east-west between stream switches
         if (analyzer.coordToSwitchbox.count({col - 1, row})) {
           auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
-          builder.create<WireOp>(builder.getUnknownLoc(), westsw,
-                                 WireBundle::East, sw, WireBundle::West);
+          WireOp::create(builder, builder.getUnknownLoc(), westsw,
+                         WireBundle::East, sw, WireBundle::West);
         }
       }
       if (row > 0) {
         // connections between abstract 'core' of tile
-        builder.create<WireOp>(builder.getUnknownLoc(), tile, WireBundle::Core,
-                               sw, WireBundle::Core);
+        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::Core,
+                       sw, WireBundle::Core);
         // connections between abstract 'dma' of tile
-        builder.create<WireOp>(builder.getUnknownLoc(), tile, WireBundle::DMA,
-                               sw, WireBundle::DMA);
+        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::DMA,
+                       sw, WireBundle::DMA);
         // connections north-south inside array ( including connection to shim
         // row)
         if (analyzer.coordToSwitchbox.count({col, row - 1})) {
           auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
-          builder.create<WireOp>(builder.getUnknownLoc(), southsw,
-                                 WireBundle::North, sw, WireBundle::South);
+          WireOp::create(builder, builder.getUnknownLoc(), southsw,
+                         WireBundle::North, sw, WireBundle::South);
         }
       } else if (row == 0) {
         if (tile.isShimNOCTile()) {
           if (analyzer.coordToShimMux.count({col, 0})) {
             auto shimsw = analyzer.coordToShimMux[{col, 0}];
-            builder.create<WireOp>(
-                builder.getUnknownLoc(), shimsw,
+            WireOp::create(
+                builder, builder.getUnknownLoc(), shimsw,
                 WireBundle::North, // Changed to connect into the north
                 sw, WireBundle::South);
             // PLIO is attached to shim mux
             if (analyzer.coordToPLIO.count(col)) {
               auto plio = analyzer.coordToPLIO[col];
-              builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                     WireBundle::North, shimsw,
-                                     WireBundle::South);
+              WireOp::create(builder, builder.getUnknownLoc(), plio,
+                             WireBundle::North, shimsw, WireBundle::South);
             }
 
             // abstract 'DMA' connection on tile is attached to shim mux ( in
             // row 0 )
-            builder.create<WireOp>(builder.getUnknownLoc(), tile,
-                                   WireBundle::DMA, shimsw, WireBundle::DMA);
+            WireOp::create(builder, builder.getUnknownLoc(), tile,
+                           WireBundle::DMA, shimsw, WireBundle::DMA);
           }
         } else if (tile.isShimPLTile()) {
           // PLIO is attached directly to switch
           if (analyzer.coordToPLIO.count(col)) {
             auto plio = analyzer.coordToPLIO[col];
-            builder.create<WireOp>(builder.getUnknownLoc(), plio,
-                                   WireBundle::North, sw, WireBundle::South);
+            WireOp::create(builder, builder.getUnknownLoc(), plio,
+                           WireBundle::North, sw, WireBundle::South);
           }
         }
       }

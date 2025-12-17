@@ -244,20 +244,20 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
         Operation *destOp = portConnection.op;
         Port destPort = portConnection.port;
         if (maskValue.mask == 0) {
-          rewriter.create<FlowOp>(Op->getLoc(), Op->getResult(0), bundle, i,
-                                  destOp->getResult(0), destPort.bundle,
-                                  destPort.channel);
+          FlowOp::create(rewriter, Op->getLoc(), Op->getResult(0), bundle, i,
+                         destOp->getResult(0), destPort.bundle,
+                         destPort.channel);
         } else {
-          auto flowOp = rewriter.create<PacketFlowOp>(
-              Op->getLoc(), maskValue.value, nullptr, nullptr);
+          auto flowOp = PacketFlowOp::create(rewriter, Op->getLoc(),
+                                             maskValue.value, nullptr, nullptr);
           PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter,
                                          Op->getLoc());
           OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
           rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
-          rewriter.create<PacketSourceOp>(Op->getLoc(), Op->getResult(0),
-                                          bundle, i);
-          rewriter.create<PacketDestOp>(Op->getLoc(), destOp->getResult(0),
-                                        destPort.bundle, destPort.channel);
+          PacketSourceOp::create(rewriter, Op->getLoc(), Op->getResult(0),
+                                 bundle, i);
+          PacketDestOp::create(rewriter, Op->getLoc(), destOp->getResult(0),
+                               destPort.bundle, destPort.channel);
           rewriter.restoreInsertionPoint(ip);
         }
       }

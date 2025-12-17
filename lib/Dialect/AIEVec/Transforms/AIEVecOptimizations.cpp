@@ -160,8 +160,8 @@ struct MergeSingleColumnI16FMAOpPattern
     auto hiV = fmaConcatOp.getSources()[0];
     if (accFmaZstart > fmaZstart)
       std::swap(lowV, hiV);
-    auto newConcatOp = rewriter.create<aievec::ConcatOp>(
-        fmaOp.getLoc(), adaptor.getLhs().getType(),
+    auto newConcatOp = aievec::ConcatOp::create(
+        rewriter, fmaOp.getLoc(), adaptor.getLhs().getType(),
         SmallVector<Value, 2>({lowV, hiV}));
     auto newFmaOpAttr = buildFMAOpSplatAttrForElemTy(fmaOp, start, step);
     rewriter.replaceOpWithNewOp<aievec::aie1::FMAOp>(

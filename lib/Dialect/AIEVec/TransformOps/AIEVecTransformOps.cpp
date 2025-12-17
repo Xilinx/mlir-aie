@@ -45,16 +45,16 @@ static Value vectorizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   auto shapeTy = cast<ShapedType>(opTy);
   auto shape = shapeTy.getShape();
   auto elemTy = shapeTy.getElementType();
-  auto ToBufferOp = rewriter.create<bufferization::ToBufferOp>(
-      loc, MemRefType::get(shape, elemTy), tensor);
+  auto ToBufferOp = bufferization::ToBufferOp::create(
+      rewriter, loc, MemRefType::get(shape, elemTy), tensor);
   auto rank = shape.size();
   auto newShape = shape.slice(0, rank - 2);
   auto opVecElemTy = VectorType::get(shape.slice(rank - 2, 2), elemTy);
   auto opMemrefVecTy = MemRefType::get(newShape, opVecElemTy);
   auto typeCastOp =
-      rewriter.create<vector::TypeCastOp>(loc, opMemrefVecTy, ToBufferOp);
-  auto toTensorOp = rewriter.create<bufferization::ToTensorOp>(
-      loc, RankedTensorType::get(newShape, opVecElemTy), typeCastOp);
+      vector::TypeCastOp::create(rewriter, loc, opMemrefVecTy, ToBufferOp);
+  auto toTensorOp = bufferization::ToTensorOp::create(
+      rewriter, loc, RankedTensorType::get(newShape, opVecElemTy), typeCastOp);
   toTensorOp.setRestrict(true);
   return toTensorOp.getResult();
 }
@@ -69,8 +69,8 @@ static Value scalarizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   auto vecShape = shapeTy.getShape();
   auto vecElemTy = cast<VectorType>(shapeTy.getElementType());
   auto elemTy = vecElemTy.getElementType();
-  auto toBufferVecTyOp = rewriter.create<bufferization::ToBufferOp>(
-      loc, MemRefType::get(vecShape, vecElemTy), tensor);
+  auto toBufferVecTyOp = bufferization::ToBufferOp::create(
+      rewriter, loc, MemRefType::get(vecShape, vecElemTy), tensor);
 
   SmallVector<int64_t> scalShape;
   for (auto d : shapeTy.getShape())
@@ -78,11 +78,11 @@ static Value scalarizeTensor(OpBuilder &rewriter, Location loc, Value tensor) {
   for (auto d : vecElemTy.getShape())
     scalShape.push_back(d);
   auto opMemrefScalTy = MemRefType::get(scalShape, elemTy);
-  auto typeCastOp =
-      rewriter.create<vector::TypeCastOp>(loc, opMemrefScalTy, toBufferVecTyOp);
+  auto typeCastOp = vector::TypeCastOp::create(rewriter, loc, opMemrefScalTy,
+                                               toBufferVecTyOp);
 
-  auto toTensorOp = rewriter.create<bufferization::ToTensorOp>(
-      loc, RankedTensorType::get(scalShape, elemTy), typeCastOp);
+  auto toTensorOp = bufferization::ToTensorOp::create(
+      rewriter, loc, RankedTensorType::get(scalShape, elemTy), typeCastOp);
   toTensorOp.setRestrict(true);
   return toTensorOp.getResult();
 }
@@ -133,8 +133,8 @@ static bool vectorizeContractionOpBlock(OpBuilder &rewriter, Location loc,
             opC = convertedValues[lhs];
           } else
             return WalkResult::interrupt();
-          auto conOp = rewriter.create<vector::ContractionOp>(
-              loc, opA, opB, opC, indexingMaps, iteratorTypes);
+          auto conOp = vector::ContractionOp::create(
+              rewriter, loc, opA, opB, opC, indexingMaps, iteratorTypes);
           convertedValues.try_emplace(op->getResult(0), conOp.getResult());
           return WalkResult::advance();
         })
@@ -145,8 +145,8 @@ static bool vectorizeContractionOpBlock(OpBuilder &rewriter, Location loc,
           return WalkResult::skip();
         })
         .Case<linalg::YieldOp>([&](linalg::YieldOp yieldOp) {
-          rewriter.create<linalg::YieldOp>(
-              loc, convertedValues[yieldOp.getValues()[0]]);
+          linalg::YieldOp::create(rewriter, loc,
+                                  convertedValues[yieldOp.getValues()[0]]);
           return WalkResult::advance(); // Or ::interrupt()
         })
         .Default([&](Operation *unaryOp) {
@@ -260,8 +260,8 @@ DiagnosedSilenceableFailure transform::VectorizeContractionOp::applyToOne(
   auto opC = vectorizeTensor(rewriter, loc, target.getOutputs()[0]);
 
   // Create new linalg.generic with vector arguments and vectorized basic block
-  auto newOp = rewriter.create<linalg::GenericOp>(
-      loc, TypeRange({opC.getType()}), ValueRange({opA, opB}),
+  auto newOp = linalg::GenericOp::create(
+      rewriter, loc, TypeRange({opC.getType()}), ValueRange({opA, opB}),
       ValueRange({opC}),
       SmallVector<AffineMap>(
           {outerMostAidxMap, outerMostBidxMap, outerMostCidxMap}),

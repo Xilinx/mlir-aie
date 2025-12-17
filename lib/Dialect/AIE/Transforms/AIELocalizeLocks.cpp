@@ -73,8 +73,8 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
             OpBuilder builder =
                 OpBuilder::atBlockBegin(&coreOp.getBody().front());
 
-            Value coreLockIDValue = builder.create<arith::ConstantIndexOp>(
-                builder.getUnknownLoc(), localLockIndex);
+            Value coreLockIDValue = arith::ConstantIndexOp::create(
+                builder, builder.getUnknownLoc(), localLockIndex);
             lock.getResult().replaceUsesWithIf(
                 coreLockIDValue, [&](OpOperand &opOperand) {
                   return opOperand.getOwner()->getParentOp() == coreOp;

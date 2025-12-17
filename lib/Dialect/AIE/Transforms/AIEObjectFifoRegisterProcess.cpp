@@ -37,14 +37,14 @@ struct AIEObjectFifoRegisterProcessPass
     : AIEObjectFifoRegisterProcessBase<AIEObjectFifoRegisterProcessPass> {
 
   scf::ForOp createForLoop(OpBuilder &builder, int length) {
-    auto lowerBound = builder.create<arith::ConstantOp>(
-        builder.getUnknownLoc(), builder.getIndexAttr(0));
-    auto upperBound = builder.create<arith::ConstantOp>(
-        builder.getUnknownLoc(), builder.getIndexAttr(length));
-    auto step = builder.create<arith::ConstantOp>(builder.getUnknownLoc(),
-                                                  builder.getIndexAttr(1));
-    auto forLoop = builder.create<scf::ForOp>(builder.getUnknownLoc(),
-                                              lowerBound, upperBound, step);
+    auto lowerBound = arith::ConstantOp::create(
+        builder, builder.getUnknownLoc(), builder.getIndexAttr(0));
+    auto upperBound = arith::ConstantOp::create(
+        builder, builder.getUnknownLoc(), builder.getIndexAttr(length));
+    auto step = arith::ConstantOp::create(builder, builder.getUnknownLoc(),
+                                          builder.getIndexAttr(1));
+    auto forLoop = scf::ForOp::create(builder, builder.getUnknownLoc(),
+                                      lowerBound, upperBound, step);
     return forLoop;
   }
 
@@ -63,14 +63,14 @@ struct AIEObjectFifoRegisterProcessPass
     // acquires
     if (acqNumber.getInt() > 0) {
       auto acqType = AIEObjectFifoSubviewType::get(elementType);
-      auto acqOp = builder.create<ObjectFifoAcquireOp>(
-          builder.getUnknownLoc(), acqType, regOp.getPortAttr(),
+      auto acqOp = ObjectFifoAcquireOp::create(
+          builder, builder.getUnknownLoc(), acqType, regOp.getPortAttr(),
           SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);
 
       // subview accesses
       for (int i = 0; i < acqNumber.getInt(); i++)
-        (void)builder.create<ObjectFifoSubviewAccessOp>(
-            builder.getUnknownLoc(), elementType, acqOp.getSubview(),
+        (void)ObjectFifoSubviewAccessOp::create(
+            builder, builder.getUnknownLoc(), elementType, acqOp.getSubview(),
             builder.getIntegerAttr(builder.getI32Type(), i));
 
       // apply kernel
@@ -81,14 +81,14 @@ struct AIEObjectFifoRegisterProcessPass
           break;
         }
       }
-      builder.create<func::CallOp>(builder.getUnknownLoc(),
-                                   func /*, acc.output()*/);
+      func::CallOp::create(builder, builder.getUnknownLoc(),
+                           func /*, acc.output()*/);
     }
 
     // releases
     if (relNumber.getInt() > 0) {
-      auto relOp = builder.create<ObjectFifoReleaseOp>(
-          builder.getUnknownLoc(), regOp.getPortAttr(),
+      auto relOp = ObjectFifoReleaseOp::create(
+          builder, builder.getUnknownLoc(), regOp.getPortAttr(),
           SymbolRefAttr::get(ctx, regOp.getObjFifoName()), relNumber);
       builder.setInsertionPointAfter(relOp);
     }
@@ -137,13 +137,13 @@ struct AIEObjectFifoRegisterProcessPass
           /*AllowRepeats=*/false);
       // retrieve core associated to above tile or create new one
       if (!op) {
-        CoreOp coreOp = builder.create<CoreOp>(builder.getUnknownLoc(),
-                                               builder.getIndexType(), tile);
+        CoreOp coreOp = CoreOp::create(builder, builder.getUnknownLoc(),
+                                       builder.getIndexType(), tile);
         Region &r = coreOp.getBody();
         r.push_back(new Block);
         Block &block = r.back();
         builder.setInsertionPointToStart(&block);
-        builder.create<EndOp>(builder.getUnknownLoc());
+        EndOp::create(builder, builder.getUnknownLoc());
         builder.setInsertionPointToStart(&block);
       } else {
         CoreOp coreOp = llvm::dyn_cast<CoreOp>(op);

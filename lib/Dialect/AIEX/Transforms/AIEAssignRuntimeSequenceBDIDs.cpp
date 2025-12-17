@@ -145,7 +145,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     device.walk([&](DMAAwaitTaskOp op) {
       OpBuilder builder(op);
       builder.setInsertionPointAfter(op);
-      builder.create<DMAFreeTaskOp>(op.getLoc(), op.getTask());
+      DMAFreeTaskOp::create(builder, op.getLoc(), op.getTask());
     });
 
     // TODO: Only walk the sequence function
