@@ -371,12 +371,18 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
-  // TODO: check if this is accurate
-  // TODO: also check consumer case, and add check if needed
+  // data layout transformations on shim tiles are handled by runtime operations
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
     return emitError(
         "`dimensionsToStream` data layout transformations are not supported "
         "on shim tile producers");
+  }
+  for (auto consTile : getConsumerTiles()) {
+    if (consTile().isShimTile() && !getDimensionsFromStream(consTile).empty()) {
+      return emitError(
+          "`dimensionsFromStreamPerConsumer` data layout transformations are "
+          "not supported on shim tile consumers");
+    }
   }
 
   if (getRepeatCount().has_value()) {
