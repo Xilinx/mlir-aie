@@ -378,7 +378,8 @@ LogicalResult ObjectFifoCreateOp::verify() {
         "on shim tile producers");
   }
   for (auto consTile : getConsumerTiles()) {
-    if (consTile().isShimTile() && !getDimensionsFromStream(consTile).empty()) {
+    if (cast<TileOp>(consTile.getDefiningOp()).isShimTile()
+        && !getDimensionsFromStream(consTile).empty()) {
       return emitError(
           "`dimensionsFromStreamPerConsumer` data layout transformations are "
           "not supported on shim tile consumers");
