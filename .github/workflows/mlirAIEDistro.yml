@@ -271,9 +271,13 @@ jobs:
 
         ccache -s
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
-        rm -rf $HOST_CCACHE_DIR
-        mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
-        ls -la $HOST_CCACHE_DIR
+        if [ -d "./wheelhouse/.ccache" ]; then
+          rm -rf $HOST_CCACHE_DIR
+          mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+          ls -la $HOST_CCACHE_DIR
+        else
+          echo "No .ccache found in wheelhouse"
+        fi
         ccache -s
 
     # For whatever reason, the timestamps on all of the files that come out of the docker container
