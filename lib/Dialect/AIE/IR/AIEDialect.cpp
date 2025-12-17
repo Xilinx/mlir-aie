@@ -420,7 +420,8 @@ TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
 }
 
-BDDimLayoutArrayAttr ObjectFifoCreateOp::getDimensionsFromStream(Value consumerTile) {
+BDDimLayoutArrayAttr
+ObjectFifoCreateOp::getDimensionsFromStream(Value consumerTile) {
   int dimsIndex = 0;
   for (auto cons : getConsumerTiles()) {
     if (cons == consumerTile)
