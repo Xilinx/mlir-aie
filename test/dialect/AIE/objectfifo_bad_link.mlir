@@ -229,24 +229,7 @@ aie.device(xcve2302) {
 
 // -----
 
-// CHECK: currently does not support objectFifos with dimensionsToStream.
-
-aie.device(xcve2302) {
-   %tile23 = aie.tile(2, 3)
-   %tile21 = aie.tile(2, 1)
-   %tile13 = aie.tile(1, 3)
-   %tile33 = aie.tile(3, 3)
-
-   aie.objectfifo @of_in (%tile23 dimensionsToStream [<size = 1, stride = 1>, <size = 1, stride = 1>], {%tile21}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-   aie.objectfifo @of_out1 (%tile21, {%tile13}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
-   aie.objectfifo @of_out2 (%tile21, {%tile33}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
-
-   aie.objectfifo.link [@of_in] -> [@of_out1, @of_out2] ([][0, 8])
-}
-
-// -----
-
-// CHECK: currently does not support objectFifos with dimensionsFromStreamPerConsumer.
+// CHECK: currently does not support objectFifos with dimensionsFromStreamPerConsumer for distribute input.
 
 aie.device(xcve2302) {
    %tile23 = aie.tile(2, 3)
@@ -257,23 +240,6 @@ aie.device(xcve2302) {
    aie.objectfifo @of_in (%tile23, {%tile21 dimensionsFromStream [<size = 1, stride = 1>, <size = 1, stride = 1>]}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
    aie.objectfifo @of_out1 (%tile21, {%tile13}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
    aie.objectfifo @of_out2 (%tile21, {%tile33}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
-
-   aie.objectfifo.link [@of_in] -> [@of_out1, @of_out2] ([][0, 8])
-}
-
-// -----
-
-// CHECK: currently does not support objectFifos with dimensionsFromStreamPerConsumer.
-
-aie.device(xcve2302) {
-   %tile23 = aie.tile(2, 3)
-   %tile21 = aie.tile(2, 1)
-   %tile13 = aie.tile(1, 3)
-   %tile33 = aie.tile(3, 3)
-
-   aie.objectfifo @of_in (%tile23, {%tile21}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-   aie.objectfifo @of_out1 (%tile21, {%tile13}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
-   aie.objectfifo @of_out2 (%tile21, {%tile33 dimensionsFromStream [<size = 1, stride = 1>, <size = 1, stride = 1>]}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
 
    aie.objectfifo.link [@of_in] -> [@of_out1, @of_out2] ([][0, 8])
 }
