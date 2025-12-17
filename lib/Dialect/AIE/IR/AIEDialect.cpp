@@ -372,7 +372,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
   }
 
   // TODO: check if this is accurate
-  // TOD): also check consumer case, and add check if needed
+  // TODO: also check consumer case, and add check if needed
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
     return emitError(
         "`dimensionsToStream` data layout transformations are not supported "
