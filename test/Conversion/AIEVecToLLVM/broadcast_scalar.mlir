@@ -65,7 +65,9 @@ func.func @f32_broadcast_scalar(%arg0 : f32) -> vector<16xf32> {
 
 // CHECK-LABEL: @f32_broadcast_scalar
 // CHECK-SAME: %[[ARG0:.*]]: f32
-// CHECK: %[[VBROADCAST:.*]] = "xllvm.intr.aie2.vbroadcastfloat.I512"(
-// CHECK-SAME: %[[ARG0]]) : 
-// CHECK-SAME: (f32) -> vector<16xf32>
-// CHECK-NEXT: return %[[VBROADCAST]] : vector<16xf32>
+// CHECK-NEXT: %[[BITCAST_TO_I32:.*]] = llvm.bitcast %[[ARG0]] : f32 to i32
+// CHECK-NEXT: %[[VBROADCAST:.*]] = "xllvm.intr.aie2.vbroadcast32.I512"(
+// CHECK-SAME: %[[BITCAST_TO_I32]]) : 
+// CHECK-SAME: (i32) -> vector<16xi32>
+// CHECK-NEXT: %[[BITCAST_TO_F32:.*]] = llvm.bitcast %[[VBROADCAST]] : vector<16xi32> to vector<16xf32>
+// CHECK-NEXT: return %[[BITCAST_TO_F32]] : vector<16xf32>
