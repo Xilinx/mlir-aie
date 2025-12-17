@@ -762,22 +762,6 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
-### `xllvm.intr.aie2.vbroadcastfloat.I512` (::xilinx::xllvm::VectorBroadcastfloatI512IntrOp)
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `src` | 32-bit float |
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `res` | LLVM dialect-compatible type |
-
-
-
 ### `xllvm.intr.aie2.vextract.elem16.I512` (::xilinx::xllvm::VectorExtractElem16I512IntrOp)
 
 #### Operands:
