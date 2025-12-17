@@ -650,8 +650,8 @@ LogicalResult ObjectFifoLinkOp::verify() {
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty())
       return emitOpError("currently does not support objectFifos with "
-                        "dimensionsFromStreamPerConsumer for distribute "
-                        "input.");
+                         "dimensionsFromStreamPerConsumer for distribute "
+                         "input.");
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
