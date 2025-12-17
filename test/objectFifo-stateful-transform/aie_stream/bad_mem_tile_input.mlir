@@ -8,15 +8,14 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
-
-// CHECK:   error: 'aie.objectfifo' op cannot use stream input on mem tile
+// RUN: aie-opt --aie-objectFifo-stateful-transform --verify-diagnostics %s
 
 module @bad_mem_tile_input {
  aie.device(xcve2302) {
     %tile11 = aie.tile(1, 1) 
     %tile33 = aie.tile(3, 3)
 
+    // expected-error@+1 {{`aie_stream` is not available for shim and mem tiles}}
     aie.objectfifo @of_stream (%tile33, {%tile11}, 2 : i32) {aie_stream = 1 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>
   }
 }

@@ -396,12 +396,12 @@ LogicalResult ObjectFifoCreateOp::verify() {
 
     if (getAieStream().value() == 0 || getAieStream().value() == 2)
       if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
-        return emitError("`aie_stream` is not available for shim tiles");
+        return emitError("`aie_stream` is not available for shim and mem tiles");
 
     if (getAieStream().value() == 1 || getAieStream().value() == 2)
       if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile() ||
           getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
-        return emitError("`aie_stream` is not available for shim tiles");
+        return emitError("`aie_stream` is not available for shim and mem tiles");
   }
 
   if (getInitValues().has_value()) {
