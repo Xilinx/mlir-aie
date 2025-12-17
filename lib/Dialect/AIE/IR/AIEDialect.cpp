@@ -633,14 +633,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
-    for (auto fifoIn : getInputObjectFifos()) {
-      if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
-        return emitOpError("currently does not support objectFifos with "
-                          "dimensionsFromStreamPerConsumer for join "
-                          "input.");
-      }
-    }
-
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     if (!fifoOut.getDimensionsToStream().empty())
       return emitOpError("currently does not support objectFifos with "
@@ -659,12 +651,6 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitOpError("currently does not support objectFifos with "
                         "dimensionsFromStreamPerConsumer for distribute "
                         "input.");
-
-    for (auto fifoOut : getOutputObjectFifos()) {
-      if (!fifoOut.getDimensionsToStream().empty())
-        return emitOpError("currently does not support objectFifos with "
-                            "dimensionsToStream on distribute output.");
-    }
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
