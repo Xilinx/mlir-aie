@@ -219,7 +219,7 @@ public:
 
     auto channelDir = infoOp.getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int col = shimTile.getCol();
+    int tileCol = shimTile.getCol();
     int tileRow = shimTile.getRow();
 
     // initialize fields to zero
@@ -272,13 +272,13 @@ public:
     int64_t offset = op.getOffsetInBytes();
 
     // column
-    column = IntegerAttr::get(i32ty, col);
+    column = IntegerAttr::get(i32ty, tileCol);
 
     // row
     row = IntegerAttr::get(i32ty, tileRow);
 
     bool skipTransformationChecks = op.isLinearTransferWithoutTransformation();
-    if (failed(verifyStridesWraps(op, bufferType, col, tileRow, inputSizes,
+    if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
                                   inputStrides, sizes, strides,
                                   skipTransformationChecks))) {
       return failure();
@@ -341,7 +341,7 @@ public:
       d2_stride = IntegerAttr::get(i32ty, strides[2]);
 
       // d2_size
-      if (targetModel.isMemTile(col, 0)) // Need to be any row
+      if (targetModel.isMemTile(tileCol, 0)) // Need to be any row
         d2_size = IntegerAttr::get(i32ty, sizes[2]);
       else
         d2_size = IntegerAttr::get(i32ty, 0);
@@ -407,7 +407,7 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    if (targetModel.isMemTile(col, tileRow) && (!isMM2S) &&
+    if (targetModel.isMemTile(tileCol, tileRow) && (!isMM2S) &&
         (op.getD0ZeroBefore() != 0 || op.getD0ZeroAfter() != 0 ||
          op.getD1ZeroBefore() != 0 || op.getD1ZeroAfter() != 0 ||
          op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
@@ -425,8 +425,8 @@ public:
 
     // compute the location of the address to patch in the bd and emit patch
     // instruction to perform the patch.
-    uint64_t addr = targetModel.getDmaBdAddress(col, tileRow, op.getId()) +
-                    targetModel.getDmaBdAddressOffset(col, tileRow);
+    uint64_t addr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
+                    targetModel.getDmaBdAddressOffset(tileCol, tileRow);
     NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, offset);
 
     // push the patched bd onto the dma task queue

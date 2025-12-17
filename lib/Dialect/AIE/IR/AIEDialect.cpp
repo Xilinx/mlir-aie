@@ -2352,7 +2352,7 @@ LogicalResult ShimDMAAllocationOp::verify() {
   int row = tileOp.getRow();
 
   if (!targetModel.isShimNOCorPLTile(col, row)) {
-    return emitOpError("tile must be a shim tile (row 0), but got tile(")
+    return emitOpError("tile must be a shim tile, but got tile(")
            << col << ", " << row << ")";
   }
 
