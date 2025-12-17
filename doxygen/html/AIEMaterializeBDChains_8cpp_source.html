@@ -108,118 +108,122 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>      <span class="keywordflow">return</span> op.emitOpError(<span class="stringliteral">&quot;no shim DMA allocation found for symbol&quot;</span>);</div>
 <div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    }</div>
 <div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    <span class="keyword">const</span> <span class="keywordtype">int</span> col = alloc_op.getCol();</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>    DMAStartBdChainOp new_op = DMAStartBdChainOp::create(</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(),</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        op.getArgs(), tile.getResult(), alloc_op.getChannelDir(),</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>        op.getRepeatCount());</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    rewriter.eraseOp(op);</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>  }</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>    AIE::TileOp tile = alloc_op.getTileOp();</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="keywordflow">if</span> (!tile) {</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>      <span class="keywordflow">return</span> op.emitOpError(</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>          <span class="stringliteral">&quot;shim DMA allocation must reference a valid TileOp&quot;</span>);</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    }</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span> </div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    DMAStartBdChainOp new_op = DMAStartBdChainOp::create(</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(),</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>        op.getArgs(), tile.getResult(), alloc_op.getChannelDir(),</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>        (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>        op.getRepeatCount());</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>    rewriter.eraseOp(op);</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>  }</div>
 </div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>};</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>};</div>
 </div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span> </div>
-<div class="foldopen" id="foldopen00060" data-start="{" data-end="};">
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno"><a class="line" href="structDMAInlineBDChainPattern.html">   60</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structDMAInlineBDChainPattern.html">DMAInlineBDChainPattern</a> : <a class="code hl_class" href="classRewritePattern.html">RewritePattern</a> {</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span> </div>
-<div class="foldopen" id="foldopen00062" data-start="{" data-end="}">
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno"><a class="line" href="structDMAInlineBDChainPattern.html#aaf459b8633da6d81b3eb8911649c6d52">   62</a></span>  <a class="code hl_function" href="structDMAInlineBDChainPattern.html#aaf459b8633da6d81b3eb8911649c6d52">DMAInlineBDChainPattern</a>(MLIRContext *ctx)</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>      : <a class="code hl_class" href="classRewritePattern.html">RewritePattern</a>(DMAStartBdChainOp::getOperationName(), PatternBenefit(1),</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>                       ctx) {}</div>
-</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span> </div>
+<div class="foldopen" id="foldopen00064" data-start="{" data-end="};">
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno"><a class="line" href="structDMAInlineBDChainPattern.html">   64</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structDMAInlineBDChainPattern.html">DMAInlineBDChainPattern</a> : <a class="code hl_class" href="classRewritePattern.html">RewritePattern</a> {</div>
 <div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
 <div class="foldopen" id="foldopen00066" data-start="{" data-end="}">
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno"><a class="line" href="structDMAInlineBDChainPattern.html#a4a0ee61e9ace3f89cbc68d989c95e0e9">   66</a></span>  LogicalResult <a class="code hl_function" href="structDMAInlineBDChainPattern.html#a4a0ee61e9ace3f89cbc68d989c95e0e9">matchAndRewrite</a>(Operation *op,</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>                                PatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    DMAStartBdChainOp start_op = llvm::dyn_cast&lt;DMAStartBdChainOp&gt;(op);</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    <span class="keywordflow">if</span> (!start_op) { <span class="comment">// Not a match.</span></div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>    }</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    rewriter.setInsertionPointAfter(start_op);</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span> </div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>    <span class="comment">// Get referenced abstract BD chain</span></div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    AIE::BDChainOp chain_def = start_op.getBDChainOp();</div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>    assert(chain_def);</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>    Region &amp;source_region = chain_def.getBody();</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span> </div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="comment">// Create BD op into which the result will be inlined</span></div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    DMAConfigureTaskOp configure_op = DMAConfigureTaskOp::create(</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>        rewriter, start_op.getLoc(), rewriter.getIndexType(),</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>        start_op.getTile(), start_op.getDirection(), start_op.getChannel(),</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>        start_op.getIssueToken(), start_op.getRepeatCount());</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>    Region &amp;target_region = configure_op.getBody();</div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    <span class="comment">// Clone BD definition into usage site, replacing abstract SSA values with</span></div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>    <span class="comment">// concrete ones</span></div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>    IRMapping arg_map;</div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    ValueRange values = start_op.getArgs();</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>    <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0, n = source_region.getNumArguments(); i &lt; n; i++) {</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>      BlockArgument arg = source_region.getArgument(i);</div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>      Value val = values[i];</div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>      assert(arg.getType() == val.getType());</div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>      arg_map.map(arg, val);</div>
-<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>    }</div>
-<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>    source_region.cloneInto(&amp;target_region, arg_map);</div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span> </div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>    <span class="comment">// Replace result of dma start task with result of bd chain configuration</span></div>
-<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>    rewriter.replaceAllUsesWith(start_op.getResult(), configure_op.getResult());</div>
-<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span> </div>
-<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>    <span class="comment">// Add a start BDs instruction</span></div>
-<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>    DMAStartTaskOp::create(rewriter, start_op.getLoc(),</div>
-<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>                           configure_op.getResult());</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno"><a class="line" href="structDMAInlineBDChainPattern.html#aaf459b8633da6d81b3eb8911649c6d52">   66</a></span>  <a class="code hl_function" href="structDMAInlineBDChainPattern.html#aaf459b8633da6d81b3eb8911649c6d52">DMAInlineBDChainPattern</a>(MLIRContext *ctx)</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>      : <a class="code hl_class" href="classRewritePattern.html">RewritePattern</a>(DMAStartBdChainOp::getOperationName(), PatternBenefit(1),</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>                       ctx) {}</div>
+</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span> </div>
+<div class="foldopen" id="foldopen00070" data-start="{" data-end="}">
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno"><a class="line" href="structDMAInlineBDChainPattern.html#a4a0ee61e9ace3f89cbc68d989c95e0e9">   70</a></span>  LogicalResult <a class="code hl_function" href="structDMAInlineBDChainPattern.html#a4a0ee61e9ace3f89cbc68d989c95e0e9">matchAndRewrite</a>(Operation *op,</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>                                PatternRewriter &amp;rewriter)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    DMAStartBdChainOp start_op = llvm::dyn_cast&lt;DMAStartBdChainOp&gt;(op);</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    <span class="keywordflow">if</span> (!start_op) { <span class="comment">// Not a match.</span></div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>      <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>    }</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>    rewriter.setInsertionPointAfter(start_op);</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>    <span class="comment">// Get referenced abstract BD chain</span></div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    AIE::BDChainOp chain_def = start_op.getBDChainOp();</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>    assert(chain_def);</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>    Region &amp;source_region = chain_def.getBody();</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span> </div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    <span class="comment">// Create BD op into which the result will be inlined</span></div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>    DMAConfigureTaskOp configure_op = DMAConfigureTaskOp::create(</div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>        rewriter, start_op.getLoc(), rewriter.getIndexType(),</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>        start_op.getTile(), start_op.getDirection(), start_op.getChannel(),</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>        start_op.getIssueToken(), start_op.getRepeatCount());</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>    Region &amp;target_region = configure_op.getBody();</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span> </div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>    <span class="comment">// Clone BD definition into usage site, replacing abstract SSA values with</span></div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    <span class="comment">// concrete ones</span></div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>    IRMapping arg_map;</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>    ValueRange values = start_op.getArgs();</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0, n = source_region.getNumArguments(); i &lt; n; i++) {</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>      BlockArgument arg = source_region.getArgument(i);</div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>      Value val = values[i];</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>      assert(arg.getType() == val.getType());</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>      arg_map.map(arg, val);</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>    }</div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>    source_region.cloneInto(&amp;target_region, arg_map);</div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span> </div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>    <span class="comment">// Replace result of dma start task with result of bd chain configuration</span></div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>    rewriter.replaceAllUsesWith(start_op.getResult(), configure_op.getResult());</div>
 <div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span> </div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    <span class="comment">// After fully inlining, remove the original instruction</span></div>
-<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>    rewriter.eraseOp(start_op);</div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span> </div>
-<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>  }</div>
-</div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>};</div>
-</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    <span class="comment">// Add a start BDs instruction</span></div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>    DMAStartTaskOp::create(rewriter, start_op.getLoc(),</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>                           configure_op.getResult());</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span> </div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>    <span class="comment">// After fully inlining, remove the original instruction</span></div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>    rewriter.eraseOp(start_op);</div>
 <div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span> </div>
-<div class="foldopen" id="foldopen00112" data-start="{" data-end="};">
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno"><a class="line" href="structAIEMaterializeBDChainsPass.html">  112</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structAIEMaterializeBDChainsPass.html">AIEMaterializeBDChainsPass</a></div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>    : <a class="code hl_class" href="classAIEMaterializeBDChainsBase.html">AIEMaterializeBDChainsBase</a>&lt;AIEMaterializeBDChainsPass&gt; {</div>
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span> </div>
-<div class="foldopen" id="foldopen00115" data-start="{" data-end="}">
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno"><a class="line" href="structAIEMaterializeBDChainsPass.html#a340a2a4d4f9d38be8c2d17ba6ce873c5">  115</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structAIEMaterializeBDChainsPass.html#a340a2a4d4f9d38be8c2d17ba6ce873c5">runOnOperation</a>()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>    MLIRContext *ctx = &amp;getContext();</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>    AIE::DeviceOp device = getOperation();</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>    GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();</div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>    rewriter_config.setRegionSimplificationLevel(</div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>        GreedySimplifyRegionLevel::Disabled);</div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span> </div>
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>    RewritePatternSet patterns_0(ctx);</div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>    patterns_0.insert&lt;<a class="code hl_struct" href="structDMAStartBdChainForOpPattern.html">DMAStartBdChainForOpPattern</a>&gt;(ctx);</div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>    DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_0, ctx);</div>
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>    <span class="keywordflow">if</span> (failed(applyPatternsGreedily(device, std::move(patterns_0),</div>
-<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>                                     rewriter_config))) {</div>
-<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>      signalPassFailure();</div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    }</div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span> </div>
-<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>    RewritePatternSet patterns_1(ctx);</div>
-<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>    patterns_1.insert&lt;<a class="code hl_struct" href="structDMAInlineBDChainPattern.html">DMAInlineBDChainPattern</a>&gt;(ctx);</div>
-<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>    rewriter_config.setRegionSimplificationLevel(</div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>        GreedySimplifyRegionLevel::Disabled);</div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>    DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_1, ctx);</div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>    <span class="keywordflow">if</span> (failed(applyPatternsGreedily(device, std::move(patterns_1),</div>
-<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>                                     rewriter_config))) {</div>
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>      signalPassFailure();</div>
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>    }</div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>  }</div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>  }</div>
 </div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>};</div>
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>};</div>
 </div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span> </div>
-<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>std::unique_ptr&lt;OperationPass&lt;AIE::DeviceOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00143" data-start="{" data-end="}">
-<div class="line"><a id="l00143" name="l00143"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a9359e3adedf5487899641e7abece3aff">  143</a></span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a9359e3adedf5487899641e7abece3aff">AIEX::createAIEMaterializeBDChainsPass</a>() {</div>
-<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEMaterializeBDChainsPass&gt;();</div>
-<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>}</div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span> </div>
+<div class="foldopen" id="foldopen00116" data-start="{" data-end="};">
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno"><a class="line" href="structAIEMaterializeBDChainsPass.html">  116</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structAIEMaterializeBDChainsPass.html">AIEMaterializeBDChainsPass</a></div>
+<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>    : <a class="code hl_class" href="classAIEMaterializeBDChainsBase.html">AIEMaterializeBDChainsBase</a>&lt;AIEMaterializeBDChainsPass&gt; {</div>
+<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span> </div>
+<div class="foldopen" id="foldopen00119" data-start="{" data-end="}">
+<div class="line"><a id="l00119" name="l00119"></a><span class="lineno"><a class="line" href="structAIEMaterializeBDChainsPass.html#a340a2a4d4f9d38be8c2d17ba6ce873c5">  119</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structAIEMaterializeBDChainsPass.html#a340a2a4d4f9d38be8c2d17ba6ce873c5">runOnOperation</a>()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>    MLIRContext *ctx = &amp;getContext();</div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    AIE::DeviceOp device = getOperation();</div>
+<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>    GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();</div>
+<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>    rewriter_config.setRegionSimplificationLevel(</div>
+<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>        GreedySimplifyRegionLevel::Disabled);</div>
+<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span> </div>
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>    RewritePatternSet patterns_0(ctx);</div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>    patterns_0.insert&lt;<a class="code hl_struct" href="structDMAStartBdChainForOpPattern.html">DMAStartBdChainForOpPattern</a>&gt;(ctx);</div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_0, ctx);</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    <span class="keywordflow">if</span> (failed(applyPatternsGreedily(device, std::move(patterns_0),</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>                                     rewriter_config))) {</div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>      signalPassFailure();</div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>    }</div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span> </div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>    RewritePatternSet patterns_1(ctx);</div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>    patterns_1.insert&lt;<a class="code hl_struct" href="structDMAInlineBDChainPattern.html">DMAInlineBDChainPattern</a>&gt;(ctx);</div>
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>    rewriter_config.setRegionSimplificationLevel(</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>        GreedySimplifyRegionLevel::Disabled);</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>    DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_1, ctx);</div>
+<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>    <span class="keywordflow">if</span> (failed(applyPatternsGreedily(device, std::move(patterns_1),</div>
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>                                     rewriter_config))) {</div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>      signalPassFailure();</div>
+<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>    }</div>
+<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>  }</div>
+</div>
+<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>};</div>
+</div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span> </div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>std::unique_ptr&lt;OperationPass&lt;AIE::DeviceOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00147" data-start="{" data-end="}">
+<div class="line"><a id="l00147" name="l00147"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a9359e3adedf5487899641e7abece3aff">  147</a></span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a9359e3adedf5487899641e7abece3aff">AIEX::createAIEMaterializeBDChainsPass</a>() {</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEMaterializeBDChainsPass&gt;();</div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEXDialect_8h_html"><div class="ttname"><a href="AIEXDialect_8h.html">AIEXDialect.h</a></div></div>
@@ -228,20 +232,20 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassRewritePattern_html"><div class="ttname"><a href="classRewritePattern.html">RewritePattern</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a9359e3adedf5487899641e7abece3aff"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a9359e3adedf5487899641e7abece3aff">xilinx::AIEX::createAIEMaterializeBDChainsPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEMaterializeBDChainsPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00143">AIEMaterializeBDChains.cpp:143</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a9359e3adedf5487899641e7abece3aff"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a9359e3adedf5487899641e7abece3aff">xilinx::AIEX::createAIEMaterializeBDChainsPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEMaterializeBDChainsPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00147">AIEMaterializeBDChains.cpp:147</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="astructAIEMaterializeBDChainsPass_html"><div class="ttname"><a href="structAIEMaterializeBDChainsPass.html">AIEMaterializeBDChainsPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00112">AIEMaterializeBDChains.cpp:113</a></div></div>
-<div class="ttc" id="astructAIEMaterializeBDChainsPass_html_a340a2a4d4f9d38be8c2d17ba6ce873c5"><div class="ttname"><a href="structAIEMaterializeBDChainsPass.html#a340a2a4d4f9d38be8c2d17ba6ce873c5">AIEMaterializeBDChainsPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00115">AIEMaterializeBDChains.cpp:115</a></div></div>
-<div class="ttc" id="astructDMAInlineBDChainPattern_html"><div class="ttname"><a href="structDMAInlineBDChainPattern.html">DMAInlineBDChainPattern</a></div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00060">AIEMaterializeBDChains.cpp:60</a></div></div>
-<div class="ttc" id="astructDMAInlineBDChainPattern_html_a4a0ee61e9ace3f89cbc68d989c95e0e9"><div class="ttname"><a href="structDMAInlineBDChainPattern.html#a4a0ee61e9ace3f89cbc68d989c95e0e9">DMAInlineBDChainPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(Operation *op, PatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00066">AIEMaterializeBDChains.cpp:66</a></div></div>
-<div class="ttc" id="astructDMAInlineBDChainPattern_html_aaf459b8633da6d81b3eb8911649c6d52"><div class="ttname"><a href="structDMAInlineBDChainPattern.html#aaf459b8633da6d81b3eb8911649c6d52">DMAInlineBDChainPattern::DMAInlineBDChainPattern</a></div><div class="ttdeci">DMAInlineBDChainPattern(MLIRContext *ctx)</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00062">AIEMaterializeBDChains.cpp:62</a></div></div>
+<div class="ttc" id="astructAIEMaterializeBDChainsPass_html"><div class="ttname"><a href="structAIEMaterializeBDChainsPass.html">AIEMaterializeBDChainsPass</a></div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00116">AIEMaterializeBDChains.cpp:117</a></div></div>
+<div class="ttc" id="astructAIEMaterializeBDChainsPass_html_a340a2a4d4f9d38be8c2d17ba6ce873c5"><div class="ttname"><a href="structAIEMaterializeBDChainsPass.html#a340a2a4d4f9d38be8c2d17ba6ce873c5">AIEMaterializeBDChainsPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00119">AIEMaterializeBDChains.cpp:119</a></div></div>
+<div class="ttc" id="astructDMAInlineBDChainPattern_html"><div class="ttname"><a href="structDMAInlineBDChainPattern.html">DMAInlineBDChainPattern</a></div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00064">AIEMaterializeBDChains.cpp:64</a></div></div>
+<div class="ttc" id="astructDMAInlineBDChainPattern_html_a4a0ee61e9ace3f89cbc68d989c95e0e9"><div class="ttname"><a href="structDMAInlineBDChainPattern.html#a4a0ee61e9ace3f89cbc68d989c95e0e9">DMAInlineBDChainPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(Operation *op, PatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00070">AIEMaterializeBDChains.cpp:70</a></div></div>
+<div class="ttc" id="astructDMAInlineBDChainPattern_html_aaf459b8633da6d81b3eb8911649c6d52"><div class="ttname"><a href="structDMAInlineBDChainPattern.html#aaf459b8633da6d81b3eb8911649c6d52">DMAInlineBDChainPattern::DMAInlineBDChainPattern</a></div><div class="ttdeci">DMAInlineBDChainPattern(MLIRContext *ctx)</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00066">AIEMaterializeBDChains.cpp:66</a></div></div>
 <div class="ttc" id="astructDMAStartBdChainForOpPattern_html"><div class="ttname"><a href="structDMAStartBdChainForOpPattern.html">DMAStartBdChainForOpPattern</a></div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00027">AIEMaterializeBDChains.cpp:27</a></div></div>
 <div class="ttc" id="astructDMAStartBdChainForOpPattern_html_a46ffee19f78fdf121196be29668668d4"><div class="ttname"><a href="structDMAStartBdChainForOpPattern.html#a46ffee19f78fdf121196be29668668d4">DMAStartBdChainForOpPattern::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(Operation *op_any, PatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00033">AIEMaterializeBDChains.cpp:33</a></div></div>
 <div class="ttc" id="astructDMAStartBdChainForOpPattern_html_af315dbc6a9772bcdf054f0392fde6965"><div class="ttname"><a href="structDMAStartBdChainForOpPattern.html#af315dbc6a9772bcdf054f0392fde6965">DMAStartBdChainForOpPattern::DMAStartBdChainForOpPattern</a></div><div class="ttdeci">DMAStartBdChainForOpPattern(MLIRContext *ctx)</div><div class="ttdef"><b>Definition</b> <a href="AIEMaterializeBDChains_8cpp_source.html#l00029">AIEMaterializeBDChains.cpp:29</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Dec 16 2025 22:01:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Dec 17 2025 01:03:59 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

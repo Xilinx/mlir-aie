@@ -446,10 +446,10 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>      <span class="keywordflow">if</span> (device.lookupSymbol(dma_name))</div>
 <div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>        <span class="keywordflow">continue</span>;</div>
 <div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span> </div>
-<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>      AIE::ShimDMAAllocationOp::create(builder, builder.getUnknownLoc(),</div>
-<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>                                       StringRef(dma_name), dir,</div>
-<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>                                       rowToShimChanMap[tOp.rowIndex()],</div>
-<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>                                       shimTile.colIndex(), <span class="keyword">false</span>, <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>      AIE::ShimDMAAllocationOp::create(</div>
+<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>          builder, builder.getUnknownLoc(), StringRef(dma_name),</div>
+<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>          shimTile.getResult(), dir, rowToShimChanMap[tOp.rowIndex()], <span class="keyword">false</span>,</div>
+<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>          <span class="keyword">nullptr</span>);</div>
 <div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>    }</div>
 <div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>  }</div>
 </div>
@@ -534,7 +534,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Dec 16 2025 22:01:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Dec 17 2025 01:03:59 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

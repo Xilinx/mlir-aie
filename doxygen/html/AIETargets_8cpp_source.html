@@ -303,167 +303,173 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>          shimJSON[<span class="stringliteral">&quot;channelDir&quot;</span>] = <a class="code hl_function" href="AIETargets_8cpp.html#a805821d1dd24ba3db3fab81f0f5467ff">attrToJSON</a>(channelDir);</div>
 <div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>          <span class="keyword">auto</span> channelIndex = shimDMAMeta.getChannelIndexAttr();</div>
 <div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>          shimJSON[<span class="stringliteral">&quot;channelIndex&quot;</span>] = <a class="code hl_function" href="AIETargets_8cpp.html#a805821d1dd24ba3db3fab81f0f5467ff">attrToJSON</a>(channelIndex);</div>
-<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>          <span class="keyword">auto</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = shimDMAMeta.getColAttr();</div>
-<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>          shimJSON[<span class="stringliteral">&quot;col&quot;</span>] = <a class="code hl_function" href="AIETargets_8cpp.html#a805821d1dd24ba3db3fab81f0f5467ff">attrToJSON</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>);</div>
-<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>          moduleJSON[shimDMAMeta.getSymName()] =</div>
-<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>              llvm::json::Value(std::move(shimJSON));</div>
-<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>        }</div>
-<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>        llvm::json::Value topv(std::move(moduleJSON));</div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>        std::string ret;</div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>        llvm::raw_string_ostream ss(ret);</div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>        ss &lt;&lt; llvm::formatv(<span class="stringliteral">&quot;{0:2}&quot;</span>, topv) &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>        output &lt;&lt; ss.str();</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>        <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>      },</div>
-<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>      registerDialects);</div>
-<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span> </div>
-<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>  TranslateFromMLIRRegistration registrationLDScript(</div>
-<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>      <span class="stringliteral">&quot;aie-generate-ldscript&quot;</span>, <span class="stringliteral">&quot;Generate AIE loader script&quot;</span>,</div>
-<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a49f04dcae147b7f78d5efa3c1ffb6972">AIETranslateToLdScript</a>(module, output, tileCol, tileRow,</div>
-<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>                                      deviceName);</div>
-<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>      },</div>
-<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>      registerDialects);</div>
-<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span> </div>
-<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>  TranslateFromMLIRRegistration registrationBCF(</div>
-<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>      <span class="stringliteral">&quot;aie-generate-bcf&quot;</span>, <span class="stringliteral">&quot;Generate AIE bcf&quot;</span>,</div>
-<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a9167fd0d1f2a1742f6c9300f4b852d84">AIETranslateToBCF</a>(module, output, tileCol, tileRow, deviceName);</div>
-<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>      },</div>
-<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>      registerDialects);</div>
-<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span> </div>
-<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>  TranslateFromMLIRRegistration registrationTargetArch(</div>
-<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>      <span class="stringliteral">&quot;aie-generate-target-arch&quot;</span>, <span class="stringliteral">&quot;Get the target architecture&quot;</span>,</div>
-<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3acbad8a82860269ff564305de18ea1e">AIETranslateToTargetArch</a>(module, output, deviceName);</div>
-<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>      },</div>
-<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span>      registerDialects);</div>
-<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span> </div>
-<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>  TranslateFromMLIRRegistration registrationCoreList(</div>
-<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>      <span class="stringliteral">&quot;aie-generate-corelist&quot;</span>, <span class="stringliteral">&quot;Generate python list of cores&quot;</span>,</div>
-<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>        DeviceOp targetOp =</div>
-<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>            AIE::DeviceOp::getForSymbolInModule(module, deviceName);</div>
-<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span>        <span class="keywordflow">if</span> (!targetOp) {</div>
-<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>          <span class="keyword">module</span>.emitOpError(&quot;expected AIE.device operation at toplevel&quot;);</div>
-<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>        }</div>
-<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span> </div>
-<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>        output &lt;&lt; <span class="stringliteral">&quot;[&quot;</span>;</div>
-<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> tileOp : targetOp.getOps&lt;TileOp&gt;()) {</div>
-<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>          <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.colIndex();</div>
-<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>          <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.rowIndex();</div>
-<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> coreOp = tileOp.getCoreOp()) {</div>
-<div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span>            std::string elfFile = <span class="stringliteral">&quot;None&quot;</span>;</div>
-<div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>            <span class="keywordflow">if</span> (<span class="keyword">auto</span> fileAttr = coreOp.getElfFile())</div>
-<div class="line"><a id="l00292" name="l00292"></a><span class="lineno">  292</span>              elfFile = <span class="stringliteral">&quot;\&quot;&quot;</span> + fileAttr.value().str() + <span class="stringliteral">&quot;\&quot;&quot;</span>;</div>
-<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span>            output &lt;&lt; <span class="charliteral">&#39;(&#39;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="charliteral">&#39;,&#39;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="charliteral">&#39;,&#39;</span> &lt;&lt; elfFile &lt;&lt; <span class="stringliteral">&quot;),&quot;</span>;</div>
-<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>          }</div>
-<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>        }</div>
-<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>        output &lt;&lt; <span class="stringliteral">&quot;]\n&quot;</span>;</div>
-<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>        <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span>      },</div>
-<div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span>      registerDialects);</div>
-<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span> </div>
-<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>  TranslateFromMLIRRegistration registrationXADF(</div>
-<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>      <span class="stringliteral">&quot;adf-generate-cpp-graph&quot;</span>, <span class="stringliteral">&quot;Translate ADFDialect to C++ graph&quot;</span>,</div>
-<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>      <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a32125f09d0883cc6499d1f3e781aa543">ADFGenerateCPPGraph</a>, [](DialectRegistry &amp;registry) {</div>
-<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>        registry.insert&lt;xilinx::ADF::ADFDialect&gt;();</div>
-<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>        registerDialects(registry);</div>
-<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span>      });</div>
-<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>  TranslateFromMLIRRegistration registrationXAIE(</div>
-<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>      <span class="stringliteral">&quot;aie-generate-xaie&quot;</span>, <span class="stringliteral">&quot;Generate libxaie configuration&quot;</span>,</div>
-<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#add8baa22fb72a945f2a0c42166bd4670">AIETranslateToXAIEV2</a>(module, output, deviceName);</div>
-<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>      },</div>
-<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>      registerDialects);</div>
-<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>  TranslateFromMLIRRegistration registrationHSA(</div>
-<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>      <span class="stringliteral">&quot;aie-generate-hsa&quot;</span>, <span class="stringliteral">&quot;Generate hsa data movement configuration&quot;</span>,</div>
+<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>          AIE::TileOp tile = shimDMAMeta.getTileOp();</div>
+<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>          <span class="keywordflow">if</span> (!tile) {</div>
+<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>            shimDMAMeta.emitError(</div>
+<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>                <span class="stringliteral">&quot;shim DMA allocation must reference a valid TileOp&quot;</span>);</div>
+<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>            <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>          }</div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>          <span class="keyword">auto</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tile.getColAttr();</div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>          shimJSON[<span class="stringliteral">&quot;col&quot;</span>] = <a class="code hl_function" href="AIETargets_8cpp.html#a805821d1dd24ba3db3fab81f0f5467ff">attrToJSON</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>);</div>
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>          moduleJSON[shimDMAMeta.getSymName()] =</div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>              llvm::json::Value(std::move(shimJSON));</div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>        }</div>
+<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>        llvm::json::Value topv(std::move(moduleJSON));</div>
+<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>        std::string ret;</div>
+<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>        llvm::raw_string_ostream ss(ret);</div>
+<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>        ss &lt;&lt; llvm::formatv(<span class="stringliteral">&quot;{0:2}&quot;</span>, topv) &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
+<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>        output &lt;&lt; ss.str();</div>
+<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>      },</div>
+<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>      registerDialects);</div>
+<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span> </div>
+<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>  TranslateFromMLIRRegistration registrationLDScript(</div>
+<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>      <span class="stringliteral">&quot;aie-generate-ldscript&quot;</span>, <span class="stringliteral">&quot;Generate AIE loader script&quot;</span>,</div>
+<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a49f04dcae147b7f78d5efa3c1ffb6972">AIETranslateToLdScript</a>(module, output, tileCol, tileRow,</div>
+<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>                                      deviceName);</div>
+<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>      },</div>
+<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>      registerDialects);</div>
+<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span> </div>
+<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>  TranslateFromMLIRRegistration registrationBCF(</div>
+<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>      <span class="stringliteral">&quot;aie-generate-bcf&quot;</span>, <span class="stringliteral">&quot;Generate AIE bcf&quot;</span>,</div>
+<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a9167fd0d1f2a1742f6c9300f4b852d84">AIETranslateToBCF</a>(module, output, tileCol, tileRow, deviceName);</div>
+<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>      },</div>
+<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>      registerDialects);</div>
+<div class="line"><a id="l00273" name="l00273"></a><span class="lineno">  273</span> </div>
+<div class="line"><a id="l00274" name="l00274"></a><span class="lineno">  274</span>  TranslateFromMLIRRegistration registrationTargetArch(</div>
+<div class="line"><a id="l00275" name="l00275"></a><span class="lineno">  275</span>      <span class="stringliteral">&quot;aie-generate-target-arch&quot;</span>, <span class="stringliteral">&quot;Get the target architecture&quot;</span>,</div>
+<div class="line"><a id="l00276" name="l00276"></a><span class="lineno">  276</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00277" name="l00277"></a><span class="lineno">  277</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a3acbad8a82860269ff564305de18ea1e">AIETranslateToTargetArch</a>(module, output, deviceName);</div>
+<div class="line"><a id="l00278" name="l00278"></a><span class="lineno">  278</span>      },</div>
+<div class="line"><a id="l00279" name="l00279"></a><span class="lineno">  279</span>      registerDialects);</div>
+<div class="line"><a id="l00280" name="l00280"></a><span class="lineno">  280</span> </div>
+<div class="line"><a id="l00281" name="l00281"></a><span class="lineno">  281</span>  TranslateFromMLIRRegistration registrationCoreList(</div>
+<div class="line"><a id="l00282" name="l00282"></a><span class="lineno">  282</span>      <span class="stringliteral">&quot;aie-generate-corelist&quot;</span>, <span class="stringliteral">&quot;Generate python list of cores&quot;</span>,</div>
+<div class="line"><a id="l00283" name="l00283"></a><span class="lineno">  283</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00284" name="l00284"></a><span class="lineno">  284</span>        DeviceOp targetOp =</div>
+<div class="line"><a id="l00285" name="l00285"></a><span class="lineno">  285</span>            AIE::DeviceOp::getForSymbolInModule(module, deviceName);</div>
+<div class="line"><a id="l00286" name="l00286"></a><span class="lineno">  286</span>        <span class="keywordflow">if</span> (!targetOp) {</div>
+<div class="line"><a id="l00287" name="l00287"></a><span class="lineno">  287</span>          <span class="keyword">module</span>.emitOpError(&quot;expected AIE.device operation at toplevel&quot;);</div>
+<div class="line"><a id="l00288" name="l00288"></a><span class="lineno">  288</span>          <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00289" name="l00289"></a><span class="lineno">  289</span>        }</div>
+<div class="line"><a id="l00290" name="l00290"></a><span class="lineno">  290</span> </div>
+<div class="line"><a id="l00291" name="l00291"></a><span class="lineno">  291</span>        output &lt;&lt; <span class="stringliteral">&quot;[&quot;</span>;</div>
+<div class="line"><a id="l00292" name="l00292"></a><span class="lineno">  292</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> tileOp : targetOp.getOps&lt;TileOp&gt;()) {</div>
+<div class="line"><a id="l00293" name="l00293"></a><span class="lineno">  293</span>          <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.colIndex();</div>
+<div class="line"><a id="l00294" name="l00294"></a><span class="lineno">  294</span>          <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.rowIndex();</div>
+<div class="line"><a id="l00295" name="l00295"></a><span class="lineno">  295</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> coreOp = tileOp.getCoreOp()) {</div>
+<div class="line"><a id="l00296" name="l00296"></a><span class="lineno">  296</span>            std::string elfFile = <span class="stringliteral">&quot;None&quot;</span>;</div>
+<div class="line"><a id="l00297" name="l00297"></a><span class="lineno">  297</span>            <span class="keywordflow">if</span> (<span class="keyword">auto</span> fileAttr = coreOp.getElfFile())</div>
+<div class="line"><a id="l00298" name="l00298"></a><span class="lineno">  298</span>              elfFile = <span class="stringliteral">&quot;\&quot;&quot;</span> + fileAttr.value().str() + <span class="stringliteral">&quot;\&quot;&quot;</span>;</div>
+<div class="line"><a id="l00299" name="l00299"></a><span class="lineno">  299</span>            output &lt;&lt; <span class="charliteral">&#39;(&#39;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="charliteral">&#39;,&#39;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="charliteral">&#39;,&#39;</span> &lt;&lt; elfFile &lt;&lt; <span class="stringliteral">&quot;),&quot;</span>;</div>
+<div class="line"><a id="l00300" name="l00300"></a><span class="lineno">  300</span>          }</div>
+<div class="line"><a id="l00301" name="l00301"></a><span class="lineno">  301</span>        }</div>
+<div class="line"><a id="l00302" name="l00302"></a><span class="lineno">  302</span>        output &lt;&lt; <span class="stringliteral">&quot;]\n&quot;</span>;</div>
+<div class="line"><a id="l00303" name="l00303"></a><span class="lineno">  303</span>        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00304" name="l00304"></a><span class="lineno">  304</span>      },</div>
+<div class="line"><a id="l00305" name="l00305"></a><span class="lineno">  305</span>      registerDialects);</div>
+<div class="line"><a id="l00306" name="l00306"></a><span class="lineno">  306</span> </div>
+<div class="line"><a id="l00307" name="l00307"></a><span class="lineno">  307</span>  TranslateFromMLIRRegistration registrationXADF(</div>
+<div class="line"><a id="l00308" name="l00308"></a><span class="lineno">  308</span>      <span class="stringliteral">&quot;adf-generate-cpp-graph&quot;</span>, <span class="stringliteral">&quot;Translate ADFDialect to C++ graph&quot;</span>,</div>
+<div class="line"><a id="l00309" name="l00309"></a><span class="lineno">  309</span>      <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a32125f09d0883cc6499d1f3e781aa543">ADFGenerateCPPGraph</a>, [](DialectRegistry &amp;registry) {</div>
+<div class="line"><a id="l00310" name="l00310"></a><span class="lineno">  310</span>        registry.insert&lt;xilinx::ADF::ADFDialect&gt;();</div>
+<div class="line"><a id="l00311" name="l00311"></a><span class="lineno">  311</span>        registerDialects(registry);</div>
+<div class="line"><a id="l00312" name="l00312"></a><span class="lineno">  312</span>      });</div>
+<div class="line"><a id="l00313" name="l00313"></a><span class="lineno">  313</span>  TranslateFromMLIRRegistration registrationXAIE(</div>
+<div class="line"><a id="l00314" name="l00314"></a><span class="lineno">  314</span>      <span class="stringliteral">&quot;aie-generate-xaie&quot;</span>, <span class="stringliteral">&quot;Generate libxaie configuration&quot;</span>,</div>
 <div class="line"><a id="l00315" name="l00315"></a><span class="lineno">  315</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ad56dfd32b584e548f1971501d3440a5f">AIETranslateToHSA</a>(module, output, deviceName);</div>
+<div class="line"><a id="l00316" name="l00316"></a><span class="lineno">  316</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#add8baa22fb72a945f2a0c42166bd4670">AIETranslateToXAIEV2</a>(module, output, deviceName);</div>
 <div class="line"><a id="l00317" name="l00317"></a><span class="lineno">  317</span>      },</div>
 <div class="line"><a id="l00318" name="l00318"></a><span class="lineno">  318</span>      registerDialects);</div>
-<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>  TranslateFromMLIRRegistration registrationXJSON(</div>
-<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>      <span class="stringliteral">&quot;aie-flows-to-json&quot;</span>, <span class="stringliteral">&quot;Translate AIE flows to JSON&quot;</span>,</div>
+<div class="line"><a id="l00319" name="l00319"></a><span class="lineno">  319</span>  TranslateFromMLIRRegistration registrationHSA(</div>
+<div class="line"><a id="l00320" name="l00320"></a><span class="lineno">  320</span>      <span class="stringliteral">&quot;aie-generate-hsa&quot;</span>, <span class="stringliteral">&quot;Generate hsa data movement configuration&quot;</span>,</div>
 <div class="line"><a id="l00321" name="l00321"></a><span class="lineno">  321</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a54223ec54d4b4c93efdd7fe1ed08d036">AIEFlowsToJSON</a>(module, output, deviceName);</div>
+<div class="line"><a id="l00322" name="l00322"></a><span class="lineno">  322</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ad56dfd32b584e548f1971501d3440a5f">AIETranslateToHSA</a>(module, output, deviceName);</div>
 <div class="line"><a id="l00323" name="l00323"></a><span class="lineno">  323</span>      },</div>
 <div class="line"><a id="l00324" name="l00324"></a><span class="lineno">  324</span>      registerDialects);</div>
-<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>  TranslateFromMLIRRegistration registrationXPE(</div>
-<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>      <span class="stringliteral">&quot;aie-mlir-to-xpe&quot;</span>, <span class="stringliteral">&quot;Translate AIE design to XPE file for simulation&quot;</span>,</div>
+<div class="line"><a id="l00325" name="l00325"></a><span class="lineno">  325</span>  TranslateFromMLIRRegistration registrationXJSON(</div>
+<div class="line"><a id="l00326" name="l00326"></a><span class="lineno">  326</span>      <span class="stringliteral">&quot;aie-flows-to-json&quot;</span>, <span class="stringliteral">&quot;Translate AIE flows to JSON&quot;</span>,</div>
 <div class="line"><a id="l00327" name="l00327"></a><span class="lineno">  327</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aa36cbfccdfe4200c087210aa18657d26">AIETranslateGraphXPE</a>(module, output, deviceName);</div>
+<div class="line"><a id="l00328" name="l00328"></a><span class="lineno">  328</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a54223ec54d4b4c93efdd7fe1ed08d036">AIEFlowsToJSON</a>(module, output, deviceName);</div>
 <div class="line"><a id="l00329" name="l00329"></a><span class="lineno">  329</span>      },</div>
 <div class="line"><a id="l00330" name="l00330"></a><span class="lineno">  330</span>      registerDialects);</div>
-<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>  TranslateFromMLIRRegistration registrationSCSimConfig(</div>
-<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>      <span class="stringliteral">&quot;aie-mlir-to-scsim-config&quot;</span>,</div>
-<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>      <span class="stringliteral">&quot;Translate AIE design to SCSimConfig file for simulation&quot;</span>,</div>
-<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a21b71fcc9a4ed020237fd11d2b272139">AIETranslateSCSimConfig</a>(module, output, deviceName);</div>
-<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>      },</div>
-<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>      registerDialects);</div>
-<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>  TranslateFromMLIRRegistration registrationShimSolution(</div>
-<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>      <span class="stringliteral">&quot;aie-mlir-to-shim-solution&quot;</span>,</div>
-<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>      <span class="stringliteral">&quot;Translate AIE design to ShimSolution file for simulation&quot;</span>,</div>
-<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a9f55f4fdf26f8d9533edcf1ba8afcb40">AIETranslateShimSolution</a>(module, output, deviceName);</div>
-<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>      },</div>
-<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>      registerDialects);</div>
-<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>  TranslateFromMLIRRegistration registrationCDODirect(</div>
-<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>      <span class="stringliteral">&quot;aie-generate-cdo&quot;</span>, <span class="stringliteral">&quot;Generate libxaie for CDO directly&quot;</span>,</div>
-<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>      [](ModuleOp module, raw_ostream &amp;) {</div>
-<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>        SmallString&lt;128&gt; workDirPath_;</div>
-<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>        <span class="keywordflow">if</span> (workDirPath.getNumOccurrences() == 0) {</div>
-<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>          if (llvm::sys::fs::current_path(workDirPath_))</div>
-<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>            llvm::report_fatal_error(</div>
-<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>                <span class="stringliteral">&quot;couldn&#39;t get cwd to use as work-dir-path&quot;</span>);</div>
-<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>        } <span class="keywordflow">else</span></div>
-<div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>          workDirPath_ = workDirPath.getValue();</div>
-<div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;work-dir-path: &quot;</span> &lt;&lt; workDirPath_ &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>);</div>
-<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a2cfe2629350d0872208508d8b825c37c">AIETranslateToCDODirect</a>(module, workDirPath_.c_str(), deviceName,</div>
-<div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span>                                       bigEndian, cdoUnified, cdoDebug,</div>
-<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>                                       cdoAieSim, cdoXaieDebug, cdoEnableCores);</div>
-<div class="line"><a id="l00359" name="l00359"></a><span class="lineno">  359</span>      },</div>
-<div class="line"><a id="l00360" name="l00360"></a><span class="lineno">  360</span>      registerDialects);</div>
-<div class="line"><a id="l00361" name="l00361"></a><span class="lineno">  361</span>  TranslateFromMLIRRegistration registrationNPU(</div>
-<div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>      <span class="stringliteral">&quot;aie-npu-to-binary&quot;</span>, <span class="stringliteral">&quot;Translate npu instructions to binary&quot;</span>,</div>
-<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>        std::vector&lt;uint32_t&gt; instructions;</div>
-<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>        <span class="keyword">auto</span> r = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aba8708b1ba49d85591f2134e73add897">AIETranslateNpuToBinary</a>(module, instructions, deviceName,</div>
-<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>                                         sequenceName);</div>
-<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>        <span class="keywordflow">if</span> (failed(r))</div>
-<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>          <span class="keywordflow">return</span> r;</div>
-<div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>        <span class="keywordflow">if</span> (outputBinary) {</div>
-<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>          output.write(<span class="keyword">reinterpret_cast&lt;</span><span class="keyword">const </span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(instructions.data()),</div>
-<div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>                       instructions.size() * <span class="keyword">sizeof</span>(uint32_t));</div>
-<div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>          <span class="keywordflow">for</span> (<span class="keyword">auto</span> w : instructions)</div>
-<div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>            output &lt;&lt; <a class="code hl_namespace" href="namespacellvm.html">llvm</a>::format(<span class="stringliteral">&quot;%08X\n&quot;</span>, w);</div>
-<div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span>        }</div>
-<div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>        <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00377" name="l00377"></a><span class="lineno">  377</span>      },</div>
-<div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span>      registerDialects);</div>
-<div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span>  TranslateFromMLIRRegistration registrationCtrlPkt(</div>
-<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>      <span class="stringliteral">&quot;aie-ctrlpkt-to-bin&quot;</span>, <span class="stringliteral">&quot;Translate aiex.control_packet ops to binary&quot;</span>,</div>
-<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span>        std::vector&lt;uint32_t&gt; instructions;</div>
-<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>        <span class="keyword">auto</span> r = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a04655f2f648be0b1bca2cdfc4c15eb92">AIETranslateControlPacketsToUI32Vec</a>(module, instructions,</div>
-<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span>                                                     deviceName, sequenceName);</div>
-<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>        <span class="keywordflow">if</span> (failed(r))</div>
-<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>          <span class="keywordflow">return</span> r;</div>
-<div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>        <span class="keywordflow">if</span> (outputBinary) {</div>
-<div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span>          output.write(<span class="keyword">reinterpret_cast&lt;</span><span class="keyword">const </span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(instructions.data()),</div>
-<div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span>                       instructions.size() * <span class="keyword">sizeof</span>(uint32_t));</div>
-<div class="line"><a id="l00390" name="l00390"></a><span class="lineno">  390</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00391" name="l00391"></a><span class="lineno">  391</span>          <span class="keywordflow">for</span> (<span class="keyword">auto</span> w : instructions)</div>
-<div class="line"><a id="l00392" name="l00392"></a><span class="lineno">  392</span>            output &lt;&lt; <a class="code hl_namespace" href="namespacellvm.html">llvm</a>::format(<span class="stringliteral">&quot;%08X\n&quot;</span>, w);</div>
-<div class="line"><a id="l00393" name="l00393"></a><span class="lineno">  393</span>        }</div>
-<div class="line"><a id="l00394" name="l00394"></a><span class="lineno">  394</span>        <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>      },</div>
-<div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>      registerDialects);</div>
-<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span>}</div>
+<div class="line"><a id="l00331" name="l00331"></a><span class="lineno">  331</span>  TranslateFromMLIRRegistration registrationXPE(</div>
+<div class="line"><a id="l00332" name="l00332"></a><span class="lineno">  332</span>      <span class="stringliteral">&quot;aie-mlir-to-xpe&quot;</span>, <span class="stringliteral">&quot;Translate AIE design to XPE file for simulation&quot;</span>,</div>
+<div class="line"><a id="l00333" name="l00333"></a><span class="lineno">  333</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00334" name="l00334"></a><span class="lineno">  334</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aa36cbfccdfe4200c087210aa18657d26">AIETranslateGraphXPE</a>(module, output, deviceName);</div>
+<div class="line"><a id="l00335" name="l00335"></a><span class="lineno">  335</span>      },</div>
+<div class="line"><a id="l00336" name="l00336"></a><span class="lineno">  336</span>      registerDialects);</div>
+<div class="line"><a id="l00337" name="l00337"></a><span class="lineno">  337</span>  TranslateFromMLIRRegistration registrationSCSimConfig(</div>
+<div class="line"><a id="l00338" name="l00338"></a><span class="lineno">  338</span>      <span class="stringliteral">&quot;aie-mlir-to-scsim-config&quot;</span>,</div>
+<div class="line"><a id="l00339" name="l00339"></a><span class="lineno">  339</span>      <span class="stringliteral">&quot;Translate AIE design to SCSimConfig file for simulation&quot;</span>,</div>
+<div class="line"><a id="l00340" name="l00340"></a><span class="lineno">  340</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00341" name="l00341"></a><span class="lineno">  341</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a21b71fcc9a4ed020237fd11d2b272139">AIETranslateSCSimConfig</a>(module, output, deviceName);</div>
+<div class="line"><a id="l00342" name="l00342"></a><span class="lineno">  342</span>      },</div>
+<div class="line"><a id="l00343" name="l00343"></a><span class="lineno">  343</span>      registerDialects);</div>
+<div class="line"><a id="l00344" name="l00344"></a><span class="lineno">  344</span>  TranslateFromMLIRRegistration registrationShimSolution(</div>
+<div class="line"><a id="l00345" name="l00345"></a><span class="lineno">  345</span>      <span class="stringliteral">&quot;aie-mlir-to-shim-solution&quot;</span>,</div>
+<div class="line"><a id="l00346" name="l00346"></a><span class="lineno">  346</span>      <span class="stringliteral">&quot;Translate AIE design to ShimSolution file for simulation&quot;</span>,</div>
+<div class="line"><a id="l00347" name="l00347"></a><span class="lineno">  347</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00348" name="l00348"></a><span class="lineno">  348</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a9f55f4fdf26f8d9533edcf1ba8afcb40">AIETranslateShimSolution</a>(module, output, deviceName);</div>
+<div class="line"><a id="l00349" name="l00349"></a><span class="lineno">  349</span>      },</div>
+<div class="line"><a id="l00350" name="l00350"></a><span class="lineno">  350</span>      registerDialects);</div>
+<div class="line"><a id="l00351" name="l00351"></a><span class="lineno">  351</span>  TranslateFromMLIRRegistration registrationCDODirect(</div>
+<div class="line"><a id="l00352" name="l00352"></a><span class="lineno">  352</span>      <span class="stringliteral">&quot;aie-generate-cdo&quot;</span>, <span class="stringliteral">&quot;Generate libxaie for CDO directly&quot;</span>,</div>
+<div class="line"><a id="l00353" name="l00353"></a><span class="lineno">  353</span>      [](ModuleOp module, raw_ostream &amp;) {</div>
+<div class="line"><a id="l00354" name="l00354"></a><span class="lineno">  354</span>        SmallString&lt;128&gt; workDirPath_;</div>
+<div class="line"><a id="l00355" name="l00355"></a><span class="lineno">  355</span>        <span class="keywordflow">if</span> (workDirPath.getNumOccurrences() == 0) {</div>
+<div class="line"><a id="l00356" name="l00356"></a><span class="lineno">  356</span>          if (llvm::sys::fs::current_path(workDirPath_))</div>
+<div class="line"><a id="l00357" name="l00357"></a><span class="lineno">  357</span>            llvm::report_fatal_error(</div>
+<div class="line"><a id="l00358" name="l00358"></a><span class="lineno">  358</span>                <span class="stringliteral">&quot;couldn&#39;t get cwd to use as work-dir-path&quot;</span>);</div>
+<div class="line"><a id="l00359" name="l00359"></a><span class="lineno">  359</span>        } <span class="keywordflow">else</span></div>
+<div class="line"><a id="l00360" name="l00360"></a><span class="lineno">  360</span>          workDirPath_ = workDirPath.getValue();</div>
+<div class="line"><a id="l00361" name="l00361"></a><span class="lineno">  361</span>        LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;work-dir-path: &quot;</span> &lt;&lt; workDirPath_ &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>);</div>
+<div class="line"><a id="l00362" name="l00362"></a><span class="lineno">  362</span>        <span class="keywordflow">return</span> <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a2cfe2629350d0872208508d8b825c37c">AIETranslateToCDODirect</a>(module, workDirPath_.c_str(), deviceName,</div>
+<div class="line"><a id="l00363" name="l00363"></a><span class="lineno">  363</span>                                       bigEndian, cdoUnified, cdoDebug,</div>
+<div class="line"><a id="l00364" name="l00364"></a><span class="lineno">  364</span>                                       cdoAieSim, cdoXaieDebug, cdoEnableCores);</div>
+<div class="line"><a id="l00365" name="l00365"></a><span class="lineno">  365</span>      },</div>
+<div class="line"><a id="l00366" name="l00366"></a><span class="lineno">  366</span>      registerDialects);</div>
+<div class="line"><a id="l00367" name="l00367"></a><span class="lineno">  367</span>  TranslateFromMLIRRegistration registrationNPU(</div>
+<div class="line"><a id="l00368" name="l00368"></a><span class="lineno">  368</span>      <span class="stringliteral">&quot;aie-npu-to-binary&quot;</span>, <span class="stringliteral">&quot;Translate npu instructions to binary&quot;</span>,</div>
+<div class="line"><a id="l00369" name="l00369"></a><span class="lineno">  369</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00370" name="l00370"></a><span class="lineno">  370</span>        std::vector&lt;uint32_t&gt; instructions;</div>
+<div class="line"><a id="l00371" name="l00371"></a><span class="lineno">  371</span>        <span class="keyword">auto</span> r = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aba8708b1ba49d85591f2134e73add897">AIETranslateNpuToBinary</a>(module, instructions, deviceName,</div>
+<div class="line"><a id="l00372" name="l00372"></a><span class="lineno">  372</span>                                         sequenceName);</div>
+<div class="line"><a id="l00373" name="l00373"></a><span class="lineno">  373</span>        <span class="keywordflow">if</span> (failed(r))</div>
+<div class="line"><a id="l00374" name="l00374"></a><span class="lineno">  374</span>          <span class="keywordflow">return</span> r;</div>
+<div class="line"><a id="l00375" name="l00375"></a><span class="lineno">  375</span>        <span class="keywordflow">if</span> (outputBinary) {</div>
+<div class="line"><a id="l00376" name="l00376"></a><span class="lineno">  376</span>          output.write(<span class="keyword">reinterpret_cast&lt;</span><span class="keyword">const </span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(instructions.data()),</div>
+<div class="line"><a id="l00377" name="l00377"></a><span class="lineno">  377</span>                       instructions.size() * <span class="keyword">sizeof</span>(uint32_t));</div>
+<div class="line"><a id="l00378" name="l00378"></a><span class="lineno">  378</span>        } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00379" name="l00379"></a><span class="lineno">  379</span>          <span class="keywordflow">for</span> (<span class="keyword">auto</span> w : instructions)</div>
+<div class="line"><a id="l00380" name="l00380"></a><span class="lineno">  380</span>            output &lt;&lt; <a class="code hl_namespace" href="namespacellvm.html">llvm</a>::format(<span class="stringliteral">&quot;%08X\n&quot;</span>, w);</div>
+<div class="line"><a id="l00381" name="l00381"></a><span class="lineno">  381</span>        }</div>
+<div class="line"><a id="l00382" name="l00382"></a><span class="lineno">  382</span>        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00383" name="l00383"></a><span class="lineno">  383</span>      },</div>
+<div class="line"><a id="l00384" name="l00384"></a><span class="lineno">  384</span>      registerDialects);</div>
+<div class="line"><a id="l00385" name="l00385"></a><span class="lineno">  385</span>  TranslateFromMLIRRegistration registrationCtrlPkt(</div>
+<div class="line"><a id="l00386" name="l00386"></a><span class="lineno">  386</span>      <span class="stringliteral">&quot;aie-ctrlpkt-to-bin&quot;</span>, <span class="stringliteral">&quot;Translate aiex.control_packet ops to binary&quot;</span>,</div>
+<div class="line"><a id="l00387" name="l00387"></a><span class="lineno">  387</span>      [](ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00388" name="l00388"></a><span class="lineno">  388</span>        std::vector&lt;uint32_t&gt; instructions;</div>
+<div class="line"><a id="l00389" name="l00389"></a><span class="lineno">  389</span>        <span class="keyword">auto</span> r = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a04655f2f648be0b1bca2cdfc4c15eb92">AIETranslateControlPacketsToUI32Vec</a>(module, instructions,</div>
+<div class="line"><a id="l00390" name="l00390"></a><span class="lineno">  390</span>                                                     deviceName, sequenceName);</div>
+<div class="line"><a id="l00391" name="l00391"></a><span class="lineno">  391</span>        <span class="keywordflow">if</span> (failed(r))</div>
+<div class="line"><a id="l00392" name="l00392"></a><span class="lineno">  392</span>          <span class="keywordflow">return</span> r;</div>
+<div class="line"><a id="l00393" name="l00393"></a><span class="lineno">  393</span>        <span class="keywordflow">if</span> (outputBinary) {</div>
+<div class="line"><a id="l00394" name="l00394"></a><span class="lineno">  394</span>          output.write(<span class="keyword">reinterpret_cast&lt;</span><span class="keyword">const </span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(instructions.data()),</div>
+<div class="line"><a id="l00395" name="l00395"></a><span class="lineno">  395</span>                       instructions.size() * <span class="keyword">sizeof</span>(uint32_t));</div>
+<div class="line"><a id="l00396" name="l00396"></a><span class="lineno">  396</span>        } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00397" name="l00397"></a><span class="lineno">  397</span>          <span class="keywordflow">for</span> (<span class="keyword">auto</span> w : instructions)</div>
+<div class="line"><a id="l00398" name="l00398"></a><span class="lineno">  398</span>            output &lt;&lt; <a class="code hl_namespace" href="namespacellvm.html">llvm</a>::format(<span class="stringliteral">&quot;%08X\n&quot;</span>, w);</div>
+<div class="line"><a id="l00399" name="l00399"></a><span class="lineno">  399</span>        }</div>
+<div class="line"><a id="l00400" name="l00400"></a><span class="lineno">  400</span>        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00401" name="l00401"></a><span class="lineno">  401</span>      },</div>
+<div class="line"><a id="l00402" name="l00402"></a><span class="lineno">  402</span>      registerDialects);</div>
+<div class="line"><a id="l00403" name="l00403"></a><span class="lineno">  403</span>}</div>
 </div>
-<div class="line"><a id="l00398" name="l00398"></a><span class="lineno">  398</span>} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a id="l00404" name="l00404"></a><span class="lineno">  404</span>} <span class="comment">// namespace xilinx::AIE</span></div>
 <div class="ttc" id="aADFDialect_8h_html"><div class="ttname"><a href="ADFDialect_8h.html">ADFDialect.h</a></div></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargets_8cpp_html_a805821d1dd24ba3db3fab81f0f5467ff"><div class="ttname"><a href="AIETargets_8cpp.html#a805821d1dd24ba3db3fab81f0f5467ff">attrToJSON</a></div><div class="ttdeci">llvm::json::Value attrToJSON(Attribute &amp;attr)</div><div class="ttdef"><b>Definition</b> <a href="AIETargets_8cpp_source.html#l00051">AIETargets.cpp:51</a></div></div>
@@ -501,7 +507,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Dec 16 2025 22:01:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Dec 17 2025 01:03:59 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

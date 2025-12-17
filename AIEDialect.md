@@ -1854,16 +1854,15 @@ _Runtime allocation information for a single shim DMA_
 Syntax:
 
 ```
-operation ::= `aie.shim_dma_allocation` $sym_name `(` $channel_dir `,` $channel_index `,` $col (`,` $packet^)? `)` attr-dict
+operation ::= `aie.shim_dma_allocation` $sym_name `(` $tile `,` $channel_dir `,` $channel_index (`,` $packet^)? `)` attr-dict
 ```
 
 This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
 and hence there is no appropriate dma_start operation to indicate which channel is being
-used and on which column the shim_dma is.
+used and on which shim tile the shim_dma is.
 
 It contains attributes for the sym_name of an operation which generated the shim DMA,
-for the DMAChannelDir and channel index, and for the column of the shim tile to which
-the originating operation was mapped.
+for the DMAChannelDir and channel index, and a reference to the shim tile.
 
 Example:
 ```
@@ -1871,9 +1870,9 @@ Example:
   %tile02 = aie.tile(0, 2)
   aie.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !aie.objectfifo<memref<64xi16>>
 ```
-could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
+could produce the following allocation info (channel direction MM2S, channel index 1, on tile %tile00):
 ```
-  aie.shim_dma_allocation @of_in_0 (MM2S, 1, 0)
+  aie.shim_dma_allocation @of_in_0 (%tile00, MM2S, 1)
 ```
 
 Traits: `HasParent<DeviceOp>`
@@ -1887,12 +1886,17 @@ Interfaces: `Symbol`
 <tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
 <tr><td><code>channel_dir</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
 <tr><td><code>channel_index</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
-<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>64-bit signless integer attribute</td></tr>
 <tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>packet</code></td><td>::xilinx::AIE::PacketInfoAttr</td><td>
     Tuple encoding the type and header of a packet;
   </td></tr>
 </table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `tile` | index |
 
 
 
