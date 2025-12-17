@@ -88,7 +88,7 @@ def _create_input_with_addresses_pipeline(
             "aie-generate-column-control-overlay",
             **{"route-shim-to-tile-ctrl": ctrl_pkt_overlay},
         )
-        .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme)
+        .add_pass("aie-assign-buffer-addresses", **{"alloc-scheme": scheme})
         .add_pass("aie-vector-transfer-lowering", **{"max-transfer-rank": 1})
     )
 
