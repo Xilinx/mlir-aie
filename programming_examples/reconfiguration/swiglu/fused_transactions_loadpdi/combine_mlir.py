@@ -86,7 +86,7 @@ def create_main_device(buffer_offsets):
     lines = []
     lines.append("    aie.device(npu2) @main {")
     lines.append("")
-    lines.append(f"        aiex.runtime_sequence @sequence(%arg : memref<{buffer_offsets['total']}xbf16>) {{")
+    lines.append(f"        aie.runtime_sequence @sequence(%arg : memref<{buffer_offsets['total']}xbf16>) {{")
     lines.append("")
     lines.append("            %c3_i32 = arith.constant 3 : i32")
     lines.append("")
