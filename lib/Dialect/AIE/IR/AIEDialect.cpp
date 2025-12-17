@@ -637,7 +637,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     if (!fifoOut.getDimensionsToStream().empty())
       return emitOpError("currently does not support objectFifos with "
-                          "dimensionsToStream for join output.");
+                         "dimensionsToStream for join output.");
 
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
