@@ -298,7 +298,12 @@ setup(
     },
     zip_safe=False,
     python_requires=">=3.10",
-    install_requires=parse_requirements(
-        Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
-    ),
+    install_requires=[
+        req
+        for req in parse_requirements(
+            Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
+        )
+        if "eudsl-python-extras" not in req
+    ]
+    + ["cloudpickle"],
 )
