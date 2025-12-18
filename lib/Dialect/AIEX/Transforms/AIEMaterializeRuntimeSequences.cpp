@@ -47,26 +47,43 @@ struct RuntimeCallGraphCyclicityAnalysis {
       op->emitError("RuntimeCallGraphCyclicityAnalysis can only be called on aiex.runtime_sequence operations.");
       return;
     }
-    llvm::SetVector<AIE::RuntimeSequenceOp> visited = {};
-    visited.insert(runtimeSequenceOp);
-    llvm::SetVector<RunOp> todo;
-    runtimeSequenceOp.walk([&](RunOp runOp) {
-      todo.insert(runOp);
-    });
-    while(!todo.empty()) {
-      RunOp curOp = todo.pop_back_val();
-      if (AIE::RuntimeSequenceOp calleeRuntimeSequence = curOp.getCalleeRuntimeSequenceOp()) {
-        if (visited.contains(calleeRuntimeSequence)) {
-          isCyclic = true;
-          isValid = true;
-          return;
-        }
-        visited.insert(calleeRuntimeSequence);
-        // Also need to walk the callee to find all nested RunOps
-        calleeRuntimeSequence.walk([&](RunOp runOp) {
-          todo.insert(runOp);
-        });
+    
+    // Use DFS with a stack to detect cycles
+    // A cycle exists if we encounter a sequence already on the current path
+    llvm::DenseSet<AIE::RuntimeSequenceOp> callStack;
+    llvm::DenseSet<AIE::RuntimeSequenceOp> visited;
+    
+    std::function<bool(AIE::RuntimeSequenceOp)> hasCycle = [&](AIE::RuntimeSequenceOp seq) -> bool {
+      if (callStack.contains(seq)) {
+        return true;  // Found a cycle
       }
+      if (visited.contains(seq)) {
+        return false;  // Already checked this sequence
+      }
+      
+      callStack.insert(seq);
+      visited.insert(seq);
+      
+      // Check all sequences called by this one
+      bool foundCycle = false;
+      seq.walk([&](RunOp runOp) {
+        if (AIE::RuntimeSequenceOp callee = runOp.getCalleeRuntimeSequenceOp()) {
+          if (hasCycle(callee)) {
+            foundCycle = true;
+            return WalkResult::interrupt();
+          }
+        }
+        return WalkResult::advance();
+      });
+      
+      callStack.erase(seq);
+      return foundCycle;
+    };
+    
+    if (hasCycle(runtimeSequenceOp)) {
+      isCyclic = true;
+      isValid = true;
+      return;
     }
     isCyclic = false;
     isValid = true;
