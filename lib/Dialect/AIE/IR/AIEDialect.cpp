@@ -394,14 +394,32 @@ LogicalResult ObjectFifoCreateOp::verify() {
     if (!getAieStreamPort().has_value())
       return emitError("`aie_stream_port` must be defined");
 
-    if (getAieStream().value() == 0 || getAieStream().value() == 2)
+    if (getAieStream().value() == 0 || getAieStream().value() == 2) {
       if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
         return emitError("`aie_stream` is not available for shim and mem tiles");
+      
+      if (getRepeatCount().has_value())
+        return emitError("`repeat_count` unavailable on stream end");
+
+      if (getInitValues().has_value())
+        return emitError("`init_values` unavailable on stream end");
+
+      if (getIterCount().has_value())
+        return emitError("`iter_count` unavailable on stream end");
+
+      if(!getDimensionsToStream().empty())
+        return emitError("`dimensionsToStream` data layout transformations are "
+                         "unavailable on stream end");
+    }
 
     if (getAieStream().value() == 1 || getAieStream().value() == 2)
       if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile() ||
           getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
         return emitError("`aie_stream` is not available for shim and mem tiles");
+
+    if(!getDimensionsFromStreamPerConsumer()[0].empty())
+        return emitError("`dimensionsFromStreamPerConsumer` data layout "
+                         "transformations are unavailable on stream end");
   }
 
   if (getInitValues().has_value()) {

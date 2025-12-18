@@ -8,15 +8,16 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
-
-// CHECK:   error: 'aie.objectfifo' op cannot use dims_from_stream on objectfifo stream port
+// RUN: aie-opt --aie-objectFifo-stateful-transform --verify-diagnostics %s
 
 module @bad_dims_from_stream {
  aie.device(xcve2302) {
     %tile12 = aie.tile(1, 2) 
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of_stream (%tile12, {%tile33}, 2 : i32) {aie_stream = 0 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>
+    // expected-error@+1 {{`dimensionsFromStreamPerConsumer` data layout transformations are unavailable on stream end}}
+    aie.objectfifo @of_stream (%tile12, {%tile33 dimensionsFromStream [<size = 16, stride = 1>]}, 2 : i32)
+                               {aie_stream = 1 : i32, aie_stream_port = 0 : i32}
+                               : !aie.objectfifo<memref<16xi32>>
   }
 }
