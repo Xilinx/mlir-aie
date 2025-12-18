@@ -453,12 +453,17 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // even if it exceeds the maximum stride/wrap size of any one dimension,
   // and simply do not lower any data layout transformations, since there is
   // no other way to express this at the dma_memcpy_nd interface otherwise.
-  AIE::ShimDMAllocationGetter allocGetter;
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  if (auto allocOp = allocGetter.get(dev, getMetadata())) {
-    int col = allocOp->getCol();
+  if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+          dev, getMetadata().getRootReference())) {
+    AIE::TileOp tile = allocOp.getTileOp();
+    if (!tile) {
+      return emitOpError("shim DMA allocation must reference a valid TileOp");
+    }
+    int col = tile.getCol();
+    int row = tile.getRow();
     bool skipTransformationChecks = isLinearTransferWithoutTransformation();
-    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes,
+    if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
                                   inputStrides, hardwareSizes, hardwareStrides,
                                   skipTransformationChecks))) {
       return failure();
@@ -661,112 +666,6 @@ DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
   }
 
   return data;
-}
-
-//===----------------------------------------------------------------------===//
-// RuntimeSequenceOp
-//===----------------------------------------------------------------------===//
-
-ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
-                                           OperationState &result) {
-
-  // Name of this runtime sequence
-  StringAttr nameAttr;
-  (void)parser.parseOptionalSymbolName(
-      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
-
-  SmallVector<OpAsmParser::Argument> entryArgs;
-
-  // Entry arguments,  e.g. (%addr: memref<1xi32>)
-  ParseResult argParseResult = parser.parseCommaSeparatedList(
-      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
-        OpAsmParser::Argument argument;
-        if (parser.parseArgument(argument, true, true)) {
-          return failure();
-        }
-        entryArgs.push_back(argument);
-        return success();
-      });
-  if (argParseResult) {
-    return argParseResult;
-  }
-
-  // Body
-  auto *body = result.addRegion();
-  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
-  if (bodyParseResult) {
-    return bodyParseResult;
-  }
-
-  return success();
-}
-
-void AIEX::RuntimeSequenceOp::print(OpAsmPrinter &printer) {
-  Region &body = getRegion();
-
-  auto nameAttr = (*this)->getAttrOfType<StringAttr>(
-      mlir::SymbolTable::getSymbolAttrName());
-  if (nameAttr &&
-      nameAttr != ::mlir::OpBuilder((*this)->getContext())
-                      .getStringAttr(getDefaultRuntimeSequenceName())) {
-    printer << ' ';
-    printer.printSymbolName(nameAttr);
-  }
-
-  printer << '(';
-  for (unsigned i = 0, n = body.getNumArguments(); i < n; i++) {
-    if (i > 0) {
-      printer << ", ";
-    }
-    printer.printRegionArgument(body.getArgument(i));
-  }
-  printer << ')';
-
-  printer << ' ';
-  printer.printRegion(body, false, true);
-}
-
-LogicalResult AIEX::RuntimeSequenceOp::verify() {
-  AIE::DeviceOp device = (*this)->getParentOfType<AIE::DeviceOp>();
-  if (!device) {
-    // this check is redudnant with the HasParent trait, but can't hurt
-    (*this)->emitOpError() << "must be inside AIE device operation.";
-    return failure();
-  }
-  return success();
-}
-
-AIEX::RuntimeSequenceOp
-AIEX::RuntimeSequenceOp::getForSymbolInDevice(AIE::DeviceOp deviceOp,
-                                              llvm::StringRef symbol) {
-  AIEX::RuntimeSequenceOp runtimeSequenceOp;
-  if (!symbol.size()) {
-    runtimeSequenceOp = *deviceOp.getOps<AIEX::RuntimeSequenceOp>().begin();
-  } else {
-    Operation *maybeRuntimeSequenceOp =
-        mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);
-    if (!maybeRuntimeSequenceOp) {
-      return nullptr;
-    }
-    runtimeSequenceOp =
-        llvm::dyn_cast<AIEX::RuntimeSequenceOp>(maybeRuntimeSequenceOp);
-  }
-  return runtimeSequenceOp;
-}
-
-AIEX::RuntimeSequenceOp
-AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(AIE::DeviceOp deviceOp,
-                                                     llvm::StringRef symbol) {
-  AIEX::RuntimeSequenceOp runtimeSequenceOp =
-      getForSymbolInDevice(deviceOp, symbol);
-  if (!runtimeSequenceOp) {
-    if (!symbol.empty()) {
-      deviceOp.emitError("No such runtime sequence: ") << symbol;
-    } else {
-      deviceOp.emitError("No runtime sequence in device");
-    }
-  }
-  return runtimeSequenceOp;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1046,7 +945,7 @@ AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
   return referencedDevice;
 }
 
-AIEX::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
+AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
   AIEX::ConfigureOp configureOp =
       getOperation()->getParentOfType<AIEX::ConfigureOp>();
   if (!configureOp) {
@@ -1069,8 +968,8 @@ AIEX::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
         << "' runtime sequence";
     return nullptr;
   }
-  AIEX::RuntimeSequenceOp runtimeSequence =
-      llvm::dyn_cast<AIEX::RuntimeSequenceOp>(maybeRuntimeSequence);
+  AIE::RuntimeSequenceOp runtimeSequence =
+      llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeRuntimeSequence);
   if (!runtimeSequence) {
     emitError() << "Not a runtime sequence: '" << getRuntimeSequenceSymbol()
                 << "'";

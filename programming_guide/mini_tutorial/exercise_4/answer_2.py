@@ -14,7 +14,7 @@ from aie.iron import (
     Runtime,
     Worker,
     ObjectFifo,
-    GlobalBuffer,
+    Buffer,
     WorkerRuntimeBarrier,
 )
 from aie.iron.placers import SequentialPlacer
@@ -35,7 +35,7 @@ def exercise_4(output):
     # Runtime parameters
     rtps = []
     rtps.append(
-        GlobalBuffer(
+        Buffer(
             data_ty,
             name=f"rtp",
             use_write_rtp=True,

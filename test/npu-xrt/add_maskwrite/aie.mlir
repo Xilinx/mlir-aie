@@ -10,8 +10,6 @@
 
 module {
   aie.device(NPUDEVICE) {
-    memref.global "public" @out0 : memref<64xi32>
-
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
@@ -61,9 +59,9 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @out0(S2MM, 0, 0)
+    aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 0)
 
-    aiex.runtime_sequence @seq(%arg0: memref<8xi32>) {
+    aie.runtime_sequence @seq(%arg0: memref<8xi32>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c8_i64 = arith.constant 8 : i64

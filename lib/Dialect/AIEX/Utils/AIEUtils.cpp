@@ -42,9 +42,9 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
     while (dev.lookupSymbol(name + std::to_string(cachedId)))
       cachedId++;
     name += std::to_string(cachedId);
-    global = builder.create<memref::GlobalOp>(
-        loc, name, builder.getStringAttr("private"), memrefType, initVal, true,
-        nullptr);
+    global = memref::GlobalOp::create(builder, loc, name,
+                                      builder.getStringAttr("private"),
+                                      memrefType, initVal, true, nullptr);
   }
   return global;
 }

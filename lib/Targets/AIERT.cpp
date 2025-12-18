@@ -862,11 +862,17 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
                  "`elf_file` for this core. Compile cores first.";
           return failure();
         }
-        auto ps = std::filesystem::path::preferred_separator;
-        if (failed(addAieElf(
-                col, row,
-                (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str(),
-                aieSim)))
+        // Check if fileName is already an absolute path.
+        // If so, use it directly. Otherwise, concatenate with elfPath.
+        std::string fullPath;
+        if (std::filesystem::path(fileName).is_absolute()) {
+          fullPath = fileName;
+        } else {
+          auto ps = std::filesystem::path::preferred_separator;
+          fullPath =
+              (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();
+        }
+        if (failed(addAieElf(col, row, fullPath, aieSim)))
           return failure();
       }
     }

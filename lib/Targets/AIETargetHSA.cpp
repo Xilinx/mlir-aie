@@ -42,20 +42,6 @@ const char *hsa_cpp_file_header = R"code(
 
 )code";
 
-std::optional<AIE::ShimDMAAllocationOp>
-getAllocOpForSymbol(AIE::DeviceOp dev, StringRef sym_name) {
-  auto sym = dev.lookupSymbol(sym_name);
-  if (!sym)
-    return std::nullopt;
-
-  auto uses = SymbolTable::getSymbolUses(sym, dev);
-  for (auto use : *uses)
-    if (auto infoOp = dyn_cast<AIE::ShimDMAAllocationOp>(use.getUser()))
-      return infoOp;
-
-  return std::nullopt;
-}
-
 mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
                                       llvm::StringRef deviceName) {
 
@@ -70,14 +56,14 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
   output << hsa_cpp_file_header;
 
   // Getting the sequence function op which contains the instructions
-  auto sequenceOps = targetOp.getOps<AIEX::RuntimeSequenceOp>();
+  auto sequenceOps = targetOp.getOps<AIE::RuntimeSequenceOp>();
   if (sequenceOps.empty()) {
     // If no sequenceOp then just return
     return success();
   } else if (std::distance(sequenceOps.begin(), sequenceOps.end()) > 1) {
     return module.emitOpError("expected at most one sequence operation");
   }
-  AIEX::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();
+  AIE::RuntimeSequenceOp sequenceOp = *sequenceOps.begin();
 
   collectTiles(targetOp, tiles);
   collectBuffers(targetOp, buffers);
@@ -92,7 +78,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
     // Getting the IDs of the buffers
     auto memref = op.getMemref();
     Block &entryBB =
-        op->getParentOfType<AIEX::RuntimeSequenceOp>().getBody().front();
+        op->getParentOfType<AIE::RuntimeSequenceOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {
@@ -118,17 +104,24 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
       return failure();
     }
 
-    auto infoOp = getAllocOpForSymbol(dev, op.getMetadata());
+    AIE::ShimDMAAllocationOp infoOp = AIE::ShimDMAAllocationOp::getForSymbol(
+        dev, op.getMetadata().getRootReference());
     if (!infoOp) {
       op.emitOpError("couldn't find shim_dma_allocation op");
       return failure();
     }
 
-    auto channelDir = infoOp->getChannelDir();
-    uint32_t ChannelId = infoOp->getChannelIndex();
+    AIE::TileOp tile = infoOp.getTileOp();
+    if (!tile) {
+      op.emitOpError("shim_dma_allocation op must reference a valid TileOp");
+      return failure();
+    }
+
+    auto channelDir = infoOp.getChannelDir();
+    uint32_t ChannelId = infoOp.getChannelIndex();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int col = infoOp->getCol();
-    bool isPlio = infoOp->getPlio();
+    int col = tile.getCol();
+    bool isPlio = infoOp.getPlio();
 
     llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
@@ -158,7 +151,7 @@ mlir::LogicalResult AIETranslateToHSA(ModuleOp module, raw_ostream &output,
     // Getting the ID of the buffer that we are using
     auto memref = op.getMemref();
     Block &entryBB =
-        op->getParentOfType<AIEX::RuntimeSequenceOp>().getBody().front();
+        op->getParentOfType<AIE::RuntimeSequenceOp>().getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
       if (entryBB.getArgument(i) == memref) {

@@ -528,38 +528,11 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
   ];
 }
 
-def AIE_RuntimeSequenceOp : AIEX_Op<"runtime_sequence", [
-  Symbol,
-  NoTerminator, 
-  HasParent<"AIE::DeviceOp">, 
-]> {
-  let summary = "Program the configuration co-processor of the AI Engine array";
-  let description = [{
-    Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
-    These instructions will execute on the configuration co-processor of the AI Engine array.
-
-    Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
-    The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
-  }];
-  let arguments = (
-    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name
-  );
-  let regions = (region
-    AnyRegion:$body
-  );
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
-  let extraClassDeclaration = [{
-    static llvm::StringRef getDefaultRuntimeSequenceName() { return "sequence"; }
-    static RuntimeSequenceOp getForSymbolInDevice(AIE::DeviceOp module, llvm::StringRef symbol);
-    static RuntimeSequenceOp getForSymbolInDeviceOrError(AIE::DeviceOp module, llvm::StringRef symbol);
-  }];
-  let extraClassDefinition = [{
-  }];
-}
+// NOTE: runtime_sequence operation has been moved to the AIE dialect (AIEOps.td)
+// Use aie.runtime_sequence instead of aiex.runtime_sequence
 
 def AIE_ConfigureOp: AIEX_Op<"configure", [
-  HasParent<"RuntimeSequenceOp">,
+  HasParent<"AIE::RuntimeSequenceOp">,
   NoTerminator
 ]>,
   Results<(outs Index:$result)>
@@ -596,7 +569,7 @@ def AIE_RunOp: AIEX_Op<"run", [HasParent<"ConfigureOp">]> {
 
   let extraClassDeclaration = [{
     AIE::DeviceOp getCalleeDeviceOp();
-    RuntimeSequenceOp getCalleeRuntimeSequenceOp();
+    AIE::RuntimeSequenceOp getCalleeRuntimeSequenceOp();
   }];
 
   let hasVerifier = 1;
@@ -690,7 +663,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
         ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
         OptionalAttr<PacketInfoAttr>:$packet,
-        FlatSymbolRefAttr:$metadata,
+        SymbolRefAttr:$metadata,
         I64Attr:$id,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I64Attr, "0">:$d0_zero_before,
@@ -1028,9 +1001,10 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
 def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
   let arguments = (
-    ins I32Attr:$id,
-        OptionalAttr<I32Attr>:$size,
-        OptionalAttr<UI64Attr>:$address
+    ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$id,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$size,
+        DefaultValuedOptionalAttr<UI64Attr, "0">:$address
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
@@ -1038,10 +1012,12 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     Load a PDI (Programmable Device Image) to configure the NPU.
     The PDI is identified by `id`. `address` and `size` are typically written at
     runtime by the driver or host program.
+
+    If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
   }];
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1071,7 +1047,6 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     std::optional<uint32_t> getFirstBdId();
-    using ::xilinx::AIE::TileElement::Trait<AIEX::DMAConfigureTaskOp>::getAsmResultNames;
   }];
 
   let extraClassDefinition = [{
@@ -1092,11 +1067,11 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"RuntimeSe
   ];
 }
 
-def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
   let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
 
   let arguments = (
-    ins FlatSymbolRefAttr:$alloc,
+    ins SymbolRefAttr:$alloc,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );
@@ -1106,7 +1081,7 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"Ru
   let assemblyFormat = [{ $alloc regions attr-dict }];
 }
 
-def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"RuntimeSequenceOp">]> {
+def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
   let summary = "Free all Buffer Descriptor IDs Associated with the Given Task";
   let description = [{
     This operation informs the static buffer descriptor allocator pass in the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
@@ -1130,7 +1105,7 @@ def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"RuntimeSequenceOp">
   }];
 }
 
-def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp">]> {
+def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
   let summary = "Submit a Preconfigured Task to the Task Queue";
   let description = [{
     Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
@@ -1154,7 +1129,7 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"RuntimeSequenceOp
   }];
 }
 
-def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"RuntimeSequenceOp">]> {
+def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
     This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.
@@ -1181,7 +1156,7 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"RuntimeSequenceOp
   }];
 }
 
-def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequenceOp">, TileElement]>,
+def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>,
     Results<(outs Index:$result)>
   {
 
@@ -1211,7 +1186,6 @@ def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequ
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     AIE::BDChainOp getBDChainOp();
-    using ::xilinx::AIE::TileElement::Trait<AIEX::DMAStartBdChainOp>::getAsmResultNames;
   }];
 
   let extraClassDefinition = [{
@@ -1220,7 +1194,7 @@ def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"RuntimeSequ
 
 }
 
-def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"RuntimeSequenceOp">]>,
+def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"AIE::RuntimeSequenceOp">]>,
     Results<(outs Index:$result)>
   {
   let summary = "As dma_start_bd_chain, but specify tile, direction and channel by reference to a Shim DMA allocation op";
@@ -1238,7 +1212,7 @@ def AIE_DMAStartBdChainForOp: AIEX_Op<"dma_start_bd_chain_for", [HasParent<"Runt
   }];
 }
 
-def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
   let summary = "Set the value of a lock";
   let description = [{
     This operation sets the value of `lock` inside of a RuntimeSequenceOp.

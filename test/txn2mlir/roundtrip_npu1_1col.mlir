@@ -19,7 +19,7 @@
 module {
   aie.device(npu1_1col) {
     memref.global "private" constant @blockwrite_data : memref<2xi32> = dense<[4195328, 0]>
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
       aiex.npu.maskwrite32 {address = 2301952 : ui32, mask = 2 : ui32, value = 2 : ui32}
       aiex.npu.write32 {address = 2224128 : ui32, value = 2 : ui32}
       %0 = memref.get_global @blockwrite_data : memref<2xi32>

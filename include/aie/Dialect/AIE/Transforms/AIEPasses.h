@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPathFinder.h"
 
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 
@@ -36,6 +37,12 @@ createAIENormalizeAddressSpacesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIERouteFlowsPass();
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createAIEVectorOptPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEVectorToPointerLoopsPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>>
+createAIEVectorTransferLoweringPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIEHoistVectorTransferPointersPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();

@@ -14,6 +14,3 @@
 [submodule "third_party/aie_api"]
 	path = third_party/aie_api
 	url = https://github.com/jgmelber/aie_api
-[submodule "third_party/mlir-python-extras"]
-	path = third_party/mlir-python-extras
-	url = https://github.com/erwei-xilinx/mlir-python-extras.git

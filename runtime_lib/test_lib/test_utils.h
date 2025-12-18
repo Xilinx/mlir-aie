@@ -27,8 +27,10 @@
 #include <string>
 #include <vector>
 
-#include "xrt/xrt_device.h"
-#include "xrt/xrt_kernel.h"
+namespace xrt {
+class device;
+class kernel;
+} // namespace xrt
 
 namespace test_utils {
 

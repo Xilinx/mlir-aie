@@ -18,7 +18,7 @@ Let's first look at a basic Python source file (named [aie2.py](./aie2.py)) for 
 
 At the top of this Python source, we include modules that define the IRON libraries `aie.iron` for high-level abstraction constructs, resource placement algorithms `aie.iron.placers` and target architecture `aie.iron.device`.
 ```python
-from aie.iron import Program, Runtime, Worker, LocalBuffer
+from aie.iron import Program, Runtime, Worker, Buffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, Tile
 ```
@@ -39,16 +39,17 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
     )
 ```
-In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a local data buffer and initializes each entry to zero. The compute routine in this case has no inputs. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
+In our simple design there is only one Worker which will perform the `core_fn` routine. The compute routine iterates over a data buffer and initializes each entry to zero. The compute routine in this case has no inputs other than a handle to the buffer. As we will see in the next section of the guide, computational tasks usually run on data that is brought into the AIE array from external memory and the output produced is sent back out. Note that in this example design the Worker is explicitly placed on a Compute tile with coordinates (0,2) in the AIE array.
 ```python
+buffer = LocalBuffer(data_ty, name="buff")
+
 # Task for the worker to perform
-def core_fn():
-    local = LocalBuffer(data_ty, name="local")
+def core_fn(buff):
     for i in range_(data_size):
-        local[i] = 0
+        buff[i] = 0
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, [], placement=Tile(0, 2), while_true=False)
+my_worker = Worker(core_fn, [buffer], placement=Tile(0, 2), while_true=False)
 ```
 > **NOTE 1:**  Did you notice the underscore in `range_`? Although IRON makes NPU designs look mostly like normal Python programs, it is important to understand that the code you write here is _not_ directly executed on the NPU; instead, the code you write in an IRON design _generates other code_ (metaprogramming), kind of like if you wrote a print-statement with a string of code inside. Our toolchain then compiles this generated other code, and it can then run directly on the NPU. 
 >

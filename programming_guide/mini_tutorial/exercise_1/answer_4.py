@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo, LocalBuffer
+from aie.iron import Program, Runtime, Worker, ObjectFifo
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 

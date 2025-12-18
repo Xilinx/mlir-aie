@@ -436,13 +436,10 @@ module {
         aie.use_lock(%lock_2_1, Release, 4)
         aie.next_bd ^bb10
     } 
-    aie.shim_dma_allocation @airMemcpyId12(S2MM, 0, 0)
-    memref.global "public" @airMemcpyId12 : memref<16x16xi32, 1 : i32>
-    aie.shim_dma_allocation @airMemcpyId4(MM2S, 0, 0)
-    memref.global "public" @airMemcpyId4 : memref<16x16xi32, 1 : i32>
-    aie.shim_dma_allocation @airMemcpyId5(MM2S, 1, 0)
-    memref.global "public" @airMemcpyId5 : memref<16x16xi32, 1 : i32>
-    aiex.runtime_sequence(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {     
+    aie.shim_dma_allocation @airMemcpyId12 (%tile_0_0, S2MM, 0)
+    aie.shim_dma_allocation @airMemcpyId4 (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @airMemcpyId5 (%tile_0_0, MM2S, 1)
+    aie.runtime_sequence(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {     
       // <trace>
       aiex.npu.write32 {address = 212992 : ui32, column = 3 : i32, row = 2 : i32, value = 31232 : ui32} // [14:8] reset event: 122(BROADCAST_15)	
       aiex.npu.write32 {address = 213200 : ui32, column = 3 : i32, row = 2 : i32, value = 7995392 : ui32} // [22:16] start event: 122(BROADCAST_15)

@@ -177,13 +177,10 @@ module {
       aie.use_lock(%lock_1_1, Release, 1)
       aie.next_bd ^bb4
     }
-    aie.shim_dma_allocation @airMemcpyId12(S2MM, 0, 2)
-    memref.global "public" @airMemcpyId12 : memref<256xbf16, 1 : i32>
-    aie.shim_dma_allocation @airMemcpyId4(MM2S, 0, 0)
-    memref.global "public" @airMemcpyId4 : memref<1x48xbf16, 1 : i32>
-    aie.shim_dma_allocation @airMemcpyId5(MM2S, 0, 1)
-    memref.global "public" @airMemcpyId5 : memref<1x48xbf16, 1 : i32>
-    aiex.runtime_sequence @six(%arg0: memref<5xi32>, %arg1: memref<96xi32>, %arg2: memref<96xi32>, %arg3: memref<9xi32>) {
+    aie.shim_dma_allocation @airMemcpyId12 (%tile_2_0, S2MM, 0)
+    aie.shim_dma_allocation @airMemcpyId4 (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @airMemcpyId5 (%tile_1_0, MM2S, 0)
+    aie.runtime_sequence @six(%arg0: memref<5xi32>, %arg1: memref<96xi32>, %arg2: memref<96xi32>, %arg3: memref<9xi32>) {
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 5][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<5xi32>
       aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<96xi32>
       aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId5} : memref<96xi32>
