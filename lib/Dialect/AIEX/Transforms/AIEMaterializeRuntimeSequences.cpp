@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Targets/AIERT.h"
 #include "aie/Conversion/AIEToConfiguration/AIEToConfiguration.h"
 
@@ -21,6 +22,7 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/WalkPatternRewriteDriver.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 
 #define DEBUG_TYPE "aie-materialize-runtime-sequence"
 
@@ -118,15 +120,32 @@ struct InsertLoadPdiForConfigurePattern : RewritePattern {
 // 2. Recursively walks through all operations in the operation's regions.
 // 3. For each nested operation, collects SSA values from its operands.
 // 4. Skips values that are already in argMap or defined within the operation.
-void collectReferencedSSAValues(Operation *op, 
+// 5. For memref.subview operations, traces to the root block argument
+static void collectReferencedSSAValues(Operation *op, 
                                 const IRMapping &argMap,
                                 llvm::SetVector<Value> &referencedValues) {
 
+  auto processValue = [&](Value operand) {
+    if (argMap.contains(operand)) {
+      return;
+    }
+    
+    // If this is a subview, trace to the root block argument
+    if (auto traceResult = traceSubviewToBlockArgument(operand)) {
+      // Check if the root argument is already mapped
+      if (!argMap.contains(traceResult->rootArg)) {
+        referencedValues.insert(traceResult->rootArg);
+      }
+      return;
+    }
+    
+    // Not a subview chain leading to block arg, add as-is
+    referencedValues.insert(operand);
+  };
+
   // Collect SSA values from the operation's direct operands.
   for (Value operand : op->getOperands()) {
-    if (!argMap.contains(operand)) {
-      referencedValues.insert(operand);
-    }
+    processValue(operand);
   }
   
   // Recursively collect SSA values from nested operations in all regions.
@@ -136,12 +155,14 @@ void collectReferencedSSAValues(Operation *op,
         if (argMap.contains(operand)) {
           return;
         }
+        
+        // Check if defined within the parent operation
         Operation *defOp = operand.getDefiningOp();
         if (defOp && op->isProperAncestor(defOp)) {
           return;
         }
 
-        referencedValues.insert(operand);
+        processValue(operand);
       }
     });
   }
@@ -150,7 +171,7 @@ void collectReferencedSSAValues(Operation *op,
 // Copies SSA value definitions into the caller device.
 // Currently, only `aie.tile` operations are supported.
 // Updates argMap to map old values to new/existing values.
-LogicalResult copyReferencedSSAValues(
+static LogicalResult copyReferencedSSAValues(
     PatternRewriter &rewriter, 
     const llvm::SetVector<Value> &referencedValues,
     AIE::DeviceOp callerDevice,
@@ -236,7 +257,7 @@ LogicalResult copyReferencedSSAValues(
 // definition is in the "previouslyInlinedSymbolMap" map. While inlining,
 // symbols will be renamed to have a unique name.
 // Also copies in SSA values referenced by the inlined symbol definitions.
-LogicalResult inlineReferencedSymbolDefinitions(
+static LogicalResult inlineReferencedSymbolDefinitions(
     PatternRewriter &rewriter, 
     Operation *op, 
     Operation *lookupFrom,
@@ -336,11 +357,28 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
       BlockArgument arg = calleeBody.getArgument(i);
       Value val = values[i];
-      if(arg.getType() != val.getType()) {
+      
+      // For memref types, check compatibility (same shape and element type)
+      // rather than exact type equality, to allow for strided memrefs with offsets
+      auto argType = dyn_cast<MemRefType>(arg.getType());
+      auto valType = dyn_cast<MemRefType>(val.getType());
+      
+      if (argType && valType) {
+        // Check that shapes and element types match
+        if (argType.getShape() != valType.getShape() ||
+            argType.getElementType() != valType.getElementType()) {
+          return runOp.emitOpError() << "argument " << i << " type mismatch: "
+                                     << "expected " << argType
+                                     << " but got " << valType;
+        }
+        // Types are compatible even if layouts differ (e.g., strided with offset)
+      } else if (arg.getType() != val.getType()) {
+        // For non-memref types, require exact match
         return runOp.emitOpError() << "argument " << i << " type mismatch: "
-                                   << " expected " << arg.getType()
+                                   << "expected " << arg.getType()
                                    << " but got " << val.getType();
       }
+      
       argMap.map(arg, val);
     }
     

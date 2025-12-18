@@ -14,9 +14,11 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
@@ -185,32 +187,22 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id) +
         target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
 
-    if (llvm::isa<mlir::BlockArgument>(buf) || 
-        buf.getDefiningOp<AIEX::ArgSliceOp>()) {
+    // Try to find the root block argument, either directly or through subviews/casts
+    mlir::BlockArgument buf_arg = nullptr;
+    int64_t offset = 0;
+    
+    if (auto directArg = llvm::dyn_cast<mlir::BlockArgument>(buf)) {
+      buf_arg = directArg;
+      offset = 0;
+    } else if (auto traceResult = traceSubviewToBlockArgument(buf)) {
+      buf_arg = traceResult->rootArg;
+      offset = traceResult->offsetInBytes;
+    }
+    
+    if (buf_arg) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow())) {
         return bd_op->emitOpError("DDR memory (runtime input arguments) can "
                                   "only be referred to on shim tiles.");
-      }
-
-      mlir::BlockArgument buf_arg = nullptr;
-      int64_t offset = 0;
-      if (mlir::BlockArgument the_buf_arg =
-              llvm::dyn_cast<mlir::BlockArgument>(buf)) {
-        buf_arg = the_buf_arg;
-      } else if (AIEX::ArgSliceOp arg_slice_op = buf.getDefiningOp<AIEX::ArgSliceOp>()) {
-        // Trace back through arg_slice chain to find root argument and cumulative
-        // offset
-        auto [root_value, the_offset] = arg_slice_op.getRootArgumentAndOffset();
-        if (mlir::BlockArgument the_buf_arg =
-                llvm::dyn_cast<mlir::BlockArgument>(root_value)) {
-          buf_arg = the_buf_arg;
-          offset = the_offset;
-        } else {
-          return bd_op->emitOpError(
-              "arg_slice chain must trace back to a block argument, but "
-              "found a value defined by ")
-                 << root_value.getDefiningOp()->getName();
-        }
       }
 
       unsigned arg_idx = buf_arg.getArgNumber();
@@ -232,7 +224,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
                            nullptr, nullptr, nullptr);
     } else {
-      return bd_op->emitOpError("Buffer argument must be a constant aie.buffer, a runtime sequence input argument, or an arg_slice op.");
+      return bd_op->emitOpError("Buffer argument must be a constant aie.buffer, a runtime sequence input argument, or a memref.subview/memref.cast of a block argument.");
     }
     return success();
   }
