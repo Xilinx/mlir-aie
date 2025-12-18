@@ -12,13 +12,13 @@
 #include <iterator>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "aie/Dialect/AIEX/AIEUtils.h"
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
@@ -186,13 +186,14 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint64_t register_addr =
         target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id) +
         target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
-    
-    // A buffer descriptor can refer to a statically allocated aie.buffer, or to a 
-    // DDR buffer which will be passed as a runtime arguument (block argument).
-    // Try to find the root block argument, either directly or through subviews/casts.
+
+    // A buffer descriptor can refer to a statically allocated aie.buffer, or to
+    // a DDR buffer which will be passed as a runtime arguument (block
+    // argument). Try to find the root block argument, either directly or
+    // through subviews/casts.
     mlir::BlockArgument buf_arg = nullptr;
     int64_t offset = 0;
-    
+
     if (auto directArg = llvm::dyn_cast<mlir::BlockArgument>(buf)) {
       buf_arg = directArg;
       offset = 0;
@@ -200,7 +201,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       buf_arg = traceResult->rootArg;
       offset = traceResult->offsetInBytes;
     }
-    
+
     if (buf_arg) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow())) {
         return bd_op->emitOpError("DDR memory (runtime input arguments) can "
@@ -210,9 +211,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       unsigned arg_idx = buf_arg.getArgNumber();
       offset += bd_op.getOffsetInBytes();
       NpuAddressPatchOp::create(builder, bd_op.getLoc(),
-                                        /*addr*/ register_addr,
-                                        /*arg_idx*/ arg_idx,
-                                        /*arg_plus*/ offset);
+                                /*addr*/ register_addr,
+                                /*arg_idx*/ arg_idx,
+                                /*arg_plus*/ offset);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -226,7 +227,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
                            nullptr, nullptr, nullptr);
     } else {
-      return bd_op->emitOpError("Buffer argument must be a constant aie.buffer, a runtime sequence input argument, or a (chain of) subview(s) or cast(s) of a block argument with constant offsets and strides equal to one.");
+      return bd_op->emitOpError(
+          "Buffer argument must be a constant aie.buffer, a runtime sequence "
+          "input argument, or a (chain of) subview(s) or cast(s) of a block "
+          "argument with constant offsets and strides equal to one.");
     }
     return success();
   }

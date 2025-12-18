@@ -629,10 +629,11 @@ enum OutputType {
   ControlPacket,
 };
 
-static LogicalResult convertTransactionOpsToMLIR(
-    OpBuilder builder, AIE::DeviceOp device, OutputType outputType,
-    std::vector<TransactionBinaryOperation> &operations,
-    Operation *insertionPoint = nullptr) {
+static LogicalResult
+convertTransactionOpsToMLIR(OpBuilder builder, AIE::DeviceOp device,
+                            OutputType outputType,
+                            std::vector<TransactionBinaryOperation> &operations,
+                            Operation *insertionPoint = nullptr) {
 
   auto loc = builder.getUnknownLoc();
 
@@ -667,8 +668,8 @@ static LogicalResult convertTransactionOpsToMLIR(
   } else {
     // search for aiex.configure ops in runtime sequences by walking the device
     // and collect them in a vector. If there are none, create a new runtime
-    // sequence. Otherwise assume the insertion point is the first aiex.configure
-    // op.
+    // sequence. Otherwise assume the insertion point is the first
+    // aiex.configure op.
     device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
 
     if (configureOps.empty()) {
@@ -928,35 +929,39 @@ static bool areDMAsEquivalent(Operation *dma1, Operation *dma2) {
 static LogicalResult resetCores(DeviceOp device, DeviceOp previousDevice,
                                 ResetConfig coreConfig, AIERTControl &ctl) {
   const AIETargetModel &targetModel = device.getTargetModel();
-  
-  if (coreConfig.mode == ResetMode::Never || !hasFlag(coreConfig.tileType, ResetTileType::CoreTile))
+
+  if (coreConfig.mode == ResetMode::Never ||
+      !hasFlag(coreConfig.tileType, ResetTileType::CoreTile))
     return success();
-  
+
   int numCols = targetModel.columns();
   int numRows = targetModel.rows();
-  
+
   for (int col = 0; col < numCols; col++) {
     for (int row = 0; row < numRows; row++) {
       if (!targetModel.isCoreTile(col, row))
         continue;
-      
+
       bool shouldReset = false;
-      
+
       if (coreConfig.mode == ResetMode::Always) {
         shouldReset = true;
-      } else if (coreConfig.mode == ResetMode::IfUsed || coreConfig.mode == ResetMode::IfUsedFineGrained) {
+      } else if (coreConfig.mode == ResetMode::IfUsed ||
+                 coreConfig.mode == ResetMode::IfUsedFineGrained) {
         shouldReset = device.lookupCore(col, row) != nullptr;
-      } else if (coreConfig.mode == ResetMode::IfChanged || coreConfig.mode == ResetMode::IfChangedFineGrained) {
+      } else if (coreConfig.mode == ResetMode::IfChanged ||
+                 coreConfig.mode == ResetMode::IfChangedFineGrained) {
         auto currentCore = device.lookupCore(col, row);
-        auto prevCore = previousDevice ? previousDevice.lookupCore(col, row) : nullptr;
+        auto prevCore =
+            previousDevice ? previousDevice.lookupCore(col, row) : nullptr;
         shouldReset = currentCore && !currentCore.isEquivalent(prevCore);
       }
-      
+
       if (shouldReset && failed(ctl.resetCore(col, row)))
         return failure();
     }
   }
-  
+
   return success();
 }
 
@@ -964,77 +969,88 @@ static LogicalResult resetCores(DeviceOp device, DeviceOp previousDevice,
 static LogicalResult resetDMAs(DeviceOp device, DeviceOp previousDevice,
                                ResetConfig dmaConfig, AIERTControl &ctl) {
   const AIETargetModel &targetModel = device.getTargetModel();
-  
+
   if (dmaConfig.mode == ResetMode::Never)
     return success();
-  
+
   int numCols = targetModel.columns();
   int numRows = targetModel.rows();
-  
+
   for (int col = 0; col < numCols; col++) {
     for (int row = 0; row < numRows; row++) {
-      if ((targetModel.isMemTile(col, row) && !hasFlag(dmaConfig.tileType, ResetTileType::MemTile))
-          || (targetModel.isCoreTile(col, row) && !hasFlag(dmaConfig.tileType, ResetTileType::CoreTile))
-          || (targetModel.isShimNOCTile(col, row) && !hasFlag(dmaConfig.tileType, ResetTileType::ShimNOC))) {
+      if ((targetModel.isMemTile(col, row) &&
+           !hasFlag(dmaConfig.tileType, ResetTileType::MemTile)) ||
+          (targetModel.isCoreTile(col, row) &&
+           !hasFlag(dmaConfig.tileType, ResetTileType::CoreTile)) ||
+          (targetModel.isShimNOCTile(col, row) &&
+           !hasFlag(dmaConfig.tileType, ResetTileType::ShimNOC))) {
         continue;
       }
-      
+
       bool shouldReset = false;
-      
+
       if (dmaConfig.mode == ResetMode::Always) {
         shouldReset = true;
-      } else if (dmaConfig.mode == ResetMode::IfUsed || dmaConfig.mode == ResetMode::IfUsedFineGrained) {
+      } else if (dmaConfig.mode == ResetMode::IfUsed ||
+                 dmaConfig.mode == ResetMode::IfUsedFineGrained) {
         shouldReset = nullptr != device.lookupDMA(col, row);
-      } else if (dmaConfig.mode == ResetMode::IfChanged || dmaConfig.mode == ResetMode::IfChangedFineGrained) {
+      } else if (dmaConfig.mode == ResetMode::IfChanged ||
+                 dmaConfig.mode == ResetMode::IfChangedFineGrained) {
         Operation *currentDMA = device.lookupDMA(col, row);
-        Operation *prevDMA = previousDevice ? previousDevice.lookupDMA(col, row) : nullptr;
+        Operation *prevDMA =
+            previousDevice ? previousDevice.lookupDMA(col, row) : nullptr;
         shouldReset = currentDMA && !areDMAsEquivalent(currentDMA, prevDMA);
       }
-      
+
       if (shouldReset && failed(ctl.resetDMA(col, row, false)))
         return failure();
     }
   }
-  
+
   return success();
 }
 
 // Reset switches based on the provided configuration
 static LogicalResult resetSwitches(DeviceOp device, DeviceOp previousDevice,
-                                   ResetConfig switchConfig, AIERTControl &ctl) {
+                                   ResetConfig switchConfig,
+                                   AIERTControl &ctl) {
   const AIETargetModel &targetModel = device.getTargetModel();
-  
+
   if (switchConfig.mode == ResetMode::Never)
     return success();
-  
+
   int numCols = targetModel.columns();
   int numRows = targetModel.rows();
-  
+
   for (int col = 0; col < numCols; col++) {
     for (int row = 0; row < numRows; row++) {
-      if ((targetModel.isMemTile(col, row) && !hasFlag(switchConfig.tileType, ResetTileType::MemTile))
-          || (targetModel.isCoreTile(col, row) && !hasFlag(switchConfig.tileType, ResetTileType::CoreTile))
-          || (targetModel.isShimNOCTile(col, row) && !hasFlag(switchConfig.tileType, ResetTileType::ShimNOC))) {
+      if ((targetModel.isMemTile(col, row) &&
+           !hasFlag(switchConfig.tileType, ResetTileType::MemTile)) ||
+          (targetModel.isCoreTile(col, row) &&
+           !hasFlag(switchConfig.tileType, ResetTileType::CoreTile)) ||
+          (targetModel.isShimNOCTile(col, row) &&
+           !hasFlag(switchConfig.tileType, ResetTileType::ShimNOC))) {
         continue;
       }
-      
+
       bool shouldReset = false;
-      
+
       if (switchConfig.mode == ResetMode::Always) {
         shouldReset = true;
       } else if (switchConfig.mode == ResetMode::IfUsed) {
         shouldReset = nullptr != device.lookupSwitchbox(col, row);
       } else if (switchConfig.mode == ResetMode::IfChanged) {
         SwitchboxOp currentSB = device.lookupSwitchbox(col, row);
-        SwitchboxOp prevSB = previousDevice ? previousDevice.lookupSwitchbox(col, row) : nullptr;
+        SwitchboxOp prevSB =
+            previousDevice ? previousDevice.lookupSwitchbox(col, row) : nullptr;
         shouldReset = currentSB && !currentSB.isEquivalent(prevSB);
       }
-      
+
       if (shouldReset && failed(ctl.resetSwitch(col, row)))
         return failure();
     }
   }
-  
+
   return success();
 }
 
@@ -1042,29 +1058,32 @@ static LogicalResult resetSwitches(DeviceOp device, DeviceOp previousDevice,
 static LogicalResult resetLocks(DeviceOp device, DeviceOp previousDevice,
                                 ResetConfig lockConfig, AIERTControl &ctl) {
   const AIETargetModel &targetModel = device.getTargetModel();
-  
+
   if (lockConfig.mode == ResetMode::Never)
     return success();
-  
+
   int numCols = targetModel.columns();
   int numRows = targetModel.rows();
-  
+
   for (int col = 0; col < numCols; col++) {
     for (int row = 0; row < numRows; row++) {
-      if ((targetModel.isMemTile(col, row) && !hasFlag(lockConfig.tileType, ResetTileType::MemTile))
-          || (targetModel.isCoreTile(col, row) && !hasFlag(lockConfig.tileType, ResetTileType::CoreTile))) {
+      if ((targetModel.isMemTile(col, row) &&
+           !hasFlag(lockConfig.tileType, ResetTileType::MemTile)) ||
+          (targetModel.isCoreTile(col, row) &&
+           !hasFlag(lockConfig.tileType, ResetTileType::CoreTile))) {
         continue;
       }
-      
+
       if (lockConfig.mode == ResetMode::Always) {
-        // Reset all locks on this tile; 
+        // Reset all locks on this tile;
         int numLocks = targetModel.getNumLocks(col, row);
         for (int lockID = 0; lockID < numLocks; lockID++) {
           if (failed(ctl.resetLock(col, row, lockID)))
             return failure();
         }
       } else {
-        // treat "ifUsed" and "ifChanged" as the same -- if a tile defined some locks, it probably also toggled them, so we should reset them
+        // treat "ifUsed" and "ifChanged" as the same -- if a tile defined some
+        // locks, it probably also toggled them, so we should reset them
         for (auto lockOp : device.getOps<LockOp>()) {
           auto tileOp = lockOp.getTileOp();
           if (tileOp.getCol() == col && tileOp.getRow() == row) {
@@ -1078,33 +1097,39 @@ static LogicalResult resetLocks(DeviceOp device, DeviceOp previousDevice,
       }
     }
   }
-  
+
   return success();
 }
 
 // Reset fine-grained switch connections based on the provided configuration
-static LogicalResult resetSwitchConnectionsFineGrained(DeviceOp device, DeviceOp previousDevice,
-                                                       ResetConfig switchConfig, AIERTControl &ctl) {
+static LogicalResult resetSwitchConnectionsFineGrained(DeviceOp device,
+                                                       DeviceOp previousDevice,
+                                                       ResetConfig switchConfig,
+                                                       AIERTControl &ctl) {
   const AIETargetModel &targetModel = device.getTargetModel();
-  
-  if (switchConfig.mode != ResetMode::IfUsedFineGrained && 
+
+  if (switchConfig.mode != ResetMode::IfUsedFineGrained &&
       switchConfig.mode != ResetMode::IfChangedFineGrained)
     return success();
-  
+
   int numCols = targetModel.columns();
   int numRows = targetModel.rows();
-  
+
   for (int col = 0; col < numCols; col++) {
     for (int row = 0; row < numRows; row++) {
-      if ((targetModel.isMemTile(col, row) && !hasFlag(switchConfig.tileType, ResetTileType::MemTile))
-          || (targetModel.isCoreTile(col, row) && !hasFlag(switchConfig.tileType, ResetTileType::CoreTile))
-          || (targetModel.isShimNOCTile(col, row) && !hasFlag(switchConfig.tileType, ResetTileType::ShimNOC))) {
+      if ((targetModel.isMemTile(col, row) &&
+           !hasFlag(switchConfig.tileType, ResetTileType::MemTile)) ||
+          (targetModel.isCoreTile(col, row) &&
+           !hasFlag(switchConfig.tileType, ResetTileType::CoreTile)) ||
+          (targetModel.isShimNOCTile(col, row) &&
+           !hasFlag(switchConfig.tileType, ResetTileType::ShimNOC))) {
         continue;
       }
-      
+
       auto currentSB = device.lookupSwitchbox(col, row);
-      if (!currentSB) continue;
-      
+      if (!currentSB)
+        continue;
+
       // Collect unique sources and active connections
       DenseSet<std::pair<WireBundle, int>> uniqueSources;
       DenseSet<std::tuple<WireBundle, int, WireBundle, int>> activeConns;
@@ -1117,43 +1142,52 @@ static LogicalResult resetSwitchConnectionsFineGrained(DeviceOp device, DeviceOp
         activeConns.insert({srcBundle, srcChan, dstBundle, dstChan});
       }
       DenseSet<std::tuple<WireBundle, int, WireBundle, int>> prevConnsSet;
-      auto prevSB = previousDevice ? previousDevice.lookupSwitchbox(col, row) : nullptr;
+      auto prevSB =
+          previousDevice ? previousDevice.lookupSwitchbox(col, row) : nullptr;
       if (prevSB) {
         for (auto connectOp : prevSB.getOps<ConnectOp>()) {
-          prevConnsSet.insert({connectOp.getSourceBundle(), connectOp.getSourceChannel(),
-                                connectOp.getDestBundle(), connectOp.getDestChannel()});
+          prevConnsSet.insert(
+              {connectOp.getSourceBundle(), connectOp.getSourceChannel(),
+               connectOp.getDestBundle(), connectOp.getDestChannel()});
         }
       }
-      
+
       // Get all possible destinations
       llvm::SmallVector<std::pair<WireBundle, uint32_t>> possibleDests;
-      for (auto bundle : {WireBundle::Core, WireBundle::DMA, WireBundle::FIFO,
-                          WireBundle::South, WireBundle::West, WireBundle::North,
-                          WireBundle::East, WireBundle::PLIO, WireBundle::NOC,
-                          WireBundle::Trace, WireBundle::TileControl}) {
-        uint32_t numDestChans = targetModel.getNumDestSwitchboxConnections(col, row, bundle);
+      for (auto bundle :
+           {WireBundle::Core, WireBundle::DMA, WireBundle::FIFO,
+            WireBundle::South, WireBundle::West, WireBundle::North,
+            WireBundle::East, WireBundle::PLIO, WireBundle::NOC,
+            WireBundle::Trace, WireBundle::TileControl}) {
+        uint32_t numDestChans =
+            targetModel.getNumDestSwitchboxConnections(col, row, bundle);
         if (numDestChans > 0) {
           possibleDests.push_back(std::make_pair(bundle, numDestChans));
         }
       }
-      
+
       // Iterate over all sources of connections in the current device
       for (auto [srcBundle, srcChan] : uniqueSources) {
         // Iterate over all legal destinations from this source
         for (auto [altDstBundle, numDestChans] : possibleDests) {
-          for (uint32_t altDstChan = 0; altDstChan < numDestChans; altDstChan++) {
-            if (!targetModel.isLegalTileConnection(col, row, srcBundle, srcChan, altDstBundle, altDstChan)) {
+          for (uint32_t altDstChan = 0; altDstChan < numDestChans;
+               altDstChan++) {
+            if (!targetModel.isLegalTileConnection(col, row, srcBundle, srcChan,
+                                                   altDstBundle, altDstChan)) {
               continue;
             }
             // Skip if this is an active connection in the new configuration
-            if (activeConns.contains({srcBundle, srcChan, altDstBundle, altDstChan})) {
+            if (activeConns.contains(
+                    {srcBundle, srcChan, altDstBundle, altDstChan})) {
               continue;
             }
-            
+
             if (switchConfig.mode == ResetMode::IfUsedFineGrained ||
-                prevConnsSet.contains({srcBundle, srcChan, altDstBundle, altDstChan})) {
+                prevConnsSet.contains(
+                    {srcBundle, srcChan, altDstBundle, altDstChan})) {
               // Reset any legal destination that's not the active one
-              if (failed(ctl.resetSwitchConnection(col, row, srcBundle, srcChan, altDstBundle, altDstChan))) {
+              if (failed(ctl.resetSwitchConnection(col, row, srcBundle, srcChan,
+                                                   altDstBundle, altDstChan))) {
                 return failure();
               }
             }
@@ -1162,19 +1196,15 @@ static LogicalResult resetSwitchConnectionsFineGrained(DeviceOp device, DeviceOp
       }
     }
   }
-  
+
   return success();
 }
 
 // Generate reset operations for all tiles used in the device
-mlir::LogicalResult
-xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
-                                       mlir::Operation *insertionPoint,
-                                       ResetConfig dmaConfig,
-                                       ResetConfig switchConfig,
-                                       ResetConfig lockConfig,
-                                       ResetConfig coreConfig,
-                                       xilinx::AIE::DeviceOp previousDevice) {
+mlir::LogicalResult xilinx::AIE::generateAndInsertResetOps(
+    xilinx::AIE::DeviceOp device, mlir::Operation *insertionPoint,
+    ResetConfig dmaConfig, ResetConfig switchConfig, ResetConfig lockConfig,
+    ResetConfig coreConfig, xilinx::AIE::DeviceOp previousDevice) {
   const AIETargetModel &targetModel = device.getTargetModel();
 
   if (!targetModel.hasProperty(AIETargetModel::IsNPU))
@@ -1191,16 +1221,17 @@ xilinx::AIE::generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
 
   if (failed(resetCores(device, previousDevice, coreConfig, ctl)))
     return failure();
-  
+
   if (failed(resetDMAs(device, previousDevice, dmaConfig, ctl)))
     return failure();
-  
+
   if (failed(resetSwitches(device, previousDevice, switchConfig, ctl)))
     return failure();
-  
-  if (failed(resetSwitchConnectionsFineGrained(device, previousDevice, switchConfig, ctl)))
+
+  if (failed(resetSwitchConnectionsFineGrained(device, previousDevice,
+                                               switchConfig, ctl)))
     return failure();
-  
+
   if (failed(resetLocks(device, previousDevice, lockConfig, ctl)))
     return failure();
 

@@ -148,6 +148,7 @@ def _create_aie_lower_to_llvm_pipeline(
 
 AIE_LOWER_TO_LLVM = _create_aie_lower_to_llvm_pipeline
 
+
 # pipeline to lower and legalize runtime sequence for NPU
 def _create_npu_lowering_pipeline(
     expand_load_pdis=False,
@@ -158,8 +159,7 @@ def _create_npu_lowering_pipeline(
     reset_locks_tiles="",
     reset_locks_mode="never",
 ):
-    device_pipeline_1 = (
-    )
+    device_pipeline_1 = ()
     pipeline = (
         Pipeline()
         .add_pass("aie-materialize-runtime-sequences")
@@ -1008,7 +1008,9 @@ class FlowRunner:
 
             for other_device_name, other_pdi_id in device_to_id_mapping.items():
                 pdi_filename = self.pdi_file_name(other_device_name)
-                kernel_entry["PDIs"].append({"id": other_pdi_id, "PDI_file": pdi_filename})
+                kernel_entry["PDIs"].append(
+                    {"id": other_pdi_id, "PDI_file": pdi_filename}
+                )
 
             for seq_op, seq_name in sequences:
                 insts_filename = self.npu_insts_file_name(device_name, seq_name)
@@ -1744,25 +1746,31 @@ class FlowRunner:
                         npu_insts_file,
                         self.opts.verbose,
                     )
-                    
+
                     # If expand_load_pdis is enabled, the pass may have created new devices
                     # (e.g., @empty), so we need to regenerate the device list from the transformed module
                     if opts.expand_load_pdis:
                         devices = generate_devices_list(npu_insts_module)
-                        input_physical_with_expanded = self.prepend_tmp("input_physical_with_expanded.mlir")
-                        await write_file_async(str(npu_insts_module), input_physical_with_expanded)
+                        input_physical_with_expanded = self.prepend_tmp(
+                            "input_physical_with_expanded.mlir"
+                        )
+                        await write_file_async(
+                            str(npu_insts_module), input_physical_with_expanded
+                        )
                         # Update both input_physical and input_physical_with_elfs to point to the file with expanded devices
                         input_physical = input_physical_with_expanded
                         input_physical_with_elfs = input_physical_with_expanded
-                    
+
                     if opts.generate_full_elf:
                         device_to_id_mapping = create_device_id_mapping(devices)
-                        assign_load_pdi_ids(
-                            npu_insts_module, device_to_id_mapping
+                        assign_load_pdi_ids(npu_insts_module, device_to_id_mapping)
+                        transformed_mlir_path = self.prepend_tmp(
+                            "npu_insts_with_pid_ids.mlir"
                         )
-                        transformed_mlir_path = self.prepend_tmp("npu_insts_with_pid_ids.mlir")
-                        await write_file_async(str(npu_insts_module), transformed_mlir_path)
-                    
+                        await write_file_async(
+                            str(npu_insts_module), transformed_mlir_path
+                        )
+
                     self.progress_bar.update(task3, advance=1)
 
             # 4.) Generate compilation artifacts for each device

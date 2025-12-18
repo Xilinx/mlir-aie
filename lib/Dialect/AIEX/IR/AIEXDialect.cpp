@@ -50,7 +50,7 @@ void AIEXDialect::initialize() {
 } // namespace xilinx::AIEX
 
 #define GET_OP_CLASSES
-#include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"/* Return the correct values to write to the hardware registers to configure
+#include "aie/Dialect/AIEX/IR/AIEX.cpp.inc" /* Return the correct values to write to the hardware registers to configure
   strides and wraps given the input user-facing strides and wraps.
 
   In the IR, we express strides in units of element data type, but the hardware
@@ -983,42 +983,42 @@ LogicalResult AIEX::RunOp::verify() {
     return emitOpError() << "cannot find callee device for runtime sequence '"
                          << getRuntimeSequenceSymbol() << "'";
   }
-  
+
   AIE::RuntimeSequenceOp calleeRuntimeSequence = getCalleeRuntimeSequenceOp();
   if (!calleeRuntimeSequence) {
     return emitOpError() << "cannot find runtime sequence '"
                          << getRuntimeSequenceSymbol() << "'";
   }
-  
+
   // Validate argument types match the callee's parameters
   Block &calleeBody = calleeRuntimeSequence.getBody().front();
   ValueRange values = getArgs();
-  
+
   if (calleeBody.getNumArguments() != values.size()) {
     return emitOpError() << "argument count mismatch";
   }
-  
+
   for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
     BlockArgument arg = calleeBody.getArgument(i);
     Value val = values[i];
-    
+
     // For memref types, check compatibility (same shape and element type)
     auto argType = dyn_cast<MemRefType>(arg.getType());
     auto valType = dyn_cast<MemRefType>(val.getType());
-    
+
     if (argType && valType) {
       if (argType.getShape() != valType.getShape() ||
           argType.getElementType() != valType.getElementType()) {
-        return emitOpError() << "argument " << i << " type mismatch: "
-                             << "expected " << argType
-                             << " but got " << valType;
+        return emitOpError()
+               << "argument " << i << " type mismatch: " << "expected "
+               << argType << " but got " << valType;
       }
     } else if (arg.getType() != val.getType()) {
-      return emitOpError() << "argument " << i << " type mismatch: "
-                           << "expected " << arg.getType()
+      return emitOpError() << "argument " << i
+                           << " type mismatch: " << "expected " << arg.getType()
                            << " but got " << val.getType();
     }
   }
-  
+
   return success();
 }
