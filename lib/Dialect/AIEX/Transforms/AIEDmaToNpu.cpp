@@ -14,9 +14,9 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include <algorithm>
 #include <cstdint>
 
@@ -293,18 +293,21 @@ public:
                       "time of lowering.");
       return failure();
     }
-    
+
     mlir::Value rootMemref = memref;
     int64_t subviewOffset = 0;
-    
-    // Trace through memref.subview and memref.reinterpret_cast chain, if any, to find root block argument
+
+    // Trace through memref.subview and memref.reinterpret_cast chain, if any,
+    // to find root block argument
     auto traceResult = traceSubviewToBlockArgument(memref);
     if (!traceResult) {
-      return op->emitOpError("memref must be a block argument or subview/cast/reinterpret_cast of a block argument with static offsets, sizes, and strides");
+      return op->emitOpError(
+          "memref must be a block argument or subview/cast/reinterpret_cast of "
+          "a block argument with static offsets, sizes, and strides");
     }
     rootMemref = traceResult->rootArg;
     subviewOffset = traceResult->offsetInBytes;
-    
+
     // Find the argument index of the root memref
     Block &entryBB = seq_op.getBody().front();
     int arg_idx = -1;
@@ -316,7 +319,7 @@ public:
     }
     if (arg_idx < 0)
       return failure();
-    
+
     offset += subviewOffset;
 
     // bd_id

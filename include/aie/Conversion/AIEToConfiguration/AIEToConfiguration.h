@@ -19,7 +19,6 @@ namespace xilinx::AIE {
 
 class DeviceOp;
 
-
 // --------------------------------------------------------------------------
 // Device configuration
 // --------------------------------------------------------------------------
@@ -34,15 +33,14 @@ std::optional<mlir::ModuleOp>
 convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                std::vector<uint8_t> &binary);
 
-// Generate transaction binary and insert configuration operations at a specific point
-mlir::LogicalResult
-generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
-                           mlir::Operation *insertionPoint,
-                           llvm::StringRef clElfDir = "");
-
+// Generate transaction binary and insert configuration operations at a specific
+// point
+mlir::LogicalResult generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
+                                               mlir::Operation *insertionPoint,
+                                               llvm::StringRef clElfDir = "");
 
 // --------------------------------------------------------------------------
-// Device reset 
+// Device reset
 // --------------------------------------------------------------------------
 
 // Enum for specifying which tile types to reset
@@ -60,10 +58,10 @@ inline bool hasFlag(ResetTileType value, ResetTileType flag) {
 
 // Enum for specifying when to reset
 enum class ResetMode {
-  Never,                // Never perform reset
-  IfUsed,               // Reset only if the tile is used in the device
-  IfUsedFineGrained,    // Reset only individual locks/connections that are used
-  IfChanged,            // Reset only if the tile configuration changed from previous
+  Never,             // Never perform reset
+  IfUsed,            // Reset only if the tile is used in the device
+  IfUsedFineGrained, // Reset only individual locks/connections that are used
+  IfChanged, // Reset only if the tile configuration changed from previous
   IfChangedFineGrained, // Reset only individual locks/connections that changed
   Always                // Reset all tiles of the specified type
 };
@@ -72,20 +70,17 @@ enum class ResetMode {
 struct ResetConfig {
   ResetTileType tileType;
   ResetMode mode;
-  
-  ResetConfig(ResetTileType tt = ResetTileType::None, ResetMode m = ResetMode::Never)
-    : tileType(tt), mode(m) {}
+
+  ResetConfig(ResetTileType tt = ResetTileType::None,
+              ResetMode m = ResetMode::Never)
+      : tileType(tt), mode(m) {}
 };
 
 // Insert reset operations
-mlir::LogicalResult
-generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
-                          mlir::Operation *insertionPoint,
-                          ResetConfig dmaConfig,
-                          ResetConfig switchConfig,
-                          ResetConfig lockConfig,
-                          ResetConfig coreConfig,
-                          xilinx::AIE::DeviceOp previousDevice);
+mlir::LogicalResult generateAndInsertResetOps(
+    xilinx::AIE::DeviceOp device, mlir::Operation *insertionPoint,
+    ResetConfig dmaConfig, ResetConfig switchConfig, ResetConfig lockConfig,
+    ResetConfig coreConfig, xilinx::AIE::DeviceOp previousDevice);
 
 } // namespace xilinx::AIE
 

@@ -1109,9 +1109,9 @@ CoreOp DeviceOp::lookupCore(int col, int row) {
   return nullptr;
 }
 
-Operation* DeviceOp::lookupDMA(int col, int row) {
+Operation *DeviceOp::lookupDMA(int col, int row) {
   const AIETargetModel &targetModel = getTargetModel();
-  
+
   // Use target model to determine which type of DMA op to look for
   if (targetModel.isMemTile(col, row)) {
     for (auto mem : getOps<MemTileDMAOp>()) {
@@ -1341,49 +1341,49 @@ int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
 static bool areDMAsEquivalent(Operation *dma1, Operation *dma2) {
   if (!dma1 || !dma2)
     return dma1 == dma2;
-  
+
   // Compare their contained operations
   // This is a structural comparison including attributes
   auto &region1 = dma1->getRegion(0);
   auto &region2 = dma2->getRegion(0);
-  
+
   if (region1.empty() != region2.empty())
     return false;
-  
+
   if (region1.empty())
     return true;
-  
+
   auto &block1 = region1.front();
   auto &block2 = region2.front();
-  
+
   auto ops1 = block1.without_terminator();
   auto ops2 = block2.without_terminator();
-  
+
   auto it1 = ops1.begin();
   auto it2 = ops2.begin();
-  
+
   while (it1 != ops1.end() && it2 != ops2.end()) {
     // Check operation names match
     if (it1->getName() != it2->getName())
       return false;
-    
+
     // Check all attributes match
     auto attrs1 = it1->getAttrs();
     auto attrs2 = it2->getAttrs();
-    
+
     if (attrs1.size() != attrs2.size())
       return false;
-    
+
     for (auto attr1 : attrs1) {
       auto attr2 = it2->getAttr(attr1.getName());
       if (!attr2 || attr1.getValue() != attr2)
         return false;
     }
-    
+
     ++it1;
     ++it2;
   }
-  
+
   return it1 == ops1.end() && it2 == ops2.end();
 }
 
@@ -1472,14 +1472,14 @@ bool CoreOp::isEmpty() {
 bool CoreOp::isEquivalent(CoreOp other) {
   if (!other)
     return false;
-  
+
   // Compare program memory ELF
   auto elf1 = getElfFileAttr();
   auto elf2 = other.getElfFileAttr();
-  
+
   if (elf1 && elf2)
     return elf1 == elf2;
-  
+
   return !elf1 && !elf2;
 }
 
@@ -2232,31 +2232,33 @@ int SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
 bool SwitchboxOp::isEquivalent(SwitchboxOp other) {
   if (!other)
     return false;
-  
+
   // Compare all connection ops
   auto conns1 = getOps<ConnectOp>();
   auto conns2 = other.getOps<ConnectOp>();
-  
+
   llvm::SmallVector<ConnectOp> vec1(conns1.begin(), conns1.end());
   llvm::SmallVector<ConnectOp> vec2(conns2.begin(), conns2.end());
-  
+
   if (vec1.size() != vec2.size())
     return false;
-  
+
   // Sort by source/dest to make comparison order-independent
   auto connComparator = [](ConnectOp a, ConnectOp b) {
     if (a.getSourceBundle() != b.getSourceBundle())
-      return static_cast<int>(a.getSourceBundle()) < static_cast<int>(b.getSourceBundle());
+      return static_cast<int>(a.getSourceBundle()) <
+             static_cast<int>(b.getSourceBundle());
     if (a.getSourceChannel() != b.getSourceChannel())
       return a.getSourceChannel() < b.getSourceChannel();
     if (a.getDestBundle() != b.getDestBundle())
-      return static_cast<int>(a.getDestBundle()) < static_cast<int>(b.getDestBundle());
+      return static_cast<int>(a.getDestBundle()) <
+             static_cast<int>(b.getDestBundle());
     return a.getDestChannel() < b.getDestChannel();
   };
-  
+
   llvm::sort(vec1, connComparator);
   llvm::sort(vec2, connComparator);
-  
+
   for (size_t i = 0; i < vec1.size(); ++i) {
     if (vec1[i].getSourceBundle() != vec2[i].getSourceBundle() ||
         vec1[i].getSourceChannel() != vec2[i].getSourceChannel() ||
@@ -2264,7 +2266,7 @@ bool SwitchboxOp::isEquivalent(SwitchboxOp other) {
         vec1[i].getDestChannel() != vec2[i].getDestChannel())
       return false;
   }
-  
+
   return true;
 }
 
@@ -2641,14 +2643,15 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
     for (NamedAttribute namedAttr : op->getAttrs()) {
       Attribute attr = namedAttr.getValue();
       auto walkResult = attr.walk([&](SymbolRefAttr symbolRef) {
-        Operation *symbolDefOp = SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
-        if (symbolDefOp && 
-            !llvm::isa<ShimDMAAllocationOp>(symbolDefOp) && 
+        Operation *symbolDefOp =
+            SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
+        if (symbolDefOp && !llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
             !llvm::isa<DeviceOp>(symbolDefOp) &&
             !llvm::isa<RuntimeSequenceOp>(symbolDefOp)) {
-          op->emitOpError() << "references symbol '" 
+          op->emitOpError() << "references symbol '"
                             << symbolRef.getRootReference().getValue()
-                            << "' which must be either a ShimDMAAllocationOp, DeviceOp or RuntimeSequenceOp, but got: "
+                            << "' which must be either a ShimDMAAllocationOp, "
+                               "DeviceOp or RuntimeSequenceOp, but got: "
                             << symbolDefOp->getName().getStringRef();
           return WalkResult::interrupt();
         }

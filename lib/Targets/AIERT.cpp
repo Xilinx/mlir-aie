@@ -853,9 +853,12 @@ LogicalResult xilinx::AIE::AIERTControl::resetPartition() {
 LogicalResult xilinx::AIE::AIERTControl::resetDMA(int col, int row, bool on) {
   auto tileLoc = XAie_TileLoc(col, row);
   XAie_DmaDesc dmaTileBd;
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDescInit, &aiert->devInst, &dmaTileBd, tileLoc);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDescInit, &aiert->devInst, &dmaTileBd,
+                              tileLoc);
   TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDisableBd, &dmaTileBd);
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &aiert->devInst, tileLoc, on ? XAie_DmaChReset::DMA_CHANNEL_UNRESET : XAie_DmaChReset::DMA_CHANNEL_RESET);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &aiert->devInst, tileLoc,
+                              on ? XAie_DmaChReset::DMA_CHANNEL_UNRESET
+                                 : XAie_DmaChReset::DMA_CHANNEL_RESET);
   return success();
 }
 
@@ -871,14 +874,20 @@ LogicalResult xilinx::AIE::AIERTControl::resetSwitch(int col, int row) {
   // Reset all combinations of input/output routing in the switchbox
   for (auto endpoint_a : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {
     for (auto endpoint_b : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {
-      unsigned n_a_connections = targetModel.getNumSourceSwitchboxConnections(col, row, endpoint_a.first);
-      unsigned n_b_connections = targetModel.getNumDestSwitchboxConnections(col, row, endpoint_b.first);
+      unsigned n_a_connections = targetModel.getNumSourceSwitchboxConnections(
+          col, row, endpoint_a.first);
+      unsigned n_b_connections = targetModel.getNumDestSwitchboxConnections(
+          col, row, endpoint_b.first);
       for (unsigned a_index = 0; a_index < n_a_connections; a_index++) {
         for (unsigned b_index = 0; b_index < n_b_connections; b_index++) {
-          if (!targetModel.isLegalTileConnection(col, row, endpoint_a.first, a_index, endpoint_b.first, b_index)) {
+          if (!targetModel.isLegalTileConnection(col, row, endpoint_a.first,
+                                                 a_index, endpoint_b.first,
+                                                 b_index)) {
             continue;
           }
-          TRY_XAIE_API_FATAL_ERROR(XAie_StrmConnCctDisable, &aiert->devInst, tileLoc, endpoint_a.second, a_index, endpoint_b.second, b_index);
+          TRY_XAIE_API_FATAL_ERROR(XAie_StrmConnCctDisable, &aiert->devInst,
+                                   tileLoc, endpoint_a.second, a_index,
+                                   endpoint_b.second, b_index);
         }
       }
     }
@@ -893,46 +902,55 @@ LogicalResult xilinx::AIE::AIERTControl::resetCoreUnreset(int col, int row) {
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::resetLock(int col, int row, int lockId) {
+LogicalResult xilinx::AIE::AIERTControl::resetLock(int col, int row,
+                                                   int lockId) {
   auto tileLoc = XAie_TileLoc(col, row);
   // Reset a single lock to value 0
   XAie_Lock lock;
   lock.LockId = lockId;
   lock.LockVal = 0;
-  TRY_XAIE_API_LOGICAL_RESULT(XAie_LockSetValue, &aiert->devInst, tileLoc, lock);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_LockSetValue, &aiert->devInst, tileLoc,
+                              lock);
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::resetSwitchConnection(int col, int row, 
-                                                               WireBundle sourceBundle, 
-                                                               int sourceChannel,
-                                                               WireBundle destBundle,
-                                                               int destChannel) {
+LogicalResult xilinx::AIE::AIERTControl::resetSwitchConnection(
+    int col, int row, WireBundle sourceBundle, int sourceChannel,
+    WireBundle destBundle, int destChannel) {
   auto tileLoc = XAie_TileLoc(col, row);
-  
+
   // Helper lambda to map WireBundle to StrmSwPortType
   auto mapBundle = [](WireBundle bundle) -> StrmSwPortType {
     switch (bundle) {
-      case WireBundle::Core: return CORE;
-      case WireBundle::DMA: return DMA;
-      case WireBundle::FIFO: return FIFO;
-      case WireBundle::South: return SOUTH;
-      case WireBundle::West: return WEST;
-      case WireBundle::North: return NORTH;
-      case WireBundle::East: return EAST;
-      case WireBundle::Trace: return TRACE;
-      default: return SOUTH;
+    case WireBundle::Core:
+      return CORE;
+    case WireBundle::DMA:
+      return DMA;
+    case WireBundle::FIFO:
+      return FIFO;
+    case WireBundle::South:
+      return SOUTH;
+    case WireBundle::West:
+      return WEST;
+    case WireBundle::North:
+      return NORTH;
+    case WireBundle::East:
+      return EAST;
+    case WireBundle::Trace:
+      return TRACE;
+    default:
+      return SOUTH;
     }
   };
-  
+
   StrmSwPortType sourcePortType = mapBundle(sourceBundle);
   StrmSwPortType destPortType = mapBundle(destBundle);
-  
+
   // Disconnect the specific connection from source to destination
   TRY_XAIE_API_LOGICAL_RESULT(XAie_StrmConnCctDisable, &aiert->devInst, tileLoc,
-                              sourcePortType, sourceChannel, 
-                              destPortType, destChannel);
-  
+                              sourcePortType, sourceChannel, destPortType,
+                              destChannel);
+
   return success();
 }
 
@@ -942,15 +960,18 @@ LogicalResult xilinx::AIE::AIERTControl::resetPerfCounters(int col, int row) {
   // Try core module counters (if applicable)
   for (int counterId = 0; counterId < 4; counterId++) {
     // Ignore errors as not all tiles have all counter types
-    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_CORE_MOD, counterId);
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_CORE_MOD,
+                                counterId);
   }
   // Try mem module counters
   for (int counterId = 0; counterId < 4; counterId++) {
-    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_MEM_MOD, counterId);
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_MEM_MOD,
+                                counterId);
   }
   // Try PL module counters (for shim tiles)
   for (int counterId = 0; counterId < 4; counterId++) {
-    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_PL_MOD, counterId);
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_PL_MOD,
+                                counterId);
   }
   return success();
 }
