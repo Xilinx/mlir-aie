@@ -17,10 +17,6 @@
 // CHECK:     %tile_3_3 = aie.tile(3, 3)
 // CHECK:     %of_out_cons_prod_lock_0 = aie.lock(%shim_pl_tile_1_0, 0) {init = 0 : i32, sym_name = "of_out_cons_prod_lock_0"}
 // CHECK:     %of_out_cons_cons_lock_0 = aie.lock(%shim_pl_tile_1_0, 1) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
-// CHECK:     %of_out_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_out_buff_0"} : memref<16xi32> 
-// CHECK:     %of_out_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_out_buff_1"} : memref<16xi32> 
-// CHECK:     %of_out_prod_lock_0 = aie.lock(%mem_tile_1_1, 2) {init = 2 : i32, sym_name = "of_out_prod_lock_0"}
-// CHECK:     %of_out_cons_lock_0 = aie.lock(%mem_tile_1_1, 3) {init = 0 : i32, sym_name = "of_out_cons_lock_0"}
 // CHECK:     %of_stream_cons_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32> 
 // CHECK:     %of_stream_cons_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32> 
 // CHECK:     %of_stream_cons_prod_lock_0 = aie.lock(%mem_tile_1_1, 0) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock_0"}
@@ -42,14 +38,14 @@
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
-// CHECK:       aie.use_lock(%of_out_cons_lock_0, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%of_out_buff_0 : memref<16xi32>, 0, 16)
-// CHECK:       aie.use_lock(%of_out_prod_lock_0, Release, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of_stream_cons_buff_0 : memref<16xi32>, 0, 16)
+// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, Release, 1)
 // CHECK:       aie.next_bd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
-// CHECK:       aie.use_lock(%of_out_cons_lock_0, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%of_out_buff_1 : memref<16xi32>, 0, 16)
-// CHECK:       aie.use_lock(%of_out_prod_lock_0, Release, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       aie.dma_bd(%of_stream_cons_buff_1 : memref<16xi32>, 0, 16)
+// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, Release, 1)
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       aie.end
@@ -66,5 +62,6 @@ module @stream_to_link_AIE2 {
 
     aie.objectfifo @of_stream (%tile33, {%tile11}, 2 : i32) {aie_stream = 0 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of_out (%tile11, {%tile10}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo.link [@of_stream] -> [@of_out] ([] [])
   }
 }
