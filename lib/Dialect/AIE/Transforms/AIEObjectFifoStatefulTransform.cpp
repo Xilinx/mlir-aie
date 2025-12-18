@@ -2181,6 +2181,14 @@ struct AIEObjectFifoStatefulTransformPass
           }
         }
 
+        if (op.getAieStream().has_value()) {
+          int streamEnd = op.getAieStream().value();
+          if (streamEnd == 2 || streamEnd == portNum) 
+            releaseOp->emitOpError("cannot release from objectfifo stream "
+                                  "port");
+            return WalkResult::interrupt();
+        }
+
         // update index of next element to release for this objectFifo
         updateAndReturnIndex(relPerFifo, {op, portNum});
 
@@ -2222,6 +2230,14 @@ struct AIEObjectFifoStatefulTransformPass
             return WalkResult::interrupt();
             ;
           }
+        }
+
+        if (op.getAieStream().has_value()) {
+          int streamEnd = op.getAieStream().value();
+          if (streamEnd == 2 || streamEnd == portNum) 
+            acquireOp->emitOpError("cannot acquire from objectfifo stream "
+                                  "port");
+            return WalkResult::interrupt();
         }
 
         // index of next element to acquire for this objectFifo
