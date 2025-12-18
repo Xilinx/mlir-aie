@@ -186,8 +186,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint64_t register_addr =
         target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id) +
         target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
-
-    // Try to find the root block argument, either directly or through subviews/casts
+    
+    // A buffer descriptor can refer to a statically allocated aie.buffer, or to a 
+    // DDR buffer which will be passed as a runtime arguument (block argument).
+    // Try to find the root block argument, either directly or through subviews/casts.
     mlir::BlockArgument buf_arg = nullptr;
     int64_t offset = 0;
     
@@ -224,7 +226,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
                            nullptr, nullptr, nullptr);
     } else {
-      return bd_op->emitOpError("Buffer argument must be a constant aie.buffer, a runtime sequence input argument, or a memref.subview/memref.cast of a block argument.");
+      return bd_op->emitOpError("Buffer argument must be a constant aie.buffer, a runtime sequence input argument, or a (chain of) subview(s) or cast(s) of a block argument with constant offsets and strides equal to one.");
     }
     return success();
   }

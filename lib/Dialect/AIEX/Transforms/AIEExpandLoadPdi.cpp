@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 //
 // This pass expands `npu.load_pdi` operations that reference a device into:
-// 1. An empty device PDI load
+// 1. An empty device PDI load (causes firmware to reset the device)
 // 2. Optional reset operations based on command-line configuration
 // 3. Explicit configuration operations (write32/blockwrite)
 //
@@ -51,23 +51,23 @@ static ResetTileType parseTileTypes(llvm::StringRef str) {
   if (str.empty())
     return ResetTileType::None;
     
-  ResetTileType result = ResetTileType::None;
+  unsigned result = 0;
   llvm::SmallVector<llvm::StringRef> tokens;
   str.split(tokens, ',', -1, false);
   
   for (auto token : tokens) {
     token = token.trim();
     if (token == "shim" || token == "shimnoc")
-      result = result | ResetTileType::ShimNOC;
+      result |= static_cast<unsigned>(ResetTileType::ShimNOC);
     else if (token == "mem" || token == "memtile")
-      result = result | ResetTileType::MemTile;
+      result |= static_cast<unsigned>(ResetTileType::MemTile);
     else if (token == "core" || token == "coretile")
-      result = result | ResetTileType::CoreTile;
+      result |= static_cast<unsigned>(ResetTileType::CoreTile);
     else if (token == "all")
-      result = ResetTileType::All;
+      return ResetTileType::All;
   }
   
-  return result;
+  return static_cast<ResetTileType>(result);
 }
 
 // Helper function to parse reset mode from string

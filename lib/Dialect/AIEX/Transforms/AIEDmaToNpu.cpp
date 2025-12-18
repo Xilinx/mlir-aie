@@ -285,7 +285,7 @@ public:
       return failure();
     }
 
-    // arg_idx and offset handling for memref or memref.subview
+    // arg_idx and offset for block arguments
     AIE::RuntimeSequenceOp seq_op =
         op->getParentOfType<AIE::RuntimeSequenceOp>();
     if (!seq_op) {
@@ -294,11 +294,10 @@ public:
       return failure();
     }
     
-    // Handle both direct block arguments and memref.subview operations
     mlir::Value rootMemref = memref;
     int64_t subviewOffset = 0;
     
-    // Trace through memref.subview and memref.cast chain to find root block argument
+    // Trace through memref.subview and memref.reinterpret_cast chain, if any, to find root block argument
     auto traceResult = traceSubviewToBlockArgument(memref);
     if (!traceResult) {
       return op->emitOpError("memref must be a block argument or subview/cast/reinterpret_cast of a block argument with static offsets, sizes, and strides");
@@ -318,7 +317,6 @@ public:
     if (arg_idx < 0)
       return failure();
     
-    // Add the subview offset to the existing offset
     offset += subviewOffset;
 
     // bd_id
