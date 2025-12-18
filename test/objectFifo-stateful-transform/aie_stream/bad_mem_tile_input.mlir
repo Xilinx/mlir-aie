@@ -8,7 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --verify-diagnostics %s
+// RUN: aie-opt --verify-diagnostics %s
 
 module @bad_mem_tile_input {
  aie.device(xcve2302) {

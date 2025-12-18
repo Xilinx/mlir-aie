@@ -8,9 +8,7 @@
 // 
 //===----------------------------------------------------------------------===//
 
-// TODO: stream with repeat, iter_count
-
-// RUN: aie-opt --aie-objectFifo-stateful-transform --verify-diagnostics %s
+// RUN: aie-opt --verify-diagnostics %s
 
 module @bad_dims_from_stream {
  aie.device(xcve2302) {
