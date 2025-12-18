@@ -41,6 +41,7 @@ jobs:
       - name: Install Python packages
         run: |
           pip install -r python/requirements.txt
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Get MLIR
@@ -214,6 +215,7 @@ jobs:
       - name: Install Python and other packages
         run: |
           pip install -r python/requirements.txt
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Install packages
@@ -249,6 +251,7 @@ jobs:
         if: steps.changed-files.outputs.changed-files != ''
         run: |
           pip install -r python/requirements.txt
+          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Build and generate coverage (Release)
@@ -312,3 +315,4 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
+
