@@ -8,11 +8,15 @@
 # RUN: %run_on_npu2% %pytest %s
 
 import aie.iron as iron
-from aie.iron.device import NPU2
+from aie.iron.device import NPU2, NPU1
 
 
 def test_set_current_device():
-    device = NPU2()
-    iron.set_current_device(device)
+    iron.set_current_device(NPU1)
     current_device = iron.get_current_device()
-    assert current_device == device
+    assert isinstance(current_device, NPU1)
+
+    old_device = iron.set_current_device(NPU2)
+    current_device = iron.get_current_device()
+    assert isinstance(current_device, NPU2)
+    assert old_device == NPU1
