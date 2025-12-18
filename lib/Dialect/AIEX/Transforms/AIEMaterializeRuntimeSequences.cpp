@@ -48,23 +48,27 @@ struct RuntimeCallGraphCyclicityAnalysis {
       return;
     }
     llvm::SetVector<AIE::RuntimeSequenceOp> visited = {};
+    visited.insert(runtimeSequenceOp);
     llvm::SetVector<RunOp> todo;
-    for (RunOp runOp : runtimeSequenceOp.getOps<RunOp>()) {
+    runtimeSequenceOp.walk([&](RunOp runOp) {
       todo.insert(runOp);
-    }
+    });
     while(!todo.empty()) {
       RunOp curOp = todo.pop_back_val();
       if (AIE::RuntimeSequenceOp calleeRuntimeSequence = curOp.getCalleeRuntimeSequenceOp()) {
         if (visited.contains(calleeRuntimeSequence)) {
-          continue;
+          isCyclic = true;
+          isValid = true;
+          return;
         }
         visited.insert(calleeRuntimeSequence);
-        for (RunOp runOp : calleeRuntimeSequence.getOps<RunOp>()) {
+        // Also need to walk the callee to find all nested RunOps
+        calleeRuntimeSequence.walk([&](RunOp runOp) {
           todo.insert(runOp);
-        }
+        });
       }
     }
-    isCyclic = visited.contains(runtimeSequenceOp);
+    isCyclic = false;
     isValid = true;
   }
 };
@@ -357,28 +361,6 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
       BlockArgument arg = calleeBody.getArgument(i);
       Value val = values[i];
-      
-      // For memref types, check compatibility (same shape and element type)
-      // rather than exact type equality, to allow for strided memrefs with offsets
-      auto argType = dyn_cast<MemRefType>(arg.getType());
-      auto valType = dyn_cast<MemRefType>(val.getType());
-      
-      if (argType && valType) {
-        // Check that shapes and element types match
-        if (argType.getShape() != valType.getShape() ||
-            argType.getElementType() != valType.getElementType()) {
-          return runOp.emitOpError() << "argument " << i << " type mismatch: "
-                                     << "expected " << argType
-                                     << " but got " << valType;
-        }
-        // Types are compatible even if layouts differ (e.g., strided with offset)
-      } else if (arg.getType() != val.getType()) {
-        // For non-memref types, require exact match
-        return runOp.emitOpError() << "argument " << i << " type mismatch: "
-                                   << "expected " << arg.getType()
-                                   << " but got " << val.getType();
-      }
-      
       argMap.map(arg, val);
     }
     
@@ -458,7 +440,7 @@ struct AIEMaterializeRuntimeSequencesPass
           return signalPassFailure();
         }
         if (cyclicity.isCyclic) {
-          runtimeSequenceOp.emitError("Runtime sequence contains a cycle");
+          runtimeSequenceOp.emitError("Runtime sequence call graph contains a cycle");
           return signalPassFailure();
         }
       }
@@ -475,7 +457,7 @@ struct AIEMaterializeRuntimeSequencesPass
       RewritePatternSet patterns_0(ctx);
       patterns_0.insert<InlineRuntimeCallsPattern>(ctx);
       if (failed(applyPatternsGreedily(deviceOp, std::move(patterns_0), rewriter_config))) {
-        signalPassFailure();
+        return signalPassFailure();
       }
 
       // Insert LoadPDI ops for each aiex.configure op

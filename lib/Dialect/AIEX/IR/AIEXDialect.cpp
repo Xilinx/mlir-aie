@@ -978,8 +978,47 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
 }
 
 LogicalResult AIEX::RunOp::verify() {
-  if (getCalleeDeviceOp() && getCalleeRuntimeSequenceOp()) {
-    return success();
+  AIE::DeviceOp calleeDevice = getCalleeDeviceOp();
+  if (!calleeDevice) {
+    return emitOpError() << "cannot find callee device for runtime sequence '"
+                         << getRuntimeSequenceSymbol() << "'";
   }
-  return failure();
+  
+  AIE::RuntimeSequenceOp calleeRuntimeSequence = getCalleeRuntimeSequenceOp();
+  if (!calleeRuntimeSequence) {
+    return emitOpError() << "cannot find runtime sequence '"
+                         << getRuntimeSequenceSymbol() << "'";
+  }
+  
+  // Validate argument types match the callee's parameters
+  Block &calleeBody = calleeRuntimeSequence.getBody().front();
+  ValueRange values = getArgs();
+  
+  if (calleeBody.getNumArguments() != values.size()) {
+    return emitOpError() << "argument count mismatch";
+  }
+  
+  for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
+    BlockArgument arg = calleeBody.getArgument(i);
+    Value val = values[i];
+    
+    // For memref types, check compatibility (same shape and element type)
+    auto argType = dyn_cast<MemRefType>(arg.getType());
+    auto valType = dyn_cast<MemRefType>(val.getType());
+    
+    if (argType && valType) {
+      if (argType.getShape() != valType.getShape() ||
+          argType.getElementType() != valType.getElementType()) {
+        return emitOpError() << "argument " << i << " type mismatch: "
+                             << "expected " << argType
+                             << " but got " << valType;
+      }
+    } else if (arg.getType() != val.getType()) {
+      return emitOpError() << "argument " << i << " type mismatch: "
+                           << "expected " << arg.getType()
+                           << " but got " << val.getType();
+    }
+  }
+  
+  return success();
 }
