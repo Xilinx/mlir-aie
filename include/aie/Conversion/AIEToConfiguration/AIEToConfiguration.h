@@ -19,6 +19,32 @@ namespace xilinx::AIE {
 
 class DeviceOp;
 
+
+// --------------------------------------------------------------------------
+// Device configuration
+// --------------------------------------------------------------------------
+
+std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
+createConvertAIEToTransactionPass();
+
+std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
+createConvertAIEToControlPacketsPass();
+
+std::optional<mlir::ModuleOp>
+convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
+                               std::vector<uint8_t> &binary);
+
+// Generate transaction binary and insert configuration operations at a specific point
+mlir::LogicalResult
+generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
+                           mlir::Operation *insertionPoint,
+                           llvm::StringRef clElfDir = "");
+
+
+// --------------------------------------------------------------------------
+// Device reset 
+// --------------------------------------------------------------------------
+
 // Enum for specifying which tile types to reset
 enum class ResetTileType : unsigned {
   None = 0,
@@ -28,17 +54,8 @@ enum class ResetTileType : unsigned {
   All = ShimNOC | MemTile | CoreTile
 };
 
-// Allow bitwise OR operations on ResetTileType
-inline ResetTileType operator|(ResetTileType lhs, ResetTileType rhs) {
-  return static_cast<ResetTileType>(static_cast<unsigned>(lhs) | static_cast<unsigned>(rhs));
-}
-
-inline ResetTileType operator&(ResetTileType lhs, ResetTileType rhs) {
-  return static_cast<ResetTileType>(static_cast<unsigned>(lhs) & static_cast<unsigned>(rhs));
-}
-
 inline bool hasFlag(ResetTileType value, ResetTileType flag) {
-  return static_cast<unsigned>(value & flag) != 0;
+  return (static_cast<unsigned>(value) & static_cast<unsigned>(flag)) != 0;
 }
 
 // Enum for specifying when to reset
@@ -60,40 +77,15 @@ struct ResetConfig {
     : tileType(tt), mode(m) {}
 };
 
-std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
-createConvertAIEToTransactionPass();
-
-std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
-createConvertAIEToControlPacketsPass();
-
-std::optional<mlir::ModuleOp>
-convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
-                               std::vector<uint8_t> &binary);
-
-// Generate transaction binary and insert configuration operations at a specific point
+// Insert reset operations
 mlir::LogicalResult
-generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
+generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
                           mlir::Operation *insertionPoint,
-                          llvm::StringRef clElfDir = "");
-
-// Generate reset operations for tiles in a device and insert them at a specific point
-mlir::LogicalResult
-generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
-                         mlir::Operation *insertionPoint,
-                         ResetConfig dmaConfig = ResetConfig(),
-                         ResetConfig switchConfig = ResetConfig(),
-                         ResetConfig lockConfig = ResetConfig(),
-                         ResetConfig coreConfig = ResetConfig());
-
-// Version with previous device for change detection
-mlir::LogicalResult
-generateAndInsertResetOps(xilinx::AIE::DeviceOp device,
-                         mlir::Operation *insertionPoint,
-                         ResetConfig dmaConfig,
-                         ResetConfig switchConfig,
-                         ResetConfig lockConfig,
-                         ResetConfig coreConfig,
-                         xilinx::AIE::DeviceOp previousDevice);
+                          ResetConfig dmaConfig,
+                          ResetConfig switchConfig,
+                          ResetConfig lockConfig,
+                          ResetConfig coreConfig,
+                          xilinx::AIE::DeviceOp previousDevice);
 
 } // namespace xilinx::AIE
 

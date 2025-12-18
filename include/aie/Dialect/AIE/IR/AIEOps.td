@@ -76,6 +76,11 @@ def AIE_DeviceOp: AIE_Op<"device", [
     static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
     static llvm::StringRef getDefaultDeviceName() { return "main"; }
+    
+    // Helper methods to find operations by tile coordinates, if they already exist (nullptr otherwise)
+    xilinx::AIE::SwitchboxOp lookupSwitchbox(int col, int row);
+    xilinx::AIE::CoreOp lookupCore(int col, int row);
+    mlir::Operation* lookupDMA(int col, int row);
   }];
 }
 
@@ -212,6 +217,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    bool isEquivalent(SwitchboxOp other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
@@ -322,6 +328,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    bool isEquivalent(mlir::Operation *other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
@@ -389,6 +396,9 @@ def AIE_CoreOp: AIE_Op<"core", [
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
     TileOp getTileOp();
+    // Check whether another core has equivalent program memory.
+    // Note that this currently only checks the ELF attribute, so only works after compiling the program memory.
+    bool isEquivalent(CoreOp other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
@@ -1135,6 +1145,7 @@ def AIE_MemOp: AIE_Op<"mem", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    bool isEquivalent(mlir::Operation *other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
@@ -1182,6 +1193,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
+    bool isEquivalent(mlir::Operation *other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);

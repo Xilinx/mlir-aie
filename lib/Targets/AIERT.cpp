@@ -893,18 +893,6 @@ LogicalResult xilinx::AIE::AIERTControl::resetCoreUnreset(int col, int row) {
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::resetLocks(int col, int row, int numLocks) {
-  auto tileLoc = XAie_TileLoc(col, row);
-  // Reset all locks to value 0
-  for (int lockID = 0; lockID < numLocks; lockID++) {
-    XAie_Lock lock;
-    lock.LockId = lockID;
-    lock.LockVal = 0;
-    TRY_XAIE_API_LOGICAL_RESULT(XAie_LockSetValue, &aiert->devInst, tileLoc, lock);
-  }
-  return success();
-}
-
 LogicalResult xilinx::AIE::AIERTControl::resetLock(int col, int row, int lockId) {
   auto tileLoc = XAie_TileLoc(col, row);
   // Reset a single lock to value 0
@@ -916,10 +904,10 @@ LogicalResult xilinx::AIE::AIERTControl::resetLock(int col, int row, int lockId)
 }
 
 LogicalResult xilinx::AIE::AIERTControl::resetSwitchConnection(int col, int row, 
-                                                                WireBundle sourceBundle, 
-                                                                int sourceChannel,
-                                                                WireBundle destBundle,
-                                                                int destChannel) {
+                                                               WireBundle sourceBundle, 
+                                                               int sourceChannel,
+                                                               WireBundle destBundle,
+                                                               int destChannel) {
   auto tileLoc = XAie_TileLoc(col, row);
   
   // Helper lambda to map WireBundle to StrmSwPortType
