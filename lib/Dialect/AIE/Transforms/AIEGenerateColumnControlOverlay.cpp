@@ -362,10 +362,10 @@ struct AIEGenerateColumnControlOverlayPass
       if (device.lookupSymbol(dma_name))
         continue;
 
-      AIE::ShimDMAAllocationOp::create(builder, builder.getUnknownLoc(),
-                                       StringRef(dma_name), dir,
-                                       rowToShimChanMap[tOp.rowIndex()],
-                                       shimTile.colIndex(), false, nullptr);
+      AIE::ShimDMAAllocationOp::create(
+          builder, builder.getUnknownLoc(), StringRef(dma_name),
+          shimTile.getResult(), dir, rowToShimChanMap[tOp.rowIndex()], false,
+          nullptr);
     }
   }
 

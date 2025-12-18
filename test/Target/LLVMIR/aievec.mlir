@@ -205,10 +205,13 @@ llvm.func @vbroadcast16_bf512(%val : bf16) -> vector<32xbf16> {
 
 // CHECK-LABEL: define <16 x float> @vbroadcastfloat_i512
 llvm.func @vbroadcastfloat_i512(%val : f32) -> vector<16xf32> {
-    // CHECK: call <16 x float> @llvm.aie2.vbroadcastfloat.I512(
-    // CHECK-SAME: float %{{[0-9]+}})
-    %0 = "xllvm.intr.aie2.vbroadcastfloat.I512"(%val) : (f32) -> vector<16xf32>
-    llvm.return %0 : vector<16xf32>
+    // CHECK: %[[BITCAST_TO_I32:.*]] = bitcast float %{{[0-9]+}} to i32
+    // CHECK-NEXT: %[[VBROADCAST:.*]] = call <16 x i32> @llvm.aie2.vbroadcast32.I512(i32 %[[BITCAST_TO_I32]])
+    // CHECK-NEXT: %{{[0-9]+}} = bitcast <16 x i32> %[[VBROADCAST]] to <16 x float>
+    %0 = llvm.bitcast %val : f32 to i32
+    %1 = "xllvm.intr.aie2.vbroadcast32.I512"(%0) : (i32) -> vector<16xi32>
+    %2 = llvm.bitcast %1 : vector<16xi32> to vector<16xf32>
+    llvm.return %2 : vector<16xf32>
 }
 
 // -- EXT -- 

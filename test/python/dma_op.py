@@ -61,7 +61,7 @@ def objFifo_example():
 
         flow(mem_tile, WireBundle.DMA, 0, shim_tile, WireBundle.DMA, 0)
 
-        shim_dma_allocation("mem_A_shim_alloc", DMAChannelDir.MM2S, 0, 0)
+        shim_dma_allocation("mem_A_shim_alloc", shim_tile, DMAChannelDir.MM2S, 0)
 
         @memtile_dma(mem_tile)
         def memtile_dma_0_1():

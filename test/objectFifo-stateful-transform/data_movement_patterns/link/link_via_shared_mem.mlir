@@ -36,7 +36,7 @@
 //CHECK:      aie.use_lock(%[[VAL_2]], Release, 1)
 //CHECK:      aie.end
 //CHECK:    }
-//CHECK:    aie.shim_dma_allocation @of1_shim_alloc(MM2S, 0, 2)
+//CHECK:    aie.shim_dma_allocation @of1_shim_alloc(%shim_noc_tile_2_0, MM2S, 0)
 //CHECK:    %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 //CHECK:      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 //CHECK:    ^bb1:

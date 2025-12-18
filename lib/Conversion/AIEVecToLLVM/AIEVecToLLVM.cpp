@@ -3118,9 +3118,20 @@ public:
             op, VectorType::get({32}, rewriter.getBF16Type()),
             adaptor.getSource());
       } else if (resultBitWidth == 32) {
-        rewriter.replaceOpWithNewOp<xllvm::VectorBroadcastfloatI512IntrOp>(
-            op, VectorType::get({16}, rewriter.getF32Type()),
-            adaptor.getSource());
+        // Use llvm.aie2.vbroadcast32.I512 with bitcasts (float -> i32 -> float)
+        // Following the pattern: %0 = bitcast float %b to i32
+        //                        %1 = tail call <16 x i32>
+        //                        @llvm.aie2.vbroadcast32.I512(i32 %0) %2 =
+        //                        bitcast <16 x i32> %1 to <16 x float>
+        auto srcAsI32 = bitcastValueToType(rewriter, loc, adaptor.getSource(),
+                                           rewriter.getI32Type());
+        auto broadcastI32 = xllvm::VectorBroadcast32I512IntrOp::create(
+            rewriter, loc, VectorType::get({16}, rewriter.getI32Type()),
+            srcAsI32);
+        auto resultF32 =
+            bitcastValueToType(rewriter, loc, broadcastI32,
+                               VectorType::get({16}, rewriter.getF32Type()));
+        rewriter.replaceOp(op, resultF32);
       } else {
         op.emitWarning()
             << "aievec.broadcast_scalar conversion with result bitwidth "
@@ -4345,6 +4356,20 @@ class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
   }
 };
 
+// AIE2p version of FoldAIECastOps
+class FoldAIECastOpsAIE2p
+    : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
+  using ConvertOpToLLVMPattern<aievec::CastOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::CastOp castOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Fold the cast.
+    rewriter.replaceOp(castOp, adaptor.getSource());
+    return success();
+  }
+};
+
 class ShuffleOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::ShuffleOp> {
   using ConvertOpToLLVMPattern<aievec::ShuffleOp>::ConvertOpToLLVMPattern;
@@ -4509,7 +4534,6 @@ void populateAIEVecToLLVMCommonConversionPatterns(
                BroadcastScalarOpConversion,
                FMAElemOpConversion,
                MatMulOpConversion,
-               FoldAIECastOps,
                ShuffleOpConversion>(converter);
   // clang-format on
 }
@@ -4525,6 +4549,7 @@ void populateAIEVecToLLVMAIE2ConversionPatterns(
   patterns.add<MaxOpConversion, MinOpConversion>(converter);
   patterns.add<ExtractElemOpConversion>(converter);
   patterns.add<ConcatOpConversion>(converter);
+  patterns.add<FoldAIECastOps>(converter);
 }
 
 // AIE2p version of ExtractElemOp conversion using LLVM extractelement
@@ -4623,6 +4648,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ExpOpAIE2pConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
   patterns.add<RsqrtOpAIE2pConversion>(converter);
+  patterns.add<FoldAIECastOpsAIE2p>(converter);
 }
 
 void populateAIEVecToLLVMConversionPatterns(

@@ -21,7 +21,8 @@ module {
       // expected-error@+1 {{Size 0 exceeds the [0:1023] range}}
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1920,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<1920x1080xi32>
     }
-    aie.shim_dma_allocation @of_fromMem(MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -41,7 +42,8 @@ module {
       // expected-error@+1 {{Size 3 exceeds the [1:64] range}}
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c128,%c2,%c2,%c8][%c0,%c16,%c8,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<128x4x2x8xi32>
     }
-    aie.shim_dma_allocation @of_fromMem (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -57,7 +59,8 @@ module {
       // expected-error@+1 {{Stride 1 exceeds the [1:1048576] range}}
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2][%c0,%c0,%c2097152,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<8388608xi32>
     }
-    aie.shim_dma_allocation @of_fromMem(MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -96,7 +99,8 @@ module {
       // this should be a size of 512 in address granularity (4 bytes) and hence pass the test.
       aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2048][%c0,%c0,%c4,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -114,7 +118,8 @@ module {
       // expected-error@+1 {{Size 0 exceeds the [0:1023] range}}
       aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2048][%c0,%c0,%c4,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi16>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -133,7 +138,8 @@ module {
       // expected-error@+1 {{Stride 1 is 2 elements * 1 bytes = 2 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c8][%c0,%c0,%c2,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -150,7 +156,8 @@ module {
       // expected-error@+1 {{2 elements at 1 bytes each equal 2 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2][%c0,%c0,%c4,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -169,7 +176,8 @@ module {
       // expected-error@+1 {{Stride 0 is 2 elements * 1 bytes = 2 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c8][%c0,%c0,%c0,%c2]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -187,7 +195,8 @@ module {
       // expected-error@+1 {{3 elements at 2 bytes each equal 6 bytes, which is not divisible by 4}}
       aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c3][%c0,%c0,%c0,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi16>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -208,7 +217,8 @@ module {
       // expected-error@+1 {{Stride 3 exceeds the [1:1048576] range.}}
       aiex.npu.dma_memcpy_nd (%a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c1572864,%c0,%c0,%c1]) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -228,7 +238,8 @@ module {
       // expected-error@+1 {{Packet ID field can only hold 5 bits.}}
       aiex.npu.dma_memcpy_nd (%a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c0,%c0,%c0,%c1], packet = <pkt_id = 32, pkt_type = 2>) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
 
@@ -247,6 +258,7 @@ module {
       // expected-error@+1 {{Packet type field can only hold 3 bits.}}
       aiex.npu.dma_memcpy_nd (%a[%c1,%c0,%c0,%c0][%c2,%c1,%c1,%c2][%c0,%c0,%c0,%c1], packet = <pkt_id = 2, pkt_type = 8>) { metadata = @objectfifo, id = 1 : i64 } : memref<8xi32>
     }
-    aie.shim_dma_allocation @objectfifo (MM2S, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
