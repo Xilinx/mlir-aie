@@ -111,14 +111,17 @@ def create_main_device(buffer_offsets):
         declared_buffers = set()
         
         for op_buffer_args, op_idx in device_operations:
-            # Generate arg_slice declarations for buffers not yet declared
+            # Generate memref.subview and memref.reinterpret_cast declarations for buffers not yet declared
             for buf_name in op_buffer_args:
                 if buf_name not in declared_buffers:
                     buf_info = buffer_offsets[buf_name]
-                    lines.append(f"                %{buf_name} = aiex.arg_slice %arg[{buf_info['start']}:{buf_info['end']}] : memref<{buffer_offsets['total']}xbf16> -> memref<{buf_info['size']}xbf16>")
+                    # Generate subview with strided layout including offset
+                    lines.append(f"                %{buf_name}_subview = memref.subview %arg[{buf_info['start']}] [{buf_info['size']}] [1] : memref<{buffer_offsets['total']}xbf16> to memref<{buf_info['size']}xbf16, strided<[1], offset: {buf_info['start']}>>")
+                    # Use reinterpret_cast to convert to plain memref
+                    lines.append(f"                %{buf_name} = memref.reinterpret_cast %{buf_name}_subview to offset: [0], sizes: [{buf_info['size']}], strides: [1] : memref<{buf_info['size']}xbf16, strided<[1], offset: {buf_info['start']}>> to memref<{buf_info['size']}xbf16>")
                     declared_buffers.add(buf_name)
             
-            # Generate aiex.run call
+            # Generate aiex.run call with plain memref types
             buffer_args_str = ", ".join([f"%{b}" for b in op_buffer_args])
             buffer_types_str = ", ".join([f"memref<{buffer_offsets[b]['size']}xbf16>" for b in op_buffer_args])
             lines.append(f"                aiex.run @sequence ({buffer_args_str}) : ({buffer_types_str})")
