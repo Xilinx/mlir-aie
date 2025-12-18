@@ -857,7 +857,6 @@ xilinx::AIE::createConvertAIEToControlPacketsPass() {
   return std::make_unique<ConvertAIEToControlPacketsPass>();
 }
 
-// Public API to generate transaction binary and insert configuration ops
 mlir::LogicalResult
 xilinx::AIE::generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
                                         mlir::Operation *insertionPoint,
