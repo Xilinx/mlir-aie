@@ -83,7 +83,7 @@ runs:
 
     - name: pip install standard tools
       shell: bash
-      run: pip install cibuildwheel wheel cmake
+      run: pip install cibuildwheel wheel
 
     - name: install rename
       if: ${{ inputs.MATRIX_OS == 'ubuntu-22.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}

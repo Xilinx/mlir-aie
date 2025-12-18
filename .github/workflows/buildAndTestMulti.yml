@@ -77,7 +77,6 @@ jobs:
 
       - name: Install Python packages
         run: |
-          pip install --upgrade pip
           pip install -r python/requirements.txt
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_dev.txt

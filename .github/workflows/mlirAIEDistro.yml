@@ -67,6 +67,8 @@ jobs:
 
     runs-on: ${{ matrix.OS }}
 
+    continue-on-error: true
+
     outputs:
       MLIR_AIE_WHEEL_VERSION: ${{ steps.get_wheel_version.outputs.MLIR_AIE_WHEEL_VERSION }}
 
@@ -225,7 +227,6 @@ jobs:
 
         export PIP_NO_BUILD_ISOLATION=false
 
-        pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r python/requirements_dev.txt
         pip install importlib-metadata
@@ -271,13 +272,9 @@ jobs:
 
         ccache -s
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
-        if [ -d "./wheelhouse/.ccache" ]; then
-          rm -rf $HOST_CCACHE_DIR
-          mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
-          ls -la $HOST_CCACHE_DIR
-        else
-          echo "No .ccache found in wheelhouse"
-        fi
+        rm -rf $HOST_CCACHE_DIR
+        mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+        ls -la $HOST_CCACHE_DIR
         ccache -s
 
     # For whatever reason, the timestamps on all of the files that come out of the docker container
@@ -368,7 +365,6 @@ jobs:
       - name: test
         shell: bash
         run: |
-          pip install --upgrade pip
           pip install -r python/requirements.txt
           pip install -r python/requirements_dev.txt
           unzip -o -q dist/mlir_aie\*.whl

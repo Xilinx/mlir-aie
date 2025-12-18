@@ -113,13 +113,6 @@ jobs:
             MLIR_VERSION=$(git rev-parse --short HEAD)
             echo "Building mlir-aie version $MLIR_VERSION"
 
-            # Install CMake 3.30
-            apt-get update
-            apt-get install -y wget
-            wget -q https://github.com/Kitware/CMake/releases/download/v3.30.0/cmake-3.30.0-linux-x86_64.sh
-            chmod +x cmake-3.30.0-linux-x86_64.sh
-            ./cmake-3.30.0-linux-x86_64.sh --skip-license --prefix=/usr/local
-
             if ! command -v python${{ matrix.python_version }} &> /dev/null; then
               echo "Python ${{ matrix.python_version }} not found, installing..."
               apt-get update
@@ -137,7 +130,6 @@ jobs:
             tar xfz /workspace/vaie.tgz
             popd
 
-            pip install --upgrade pip
             pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
             pip install -r python/requirements_dev.txt
