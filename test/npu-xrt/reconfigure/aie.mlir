@@ -9,16 +9,20 @@ module {
             %c3_i32 = arith.constant 3 : i32
 
             aiex.configure @add_two {
-                %arg1 = aiex.arg_slice %arg[0:4] : memref<512xi32> -> memref<4xi32>
+                %arg1_subview = memref.subview %arg[0] [4] [1] : memref<512xi32> to memref<4xi32, strided<[1]>>
+                %arg1 = memref.cast %arg1_subview : memref<4xi32, strided<[1]>> to memref<4xi32>
                 aiex.run @sequence (%arg1) : (memref<4xi32>)
-                %arg2 = aiex.arg_slice %arg[12:16] : memref<512xi32> -> memref<4xi32>
+                %arg2_subview = memref.subview %arg[12] [4] [1] : memref<512xi32> to memref<4xi32, strided<[1]>>
+                %arg2 = memref.cast %arg2_subview : memref<4xi32, strided<[1]>> to memref<4xi32>
                 aiex.run @sequence (%arg2) : (memref<4xi32>)
             }
 
             aiex.configure @add_three {
-                %arg1 = aiex.arg_slice %arg[4:8] : memref<512xi32> -> memref<4xi32>
+                %arg1_subview = memref.subview %arg[4] [4] [1] : memref<512xi32> to memref<4xi32, strided<[1]>>
+                %arg1 = memref.cast %arg1_subview : memref<4xi32, strided<[1]>> to memref<4xi32>
                 aiex.run @sequence (%arg1) : (memref<4xi32>)
-                %arg2 = aiex.arg_slice %arg[12:16] : memref<512xi32> -> memref<4xi32>
+                %arg2_subview = memref.subview %arg[12] [4] [1] : memref<512xi32> to memref<4xi32, strided<[1]>>
+                %arg2 = memref.cast %arg2_subview : memref<4xi32, strided<[1]>> to memref<4xi32>
                 aiex.run @sequence (%arg2) : (memref<4xi32>)
             }
 
