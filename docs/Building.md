@@ -120,6 +120,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    ```bash
    # Install basic Python requirements 
    python3 -m pip install -r python/requirements.txt
+
+   # Install MLIR Python Extras
+   EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
 1. Install Python packages required for development and testing:
