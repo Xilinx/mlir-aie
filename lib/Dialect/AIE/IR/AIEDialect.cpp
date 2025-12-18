@@ -612,6 +612,9 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (!objFifo.getDimensionsToStream().empty())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set dimensions attribute");
+  if (objFifo.getAieStream().has_value())
+    return emitError("cannot allocate a shared memory module to objectfifo "
+                     "using stream port");
   return success();
 }
 
