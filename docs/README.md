@@ -123,11 +123,14 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
    ```
 
-   You will also need to install the `llvm-aie` wheel for the Peano compiler.
+   You will also need to install the `llvm-aie` wheel for the Peano compiler and MLIR Python extras.
 
    ```bash
    # Install Peano from llvm-aie wheel
    python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+
+   # Install MLIR Python Extras
+   EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
 1. (Optional) Install Python packages required for development and testing:

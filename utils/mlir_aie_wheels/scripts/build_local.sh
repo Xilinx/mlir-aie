@@ -51,6 +51,7 @@ fi
 
 cp -R "$HERE/../requirements.txt" "$HERE/../python_bindings"
 cp -R "$HERE/../requirements_dev.txt" "$HERE/../python_bindings"
+cp -R "$HERE/../requirements_extras.txt" "$HERE/../python_bindings"
 cp -R "$HERE/../scripts" "$HERE/../python_bindings"
 cp -R "$HERE/../wheelhouse/"mlir_aie*.whl "$HERE/../python_bindings"
 
