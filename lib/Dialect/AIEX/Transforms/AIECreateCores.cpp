@@ -100,8 +100,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
       // get or create TileOp
       if (!tiles[{colIndex, rowIndex}]) {
         builder.setInsertionPointToStart(device.getBody());
-        TileOp tile =
-            builder.create<TileOp>(builder.getUnknownLoc(), colIndex, rowIndex);
+        TileOp tile = TileOp::create(builder, builder.getUnknownLoc(), colIndex,
+                                     rowIndex);
         tiles[{colIndex, rowIndex}] = tile;
       }
       Operation *tileOp = tiles[{colIndex, rowIndex}];
@@ -123,22 +123,22 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
 
           assert(t && "Unsupported type!");
           coreBufTypes.push_back({t, i});
-          BufferOp buf = builder.create<BufferOp>(
-              builder.getUnknownLoc(), t, tile, /*sym_name*/ nullptr,
+          BufferOp buf = BufferOp::create(
+              builder, builder.getUnknownLoc(), t, tile, /*sym_name*/ nullptr,
               /*address*/ nullptr, /*initial_value*/ nullptr,
               /*mem_bank*/ nullptr);
           buffers[callOperands[i]] = buf;
           operand.replaceAllUsesWith(buf.getResult());
         }
 
-        MemOp mem = builder.create<MemOp>(builder.getUnknownLoc(),
-                                          builder.getIndexType(), tile);
+        MemOp mem = MemOp::create(builder, builder.getUnknownLoc(),
+                                  builder.getIndexType(), tile);
         Region &r = mem.getBody();
         Block *endBlock = builder.createBlock(&r);
 
         // block terminator
         builder.setInsertionPointToStart(endBlock);
-        builder.create<EndOp>(builder.getUnknownLoc());
+        EndOp::create(builder, builder.getUnknownLoc());
         mems[tileOp] = mem;
       }
 
@@ -157,7 +157,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           Block *currentBlock;
 
           if (!cores[tileOp]) {
-            core = builder.create<CoreOp>(builder.getUnknownLoc(), tile);
+            core = CoreOp::create(builder, builder.getUnknownLoc(), tile);
             Region &r = core.getBody();
             currentBlock = builder.createBlock(&r);
             builder.setInsertionPointToStart(currentBlock);
@@ -181,10 +181,10 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
               assert(pair.first.getShape()[0] == 1 &&
                      "Expected MemRefType of single element");
 
-              Value zero = builder.create<arith::ConstantIndexOp>(
-                  builder.getUnknownLoc(), 0);
-              auto loadOp = builder.create<memref::LoadOp>(
-                  builder.getUnknownLoc(), arg.getType(), buf, zero);
+              Value zero = arith::ConstantIndexOp::create(
+                  builder, builder.getUnknownLoc(), 0);
+              auto loadOp = memref::LoadOp::create(
+                  builder, builder.getUnknownLoc(), arg.getType(), buf, zero);
               mapper.map(arg, loadOp);
             } else {
               mapper.map(arg, buf);
@@ -201,7 +201,7 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
           }
           if (!cores[tileOp]) {
             // block terminator
-            builder.create<EndOp>(builder.getUnknownLoc());
+            EndOp::create(builder, builder.getUnknownLoc());
             cores[tileOp] = core;
           }
         }
@@ -227,8 +227,8 @@ struct AIECreateCoresPass : public AIECreateCoresBase<AIECreateCoresPass> {
     //          "Could not allocate more than two dest. channel when creating
     //          FlowOp");
     //   // WireBundle[1] = DMA
-    //   builder.create<FlowOp>(builder.getUnknownLoc(), srcTile, 1, 0, dstTile,
-    //   1, destChannel[op.dstTile()]); destChannel[op.dstTile()]++;
+    //   FlowOp::create(builder, builder.getUnknownLoc(), srcTile, 1, 0,
+    //   dstTile, 1, destChannel[op.dstTile()]); destChannel[op.dstTile()]++;
     // }
 
     ConversionTarget target(getContext());

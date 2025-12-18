@@ -456,9 +456,14 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
           dev, getMetadata().getRootReference())) {
-    int col = allocOp.getCol();
+    AIE::TileOp tile = allocOp.getTileOp();
+    if (!tile) {
+      return emitOpError("shim DMA allocation must reference a valid TileOp");
+    }
+    int col = tile.getCol();
+    int row = tile.getRow();
     bool skipTransformationChecks = isLinearTransferWithoutTransformation();
-    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes,
+    if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
                                   inputStrides, hardwareSizes, hardwareStrides,
                                   skipTransformationChecks))) {
       return failure();

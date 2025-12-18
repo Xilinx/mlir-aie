@@ -247,6 +247,12 @@ def VectorSetI512I256IntrOp :
     Arguments<(ins VectorOfLengthAndType<[8], [I32]>:$src,
                    I32:$pos)>;
 
+def VectorSetBF512BF256IntrOp :
+    AIEVec2_IntrOp<"set.bf512.bf256",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$src,
+                   I32:$pos)>;
+
 // ----- SRS ----- 
 
 def I256V16Acc32SrsAIE2IntrOp :
@@ -373,6 +379,10 @@ def Vector64AccFloatToV64BFP16EBS8AIE2pIntrOp :
 
 // ----- BROADCAST -----
 
+def VectorBroadcastZeroAcc1024IntrOp :
+    AIEVec2_IntrOp<"vbroadcast.zero.acc1024",
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [I64]>>]>;
+
 def VectorBroadcast8I512IntrOp :
     AIEVec2_IntrOp<"vbroadcast8.I512",
         [TypeIs<"res", VectorOfLengthAndType<[64], [I8]>>]>,
@@ -392,11 +402,6 @@ def VectorBroadcast16BF512IntrOp :
     AIEVec2_IntrOp<"vbroadcast16.bf512",
         [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
     Arguments<(ins BF16:$src)>;
-
-def VectorBroadcastfloatI512IntrOp :
-    AIEVec2_IntrOp<"vbroadcastfloat.I512",
-        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
-    Arguments<(ins F32:$src)>;
 
 // ----- EXT ----- 
 
@@ -422,6 +427,12 @@ def ExtI128I512IntrOp :
     AIEVec2_IntrOp<"extract.I128.I512",
         [TypeIs<"res", VectorOfLengthAndType<[4], [I32]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$src)>;
+
+def ExtBF256BF512IntrOp :
+    AIEVec2_IntrOp<"ext.bf256.bf512",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[32], [BF16]>:$src,
+                   I32:$idx)>;
   
 // ----- CONCAT ----- 
 
@@ -445,6 +456,12 @@ def ConcatI1024I512IntrOp :
     Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
                    VectorOfLengthAndType<[16], [I32]>:$rhs)>;
 
+def ConcatBF512BF256IntrOp :
+    AIEVec2_IntrOp<"concat.bf512.bf256",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [BF16]>:$lhs,
+                   VectorOfLengthAndType<[16], [BF16]>:$rhs)>;
+
 // ----- SHUFFLE ----- 
 
 def VectorShuffleIntrOp :
@@ -466,6 +483,10 @@ def VectorShuffleAIE2pIntrOp :
 def UndefV16I32IntrOp :
     AIEVec2_IntrOp<"v16int32",
         [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>;
+
+def V16BFloat16IntrOp :
+    AIEVec2_IntrOp<"v16bfloat16",
+        [Pure, TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>;
 
 // ----- UPD ----- 
 
@@ -597,6 +618,13 @@ def Exp2AIE2pIntrOp :
     AIEVec2p_IntrOp<"exp2",
         [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
+
+// ----- INVSQRT (Reciprocal Square Root) -----
+
+def InvsqrtAIE2pIntrOp :
+    AIEVec2p_IntrOp<"invsqrt",
+        [Pure, TypeIs<"res", F32>]>,
+    Arguments<(ins F32:$src)>;
 
 // ----- SHIFT -----
 

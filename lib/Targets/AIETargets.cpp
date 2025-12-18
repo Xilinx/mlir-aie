@@ -236,7 +236,13 @@ void registerAIETranslations() {
           shimJSON["channelDir"] = attrToJSON(channelDir);
           auto channelIndex = shimDMAMeta.getChannelIndexAttr();
           shimJSON["channelIndex"] = attrToJSON(channelIndex);
-          auto col = shimDMAMeta.getColAttr();
+          AIE::TileOp tile = shimDMAMeta.getTileOp();
+          if (!tile) {
+            shimDMAMeta.emitError(
+                "shim DMA allocation must reference a valid TileOp");
+            return failure();
+          }
+          auto col = tile.getColAttr();
           shimJSON["col"] = attrToJSON(col);
           moduleJSON[shimDMAMeta.getSymName()] =
               llvm::json::Value(std::move(shimJSON));

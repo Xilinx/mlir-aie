@@ -1610,11 +1610,10 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let description = [{
     This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
     and hence there is no appropriate dma_start operation to indicate which channel is being
-    used and on which column the shim_dma is.
+    used and on which shim tile the shim_dma is.
 
     It contains attributes for the sym_name of an operation which generated the shim DMA,
-    for the DMAChannelDir and channel index, and for the column of the shim tile to which
-    the originating operation was mapped.
+    for the DMAChannelDir and channel index, and a reference to the shim tile.
 
     Example:
     ```
@@ -1622,17 +1621,17 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
       %tile02 = aie.tile(0, 2)
       aie.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !aie.objectfifo<memref<64xi16>>
     ```
-    could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
+    could produce the following allocation info (channel direction MM2S, channel index 1, on tile %tile00):
     ```
-      aie.shim_dma_allocation @of_in_0 (MM2S, 1, 0)
+      aie.shim_dma_allocation @of_in_0 (%tile00, MM2S, 1)
     ```
   }];
 
   let arguments = (
     ins SymbolNameAttr:$sym_name,
+        Index:$tile,
         DMAChannelDir:$channel_dir,
         AIEI64Attr:$channel_index,
-        AIEI64Attr:$col,
         // If this is set we are using the PLIO in this ShimTile
         DefaultValuedAttr<BoolAttr, "false">:$plio,
         OptionalAttr<PacketInfoAttr>:$packet
@@ -1641,10 +1640,13 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let results = (outs);
 
   let assemblyFormat = [{
-    $sym_name `(` $channel_dir `,` $channel_index `,` $col (`,` $packet^)? `)` attr-dict
+    $sym_name `(` $tile `,` $channel_dir `,` $channel_index (`,` $packet^)? `)` attr-dict
   }];
+  
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    TileOp getTileOp();
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
 }
