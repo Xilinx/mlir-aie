@@ -16,6 +16,7 @@
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include <algorithm>
 #include <cstdint>
 
@@ -284,7 +285,7 @@ public:
       return failure();
     }
 
-    // arg_idx and offset handling for memref or arg_slice
+    // arg_idx and offset handling for memref or memref.subview
     AIE::RuntimeSequenceOp seq_op =
         op->getParentOfType<AIE::RuntimeSequenceOp>();
     if (!seq_op) {
@@ -293,16 +294,17 @@ public:
       return failure();
     }
     
-    // Handle both direct block arguments and arg_slice operations
+    // Handle both direct block arguments and memref.subview operations
     mlir::Value rootMemref = memref;
-    int64_t argSliceOffset = 0;
+    int64_t subviewOffset = 0;
     
-    if (auto argSliceOp = memref.getDefiningOp<AIEX::ArgSliceOp>()) {
-      // Trace back through arg_slice chain to find root argument and cumulative offset
-      auto [root, cumulativeOffset] = argSliceOp.getRootArgumentAndOffset();
-      rootMemref = root;
-      argSliceOffset = cumulativeOffset;
+    // Trace through memref.subview and memref.cast chain to find root block argument
+    auto traceResult = traceSubviewToBlockArgument(memref);
+    if (!traceResult) {
+      return op->emitOpError("memref must be a block argument or subview/cast/reinterpret_cast of a block argument with static offsets, sizes, and strides");
     }
+    rootMemref = traceResult->rootArg;
+    subviewOffset = traceResult->offsetInBytes;
     
     // Find the argument index of the root memref
     Block &entryBB = seq_op.getBody().front();
@@ -316,8 +318,8 @@ public:
     if (arg_idx < 0)
       return failure();
     
-    // Add the arg_slice offset to the existing offset
-    offset += argSliceOffset;
+    // Add the subview offset to the existing offset
+    offset += subviewOffset;
 
     // bd_id
     bd_id = IntegerAttr::get(i32ty, op.getId());
