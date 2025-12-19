@@ -92,6 +92,104 @@ static std::optional<Value> getSourceOfWideningOp(Value src) {
   return std::optional<Value>();
 }
 
+// Given a Value, if it is defined by a narrowing op (arith::TruncFOp,
+// arith::TruncIOp), return the source of the narrowing op.
+static std::optional<Value> getSourceOfNarrowingOp(Value src) {
+  if (auto truncFOp = src.getDefiningOp<arith::TruncFOp>())
+    return truncFOp.getIn();
+  if (auto truncIOp = src.getDefiningOp<arith::TruncIOp>())
+    return truncIOp.getIn();
+  return std::optional<Value>();
+}
+
+//===----------------------------------------------------------------------===//
+// Type conversion utilities with narrowing/widening optimization awareness
+//===----------------------------------------------------------------------===//
+
+// Smart widen a value to target type. If the value was previously narrowed
+// from the target type, reuse the original source to avoid truncf->extf chains.
+static Value widenValueWithNarrowingCheck(Value val, Type targetType,
+                                          Location loc,
+                                          ConversionPatternRewriter &rewriter) {
+  // Check if this value was narrowed from the target type
+  if (auto narrowedSrc = getSourceOfNarrowingOp(val)) {
+    if (narrowedSrc->getType() == targetType)
+      return *narrowedSrc; // Reuse the original value (skip truncf->extf)
+  }
+
+  // Otherwise, create the widening op if needed
+  if (val.getType() == targetType)
+    return val;
+
+  return arith::ExtFOp::create(rewriter, loc, targetType, val);
+}
+
+// Result structure for smart narrowing operation
+struct NarrowingResult {
+  Value narrowedValue;     // The narrowed value (or original if optimized)
+  bool skipNarrowing;      // True if we should skip creating truncf
+  Operation *wideningUser; // The widening op to replace (if skipNarrowing)
+};
+
+// Smart narrow a value to target type. If the result will be immediately
+// widened back, skip both truncf and extf operations.
+static NarrowingResult
+narrowValueWithWideningCheck(Operation *srcOp, Value val, Type targetType,
+                             Location loc,
+                             ConversionPatternRewriter &rewriter) {
+  NarrowingResult result;
+  result.narrowedValue = val;
+  result.skipNarrowing = false;
+  result.wideningUser = nullptr;
+
+  // Check if srcOp will be immediately widened back
+  if (srcOp->hasOneUse()) {
+    Operation *user = *srcOp->getUsers().begin();
+    if (auto extfOp = dyn_cast<arith::ExtFOp>(user)) {
+      // The result will be widened - skip both truncf and extf
+      result.skipNarrowing = true;
+      result.wideningUser = extfOp;
+      return result;
+    }
+  }
+
+  // Normal case: create the narrowing op
+  result.narrowedValue =
+      arith::TruncFOp::create(rewriter, loc, targetType, val);
+  return result;
+}
+
+// High-level helper to perform a binary operation on bf16 values in f32
+// precision. This function handles:
+// 1. Smart widening of operands (reuses f32 source if narrowed from f32)
+// 2. Executing the operation in f32
+// 3. Smart narrowing back to bf16 (skips truncf->extf if result is widened)
+static void
+performBF16BinaryOpInF32(Value lhs, Value rhs, Operation *srcOp, Location loc,
+                         ConversionPatternRewriter &rewriter,
+                         std::function<Value(Value, Value)> opBuilder) {
+  Type f32Type = rewriter.getF32Type();
+
+  // Smart widen both operands (reuse f32 source if narrowed from f32)
+  Value lhsF32 = widenValueWithNarrowingCheck(lhs, f32Type, loc, rewriter);
+  Value rhsF32 = widenValueWithNarrowingCheck(rhs, f32Type, loc, rewriter);
+
+  // Perform operation in f32
+  Value resultF32 = opBuilder(lhsF32, rhsF32);
+
+  // Smart narrow back to bf16 (skip if result will be widened)
+  auto narrowResult = narrowValueWithWideningCheck(
+      srcOp, resultF32, lhs.getType(), loc, rewriter);
+
+  if (narrowResult.skipNarrowing) {
+    // Replace the widening user directly with f32 result
+    rewriter.replaceOp(narrowResult.wideningUser, resultF32);
+    rewriter.eraseOp(srcOp);
+  } else {
+    rewriter.replaceOp(srcOp, narrowResult.narrowedValue);
+  }
+}
+
 // Given the LHS and RHS of an `arith::AddIOp`, if one of them is defined by an
 // `arith::MulIOp`, return a tuple with the `lhs`, `rhs`, and `acc` of the MAC
 // operation that can replace them.
@@ -1614,11 +1712,35 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
     auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MinOp>(
         rewriter, srcOp, shiftIndex, srcOp.getVector());
 
-    if (srcOp.getAcc())
-      rewriter.replaceOpWithNewOp<arith::MinimumFOp>(
-          srcOp, reduceResultOp.getResult(), srcOp.getAcc());
-    else
+    if (srcOp.getAcc()) {
+      Value reduceResult = reduceResultOp.getResult();
+      Value acc = srcOp.getAcc();
+
+      // If accumulator is bf16, use the high-level helper for bf16->f32->bf16
+      if (acc.getType().isBF16()) {
+        // Define the min operation to be performed in f32
+        auto minOpBuilder = [&](Value lhs, Value rhs) -> Value {
+          auto cmpOp = arith::CmpFOp::create(
+              rewriter, srcOp.getLoc(), arith::CmpFPredicate::OLT, lhs, rhs);
+          return arith::SelectOp::create(rewriter, srcOp.getLoc(), cmpOp, lhs,
+                                         rhs);
+        };
+
+        // Use helper to handle bf16->f32 conversion, perform min, and convert
+        // back
+        performBF16BinaryOpInF32(reduceResult, acc, srcOp, srcOp.getLoc(),
+                                 rewriter, minOpBuilder);
+      } else {
+        // Non-bf16 path: perform min using cmpf and select
+        auto cmpOp =
+            arith::CmpFOp::create(rewriter, srcOp.getLoc(),
+                                  arith::CmpFPredicate::OLT, reduceResult, acc);
+        rewriter.replaceOpWithNewOp<arith::SelectOp>(srcOp, cmpOp, reduceResult,
+                                                     acc);
+      }
+    } else {
       rewriter.replaceOp(srcOp, reduceResultOp);
+    }
     return success();
   }
 };
@@ -1647,11 +1769,35 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
     auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MaxOp>(
         rewriter, srcOp, shiftIndex, srcOp.getVector());
 
-    if (srcOp.getAcc())
-      rewriter.replaceOpWithNewOp<arith::MaximumFOp>(
-          srcOp, reduceResultOp.getResult(), srcOp.getAcc());
-    else
+    if (srcOp.getAcc()) {
+      Value reduceResult = reduceResultOp.getResult();
+      Value acc = srcOp.getAcc();
+
+      // If accumulator is bf16, use the high-level helper for bf16->f32->bf16
+      if (acc.getType().isBF16()) {
+        // Define the max operation to be performed in f32
+        auto maxOpBuilder = [&](Value lhs, Value rhs) -> Value {
+          auto cmpOp = arith::CmpFOp::create(
+              rewriter, srcOp.getLoc(), arith::CmpFPredicate::OGT, lhs, rhs);
+          return arith::SelectOp::create(rewriter, srcOp.getLoc(), cmpOp, lhs,
+                                         rhs);
+        };
+
+        // Use helper to handle bf16->f32 conversion, perform max, and convert
+        // back
+        performBF16BinaryOpInF32(reduceResult, acc, srcOp, srcOp.getLoc(),
+                                 rewriter, maxOpBuilder);
+      } else {
+        // Non-bf16 path: perform max directly
+        auto cmpOp =
+            arith::CmpFOp::create(rewriter, srcOp.getLoc(),
+                                  arith::CmpFPredicate::OGT, reduceResult, acc);
+        rewriter.replaceOpWithNewOp<arith::SelectOp>(srcOp, cmpOp, reduceResult,
+                                                     acc);
+      }
+    } else {
       rewriter.replaceOp(srcOp, reduceResultOp);
+    }
     return success();
   }
 };
@@ -3990,6 +4136,17 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
   });
 
   target.addDynamicallyLegalOp<arith::MaxNumFOp>([=](arith::MaxNumFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+  });
+
+  target.addDynamicallyLegalOp<arith::MinNumFOp>([=](arith::MinNumFOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
     if (!resultType)
       return true;
