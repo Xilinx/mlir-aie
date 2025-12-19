@@ -1,3 +1,13 @@
+//===- test-reduce.mlir ----------------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2025 Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" | FileCheck %s
 
 // CHECK-LABEL:func @reduce_add_i32
@@ -471,5 +481,66 @@ func.func @reduce_maxnumf_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
   %cst = arith.constant -1.0e+09 : bf16
   %0 = vector.reduction <maxnumf>, %arg0, %cst : vector<32xbf16> into bf16
   // CHECK: return %[[TRUNCF]] : bf16
+  return %0 : bf16
+}
+
+// CHECK-LABEL:func @reduce_add_bf16
+// CHECK-SAME: %[[SRC:.*]]: vector<32xbf16>
+func.func @reduce_add_bf16(%arg0: vector<32xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i32
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : i32
+  // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : i32
+  // CHECK-DAG: %[[C32:.*]] = arith.constant 32 : i32
+  // CHECK: %[[EXT0:.*]] = aievec.ext %[[SRC]] {index = 0 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[EXT1:.*]] = aievec.ext %[[SRC]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[UPS0:.*]] = aievec.ups %[[EXT0]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // CHECK: %[[UPS1:.*]] = aievec.ups %[[EXT1]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // CHECK: %[[ADD_HALVES:.*]] = aievec.add_elem %[[UPS0]], %[[UPS1]] : vector<16xf32>
+  // CHECK: %[[SHIFT1:.*]] = aievec.shift %[[ADD_HALVES]], %[[ADD_HALVES]], %[[C32]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
+  // CHECK: %[[ADD1:.*]] = aievec.add_elem %[[ADD_HALVES]], %[[SHIFT1]] : vector<16xf32>
+  // CHECK: %[[SHIFT2:.*]] = aievec.shift %[[ADD1]], %[[ADD1]], %[[C16]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
+  // CHECK: %[[ADD2:.*]] = aievec.add_elem %[[ADD1]], %[[SHIFT2]] : vector<16xf32>
+  // CHECK: %[[SHIFT3:.*]] = aievec.shift %[[ADD2]], %[[ADD2]], %[[C8]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
+  // CHECK: %[[ADD3:.*]] = aievec.add_elem %[[ADD2]], %[[SHIFT3]] : vector<16xf32>
+  // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[ADD3]], %[[ADD3]], %[[C4]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
+  // CHECK: %[[ADD4:.*]] = aievec.add_elem %[[ADD3]], %[[SHIFT4]] : vector<16xf32>
+  // CHECK: %[[SRS:.*]] = aievec.srs %[[ADD4]], %[[C0]] : vector<16xf32>, i32, vector<16xbf16>
+  // CHECK: %[[CONCAT:.*]] = aievec.concat %[[SRS]], %[[SRS]] : vector<16xbf16>, vector<32xbf16>
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[CONCAT]], %[[C0]] : vector<32xbf16>, i32, bf16
+  %0 = vector.reduction <add>, %arg0 : vector<32xbf16> into bf16
+  // CHECK: return %[[EXTELEM]] : bf16
+  return %0 : bf16
+}
+
+// CHECK-LABEL:func @reduce_add_bf16_w_acc
+// CHECK-SAME: %[[SRC:.*]]: vector<32xbf16>
+func.func @reduce_add_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i32
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : i32
+  // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : i32
+  // CHECK-DAG: %[[C32:.*]] = arith.constant 32 : i32
+  // CHECK-DAG: %[[CST:.*]] = arith.constant 1.000000e+00 : bf16
+  // CHECK: %[[EXT0:.*]] = aievec.ext %[[SRC]] {index = 0 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[EXT1:.*]] = aievec.ext %[[SRC]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[UPS0:.*]] = aievec.ups %[[EXT0]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // CHECK: %[[UPS1:.*]] = aievec.ups %[[EXT1]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // CHECK: %[[ADD_HALVES:.*]] = aievec.add_elem %[[UPS0]], %[[UPS1]] : vector<16xf32>
+  // CHECK: %[[SHIFT1:.*]] = aievec.shift %[[ADD_HALVES]], %[[ADD_HALVES]], %[[C32]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
+  // CHECK: %[[ADD1:.*]] = aievec.add_elem %[[ADD_HALVES]], %[[SHIFT1]] : vector<16xf32>
+  // CHECK: %[[SHIFT2:.*]] = aievec.shift %[[ADD1]], %[[ADD1]], %[[C16]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
+  // CHECK: %[[ADD2:.*]] = aievec.add_elem %[[ADD1]], %[[SHIFT2]] : vector<16xf32>
+  // CHECK: %[[SHIFT3:.*]] = aievec.shift %[[ADD2]], %[[ADD2]], %[[C8]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
+  // CHECK: %[[ADD3:.*]] = aievec.add_elem %[[ADD2]], %[[SHIFT3]] : vector<16xf32>
+  // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[ADD3]], %[[ADD3]], %[[C4]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
+  // CHECK: %[[ADD4:.*]] = aievec.add_elem %[[ADD3]], %[[SHIFT4]] : vector<16xf32>
+  // CHECK: %[[SRS:.*]] = aievec.srs %[[ADD4]], %[[C0]] : vector<16xf32>, i32, vector<16xbf16>
+  // CHECK: %[[CONCAT:.*]] = aievec.concat %[[SRS]], %[[SRS]] : vector<16xbf16>, vector<32xbf16>
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[CONCAT]], %[[C0]] : vector<32xbf16>, i32, bf16
+  // CHECK: %[[ADDF:.*]] = arith.addf %[[EXTELEM]], %[[CST]] : bf16
+  %cst = arith.constant 1.0e+00 : bf16
+  %0 = vector.reduction <add>, %arg0, %cst : vector<32xbf16> into bf16
+  // CHECK: return %[[ADDF]] : bf16
   return %0 : bf16
 }

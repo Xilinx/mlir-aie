@@ -522,7 +522,8 @@ template <typename DstOpTy>
 static aievec::ExtElemOp
 generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
                                 vector::ReductionOp srcOp, int shiftIndex,
-                                Value curValue) {
+                                Value curValue, bool useAccumulator = false,
+                                bool useAccumulatorShifts = false) {
   assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
          "shiftIndex must be power of 2");
 
@@ -533,12 +534,24 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
   DstOpTy curOp = nullptr;
   unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
+  // Optionally convert to accumulator space
+  if (useAccumulator) {
+    Type accType = getVectorOpDestType(vType, /*AIE2 =*/true);
+    auto upsOp = aievec::UPSOp::create(rewriter, loc, accType, curValue);
+    curValue = upsOp.getResult();
+    vecType = accType;
+    elWidth =
+        dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
+  }
+
+  // Reduction loop: shift and reduce
   for (int id = shiftIndex; id > 0; id /= 2) {
     auto constOp = arith::ConstantOp::create(
         rewriter, loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
 
-    auto shiftBytesOp = aievec::ShiftOp::create(
-        rewriter, loc, vecType, curValue, curValue, constOp.getResult());
+    auto shiftBytesOp =
+        aievec::ShiftOp::create(rewriter, loc, vecType, curValue, curValue,
+                                constOp.getResult(), useAccumulatorShifts);
 
     curOp = DstOpTy::create(rewriter, loc, vecType, curValue,
                             shiftBytesOp.getResult());
@@ -546,9 +559,17 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
     curValue = curOp.getResult();
   }
 
+  // Optionally convert back from accumulator
+  if (useAccumulator) {
+    auto shiftParamOp =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    curValue = aievec::SRSOp::create(rewriter, loc, vType, curValue,
+                                     shiftParamOp.getResult());
+  }
+
   auto zeroConstOp =
       arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
-  return aievec::ExtElemOp::create(rewriter, loc, scalarType, curOp,
+  return aievec::ExtElemOp::create(rewriter, loc, scalarType, curValue,
                                    zeroConstOp.getResult());
 }
 
@@ -1934,50 +1955,56 @@ struct LowerVectorReductionAddBfloat16Op
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
 
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
+    // Support both lane=16 and lane=32 for bf16
+    if (!isa<FloatType>(scalarType) || (laneSize != 16 && laneSize != 32) ||
+        elWidth != 16)
       return failure();
 
-    int shiftIndex = laneSize / 2;
-    assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
-           "shiftIndex must be power of 2");
-
-    Value curValue = srcOp.getVector();
     Location loc = srcOp.getLoc();
-    Type accType = getVectorOpDestType(vType, /*AIE2 =*/true);
-    unsigned accWidth =
-        dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
 
-    auto upsOp =
-        aievec::UPSOp::create(rewriter, loc, accType, srcOp.getVector());
+    // For lane=32, split into two v16bf16 halves, add them, then reduce
+    if (laneSize == 32) {
+      VectorType halfType = createVectorType(laneSize / 2, scalarType);
 
-    curValue = upsOp.getResult();
+      // Extract lower and upper halves
+      auto lowerHalf =
+          aievec::ExtOp::create(rewriter, loc, halfType, srcOp.getVector(), 0);
+      auto upperHalf =
+          aievec::ExtOp::create(rewriter, loc, halfType, srcOp.getVector(), 1);
 
-    VectorType vecType = createVectorType(2 * laneSize, scalarType);
-    aievec::AddElemOp curOp = nullptr;
+      // Add the two halves together
+      Type accType = getVectorOpDestType(halfType, /*AIE2 =*/true);
+      auto lUpsOp =
+          aievec::UPSOp::create(rewriter, loc, accType, lowerHalf.getResult());
+      auto rUpsOp =
+          aievec::UPSOp::create(rewriter, loc, accType, upperHalf.getResult());
+      auto addElemOp = aievec::AddElemOp::create(
+          rewriter, loc, accType, lUpsOp.getResult(), rUpsOp.getResult());
+      auto shiftParamOp = arith::ConstantOp::create(
+          rewriter, loc, rewriter.getI32IntegerAttr(0));
+      auto srsOp =
+          aievec::SRSOp::create(rewriter, loc, halfType, addElemOp.getResult(),
+                                shiftParamOp.getResult());
 
-    for (int id = shiftIndex; id > 0; id /= 2) {
-      auto constOp = arith::ConstantOp::create(
-          rewriter, loc, rewriter.getI32IntegerAttr(id * accWidth / 8));
-      auto shiftBytesOp = aievec::ShiftOp::create(
-          rewriter, loc, accType, curValue, curValue, constOp, true);
-      curOp = aievec::AddElemOp::create(rewriter, loc, accType, curValue,
-                                        shiftBytesOp.getResult());
-      curValue = curOp.getResult();
+      // Now reduce the v16bf16 result using the utility function
+      int shiftIndex = 8;
+      auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+          rewriter, srcOp, shiftIndex, srsOp.getResult(),
+          /*useAccumulator=*/true, /*useAccumulatorShifts=*/true);
+
+      if (srcOp.getAcc())
+        rewriter.replaceOpWithNewOp<arith::AddFOp>(
+            srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+      else
+        rewriter.replaceOp(srcOp, reduceResultOp);
+      return success();
     }
 
-    auto shiftParamOp = arith::ConstantOp::create(
-        rewriter, srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
-    auto srsOp = aievec::SRSOp::create(rewriter, loc, vType, curOp.getResult(),
-                                       shiftParamOp.getResult());
-    SmallVector<Value> concatSources = {srsOp.getResult(), srsOp.getResult()};
-    auto concatOp =
-        aievec::ConcatOp::create(rewriter, loc, vecType, concatSources);
-
-    auto zeroConstOp =
-        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
-    auto reduceResultOp =
-        aievec::ExtElemOp::create(rewriter, srcOp.getLoc(), scalarType,
-                                  concatOp, zeroConstOp.getResult());
+    // Lane=16 implementation using utility function
+    int shiftIndex = laneSize / 2;
+    auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
+        rewriter, srcOp, shiftIndex, srcOp.getVector(),
+        /*useAccumulator=*/true, /*useAccumulatorShifts=*/true);
 
     if (srcOp.getAcc())
       rewriter.replaceOpWithNewOp<arith::AddFOp>(
