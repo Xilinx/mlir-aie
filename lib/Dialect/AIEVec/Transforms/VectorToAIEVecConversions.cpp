@@ -1940,7 +1940,104 @@ struct LowerVectorReductionAddFloatOp
   }
 };
 
-struct LowerVectorReductionAddBfloat16Op
+// AIE2-specific bf16 ADD reduction - requires concat to v32bf16 before ext_elem
+// due to aie2 ext_elem limitation
+struct LowerVectorReductionAddBfloat16OpAIE2
+    : OpConversionPattern<vector::ReductionOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(vector::ReductionOp srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    if (auto kind = srcOp.getKind(); kind != vector::CombiningKind::ADD) {
+      return failure();
+    }
+
+    auto vType = cast<VectorType>(srcOp.getVector().getType());
+    Type scalarType = vType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(vType);
+
+    // Support both lane=16 and lane=32 for bf16
+    if (!isa<FloatType>(scalarType) || (laneSize != 16 && laneSize != 32) ||
+        elWidth != 16) {
+      return failure();
+    }
+
+    Location loc = srcOp.getLoc();
+    Value curValue = srcOp.getVector();
+
+    // For lane=32, split into two v16bf16 halves and add them
+    if (laneSize == 32) {
+      VectorType halfType = createVectorType(laneSize / 2, scalarType);
+      auto lowerHalf =
+          aievec::ExtOp::create(rewriter, loc, halfType, srcOp.getVector(), 0);
+      auto upperHalf =
+          aievec::ExtOp::create(rewriter, loc, halfType, srcOp.getVector(), 1);
+
+      Type accType = getVectorOpDestType(halfType, /*AIE2 =*/true);
+      auto lUpsOp =
+          aievec::UPSOp::create(rewriter, loc, accType, lowerHalf.getResult());
+      auto rUpsOp =
+          aievec::UPSOp::create(rewriter, loc, accType, upperHalf.getResult());
+      auto addElemOp = aievec::AddElemOp::create(
+          rewriter, loc, accType, lUpsOp.getResult(), rUpsOp.getResult());
+      auto shiftParamOp = arith::ConstantOp::create(
+          rewriter, loc, rewriter.getI32IntegerAttr(0));
+      auto srsOp =
+          aievec::SRSOp::create(rewriter, loc, halfType, addElemOp.getResult(),
+                                shiftParamOp.getResult());
+      curValue = srsOp.getResult();
+    }
+
+    int shiftIndex = 8; // Always 8 since we work with v16bf16
+    Type accType = getVectorOpDestType(cast<VectorType>(curValue.getType()),
+                                       /*AIE2 =*/true);
+    unsigned accWidth =
+        dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
+
+    auto upsOp = aievec::UPSOp::create(rewriter, loc, accType, curValue);
+    curValue = upsOp.getResult();
+
+    VectorType vecType = createVectorType(32, scalarType);
+    aievec::AddElemOp curOp = nullptr;
+
+    for (int id = shiftIndex; id > 0; id /= 2) {
+      auto constOp = arith::ConstantOp::create(
+          rewriter, loc, rewriter.getI32IntegerAttr(id * accWidth / 8));
+      auto shiftBytesOp = aievec::ShiftOp::create(
+          rewriter, loc, accType, curValue, curValue, constOp, true);
+      curOp = aievec::AddElemOp::create(rewriter, loc, accType, curValue,
+                                        shiftBytesOp.getResult());
+      curValue = curOp.getResult();
+    }
+
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    auto srsOp = aievec::SRSOp::create(rewriter, loc, vType, curOp.getResult(),
+                                       shiftParamOp.getResult());
+    SmallVector<Value> concatSources = {srsOp.getResult(), srsOp.getResult()};
+    auto concatOp =
+        aievec::ConcatOp::create(rewriter, loc, vecType, concatSources);
+
+    auto zeroConstOp =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    auto reduceResultOp =
+        aievec::ExtElemOp::create(rewriter, srcOp.getLoc(), scalarType,
+                                  concatOp, zeroConstOp.getResult());
+
+    if (srcOp.getAcc())
+      rewriter.replaceOpWithNewOp<arith::AddFOp>(
+          srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+    else
+      rewriter.replaceOp(srcOp, reduceResultOp);
+    return success();
+  }
+};
+
+// AIE2P-specific bf16 ADD reduction - can extract directly from v16bf16
+struct LowerVectorReductionAddBfloat16OpAIE2P
     : OpConversionPattern<vector::ReductionOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -1961,6 +2058,8 @@ struct LowerVectorReductionAddBfloat16Op
       return failure();
 
     Location loc = srcOp.getLoc();
+    int shiftIndex = laneSize / 2;
+    Value inputToReduce = srcOp.getVector();
 
     // For lane=32, split into two v16bf16 halves, add them, then reduce
     if (laneSize == 32) {
@@ -1986,25 +2085,41 @@ struct LowerVectorReductionAddBfloat16Op
           aievec::SRSOp::create(rewriter, loc, halfType, addElemOp.getResult(),
                                 shiftParamOp.getResult());
 
-      // Now reduce the v16bf16 result using the utility function
-      int shiftIndex = laneSize / 4;
-      auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
-          rewriter, srcOp, shiftIndex, srsOp.getResult(),
-          /*useAccumulator=*/true, /*useAccumulatorShifts=*/true);
-
-      if (srcOp.getAcc())
-        rewriter.replaceOpWithNewOp<arith::AddFOp>(
-            srcOp, reduceResultOp.getResult(), srcOp.getAcc());
-      else
-        rewriter.replaceOp(srcOp, reduceResultOp);
-      return success();
+      inputToReduce = srsOp.getResult();
+      shiftIndex = 8;
     }
 
-    // Lane=16 implementation using utility function
-    int shiftIndex = laneSize / 2;
-    auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
-        rewriter, srcOp, shiftIndex, srcOp.getVector(),
-        /*useAccumulator=*/true, /*useAccumulatorShifts=*/true);
+    // Perform reduction using utility
+    Type accType = getVectorOpDestType(
+        cast<VectorType>(inputToReduce.getType()), /*AIE2 =*/true);
+    unsigned accWidth =
+        dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
+
+    auto upsOp = aievec::UPSOp::create(rewriter, loc, accType, inputToReduce);
+    Value curValue = upsOp.getResult();
+
+    aievec::AddElemOp curOp = nullptr;
+    for (int id = shiftIndex; id > 0; id /= 2) {
+      auto constOp = arith::ConstantOp::create(
+          rewriter, loc, rewriter.getI32IntegerAttr(id * accWidth / 8));
+      auto shiftBytesOp = aievec::ShiftOp::create(
+          rewriter, loc, accType, curValue, curValue, constOp, true);
+      curOp = aievec::AddElemOp::create(rewriter, loc, accType, curValue,
+                                        shiftBytesOp.getResult());
+      curValue = curOp.getResult();
+    }
+
+    auto shiftParamOp =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    auto srsOp = aievec::SRSOp::create(
+        rewriter, loc, cast<VectorType>(inputToReduce.getType()),
+        curOp.getResult(), shiftParamOp.getResult());
+
+    // AIE2P can extract directly from v16bf16 (no concat needed)
+    auto zeroConstOp =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    auto reduceResultOp = aievec::ExtElemOp::create(
+        rewriter, srcOp.getLoc(), scalarType, srsOp, zeroConstOp.getResult());
 
     if (srcOp.getAcc())
       rewriter.replaceOpWithNewOp<arith::AddFOp>(
@@ -3431,7 +3546,6 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       LowerVectorReductionMaxOp,
       LowerVectorReductionAddIntOp,
       LowerVectorReductionAddFloatOp,
-      LowerVectorReductionAddBfloat16Op,
       FoldVectorExtractAndSplatToAIEBroadcast,
       ConvertSplatToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
@@ -3447,6 +3561,7 @@ static void populateAIEVecV2ConversionPatterns(RewritePatternSet &patterns,
   populateAIEVecV2CommonConversionPatterns(patterns, backend);
   patterns.add<LowerVectorContractionOpToAIEVecMatMulOpAIE2>(
       patterns.getContext(), backend == TargetBackend::CPP);
+  patterns.add<LowerVectorReductionAddBfloat16OpAIE2>(patterns.getContext());
   // For AIE2 with LLVMIR backend, use LUT-based exp and rsqrt
   if (backend == TargetBackend::LLVMIR) {
     patterns.add<ComputeExpOpByLUTLLVMPattern, ComputeRsqrtOpLLVMAIE2Pattern>(
@@ -3510,6 +3625,7 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
       patterns.getContext(), backend == TargetBackend::CPP);
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
+  patterns.add<LowerVectorReductionAddBfloat16OpAIE2P>(patterns.getContext());
   // For AIE2P with LLVMIR backend, use aievec.exp
   // math.rsqrt is kept legal and will be lowered in AIEVecToLLVM pass
   if (backend == TargetBackend::LLVMIR) {
