@@ -1,0 +1,9 @@
+<map id="NarrowingResult" name="NarrowingResult">
+<area shape="rect" id="Node000001" title=" " alt="" coords="101,93,232,119"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,64,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="45,42,52,56,62,67,83,81,106,91,104,96,80,86,58,71,47,59,40,45"/>
+<area shape="rect" id="Node000003" href="$classbool.html" title=" " alt="" coords="141,5,192,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="169,45,169,93,164,93,164,45"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="247,5,345,31"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="288,45,268,71,246,86,222,96,220,91,243,81,265,67,284,42"/>
+</map>
