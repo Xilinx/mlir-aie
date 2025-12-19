@@ -1934,10 +1934,7 @@ struct LowerVectorReductionAddBfloat16Op
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
 
-    // if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-    //   return failure();
-
-    if (!isa<FloatType>(scalarType) || laneSize != 32 || elWidth != 16)
+    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
       return failure();
 
     int shiftIndex = laneSize / 2;
