@@ -1967,6 +1967,7 @@ struct LowerVectorReductionAddBfloat16OpAIE2
 
     Location loc = srcOp.getLoc();
     Value curValue = srcOp.getVector();
+    VectorType currentVType = vType; // Track current working vector type
 
     // For lane=32, split into two v16bf16 halves and add them
     if (laneSize == 32) {
@@ -1989,6 +1990,7 @@ struct LowerVectorReductionAddBfloat16OpAIE2
           aievec::SRSOp::create(rewriter, loc, halfType, addElemOp.getResult(),
                                 shiftParamOp.getResult());
       curValue = srsOp.getResult();
+      currentVType = halfType; // Update to v16bf16 after split
     }
 
     int shiftIndex = 8; // Always 8 since we work with v16bf16
@@ -2000,7 +2002,6 @@ struct LowerVectorReductionAddBfloat16OpAIE2
     auto upsOp = aievec::UPSOp::create(rewriter, loc, accType, curValue);
     curValue = upsOp.getResult();
 
-    VectorType vecType = createVectorType(32, scalarType);
     aievec::AddElemOp curOp = nullptr;
 
     for (int id = shiftIndex; id > 0; id /= 2) {
@@ -2015,8 +2016,13 @@ struct LowerVectorReductionAddBfloat16OpAIE2
 
     auto shiftParamOp = arith::ConstantOp::create(
         rewriter, srcOp.getLoc(), rewriter.getI32IntegerAttr(0));
-    auto srsOp = aievec::SRSOp::create(rewriter, loc, vType, curOp.getResult(),
-                                       shiftParamOp.getResult());
+    // Use currentVType instead of vType to ensure lane count matches
+    auto srsOp =
+        aievec::SRSOp::create(rewriter, loc, currentVType, curOp.getResult(),
+                              shiftParamOp.getResult());
+
+    // AIE2 ext_elem requires v32bf16, so concat v16bf16 to v32bf16
+    VectorType vecType = createVectorType(32, scalarType);
     SmallVector<Value> concatSources = {srsOp.getResult(), srsOp.getResult()};
     auto concatOp =
         aievec::ConcatOp::create(rewriter, loc, vecType, concatSources);
