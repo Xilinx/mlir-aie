@@ -130,6 +130,68 @@ static SmallVector<Value> forceCastOperandsToSignature(OpBuilder &builder,
       }));
 }
 
+// Utility function to get or create a noinline scalar helper function.
+// This is used to create optimization barriers that prevent LLVM from
+// re-vectorizing unrolled scalar operations.
+//
+// Parameters:
+//   - module: The parent module to insert the function into
+//   - rewriter: The pattern rewriter
+//   - opName: Base name of the operation (e.g., "fdiv", "addf", "mulf")
+//   - device: Target device ("aie2", "aie2p", etc.)
+//   - argTypes: Input argument types
+//   - resultType: Return type
+//   - bodyBuilder: Lambda that builds the function body given (builder, loc,
+//   args)
+//
+// Returns: The helper function (created or existing)
+//
+// Function naming convention: __<device>_scalar_<opName>
+// Example: __aie2p_scalar_fdiv, __aie2_scalar_addf
+static LLVM::LLVMFuncOp getOrCreateScalarHelperFunc(
+    ModuleOp module, OpBuilder &rewriter, StringRef opName, StringRef device,
+    TypeRange argTypes, Type resultType,
+    std::function<void(OpBuilder &, Location, ValueRange)> bodyBuilder) {
+
+  // Build function name: __<device>_scalar_<opName>
+  std::string funcName = "__" + device.str() + "_scalar_" + opName.str();
+
+  // Check if function already exists
+  auto helperFunc = module.lookupSymbol<LLVM::LLVMFuncOp>(funcName);
+  if (helperFunc)
+    return helperFunc;
+
+  // Create new function
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointToStart(module.getBody());
+
+  // Convert TypeRange to SmallVector<Type> for LLVM::LLVMFunctionType::get
+  SmallVector<Type> argTypesVec(argTypes.begin(), argTypes.end());
+
+  helperFunc = LLVM::LLVMFuncOp::create(
+      rewriter, rewriter.getUnknownLoc(), funcName,
+      LLVM::LLVMFunctionType::get(resultType, argTypesVec));
+
+  // Mark as noinline to act as optimization barrier
+  helperFunc->setAttr("passthrough", rewriter.getArrayAttr(
+                                         {rewriter.getStringAttr("noinline")}));
+
+  // Add function body
+  auto *entryBlock = helperFunc.addEntryBlock(rewriter);
+  OpBuilder::InsertionGuard bodyGuard(rewriter);
+  rewriter.setInsertionPointToStart(entryBlock);
+
+  // Collect function arguments
+  SmallVector<Value> args;
+  for (unsigned i = 0; i < argTypes.size(); ++i)
+    args.push_back(entryBlock->getArgument(i));
+
+  // Call the body builder with the function arguments
+  bodyBuilder(rewriter, rewriter.getUnknownLoc(), args);
+
+  return helperFunc;
+}
+
 struct BufferParams {
   uint32_t start;
   uint32_t offsets;
@@ -4517,6 +4579,74 @@ public:
   }
 };
 
+// Convert arith.divf for vector<N x f32> to unrolled scalar divisions
+// Uses a noinline helper function call as a barrier to prevent LLVM
+// re-vectorization Scalar f32 divisions are handled by downstream passes
+class FdivOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<arith::DivFOp> {
+public:
+  using ConvertOpToLLVMPattern<arith::DivFOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = divOp.getLoc();
+    auto lhsType = adaptor.getLhs().getType();
+
+    // Only handle vector<N x f32> fdiv
+    // Scalar f32 fdiv is handled by downstream passes
+    auto vecType = dyn_cast<VectorType>(lhsType);
+    if (!vecType || !vecType.getElementType().isF32())
+      return failure();
+
+    auto rhsType = adaptor.getRhs().getType();
+    auto rhsVecType = dyn_cast<VectorType>(rhsType);
+    if (!rhsVecType || rhsVecType != vecType)
+      return failure();
+
+    // Get or create the noinline scalar fdiv helper function using utility
+    auto module = divOp->getParentOfType<ModuleOp>();
+    auto f32Ty = rewriter.getF32Type();
+
+    auto helperFunc = getOrCreateScalarHelperFunc(
+        module, rewriter, "fdiv", "aie2p",
+        /*argTypes=*/{f32Ty, f32Ty},
+        /*resultType=*/f32Ty,
+        /*bodyBuilder=*/[](OpBuilder &builder, Location loc, ValueRange args) {
+          auto divResult =
+              arith::DivFOp::create(builder, loc, args[0], args[1]);
+          LLVM::ReturnOp::create(builder, loc, ValueRange{divResult});
+        });
+
+    // Unroll vector fdiv into scalar helper function calls
+    int numElements = getVectorLaneSize(vecType);
+    Value result = LLVM::PoisonOp::create(rewriter, loc, vecType);
+
+    for (int i = 0; i < numElements; ++i) {
+      // Extract element i from both lhs and rhs
+      auto indexCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI64Type(), rewriter.getI64IntegerAttr(i));
+      auto lhsElem = LLVM::ExtractElementOp::create(rewriter, loc,
+                                                    adaptor.getLhs(), indexCst);
+      auto rhsElem = LLVM::ExtractElementOp::create(rewriter, loc,
+                                                    adaptor.getRhs(), indexCst);
+
+      // Call noinline helper function (acts as barrier to prevent
+      // re-vectorization)
+      auto divResult = LLVM::CallOp::create(rewriter, loc, helperFunc,
+                                            ValueRange{lhsElem, rhsElem})
+                           ->getResult(0);
+
+      // Insert result back into vector
+      result = LLVM::InsertElementOp::create(rewriter, loc, vecType, result,
+                                             divResult, indexCst);
+    }
+
+    rewriter.replaceOp(divOp, result);
+    return success();
+  }
+};
+
 void populateAIEVecToLLVMCommonConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns) {
   // clang-format off
@@ -4648,6 +4778,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ExpOpAIE2pConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
   patterns.add<RsqrtOpAIE2pConversion>(converter);
+  patterns.add<FdivOpAIE2pConversion>(converter);
   patterns.add<FoldAIECastOpsAIE2p>(converter);
 }
 
@@ -4660,6 +4791,23 @@ void populateAIEVecToLLVMConversionPatterns(
   else
     populateAIEVecToLLVMAIE2ConversionPatterns(converter, patterns,
                                                aie2Fp32EmulationOption);
+}
+
+// Configure AIE2p-specific legalization rules
+static void
+configureAIEVecToLLVMAIE2pLegalizations(LLVMConversionTarget &target) {
+  // AIE2p-specific legalization for vector f32 divf
+  // Vector f32 divf is illegal (needs unrolling to scalar divf)
+  // Scalar f32 divf is legal (handled by downstream passes)
+  target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divOp) {
+    auto resultType = divOp.getType();
+    if (auto vecType = dyn_cast<VectorType>(resultType)) {
+      // Vector f32 divf is illegal and needs conversion
+      return !vecType.getElementType().isF32();
+    }
+    // Scalar divf is legal
+    return true;
+  });
 }
 
 struct ConvertAIEVecToLLVMPass
@@ -4681,6 +4829,12 @@ struct ConvertAIEVecToLLVMPass
                              xilinx::aievec::aie1::AIEVecAIE1Dialect>();
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
                            xilinx::xllvm::XLLVMDialect, ub::UBDialect>();
+
+    // Configure AIE2p-specific legalizations
+    if (aieTarget == "aie2p") {
+      configureAIEVecToLLVMAIE2pLegalizations(target);
+    }
+
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
