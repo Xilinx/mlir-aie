@@ -2236,8 +2236,8 @@ struct AIEObjectFifoStatefulTransformPass
           int streamEnd = op.getAieStream().value();
           if (streamEnd == 2 || streamEnd == portNum) 
             acquireOp->emitOpError("cannot acquire from objectfifo stream "
-                                  "port");
-            return WalkResult::interrupt();
+                                   "port");
+          return WalkResult::interrupt();
         }
 
         // index of next element to acquire for this objectFifo
