@@ -2185,8 +2185,8 @@ struct AIEObjectFifoStatefulTransformPass
           int streamEnd = op.getAieStream().value();
           if (streamEnd == 2 || streamEnd == portNum) 
             releaseOp->emitOpError("cannot release from objectfifo stream "
-                                  "port");
-            return WalkResult::interrupt();
+                                   "port");
+          return WalkResult::interrupt();
         }
 
         // update index of next element to release for this objectFifo
