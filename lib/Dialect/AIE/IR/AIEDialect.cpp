@@ -396,8 +396,9 @@ LogicalResult ObjectFifoCreateOp::verify() {
 
     if (getAieStream().value() == 0 || getAieStream().value() == 2) {
       if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
-        return emitError("`aie_stream` is not available for shim and mem tiles");
-      
+        return emitError(
+            "`aie_stream` is not available for shim and mem tiles");
+
       if (getRepeatCount().has_value())
         return emitError("`repeat_count` unavailable on stream end");
 
