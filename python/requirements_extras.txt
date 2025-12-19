@@ -5,5 +5,5 @@
 # For installing this, the following environment variables must be set:
 # MLIR_PYTHON_EXTRAS_SET_VERSION="0.0.8.3"
 # HOST_MLIR_PYTHON_PACKAGE_PREFIX="aie"
-git+https://github.com/erwei-xilinx/mlir-python-extras@2de5fda27f018eca9defe41a79c702c3f1eb9033
+git+https://github.com/erwei-xilinx/mlir-python-extras@a1900ff2c72feaed1b3f420f666ae517df354cc3
 -f https://github.com/llvm/eudsl/releases/expanded_assets/latest
