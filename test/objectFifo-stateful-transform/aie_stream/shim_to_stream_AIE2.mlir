@@ -28,7 +28,7 @@
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of_stream_shim_alloc(MM2S, 0, 2)
+// CHECK:     aie.shim_dma_allocation @of_stream_shim_alloc(%shim_noc_tile_2_0, S2MM, 0)
 // CHECK:   }
 // CHECK: }
 

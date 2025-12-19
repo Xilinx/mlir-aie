@@ -23,7 +23,7 @@
 // CHECK:     %of_in_cons_lock_0 = aie.lock(%shim_pl_tile_1_0, 1) {init = 0 : i32, sym_name = "of_in_cons_lock_0"}
 // CHECK:     aie.flow(%shim_pl_tile_1_0, DMA : 0, %mem_tile_1_1, DMA : 0)
 // CHECK:     aie.flow(%mem_tile_1_1, DMA : 0, %tile_3_3, Core : 0)
-// CHECK:     aie.shim_dma_allocation @of_in_shim_alloc(MM2S, 0, 1)
+// CHECK:     aie.shim_dma_allocation @of_in_shim_alloc(%shim_pl_tile_1_0, MM2S, 0)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%mem_tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
