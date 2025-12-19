@@ -2057,8 +2057,7 @@ struct AIEObjectFifoStatefulTransformPass
             builder.setInsertionPoint(device.getBody()->getTerminator());
             if (consumer.getProducerTileOp().isShimTile())
               createObjectFifoAllocationInfo(
-                  builder, ctx, producer,
-                  consumer.getProducerTileOp(),
+                  builder, ctx, producer, consumer.getProducerTileOp(),
                   consumerChan.direction, consumerChan.channel,
                   producer.getPlio(), {});
           }
