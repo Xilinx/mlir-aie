@@ -2057,8 +2057,7 @@ struct AIEObjectFifoStatefulTransformPass
             builder.setInsertionPoint(device.getBody()->getTerminator());
             if (consumer.getProducerTileOp().isShimTile())
               createObjectFifoAllocationInfo(
-                  builder, ctx, producer,
-                  consumer.getProducerTileOp(),
+                  builder, ctx, producer, consumer.getProducerTileOp(),
                   consumerChan.direction, consumerChan.channel,
                   producer.getPlio(), {});
           }
@@ -2183,10 +2182,10 @@ struct AIEObjectFifoStatefulTransformPass
 
         if (op.getAieStream().has_value()) {
           int streamEnd = op.getAieStream().value();
-          if (streamEnd == 2 || streamEnd == portNum) 
+          if (streamEnd == 2 || streamEnd == portNum)
             releaseOp->emitOpError("cannot release from objectfifo stream "
-                                  "port");
-            return WalkResult::interrupt();
+                                   "port");
+          return WalkResult::interrupt();
         }
 
         // update index of next element to release for this objectFifo
@@ -2234,10 +2233,10 @@ struct AIEObjectFifoStatefulTransformPass
 
         if (op.getAieStream().has_value()) {
           int streamEnd = op.getAieStream().value();
-          if (streamEnd == 2 || streamEnd == portNum) 
+          if (streamEnd == 2 || streamEnd == portNum)
             acquireOp->emitOpError("cannot acquire from objectfifo stream "
-                                  "port");
-            return WalkResult::interrupt();
+                                   "port");
+          return WalkResult::interrupt();
         }
 
         // index of next element to acquire for this objectFifo
