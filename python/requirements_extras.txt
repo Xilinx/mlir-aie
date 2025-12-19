@@ -1,9 +1,3 @@
- # This can't go in the normal requirements file because the way the wheels build parses requirements.txt
- # does not support github packages
-
-# MLIR-extras (Python bindings/helpers for MLIR)
-# For installing this, the following environment variables must be set:
-# MLIR_PYTHON_EXTRAS_SET_VERSION="0.0.8.3"
-# HOST_MLIR_PYTHON_PACKAGE_PREFIX="aie"
-git+https://github.com/erwei-xilinx/mlir-python-extras@a1900ff2c72feaed1b3f420f666ae517df354cc3
--f https://github.com/llvm/eudsl/releases/expanded_assets/latest
+mlir-python-bindings==20251205+e067be338
+eudsl-python-extras==0.1.0.20251215.1800+3c7ac1b
+-f https://llvm.github.io/eudsl

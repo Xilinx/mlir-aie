@@ -427,4 +427,3 @@ add_custom_command(
 )
 # during install
 install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py DESTINATION bin)
-

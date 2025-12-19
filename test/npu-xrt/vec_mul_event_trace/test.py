@@ -92,7 +92,6 @@ def main(opts):
     ):
         print("Failed.")
         return 1
-
     errors = 0
 
     # Read trace from file

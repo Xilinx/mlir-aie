@@ -71,9 +71,8 @@ pip install pre-commit
 # This installs the pre-commit hooks defined in .pre-commit-config.yaml
 pre-commit install
 
-HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
 python3 -m pip install -r python/requirements_ml.txt
-
 python3 -m pip install -r python/requirements_notebook.txt
 
 # This creates an ipykernel (for use in notebooks) using the ironenv venv

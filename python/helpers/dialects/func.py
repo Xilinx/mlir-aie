@@ -3,12 +3,12 @@ from functools import lru_cache, update_wrapper
 import sys
 from typing import get_args, get_origin
 
-from ....extras.meta import op_region_builder
-from ....extras.util import get_user_code_loc, make_maybe_no_args_decorator
-from ...util import get_arg_types, NpuDType, try_convert_np_type_to_mlir_type
-from ....dialects._ods_common import get_op_result_or_op_results
-from ....dialects.func import *
-from ....ir import (
+from ...extras.meta import op_region_builder
+from ...extras.util import get_user_code_loc, make_maybe_no_args_decorator
+from ..util import get_arg_types, NpuDType, try_convert_np_type_to_mlir_type
+from ...dialects._ods_common import get_op_result_or_op_results
+from ...dialects.func import *
+from ...ir import (
     FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
@@ -18,7 +18,7 @@ from ....ir import (
     TypeAttr,
     Value,
 )
-from ....extras.dialects.ext.arith import Scalar
+from ...extras.dialects.arith import ScalarValue
 
 
 def call(
@@ -57,7 +57,9 @@ def call(
                 # Get the type to convert the python value to based on the expected input to the function
                 # TODO: should check if it's safe to do this? What is int value is outside range?
                 args.append(
-                    Scalar(a, dtype=callee_or_results.function_type.value.inputs[i])
+                    ScalarValue(
+                        a, dtype=callee_or_results.function_type.value.inputs[i]
+                    )
                 )
             else:
                 args.append(a)

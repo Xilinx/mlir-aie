@@ -142,7 +142,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 
    # Install MLIR Python Extras
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
 1. (Optional) Install Python packages required for development and testing:

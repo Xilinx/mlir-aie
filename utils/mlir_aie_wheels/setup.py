@@ -11,7 +11,7 @@ from textwrap import dedent
 from typing import Union
 
 from importlib_metadata import files
-from setuptools import Extension, setup
+from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
 from setuptools.command.install import install
@@ -153,10 +153,14 @@ class CMakeBuild(build_ext):
             xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
             cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
 
-        if platform.system() == "Windows":
+        if shutil.which("ccache"):
             cmake_args += [
                 "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
                 "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
+            ]
+
+        if platform.system() == "Windows":
+            cmake_args += [
                 "-DCMAKE_C_COMPILER=cl",
                 "-DCMAKE_CXX_COMPILER=cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
@@ -297,6 +301,7 @@ setup(
         "install": InstallWithPth,
     },
     zip_safe=False,
+    packages=find_packages(exclude=["wheelhouse", "python_bindings", "mlir-aie"]),
     python_requires=">=3.10",
     install_requires=parse_requirements(
         Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
