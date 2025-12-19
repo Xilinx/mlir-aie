@@ -321,4 +321,38 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   ];
 }
 
+def AIECoalesceWrite32s : Pass<"aie-coalesce-write32s", "AIE::DeviceOp"> {
+  let summary = "Coalesce consecutive write32 operations into blockwrite operations";
+  let description = [{
+    This pass optimizes sequences of consecutive npu.write32 operations by
+    coalescing them into npu.blockwrite operations when their addresses are
+    contiguous (4-byte increments).
+    
+    The pass can reorder non-special register writes within slices bounded by
+    special register writes. Special registers (e.g., control registers) act
+    as barriers and cannot be reordered.
+    
+    For each sequence of N consecutive write32 operations at addresses
+    [addr, addr+4, addr+8, ...], the pass:
+    1. Eliminates duplicate writes (keeps only the last value for each address)
+    2. Reorders writes by address within safe boundaries
+    3. Creates a memref.global with the values
+    4. Replaces the write32 sequence with a single npu.blockwrite
+    
+    This reduces instruction count and can improve performance.
+  }];
+
+  let options = [
+    Option<"minWritesToCoalesce", "min-writes-to-coalesce", "unsigned",
+           /*default=*/"2",
+           "Minimum number of contiguous writes required to coalesce into a blockwrite">
+  ];
+
+  let constructor = "xilinx::AIEX::createAIECoalesceWrite32sPass()";
+  let dependentDialects = [
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
 #endif
