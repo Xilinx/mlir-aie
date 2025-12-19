@@ -408,7 +408,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
       if (getIterCount().has_value())
         return emitError("`iter_count` unavailable on stream end");
 
-      if(!getDimensionsToStream().empty())
+      if (!getDimensionsToStream().empty())
         return emitError("`dimensionsToStream` data layout transformations are "
                          "unavailable on stream end");
     }
