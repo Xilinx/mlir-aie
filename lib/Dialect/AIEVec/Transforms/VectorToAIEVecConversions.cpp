@@ -1987,7 +1987,7 @@ struct LowerVectorReductionAddBfloat16Op
                                 shiftParamOp.getResult());
 
       // Now reduce the v16bf16 result using the utility function
-      int shiftIndex = 8;
+      int shiftIndex = laneSize / 4;
       auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::AddElemOp>(
           rewriter, srcOp, shiftIndex, srsOp.getResult(),
           /*useAccumulator=*/true, /*useAccumulatorShifts=*/true);
