@@ -506,8 +506,7 @@ func.func @reduce_add_bf16(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[ADD3]], %[[ADD3]], %[[C4]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
   // CHECK: %[[ADD4:.*]] = aievec.add_elem %[[ADD3]], %[[SHIFT4]] : vector<16xf32>
   // CHECK: %[[SRS:.*]] = aievec.srs %[[ADD4]], %[[C0]] : vector<16xf32>, i32, vector<16xbf16>
-  // CHECK: %[[CONCAT:.*]] = aievec.concat %[[SRS]], %[[SRS]] : vector<16xbf16>, vector<32xbf16>
-  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[CONCAT]], %[[C0]] : vector<32xbf16>, i32, bf16
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[SRS]], %[[C0]] : vector<16xbf16>, i32, bf16
   %0 = vector.reduction <add>, %arg0 : vector<32xbf16> into bf16
   // CHECK: return %[[EXTELEM]] : bf16
   return %0 : bf16
@@ -536,8 +535,7 @@ func.func @reduce_add_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[ADD3]], %[[ADD3]], %[[C4]] {isAcc = true} : vector<16xf32>, vector<16xf32>, i32, vector<16xf32>
   // CHECK: %[[ADD4:.*]] = aievec.add_elem %[[ADD3]], %[[SHIFT4]] : vector<16xf32>
   // CHECK: %[[SRS:.*]] = aievec.srs %[[ADD4]], %[[C0]] : vector<16xf32>, i32, vector<16xbf16>
-  // CHECK: %[[CONCAT:.*]] = aievec.concat %[[SRS]], %[[SRS]] : vector<16xbf16>, vector<32xbf16>
-  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[CONCAT]], %[[C0]] : vector<32xbf16>, i32, bf16
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[SRS]], %[[C0]] : vector<16xbf16>, i32, bf16
   // CHECK: %[[ADDF:.*]] = arith.addf %[[EXTELEM]], %[[CST]] : bf16
   %cst = arith.constant 1.0e+00 : bf16
   %0 = vector.reduction <add>, %arg0, %cst : vector<32xbf16> into bf16
