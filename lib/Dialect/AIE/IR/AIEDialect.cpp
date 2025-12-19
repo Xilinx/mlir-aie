@@ -419,9 +419,9 @@ LogicalResult ObjectFifoCreateOp::verify() {
         return emitError(
             "`aie_stream` is not available for shim and mem tiles");
 
-    if(!getDimensionsFromStreamPerConsumer()[0].empty())
-        return emitError("`dimensionsFromStreamPerConsumer` data layout "
-                         "transformations are unavailable on stream end");
+    if (!getDimensionsFromStreamPerConsumer()[0].empty())
+      return emitError("`dimensionsFromStreamPerConsumer` data layout "
+                       "transformations are unavailable on stream end");
   }
 
   if (getInitValues().has_value()) {
