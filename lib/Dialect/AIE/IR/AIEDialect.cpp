@@ -416,7 +416,8 @@ LogicalResult ObjectFifoCreateOp::verify() {
     if (getAieStream().value() == 1 || getAieStream().value() == 2)
       if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile() ||
           getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
-        return emitError("`aie_stream` is not available for shim and mem tiles");
+        return emitError(
+            "`aie_stream` is not available for shim and mem tiles");
 
     if(!getDimensionsFromStreamPerConsumer()[0].empty())
         return emitError("`dimensionsFromStreamPerConsumer` data layout "
