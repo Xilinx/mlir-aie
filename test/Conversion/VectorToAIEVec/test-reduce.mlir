@@ -386,11 +386,12 @@ func.func @reduce_add_f32_w_acc(%arg0: vector<16xf32>) -> f32 {
 // CHECK-SAME: %[[SRC:.*]]: vector<32xbf16>
 func.func @reduce_min_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : i32
   // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i32
   // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : i32
   // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : i32
   // CHECK-DAG: %[[C32:.*]] = arith.constant 32 : i32
-  // CHECK-DAG: %[[CST:.*]] = arith.constant 9.982440e+08 : bf16
+  // CHECK-DAG: %[[CST:.*]] = arith.constant 0x4E6E0000 : f32
   // CHECK: %[[SHIFT32:.*]] = aievec.shift %[[SRC]], %[[SRC]], %[[C32]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
   // CHECK: %[[MIN1:.*]] = aievec.min %[[SRC]], %[[SHIFT32]] : vector<32xbf16>
   // CHECK: %[[SHIFT16:.*]] = aievec.shift %[[MIN1]], %[[MIN1]], %[[C16]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
@@ -401,11 +402,14 @@ func.func @reduce_min_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK: %[[MIN4:.*]] = aievec.min %[[MIN3]], %[[SHIFT4]] : vector<32xbf16>
   // CHECK: %[[SHIFT5:.*]] = aievec.shift %[[MIN4]], %[[MIN4]], %[[C2]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
   // CHECK: %[[MIN5:.*]] = aievec.min %[[MIN4]], %[[SHIFT5]] : vector<32xbf16>
-  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MAX5]], %[[C0]] : vector<32xbf16>, i32, bf16
-  // CHECK: %[[MIN6:.*]] = arith.minimumf %[[EXTELEM]], %[[CST]] : bf16
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MIN5]], %[[C0]] : vector<32xbf16>, i32, bf16
+  // CHECK: %[[EXTF:.*]] = arith.extf %[[EXTELEM]] : bf16 to f32
+  // CHECK: %[[CMP:.*]] = arith.cmpf olt, %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[SELECT:.*]] = arith.select %[[CMP]], %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[TRUNCF:.*]] = arith.truncf %[[SELECT]] : f32 to bf16
   %cst = arith.constant 1.0e+09 : bf16
   %0 = vector.reduction <minimumf>, %arg0, %cst : vector<32xbf16> into bf16
-  // CHECK: return %[[MIN6]] : bf16
+  // CHECK: return %[[TRUNCF]] : bf16
   return %0 : bf16
 }
 
@@ -413,11 +417,12 @@ func.func @reduce_min_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
 // CHECK-SAME: %[[SRC:.*]]: vector<32xbf16>
 func.func @reduce_max_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : i32
   // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i32
   // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : i32
   // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : i32
   // CHECK-DAG: %[[C32:.*]] = arith.constant 32 : i32
-  // CHECK-DAG: %[[CST:.*]] = arith.constant -9.982440e+08 : bf16
+  // CHECK-DAG: %[[CST:.*]] = arith.constant 0xCE6E0000 : f32
   // CHECK: %[[SHIFT32:.*]] = aievec.shift %[[SRC]], %[[SRC]], %[[C32]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
   // CHECK: %[[MAX1:.*]] = aievec.max %[[SRC]], %[[SHIFT32]] : vector<32xbf16>
   // CHECK: %[[SHIFT16:.*]] = aievec.shift %[[MAX1]], %[[MAX1]], %[[C16]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
@@ -429,9 +434,42 @@ func.func @reduce_max_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK: %[[SHIFT5:.*]] = aievec.shift %[[MAX4]], %[[MAX4]], %[[C2]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
   // CHECK: %[[MAX5:.*]] = aievec.max %[[MAX4]], %[[SHIFT5]] : vector<32xbf16>
   // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MAX5]], %[[C0]] : vector<32xbf16>, i32, bf16
-  // CHECK: %[[MAX6:.*]] = arith.maximumf %[[EXTELEM]], %[[CST]] : bf16
+  // CHECK: %[[EXTF:.*]] = arith.extf %[[EXTELEM]] : bf16 to f32
+  // CHECK: %[[CMP:.*]] = arith.cmpf ogt, %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[SELECT:.*]] = arith.select %[[CMP]], %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[TRUNCF:.*]] = arith.truncf %[[SELECT]] : f32 to bf16
   %cst = arith.constant -1.0e+09 : bf16
   %0 = vector.reduction <maximumf>, %arg0, %cst : vector<32xbf16> into bf16
-  // CHECK: return %[[MAX6]] : bf16
+  // CHECK: return %[[TRUNCF]] : bf16
+  return %0 : bf16
+}
+// CHECK-LABEL:func @reduce_maxnumf_bf16_w_acc
+// CHECK-SAME: %[[SRC:.*]]: vector<32xbf16>
+func.func @reduce_maxnumf_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : i32
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i32
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : i32
+  // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : i32
+  // CHECK-DAG: %[[C32:.*]] = arith.constant 32 : i32
+  // CHECK-DAG: %[[CST:.*]] = arith.constant 0xCE6E0000 : f32
+  // CHECK: %[[SHIFT32:.*]] = aievec.shift %[[SRC]], %[[SRC]], %[[C32]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX1:.*]] = aievec.max %[[SRC]], %[[SHIFT32]] : vector<32xbf16>
+  // CHECK: %[[SHIFT16:.*]] = aievec.shift %[[MAX1]], %[[MAX1]], %[[C16]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX2:.*]] = aievec.max %[[MAX1]], %[[SHIFT16]] : vector<32xbf16>
+  // CHECK: %[[SHIFT8:.*]] = aievec.shift %[[MAX2]], %[[MAX2]], %[[C8]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX3:.*]] = aievec.max %[[MAX2]], %[[SHIFT8]] : vector<32xbf16>
+  // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[MAX3]], %[[MAX3]], %[[C4]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX4:.*]] = aievec.max %[[MAX3]], %[[SHIFT4]] : vector<32xbf16>
+  // CHECK: %[[SHIFT5:.*]] = aievec.shift %[[MAX4]], %[[MAX4]], %[[C2]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX5:.*]] = aievec.max %[[MAX4]], %[[SHIFT5]] : vector<32xbf16>
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MAX5]], %[[C0]] : vector<32xbf16>, i32, bf16
+  // CHECK: %[[EXTF:.*]] = arith.extf %[[EXTELEM]] : bf16 to f32
+  // CHECK: %[[CMP:.*]] = arith.cmpf ogt, %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[SELECT:.*]] = arith.select %[[CMP]], %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[TRUNCF:.*]] = arith.truncf %[[SELECT]] : f32 to bf16
+  %cst = arith.constant -1.0e+09 : bf16
+  %0 = vector.reduction <maxnumf>, %arg0, %cst : vector<32xbf16> into bf16
+  // CHECK: return %[[TRUNCF]] : bf16
   return %0 : bf16
 }
