@@ -373,11 +373,7 @@ jobs:
           pip install -r python/requirements_dev.txt
           unzip -o -q dist/mlir_aie\*.whl
 
-          if [ x"${{ matrix.ENABLE_RTTI }}" == x"ON" ]; then
-            export PYTHONPATH=mlir_aie/python
-          else
-            export PYTHONPATH=mlir_aie_no_rtti/python
-          fi
+          export PYTHONPATH=mlir_aie/python
 
           python -c 'import aie.ir'
           python -c 'import aie.extras'
