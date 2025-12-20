@@ -579,7 +579,8 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
   return fnOp;
 }
 
-static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
+// Check if math.exp op matches AIE2 LUT-based exp constraints
+static bool matchExpOpForAIE2LUT(math::ExpOp::Adaptor adaptor) {
   auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
 
   if (!srcType)
@@ -588,7 +589,23 @@ static bool matchExpOpForLUT(math::ExpOp::Adaptor adaptor) {
   Type scalarType = srcType.getElementType();
   unsigned elWidth = scalarType.getIntOrFloatBitWidth();
   unsigned laneSize = getVectorLaneSize(srcType);
+  // AIE2 LUT-based exp: only supports v16bf16
   return isa<FloatType>(scalarType) && laneSize == 16 && elWidth == 16;
+}
+
+// Check if math.exp op matches AIE2P exp constraints
+static bool matchExpOpForAIE2P(math::ExpOp::Adaptor adaptor) {
+  auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+
+  if (!srcType)
+    return false;
+
+  Type scalarType = srcType.getElementType();
+  unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+  unsigned laneSize = getVectorLaneSize(srcType);
+  // AIE2P exp: supports v16bf16 and v32bf16
+  return scalarType.isBF16() && (laneSize == 16 || laneSize == 32) &&
+         elWidth == 16;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2268,7 +2285,7 @@ struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
   LogicalResult
   matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (!matchExpOpForLUT(adaptor))
+    if (!matchExpOpForAIE2P(adaptor))
       return failure();
 
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
@@ -2285,7 +2302,7 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
   matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    if (!matchExpOpForLUT(adaptor))
+    if (!matchExpOpForAIE2LUT(adaptor))
       return failure();
 
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
@@ -2319,7 +2336,7 @@ struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
   LogicalResult
   matchAndRewrite(math::ExpOp expOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (!matchExpOpForLUT(adaptor))
+    if (!matchExpOpForAIE2LUT(adaptor))
       return failure();
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
     StringRef includeName = "lut_based_ops.h";
@@ -3767,22 +3784,6 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
            (dstLaneSize != srcLaneSize);
   });
 
-  target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
-    auto srcType = dyn_cast<VectorType>(expOp.getOperand().getType());
-    if (!srcType)
-      return true;
-
-    Type scalarType = srcType.getElementType();
-    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
-    unsigned laneSize = getVectorLaneSize(srcType);
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
-      return true;
-    if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp))
-      return true;
-
-    return false;
-  });
-
   target.addDynamicallyLegalOp<math::TanhOp>([](math::TanhOp tanhOp) {
     auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
     if (!srcType)
@@ -4045,7 +4046,28 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
       // Everything else is legal (scalar f32, vector f32)
       return true;
     });
+
+    // AIE2P-specific legalization for exp with LLVMIR backend
+    // v16bf16 and v32bf16 exp are illegal (uses hardware intrinsic)
+    target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
+      auto srcType = dyn_cast<VectorType>(expOp.getOperand().getType());
+      if (!srcType)
+        return true;
+
+      Type scalarType = srcType.getElementType();
+      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+      unsigned laneSize = getVectorLaneSize(srcType);
+      // AIE2P LLVMIR: v16bf16 and v32bf16 are illegal (uses aievec.exp)
+      if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
+          elWidth != 16)
+        return true;
+      if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp))
+        return true;
+
+      return false;
+    });
   }
+  // For CPP backend, exp remains legal (uses LUT pattern from common patterns)
 
   // AIE2P-specific legalization: ExtFOp on vector is always illegal
   target.addDynamicallyLegalOp<arith::ExtFOp>([](arith::ExtFOp extfOp) {
@@ -4436,6 +4458,24 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
   target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,
                       vector::FMAOp>();
+
+  // AIE2-specific legalization: math.exp for v16bf16 is illegal (uses LUT)
+  target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
+    auto srcType = dyn_cast<VectorType>(expOp.getOperand().getType());
+    if (!srcType)
+      return true;
+
+    Type scalarType = srcType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(srcType);
+    // AIE2: only v16bf16 is illegal (uses LUT-based lowering)
+    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
+      return true;
+    if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp))
+      return true;
+
+    return false;
+  });
 
   target.addDynamicallyLegalOp<math::RsqrtOp>([](math::RsqrtOp rsqrtOp) {
     auto srcType = dyn_cast<VectorType>(rsqrtOp.getOperand().getType());
