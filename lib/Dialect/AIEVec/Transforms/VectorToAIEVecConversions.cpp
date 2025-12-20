@@ -522,8 +522,7 @@ template <typename DstOpTy>
 static aievec::ExtElemOp
 generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
                                 vector::ReductionOp srcOp, int shiftIndex,
-                                Value curValue, bool useAccumulator = false,
-                                bool useAccumulatorShifts = false) {
+                                Value curValue) {
   assert(shiftIndex > 0 && (shiftIndex & (shiftIndex - 1)) == 0 &&
          "shiftIndex must be power of 2");
 
@@ -534,24 +533,12 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
   DstOpTy curOp = nullptr;
   unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-  // Optionally convert to accumulator space
-  if (useAccumulator) {
-    Type accType = getVectorOpDestType(vType, /*AIE2 =*/true);
-    auto upsOp = aievec::UPSOp::create(rewriter, loc, accType, curValue);
-    curValue = upsOp.getResult();
-    vecType = accType;
-    elWidth =
-        dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
-  }
-
-  // Reduction loop: shift and reduce
   for (int id = shiftIndex; id > 0; id /= 2) {
     auto constOp = arith::ConstantOp::create(
         rewriter, loc, rewriter.getI32IntegerAttr(id * elWidth / 8));
 
-    auto shiftBytesOp =
-        aievec::ShiftOp::create(rewriter, loc, vecType, curValue, curValue,
-                                constOp.getResult(), useAccumulatorShifts);
+    auto shiftBytesOp = aievec::ShiftOp::create(
+        rewriter, loc, vecType, curValue, curValue, constOp.getResult());
 
     curOp = DstOpTy::create(rewriter, loc, vecType, curValue,
                             shiftBytesOp.getResult());
@@ -559,17 +546,9 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
     curValue = curOp.getResult();
   }
 
-  // Optionally convert back from accumulator
-  if (useAccumulator) {
-    auto shiftParamOp =
-        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
-    curValue = aievec::SRSOp::create(rewriter, loc, vType, curValue,
-                                     shiftParamOp.getResult());
-  }
-
   auto zeroConstOp =
       arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
-  return aievec::ExtElemOp::create(rewriter, loc, scalarType, curValue,
+  return aievec::ExtElemOp::create(rewriter, loc, scalarType, curOp,
                                    zeroConstOp.getResult());
 }
 
@@ -2115,23 +2094,24 @@ struct LowerVectorReductionAddBfloat16OpAIE2P
       curValue = curOp.getResult();
     }
 
-    auto shiftParamOp =
-        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
-    auto srsOp = aievec::SRSOp::create(
-        rewriter, loc, cast<VectorType>(inputToReduce.getType()),
-        curOp.getResult(), shiftParamOp.getResult());
-
-    // AIE2P can extract directly from v16bf16 (no concat needed)
+    // Extract element 0 from the f32 accumulator
+    // The loop has already fully reduced the vector to a single value in
+    // element 0
     auto zeroConstOp =
         arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
-    auto reduceResultOp = aievec::ExtElemOp::create(
-        rewriter, srcOp.getLoc(), scalarType, srsOp, zeroConstOp.getResult());
+    auto extractedF32 = aievec::ExtElemOp::create(
+        rewriter, srcOp.getLoc(), rewriter.getF32Type(), curOp.getResult(),
+        zeroConstOp.getResult());
+
+    // Convert extracted f32 to bf16
+    auto reduceResultBF16 = arith::TruncFOp::create(
+        rewriter, srcOp.getLoc(), scalarType, extractedF32.getResult());
 
     if (srcOp.getAcc())
-      rewriter.replaceOpWithNewOp<arith::AddFOp>(
-          srcOp, reduceResultOp.getResult(), srcOp.getAcc());
+      rewriter.replaceOpWithNewOp<arith::AddFOp>(srcOp, reduceResultBF16,
+                                                 srcOp.getAcc());
     else
-      rewriter.replaceOp(srcOp, reduceResultOp);
+      rewriter.replaceOp(srcOp, reduceResultBF16);
     return success();
   }
 };
