@@ -1464,7 +1464,7 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     }
     // Float types
     else {
-      if (laneSize != 16)
+      if (laneSize != 16 && laneSize != 32)
         return failure();
 
       // v16float or v16bf16 with extension op case
@@ -4146,6 +4146,42 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
       return false;
 
     return true;
+  });
+
+  // AIE2P-specific legalization: Override AddFOp to support laneSize==32 for
+  // float types
+  target.addDynamicallyLegalOp<arith::AddFOp>([](arith::AddFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    Type scalarType = resultType.getElementType();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    // For float types, support both laneSize==16 and laneSize==32
+    if (isa<FloatType>(scalarType))
+      return laneSize != 16 && laneSize != 32;
+
+    // For other types, only laneSize==16 (same as AIE2)
+    return laneSize != 16;
+  });
+
+  // AIE2P-specific legalization: Override SubFOp to support laneSize==32 for
+  // float types
+  target.addDynamicallyLegalOp<arith::SubFOp>([](arith::SubFOp op) {
+    auto resultType = dyn_cast<VectorType>(op.getType());
+    if (!resultType)
+      return true;
+
+    Type scalarType = resultType.getElementType();
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    // For float types, support both laneSize==16 and laneSize==32
+    if (isa<FloatType>(scalarType))
+      return laneSize != 16 && laneSize != 32;
+
+    // For other types, only laneSize==16 (same as AIE2)
+    return laneSize != 16;
   });
 }
 

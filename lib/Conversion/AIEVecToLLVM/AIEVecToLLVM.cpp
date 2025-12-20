@@ -448,7 +448,11 @@ public:
   using ConvertOpToLLVMPattern<aievec::AddElemOp>::ConvertOpToLLVMPattern;
 
   struct DecodedAddElemOp {
-    enum class Kind { FP32_FP32_FP32_16x1x1x1, UNSUPPORTED };
+    enum class Kind {
+      FP32_FP32_FP32_16x1x1x1,
+      FP32_FP32_FP32_32x1x1x1,
+      UNSUPPORTED
+    };
     Kind kind;
     int conf;
   };
@@ -458,6 +462,7 @@ public:
     auto lhsVecTy = cast<VectorType>(lhs.getType());
     auto lhsScaTy = lhsVecTy.getElementType();
     unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
+    int laneSize = getVectorLaneSize(lhsVecTy);
 
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
@@ -466,7 +471,11 @@ public:
       // Float types
       if (lhsBitWidth == 32) {
         // FP32 add_elem
-        return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+        if (laneSize == 16) {
+          return {DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+        } else if (laneSize == 32) {
+          return {DecodedAddElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
+        }
       }
     }
     return {DecodedAddElemOp::Kind::UNSUPPORTED, -1};
@@ -483,7 +492,7 @@ public:
       return failure();
     }
 
-    // Handle the FP32 add_elem for AIE2p
+    // Handle the FP32 add_elem for AIE2p (16-lane)
     // We need to expand <16xf32> to <64xf32> for the ACC2048 intrinsic
     if (decodedAddElemOp.kind ==
         DecodedAddElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
@@ -538,6 +547,40 @@ public:
       return success();
     }
 
+    // Handle the FP32 add_elem for AIE2p (32-lane)
+    // Use ACC2048 intrinsic by padding to 64 lanes
+    if (decodedAddElemOp.kind ==
+        DecodedAddElemOp::Kind::FP32_FP32_FP32_32x1x1x1) {
+      // Pad from <32 x float> to <64 x float> using shuffle
+      SmallVector<int64_t> padMask;
+      for (int i = 0; i < 32; ++i)
+        padMask.push_back(i);
+      for (int i = 32; i < 64; ++i)
+        padMask.push_back(-1); // poison/undef
+
+      auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
+      auto lhsPadded = vector::ShuffleOp::create(
+          rewriter, loc, adaptor.getLhs(), adaptor.getLhs(), padMask);
+      auto rhsPadded = vector::ShuffleOp::create(
+          rewriter, loc, adaptor.getRhs(), adaptor.getRhs(), padMask);
+
+      // Call ACC2048 intrinsic
+      auto confCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(60));
+      auto addResult = xllvm::AddACC2048AccFloatAIE2pIntrOp::create(
+          rewriter, loc, v64f32Ty, lhsPadded, rhsPadded, confCst);
+
+      // Extract first 32 elements from 64-element result
+      SmallVector<int64_t> extractMask;
+      for (int i = 0; i < 32; ++i)
+        extractMask.push_back(i);
+      auto finalResult = vector::ShuffleOp::create(rewriter, loc, addResult,
+                                                   addResult, extractMask);
+
+      rewriter.replaceOp(op, finalResult);
+      return success();
+    }
+
     op.emitWarning() << "aievec.add_elem conversion is not supported.\n";
     return failure();
   }
@@ -550,7 +593,11 @@ public:
   using ConvertOpToLLVMPattern<aievec::SubElemOp>::ConvertOpToLLVMPattern;
 
   struct DecodedSubElemOp {
-    enum class Kind { FP32_FP32_FP32_16x1x1x1, UNSUPPORTED };
+    enum class Kind {
+      FP32_FP32_FP32_16x1x1x1,
+      FP32_FP32_FP32_32x1x1x1,
+      UNSUPPORTED
+    };
     Kind kind;
     int conf;
   };
@@ -560,6 +607,7 @@ public:
     auto lhsVecTy = cast<VectorType>(lhs.getType());
     auto lhsScaTy = lhsVecTy.getElementType();
     unsigned lhsBitWidth = lhsScaTy.getIntOrFloatBitWidth();
+    int laneSize = getVectorLaneSize(lhsVecTy);
 
     // Integer types
     if (llvm::isa<IntegerType>(lhsScaTy)) {
@@ -568,7 +616,11 @@ public:
       // Float types
       if (lhsBitWidth == 32) {
         // FP32 sub_elem
-        return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+        if (laneSize == 16) {
+          return {DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1, /*conf*/ 60};
+        } else if (laneSize == 32) {
+          return {DecodedSubElemOp::Kind::FP32_FP32_FP32_32x1x1x1, /*conf*/ 60};
+        }
       }
     }
     return {DecodedSubElemOp::Kind::UNSUPPORTED, -1};
@@ -585,7 +637,7 @@ public:
       return failure();
     }
 
-    // Handle the FP32 sub_elem for AIE2p
+    // Handle the FP32 sub_elem for AIE2p (16-lane)
     // We need to expand <16xf32> to <64xf32> for the ACC2048 intrinsic
     if (decodedSubElemOp.kind ==
         DecodedSubElemOp::Kind::FP32_FP32_FP32_16x1x1x1) {
@@ -635,6 +687,40 @@ public:
       auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
       auto finalResult =
           LLVM::BitcastOp::create(rewriter, loc, v16f32Ty, resultExtracted);
+
+      rewriter.replaceOp(op, finalResult);
+      return success();
+    }
+
+    // Handle the FP32 sub_elem for AIE2p (32-lane)
+    // Use ACC2048 intrinsic by padding to 64 lanes
+    if (decodedSubElemOp.kind ==
+        DecodedSubElemOp::Kind::FP32_FP32_FP32_32x1x1x1) {
+      // Pad from <32 x float> to <64 x float> using shuffle
+      SmallVector<int64_t> padMask;
+      for (int i = 0; i < 32; ++i)
+        padMask.push_back(i);
+      for (int i = 32; i < 64; ++i)
+        padMask.push_back(-1); // poison/undef
+
+      auto v64f32Ty = VectorType::get({64}, rewriter.getF32Type());
+      auto lhsPadded = vector::ShuffleOp::create(
+          rewriter, loc, adaptor.getLhs(), adaptor.getLhs(), padMask);
+      auto rhsPadded = vector::ShuffleOp::create(
+          rewriter, loc, adaptor.getRhs(), adaptor.getRhs(), padMask);
+
+      // Call ACC2048 intrinsic
+      auto confCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(60));
+      auto subResult = xllvm::SubACC2048AccFloatAIE2pIntrOp::create(
+          rewriter, loc, v64f32Ty, lhsPadded, rhsPadded, confCst);
+
+      // Extract first 32 elements from 64-element result
+      SmallVector<int64_t> extractMask;
+      for (int i = 0; i < 32; ++i)
+        extractMask.push_back(i);
+      auto finalResult = vector::ShuffleOp::create(rewriter, loc, subResult,
+                                                   subResult, extractMask);
 
       rewriter.replaceOp(op, finalResult);
       return success();
