@@ -159,20 +159,18 @@ def _create_npu_lowering_pipeline(
     reset_locks_tiles="",
     reset_locks_mode="never",
 ):
-    device_pipeline_1 = ()
-    pipeline = (
+    pipeline = Pipeline()
+    if opts.materialize_runtime_sequence:
+        pipeline = pipeline.add_pass("aie-materialize-runtime-sequences")
+    pipeline = pipeline.Nested(
+        "aie.device",
         Pipeline()
-        .add_pass("aie-materialize-runtime-sequences")
-        .Nested(
-            "aie.device",
-            Pipeline()
-            .add_pass("aie-materialize-bd-chains")
-            .add_pass("aie-substitute-shim-dma-allocations")
-            .add_pass("aie-assign-runtime-sequence-bd-ids")
-            .add_pass("aie-dma-tasks-to-npu")
-            .add_pass("aie-dma-to-npu")
-            .add_pass("aie-lower-set-lock"),
-        )
+        .add_pass("aie-materialize-bd-chains")
+        .add_pass("aie-substitute-shim-dma-allocations")
+        .add_pass("aie-assign-runtime-sequence-bd-ids")
+        .add_pass("aie-dma-tasks-to-npu")
+        .add_pass("aie-dma-to-npu")
+        .add_pass("aie-lower-set-lock"),
     )
     if expand_load_pdis:
         pipeline = pipeline.add_pass(
