@@ -397,7 +397,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     bool isEmpty();
     TileOp getTileOp();
     // Check whether another core has equivalent program memory.
-    // Note that this currently only checks the ELF attribute, so only works after compiling the program memory.
+    // Note that this currently only checks the ELF attribute, so only produces a meaningful result after compiling the program memory.
     bool isEquivalent(CoreOp other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {

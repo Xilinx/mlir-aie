@@ -188,7 +188,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
 
     // A buffer descriptor can refer to a statically allocated aie.buffer, or to
-    // a DDR buffer which will be passed as a runtime arguument (block
+    // a DDR buffer which will be passed as a runtime argument (block
     // argument). Try to find the root block argument, either directly or
     // through subviews/casts.
     mlir::BlockArgument buf_arg = nullptr;

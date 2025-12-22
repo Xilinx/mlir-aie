@@ -1765,7 +1765,7 @@ class FlowRunner:
                         device_to_id_mapping = create_device_id_mapping(devices)
                         assign_load_pdi_ids(npu_insts_module, device_to_id_mapping)
                         transformed_mlir_path = self.prepend_tmp(
-                            "npu_insts_with_pid_ids.mlir"
+                            "npu_insts_with_pdi_ids.mlir"
                         )
                         await write_file_async(
                             str(npu_insts_module), transformed_mlir_path

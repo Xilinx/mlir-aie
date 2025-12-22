@@ -1,5 +1,4 @@
-//===- AIEMaterializeRuntimeSequence.cpp -------------------------*- C++
-//-*-===//
+//===- AIEMaterializeRuntimeSequences.cpp -----------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -391,7 +390,7 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     // inline a supported set of these and error otherwise.
 
     // Collect SSA values referenced in the callee not defined by the callee and
-    // and not in the argMap.
+    // not in the argMap.
     llvm::SetVector<Value> referencedValues;
     for (Operation &op : calleeBody.getOps()) {
       collectReferencedSSAValues(&op, argMap, referencedValues);

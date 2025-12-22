@@ -29,10 +29,7 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -90,131 +87,80 @@ static ResetMode parseResetMode(llvm::StringRef str) {
     return ResetMode::Never;
 }
 
-struct ExpandLoadPdiPattern : public OpRewritePattern<NpuLoadPdiOp> {
-  const ResetConfig dmaConfig;
-  const ResetConfig switchConfig;
-  const ResetConfig lockConfig;
-  const ResetConfig coreConfig;
-  mutable AIE::DeviceOp previousDevice;
+// Helper to transform a single load_pdi operation
+static LogicalResult
+transformLoadPdi(NpuLoadPdiOp loadPdiOp, AIE::DeviceOp previousDevice,
+                 ModuleOp moduleOp, const ResetConfig &dmaConfig,
+                 const ResetConfig &switchConfig, const ResetConfig &lockConfig,
+                 const ResetConfig &coreConfig) {
+  OpBuilder builder(loadPdiOp);
 
-  ExpandLoadPdiPattern(MLIRContext *context, ResetConfig dma, ResetConfig sw,
-                       ResetConfig lock, ResetConfig core)
-      : OpRewritePattern<NpuLoadPdiOp>(context), dmaConfig(dma),
-        switchConfig(sw), lockConfig(lock), coreConfig(core),
-        previousDevice(nullptr) {}
-
-  LogicalResult matchAndRewrite(NpuLoadPdiOp loadPdiOp,
-                                PatternRewriter &rewriter) const override {
-    // Only process load_pdi ops that reference a device
-    auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
-    if (!deviceRefAttr)
-      return failure();
-
-    // Look up the referenced device
-    auto moduleOp = loadPdiOp->getParentOfType<ModuleOp>();
-    if (!moduleOp)
-      return failure();
-
-    auto referencedDevice = moduleOp.lookupSymbol<AIE::DeviceOp>(deviceRefAttr);
-    if (!referencedDevice) {
-      loadPdiOp.emitError("Referenced symbol '")
-          << deviceRefAttr.getValue() << "' is not a device";
-      return failure();
-    }
-
-    // If already referencing an empty device, don't transform
-    if (referencedDevice.getSymName().starts_with("empty"))
-      return failure();
-
-    // Determine if this is the first load_pdi (no previous device)
-    bool isFirstLoadPdi = !previousDevice;
-
-    // For first load_pdi with no reset modes requiring comparison, skip empty
-    // device
-    bool needsEmptyDevice = !isFirstLoadPdi ||
-                            dmaConfig.mode != ResetMode::Never ||
-                            switchConfig.mode != ResetMode::Never ||
-                            lockConfig.mode != ResetMode::Never;
-
-    AIE::DeviceOp emptyDevice;
-    if (needsEmptyDevice) {
-      // Create a unique empty device for this reset to avoid PDI address
-      // caching
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(moduleOp.getBody());
-
-      // Find a unique name for the empty device
-      std::string emptyName;
-      int emptyIndex = 0;
-      do {
-        emptyName = "empty_" + std::to_string(emptyIndex++);
-      } while (moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName));
-
-      auto deviceType = referencedDevice.getDevice();
-      auto loc = rewriter.getUnknownLoc();
-      emptyDevice = AIE::DeviceOp::create(rewriter, loc, deviceType,
-                                          rewriter.getStringAttr(emptyName));
-      emptyDevice.getRegion().emplaceBlock();
-
-      Block *deviceBlock = &emptyDevice.getRegion().front();
-      rewriter.setInsertionPointToEnd(deviceBlock);
-      AIE::EndOp::create(rewriter, loc);
-    }
-
-    // Create new load_pdi operation
-    rewriter.setInsertionPoint(loadPdiOp);
-    NpuLoadPdiOp newLoadPdi;
-    if (needsEmptyDevice) {
-      newLoadPdi = NpuLoadPdiOp::create(
-          rewriter, loadPdiOp.getLoc(),
-          FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
-          loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
-          loadPdiOp.getAddressAttr());
-    } else {
-      // First load_pdi with no resets - keep original device reference
-      newLoadPdi = NpuLoadPdiOp::create(
-          rewriter, loadPdiOp.getLoc(), loadPdiOp.getDeviceRefAttr(),
-          loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
-          loadPdiOp.getAddressAttr());
-    }
-
-    // Generate and insert reset operations (skip for first load_pdi)
-    if (!isFirstLoadPdi && (dmaConfig.mode != ResetMode::Never ||
-                            switchConfig.mode != ResetMode::Never ||
-                            lockConfig.mode != ResetMode::Never ||
-                            coreConfig.mode != ResetMode::Never)) {
-      if (failed(xilinx::AIE::generateAndInsertResetOps(
-              referencedDevice, newLoadPdi.getOperation(), dmaConfig,
-              switchConfig, lockConfig, coreConfig, previousDevice))) {
-        loadPdiOp.emitError("Failed to generate reset operations");
-        return failure();
-      }
-    }
-
-    // Generate and insert the configuration operations after the reset ops
-    // Find the last operation inserted (which should be from reset ops)
-    Operation *lastResetOp = newLoadPdi.getOperation();
-    Operation *nextOp = newLoadPdi->getNextNode();
-    while (nextOp && nextOp != loadPdiOp.getOperation()) {
-      lastResetOp = nextOp;
-      nextOp = nextOp->getNextNode();
-    }
-
-    if (failed(xilinx::AIE::generateAndInsertConfigOps(referencedDevice,
-                                                       lastResetOp, ""))) {
-      loadPdiOp.emitError("Failed to generate configuration operations");
-      return failure();
-    }
-
-    // Remove the original load_pdi operation
-    rewriter.eraseOp(loadPdiOp);
-
-    // Update previous device for next load_pdi
-    previousDevice = referencedDevice;
-
+  // Only process load_pdi ops that reference a device
+  auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
+  if (!deviceRefAttr) {
     return success();
   }
-};
+
+  auto referencedDevice = moduleOp.lookupSymbol<AIE::DeviceOp>(deviceRefAttr);
+  if (!referencedDevice) {
+    loadPdiOp.emitError("Referenced symbol '")
+        << deviceRefAttr.getValue() << "' is not a device";
+    return failure();
+  }
+
+  AIE::DeviceOp emptyDevice;
+  if (previousDevice) {
+    // Create a unique empty device for this reset to avoid PDI address caching
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(moduleOp.getBody());
+
+    // Find a unique name for the empty device
+    std::string emptyName;
+    int emptyIndex = 0;
+    do {
+      emptyName = "empty_" + std::to_string(emptyIndex++);
+    } while (moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName));
+
+    auto deviceType = referencedDevice.getDevice();
+    auto loc = builder.getUnknownLoc();
+    emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
+                                        builder.getStringAttr(emptyName));
+    emptyDevice.getRegion().emplaceBlock();
+
+    Block *deviceBlock = &emptyDevice.getRegion().front();
+    builder.setInsertionPointToEnd(deviceBlock);
+    AIE::EndOp::create(builder, loc);
+  }
+
+  builder.setInsertionPoint(loadPdiOp);
+
+  if (previousDevice) {
+    // Create new empty load_pdi operation
+    NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(),
+                         FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
+                         loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
+                         loadPdiOp.getAddressAttr());
+    // Generate and insert reset operations if this is not the first load_pdi
+    if (failed(xilinx::AIE::generateAndInsertResetOps(
+            builder, referencedDevice, dmaConfig, switchConfig, lockConfig,
+            coreConfig, previousDevice))) {
+      loadPdiOp.emitError("Failed to generate reset operations");
+      return failure();
+    }
+  }
+
+  // Generate and insert configuration operations
+  if (failed(xilinx::AIE::generateAndInsertConfigOps(builder, referencedDevice,
+                                                     ""))) {
+    loadPdiOp.emitError("Failed to generate configuration operations");
+    return failure();
+  }
+
+  // Erase the original load_pdi operation
+  loadPdiOp.erase();
+
+  return success();
+}
 
 struct AIEExpandLoadPdiPass
     : public AIEExpandLoadPdiBase<AIEExpandLoadPdiPass> {
@@ -243,12 +189,33 @@ struct AIEExpandLoadPdiPass
     ResetMode coreMode = parseResetMode(resetCoresMode);
     ResetConfig coreConfig(coreTiles, coreMode);
 
-    RewritePatternSet patterns(&getContext());
-    patterns.add<ExpandLoadPdiPattern>(&getContext(), dmaConfig, switchConfig,
-                                       lockConfig, coreConfig);
+    // Collect all load_pdi operations in program order with their predecessors
+    SmallVector<std::pair<NpuLoadPdiOp, AIE::DeviceOp>> loadPdiOps;
+    AIE::DeviceOp previousDevice;
 
-    if (failed(applyPatternsGreedily(module, std::move(patterns)))) {
-      signalPassFailure();
+    module.walk([&](NpuLoadPdiOp loadPdiOp) {
+      // Track the predecessor for this operation
+      loadPdiOps.push_back({loadPdiOp, previousDevice});
+
+      // Update previousDevice for the next load_pdi
+      auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
+      if (deviceRefAttr) {
+        auto referencedDevice =
+            module.lookupSymbol<AIE::DeviceOp>(deviceRefAttr);
+        if (referencedDevice &&
+            !referencedDevice.getSymName().starts_with("empty")) {
+          previousDevice = referencedDevice;
+        }
+      }
+    });
+
+    // Transform load_pdi ops
+    for (auto [loadPdiOp, prevDevice] : loadPdiOps) {
+      if (failed(transformLoadPdi(loadPdiOp, prevDevice, module, dmaConfig,
+                                  switchConfig, lockConfig, coreConfig))) {
+        signalPassFailure();
+        return;
+      }
     }
   }
 };

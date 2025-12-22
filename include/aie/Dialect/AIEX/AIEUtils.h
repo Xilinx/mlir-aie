@@ -34,7 +34,7 @@ struct SubviewTraceResult {
 // Returns the root block argument and cumulative byte offset, or std::nullopt
 // if the chain doesn't lead to a block argument or contains unsupported ops.
 //
-// This function supports checks that all subviews remain static and contiguous.
+// This function checks that all subviews remain static and contiguous.
 std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
 }
 } // namespace xilinx

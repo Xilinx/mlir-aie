@@ -33,10 +33,10 @@ std::optional<mlir::ModuleOp>
 convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
                                std::vector<uint8_t> &binary);
 
-// Generate transaction binary and insert configuration operations at a specific
-// point
-mlir::LogicalResult generateAndInsertConfigOps(xilinx::AIE::DeviceOp device,
-                                               mlir::Operation *insertionPoint,
+// Generate transaction binary and insert configuration operations at the
+// current insertion point
+mlir::LogicalResult generateAndInsertConfigOps(mlir::OpBuilder &builder,
+                                               xilinx::AIE::DeviceOp device,
                                                llvm::StringRef clElfDir = "");
 
 // --------------------------------------------------------------------------
@@ -76,9 +76,9 @@ struct ResetConfig {
       : tileType(tt), mode(m) {}
 };
 
-// Insert reset operations
+// Insert reset operations at the current insertion point
 mlir::LogicalResult generateAndInsertResetOps(
-    xilinx::AIE::DeviceOp device, mlir::Operation *insertionPoint,
+    mlir::OpBuilder &builder, xilinx::AIE::DeviceOp device,
     ResetConfig dmaConfig, ResetConfig switchConfig, ResetConfig lockConfig,
     ResetConfig coreConfig, xilinx::AIE::DeviceOp previousDevice);
 
