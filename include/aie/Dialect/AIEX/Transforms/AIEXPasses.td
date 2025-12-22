@@ -302,21 +302,21 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   ];
   
   let options = [
-    Option<"resetDmasTiles", "reset-dmas-tiles", "std::string", "\"\"",
+    Option<"resetDmasTiles", "reset_dmas_tiles", "std::string", "\"\"",
            "Comma-separated list of tile types to reset DMAs for (shim,mem,core)">,
-    Option<"resetDmasMode", "reset-dmas-mode", "std::string", "\"never\"",
+    Option<"resetDmasMode", "reset_dmas_mode", "std::string", "\"never\"",
            "When to reset DMAs: never, ifused, ifchanged, always">,
-    Option<"resetSwitchesTiles", "reset-switches-tiles", "std::string", "\"\"",
+    Option<"resetSwitchesTiles", "reset_switches_tiles", "std::string", "\"\"",
            "Comma-separated list of tile types to reset switches for (shim,mem,core)">,
-    Option<"resetSwitchesMode", "reset-switches-mode", "std::string", "\"never\"",
+    Option<"resetSwitchesMode", "reset_switches_mode", "std::string", "\"never\"",
            "When to reset switches: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always">,
-    Option<"resetLocksTiles", "reset-locks-tiles", "std::string", "\"\"",
+    Option<"resetLocksTiles", "reset_locks_tiles", "std::string", "\"\"",
            "Comma-separated list of tile types to reset locks for (mem,core)">,
-    Option<"resetLocksMode", "reset-locks-mode", "std::string", "\"never\"",
+    Option<"resetLocksMode", "reset_locks_mode", "std::string", "\"never\"",
            "When to reset locks: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always">,
-    Option<"resetCoresTiles", "reset-cores-tiles", "std::string", "\"\"",
+    Option<"resetCoresTiles", "reset_cores_tiles", "std::string", "\"\"",
            "Comma-separated list of tile types to reset cores for (core)">,
-    Option<"resetCoresMode", "reset-cores-mode", "std::string", "\"never\"",
+    Option<"resetCoresMode", "reset_cores_mode", "std::string", "\"never\"",
            "When to reset cores: never, ifused, ifchanged, always">,
   ];
 }
