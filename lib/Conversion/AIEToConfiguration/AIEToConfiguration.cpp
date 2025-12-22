@@ -730,36 +730,6 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   return module;
 }
 
-// Helper to find insertion point for transaction ops.
-// search for aiex.configure ops in runtime sequences by walking the device
-// and collect them in a vector. If there are none, create a new runtime
-// sequence. Otherwise assume the insertion point is the first
-// aiex.configure op.
-void setInsertionPointForConfigOps(OpBuilder &builder) {
-  DeviceOp device = llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
-  if (!device) {
-    device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
-  }
-  auto loc = builder.getUnknownLoc();
-  SmallVector<AIEX::ConfigureOp> configureOps;
-  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
-
-  if (configureOps.empty()) {
-    // create aiex.runtime_sequence
-    int id = 0;
-    std::string seq_name = "configure";
-    while (device.lookupSymbol(seq_name))
-      seq_name = "configure" + std::to_string(id++);
-    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
-    seq.getBody().push_back(new Block);
-
-    builder.setInsertionPointToStart(&seq.getBody().front());
-  } else {
-    builder.setInsertionPoint(configureOps.front());
-  }
-}
-
 static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
                                                StringRef clElfDir,
                                                OutputType outputType) {
@@ -796,11 +766,41 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
   }
 
   OpBuilder builder(device.getBodyRegion());
-  setInsertionPointForConfigOps(builder);
+  // search for aiex.configure ops in runtime sequences by walking the device
+  // and collect them in a vector. If there are none, create a new runtime
+  // sequence. Otherwise assume the insertion point is the first
+  // aiex.configure op.
+  auto loc = builder.getUnknownLoc();
+  SmallVector<AIEX::ConfigureOp> configureOps;
+  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
+
+  if (configureOps.empty()) {
+    // create aiex.runtime_sequence
+    int id = 0;
+    std::string seq_name = "configure";
+    while (device.lookupSymbol(seq_name))
+      seq_name = "configure" + std::to_string(id++);
+    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
+    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
+    seq.getBody().push_back(new Block);
+    builder.setInsertionPointToStart(&seq.getBody().front());
+  } else {
+    builder.setInsertionPoint(configureOps.front());
+  }
 
   // convert the parsed ops to MLIR
   if (failed(convertTransactionOpsToMLIR(builder, outputType, operations)))
     return failure();
+
+  // If we chose the first aiex.configure as insertion point, erase it
+  // and inline its child operations.
+  if (!configureOps.empty()) {
+    // splice the body into the current insertion point
+    builder.getBlock()->getOperations().splice(
+        builder.getInsertionPoint(),
+        configureOps.front().getBody().front().getOperations());
+    configureOps.front().erase();
+  }
 
   return success();
 }

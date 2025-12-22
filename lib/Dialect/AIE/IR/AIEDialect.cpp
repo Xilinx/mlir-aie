@@ -2646,20 +2646,24 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
         if (symbolDefOp) {
-          if(!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
-            !llvm::isa<DeviceOp>(symbolDefOp) &&
-            !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
-            !llvm::isa<BufferOp>(symbolDefOp) &&
-            !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
-            op->emitOpError() << "references symbol '"
-                              << symbolRef.getRootReference().getValue()
-                              << "' which must be either a ShimDMAAllocationOp, DeviceOp, RuntimeSequenceOp or BufferOp, but got: "
-                              << symbolDefOp->getName().getStringRef();
+          if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
+              !llvm::isa<DeviceOp>(symbolDefOp) &&
+              !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
+              !llvm::isa<BufferOp>(symbolDefOp) &&
+              !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
+            op->emitOpError()
+                << "references symbol '"
+                << symbolRef.getRootReference().getValue()
+                << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
+                   "RuntimeSequenceOp or BufferOp, but got: "
+                << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }
           if (BufferOp bufferOp = llvm::dyn_cast<BufferOp>(symbolDefOp)) {
             if (!bufferOp.getAddress()) {
-              op->emitOpError() << "Unallocated buffer; fixed addresses are required before runtime sequence materialization.";
+              op->emitOpError()
+                  << "Unallocated buffer; fixed addresses are required before "
+                     "runtime sequence materialization.";
               return WalkResult::interrupt();
             }
           }
