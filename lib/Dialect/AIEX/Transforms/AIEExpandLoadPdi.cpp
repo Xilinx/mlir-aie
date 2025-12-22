@@ -45,8 +45,9 @@ namespace {
 
 // Helper function to parse tile types from comma-separated string
 static ResetTileType parseTileTypes(llvm::StringRef str) {
-  if (str.empty())
+  if (str.empty()) {
     return ResetTileType::None;
+  }
 
   unsigned result = 0;
   llvm::SmallVector<llvm::StringRef> tokens;
@@ -109,44 +110,42 @@ transformLoadPdi(NpuLoadPdiOp loadPdiOp, AIE::DeviceOp previousDevice,
   }
 
   AIE::DeviceOp emptyDevice;
-  if (previousDevice) {
-    // Create a unique empty device for this reset to avoid PDI address caching
-    OpBuilder::InsertionGuard guard(builder);
-    builder.setInsertionPointToStart(moduleOp.getBody());
+  // Create a unique empty device for this reset to avoid PDI address caching
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(moduleOp.getBody());
 
-    // Find a unique name for the empty device
-    std::string emptyName;
-    int emptyIndex = 0;
-    do {
-      emptyName = "empty_" + std::to_string(emptyIndex++);
-    } while (moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName));
+  // Find a unique name for the empty device
+  std::string emptyName;
+  int emptyIndex = 0;
+  do {
+    emptyName = "empty_" + std::to_string(emptyIndex++);
+  } while (moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName));
 
-    auto deviceType = referencedDevice.getDevice();
-    auto loc = builder.getUnknownLoc();
-    emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
-                                        builder.getStringAttr(emptyName));
-    emptyDevice.getRegion().emplaceBlock();
+  auto deviceType = referencedDevice.getDevice();
+  auto loc = builder.getUnknownLoc();
+  emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
+                                      builder.getStringAttr(emptyName));
+  emptyDevice.getRegion().emplaceBlock();
 
-    Block *deviceBlock = &emptyDevice.getRegion().front();
-    builder.setInsertionPointToEnd(deviceBlock);
-    AIE::EndOp::create(builder, loc);
-  }
+  Block *deviceBlock = &emptyDevice.getRegion().front();
+  builder.setInsertionPointToEnd(deviceBlock);
+  AIE::EndOp::create(builder, loc);
 
   builder.setInsertionPoint(loadPdiOp);
 
-  if (previousDevice) {
-    // Create new empty load_pdi operation
-    NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(),
-                         FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
-                         loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
-                         loadPdiOp.getAddressAttr());
-    // Generate and insert reset operations if this is not the first load_pdi
-    if (failed(xilinx::AIE::generateAndInsertResetOps(
-            builder, referencedDevice, dmaConfig, switchConfig, lockConfig,
-            coreConfig, previousDevice))) {
-      loadPdiOp.emitError("Failed to generate reset operations");
-      return failure();
-    }
+  // Create new empty load_pdi operation; this triggers a device reset.
+  // This is needed even for the first device configuration; without it, the
+  // first iteration of the design would run, but subsequent ones might not.
+  NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(),
+                       FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),
+                       loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
+                       loadPdiOp.getAddressAttr());
+  // Generate and insert reset operations if this is not the first load_pdi
+  if (failed(xilinx::AIE::generateAndInsertResetOps(
+          builder, referencedDevice, dmaConfig, switchConfig, lockConfig,
+          coreConfig, previousDevice))) {
+    loadPdiOp.emitError("Failed to generate reset operations");
+    return failure();
   }
 
   // Generate and insert configuration operations
