@@ -1002,9 +1002,9 @@ LogicalResult AIEX::RunOp::verify() {
     Value val = values[i];
 
     if (arg.getType() != val.getType()) {
-      return emitOpError() << "argument " << i
-                           << " type mismatch: " << "expected " << arg.getType()
-                           << " but got " << val.getType();
+      return emitOpError() << "argument " << i << " type mismatch: "
+                           << "expected " << arg.getType() << " but got "
+                           << val.getType();
     }
   }
 
