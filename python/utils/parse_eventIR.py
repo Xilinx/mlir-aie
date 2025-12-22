@@ -6,7 +6,7 @@ import re
 import subprocess
 import shutil
 import os
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+from aie.utils.trace_events.aie2 import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
 # Number of different trace types, currently 4
 # core:    pkt type 0
