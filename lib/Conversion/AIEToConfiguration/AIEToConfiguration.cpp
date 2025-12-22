@@ -641,7 +641,11 @@ static LogicalResult convertTransactionOpsToMLIR(
   // device level
   std::vector<memref::GlobalOp> global_data;
   {
-    DeviceOp device = builder.getBlock()->front().getParentOfType<DeviceOp>();
+    DeviceOp device =
+        llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
+    if (!device) {
+      device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
+    }
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(device.getBody());
     for (auto &op : operations) {
@@ -732,11 +736,10 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 // sequence. Otherwise assume the insertion point is the first
 // aiex.configure op.
 void setInsertionPointForConfigOps(OpBuilder &builder) {
-  // search for aiex.configure ops in runtime sequences by walking the device
-  // and collect them in a vector. If there are none, create a new runtime
-  // sequence. Otherwise assume the insertion point is the first
-  // aiex.configure op.
-  DeviceOp device = builder.getBlock()->front().getParentOfType<DeviceOp>();
+  DeviceOp device = llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
+  if (!device) {
+    device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
+  }
   auto loc = builder.getUnknownLoc();
   SmallVector<AIEX::ConfigureOp> configureOps;
   device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
