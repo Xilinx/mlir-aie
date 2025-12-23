@@ -371,10 +371,19 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
+  // data layout transformations on shim tiles are handled by runtime operations
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
     return emitError(
         "`dimensionsToStream` data layout transformations are not supported "
         "on shim tile producers");
+  }
+  for (auto consTile : getConsumerTiles()) {
+    if (cast<TileOp>(consTile.getDefiningOp()).isShimTile() &&
+        !getDimensionsFromStream(consTile).empty()) {
+      return emitError(
+          "`dimensionsFromStreamPerConsumer` data layout transformations are "
+          "not supported on shim tile consumers");
+    }
   }
 
   if (getRepeatCount().has_value()) {
@@ -416,6 +425,18 @@ LogicalResult ObjectFifoCreateOp::verify() {
 
 TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
+}
+
+BDDimLayoutArrayAttr
+ObjectFifoCreateOp::getDimensionsFromStream(Value consumerTile) {
+  int dimsIndex = 0;
+  for (auto cons : getConsumerTiles()) {
+    if (cons == consumerTile)
+      break;
+    else
+      dimsIndex++;
+  }
+  return getDimensionsFromStreamPerConsumer()[dimsIndex];
 }
 
 ParseResult xilinx::AIE::parseObjectFifoProducerTile(
@@ -620,6 +641,11 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
+    ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
+    if (!fifoOut.getDimensionsToStream().empty())
+      return emitOpError("currently does not support objectFifos with "
+                         "dimensionsToStream for join output.");
+
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
       return emitOpError("number of provided dst offsets must be equal "
@@ -629,30 +655,18 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitOpError("src offsets should be empty for distribute");
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    if (!fifoIn.getDimensionsToStream().empty()) {
+    if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty())
       return emitOpError("currently does not support objectFifos with "
-                         "dimensionsToStream.");
-    }
-    for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
-      if (!dims.empty())
-        return emitOpError("currently does not support objectFifos with "
-                           "dimensionsFromStreamPerConsumer.");
-    }
-
-    for (auto fifoOut : getOutputObjectFifos()) {
-      for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
-        if (!dims.empty())
-          return emitOpError("currently does not support objectFifos with "
-                             "dimensionsFromStreamPerConsumer.");
-      }
-    }
+                         "dimensionsFromStreamPerConsumer for distribute "
+                         "input.");
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getRepeatCount().has_value())
+      if (fifoOut.getRepeatCount().has_value()) {
         repeat_counts.push_back(fifoOut.getRepeatCount().value());
-      else
+      } else {
         repeat_counts.push_back(0);
+      }
     }
     for (auto repeat : repeat_counts)
       if (repeat_counts[0] != repeat)
