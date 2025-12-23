@@ -12,10 +12,8 @@
 
 module  {
   aie.device(npu1) {
-    memref.global "public" @toMem : memref<16xi32>
-    aiex.runtime_sequence() {
-      // expected-error@+2 {{failed to legalize operation 'aiex.npu.dma_wait' that was explicitly marked illegal}}
-      // expected-error@+1 {{couldn't find shim_dma_allocation op}}
+    aie.runtime_sequence() {
+      // expected-error@+1 {{couldn't find symbol in parent device}}
       aiex.npu.dma_wait {symbol = @toMem}
     }
   }

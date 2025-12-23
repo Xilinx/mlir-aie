@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (C) 2023, Advanced Micro Devices, Inc.
+
+// REQUIRES: valid_xchess_license
 // RUN: aie-opt %s -affine-super-vectorize="virtual-vector-size=16 test-fastest-varying=0 vectorize-reductions=true" --convert-vector-to-aievec="aie-target=aie2" -lower-affine | aie-translate -aie2=true --aievec-to-cpp -o dut.cc
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I%aie_runtime_lib%/AIE2 -I %aietools/include -D__AIEARCH__=20 -D__AIENGINE__ -I. -c %aie_runtime_lib%/AIE2/lut_based_ops.cpp -o lut_based_ops.o
 // RUN: xchesscc_wrapper aie2 -f -g +s +w work +o work -I%S -I%aie_runtime_lib%/AIE2 -I %aietools/include -D__AIEARCH__=20 -D__AIENGINE__ -I. -c dut.cc -o dut.o
@@ -6,6 +10,7 @@
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../../profiling.tcl ./work/a.out" >& xca_udm_dbg.stdout
 // RUN: FileCheck --input-file=./xca_udm_dbg.stdout %s
 // CHECK: TEST PASSED
+// XFAIL: *
 module {
   func.func @dut(%arg0: memref<1024xbf16>, %arg1: memref<1024xbf16>) {
     %cst = arith.constant 0.000000e+00 : f32

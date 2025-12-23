@@ -9,14 +9,14 @@
 //===----------------------------------------------------------------------===//
 
 #include <aie_api/aie.hpp>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 
 template <typename T, int N>
 void rope_kernel(const T *restrict input, const T *restrict lut,
-                        T *restrict output, int32_t dims) {
+                 T *restrict output, int32_t dims) {
   event0();
 
   for (int v = 0; v < dims; v += N) {

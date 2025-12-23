@@ -11,7 +11,7 @@ from textwrap import dedent
 from typing import Union
 
 from importlib_metadata import files
-from setuptools import Extension, setup
+from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
 from setuptools.command.install import install
@@ -153,10 +153,14 @@ class CMakeBuild(build_ext):
             xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
             cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
 
-        if platform.system() == "Windows":
+        if shutil.which("ccache"):
             cmake_args += [
                 "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
                 "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
+            ]
+
+        if platform.system() == "Windows":
+            cmake_args += [
                 "-DCMAKE_C_COMPILER=cl",
                 "-DCMAKE_CXX_COMPILER=cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
@@ -239,7 +243,7 @@ class DevelopWithPth(develop):
         super().run()
         pth_target = os.path.join(self.install_dir, "aie.pth")
         with open(pth_target, "w") as pth_file:
-            pth_file.write("mlir_aie//python")
+            pth_file.write("mlir_aie/python")
 
 
 class InstallWithPth(install):
@@ -249,10 +253,14 @@ class InstallWithPth(install):
         super().run()
         pth_target = os.path.join(self.install_lib, "aie.pth")
         with open(pth_target, "w") as pth_file:
-            pth_file.write("mlir_aie//python")
+            pth_file.write("mlir_aie/python")
 
 
 def get_version():
+    if "AIE_WHEEL_VERSION" in os.environ and os.environ["AIE_WHEEL_VERSION"].lstrip(
+        "v"
+    ):
+        return os.environ["AIE_WHEEL_VERSION"].lstrip("v")
     release_version = "0.0.1"
     commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
     now = datetime.now()
@@ -282,22 +290,8 @@ def parse_requirements(filename):
 
 setup(
     version=get_version(),
-    author="",
-    name="mlir-aie",
+    license="Apache-2.0 WITH LLVM-exception",
     include_package_data=True,
-    description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
-    long_description=dedent(
-        """\
-        This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for Xilinx Versal
-        AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the
-        device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is
-        included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with
-        convenient low-level access to devices and enable the development of a wide variety of programming models
-        from higher level abstractions.  As such, although it contains some examples, this project is not intended to
-        represent end-to-end compilation flows or to be particularly easy to use for system design.
-        """
-    ),
-    long_description_content_type="text/markdown",
     # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
     # actually build the wheel.
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
@@ -307,6 +301,7 @@ setup(
         "install": InstallWithPth,
     },
     zip_safe=False,
+    packages=find_packages(exclude=["wheelhouse", "python_bindings", "mlir-aie"]),
     python_requires=">=3.10",
     install_requires=parse_requirements(
         Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"

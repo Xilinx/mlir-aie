@@ -106,7 +106,7 @@ def bfp_conversion():
                 of_out.prod(),
                 multiplication_kernel,
             ],
-        )
+        ),
     ]
 
     rt = Runtime()

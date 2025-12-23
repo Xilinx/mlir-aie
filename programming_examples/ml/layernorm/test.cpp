@@ -27,9 +27,8 @@ using DATATYPE_OUT = std::bfloat16_t;
 // Initialize Input buffer 1
 void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int in_volume) {
   for (int i = 0; i < in_volume; i++) {
-    DATATYPE_IN1 val = static_cast<DATATYPE_IN1>(
-        test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                                        (std::bfloat16_t)-4.0));
+    DATATYPE_IN1 val = static_cast<DATATYPE_IN1>(test_utils::random_bfloat16_t(
+        (std::bfloat16_t)8.0, (std::bfloat16_t)-4.0));
     bufIn1[i] = val;
   }
 }

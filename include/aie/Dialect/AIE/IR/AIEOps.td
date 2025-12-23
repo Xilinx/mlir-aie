@@ -16,9 +16,11 @@ include "aie/Dialect/AIE/IR/AIEAttrs.td"
 include "aie/Dialect/AIE/IR/AIEInterfaces.td"
 include "aie/Dialect/AIE/IR/AIETypes.td"
 
+include "mlir/Dialect/DLTI/DLTIBase.td"
 include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/DataLayoutInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
@@ -27,8 +29,14 @@ class AIE_Op<string mnemonic, list<Trait> traits = []> :
 
 
 def AIE_DeviceOp: AIE_Op<"device", [
-    AIETarget, HasParent<"mlir::ModuleOp">,
-    SymbolTable, SingleBlockImplicitTerminator<"EndOp">, IsolatedFromAbove
+    Symbol,
+    AIETarget, 
+    HasParent<"mlir::ModuleOp">,
+    SymbolTable, 
+    SingleBlockImplicitTerminator<"EndOp">, 
+    IsolatedFromAbove,
+    DataLayoutOpInterface,
+    HasDefaultDLTIDataLayout
   ]> {
   let summary = "Define an AIE design targetting a complete device";
   let description = [{
@@ -55,13 +63,19 @@ def AIE_DeviceOp: AIE_Op<"device", [
     ```
   }];
 
-  let arguments = (ins AIEDevice:$device);
+  let arguments = (
+    ins AIEDevice:$device,
+        DefaultValuedAttr<SymbolNameAttr, "getDefaultDeviceName()">:$sym_name
+  );
   let regions = (region AnyRegion:$body_region);
   let assemblyFormat = [{
-    `(` $device `)` regions attr-dict
+    `(` $device `)` ($sym_name^)? regions attr-dict
   }];
   let extraClassDeclaration = [{
     const xilinx::AIE::AIETargetModel &getTargetModel();
+    static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
+    static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
+    static llvm::StringRef getDefaultDeviceName() { return "main"; }
   }];
 }
 
@@ -198,7 +212,10 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    using ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames;
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -259,7 +276,10 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
     size_t getNumSourceConnections(WireBundle bundle);
     size_t getNumDestConnections(WireBundle bundle);
     TileOp getTileOp();
-    using ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames;
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -302,7 +322,10 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    using ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames;
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -324,6 +347,11 @@ def AIE_CoreOp: AIE_Op<"core", [
     typically be outlined into the LLVM dialect, eventually resulting in a binary file
     for each core.  The name of this file can be be specified using the `elf_file`
     attribute.
+
+    If the `elf_file` attribute is present, no MLIR besides a terminator may be
+    present in the core; in that case, the binary file linked dictates what 
+    will run in the core. The path specified should is relative to the MLIR
+    file.
 
     This op has an optional `stackSize` attribute, to control the amount of memory (in bytes)
     reserved for the stack.  The default value is 1024.  The stack (and other data allocations)
@@ -359,8 +387,12 @@ def AIE_CoreOp: AIE_Op<"core", [
     int colIndex();
     int rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
+    bool isEmpty();
     TileOp getTileOp();
-    using ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames;
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
+    }
   }];
 
   let builders = [
@@ -1103,7 +1135,10 @@ def AIE_MemOp: AIE_Op<"mem", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    using ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames;
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -1147,7 +1182,10 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    using ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames;
+    void getAsmResultNames(
+        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+      ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);
+    }
   }];
 }
 
@@ -1567,16 +1605,15 @@ def AIE_PutCascadeOp: AIE_Op<"put_cascade", []> {
   let assemblyFormat = [{ `(` $cascade_value `:` type($cascade_value) `)` attr-dict }];
 }
 
-def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">]> {
+def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Runtime allocation information for a single shim DMA";
   let description = [{
     This op exists for cases where shim_dma configuration is performed outside of MLIR-AIE
     and hence there is no appropriate dma_start operation to indicate which channel is being
-    used and on which column the shim_dma is.
+    used and on which shim tile the shim_dma is.
 
     It contains attributes for the sym_name of an operation which generated the shim DMA,
-    for the DMAChannelDir and channel index, and for the column of the shim tile to which
-    the originating operation was mapped.
+    for the DMAChannelDir and channel index, and a reference to the shim tile.
 
     Example:
     ```
@@ -1584,30 +1621,35 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
       %tile02 = aie.tile(0, 2)
       aie.objectfifo @of_in_0 (%tile00, { %tile02 }, 2) : !aie.objectfifo<memref<64xi16>>
     ```
-    could produce the following allocation info (channel direction MM2S, channel index 1, and shim column 0):
+    could produce the following allocation info (channel direction MM2S, channel index 1, on tile %tile00):
     ```
-      aie.shim_dma_allocation @of_in_0 (MM2S, 1, 0)
+      aie.shim_dma_allocation @of_in_0 (%tile00, MM2S, 1)
     ```
   }];
 
   let arguments = (
-    ins FlatSymbolRefAttr:$sym_name,
+    ins SymbolNameAttr:$sym_name,
+        Index:$tile,
         DMAChannelDir:$channel_dir,
         AIEI64Attr:$channel_index,
-        AIEI64Attr:$col,
         // If this is set we are using the PLIO in this ShimTile
-        DefaultValuedAttr<BoolAttr, "false">:$plio
+        DefaultValuedAttr<BoolAttr, "false">:$plio,
+        OptionalAttr<PacketInfoAttr>:$packet
   );
 
   let results = (outs);
 
   let assemblyFormat = [{
-    $sym_name `(` $channel_dir `,` $channel_index `,` $col `)` attr-dict
+    $sym_name `(` $tile `,` $channel_dir `,` $channel_index (`,` $packet^)? `)` attr-dict
   }];
+  
+  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    TileOp getTileOp();
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
+
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
@@ -1686,6 +1728,16 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
                            }, 2 : i32
                           ) : !aie.objectfifo<memref<256xi32>>
     ```
+    
+    The behavior of the objectFifo is further controlled by optional parameters.
+    The `repeat_count` parameter specifies the number of times each individual 
+    object is repeated during transfer. When `repeat_count == 1`, each object 
+    is transferred once.
+
+    The `iter_count` parameter specifies the number of iterations of 
+    the buffer descriptor chain generated at the lower level. The total number 
+    of objects transferred is calculated as `iter_count * elemNumber * repeat_count`.
+    When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
   }];
 
   let arguments = (
@@ -1704,7 +1756,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // repeat_count==1 means "do it once"
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
         InitValuesArrayAttr:$initValues,
-        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions
+        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        OptionalAttr<AIEI32Attr>:$iter_count
   );
 
   let assemblyFormat = [{
@@ -1879,8 +1932,6 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
   let extraClassDeclaration = [{
     TileOp getTileOp();
     ObjectFifoCreateOp getObjectFifo();
-    // No results so just use default impl.
-    using ::mlir::OpAsmOpInterface::Trait<ObjectFifoRegisterExternalBuffersOp>::getAsmResultNames;
   }];
 }
 
@@ -2082,6 +2133,36 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   }];
   let hasCustomAssemblyFormat = 1;
 
+}
+
+def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
+  Symbol,
+  NoTerminator, 
+  HasParent<"DeviceOp">, 
+]> {
+  let summary = "Program the configuration co-processor of the AI Engine array";
+  let description = [{
+    Instructions in this operation allow for runtime (re-)configuration of the AI Engine array, such as configuring data movement buffer descriptors.
+    These instructions will execute on the configuration co-processor of the AI Engine array.
+
+    Typically, these instructions include configuring the data transfers between host and AIE array on the shims.
+    The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
+  }];
+  let arguments = (
+    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name
+  );
+  let regions = (region
+    AnyRegion:$body
+  );
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    static llvm::StringRef getDefaultRuntimeSequenceName() { return "sequence"; }
+    static RuntimeSequenceOp getForSymbolInDevice(DeviceOp module, llvm::StringRef symbol);
+    static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp module, llvm::StringRef symbol);
+  }];
+  let extraClassDefinition = [{
+  }];
 }
 
 #endif // AIE_OPS

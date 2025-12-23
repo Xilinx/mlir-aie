@@ -15,6 +15,7 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
   FoldMulAddChainToConvOp.cpp
   CopyRemoval.cpp
   DynamicSizeNoImplicitBroadcast.cpp
+  SplitVectorLoadUpsChains.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${CMAKE_CURRENT_SOURCE_DIR}/../../../include/aie/Dialect/AIEVec/Transforms
@@ -28,6 +29,4 @@ add_mlir_dialect_library(MLIRAIEVecTransforms
   LINK_LIBS PUBLIC
   MLIRIR
   MLIRPass
-  MLIRAIEVecUtils
-  MLIRCopyOpInterface
-  )
+  MLIRAIEVecUtils)

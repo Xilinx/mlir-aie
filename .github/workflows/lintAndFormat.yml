@@ -41,7 +41,7 @@ jobs:
       - name: Install Python packages
         run: |
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Get MLIR
@@ -56,7 +56,7 @@ jobs:
       - name: Prepare compile_commands.json
         run: |
 
-          mkdir build
+          mkdir -p build/install
           pushd build
 
           cmake .. \
@@ -68,6 +68,7 @@ jobs:
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
@@ -148,12 +149,12 @@ jobs:
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@v1
+        uses: reviewdog/action-suggester@v1.22
         with:
           tool_name: clang-format
           level: error
           cleanup: true
-          fail_on_error: true
+          fail_level: any
 
       - name: Run black format
         if: success() || failure()
@@ -171,11 +172,11 @@ jobs:
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@v1
+        uses: reviewdog/action-suggester@v1.22
         with:
           tool_name: black
           level: error
-          fail_on_error: true
+          fail_level: any
 
   code-coverage:
 
@@ -190,6 +191,17 @@ jobs:
       pull-requests: write
 
     steps:
+
+      - name: Free disk space
+        uses: descriptinc/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
       - name: Get the project repository
         uses: actions/checkout@v4
         with:
@@ -203,7 +215,7 @@ jobs:
       - name: Install Python and other packages
         run: |
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Install packages
@@ -239,14 +251,14 @@ jobs:
         if: steps.changed-files.outputs.changed-files != ''
         run: |
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Build and generate coverage (Release)
         if: steps.changed-files.outputs.changed-files != ''
         run: |
 
-          mkdir build_release
+          mkdir -p build_release/install
           cd build_release
 
           cmake .. \
@@ -256,10 +268,10 @@ jobs:
             -DCMAKE_VISIBILITY_INLINES_HIDDEN=ON \
             -DCMAKE_C_VISIBILITY_PRESET=hidden \
             -DCMAKE_CXX_VISIBILITY_PRESET=hidden \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
-            -DAIE_ENABLE_AIRBIN=OFF \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \

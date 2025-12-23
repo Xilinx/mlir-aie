@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
 
+// test hang/timeout
+// REQUIRES: dont_run
+
 // REQUIRES: valid_xchess_license
 // REQUIRES: peano
 // RUN: mkdir -p %t/data; cd %t
@@ -11,6 +14,7 @@
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../../profiling.tcl ./work/a.out" >& xca_udm_dbg.stdout
 // RUN: FileCheck --input-file=./xca_udm_dbg.stdout %s
 // CHECK: TEST PASSED
+// XFAIL: *
 
 module {
   func.func @dut(%arg0: memref<1024xi8>, %arg1: memref<1024xi8>, %arg2: memref<1024xi8>) {

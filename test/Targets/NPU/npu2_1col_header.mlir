@@ -11,7 +11,7 @@
 // RUN: aie-translate --aie-npu-to-binary -aie-output-binary=false %s | FileCheck %s
 module {
   aie.device(npu2_1col) {
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
 
       // TXN header 0.1
 

@@ -88,7 +88,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                                              DenseMap<Block *, int> blockMap) {
   StringRef enable = "XAIE_ENABLE";
   StringRef disable = "XAIE_DISABLE";
-  StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
+  StringRef deviceInstRef = "ctx->XAieDevInst";
 
   int col = memOp.colIndex();
   int row = memOp.rowIndex();
@@ -300,19 +300,18 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
   return success();
 }
 
-mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
-                                                      raw_ostream &output) {
-  //  StringRef ctx   = "ctx";                     // TODO
-  StringRef ctx_p = "aie_libxaie_ctx_t* ctx"; // TODO
-  //  StringRef deviceInst = "ctx->DevInst";       // TODO
-  StringRef deviceInstRef = "&(ctx->DevInst)"; // TODO
+mlir::LogicalResult
+xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
+                                  llvm::StringRef deviceName) {
+  StringRef ctx_p = "aie_libxaie_ctx_t* ctx";
+  StringRef deviceInstRef = "ctx->XAieDevInst";
 
   DenseMap<TileID, Operation *> tiles;
   DenseMap<Operation *, SmallVector<BufferOp, 4>> buffers;
 
-  if (module.getOps<DeviceOp>().empty())
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  if (!targetOp)
     return module.emitOpError("expected AIE.device operation at toplevel");
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
   const auto &targetModel = targetOp.getTargetModel();
 
   collectTiles(targetOp, tiles);
@@ -325,6 +324,12 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
   output << "aie_libxaie_ctx_t* mlir_aie_init_libxaie() {\n";
   output << "  aie_libxaie_ctx_t *ctx = new aie_libxaie_ctx_t;\n";
   output << "  if (!ctx)\n";
+  output << "    return 0;\n";
+  output << "  ctx->XAieConfig = new XAie_Config;\n";
+  output << "  if (!ctx->XAieConfig)\n";
+  output << "    return 0;\n";
+  output << "  ctx->XAieDevInst = new XAie_DevInst;\n";
+  output << "  if (!ctx->XAieDevInst)\n";
   output << "    return 0;\n";
   auto arch = targetModel.getTargetArch();
   std::string AIE1_device("XAIE_DEV_GEN_AIE");
@@ -344,28 +349,27 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
   default:
     return module.emitOpError("Unsupported aie.device");
   }
-  output << "  ctx->AieConfigPtr.AieGen = " << device << ";\n";
-  output << "  ctx->AieConfigPtr.BaseAddr = 0x20000000000;\n";
-  output << "  ctx->AieConfigPtr.ColShift = " << targetModel.getColumnShift()
+  output << "  ctx->XAieConfig->AieGen = " << device << ";\n";
+  output << "  ctx->XAieConfig->BaseAddr = 0x20000000000;\n";
+  output << "  ctx->XAieConfig->ColShift = " << targetModel.getColumnShift()
          << ";\n";
-  output << "  ctx->AieConfigPtr.RowShift = " << targetModel.getRowShift()
+  output << "  ctx->XAieConfig->RowShift = " << targetModel.getRowShift()
          << ";\n";
-  output << "  ctx->AieConfigPtr.NumRows = " << targetModel.rows() << ";\n";
-  output << "  ctx->AieConfigPtr.NumCols = " << targetModel.columns() << ";\n";
-  output << "  ctx->AieConfigPtr.ShimRowNum = 0;\n";
-  output << "  ctx->AieConfigPtr.MemTileRowStart = 1;\n";
-  output << "  ctx->AieConfigPtr.MemTileNumRows = "
+  output << "  ctx->XAieConfig->NumRows = " << targetModel.rows() << ";\n";
+  output << "  ctx->XAieConfig->NumCols = " << targetModel.columns() << ";\n";
+  output << "  ctx->XAieConfig->ShimRowNum = 0;\n";
+  output << "  ctx->XAieConfig->MemTileRowStart = 1;\n";
+  output << "  ctx->XAieConfig->MemTileNumRows = "
          << targetModel.getNumMemTileRows() << ";\n";
-  output << "  //  ctx->AieConfigPtr.ReservedRowStart = "
+  output << "  //  ctx->XAieConfig->ReservedRowStart = "
             "XAIE_RES_TILE_ROW_START;\n";
   output
-      << "  //  ctx->AieConfigPtr.ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;\n";
-  output << "  ctx->AieConfigPtr.AieTileRowStart = "
+      << "  //  ctx->XAieConfig->ReservedNumRows  = XAIE_RES_TILE_NUM_ROWS;\n";
+  output << "  ctx->XAieConfig->AieTileRowStart = "
          << (1 + targetModel.getNumMemTileRows()) << ";\n";
-  output << "  ctx->AieConfigPtr.AieTileNumRows = "
+  output << "  ctx->XAieConfig->AieTileNumRows = "
          << (targetModel.rows() - 1 - targetModel.getNumMemTileRows()) << ";\n";
-  output << "  ctx->AieConfigPtr.PartProp = {0};\n";
-  output << "  ctx->DevInst = {0};\n";
+  output << "  memset(ctx->XAieDevInst, 0, sizeof(XAie_DevInst));\n";
   output << "  return ctx;\n";
   output << "}\n";
   output << "\n";
@@ -392,12 +396,19 @@ mlir::LogicalResult xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module,
              << "  __mlir_aie_try(XAie_LockRelease(" << deviceInstRef << ", "
              << tileLocStr(col, row) << ", XAie_LockInit(l, 0x0), 0));\n";
       if (auto coreOp = tileOp.getCoreOp()) {
+        if (coreOp.isEmpty() && coreOp.getElfFile() == std::nullopt) {
+          // This core has no MLIR code and references no ELF file -- it is
+          // completely empty, so don't generate any code for it.
+          continue;
+        }
         std::string fileName;
-        if (auto fileAttr = coreOp.getElfFile())
+        if (auto fileAttr = coreOp.getElfFile()) {
           fileName = fileAttr.value().str();
-        else
-          fileName = std::string("core_") + std::to_string(col) + "_" +
-                     std::to_string(row) + ".elf";
+        } else {
+          return coreOp.emitOpError()
+                 << "Expected lowered ELF file to be given as attribute "
+                    "`elf_file` for this core. Compile cores first.";
+        }
         output << "{\n"
                << "AieRC RC = XAie_LoadElf(" << deviceInstRef << ", "
                << tileLocStr(col, row) << ", "

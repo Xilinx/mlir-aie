@@ -18,7 +18,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.dialects import memref
 
 
@@ -33,9 +33,6 @@ def my_vector_add():
         tensor_ty_c = np.ndarray[(N,), np.dtype[np.int32]]
         tensor_ty = np.ndarray[(N // 4,), np.dtype[np.int32]]
         tensor_ty_s = np.ndarray[(n,), np.dtype[np.int32]]
-
-        memref.global_("out", T.memref(16, T.i32()), sym_visibility="public")
-        memref.global_("in1", T.memref(16, T.i32()), sym_visibility="public")
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -114,8 +111,8 @@ def my_vector_add():
         flow(ComputeTile2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 0)
 
         # AIE-array data movement
-        shim_dma_allocation("in1", DMAChannelDir.MM2S, 0, 0)
-        shim_dma_allocation("out", DMAChannelDir.S2MM, 0, 0)
+        shim_dma_allocation("in1", ShimTile, DMAChannelDir.MM2S, 0)
+        shim_dma_allocation("out", ShimTile, DMAChannelDir.S2MM, 0)
 
         @memtile_dma(MemTile2)
         def m(block):

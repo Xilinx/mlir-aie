@@ -183,10 +183,6 @@ cmake_dependent_option(AIECC_COMPILE_WITH_XCHESSCC
 cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
   "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC" OFF)
 
-find_library(ELF_LIB elf)
-cmake_dependent_option(AIE_ENABLE_AIRBIN
-  "Enables emitting AIRBIN ELF binaries." OFF "ELF_LIB" OFF)
-
 # If we need runtime libs, then statically link them.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
@@ -285,6 +281,13 @@ if(NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
     PATTERN "CMakeFiles" EXCLUDE
     PATTERN "config.h" EXCLUDE)
 
+  include("${AIE_SOURCE_DIR}/cmake/install_headers.cmake")
+  install_headers(${CMAKE_CURRENT_SOURCE_DIR}/aie_kernels
+          ${AIE_BINARY_DIR}/include
+          ${CMAKE_INSTALL_PREFIX}/include
+          "aie_kernels"
+  )
+
   if(NOT LLVM_ENABLE_IDE)
     add_llvm_install_targets(install-aie-headers DEPENDS aie-headers COMPONENT
                              aie-headers)
@@ -296,7 +299,7 @@ endif()
 add_subdirectory(programming_examples)
 add_subdirectory(programming_guide)
 add_subdirectory(test)
-add_subdirectory(mlir_tutorials)
+add_subdirectory(mlir_exercises)
 add_subdirectory(cmake/modules)
 
 get_filename_component(COMPILER_DIRECTORY ${CMAKE_CXX_COMPILER} DIRECTORY)

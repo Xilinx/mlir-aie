@@ -60,6 +60,9 @@ jobs:
       fail-fast: false
       matrix:
         runner_type: [ amd7940hs, amdhx370 ]
+    env:
+      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,12 +81,11 @@ jobs:
       - name: Run commands
         run: |
           sudo prlimit -lunlimited --pid $$
-          pip cache purge
           source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
           pip install -r python/requirements_dev.txt
@@ -126,9 +128,20 @@ jobs:
             -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
             $CMAKE_ARGS
 
+          # Create runner-specific cache directory
+          rm -rf $IRON_CACHE_HOME
+          mkdir $IRON_CACHE_HOME
+
           ninja install
           ninja check-aie
+          ninja check-aie-concurrency
           popd
+
+      - name: Cleanup IRON_CACHE_HOME
+        if: always()
+        run: |
+          rm -rf $IRON_CACHE_HOME
+          rm -rf $PIP_CACHE_DIR
 
   build-quick-setup:
     name: Run Examples on Ryzen AI
@@ -137,6 +150,9 @@ jobs:
       fail-fast: false
       matrix:
         runner_type: [ amd7940hs, amdhx370 ]
+    env:
+      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -155,7 +171,6 @@ jobs:
       - name: Run commands
         run: |
           sudo prlimit -lunlimited --pid $$
-          pip cache purge
           source /opt/xilinx/xrt/setup.sh
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           source utils/quick_setup.sh
@@ -183,8 +198,17 @@ jobs:
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
 
+          # Create runner-specific cache directory
+          rm -rf $IRON_CACHE_HOME
+          mkdir $IRON_CACHE_HOME
+
           ninja install
           ninja check-reference-designs
           ninja check-programming-guide
-
           popd
+
+      - name: Cleanup IRON_CACHE_HOME
+        if: always()
+        run: |
+          rm -rf $IRON_CACHE_HOME
+          rm -rf $PIP_CACHE_DIR

@@ -13,6 +13,8 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test14_stream_packet {
+aie.device(xcvc1902) {
+
   %t73 = aie.tile(7, 3)
   %t72 = aie.tile(7, 2)
   %t62 = aie.tile(6, 2)
@@ -98,4 +100,5 @@ module @test14_stream_packet {
       aie.end
   }
 
+}
 }

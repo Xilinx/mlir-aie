@@ -14,10 +14,6 @@
 
 //CHECK: module @link_AIE2 {
 //CHECK:   aie.device(xcve2302) {
-//CHECK:    memref.global "public" @of2_cons : memref<16xi32>
-//CHECK:    memref.global "public" @of2 : memref<16xi32>
-//CHECK:    memref.global "public" @of1_cons : memref<16xi32>
-//CHECK:    memref.global "public" @of1 : memref<16xi32>
 //CHECK:    %{{.*}}tile_2_0 = aie.tile(2, 0)
 //CHECK:    %{{.*}}tile_1_2 = aie.tile(1, 2)
 //CHECK:    %{{.*}}tile_2_2 = aie.tile(2, 2)
@@ -40,7 +36,7 @@
 //CHECK:      aie.use_lock(%[[VAL_2]], Release, 1)
 //CHECK:      aie.end
 //CHECK:    }
-//CHECK:    aie.shim_dma_allocation @of1(MM2S, 0, 2)
+//CHECK:    aie.shim_dma_allocation @of1_shim_alloc(%shim_noc_tile_2_0, MM2S, 0)
 //CHECK:    %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 //CHECK:      %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 //CHECK:    ^bb1:
