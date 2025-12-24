@@ -36,7 +36,6 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     utils/test.py
-    utils/xrt.py
     utils/ml.py
     utils/trace.py
     utils/trace_events_enum.py
@@ -116,7 +115,6 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   declare_mlir_python_sources(AIEPythonSources.XRT
     ADD_TO_PARENT AIEPythonSources
     SOURCES
-      xrt.py
       _mlir_libs/_xrt.pyi
   )
 endif()
