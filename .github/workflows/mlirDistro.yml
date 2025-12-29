@@ -213,13 +213,15 @@ jobs:
         export APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }}
         ./scripts/apply_patches.sh
         
+        pip install --upgrade pip
+        
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
         LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
-        pip install --upgrade pip && pip wheel . -v -w wheelhouse
+        pip wheel . -v -w wheelhouse
 
     - name: Clean llvm-project
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
