@@ -53,7 +53,7 @@ def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
+    with rt.sequence(vector_type, vector_type) as (a_in, b_out):
         rt.enable_trace(trace_size)
         rt.start(my_worker)
         rt.fill(of_in.prod(), a_in)

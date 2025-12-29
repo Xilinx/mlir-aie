@@ -14,7 +14,6 @@ import aie.iron as iron
 
 def main(opts):
     in1_size = int(opts.in1_size)  # in bytes
-    in2_size = int(opts.in2_size)  # in bytes
     out_size = int(opts.out_size)  # in bytes
 
     # --------------------------------------------------------------------------
@@ -37,12 +36,9 @@ def main(opts):
     assert out_size == in1_size
 
     # Initialize data
-    in1_data = np.arange(0, in1_volume, dtype=in1_dtype)
-    in1 = iron.tensor(in1_data, dtype=in1_dtype)
+    ref = np.arange(0, in1_volume, dtype=in1_dtype)
+    in1 = iron.tensor(ref, dtype=in1_dtype)
     out = iron.zeros([out_volume], dtype=out_dtype)
-
-    # Define reference data
-    ref = in1_data
 
     # --------------------------------------------------------------------------
 
