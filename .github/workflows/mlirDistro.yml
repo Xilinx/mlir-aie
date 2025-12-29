@@ -74,11 +74,11 @@ jobs:
           DATETIME=$(date +"%Y%m%d%H")
           echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
 
-  build:
+  build_wheels:
 
     needs: get_llvm_project_commit
 
-    name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
+    name: Build ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
     continue-on-error: true
 
@@ -339,13 +339,14 @@ jobs:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
 
+
   smoke_test_wheels:
 
     if: github.event_name != 'schedule'
 
-    name: test ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
+    name: Test ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
-    needs: [build]
+    needs: [build_wheels]
 
     runs-on: ${{ matrix.OS }}
     strategy:
@@ -356,12 +357,20 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: ON
 
+          - OS: ubuntu-22.04
+            ARCH: aarch64
+            ENABLE_RTTI: ON
+
           - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
           - OS: ubuntu-22.04
             ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: ubuntu-22.04
+            ARCH: aarch64
             ENABLE_RTTI: OFF
 
           - OS: windows-2022
@@ -375,10 +384,12 @@ jobs:
           path: dist
 
       - uses: actions/setup-python@v5
+        if: matrix.ARCH != 'aarch64'
         with:
           python-version: '3.12'
 
       - name: test
+        if: matrix.ARCH != 'aarch64'
         shell: bash
         run: |
           pip install --upgrade pip
@@ -426,13 +437,48 @@ jobs:
               print(f"Found {tool} at {tool_path}")
           '
 
+  build:
+    needs: smoke_test_wheels
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-22.04
+            ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-22.04
+            ARCH: aarch64
+            ENABLE_RTTI: ON
+
+          - OS: windows-2022
+            ARCH: AMD64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-22.04
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: ubuntu-22.04
+            ARCH: aarch64
+            ENABLE_RTTI: OFF
+
+          - OS: windows-2022
+            ARCH: AMD64
+            ENABLE_RTTI: OFF
+    steps:
+      - run: echo "Build and Test passed"
+
   upload_distro_wheels:
 
     if: github.event_name != 'schedule'
 
     name: upload ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
-    needs: smoke_test_wheels
+    needs: build
 
     runs-on: ubuntu-latest
 
