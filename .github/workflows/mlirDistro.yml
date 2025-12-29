@@ -382,7 +382,6 @@ jobs:
         shell: bash
         run: |
           pip install --upgrade pip
-          pip install numpy PyYAML
           
           # Validate wheel format
           python -m zipfile -t dist/mlir*.whl
@@ -402,7 +401,6 @@ jobs:
                   }
               """)
               print(module)
-          '
           
           # Check for binaries in the installed package
           import os
