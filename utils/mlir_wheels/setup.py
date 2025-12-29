@@ -163,8 +163,6 @@ class CMakeBuild(build_ext):
         if platform.system() == "Linux":
             cmake_args += [
                 f"-DPython_INCLUDE_DIR={get_paths()['include']}",
-                "-DLLVM_USE_LINKER=lld",
-                "-DLLVM_PARALLEL_LINK_JOBS=2",
             ]
 
         cmake_args_dict = get_cross_cmake_args()

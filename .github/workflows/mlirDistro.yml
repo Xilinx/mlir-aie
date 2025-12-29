@@ -201,6 +201,7 @@ jobs:
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
         LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
+        PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir wheelhouse
 
     - name: build aarch ubuntu wheel
@@ -219,6 +220,7 @@ jobs:
         DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
         LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
+        PARALLEL_LEVEL=2 \
         pip wheel . -v -w wheelhouse
 
     - name: Clean llvm-project
