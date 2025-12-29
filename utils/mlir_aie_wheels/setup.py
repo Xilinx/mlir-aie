@@ -15,6 +15,9 @@ from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
 from setuptools.command.install import install
+import tempfile
+import zipfile
+import tarfile
 
 
 def check_env(build, default=0):
@@ -234,6 +237,114 @@ class CMakeBuild(build_ext):
             cwd=build_temp,
             check=True,
         )
+
+        self.vendor_extras(install_dir)
+
+    def vendor_extras(self, install_dir):
+        python_dir = install_dir / "python"
+        python_dir.mkdir(parents=True, exist_ok=True)
+
+        reqs_file = Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements_extras.txt"
+        versions = {}
+        with open(reqs_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and not line.startswith("-"):
+                    if "==" in line:
+                        name, ver = line.split("==", 1)
+                        versions[name] = ver
+
+        eudsl_ver = versions.get("eudsl-python-extras")
+        mlir_ver = versions.get("mlir-python-bindings")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+
+            # Download and extract mlir-python-bindings
+            if mlir_ver:
+                subprocess.check_call(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "download",
+                        f"mlir-python-bindings=={mlir_ver}",
+                        "--no-deps",
+                        "-f",
+                        "https://llvm.github.io/eudsl",
+                        "-d",
+                        str(tmp_path),
+                    ]
+                )
+
+                for archive in tmp_path.iterdir():
+                    if (
+                        archive.name.startswith("mlir_python_bindings")
+                        and archive.suffix == ".whl"
+                    ):
+                        with zipfile.ZipFile(archive, "r") as zip_ref:
+                            for member in zip_ref.namelist():
+                                if member.startswith("mlir/"):
+                                    dest_path = python_dir / member
+                                    if member.endswith("/"):
+                                        dest_path.mkdir(parents=True, exist_ok=True)
+                                    else:
+                                        dest_path.parent.mkdir(
+                                            parents=True, exist_ok=True
+                                        )
+                                        with zip_ref.open(member) as source, open(
+                                            dest_path, "wb"
+                                        ) as dest:
+                                            shutil.copyfileobj(source, dest)
+
+            # Download and install eudsl-python-extras
+            if eudsl_ver:
+                subprocess.check_call(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "download",
+                        f"eudsl-python-extras=={eudsl_ver}",
+                        "--no-deps",
+                        "-f",
+                        "https://llvm.github.io/eudsl",
+                        "--no-binary=:all:",
+                        "-d",
+                        str(tmp_path),
+                    ]
+                )
+
+                for archive in tmp_path.iterdir():
+                    if archive.name.startswith("eudsl_python_extras") and (
+                        archive.suffix == ".gz" or archive.suffix == ".tgz"
+                    ):
+                        with tarfile.open(archive, "r:gz") as tar:
+                            tar.extractall(path=tmp_path)
+                            # Find the extracted directory
+                            extracted_dir = next(
+                                p
+                                for p in tmp_path.iterdir()
+                                if p.is_dir()
+                                and p.name.startswith("eudsl_python_extras")
+                            )
+
+                            # Install using pip with env var
+                            env = os.environ.copy()
+                            env["EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX"] = "aie"
+                            subprocess.check_call(
+                                [
+                                    sys.executable,
+                                    "-m",
+                                    "pip",
+                                    "install",
+                                    str(extracted_dir),
+                                    "--target",
+                                    str(python_dir),
+                                    "--no-deps",
+                                ],
+                                env=env,
+                            )
 
 
 class DevelopWithPth(develop):
