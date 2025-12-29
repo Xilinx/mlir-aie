@@ -383,9 +383,50 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install numpy PyYAML
-          unzip -o -q dist/mlir\*.whl
           
-          PYTHONPATH=$(find . -name mlir_core) python -c 'import mlir.ir'
+          # Validate wheel format
+          python -m zipfile -t dist/mlir*.whl
+          
+          # Install the wheel
+          pip install dist/mlir*.whl
+          
+          # Functional test
+          python -c '
+          import mlir.ir
+          with mlir.ir.Context():
+              module = mlir.ir.Module.parse(r"""
+                  module {
+                      func.func @test() {
+                          return
+                      }
+                  }
+              """)
+              print(module)
+          '
+          
+          # Check for binaries in the installed package
+          import os
+          import mlir
+          mlir_path = os.path.dirname(mlir.__file__)
+          print(f"MLIR installed at: {mlir_path}")
+          
+          bin_dir = os.path.join(mlir_path, "bin")
+          if not os.path.exists(bin_dir):
+              print(f"Error: bin directory not found at {bin_dir}")
+              exit(1)
+              
+          if "${{ matrix.OS }}" == "windows-2022":
+              exe_suffix = ".exe"
+          else:
+              exe_suffix = ""
+              
+          for tool in ["mlir-opt", "mlir-translate"]:
+              tool_path = os.path.join(bin_dir, tool + exe_suffix)
+              if not os.path.exists(tool_path):
+                  print(f"Error: {tool} not found at {tool_path}")
+                  exit(1)
+              print(f"Found {tool} at {tool_path}")
+          '
 
   upload_distro_wheels:
 
@@ -446,5 +487,5 @@ jobs:
           name: ${{ github.event_name == 'workflow_dispatch' && 'mlir-distro' || 'dev-wheels' }}
           removeArtifacts: false
           allowUpdates: true
-          replacesArtifacts: true
+          replacesArtifacts: false
           makeLatest: false
