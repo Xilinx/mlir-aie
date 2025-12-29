@@ -74,7 +74,7 @@ runs:
 
     - name: Install cross-compilation toolchain
       shell: bash
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-22.04' && inputs.MATRIX_ARCH == 'aarch64' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' && inputs.MATRIX_ARCH == 'aarch64' }}
       run: |
         
         sudo apt-get update
@@ -86,7 +86,7 @@ runs:
       run: pip install cibuildwheel wheel
 
     - name: install rename
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-22.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
       run: |
         
@@ -107,7 +107,7 @@ runs:
       shell: pwsh
 
     - run: echo "TEMP=/tmp" >> $GITHUB_ENV
-      if: ${{ inputs.MATRIX_OS == 'ubuntu-22.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
+      if: ${{ inputs.MATRIX_OS == 'ubuntu-24.04' || inputs.MATRIX_OS == 'macos-12' || inputs.MATRIX_OS == 'macos-14' }}
       shell: bash
 
     - name: Set workspace root

@@ -88,11 +88,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
@@ -100,11 +100,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
@@ -189,7 +189,7 @@ jobs:
     # build
 
     - name: cibuildwheel
-      if: ${{ matrix.OS != 'ubuntu-22.04' || matrix.ARCH != 'aarch64' }}
+      if: ${{ matrix.OS != 'ubuntu-24.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
@@ -205,7 +205,7 @@ jobs:
         cibuildwheel --output-dir wheelhouse
 
     - name: build aarch ubuntu wheel
-      if: ${{ matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'aarch64' }}
+      if: ${{ matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'aarch64' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -249,7 +249,7 @@ jobs:
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
-      if: (matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      if: (matrix.OS == 'ubuntu-24.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -279,14 +279,14 @@ jobs:
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
     # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
     - name: rename non-windows
-      if: ${{ matrix.OS == 'ubuntu-22.04' }}
+      if: ${{ matrix.OS == 'ubuntu-24.04' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
         
         rename 's/cp312-cp312/py3-none/' wheelhouse/mlir*whl
         
-        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
+        if [ x"${{ matrix.OS }}" == x"ubuntu-24.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
           rename 's/x86_64/aarch64/' wheelhouse/mlir*whl
         fi
 
@@ -316,7 +316,7 @@ jobs:
           unzip -j wheelhouse/mlir*whl "mlir/bin/$TOOL" -d native_tools/
         done
         
-        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ]; then
+        if [ x"${{ matrix.OS }}" == x"ubuntu-24.04" ]; then
           PLAT="linux"
         elif [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           PLAT="win"
@@ -352,7 +352,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
@@ -360,7 +360,7 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
@@ -442,11 +442,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
@@ -454,11 +454,11 @@ jobs:
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-22.04
+          - OS: ubuntu-24.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
