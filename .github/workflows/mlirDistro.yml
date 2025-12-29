@@ -219,7 +219,7 @@ jobs:
         LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
-        pip wheel . -v -w wheelhouse
+        pip install --upgrade pip && pip wheel . -v -w wheelhouse
 
     - name: Clean llvm-project
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
@@ -241,6 +241,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
+        pip install --upgrade pip
         pip install pkginfo
         WHL=$(ls wheelhouse/mlir*whl)
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
@@ -303,6 +304,7 @@ jobs:
       shell: bash
       id: build_native_tools_wheel
       run: |
+        pip install --upgrade pip
         pip install setuptools
 
         for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "llvm-config" "FileCheck"; do
@@ -377,6 +379,7 @@ jobs:
       - name: test
         shell: bash
         run: |
+          pip install --upgrade pip
           pip install numpy PyYAML
           unzip -o -q dist/mlir\*.whl
           
