@@ -18,11 +18,11 @@ from .tensor import XRTTensor
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
 class XRTKernelHandle(KernelHandle):
-    def __init__(self, kernel, xclbin, context, insts_path):
+    def __init__(self, kernel, xclbin, context, insts):
         self.kernel = kernel
         self.xclbin = xclbin
         self.context = context
-        self.insts_path = insts_path
+        self.insts = insts
 
 
 class XRTKernelResult(KernelResult):
@@ -116,12 +116,13 @@ class XRTHostRuntime(HostRuntime):
                     f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
                 )
 
+        insts = self.read_insts(insts_path)
         if isinstance(insts, pyxrt.module):
             kernel = pyxrt.ext.kernel(context, insts, kernel_name)
         else:
             kernel = pyxrt.kernel(context, kernel_name)
 
-        kernel_handle = XRTKernelHandle(kernel, xclbin, context, insts_path)
+        kernel_handle = XRTKernelHandle(kernel, xclbin, context, insts)
         return kernel_handle
 
     def run(
@@ -139,16 +140,14 @@ class XRTHostRuntime(HostRuntime):
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
 
-        # TODO: something about insts?
-        insts = self.read_insts(kernel_handle.insts_path)
-        insts_bytes = insts.nbytes
+        insts_bytes = kernel_handle.insts.nbytes
         insts_bo = pyxrt.bo(
             self._device,
             insts_bytes,
             pyxrt.bo.cacheable,
             kernel_handle.kernel.group_id(1),
         )
-        insts_bo.write(insts.view(np.uint8), 0)
+        insts_bo.write(kernel_handle.insts.view(np.uint8), 0)
         insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
         start = time.time_ns()
@@ -162,7 +161,7 @@ class XRTHostRuntime(HostRuntime):
         # delete insts buffer
         del insts_bo
 
-        return XRTKernelResult(r, stop - start, None)
+        return XRTKernelResult(r, stop - start)
 
     def device(self) -> Device:
         # return an instance of the device type

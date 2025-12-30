@@ -40,13 +40,7 @@ class TraceConfig:
 class KernelHandle(ABC):
     """KernelHandles may be used a cache keys, and so should implement these methods."""
 
-    @abstractmethod
-    def __hash__(self):
-        pass
-
-    @abstractmethod
-    def __eq__(self, other):
-        pass
+    ...
 
 
 class KernelResult(ABC):
@@ -56,11 +50,9 @@ class KernelResult(ABC):
         self,
         npu_time: int,
         trace_config: TraceConfig | None = None,
-        tensors: list[Tensor] | None = None,
     ):
         self._npu_time = npu_time
         self._trace_config = trace_config
-        self._tensors = tensors
 
     @property
     def npu_time(self) -> int:
@@ -103,16 +95,6 @@ class HostRuntime(ABC):
 
     @abstractmethod
     def device(self) -> Device:
-        pass
-
-    @abstractmethod
-    def cleanup(self):
-        """Clean up all resources"""
-        pass
-
-    @abstractmethod
-    def reset(self):
-        """Reset the runtime"""
         pass
 
     @classmethod
