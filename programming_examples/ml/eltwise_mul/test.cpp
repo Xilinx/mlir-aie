@@ -40,9 +40,12 @@ int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
   for (uint32_t i = 0; i < size; i++) {
     T ref = A[i] * B[i];
     if (!test_utils::nearly_equal(ref, C[i], 0.00390625)) {
-      if (errors < 10) {
+      if (errors < 100) {
         std::cout << "Error in output " << C[i] << " != " << ref << " from "
                   << A[i] << " * " << B[i] << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
       }
       errors++;
     } else {

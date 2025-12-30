@@ -140,12 +140,14 @@ int main(int argc, const char *argv[]) {
 
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
     if (*(bufOut + i) != *(bufInA + i) % *(bufInB + i)) {
-      std::cout << "Error in output " << *(bufOut + i)
-                << " != " << *(bufInA + i) << " + " << *(bufInB + i)
-                << std::endl;
+      if (verbosity >= 1) {
+        std::cout << "Error in output " << *(bufOut + i)
+                  << " != " << *(bufInA + i) << " + " << *(bufInB + i)
+                  << std::endl;
+      }
       errors++;
     } else {
-      if (verbosity > 1)
+      if (verbosity >= 1)
         std::cout << "Correct output " << *(bufOut + i)
                   << " == " << *(bufInA + i) + *(bufInB + i) << std::endl;
     }
