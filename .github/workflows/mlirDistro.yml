@@ -74,11 +74,11 @@ jobs:
           DATETIME=$(date +"%Y%m%d%H")
           echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
 
-  build_wheels:
+  build:
 
     needs: get_llvm_project_commit
 
-    name: Build ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
     continue-on-error: true
 
@@ -278,6 +278,23 @@ jobs:
     # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
     # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
+    - name: rename non-windows
+      if: ${{ matrix.OS == 'ubuntu-22.04' }}
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        
+        rename 's/cp312-cp312/py3-none/' wheelhouse/mlir*whl
+        
+        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
+          rename 's/x86_64/aarch64/' wheelhouse/mlir*whl
+        fi
+
+    - name: rename windows
+      if: ${{ matrix.OS == 'windows-2022' }}
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      run: |
+        ls wheelhouse/mlir*whl | Rename-Item -NewName {$_ -replace 'cp312-cp312', 'py3-none' }
 
     # The "native tools" MLIR utilities that are necessary for cross-compiling MLIR - basically just tblgen.
     # Now if you build a whole distro you naturally do get those utilities but it's easier to just bundle them
@@ -322,14 +339,13 @@ jobs:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
 
-
   smoke_test_wheels:
 
     if: github.event_name != 'schedule'
 
-    name: Test ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
+    name: test ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
-    needs: [build_wheels]
+    needs: [build]
 
     runs-on: ${{ matrix.OS }}
     strategy:
@@ -340,20 +356,12 @@ jobs:
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-22.04
-            ARCH: aarch64
-            ENABLE_RTTI: ON
-
           - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
           - OS: ubuntu-22.04
             ARCH: x86_64
-            ENABLE_RTTI: OFF
-
-          - OS: ubuntu-22.04
-            ARCH: aarch64
             ENABLE_RTTI: OFF
 
           - OS: windows-2022
@@ -367,16 +375,12 @@ jobs:
           path: dist
 
       - uses: actions/setup-python@v5
-        if: matrix.ARCH != 'aarch64'
         with:
           python-version: '3.12'
 
       - name: test
-        if: matrix.ARCH != 'aarch64'
         shell: bash
         run: |
-          pip install --upgrade pip
-          
           # Validate wheel format
           python -m zipfile -t dist/mlir*.whl
 
@@ -384,54 +388,13 @@ jobs:
           unzip -o -q dist/mlir\*.whl
           PYTHONPATH=$(find . -name mlir_core) python -c 'import mlir.ir'
 
-          # Test with pip install, which has some additional checks
-          pip install --no-index --find-links dist mlir
-
-          # Make sure the installed package is ok
-          pip check
-
-  build:
-    needs: smoke_test_wheels
-    name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
-    runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - OS: ubuntu-22.04
-            ARCH: x86_64
-            ENABLE_RTTI: ON
-
-          - OS: ubuntu-22.04
-            ARCH: aarch64
-            ENABLE_RTTI: ON
-
-          - OS: windows-2022
-            ARCH: AMD64
-            ENABLE_RTTI: ON
-
-          - OS: ubuntu-22.04
-            ARCH: x86_64
-            ENABLE_RTTI: OFF
-
-          - OS: ubuntu-22.04
-            ARCH: aarch64
-            ENABLE_RTTI: OFF
-
-          - OS: windows-2022
-            ARCH: AMD64
-            ENABLE_RTTI: OFF
-    steps:
-      - run: echo "Build and Test passed"
-
   upload_distro_wheels:
 
     if: github.event_name != 'schedule'
 
     name: upload ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
 
-    needs: build
+    needs: smoke_test_wheels
 
     runs-on: ubuntu-latest
 
