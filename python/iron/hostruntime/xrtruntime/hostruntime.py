@@ -140,15 +140,19 @@ class XRTHostRuntime(HostRuntime):
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
 
-        insts_bytes = kernel_handle.insts.nbytes
-        insts_bo = pyxrt.bo(
-            self._device,
-            insts_bytes,
-            pyxrt.bo.cacheable,
-            kernel_handle.kernel.group_id(1),
-        )
-        insts_bo.write(kernel_handle.insts.view(np.uint8), 0)
-        insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+        # TODO: use tensor?
+        insts_bo = None
+        insts_bytes = 0
+        if not isinstance(insts, pyxrt.module):
+            insts_bytes = kernel_handle.insts.nbytes
+            insts_bo = pyxrt.bo(
+                self._device,
+                insts_bytes,
+                pyxrt.bo.cacheable,
+                kernel_handle.kernel.group_id(1),
+            )
+            insts_bo.write(kernel_handle.insts.view(np.uint8), 0)
+            insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
         start = time.time_ns()
         h = kernel_handle.kernel(3, insts_bo, insts_bytes, *buffers)
@@ -159,7 +163,8 @@ class XRTHostRuntime(HostRuntime):
             raise HostRuntimeError(f"Kernel returned {str(r)}")
 
         # delete insts buffer
-        del insts_bo
+        if insts_bo:
+            del insts_bo
 
         return XRTKernelResult(r, stop - start)
 
