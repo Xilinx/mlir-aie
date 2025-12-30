@@ -12,24 +12,6 @@ from .. import DEFAULT_IRON_RUNTIME
 from ..hostruntime import HostRuntime, TraceConfig
 
 
-# checks # of bits. Odd number returns a 1. Even returns 0.
-def parity(x):
-    return x.bit_count() & 1
-
-
-# create control packet
-def create_ctrl_pkt(
-    operation,
-    beats,
-    addr,
-    ctrl_pkt_read_id=28,  # global id used for all ctrl packet reads
-    # WARNING: this needs to match the packet id used in packetflow/.py
-):
-    header = (ctrl_pkt_read_id << 24) | (operation << 22) | (beats << 20) | addr
-    header |= (0x1 ^ parity(header)) << 31
-    return header
-
-
 def extract_tile(data):
     col = (data >> 21) & 0x7F
     row = (data >> 16) & 0x1F
@@ -83,7 +65,9 @@ def setup_and_run_aie(
         )
         HostRuntime.prepare_args_for_trace(buffers, trace_config)
 
+    # [b.to("npu") for b in buffers]
     ret = DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
+    # [b.to("cpu") for b in buffers]
 
     if opts.verbosity >= 1:
         print("npu_time: ", ret.npu_time / 1000.0, " us")
@@ -95,7 +79,7 @@ def setup_and_run_aie(
             buffers, trace_config
         )
 
-    output_data = [o.numpy() for o in outputs]
+    output_data = [b.numpy() for b in buffers[len(inputs) : len(inputs) + len(outputs)]]
 
     if trace_config:
         if opts.verbosity >= 1:

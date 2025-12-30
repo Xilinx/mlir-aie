@@ -9,6 +9,24 @@ from ..device import Device
 from .tensor_class import Tensor
 
 
+# checks # of bits. Odd number returns a 1. Even returns 0.
+def parity(x):
+    return x.bit_count() & 1
+
+
+# create control packet
+def create_ctrl_pkt(
+    operation,
+    beats,
+    addr,
+    ctrl_pkt_read_id=28,  # global id used for all ctrl packet reads
+    # WARNING: this needs to match the packet id used in packetflow/.py
+):
+    header = (ctrl_pkt_read_id << 24) | (operation << 22) | (beats << 20) | addr
+    header |= (0x1 ^ parity(header)) << 31
+    return header
+
+
 class HostRuntimeError(Exception):
     """
     Error raised when a NPU kernel encounters an error during runtime operations.
@@ -148,10 +166,26 @@ class HostRuntime(ABC):
                 out = tensor(out_size, dtype=np.uint8)
                 args.append(out)
         else:
-            while len(args) < trace_config.DEFAULT_TRACE_BUFFER_INDEX:
+            pad_until = trace_config.DEFAULT_TRACE_BUFFER_INDEX
+            if trace_config.enable_ctrl_pkts:
+                pad_until -= 1
+            while len(args) < pad_until:
                 # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
                 filler = tensor((1,), dtype=np.uint32)
                 args.append(filler)
+
+            if trace_config.enable_ctrl_pkts:
+                # write ctrl packets
+                header = tensor(
+                    np.array(
+                        [
+                            create_ctrl_pkt(1, 0, 0x32004),  # core status
+                            create_ctrl_pkt(1, 0, 0x340D8),  # trace status
+                        ],
+                        dtype=np.uint32,
+                    )
+                )
+                args.append(header)
 
             trace_buff = tensor((trace_config.trace_size,), dtype=np.uint8)
             args.append(trace_buff)
@@ -170,7 +204,7 @@ class HostRuntime(ABC):
             )
         else:
             # The trace position is always last.
-            trace_buff = args.pop(-1).numpy()
+            trace_buff = args[-1].numpy()
 
         if trace_config.enable_ctrl_pkts:
             trace_buff, ctrl_buff = cls._extract_prefix(
