@@ -143,7 +143,7 @@ class XRTHostRuntime(HostRuntime):
         # TODO: use tensor?
         insts_bo = None
         insts_bytes = 0
-        if not isinstance(insts, pyxrt.module):
+        if not isinstance(kernel_handle.insts, pyxrt.module):
             insts_bytes = kernel_handle.insts.nbytes
             insts_bo = pyxrt.bo(
                 self._device,
