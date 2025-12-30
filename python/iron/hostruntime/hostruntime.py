@@ -161,19 +161,17 @@ class HostRuntime(ABC):
             if len(args) > 0:
                 out_size += args[-1].nbytes
                 # TODO(erika): should really copy previous contents of output into this buffer...? What if it's in/out?
-                args[-1] = tensor(out_size, dtype=np.uint8, device="npu")
+                args[-1] = tensor(out_size, dtype=np.uint8)
             else:
-                out = tensor(out_size, dtype=np.uint8, device="npu")
+                out = tensor(out_size, dtype=np.uint8)
                 args.append(out)
         else:
             while len(args) < trace_config.DEFAULT_TRACE_BUFFER_INDEX:
                 # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
-                filler = tensor((1,), dtype=np.uint32, device="npu")
+                filler = tensor((1,), dtype=np.uint32)
                 args.append(filler)
 
-            trace_buff = tensor(
-                (trace_config.trace_size,), dtype=np.uint8, device="npu"
-            )
+            trace_buff = tensor((trace_config.trace_size,), dtype=np.uint8)
             args.append(trace_buff)
         return args
 
