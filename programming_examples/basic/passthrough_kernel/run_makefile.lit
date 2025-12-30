@@ -1,7 +1,7 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai_npu1, peano, xrt_python_bindings
+// REQUIRES: ryzen_ai_npu1, peano
 //
 // RUN: mkdir -p test
 // RUN: cd test

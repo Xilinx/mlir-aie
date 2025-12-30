@@ -1,7 +1,7 @@
 // (c) Copyright 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai_npu2, chess, torch, xrt_python_bindings
+// REQUIRES: ryzen_ai_npu2, chess, torch
 //
 // RUN: mkdir -p test_strix_chess
 // RUN: cd test_strix_chess
