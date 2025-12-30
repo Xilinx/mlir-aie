@@ -275,27 +275,6 @@ jobs:
         # Set the timestamp to the beginning of the current hour.
         find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
 
-    # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
-    # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
-    # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
-    - name: rename non-windows
-      if: ${{ matrix.OS == 'ubuntu-22.04' }}
-      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
-      shell: bash
-      run: |
-        
-        rename 's/cp312-cp312/py3-none/' wheelhouse/mlir*whl
-        
-        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
-          rename 's/x86_64/aarch64/' wheelhouse/mlir*whl
-        fi
-
-    - name: rename windows
-      if: ${{ matrix.OS == 'windows-2022' }}
-      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
-      run: |
-        ls wheelhouse/mlir*whl | Rename-Item -NewName {$_ -replace 'cp312-cp312', 'py3-none' }
-
     # The "native tools" MLIR utilities that are necessary for cross-compiling MLIR - basically just tblgen.
     # Now if you build a whole distro you naturally do get those utilities but it's easier to just bundle them
     # together here and now and make them also available as a separate, much lighter wheel,
