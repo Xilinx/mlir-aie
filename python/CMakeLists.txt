@@ -115,6 +115,7 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   declare_mlir_python_sources(AIEPythonSources.XRT
     ADD_TO_PARENT AIEPythonSources
     SOURCES
+      xrt.py
       _mlir_libs/_xrt.pyi
   )
 endif()
