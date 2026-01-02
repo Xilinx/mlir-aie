@@ -222,7 +222,7 @@ def main(opts):
         HostRuntime.prepare_args_for_trace(buffers, trace_config)
     for i in range(num_iter):
 
-        npu_time = iron.hostruntime.DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
+        ret = iron.hostruntime.DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
 
         trace_buffer = None
         if trace_config:
@@ -232,7 +232,7 @@ def main(opts):
 
         data_buffer = out.numpy()
         scaled_data_buffer = data_buffer * int8_scale
-        npu_time_total = npu_time_total + npu_time
+        npu_time_total = npu_time_total + ret.npu_time
 
     # ------------------------------------------------------
     # Reorder output data-layout
