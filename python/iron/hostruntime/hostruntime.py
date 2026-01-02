@@ -161,9 +161,9 @@ class HostRuntime(ABC):
             if len(args) > 0:
                 out_size += args[-1].nbytes
                 # TODO(erika): should really copy previous contents of output into this buffer...? What if it's in/out?
-                args[-1] = tensor(out_size, dtype=np.uint8)
+                args[-1] = tensor((out_size,), dtype=np.uint8)
             else:
-                out = tensor(out_size, dtype=np.uint8)
+                out = tensor((out_size,), dtype=np.uint8)
                 args.append(out)
         else:
             pad_until = trace_config.DEFAULT_TRACE_BUFFER_INDEX
@@ -223,7 +223,7 @@ class HostRuntime(ABC):
         flat_tensor = tensor.reshape((-1,)).view(np.uint8)
         prefix_bytes = np.prod(prefix_shape) * prefix_dtype.itemsize
         output_prefix = (
-            flat_tensor[:prefix_bytes].view(prefix_dtype).reshape(prefix_shape)
+            flat_tensor[:prefix_bytes].view(prefix_dtype).reshape(prefix_shape).copy()
         )
-        output_suffix = flat_tensor[-prefix_bytes:]
+        output_suffix = flat_tensor[prefix_bytes:].copy()
         return output_prefix, output_suffix

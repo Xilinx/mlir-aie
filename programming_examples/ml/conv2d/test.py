@@ -117,33 +117,38 @@ def main(opts):
     total_wts = np.concatenate((wts1), axis=None)
     total_wts.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
 
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(total_wts, dtype=dtype_wts)
+    out_size = np.prod(shape_out) * dtype_out.itemsize
+    out = iron.zeros(out_size, dtype=dtype_out)
+
+    buffers = [in1, in2, out]
+
+    trace_config = None
+    if enable_trace:
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_after_last_tensor=True,
+            enable_ctrl_pkts=False,
+            last_tensor_shape=out.shape,
+            last_tensor_dtype=out.dtype,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
+
     # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
     for i in range(num_iter):
-        in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-        in2 = iron.tensor(total_wts, dtype=dtype_wts)
-        out_size = np.prod(shape_out) * dtype_out.itemsize
-        out = iron.zeros(out_size, dtype=dtype_out)
-
-        buffers = [in1, in2, out]
-
-        trace_config = None
-        if enable_trace:
-            trace_config = TraceConfig(
-                trace_size=trace_size,
-                trace_after_last_tensor=True,
-                enable_ctrl_pkts=False,
-                last_tensor_shape=out.shape,
-                last_tensor_dtype=out.dtype,
-            )
-            HostRuntime.prepare_args_for_trace(buffers, trace_config)
         ret = iron.hostruntime.DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
-        if trace_config:
+        if enable_trace:
             trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
             trace_buffer = trace_buffer.view(np.uint32)
             write_out_trace(trace_buffer, trace_file)
-        data_buffer = out.numpy() * int8_scale
+
+        out_tensor = buffers[-1]
+        if not isinstance(out_tensor, np.ndarray):
+            out_tensor = out_tensor.numpy()
+        data_buffer = out_tensor * int8_scale
         npu_time_total = npu_time_total + ret.npu_time
 
     # ------------------------------------------------------
