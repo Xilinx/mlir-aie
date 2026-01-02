@@ -361,10 +361,14 @@ jobs:
         shell: bash
         run: |
           # Validate wheel format
-          python -m zipfile -t dist/mlir*.whl
+          for w in dist/mlir*.whl; do
+            python -m zipfile -t "$w"
+          done
 
           # Unpack zip file and add contents to python path
-          unzip -o -q dist/mlir\*.whl
+          for w in dist/mlir*.whl; do
+            unzip -o -q "$w"
+          done
           PYTHONPATH=$(find . -name mlir_core) python -c 'import mlir.ir'
 
   upload_distro_wheels:
