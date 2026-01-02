@@ -13,7 +13,6 @@ from aie.utils.ml import DataShaper
 import time
 import os
 import numpy as np
-from aie.iron.hostruntime.xrtruntime.xrt import write_out_trace
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.iron.hostruntime import TraceConfig, HostRuntime
@@ -128,6 +127,7 @@ def main(opts):
     if enable_trace:
         trace_config = TraceConfig(
             trace_size=trace_size,
+            trace_file=trace_file,
             trace_after_last_tensor=True,
             enable_ctrl_pkts=False,
             last_tensor_shape=out.shape,
@@ -143,7 +143,7 @@ def main(opts):
         if enable_trace:
             trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
             trace_buffer = trace_buffer.view(np.uint32)
-            write_out_trace(trace_buffer, trace_file)
+            trace_config.write_trace(trace_buffer)
 
         out_tensor = buffers[-1]
         if not isinstance(out_tensor, np.ndarray):

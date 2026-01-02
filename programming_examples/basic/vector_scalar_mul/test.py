@@ -51,14 +51,15 @@ def main(opts):
 
     # --------------------------------------------------------------------------
 
-    if opts.trace_config:
-        opts.trace_config.enable_ctrl_pkts = True
+    npu_opts = test_utils.namespace_to_options(opts)
+    if npu_opts.trace_config:
+        npu_opts.trace_config.enable_ctrl_pkts = True
 
     print("Running...\n")
     res = xrt_utils.setup_and_run_aie(
         [in1, in2, out],
         [(2, ref)],
-        test_utils.namespace_to_options(opts),
+        npu_opts,
     )
     if res == 0:
         print("\nPASS!\n")

@@ -82,17 +82,18 @@ def main(opts):
 
     opts.trace_size = IN_OUT_SIZE * 4
 
+    npu_opts = test_utils.namespace_to_options(opts)
     if xrt_utils.setup_and_run_aie(
         [in1, in2, out],
         [(2, ref_data)],
-        test_utils.namespace_to_options(opts),
+        npu_opts,
     ):
         print("Failed.")
         return 1
     errors = 0
 
     # Read trace from file
-    trace_buffer = opts.trace_config.read_trace()
+    trace_buffer = npu_opts.trace_config.read_trace()
 
     if opts.verbosity >= 1:
         print(f"Trace buffer shape: {trace_buffer.shape}")
