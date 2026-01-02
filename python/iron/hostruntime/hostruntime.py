@@ -41,6 +41,7 @@ class TraceConfig:
     def __init__(
         self,
         trace_size: int,
+        trace_file: str = "trace.txt",
         trace_after_last_tensor: bool = False,
         enable_ctrl_pkts: bool = False,
         last_tensor_shape=None,
@@ -49,6 +50,7 @@ class TraceConfig:
         if trace_size <= 0:
             raise HostRuntimeError(f"Invalid trace size: {trace_size}")
         self.trace_size = trace_size
+        self.trace_file = trace_file
         self.trace_after_last_tensor = trace_after_last_tensor
         self.enable_ctrl_pkts = enable_ctrl_pkts
         self.last_tensor_shape = last_tensor_shape

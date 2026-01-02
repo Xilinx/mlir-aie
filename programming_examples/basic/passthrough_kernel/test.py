@@ -46,7 +46,7 @@ def main(opts):
     res = xrt_utils.setup_and_run_aie(
         [in1, out],
         [(1, ref)],
-        opts,
+        test_utils.namespace_to_options(opts),
     )
     if res == 0:
         print("\nPASS!\n")

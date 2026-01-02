@@ -6,6 +6,23 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import argparse
+from aie.iron.hostruntime import TraceConfig
+
+
+class NPURuntimeOptions:
+    def __init__(
+        self,
+        xclbin,
+        instr,
+        trace_config=None,
+        verbosity=0,
+        verify=True,
+    ):
+        self.xclbin = xclbin
+        self.instr = instr
+        self.trace_config = trace_config
+        self.verbosity = verbosity
+        self.verify = verify
 
 
 # Add default args to standard parser object
@@ -87,10 +104,43 @@ def create_default_argparser():
         default=0,
         help="Output buffer size in bytes",
     )
+    p.add_argument(
+        "--trace-after-output",
+        dest="trace_after_output",
+        action="store_true",
+        help="Trace after output",
+    )
+    p.add_argument(
+        "--enable-ctrl-pkts",
+        dest="enable_ctrl_pkts",
+        action="store_true",
+        help="Enable control packets",
+    )
     return p
+
+
+def namespace_to_options(opts):
+    trace_config = None
+    trace_size = getattr(opts, "trace_size", 0)
+    if trace_size > 0:
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_file=getattr(opts, "trace_file", "trace.txt"),
+            trace_after_last_tensor=getattr(opts, "trace_after_output", False),
+            enable_ctrl_pkts=getattr(opts, "enable_ctrl_pkts", False),
+        )
+
+    return NPURuntimeOptions(
+        xclbin=opts.xclbin,
+        instr=opts.instr,
+        trace_config=trace_config,
+        verbosity=getattr(opts, "verbosity", 0),
+        verify=getattr(opts, "verify", True),
+    )
 
 
 # options
 def parse_args(args):
     p = create_default_argparser()
-    return p.parse_args(args)
+    opts = p.parse_args(args)
+    return namespace_to_options(opts)

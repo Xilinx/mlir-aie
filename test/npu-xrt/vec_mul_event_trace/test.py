@@ -85,7 +85,7 @@ def main(opts):
     if xrt_utils.setup_and_run_aie(
         [in1, in2, out],
         [(2, ref_data)],
-        opts,
+        test_utils.namespace_to_options(opts),
     ):
         print("Failed.")
         return 1

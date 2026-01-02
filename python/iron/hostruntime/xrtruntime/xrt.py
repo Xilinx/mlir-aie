@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+import argparse
 import numpy as np
 from pathlib import Path
 from .tensor import XRTTensor
@@ -37,10 +38,13 @@ def write_out_trace(trace, file_name):
 def setup_and_run_aie(
     io_args,
     ref,
-    opts,
-    trace_after_output=False,
-    enable_ctrl_pkts=False,
+    opts=None,
 ):
+    if opts is None:
+        from aie.utils import test as test_utils
+
+        opts = test_utils.parse_args(None)
+
     kernel_handle = DEFAULT_IRON_RUNTIME.load(Path(opts.xclbin), Path(opts.instr))
 
     # Ensure io_args is a list
@@ -49,17 +53,13 @@ def setup_and_run_aie(
 
     buffers = io_args
 
-    trace_config = None
+    trace_config = opts.trace_config
     last_out = buffers[-1] if buffers else None
 
-    if opts.trace_size > 0:
-        trace_config = TraceConfig(
-            trace_size=opts.trace_size,
-            trace_after_last_tensor=trace_after_output,
-            enable_ctrl_pkts=enable_ctrl_pkts,
-            last_tensor_shape=last_out.shape if last_out else None,
-            last_tensor_dtype=last_out.dtype if last_out else None,
-        )
+    if trace_config:
+        trace_config.last_tensor_shape = last_out.shape if last_out else None
+        trace_config.last_tensor_dtype = last_out.dtype if last_out else None
+
         HostRuntime.prepare_args_for_trace(buffers, trace_config)
 
     # [b.to("npu") for b in buffers]
@@ -80,9 +80,9 @@ def setup_and_run_aie(
         if opts.verbosity >= 1:
             print("trace_buffer shape: ", trace_buffer.shape)
             print("trace_buffer dtype: ", trace_buffer.dtype)
-        write_out_trace(trace_buffer, str(opts.trace_file))
+        write_out_trace(trace_buffer, str(trace_config.trace_file))
 
-        if enable_ctrl_pkts:
+        if trace_config.enable_ctrl_pkts:
             if opts.verbosity >= 1:
                 print("ctrl_buffer shape: ", ctrl_buffer.shape)
                 print("ctrl_buffer dtype: ", ctrl_buffer.dtype)

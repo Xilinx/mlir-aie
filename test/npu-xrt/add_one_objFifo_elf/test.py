@@ -33,7 +33,7 @@ def main(opts):
     if not xrt_utils.setup_and_run_aie(
         [inA, inB, out],
         [(2, ref_data)],
-        opts,
+        test_utils.namespace_to_options(opts),
     ):
         print("PASS!")
     else:
