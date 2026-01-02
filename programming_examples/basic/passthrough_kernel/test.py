@@ -44,9 +44,8 @@ def main(opts):
 
     print("Running...\n")
     res = xrt_utils.setup_and_run_aie(
-        [in1],
-        [out],
-        ref,
+        [in1, out],
+        [(1, ref)],
         opts,
     )
     if res == 0:

@@ -53,9 +53,8 @@ def main(opts):
 
     print("Running...\n")
     res = xrt_utils.setup_and_run_aie(
-        [in1, in2],
-        [out],
-        ref,
+        [in1, in2, out],
+        [(2, ref)],
         opts,
         enable_ctrl_pkts=True,
     )

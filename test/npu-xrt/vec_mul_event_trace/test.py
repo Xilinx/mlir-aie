@@ -83,9 +83,8 @@ def main(opts):
     opts.trace_size = IN_OUT_SIZE * 4
 
     if xrt_utils.setup_and_run_aie(
-        [in1, in2],
-        [out],
-        ref_data,
+        [in1, in2, out],
+        [(2, ref_data)],
         opts,
     ):
         print("Failed.")

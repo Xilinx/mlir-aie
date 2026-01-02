@@ -35,8 +35,7 @@ def write_out_trace(trace, file_name):
 # to compare it against. Trace buffers is also written out to a text file if trace is
 # enabled.
 def setup_and_run_aie(
-    inputs,
-    outputs,
+    io_args,
     ref,
     opts,
     trace_after_output=False,
@@ -44,16 +43,14 @@ def setup_and_run_aie(
 ):
     kernel_handle = DEFAULT_IRON_RUNTIME.load(Path(opts.xclbin), Path(opts.instr))
 
-    # Ensure inputs and outputs are lists
-    if not isinstance(inputs, list):
-        inputs = [inputs] if inputs else []
-    if not isinstance(outputs, list):
-        outputs = [outputs] if outputs else []
+    # Ensure io_args is a list
+    if not isinstance(io_args, list):
+        io_args = [io_args] if io_args else []
 
-    buffers = inputs + outputs
+    buffers = io_args
 
     trace_config = None
-    last_out = outputs[-1] if outputs else None
+    last_out = buffers[-1] if buffers else None
 
     if opts.trace_size > 0:
         trace_config = TraceConfig(
@@ -78,8 +75,6 @@ def setup_and_run_aie(
         trace_buffer, ctrl_buffer = HostRuntime.extract_trace_from_args(
             buffers, trace_config
         )
-
-    output_data = [b.numpy() for b in buffers[len(inputs) : len(inputs) + len(outputs)]]
 
     if trace_config:
         if opts.verbosity >= 1:
@@ -110,15 +105,20 @@ def setup_and_run_aie(
         if not isinstance(ref, list):
             ref = [ref]
 
-        if len(ref) != len(output_data):
-            print(
-                f"Error: Number of reference outputs ({len(ref)}) does not match number of actual outputs ({len(output_data)})"
-            )
-            return 1
-
-        for r, o in zip(ref, output_data):
-            e = np.equal(r, o)
-            errors += np.size(e) - np.count_nonzero(e)
+        for item in ref:
+            if isinstance(item, tuple) and len(item) == 2:
+                idx, r = item
+                if idx >= len(buffers):
+                    print(
+                        f"Error: Reference index {idx} out of bounds for {len(buffers)} buffers"
+                    )
+                    return 1
+                o = buffers[idx].numpy()
+                e = np.equal(r, o)
+                errors += np.size(e) - np.count_nonzero(e)
+            else:
+                print("Error: Reference data must be a list of (index, data) tuples")
+                return 1
 
     if not errors:
         return 0

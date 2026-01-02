@@ -29,9 +29,8 @@ def main(opts):
     out = iron.zeros(data_size, dtype=dtype)
 
     res = xrt_utils.setup_and_run_aie(
-        [],
         [out],
-        reference_access_order.flatten(),
+        [(0, reference_access_order.flatten())],
         opts,
     )
     if res == 0:
