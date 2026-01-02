@@ -176,18 +176,22 @@ class HostRuntime(ABC):
 
             if trace_config.enable_ctrl_pkts:
                 # write ctrl packets
-                header = tensor(
-                    np.array(
-                        [
-                            create_ctrl_pkt(1, 0, 0x32004),  # core status
-                            create_ctrl_pkt(1, 0, 0x340D8),  # trace status
-                        ],
-                        dtype=np.uint32,
-                    )
-                )
+                ctrl_pkts = [
+                    create_ctrl_pkt(1, 0, 0x32004),  # core status
+                    create_ctrl_pkt(1, 0, 0x340D8),  # trace status
+                ]
+                # Pad to 8 words
+                ctrl_pkts += [0] * (8 - len(ctrl_pkts))
+
+                header = tensor(np.array(ctrl_pkts, dtype=np.uint32))
                 args.append(header)
 
-            trace_buff = tensor((trace_config.trace_size,), dtype=np.uint8)
+            # Allocate extra space for control packets if enabled
+            alloc_size = trace_config.trace_size
+            if trace_config.enable_ctrl_pkts:
+                alloc_size = trace_config.trace_size * 4
+
+            trace_buff = tensor((alloc_size,), dtype=np.uint8)
             args.append(trace_buff)
         return args
 
