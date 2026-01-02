@@ -373,6 +373,20 @@ class Tensor(ABC):
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
         random_val = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
+        # Ensure values are < 1.0 for low-precision types
+        is_bfloat16 = False
+        try:
+            from ml_dtypes import bfloat16
+
+            if dtype == bfloat16:
+                is_bfloat16 = True
+        except ImportError:
+            pass
+
+        if np.issubdtype(dtype, np.floating) or is_bfloat16:
+            max_val = np.nextafter(dtype(1.0), dtype(0.0))
+            random_val = np.clip(random_val, 0.0, max_val)
+
         if t.shape == ():
             t.data.fill(random_val)
         else:

@@ -36,9 +36,15 @@ def _create_function_cache_key(function, args, kwargs):
             func_hash = hash(arg)
             signature_parts.append(f"externalfunction_{func_hash}")
         elif callable(arg):
-            # Function argument - use hash of function address for uniqueness
-            func_hash = hash(arg)
-            signature_parts.append(f"function_{func_hash}")
+            if hasattr(arg, "__code__"):
+                # Use bytecode and constants hash for Python functions/lambdas
+                code = arg.__code__
+                func_hash = hash((code.co_code, code.co_consts, code.co_names))
+                signature_parts.append(f"function_{func_hash}")
+            else:
+                # Function argument - use hash of function address for uniqueness
+                func_hash = hash(arg)
+                signature_parts.append(f"function_{func_hash}")
         else:
             # Unsupported type - use type name
             signature_parts.append(f"{type(arg).__name__}")
@@ -52,9 +58,15 @@ def _create_function_cache_key(function, args, kwargs):
             func_hash = hash(value)
             signature_parts.append(f"{key}_externalfunction_{func_hash}")
         elif callable(value):
-            # Function argument - use hash of function address for uniqueness
-            func_hash = hash(value)
-            signature_parts.append(f"{key}_function_{func_hash}")
+            if hasattr(value, "__code__"):
+                # Use bytecode and constants hash for Python functions/lambdas
+                code = value.__code__
+                func_hash = hash((code.co_code, code.co_consts, code.co_names))
+                signature_parts.append(f"{key}_function_{func_hash}")
+            else:
+                # Function argument - use hash of function address for uniqueness
+                func_hash = hash(value)
+                signature_parts.append(f"{key}_function_{func_hash}")
         else:
             # Unsupported type - use type name
             signature_parts.append(f"{key}_{type(value).__name__}")
