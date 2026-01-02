@@ -70,13 +70,11 @@ def main(opts):
         print("=" * 80)
 
     rng = np.random.default_rng(seed=42)
-    ref_data = rng.integers(1, 100, size=IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
-    in1 = iron.tensor(
-        rng.integers(1, 100, size=IN_OUT_SIZE, dtype=IN_OUT_DTYPE), dtype=IN_OUT_DTYPE
-    )
+    input_data = rng.integers(1, 100, size=IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
+    in1 = iron.tensor(input_data, dtype=IN_OUT_DTYPE)
     in2 = iron.tensor([SCALAR_FACTOR], dtype=IN_OUT_DTYPE)
     out = iron.zeros(IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
-    ref_data = ref_data * SCALAR_FACTOR
+    ref_data = input_data * SCALAR_FACTOR
 
     # Start the XRT context and load the kernel
     if opts.verbosity >= 1:
