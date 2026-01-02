@@ -7,9 +7,10 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils
 import aie.utils.test as test_utils
 import aie.iron as iron
+from aie.iron.hostruntime import DEFAULT_IRON_RUNTIME
+from pathlib import Path
 
 
 def main(opts):
@@ -56,10 +57,14 @@ def main(opts):
         npu_opts.trace_config.enable_ctrl_pkts = True
 
     print("Running...\n")
-    res = xrt_utils.setup_and_run_aie(
+    res = DEFAULT_IRON_RUNTIME.run_test(
         [in1, in2, out],
         [(2, ref)],
-        npu_opts,
+        Path(npu_opts.xclbin),
+        Path(npu_opts.instr),
+        trace_config=npu_opts.trace_config,
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     )
     if res == 0:
         print("\nPASS!\n")

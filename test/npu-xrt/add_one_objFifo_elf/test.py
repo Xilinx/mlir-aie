@@ -16,8 +16,9 @@ import sys
 import numpy as np
 
 import aie.utils.test as test_utils
-import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils
 import aie.iron as iron
+from aie.iron.hostruntime import DEFAULT_IRON_RUNTIME
+from pathlib import Path
 
 IN_SIZE = 64
 OUT_SIZE = 64
@@ -30,10 +31,15 @@ def main(opts):
     out = iron.zeros((OUT_SIZE,), dtype=np.uint32)
     ref_data = ref_data + 41
 
-    if not xrt_utils.setup_and_run_aie(
+    npu_opts = test_utils.namespace_to_options(opts)
+    if not DEFAULT_IRON_RUNTIME.run_test(
         [inA, inB, out],
         [(2, ref_data)],
-        test_utils.namespace_to_options(opts),
+        Path(npu_opts.xclbin),
+        Path(npu_opts.instr),
+        trace_config=npu_opts.trace_config,
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     ):
         print("PASS!")
     else:

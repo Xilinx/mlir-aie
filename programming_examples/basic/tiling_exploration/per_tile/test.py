@@ -9,9 +9,10 @@ import argparse
 import numpy as np
 
 from aie.helpers.taplib import TensorTiler2D
-import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils
 import aie.utils.test as test_utils
 import aie.iron as iron
+from aie.iron.hostruntime import DEFAULT_IRON_RUNTIME
+from pathlib import Path
 import sys
 
 
@@ -28,10 +29,15 @@ def main(opts):
 
     out = iron.zeros(data_size, dtype=dtype)
 
-    res = xrt_utils.setup_and_run_aie(
+    npu_opts = test_utils.namespace_to_options(opts)
+    res = DEFAULT_IRON_RUNTIME.run_test(
         [out],
         [(0, reference_access_order.flatten())],
-        test_utils.namespace_to_options(opts),
+        Path(npu_opts.xclbin),
+        Path(npu_opts.instr),
+        trace_config=npu_opts.trace_config,
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     )
     if res == 0:
         print("\nPASS!\n")

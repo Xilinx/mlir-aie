@@ -24,8 +24,8 @@ import sys
 from pathlib import Path
 from aie.utils.parse_trace import parse_trace
 import aie.utils.test as test_utils
-import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils
 import aie.iron as iron
+from aie.iron.hostruntime import DEFAULT_IRON_RUNTIME
 
 IN_OUT_SIZE = 4096
 IN_OUT_DTYPE = np.int32
@@ -83,10 +83,14 @@ def main(opts):
     opts.trace_size = IN_OUT_SIZE * 4
 
     npu_opts = test_utils.namespace_to_options(opts)
-    if xrt_utils.setup_and_run_aie(
+    if DEFAULT_IRON_RUNTIME.run_test(
         [in1, in2, out],
         [(2, ref_data)],
-        npu_opts,
+        Path(npu_opts.xclbin),
+        Path(npu_opts.instr),
+        trace_config=npu_opts.trace_config,
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     ):
         print("Failed.")
         return 1
