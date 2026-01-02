@@ -313,7 +313,7 @@ class Runtime(Resolvable):
                     # tiles_to_trace=[ tiles_to_trace[0] ],
                     tiles_to_trace=tiles_to_trace,
                     shim=trace_shim_tile,
-                    trace_size=self._trace_size,
+                    trace_size=self._trace_size // 4,
                     trace_offset=(
                         self._trace_offset if self._trace_offset is not None else 0
                     ),
