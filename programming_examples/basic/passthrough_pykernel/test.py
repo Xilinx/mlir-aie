@@ -23,7 +23,7 @@ def main(opts):
     in1 = iron.tensor(input_data, dtype=dtype)
     out = iron.zeros(data_size, dtype=dtype)
 
-    npu_opts = test_utils.namespace_to_options(opts)
+    npu_opts = test_utils.parse_trace_config(opts)
     res = DEFAULT_IRON_RUNTIME.run_test(
         [in1, out],
         [(1, input_data)],

@@ -52,7 +52,7 @@ def main(opts):
 
     # --------------------------------------------------------------------------
 
-    npu_opts = test_utils.namespace_to_options(opts)
+    npu_opts = test_utils.parse_trace_config(opts)
     if npu_opts.trace_config:
         npu_opts.trace_config.enable_ctrl_pkts = True
 

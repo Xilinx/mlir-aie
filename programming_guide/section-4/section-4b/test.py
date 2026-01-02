@@ -55,7 +55,7 @@ def main(opts):
     # --------------------------------------------------------------------------
 
     print("Running...\n")
-    npu_opts = test_utils.namespace_to_options(opts)
+    npu_opts = test_utils.parse_trace_config(opts)
     res = DEFAULT_IRON_RUNTIME.run_test(
         [in1, in2, out],
         [(2, ref)],

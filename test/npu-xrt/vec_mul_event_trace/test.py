@@ -82,7 +82,7 @@ def main(opts):
 
     opts.trace_size = IN_OUT_SIZE * 4
 
-    npu_opts = test_utils.namespace_to_options(opts)
+    npu_opts = test_utils.parse_trace_config(opts)
     if DEFAULT_IRON_RUNTIME.run_test(
         [in1, in2, out],
         [(2, ref_data)],

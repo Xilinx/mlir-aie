@@ -9,22 +9,6 @@ import argparse
 from aie.iron.hostruntime import TraceConfig
 
 
-class NPURuntimeOptions:
-    def __init__(
-        self,
-        xclbin,
-        instr,
-        trace_config=None,
-        verbosity=0,
-        verify=True,
-    ):
-        self.xclbin = xclbin
-        self.instr = instr
-        self.trace_config = trace_config
-        self.verbosity = verbosity
-        self.verify = verify
-
-
 # Add default args to standard parser object
 def create_default_argparser():
     p = argparse.ArgumentParser()
@@ -119,7 +103,7 @@ def create_default_argparser():
     return p
 
 
-def namespace_to_options(opts):
+def parse_trace_config(opts):
     trace_config = None
     trace_size = getattr(opts, "trace_size", 0)
     if trace_size > 0:
@@ -129,18 +113,12 @@ def namespace_to_options(opts):
             trace_after_last_tensor=getattr(opts, "trace_after_output", False),
             enable_ctrl_pkts=getattr(opts, "enable_ctrl_pkts", False),
         )
-
-    return NPURuntimeOptions(
-        xclbin=opts.xclbin,
-        instr=opts.instr,
-        trace_config=trace_config,
-        verbosity=getattr(opts, "verbosity", 0),
-        verify=getattr(opts, "verify", True),
-    )
+    opts.trace_config = trace_config
+    return opts
 
 
 # options
 def parse_args(args):
     p = create_default_argparser()
     opts = p.parse_args(args)
-    return namespace_to_options(opts)
+    return parse_trace_config(opts)

@@ -31,7 +31,7 @@ def main(opts):
     out = iron.zeros((OUT_SIZE,), dtype=np.uint32)
     ref_data = ref_data + 41
 
-    npu_opts = test_utils.namespace_to_options(opts)
+    npu_opts = test_utils.parse_trace_config(opts)
     if not DEFAULT_IRON_RUNTIME.run_test(
         [inA, inB, out],
         [(2, ref_data)],

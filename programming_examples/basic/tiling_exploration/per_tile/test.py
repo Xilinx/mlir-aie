@@ -29,7 +29,7 @@ def main(opts):
 
     out = iron.zeros(data_size, dtype=dtype)
 
-    npu_opts = test_utils.namespace_to_options(opts)
+    npu_opts = test_utils.parse_trace_config(opts)
     res = DEFAULT_IRON_RUNTIME.run_test(
         [out],
         [(0, reference_access_order.flatten())],
