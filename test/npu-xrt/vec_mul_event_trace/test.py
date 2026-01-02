@@ -93,11 +93,11 @@ def main(opts):
     errors = 0
 
     # Read trace from file
-    with open(opts.trace_file, "rb") as f:
-        trace_data_bytes = f.read()
+    with open(opts.trace_file, "r") as f:
+        trace_data = [int(line.strip(), 16) for line in f if line.strip()]
 
     # Convert to uint32 array for proper formatting
-    trace_buffer = np.frombuffer(trace_data_bytes, dtype=np.uint32)
+    trace_buffer = np.array(trace_data, dtype=np.uint32)
 
     if opts.verbosity >= 1:
         print(f"Trace buffer shape: {trace_buffer.shape}")
