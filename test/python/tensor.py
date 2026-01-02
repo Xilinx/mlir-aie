@@ -305,3 +305,15 @@ def test_mixed_device_operations(dtype):
 
     npu_tensor = npu_tensor.to("cpu")
     assert npu_tensor.device == "cpu"
+
+
+@pytest.mark.parametrize("dtype", [np.float32, bfloat16])
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_rand_bfloat16_boundary(dtype, tensorclass):
+    """Test that bfloat16 rand never produces 1.0 due to rounding."""
+    iron.set_iron_tensor_class(tensorclass)
+    # Generate many values to increase chance of hitting boundary
+    t = iron.rand(10000, dtype=dtype)
+    arr = t.numpy()
+    assert np.all(arr < 1.0)
+    assert np.all(arr >= 0.0)
