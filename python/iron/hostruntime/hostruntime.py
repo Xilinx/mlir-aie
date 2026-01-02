@@ -7,24 +7,7 @@ from pathlib import Path
 
 from ..device import Device
 from .tensor_class import Tensor
-
-
-# checks # of bits. Odd number returns a 1. Even returns 0.
-def parity(x):
-    return x.bit_count() & 1
-
-
-# create control packet
-def create_ctrl_pkt(
-    operation,
-    beats,
-    addr,
-    ctrl_pkt_read_id=28,  # global id used for all ctrl packet reads
-    # WARNING: this needs to match the packet id used in packetflow/.py
-):
-    header = (ctrl_pkt_read_id << 24) | (operation << 22) | (beats << 20) | addr
-    header |= (0x1 ^ parity(header)) << 31
-    return header
+from .trace_config import TraceConfig
 
 
 class HostRuntimeError(Exception):
@@ -33,28 +16,6 @@ class HostRuntimeError(Exception):
     """
 
     pass
-
-
-class TraceConfig:
-    DEFAULT_TRACE_BUFFER_INDEX = 4
-
-    def __init__(
-        self,
-        trace_size: int,
-        trace_file: str = "trace.txt",
-        trace_after_last_tensor: bool = False,
-        enable_ctrl_pkts: bool = False,
-        last_tensor_shape=None,
-        last_tensor_dtype=None,
-    ):
-        if trace_size <= 0:
-            raise HostRuntimeError(f"Invalid trace size: {trace_size}")
-        self.trace_size = trace_size
-        self.trace_file = trace_file
-        self.trace_after_last_tensor = trace_after_last_tensor
-        self.enable_ctrl_pkts = enable_ctrl_pkts
-        self.last_tensor_shape = last_tensor_shape
-        self.last_tensor_dtype = last_tensor_dtype
 
 
 class KernelHandle(ABC):
@@ -179,8 +140,8 @@ class HostRuntime(ABC):
             if trace_config.enable_ctrl_pkts:
                 # write ctrl packets
                 ctrl_pkts = [
-                    create_ctrl_pkt(1, 0, 0x32004),  # core status
-                    create_ctrl_pkt(1, 0, 0x340D8),  # trace status
+                    TraceConfig.create_ctrl_pkt(1, 0, 0x32004),  # core status
+                    TraceConfig.create_ctrl_pkt(1, 0, 0x340D8),  # trace status
                 ]
                 # Pad to 8 words
                 ctrl_pkts += [0] * (8 - len(ctrl_pkts))

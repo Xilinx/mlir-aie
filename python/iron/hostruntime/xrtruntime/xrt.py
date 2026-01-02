@@ -13,21 +13,6 @@ from .. import DEFAULT_IRON_RUNTIME
 from ..hostruntime import HostRuntime, TraceConfig
 
 
-def extract_tile(data):
-    col = (data >> 21) & 0x7F
-    row = (data >> 16) & 0x1F
-    pkt_type = (data >> 12) & 0x3
-    pkt_id = data & 0x1F
-    return (col, row, pkt_type, pkt_id)
-
-
-# Wrapper function to write trace buffer values to a text file
-def write_out_trace(trace, file_name):
-    out_str = "\n".join(f"{i:0{8}x}" for i in trace if i != 0)
-    with open(file_name, "w") as f:
-        f.write(out_str)
-
-
 # This wrapper function abstracts the full set of functions to setup the aie and run
 # the kernel program including check for functional correctness and reporting the
 # run time. Under the hood, we call `setup_aie` to set up the AIE application before
@@ -80,7 +65,7 @@ def setup_and_run_aie(
         if opts.verbosity >= 1:
             print("trace_buffer shape: ", trace_buffer.shape)
             print("trace_buffer dtype: ", trace_buffer.dtype)
-        write_out_trace(trace_buffer, str(trace_config.trace_file))
+        trace_config.write_trace(trace_buffer)
 
         if trace_config.enable_ctrl_pkts:
             if opts.verbosity >= 1:
@@ -88,7 +73,9 @@ def setup_and_run_aie(
                 print("ctrl_buffer dtype: ", ctrl_buffer.dtype)
                 print("ctrl buffer: ", [hex(d) for d in ctrl_buffer])
             for i in range(ctrl_buffer.size // 2):
-                col, row, pkt_type, pkt_id = extract_tile(ctrl_buffer[i * 2])
+                col, row, pkt_type, pkt_id = TraceConfig.extract_tile(
+                    ctrl_buffer[i * 2]
+                )
                 overflow = True if (ctrl_buffer[i * 2 + 1] >> 8) == 3 else False
                 if overflow:
                     print(

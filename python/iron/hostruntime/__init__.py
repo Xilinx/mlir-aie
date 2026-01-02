@@ -7,7 +7,8 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 import sys
 from .tensor_class import Tensor
-from .hostruntime import HostRuntime, TraceConfig
+from .hostruntime import HostRuntime
+from .trace_config import TraceConfig
 
 try:
     import pyxrt
