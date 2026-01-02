@@ -3,7 +3,6 @@
 
 # from CppHeaderParser import CppHeader
 import numpy as np
-import subprocess
 import json
 import re
 import os
@@ -61,36 +60,6 @@ def extract_buffers(test):
             # rtp_names.append(list(rtp.keys())[0])
 
     return input_buffers, output_buffers, rtps
-
-
-def trace_to_json(trace_file: str, mlir_file: str, output_name: str = "trace.json"):
-    """Subprocesses wrapper over parse_trace.py utility.
-    Parameters
-    ----------
-    trace_file : str
-        The .txt trace file of 32-byte codes.
-    mlir_file : str
-        Path to the corresponding MLIR file for the design being traced.
-    output_name : str, optional
-        Path to output json file. You can analyze it using tools like https://ui.perfetto.dev
-    """
-    command = [
-        os.environ["MLIR_AIE_INSTALL_DIR"] + "/../../python/utils/parse_trace.py",
-        "--input",
-        trace_file,
-        "--mlir",
-        mlir_file,
-    ]
-
-    try:
-        result = subprocess.check_output(command, stderr=subprocess.STDOUT, text=True)
-        with open(output_name, "w") as f:
-            f.write(result)
-        print(f"Trace written to {output_name}")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Trace failed\n{e.output}")
-        return e.output
 
 
 def get_cycles(trace_path):

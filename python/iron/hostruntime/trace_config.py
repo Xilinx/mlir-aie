@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
+from aie.utils.parse_trace import parse_trace
+import json
 
 
 class TraceConfig:
@@ -60,3 +62,15 @@ class TraceConfig:
         with open(self.trace_file, "r") as f:
             trace_data = [int(line.strip(), 16) for line in f if line.strip()]
         return np.array(trace_data, dtype=np.uint32)
+
+    def trace_to_json(self, mlir_file: str, output_name: str = "trace.json"):
+        """Wrapper over parse_trace.py utility."""
+        trace_buffer = self.read_trace()
+
+        with open(mlir_file, "r") as f:
+            mlir_module_str = f.read()
+
+        trace_events = parse_trace(trace_buffer, mlir_module_str)
+
+        with open(output_name, "w") as f:
+            json.dump(trace_events, f, indent=2)
