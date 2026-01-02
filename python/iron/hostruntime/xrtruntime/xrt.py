@@ -108,12 +108,13 @@ def setup_and_run_aie(
         for item in ref:
             if isinstance(item, tuple) and len(item) == 2:
                 idx, r = item
-                if idx >= len(buffers):
+                if idx >= len(io_args):
                     print(
-                        f"Error: Reference index {idx} out of bounds for {len(buffers)} buffers"
+                        f"Error: Reference index {idx} out of bounds for {len(io_args)} IO buffers"
                     )
                     return 1
-                o = buffers[idx].numpy()
+                io_args[idx].to("cpu")
+                o = io_args[idx].numpy()
                 e = np.equal(r, o)
                 errors += np.size(e) - np.count_nonzero(e)
             else:
