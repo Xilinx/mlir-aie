@@ -10,7 +10,6 @@ import sys
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.iron.hostruntime import DEFAULT_IRON_RUNTIME
-from pathlib import Path
 
 
 def main(opts):
@@ -23,13 +22,11 @@ def main(opts):
     in1 = iron.tensor(input_data, dtype=dtype)
     out = iron.zeros(data_size, dtype=dtype)
 
-    npu_opts = test_utils.parse_trace_config(opts)
+    npu_opts = test_utils.create_npu_kernel(opts)
     res = DEFAULT_IRON_RUNTIME.run_test(
         [in1, out],
         [(1, input_data)],
-        Path(npu_opts.xclbin),
-        Path(npu_opts.instr),
-        trace_config=npu_opts.trace_config,
+        npu_opts.npu_kernel,
         verify=npu_opts.verify,
         verbosity=npu_opts.verbosity,
     )

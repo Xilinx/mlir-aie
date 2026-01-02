@@ -18,7 +18,6 @@ import numpy as np
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.iron.hostruntime import DEFAULT_IRON_RUNTIME
-from pathlib import Path
 
 IN_SIZE = 64
 OUT_SIZE = 64
@@ -31,13 +30,11 @@ def main(opts):
     out = iron.zeros((OUT_SIZE,), dtype=np.uint32)
     ref_data = ref_data + 41
 
-    npu_opts = test_utils.parse_trace_config(opts)
+    npu_opts = test_utils.create_npu_kernel(opts)
     if not DEFAULT_IRON_RUNTIME.run_test(
         [inA, inB, out],
         [(2, ref_data)],
-        Path(npu_opts.xclbin),
-        Path(npu_opts.instr),
-        trace_config=npu_opts.trace_config,
+        npu_opts.npu_kernel,
         verify=npu_opts.verify,
         verbosity=npu_opts.verbosity,
     ):

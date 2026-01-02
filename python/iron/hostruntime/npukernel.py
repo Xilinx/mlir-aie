@@ -24,10 +24,26 @@ class NPUKernel:
         self._kernel_name = kernel_name
         self._trace_config = trace_config
 
+    @property
+    def trace_config(self) -> TraceConfig | None:
+        return self._trace_config
+
+    @property
+    def xclbin_path(self):
+        return self._xclbin_path
+
+    @property
+    def insts_path(self):
+        return self._insts_path
+
+    @property
+    def kernel_name(self):
+        return self._kernel_name
+
     # Blocking call.
     def __call__(self, *args):
         return DEFAULT_IRON_RUNTIME.load_and_run(
-            [Path(self._xclbin_path), Path(self._insts_path), self._kernel_name],
+            [self],
             list(args),
             trace_config=self._trace_config,
         )

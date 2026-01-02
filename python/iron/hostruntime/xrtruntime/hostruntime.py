@@ -84,12 +84,11 @@ class XRTHostRuntime(HostRuntime):
 
     def load(
         self,
-        xclbin_path: Path,
-        insts_path: Path,
-        kernel_name: str | None = None,
+        npu_kernel,
     ) -> XRTKernelHandle:
-        xclbin_path = xclbin_path.resolve()
-        insts_path = insts_path.resolve()
+        xclbin_path = Path(npu_kernel.xclbin_path).resolve()
+        insts_path = Path(npu_kernel.insts_path).resolve()
+        kernel_name = npu_kernel.kernel_name
 
         if not xclbin_path.exists() or not xclbin_path.is_file():
             raise HostRuntimeError(

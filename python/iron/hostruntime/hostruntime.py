@@ -55,7 +55,7 @@ class HostRuntime(ABC):
     """An abstract class for a generic host runtime"""
 
     @abstractmethod
-    def load(self, *args, **kwargs) -> KernelHandle:
+    def load(self, npu_kernel: NPUKernel) -> KernelHandle:
         pass
 
     @abstractmethod
@@ -69,9 +69,12 @@ class HostRuntime(ABC):
         pass
 
     def load_and_run(
-        self, load_args: list, run_args: list, trace_config: TraceConfig | None = None
+        self,
+        npu_kernel: NPUKernel,
+        run_args: list,
+        trace_config: TraceConfig | None = None,
     ) -> tuple[KernelHandle, KernelResult]:
-        handle = self.load(*load_args)
+        handle = self.load(npu_kernel)
         return handle, self.run(handle, list(run_args), trace_config)
 
     @abstractmethod
@@ -248,13 +251,12 @@ class HostRuntime(ABC):
         self,
         io_args,
         ref,
-        xclbin_path: Path,
-        insts_path: Path,
-        trace_config: TraceConfig | None = None,
+        npu_kernel,
         verify: bool = True,
         verbosity: int = 0,
     ) -> int:
-        kernel_handle = self.load(xclbin_path, insts_path)
+        kernel_handle = self.load(npu_kernel)
+        trace_config = npu_kernel.trace_config
 
         # Ensure io_args is a list
         if not isinstance(io_args, list):

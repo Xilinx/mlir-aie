@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import argparse
-from aie.iron.hostruntime import TraceConfig
+from aie.iron.hostruntime import TraceConfig, NPUKernel
 
 
 # Add default args to standard parser object
@@ -103,7 +103,7 @@ def create_default_argparser():
     return p
 
 
-def parse_trace_config(opts):
+def create_npu_kernel(opts):
     trace_config = None
     trace_size = getattr(opts, "trace_size", 0)
     if trace_size > 0:
@@ -113,7 +113,12 @@ def parse_trace_config(opts):
             trace_after_last_tensor=getattr(opts, "trace_after_output", False),
             enable_ctrl_pkts=getattr(opts, "enable_ctrl_pkts", False),
         )
-    opts.trace_config = trace_config
+    opts.npu_kernel = NPUKernel(
+        xclbin_path=opts.xclbin,
+        insts_path=opts.instr,
+        kernel_name=opts.kernel,
+        trace_config=trace_config,
+    )
     return opts
 
 
@@ -121,4 +126,4 @@ def parse_trace_config(opts):
 def parse_args(args):
     p = create_default_argparser()
     opts = p.parse_args(args)
-    return parse_trace_config(opts)
+    return create_npu_kernel(opts)

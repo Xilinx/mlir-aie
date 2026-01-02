@@ -9,6 +9,7 @@ import sys
 from .tensor_class import Tensor
 from .hostruntime import HostRuntime
 from .trace_config import TraceConfig
+from .npukernel import NPUKernel
 
 try:
     import pyxrt

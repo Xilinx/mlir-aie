@@ -82,13 +82,11 @@ def main(opts):
 
     opts.trace_size = IN_OUT_SIZE * 4
 
-    npu_opts = test_utils.parse_trace_config(opts)
+    npu_opts = test_utils.create_npu_kernel(opts)
     if DEFAULT_IRON_RUNTIME.run_test(
         [in1, in2, out],
         [(2, ref_data)],
-        Path(npu_opts.xclbin),
-        Path(npu_opts.instr),
-        trace_config=npu_opts.trace_config,
+        npu_opts.npu_kernel,
         verify=npu_opts.verify,
         verbosity=npu_opts.verbosity,
     ):
@@ -97,7 +95,7 @@ def main(opts):
     errors = 0
 
     # Read trace from file
-    trace_buffer = npu_opts.trace_config.read_trace()
+    trace_buffer = npu_opts.npu_kernel.trace_config.read_trace()
 
     if opts.verbosity >= 1:
         print(f"Trace buffer shape: {trace_buffer.shape}")

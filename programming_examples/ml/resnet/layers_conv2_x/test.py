@@ -15,7 +15,7 @@ import os
 import numpy as np
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.iron.hostruntime import TraceConfig, HostRuntime
+from aie.iron.hostruntime import TraceConfig, HostRuntime, NPUKernel
 from pathlib import Path
 
 torch.use_deterministic_algorithms(True)
@@ -154,9 +154,8 @@ def main(opts):
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-    kernel_handle = iron.hostruntime.DEFAULT_IRON_RUNTIME.load(
-        Path(xclbin_path), Path(insts_path)
-    )
+    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    kernel_handle = iron.hostruntime.DEFAULT_IRON_RUNTIME.load(npu_kernel)
 
     # ------------------------------------------------------
     # Define your golden reference

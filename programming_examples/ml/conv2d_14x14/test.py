@@ -16,7 +16,7 @@ import numpy as np
 from aie.iron.hostruntime.xrtruntime.xrt import write_out_trace
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.iron.hostruntime import TraceConfig, HostRuntime
+from aie.iron.hostruntime import TraceConfig, HostRuntime, NPUKernel
 from pathlib import Path
 
 torch.use_deterministic_algorithms(True)
@@ -113,9 +113,8 @@ def main(opts):
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-    kernel_handle = iron.hostruntime.DEFAULT_IRON_RUNTIME.load(
-        Path(xclbin_path), Path(insts_path)
-    )
+    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    kernel_handle = iron.hostruntime.DEFAULT_IRON_RUNTIME.load(npu_kernel)
 
     # ------------------------------------------------------
     # Define your golden reference
@@ -214,6 +213,7 @@ def main(opts):
     if enable_trace:
         trace_config = TraceConfig(
             trace_size=trace_size,
+            trace_file=trace_file,
             trace_after_last_tensor=False,
             enable_ctrl_pkts=False,
             last_tensor_shape=out.shape,
@@ -228,7 +228,7 @@ def main(opts):
         if trace_config:
             trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
             trace_buffer = trace_buffer.view(np.uint32)
-            write_out_trace(trace_buffer, trace_file)
+            trace_config.write_trace(trace_buffer)
 
         data_buffer = out.numpy()
         scaled_data_buffer = data_buffer * int8_scale
