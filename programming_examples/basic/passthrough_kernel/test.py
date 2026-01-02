@@ -1,39 +1,60 @@
-#test.py - *-Python - *-
+# test.py -*- Python -*-
 #
-#This file is licensed under the Apache License v2 .0 with LLVM Exceptions.
-#See https: // llvm.org/LICENSE.txt for license information.
-#SPDX - License - Identifier : Apache - 2.0 WITH LLVM - exception
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-#(c) Copyright 2024 Advanced Micro Devices, Inc.or its affiliates
-import numpy as np import sys import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils import aie.utils.test as test_utils import aie.iron as iron
+# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+import numpy as np
+import sys
+import aie.iron.hostruntime.xrtruntime.xrt as xrt_utils
+import aie.utils.test as test_utils
+import aie.iron as iron
 
-    def main(opts) :in1_size = int(opts.in1_size) #in bytes out_size = int(opts.out_size) #in bytes
 
-#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
-#-- -- -                                                                       \
-    Edit your data types -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -
-#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+def main(opts):
+    in1_size = int(opts.in1_size)  # in bytes
+    out_size = int(opts.out_size)  # in bytes
 
-                                                                           in1_dtype = np.uint8 out_dtype = in1_dtype
+    # --------------------------------------------------------------------------
+    # ----- Edit your data types -----------------------------------------------
+    # --------------------------------------------------------------------------
 
-#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    in1_dtype = np.uint8
+    out_dtype = in1_dtype
 
-                                                                           in1_volume = in1_size // np.dtype(in1_dtype).itemsize
-                                                                           out_volume = out_size // np.dtype(out_dtype).itemsize
+    # --------------------------------------------------------------------------
 
-#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
-#-- -- - Edit your data init and                                               \
-    reference data here -- -- -- -- -- -- -- -- -- -- -- --
-#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    in1_volume = in1_size // np.dtype(in1_dtype).itemsize
+    out_volume = out_size // np.dtype(out_dtype).itemsize
 
-#check buffer sizes
-                                                                           assert out_size == in1_size
+    # --------------------------------------------------------------------------
+    # ----- Edit your data init and reference data here ------------------------
+    # --------------------------------------------------------------------------
 
-#Initialize data
-                                                                           ref = np.arange(0, in1_volume, dtype = in1_dtype) in1 = iron.tensor(ref, dtype = in1_dtype, device = "npu") out = iron.zeros([out_volume], dtype = out_dtype, device = "npu")
+    # check buffer sizes
+    assert out_size == in1_size
 
-#-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
+    # Initialize data
+    ref = np.arange(0, in1_volume, dtype=in1_dtype)
+    in1 = iron.tensor(ref, dtype=in1_dtype)
+    out = iron.zeros([out_volume], dtype=out_dtype)
 
-                                                                                                                                                                                                            print("Running...\n") res = xrt_utils.setup_and_run_aie([in1], [out], ref, opts, ) if res == 0 :print("\nPASS!\n") sys.exit(res)
+    # --------------------------------------------------------------------------
 
-                                                                                                                                                                                                                                                                                                                                            if __name__ == "__main__" :p = test_utils.create_default_argparser() opts = p.parse_args(sys.argv[1 : ]) main(opts)
+    print("Running...\n")
+    res = xrt_utils.setup_and_run_aie(
+        [in1],
+        [out],
+        ref,
+        opts,
+    )
+    if res == 0:
+        print("\nPASS!\n")
+    sys.exit(res)
+
+
+if __name__ == "__main__":
+    p = test_utils.create_default_argparser()
+    opts = p.parse_args(sys.argv[1:])
+    main(opts)
