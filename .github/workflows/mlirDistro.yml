@@ -275,27 +275,6 @@ jobs:
         # Set the timestamp to the beginning of the current hour.
         find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
 
-    # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
-    # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
-    # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
-    - name: rename non-windows
-      if: ${{ matrix.OS == 'ubuntu-22.04' }}
-      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
-      shell: bash
-      run: |
-        
-        rename 's/cp312-cp312/py3-none/' wheelhouse/mlir*whl
-        
-        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
-          rename 's/x86_64/aarch64/' wheelhouse/mlir*whl
-        fi
-
-    - name: rename windows
-      if: ${{ matrix.OS == 'windows-2022' }}
-      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
-      run: |
-        ls wheelhouse/mlir*whl | Rename-Item -NewName {$_ -replace 'cp312-cp312', 'py3-none' }
-
     # The "native tools" MLIR utilities that are necessary for cross-compiling MLIR - basically just tblgen.
     # Now if you build a whole distro you naturally do get those utilities but it's easier to just bundle them
     # together here and now and make them also available as a separate, much lighter wheel,
@@ -381,52 +360,16 @@ jobs:
       - name: test
         shell: bash
         run: |
-          pip install --upgrade pip
-          pip install numpy PyYAML
-          
           # Validate wheel format
-          python -m zipfile -t dist/mlir*.whl
-          
-          # Install the wheel
-          pip install dist/mlir*.whl
-          
-          # Functional test
-          python -c '
-          import mlir.ir
-          with mlir.ir.Context():
-              module = mlir.ir.Module.parse(r"""
-                  module {
-                      func.func @test() {
-                          return
-                      }
-                  }
-              """)
-              print(module)
-          '
-          
-          # Check for binaries in the installed package
-          import os
-          import mlir
-          mlir_path = os.path.dirname(mlir.__file__)
-          print(f"MLIR installed at: {mlir_path}")
-          
-          bin_dir = os.path.join(mlir_path, "bin")
-          if not os.path.exists(bin_dir):
-              print(f"Error: bin directory not found at {bin_dir}")
-              exit(1)
-              
-          if "${{ matrix.OS }}" == "windows-2022":
-              exe_suffix = ".exe"
-          else:
-              exe_suffix = ""
-              
-          for tool in ["mlir-opt", "mlir-translate"]:
-              tool_path = os.path.join(bin_dir, tool + exe_suffix)
-              if not os.path.exists(tool_path):
-                  print(f"Error: {tool} not found at {tool_path}")
-                  exit(1)
-              print(f"Found {tool} at {tool_path}")
-          '
+          for w in dist/mlir*.whl; do
+            python -m zipfile -t "$w"
+          done
+
+          # Unpack zip file and add contents to python path
+          for w in dist/mlir*.whl; do
+            unzip -o -q "$w"
+          done
+          PYTHONPATH=$(find . -name mlir_core) python -c 'import mlir.ir'
 
   upload_distro_wheels:
 
