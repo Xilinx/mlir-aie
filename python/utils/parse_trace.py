@@ -7,6 +7,7 @@ import re
 from aie.extras.util import find_ops
 from aie.ir import Context, Module, Location
 from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.iron.hostruntime import TraceConfig
 
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
@@ -66,27 +67,24 @@ def trim_trace_pkts(trace_pkts):
     return trace_pkts
 
 
-def check_odd_word_parity(word):
-    val = 0
-    for i in range(32):
-        val = val ^ ((word >> i) & 0x1)
-    return val == 1
-
-
 def parse_pkt_hdr_in_stream(word):
     hdr = dict()
     w = int(word)
-    hdr["valid"] = check_odd_word_parity(w)
+    # The packet header has a parity bit at bit 31.
+    # check_odd_word_parity checks if the whole word has odd parity.
+    hdr["valid"] = TraceConfig.parity(w) == 1
+
     # TODO can we assume non used fields must be 0 to rule out other data packets?
     # what about bit[5:10]?
     if (((w >> 5) & 0x7F) != 0) or (((w >> 19) & 0x1) != 0) or (((w >> 28) & 0x7) != 0):
         hdr["valid"] = False
     else:
         # TODO Do we need to check for valid row/col for given device?
-        hdr["col"] = (w >> 21) & 0x7F
-        hdr["row"] = (w >> 16) & 0x1F
-        hdr["type"] = (w >> 12) & 0x3
-        hdr["id"] = w & 0x1F
+        col, row, pkt_type, pkt_id = TraceConfig.extract_tile(w)
+        hdr["col"] = col
+        hdr["row"] = row
+        hdr["type"] = pkt_type
+        hdr["id"] = pkt_id
     return hdr
 
 

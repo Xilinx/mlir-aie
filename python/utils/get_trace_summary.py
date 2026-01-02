@@ -3,7 +3,7 @@ import json
 import argparse
 import sys
 import re
-import trace_utils
+from aie.iron.hostruntime import TraceConfig
 
 
 def parse_args():
@@ -22,7 +22,7 @@ def parse_args():
 
 
 opts = parse_args()
-cycles = trace_utils.get_cycles_summary(opts.input)
+cycles = TraceConfig.get_cycles_summary(opts.input)
 
 # print(cycles)
 for i in range(len(cycles)):
