@@ -13,8 +13,8 @@ import pytest
 import numpy as np
 import torch
 import aie.iron as iron
-from aie.utils.tensor_class import CPUOnlyTensor, Tensor
-from aie.utils.xrtruntime.tensor import XRTTensor
+from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, Tensor
+from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 from ml_dtypes import bfloat16
 
 TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
