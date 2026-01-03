@@ -6,18 +6,13 @@ import re
 
 from aie.extras.util import find_ops
 from aie.ir import Context, Module, Location
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
-from aie.utils.trace_packet import parity, extract_tile
+from .event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from .utils import parity, extract_tile
+from .port_events import NUM_TRACE_TYPES
 
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
 
-# Number of different trace types, currently 4
-# core:    pkt type 0
-# mem:     pkt type 1
-# shim:   pkt type 2
-# memtile: pkt type 3
-NumTraceTypes = 4
 NUM_EVENTS = 8  # number of events we can view per trace
 
 
@@ -95,7 +90,7 @@ def parse_pkt_hdr_in_stream(word):
 # stream_dict: dict (key = row,col, value = list of word streams)
 def trace_pkts_de_interleave(word_stream):
     trace_pkts_sorted = list()
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         trace_pkts_sorted.append(dict())
 
     # core_streams = dict()   # pkt type 0
@@ -119,7 +114,7 @@ def trace_pkts_de_interleave(word_stream):
             if pkt_hdr["valid"]:
                 curr_loc = str(pkt_hdr["row"]) + "," + str(pkt_hdr["col"])
                 valid_type_found = False
-                for tt in range(NumTraceTypes):
+                for tt in range(NUM_TRACE_TYPES):
                     if pkt_hdr["type"] == tt:
                         curr_pkt_type = tt
                         if trace_pkts_sorted[tt].get(curr_loc) == None:
@@ -137,7 +132,7 @@ def trace_pkts_de_interleave(word_stream):
                 trace_pkts_sorted[curr_pkt_type][curr_loc].append(
                     word_stream[i]
                 )  # TODO assume curr_pkt_type is valid
-                # for tt in range(NumTraceTypes):
+                # for tt in range(NUM_TRACE_TYPES):
                 #     if curr_pkt_type == tt:
                 #         toks_list[tt][curr_loc].append(word_stream[i])
     return trace_pkts_sorted
@@ -197,10 +192,10 @@ def convert_to_byte_stream(toks_list):
 def convert_to_commands(byte_stream_list, zero=True):
     # commands = dict()
     commands = list()
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         commands.append(dict())
 
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         for key, byte_stream in byte_stream_list[t].items():
             cursor = 0
             commands[t][key] = list()
@@ -653,7 +648,7 @@ def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
 def parse_mlir_trace_events(mlir_module_str, colshift=None):
 
     pid_events = list()
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         pid_events.append(dict())
 
     with Context(), Location.unknown():
@@ -888,7 +883,7 @@ def lookup_event_name_by_type(trace_type, code):
 # NOTE: This assume the pid_events has already be analyzed and populated.
 def setup_trace_metadata(trace_events, pid_events):
     pid = 0
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         # for j in len(pid_events[i]):
         for loc in pid_events[t]:  # return loc
             process_name_metadata(trace_events, pid, t, loc)
@@ -904,7 +899,7 @@ def setup_trace_metadata(trace_events, pid_events):
 def align_column_start_index(events, commands):
     # find min column of commands
     min_commands_col = float("inf")
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         for loc in commands[t]:
             col = int(loc.split(",")[1])
             if col < min_commands_col:
@@ -912,7 +907,7 @@ def align_column_start_index(events, commands):
 
     # find min column of events
     min_events_col = float("inf")
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         for loc in events[t]:
             col = int(loc.split(",")[1])
             if col < min_events_col:
@@ -924,7 +919,7 @@ def align_column_start_index(events, commands):
 
     # Shift all event keys by colshift
     new_events = []
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         updated = {}
         for loc, l in events[t].items():
             row, col = map(int, loc.split(","))

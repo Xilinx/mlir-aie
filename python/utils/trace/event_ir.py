@@ -6,14 +6,9 @@ import re
 import subprocess
 import shutil
 import os
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+from .event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from .port_events import NUM_TRACE_TYPES
 
-# Number of different trace types, currently 4
-# core:    pkt type 0
-# mem:     pkt type 1
-# intfc:   pkt type 2
-# memtile: pkt type 3
-NumTraceTypes = 4
 NUM_EVENTS = 8  # number of events we can view per trace
 
 rowoffset = 1  # TODO tmeporary workaround to figure out row offset for AIE2 for tiles
@@ -70,13 +65,8 @@ def parse_pkt_hdr_in_stream(word):
 # stream_dict: dict (key = row,col, value = list of word streams)
 def core_trace_and_mem_trace_de_interleave(word_stream):
     toks_list = list()
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         toks_list.append(dict())
-
-    # core_streams = dict()   # pkt type 0
-    # mem_stream = dict()     # pkt type 1
-    # intfc_stream = dict()   # pkt type 2
-    # memtile_stream = dict() # pkt type 3
 
     # index lists based on row/col and if its not null, that means it already exists
 
@@ -94,7 +84,7 @@ def core_trace_and_mem_trace_de_interleave(word_stream):
             if pkt_hdr["valid"]:
                 curr_loc = str(pkt_hdr["row"]) + "," + str(pkt_hdr["col"])
                 valid_type_found = False
-                for tt in range(NumTraceTypes):
+                for tt in range(NUM_TRACE_TYPES):
                     if pkt_hdr["type"] == tt:
                         curr_pkt_type = tt
                         if toks_list[tt].get(curr_loc) == None:
@@ -112,7 +102,7 @@ def core_trace_and_mem_trace_de_interleave(word_stream):
                 toks_list[curr_pkt_type][curr_loc].append(
                     word_stream[i]
                 )  # TODO assuem curr_pkt_type is valid
-                # for tt in range(NumTraceTypes):
+                # for tt in range(NUM_TRACE_TYPES):
                 #     if curr_pkt_type == tt:
                 #         toks_list[tt][curr_loc].append(word_stream[i])
     return toks_list
@@ -168,10 +158,10 @@ def convert_to_byte_stream(toks_list):
 def convert_to_commands(byte_stream_list, zero=True):
     # commands = dict()
     commands = list()
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         commands.append(dict())
 
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         for key, byte_stream in byte_stream_list[t].items():
             cursor = 0
             commands[t][key] = list()
@@ -600,7 +590,7 @@ def parse_mlir_trace_events(lines):
     pattern = r"aiex.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
 
     pid_events = list()
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         pid_events.append(dict())
 
     for i in range(len(lines)):
@@ -833,7 +823,7 @@ def lookup_event_name_by_type(trace_type, code):
 # NOTE: This assume the pid_events has already be analyzed and populated.
 def setup_trace_metadata(trace_events, pid_events):
     pid = 0
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         # for j in len(pid_events[i]):
         for loc in pid_events[t]:  # return loc
             process_name_metadata(trace_events, pid, t, loc)

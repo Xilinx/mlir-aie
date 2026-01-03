@@ -8,6 +8,39 @@ import re
 import os
 
 
+# checks # of bits. Odd number returns a 1. Even returns 0.
+def parity(x):
+    return x.bit_count() & 1
+
+
+def extract_tile(data):
+    col = (data >> 21) & 0x7F
+    row = (data >> 16) & 0x1F
+    pkt_type = (data >> 12) & 0x3
+    pkt_id = data & 0x1F
+    return (col, row, pkt_type, pkt_id)
+
+
+def pack4bytes(b3, b2, b1, b0):
+    w = (b3 & 0xFF) << 24
+    w |= (b2 & 0xFF) << 16
+    w |= (b1 & 0xFF) << 8
+    w |= (b0 & 0xFF) << 0
+    return w
+
+
+def create_ctrl_pkt(
+    operation,
+    beats,
+    addr,
+    ctrl_pkt_read_id=28,  # global id used for all ctrl packet reads
+    # WARNING: this needs to match the packet id used in packetflow/.py
+):
+    header = (ctrl_pkt_read_id << 24) | (operation << 22) | (beats << 20) | addr
+    header |= (0x1 ^ parity(header)) << 31
+    return header
+
+
 def get_kernel_code(test: dict, solutions_path: str = None) -> str:
     """Fetch the kernel code from the provided solution path, if none provided default
     to canonical solution."""
