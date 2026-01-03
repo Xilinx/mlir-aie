@@ -34,8 +34,8 @@ def scale_scalar(of_in, of_out, factor, N):
 def design(a_in, c_out, trace_config=None):
     N = 1024
     # Construct types for sequence
-    a_type = np.ndarray[a_in.shape, np.dtype(a_in.dtype)]
-    c_type = np.ndarray[c_out.shape, np.dtype(c_out.dtype)]
+    a_type = np.ndarray[(1024,), np.dtype[np.int32]]
+    c_type = np.ndarray[(1024,), np.dtype[np.int32]]
 
     # Define ObjectFifos
     of_in = ObjectFifo(a_type, depth=2)
