@@ -11,9 +11,7 @@ import functools
 import hashlib
 
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
 from .compile import compile_mlir_module, compile_external_kernel
-from aie.iron.kernel import ExternalFunction
 from .npukernel import NPUKernel
 from aie.dialects.aie import AIEDevice
 from .compile.cache.circular_cache import CircularCache
@@ -42,8 +40,13 @@ def jit(function=None, is_placed=True, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
+        from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
+        from aie.iron.kernel import ExternalFunction
+
         if DEFAULT_NPU_RUNTIME is None:
             raise Exception("Cannot use JIT; DEFAULT_NPU_RUNTIME not set.")
+
+        trace_config = kwargs.get("trace_config")
 
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
@@ -138,7 +141,10 @@ def jit(function=None, is_placed=True, use_cache=True):
                     raise e
 
         _compiled_kernels[cache_key] = NPUKernel(
-            xclbin_path, inst_path, kernel_name="MLIR_AIE"
+            xclbin_path,
+            inst_path,
+            kernel_name="MLIR_AIE",
+            trace_config=trace_config,
         )
         _compiled_kernels[cache_key](*args)
 
