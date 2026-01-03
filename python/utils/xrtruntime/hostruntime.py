@@ -8,11 +8,14 @@ import logging
 import time
 from collections import OrderedDict
 from pathlib import Path
+from typing import TYPE_CHECKING
 import numpy as np
 import pyxrt
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
-from aie.iron.device import Device, NPU1, NPU2
+
+if TYPE_CHECKING:
+    from aie.iron.device import Device
 from .tensor import XRTTensor
 
 
@@ -48,29 +51,7 @@ class XRTHostRuntime(HostRuntime):
 
     def __init__(self):
         self._device = pyxrt.device(0)
-        device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
-
-        # Fetch the device type by matching strings for NPU2 or NPU1
-        if any(
-            keyword in device_type_str
-            for keyword in [
-                "NPU Strix",
-                "NPU Strix Halo",
-                "NPU Krackan",
-                "RyzenAI-npu4",
-                "RyzenAI-npu6",
-            ]
-        ):
-            self._device_type = NPU2
-        elif any(
-            keyword in device_type_str
-            for keyword in [
-                "NPU",
-                "NPU Phoenix",
-                "RyzenAI-npu1",
-            ]
-        ):
-            self._device_type = NPU1
+        self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
     @classmethod
     def read_insts(cls, insts_path: Path):
@@ -167,6 +148,29 @@ class XRTHostRuntime(HostRuntime):
 
         return XRTKernelResult(r, stop - start)
 
-    def device(self) -> Device:
-        # return an instance of the device type
-        return self._device_type()
+    def device(self) -> "Device":
+        from aie.iron.device import NPU1, NPU2
+
+        # Fetch the device type by matching strings for NPU2 or NPU1
+        if any(
+            keyword in self._device_type_str
+            for keyword in [
+                "NPU Strix",
+                "NPU Strix Halo",
+                "NPU Krackan",
+                "RyzenAI-npu4",
+                "RyzenAI-npu6",
+            ]
+        ):
+            return NPU2()
+        elif any(
+            keyword in self._device_type_str
+            for keyword in [
+                "NPU",
+                "NPU Phoenix",
+                "RyzenAI-npu1",
+            ]
+        ):
+            return NPU1()
+        else:
+            raise RuntimeError(f"Unknown device type: {self._device_type_str}")

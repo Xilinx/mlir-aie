@@ -4,9 +4,12 @@
 from abc import ABC, abstractmethod
 import numpy as np
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from . import tensor
-from aie.iron.device import Device
+
+if TYPE_CHECKING:
+    from aie.iron.device import Device
 from .tensor_class import Tensor
 from .trace_config import TraceConfig
 from .npukernel import NPUKernel
@@ -80,7 +83,7 @@ class HostRuntime(ABC):
         return handle, self.run(handle, list(run_args), trace_config)
 
     @abstractmethod
-    def device(self) -> Device:
+    def device(self) -> "Device":
         pass
 
     @classmethod

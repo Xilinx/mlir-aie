@@ -932,69 +932,71 @@ def run_hwfrontend(fileInName, fileOutName):
 # Script execution start - Open trace file and convert to commands
 # ------------------------------------------------------------------------------
 
-lines = list()
-pid_events = list()
-trace_events = list()
 
-opts = parse_args()
+if __name__ == "__main__":
+    lines = list()
+    pid_events = list()
+    trace_events = list()
 
-# set colshift based on optional argument
-colshift = int(opts.colshift) if opts.colshift else 0
+    opts = parse_args()
 
-try:
-    os.mkdir(tmpTraceDirName)
-except FileExistsError:
-    pass
-if opts.verbose:
-    print("created temporary directory", tmpTraceDirName)
-tmpTraceDir = os.path.abspath(tmpTraceDirName)
+    # set colshift based on optional argument
+    colshift = int(opts.colshift) if opts.colshift else 0
 
-mlirFile = os.path.abspath(opts.mlir)
-rawTraceFile = os.path.abspath(opts.filename)
-srcTraceFileName = "prep." + str(opts.filename)
-srcTraceFile = os.path.join(tmpTraceDir, srcTraceFileName)
-
-# Check source file and prepend 0x
-fix_raw_trace_data(rawTraceFile, srcTraceFile)
-
-if opts.mlir:
     try:
-        with open(opts.mlir, "rt") as mf:
-            mlir_lines = mf.read().split("\n")
-            pid_events = parse_mlir_trace_events(mlir_lines)
+        os.mkdir(tmpTraceDirName)
+    except FileExistsError:
+        pass
+    if opts.verbose:
+        print("created temporary directory", tmpTraceDirName)
+    tmpTraceDir = os.path.abspath(tmpTraceDirName)
+
+    mlirFile = os.path.abspath(opts.mlir)
+    rawTraceFile = os.path.abspath(opts.filename)
+    srcTraceFileName = "prep." + str(opts.filename)
+    srcTraceFile = os.path.join(tmpTraceDir, srcTraceFileName)
+
+    # Check source file and prepend 0x
+    fix_raw_trace_data(rawTraceFile, srcTraceFile)
+
+    if opts.mlir:
+        try:
+            with open(opts.mlir, "rt") as mf:
+                mlir_lines = mf.read().split("\n")
+                pid_events = parse_mlir_trace_events(mlir_lines)
+        except Exception as e:
+            print(e)
+            sys.exit(1)
+
+    os.chdir(tmpTraceDirName)
+
+    create_target()
+
+    print_config_json(pid_events)
+
+    run_hwfrontend(srcTraceFile, eventIRFile)
+
+    # with open(opts.filename, "r") as f:
+    try:
+        with open(eventIRFile, "rt") as f:
+            lines = f.read().split("\n")
+            ignore = [""]
+            lines = [l for l in lines if not l in ignore]
     except Exception as e:
         print(e)
         sys.exit(1)
 
-os.chdir(tmpTraceDirName)
+    if DEBUG:
+        print("\nDEBUG: lines\n")
+        print(lines)
+        print("\n\n")
 
-create_target()
+    setup_trace_metadata(trace_events, pid_events)
+    if DEBUG:
+        print("\nDEBUG: pid events\n")
+        print(pid_events)
+        print("\n\n")
 
-print_config_json(pid_events)
+    convert_eventIR_to_json(trace_events, lines, pid_events)
 
-run_hwfrontend(srcTraceFile, eventIRFile)
-
-# with open(opts.filename, "r") as f:
-try:
-    with open(eventIRFile, "rt") as f:
-        lines = f.read().split("\n")
-        ignore = [""]
-        lines = [l for l in lines if not l in ignore]
-except Exception as e:
-    print(e)
-    sys.exit(1)
-
-if DEBUG:
-    print("\nDEBUG: lines\n")
-    print(lines)
-    print("\n\n")
-
-setup_trace_metadata(trace_events, pid_events)
-if DEBUG:
-    print("\nDEBUG: pid events\n")
-    print(pid_events)
-    print("\n\n")
-
-convert_eventIR_to_json(trace_events, lines, pid_events)
-
-print(json.dumps(trace_events))
+    print(json.dumps(trace_events))

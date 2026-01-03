@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+from aie.dialects.aie import packetflow, WireBundle
 from aie.dialects.aiex import (
     npu_write32,
     npu_writebd,
     npu_maskwrite32,
     npu_address_patch,
-    packetflow,
     npu_sync,
-    WireBundle,
 )
 from aie.dialects.aie import get_target_model
 from .event_enums import (
