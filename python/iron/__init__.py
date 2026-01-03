@@ -14,6 +14,6 @@ from aie.utils import (
     rand,
     arange,
     zeros_like,
-    set_iron_tensor_class,
+    set_tensor_class,
     get_current_device,
 )

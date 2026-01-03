@@ -17,7 +17,7 @@ import numpy as np
 
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.utils import DEFAULT_IRON_RUNTIME
+from aie.utils import DEFAULT_NPU_RUNTIME
 
 IN_SIZE = 64
 OUT_SIZE = 64
@@ -31,7 +31,7 @@ def main(opts):
     ref_data = ref_data + 41
 
     npu_opts = test_utils.create_npu_kernel(opts)
-    if not DEFAULT_IRON_RUNTIME.run_test(
+    if not DEFAULT_NPU_RUNTIME.run_test(
         [inA, inB, out],
         [(2, ref_data)],
         npu_opts.npu_kernel,

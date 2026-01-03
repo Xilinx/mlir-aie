@@ -7,9 +7,6 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 import sys
 from .tensor_class import Tensor
-from .hostruntime import HostRuntime
-from .trace_config import TraceConfig
-from .npukernel import NPUKernel
 
 try:
     import pyxrt
@@ -23,54 +20,63 @@ except ImportError as e:
     has_xrt = False
 
 if has_xrt:
-    from .xrtruntime.hostruntime import XRTHostRuntime
     from .xrtruntime.tensor import XRTTensor
 
-    DEFAULT_NPU_RUNTIME = XRTHostRuntime()
-    DEFAULT_IRON_TENSOR_CLASS = XRTTensor
+    DEFAULT_TENSOR_CLASS = XRTTensor
 else:
     from .tensor_class import CPUOnlyTensor
 
-    DEFAULT_NPU_RUNTIME = None
-    DEFAULT_IRON_TENSOR_CLASS = CPUOnlyTensor
-
-
-def get_current_device():
-    return DEFAULT_NPU_RUNTIME.device()
+    DEFAULT_TENSOR_CLASS = CPUOnlyTensor
 
 
 def tensor(*args, **kwargs):
-    return DEFAULT_IRON_TENSOR_CLASS(*args, **kwargs)
+    return DEFAULT_TENSOR_CLASS(*args, **kwargs)
 
 
 def ones(*args, **kwargs):
-    return DEFAULT_IRON_TENSOR_CLASS.ones(*args, **kwargs)
+    return DEFAULT_TENSOR_CLASS.ones(*args, **kwargs)
 
 
 def zeros(*args, **kwargs):
-    return DEFAULT_IRON_TENSOR_CLASS.zeros(*args, **kwargs)
+    return DEFAULT_TENSOR_CLASS.zeros(*args, **kwargs)
 
 
 def randint(*args, **kwargs):
-    return DEFAULT_IRON_TENSOR_CLASS.randint(*args, **kwargs)
+    return DEFAULT_TENSOR_CLASS.randint(*args, **kwargs)
 
 
 def rand(*args, **kwargs):
-    return DEFAULT_IRON_TENSOR_CLASS.rand(*args, **kwargs)
+    return DEFAULT_TENSOR_CLASS.rand(*args, **kwargs)
 
 
 def arange(*args, **kwargs):
-    return DEFAULT_IRON_TENSOR_CLASS.arange(*args, **kwargs)
+    return DEFAULT_TENSOR_CLASS.arange(*args, **kwargs)
 
 
 def zeros_like(*args, **kwargs):
-    return DEFAULT_IRON_TENSOR_CLASS.zeros_like(*args, **kwargs)
+    return DEFAULT_TENSOR_CLASS.zeros_like(*args, **kwargs)
 
 
-def set_iron_tensor_class(cls):
+def set_tensor_class(cls):
     if not issubclass(cls, Tensor):
         raise ValueError(
             f"IRON Tensors must inherit from the Tensor class but {cls} does not."
         )
-    global DEFAULT_IRON_TENSOR_CLASS
-    DEFAULT_IRON_TENSOR_CLASS = cls
+    global DEFAULT_TENSOR_CLASS
+    DEFAULT_TENSOR_CLASS = cls
+
+
+from .hostruntime import HostRuntime
+from .trace_config import TraceConfig
+from .npukernel import NPUKernel
+
+if has_xrt:
+    from .xrtruntime.hostruntime import XRTHostRuntime
+
+    DEFAULT_NPU_RUNTIME = XRTHostRuntime()
+else:
+    DEFAULT_NPU_RUNTIME = None
+
+
+def get_current_device():
+    return DEFAULT_NPU_RUNTIME.device()

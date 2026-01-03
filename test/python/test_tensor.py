@@ -49,7 +49,7 @@ def test_tensor_creation(dtype, tensorclass):
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_to_device(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.ones((2, 2), dtype=dtype, device=d)
         assert isinstance(t, Tensor)
@@ -62,7 +62,7 @@ def test_to_device(dtype, tensorclass):
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_zeros(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     t = iron.zeros(2, 3, dtype=dtype)
     assert isinstance(t, tensorclass)
     assert bfloat16_safe_allclose(dtype, t, np.zeros((2, 3), dtype=dtype))
@@ -71,7 +71,7 @@ def test_zeros(dtype, tensorclass):
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_ones(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     t = iron.ones((2, 2), dtype=dtype)
     assert isinstance(t, tensorclass)
     assert bfloat16_safe_allclose(dtype, t, np.ones((2, 2), dtype=dtype))
@@ -82,7 +82,7 @@ def test_ones(dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_random_with_bounds(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.randint(0, 32, (2, 4), dtype=dtype, device=d)
         assert t.shape == (2, 4)
@@ -93,7 +93,7 @@ def test_random_with_bounds(dtype, tensorclass):
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_rand(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.rand(2, 2, dtype=dtype, device=d)
         arr = t.numpy()
@@ -105,7 +105,7 @@ def test_rand(dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_arange_integer(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     assert np.array_equal(iron.arange(3, 9, dtype=dtype), np.arange(3, 9, dtype=dtype))
 
 
@@ -114,7 +114,7 @@ def test_arange_integer(dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_arange_floats(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     assert bfloat16_safe_allclose(
         dtype,
         iron.arange(1.0, 5.0, 1.5, dtype=dtype),
@@ -126,7 +126,7 @@ def test_arange_floats(dtype, tensorclass):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_fill(dtype, tensorclass):
     """Test the fill method for in-place tensor filling."""
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.zeros((2, 3), dtype=dtype, device=d)
 
@@ -148,7 +148,7 @@ def test_fill(dtype, tensorclass):
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_zeros_like(dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     t = iron.tensor([[1, 2], [3, 4]], dtype=dtype)
     z = iron.zeros_like(t)
     expected = np.zeros_like(t)
@@ -159,7 +159,7 @@ def test_zeros_like(dtype, tensorclass):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_tensor_repr(dtype, tensorclass):
     """Test that __repr__ properly syncs from device and shows correct data."""
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=d)
         # Modify data on device
@@ -179,7 +179,7 @@ def test_tensor_repr(dtype, tensorclass):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_tensor_getitem(dtype, tensorclass):
     """Test that __getitem__ properly syncs from device."""
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=d)
         # Modify data on device
@@ -193,7 +193,7 @@ def test_tensor_getitem(dtype, tensorclass):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_tensor_setitem(dtype, tensorclass):
     """Test that __setitem__ properly syncs to and from device."""
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=d)
         t[0, 1] = 42
@@ -209,7 +209,7 @@ def test_tensor_setitem(dtype, tensorclass):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_tensor_getitem_setitem_consistency(dtype, tensorclass):
     """Test that getitem and setitem work consistently with device sync."""
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.zeros((2, 2), dtype=dtype, device=d)
         # Set values
@@ -233,7 +233,7 @@ def test_tensor_getitem_setitem_consistency(dtype, tensorclass):
 )
 def test_cpu_tensor_no_sync(dtype, tensorclass):
     """Test that CPU tensors operations."""
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device="cpu")
     assert t[0, 1] == 2
     t[0, 1] = 42
@@ -265,7 +265,7 @@ def test_device_attribute_update(dtype):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_npu_tensor_sync_behavior(dtype, tensorclass):
     """Test that NPU tensors when implicit sync is required."""
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     for d in tensorclass.DEVICES:
         t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device=d)
         assert t.device == d
@@ -312,7 +312,7 @@ def test_mixed_device_operations(dtype):
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_rand_bfloat16_boundary(dtype, tensorclass):
     """Test that bfloat16 rand never produces 1.0 due to rounding."""
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     # Generate many values to increase chance of hitting boundary
     t = iron.rand(10000, dtype=dtype)
     arr = t.numpy()

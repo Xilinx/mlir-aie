@@ -40,7 +40,7 @@ def bfloat16_safe_allclose(dtype, arr1, arr2):
 @pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_zeros(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     iron_t = iron.zeros(shape, dtype=dtype)
     torch_t = torch.zeros(shape, dtype=torch_dtype)
     assert bfloat16_safe_allclose(dtype, iron_t, torch_t)
@@ -50,7 +50,7 @@ def test_zeros(shape, dtype, torch_dtype, tensorclass):
 @pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_ones(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     iron_t = iron.ones(shape, dtype=dtype)
     torch_t = torch.ones(shape, dtype=torch_dtype)
     assert bfloat16_safe_allclose(dtype, iron_t, torch_t)
@@ -66,7 +66,7 @@ def test_ones(shape, dtype, torch_dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_randint(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     low, high = 0, 32
     iron_t = iron.randint(low, high, shape, dtype=dtype)
     torch_t = torch.randint(low, high, shape, dtype=torch_dtype)
@@ -91,7 +91,7 @@ def test_randint(shape, dtype, torch_dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_arange_integer(dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     start, end = 3, 9
     iron_t = iron.arange(start, end, dtype=dtype)
     torch_t = torch.arange(start, end, dtype=torch_dtype)
@@ -107,7 +107,7 @@ def test_arange_integer(dtype, torch_dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_arange_floats(dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     start, end, step = 1.0, 5.0, 1.5
     iron_t = iron.arange(start, end, step, dtype=dtype)
     torch_t = torch.arange(start, end, step, dtype=torch_dtype)
@@ -147,7 +147,7 @@ def test_rand(shape, dtype, torch_dtype, tensorclass):
 @pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_zeros_like(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     iron_t_orig = iron.ones(shape, dtype=dtype)
     torch_t_orig = torch.ones(shape, dtype=torch_dtype)
 
@@ -161,7 +161,7 @@ def test_zeros_like(shape, dtype, torch_dtype, tensorclass):
 @pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_fill(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     iron_t = iron.zeros(shape, dtype=dtype)
     torch_t = torch.zeros(shape, dtype=torch_dtype)
 
@@ -176,7 +176,7 @@ def test_fill(shape, dtype, torch_dtype, tensorclass):
 @pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_len(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     iron_t = iron.zeros(shape, dtype=dtype)
     torch_t = torch.zeros(shape, dtype=torch_dtype)
     if not shape:
@@ -193,7 +193,7 @@ def test_len(shape, dtype, torch_dtype, tensorclass):
 @pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_to_torch(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     iron_t = iron.ones(shape, dtype=dtype)
     torch_t = iron_t.to_torch()
     assert isinstance(torch_t, torch.Tensor)
@@ -211,7 +211,7 @@ def test_to_torch(shape, dtype, torch_dtype, tensorclass):
 @pytest.mark.parametrize("dtype, torch_dtype", zip(TEST_DTYPES, TORCH_DTYPES))
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_from_torch(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     torch_t = torch.ones(shape, dtype=torch_dtype)
     iron_t = tensorclass.from_torch(torch_t)
     assert isinstance(iron_t, Tensor)
@@ -229,7 +229,7 @@ def test_from_torch(shape, dtype, torch_dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_iron_torch_iron(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     low, high = 0, 100
     iron_t_orig = iron.randint(low, high, shape, dtype=dtype)
     torch_t = iron_t_orig.to_torch()
@@ -247,7 +247,7 @@ def test_iron_torch_iron(shape, dtype, torch_dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_torch_iron_torch(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     low, high = 0, 100
     torch_t_orig = torch.randint(low, high, shape, dtype=torch_dtype)
     iron_t = tensorclass.from_torch(torch_t_orig)
@@ -265,7 +265,7 @@ def test_torch_iron_torch(shape, dtype, torch_dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_iron_torch_iron_float(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     if shape == ():
         return
     iron_t_orig = iron.rand(*shape, dtype=dtype)
@@ -284,7 +284,7 @@ def test_iron_torch_iron_float(shape, dtype, torch_dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_torch_iron_torch_float(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     if shape == ():
         return
     torch_t_orig = torch.rand(*shape, dtype=torch_dtype)
