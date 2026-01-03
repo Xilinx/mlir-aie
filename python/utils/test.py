@@ -5,6 +5,16 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
+"""
+Test/ Host code utilities.
+
+* `create_default_argparser`
+    * This creates a ArgumentParser with the following args: --xclbin, --kernel, --instr, -v, --verify, --iters, --warmup, --trace_sz, --trace_file
+    * It returns the ArgumentParser which allows you to add more arguments
+* `parse_args`
+    * Calls create_default_argparser and returns the parsed results
+    * Useful if you don't need additional custom args
+"""
 import argparse
 from aie.utils import TraceConfig, NPUKernel
 
