@@ -6,8 +6,8 @@ import re
 
 from aie.extras.util import find_ops
 from aie.ir import Context, Module, Location
-from .event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
-from .utils import (
+from aie.utils.trace.event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace.utils import (
     parity,
     extract_tile,
     parse_pkt_hdr_in_stream,
@@ -16,7 +16,7 @@ from .utils import (
     convert_to_commands,
     trim_trace_pkts,
 )
-from .port_events import NUM_TRACE_TYPES, PacketType
+from aie.utils.trace.port_events import NUM_TRACE_TYPES, PacketType
 
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect

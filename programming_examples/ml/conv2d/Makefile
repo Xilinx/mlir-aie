@@ -96,8 +96,8 @@ run_py: build/final.xclbin
 
 trace_py: build/final_trace.xclbin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace.xclbin -i build/insts_trace.bin -k MLIR_AIE -wd ${width} -ht ${height} -ic ${in_channels} -oc ${out_channels} -t ${trace_size}
-	${srcdir}/../../../python/utils/parse_trace.py --input log/trace_conv2d.txt --mlir build/aie2_trace.mlir --output log/trace_conv2d.json
-	${srcdir}/../../../python/utils/get_trace_summary.py --input log/trace_conv2d.json
+	${srcdir}/../../../python/utils/trace/parse.py --input log/trace_conv2d.txt --mlir build/aie2_trace.mlir --output log/trace_conv2d.json
+	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input log/trace_conv2d.json
 
 clean:
 	rm -rf build *.elf* *.lst *.bif aie2.mlir.prj log* *.xclbin sim \

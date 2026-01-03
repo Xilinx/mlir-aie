@@ -111,9 +111,8 @@ profile: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_softmax.json
-	${srcdir}/../../../python/utils/get_trace_summary.py --input trace_softmax.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir --output trace_softmax.json
+	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_softmax.json
 
 clean:
 	rm -rf build _build ${targetname}.exe
-
