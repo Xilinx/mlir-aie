@@ -22,7 +22,7 @@
 import numpy as np
 import sys
 from pathlib import Path
-from aie.utils.parse_trace import parse_trace
+from aie.utils.trace import parse_trace
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.utils import DEFAULT_NPU_RUNTIME
