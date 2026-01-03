@@ -12,10 +12,11 @@
 
 import pytest
 import numpy as np
+import os
 import aie.iron as iron
 from aie.utils.jit import jit
 from aie.utils import tensor
-from aie.utils.trace import TraceConfig
+from aie.utils.trace import TraceConfig, parse_trace
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
@@ -79,7 +80,14 @@ def test_jit_trace(trace_size):
     # Verify results
     assert np.array_equal(c.numpy(), ref)
 
-    # Verify trace file exists?
-    import os
-
+    # Verify trace file exists
     assert os.path.exists(trace_config.trace_file)
+
+    # Parse trace
+    # Get MLIR module from the wrapped function
+    mlir_module = design.__wrapped__(a, c, trace_config=trace_config)
+
+    trace_buffer = trace_config.read_trace()
+    trace_events = parse_trace(trace_buffer, str(mlir_module))
+
+    assert len(trace_events) > 0
