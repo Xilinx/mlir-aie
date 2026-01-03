@@ -11,7 +11,7 @@ from . import tensor
 if TYPE_CHECKING:
     from aie.iron.device import Device
 from .tensor_class import Tensor
-from .trace_config import TraceConfig
+from .trace import TraceConfig
 from .npukernel import NPUKernel
 
 
