@@ -12,8 +12,7 @@ from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.iron.controlflow import range_
 import aie.utils.trace as trace_utils
-from aie.utils.trace import PortEvent
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace import PortEvent, CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 from aie.helpers.taplib import TensorTiler2D, TensorAccessSequence
 
 
