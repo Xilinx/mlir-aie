@@ -16,7 +16,7 @@ from .utils import (
     convert_to_commands,
     trim_trace_pkts,
 )
-from .port_events import NUM_TRACE_TYPES
+from .port_events import NUM_TRACE_TYPES, PacketType
 
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
@@ -365,17 +365,13 @@ def process_name_metadata(trace_events, pid, trace_type, loc):
     trace_event["ph"] = "M"
     trace_event["pid"] = pid
     trace_event["args"] = {}
-    # if (pid == 0 or pid == 2):
-    if trace_type == 0:
-        trace_event["args"]["name"] = "core_trace for tile" + str(loc)
-    # if (pid == 1 or pid == 3):
-    elif trace_type == 1:
-        trace_event["args"]["name"] = "mem_trace for tile" + str(loc)
-    elif trace_type == 2:
-        trace_event["args"]["name"] = "shim_trace for tile" + str(loc)
-    elif trace_type == 3:
-        trace_event["args"]["name"] = "memtile_trace for tile" + str(loc)
 
+    pt = PacketType(trace_type)
+    name = pt.name.lower()
+    if name == "shimtile":
+        name = "shim"
+
+    trace_event["args"]["name"] = f"{name}_trace for tile{loc}"
     trace_events.append(trace_event)
 
 
@@ -529,24 +525,22 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
     return pid_events
 
 
+_TRACE_TYPE_TO_EVENT_ENUM = {
+    PacketType.CORE: CoreEvent,
+    PacketType.MEM: MemEvent,
+    PacketType.SHIMTILE: ShimTileEvent,
+    PacketType.MEMTILE: MemTileEvent,
+}
+
+
 def lookup_event_name_by_type(trace_type, code):
-    # def lookup_event_name_by_type(trace_type, loc, event, pid_events):
-    event = ""
-    # code = pid_events[trace_type][loc][event]
-    events_enum = None
-    if trace_type == 0:  # Core traces
-        events_enum = CoreEvent
-    elif trace_type == 1:  # Mem traces
-        events_enum = MemEvent
-    elif trace_type == 2:  # Shim traces
-        events_enum = ShimTileEvent
-    elif trace_type == 3:  # MemTile traces
-        events_enum = MemTileEvent
-    if events_enum is not None and code in set(x.value for x in events_enum):
-        event = events_enum(code).name
-    else:
-        event = "Unknown"
-    return event
+    events_enum = _TRACE_TYPE_TO_EVENT_ENUM.get(trace_type)
+    if events_enum:
+        try:
+            return events_enum(code).name
+        except ValueError:
+            pass
+    return "Unknown"
 
 
 # def lookup_event_name_by_code(code, traceType):

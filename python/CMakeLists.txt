@@ -38,18 +38,10 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/__init__.py
     utils/test.py
     utils/ml.py
-    utils/trace.py
-    utils/trace_events_enum.py
-    utils/trace_packet.py
     utils/config.py
-    utils/parse_trace.py
-    utils/parse_eventIR.py
-    utils/get_trace_summary.py
-    utils/trace_utils.py
     utils/jit.py
     utils/npukernel.py
     utils/tensor_class.py
-    utils/trace_config.py
     utils/hostruntime.py
     utils/xrtruntime/__init__.py
     utils/xrtruntime/hostruntime.py
@@ -59,6 +51,16 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/compile/utils.py
     utils/compile/cache/circular_cache.py
     utils/compile/cache/utils.py
+    utils/trace/__init__.py
+    utils/trace/config.py
+    utils/trace/event_enums.py
+    utils/trace/event_ir.py
+    utils/trace/events.py
+    utils/trace/get_trace_summary.py
+    utils/trace/parse.py
+    utils/trace/port_events.py
+    utils/trace/setup.py
+    utils/trace/utils.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Helpers
