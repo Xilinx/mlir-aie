@@ -6,6 +6,8 @@ import numpy as np
 import json
 import re
 import os
+import sys
+from .port_events import NUM_TRACE_TYPES
 
 
 # checks # of bits. Odd number returns a 1. Even returns 0.
@@ -201,3 +203,189 @@ def get_vector_time(trace):
                 total_duration += duration
 
     return total_duration / (end - start)
+
+
+def check_odd_word_parity(word):
+    val = 0
+    for i in range(32):
+        val = val ^ ((word >> i) & 0x1)
+    return val == 1
+
+
+def parse_pkt_hdr_in_stream(word):
+    hdr = dict()
+    w = int(word)
+    hdr["valid"] = check_odd_word_parity(w)
+    # TODO can we assume non used fields must be 0 to rule out other data packets?
+    # what about bit[5:10]?
+    if (((w >> 5) & 0x7F) != 0) or (((w >> 19) & 0x1) != 0) or (((w >> 28) & 0x7) != 0):
+        hdr["valid"] = False
+    else:
+        # TODO Do we need to check for valid row/col for given device?
+        col, row, pkt_type, pkt_id = extract_tile(w)
+        hdr["col"] = col
+        hdr["row"] = row
+        hdr["type"] = pkt_type
+        hdr["id"] = pkt_id
+    return hdr
+
+
+def trace_pkts_de_interleave(word_stream):
+    trace_pkts_sorted = list()
+    for t in range(NUM_TRACE_TYPES):
+        trace_pkts_sorted.append(dict())
+
+    curr_pkt_type = 0
+    curr_loc = ""
+    curr_vld = False  # only used in the beginning
+
+    for i in range(len(word_stream)):
+        if word_stream[i] == "":
+            break  # TODO Assumes a blank line is the last line
+        if (i % 8) == 0:
+            pkt_hdr = parse_pkt_hdr_in_stream(int(word_stream[i], 16))
+            if pkt_hdr["valid"]:
+                curr_loc = str(pkt_hdr["row"]) + "," + str(pkt_hdr["col"])
+                valid_type_found = False
+                for tt in range(NUM_TRACE_TYPES):
+                    if pkt_hdr["type"] == tt:
+                        curr_pkt_type = tt
+                        if trace_pkts_sorted[tt].get(curr_loc) == None:
+                            trace_pkts_sorted[tt][curr_loc] = list()
+                        valid_type_found = True
+                if not valid_type_found:
+                    sys.exit("Error: Invalid packet type")
+            curr_vld = True
+        else:
+            if curr_vld:
+                trace_pkts_sorted[curr_pkt_type][curr_loc].append(word_stream[i])
+    return trace_pkts_sorted
+
+
+def convert_to_byte_stream(toks_list):
+    byte_stream_list = list()
+    for l in toks_list:
+        byte_stream_dict = dict()
+        for loc, stream in l.items():
+            byte_stream_dict[loc] = list()
+            f = ["", "a5a5a5a5"]
+            toks = [t for t in stream if not t in f]
+            events = [int(t, 16) for t in toks]
+            for event in events:
+                for top in range(4):
+                    byte = 3 - top
+                    opcode = event >> (byte * 8) & 0xFF
+                    byte_stream_dict[loc].append(opcode)
+        byte_stream_list.append(byte_stream_dict)
+    return byte_stream_list
+
+
+def convert_to_commands(byte_stream_list, zero=True):
+    commands = list()
+    for t in range(NUM_TRACE_TYPES):
+        commands.append(dict())
+
+    for t in range(NUM_TRACE_TYPES):
+        for key, byte_stream in byte_stream_list[t].items():
+            cursor = 0
+            commands[t][key] = list()
+            try:
+                while True:
+                    if (byte_stream[cursor] & 0b11111011) == 0b11110000:
+                        com = {"type": "Start", "timer_value": 0}
+                        if not zero:
+                            for i in range(7):
+                                com["timer_value"] += (byte_stream[cursor + i + 1]) * (
+                                    256 ** (6 - i)
+                                )
+                        commands[t][key].append(com)
+                        cursor = cursor + 8
+                    if (byte_stream[cursor] & 0b11111100) == 0b11011100:
+                        cursor = cursor + 4
+                    if (byte_stream[cursor] & 0b10000000) == 0b00000000:
+                        com = {"type": "Single0"}
+                        com["event"] = (byte_stream[cursor]) >> 4 & 0b111
+                        com["cycles"] = (byte_stream[cursor]) & 0b1111
+                        commands[t][key].append(com)
+                        cursor = cursor + 1
+                    if (byte_stream[cursor] & 0b11100000) == 0b10000000:
+                        com = {"type": "Single1"}
+                        com["event"] = (byte_stream[cursor]) >> 2 & 0b111
+                        com["cycles"] = ((byte_stream[cursor]) & 0b11) * 256
+                        com["cycles"] += byte_stream[cursor + 1]
+                        commands[t][key].append(com)
+                        cursor = cursor + 2
+                    if (byte_stream[cursor] & 0b11100000) == 0b10100000:
+                        com = {"type": "Single2"}
+                        com["event"] = (byte_stream[cursor]) >> 2 & 0b111
+                        com["cycles"] = ((byte_stream[cursor]) & 0b11) * 256 * 256
+                        com["cycles"] += byte_stream[cursor + 1] * 256
+                        com["cycles"] += byte_stream[cursor + 2]
+                        commands[t][key].append(com)
+                        cursor = cursor + 3
+                    if (byte_stream[cursor] & 0b11110000) == 0b11000000:
+                        com = {"type": "Multiple0"}
+                        com["cycles"] = byte_stream[cursor + 1] & 0b1111
+                        events = (byte_stream[cursor] & 0b1111) << 4
+                        events = events + (byte_stream[cursor + 1] >> 4)
+                        for i in range(0, 8):
+                            e = (events >> i) & 0b1
+                            if e:
+                                com["event" + str(i)] = i
+                        commands[t][key].append(com)
+                        cursor = cursor + 2
+                    if (byte_stream[cursor] & 0b11111100) == 0b11010000:
+                        com = {"type": "Multiple1"}
+                        cycles = (byte_stream[cursor + 1] & 0b11) << 8
+                        com["cycles"] = cycles + (byte_stream[cursor + 2])
+                        events = (byte_stream[cursor] & 0b11) << 6
+                        events = events + (byte_stream[cursor + 1] >> 2)
+                        for i in range(0, 8):
+                            e = (events >> i) & 0b1
+                            if e:
+                                com["event" + str(i)] = i
+                        commands[t][key].append(com)
+                        cursor = cursor + 3
+                    if (byte_stream[cursor] & 0b11111100) == 0b11010100:
+                        com = {"type": "Multiple2"}
+                        cycles = (byte_stream[cursor + 1] & 0b11) << 16
+                        cycles = cycles + ((byte_stream[cursor + 2]) << 8)
+                        com["cycles"] = cycles + (byte_stream[cursor + 3])
+                        events = (byte_stream[cursor] & 0b11) << 6
+                        events = events + (byte_stream[cursor + 1] >> 2)
+                        for i in range(0, 8):
+                            e = (events >> i) & 0b1
+                            if e:
+                                com["event" + str(i)] = i
+                        commands[t][key].append(com)
+                        cursor = cursor + 4
+                    if (byte_stream[cursor] & 0b11110000) == 0b11100000:
+                        com = {"type": "Repeat0"}
+                        com["repeats"] = (byte_stream[cursor]) & 0b1111
+                        commands[t][key].append(com)
+                        cursor = cursor + 1
+                    if (byte_stream[cursor] & 0b11111100) == 0b11011000:
+                        com = {"type": "Repeat1"}
+                        com["repeats"] = ((byte_stream[cursor]) & 0b11) * 256
+                        com["repeats"] += byte_stream[cursor + 1]
+                        commands[t][key].append(com)
+                        cursor = cursor + 2
+                    if (byte_stream[cursor] & 0b11111111) == 0b11111110:
+                        cursor = cursor + 1
+                    if (byte_stream[cursor] & 0b11111111) == 0b11111111:
+                        com = {"type": "Event_Sync"}
+                        commands[t][key].append(com)
+                        cursor = cursor + 1
+            except IndexError:
+                pass
+
+    return commands
+
+
+def trim_trace_pkts(trace_pkts):
+    for i in range(len(trace_pkts)):
+        if trace_pkts[i] == "fefefefe" or trace_pkts[i] == "FEFEFEFE":
+            if i + 2 < len(trace_pkts):
+                if trace_pkts[i + 1] == "00000000" and trace_pkts[i + 2] == "00000000":
+                    return trace_pkts[0 : i + 1]
+    return trace_pkts

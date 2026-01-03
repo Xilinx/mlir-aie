@@ -8,6 +8,12 @@ import shutil
 import os
 from .event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 from .port_events import NUM_TRACE_TYPES
+from .utils import (
+    parse_pkt_hdr_in_stream,
+    trace_pkts_de_interleave,
+    convert_to_byte_stream,
+    convert_to_commands,
+)
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
@@ -35,239 +41,6 @@ def parse_args():
     #         nargs='+',
     #         help='Labels for traces', required=False)
     return parser.parse_args(sys.argv[1:])
-
-
-def check_odd_word_parity(word):
-    val = 0
-    for i in range(32):
-        val = val ^ ((word >> i) & 0x1)
-    return val == 1
-
-
-def parse_pkt_hdr_in_stream(word):
-    hdr = dict()
-    w = int(word)
-    hdr["valid"] = check_odd_word_parity(w)
-    # TODO can we assume non used fields must be 0 to rule out other data packets?
-    # what about bit[5:10]?
-    if (((w >> 5) & 0x7F) != 0) or (((w >> 19) & 0x1) != 0) or (((w >> 28) & 0x7) != 0):
-        hdr["valid"] = False
-    else:
-        # TODO Do we need to check for valid row/col for given device?
-        hdr["col"] = (w >> 21) & 0x7F
-        hdr["row"] = (w >> 16) & 0x1F
-        hdr["type"] = (w >> 12) & 0x3
-        hdr["id"] = w & 0x1F
-    return hdr
-
-
-# toks_list:   list (idx = types of traces, currently 4, value = stream_dict)
-# stream_dict: dict (key = row,col, value = list of word streams)
-def core_trace_and_mem_trace_de_interleave(word_stream):
-    toks_list = list()
-    for t in range(NUM_TRACE_TYPES):
-        toks_list.append(dict())
-
-    # index lists based on row/col and if its not null, that means it already exists
-
-    curr_pkt_type = 0
-    curr_loc = ""
-    curr_vld = False  # only used in the beginning
-
-    # print(len(word_stream))
-    for i in range(len(word_stream)):
-        if word_stream[i] == "":
-            break  # TODO Assumes a blank line is the last line
-        if (i % 8) == 0:
-            # print(str(i)+':'+word_stream[i])
-            pkt_hdr = parse_pkt_hdr_in_stream(int(word_stream[i], 16))
-            if pkt_hdr["valid"]:
-                curr_loc = str(pkt_hdr["row"]) + "," + str(pkt_hdr["col"])
-                valid_type_found = False
-                for tt in range(NUM_TRACE_TYPES):
-                    if pkt_hdr["type"] == tt:
-                        curr_pkt_type = tt
-                        if toks_list[tt].get(curr_loc) == None:
-                            toks_list[tt][curr_loc] = list()
-                        valid_type_found = True
-                if not valid_type_found:
-                    sys.exit("Error: Invalid packet type")
-            # Crate a list for the loc if it doesn't exist
-            curr_vld = True
-        else:
-            if (
-                curr_vld
-            ):  # ignores first 8 chunks of data is pkt hdr was invalid. TODO Is this right?
-                # or shoudl we require valid header in first chunk of data
-                toks_list[curr_pkt_type][curr_loc].append(
-                    word_stream[i]
-                )  # TODO assuem curr_pkt_type is valid
-                # for tt in range(NUM_TRACE_TYPES):
-                #     if curr_pkt_type == tt:
-                #         toks_list[tt][curr_loc].append(word_stream[i])
-    return toks_list
-
-
-# toks_list is a list of toks dictionaries where each dictionary is a type (core, mem, intfc, memtile)
-# each dictionary key is a tile location (row,col) whose value is a list of stream data
-def convert_to_byte_stream(toks_list):
-    byte_stream_list = list()
-    for l in toks_list:
-        byte_stream_dict = dict()
-        for loc, stream in l.items():
-            # byte_stream = list()
-            byte_stream_dict[loc] = list()
-            f = ["", "a5a5a5a5"]
-            toks = [t for t in stream if not t in f]
-            events = [int(t, 16) for t in toks]
-            for event in events:
-                for top in range(4):
-                    byte = 3 - top
-                    opcode = event >> (byte * 8) & 0xFF
-                    byte_stream_dict[loc].append(opcode)
-        # for key, value in l.items():
-        #     # byte_stream = list()
-        #     byte_stream_dict[key] = list()
-        #     f = ['', 'a5a5a5a5']
-        #     toks = [t for t in value if not t in f]
-        #     events = [int(t,16) for t in toks]
-        #     for (i,event) in enumerate(events):
-        #         if ((i % 8) == 0): # assumed hdr every 8 words and ignores it
-        #             pass
-        #         else: # breaks line into list of bytes
-        #             for top in range(4):
-        #                 byte = 3-top
-        #                 opcode = (event >> (byte * 8) & 0xff)
-        #                 byte_stream_dict[key].append(opcode)
-        byte_stream_list.append(byte_stream_dict)
-    return byte_stream_list
-
-
-# byte_stream_list: list (idx = trace type, value = word_stream_dict)
-# word_stream_dict: dict (key = row,col, value = list of words)
-#
-# return commands:  list (idx = trace type, value = byte_stream_dict)
-# byte_stream_dict: dict (key = row,col, value = list of commands)
-#
-# command: dict
-#   keys: type (Single0/1, Multiple0/1/2, Start, Repeat0/1, EventSync)
-#         event (integer value)
-#         cycles (integer value)
-#         event# (integer value matching event number #)
-#         repeats (integer value)
-def convert_to_commands(byte_stream_list, zero=True):
-    # commands = dict()
-    commands = list()
-    for t in range(NUM_TRACE_TYPES):
-        commands.append(dict())
-
-    for t in range(NUM_TRACE_TYPES):
-        for key, byte_stream in byte_stream_list[t].items():
-            cursor = 0
-            commands[t][key] = list()
-            try:
-                while True:
-                    if (byte_stream[cursor] & 0b11111011) == 0b11110000:
-                        com = {"type": "Start", "timer_value": 0}
-                        if not zero:
-                            for i in range(7):
-                                com["timer_value"] += (byte_stream[cursor + i + 1]) * (
-                                    256 ** (6 - i)
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 8
-                    if (byte_stream[cursor] & 0b11111100) == 0b11011100:
-                        # We don't care about these
-                        cursor = cursor + 4
-                    if (byte_stream[cursor] & 0b10000000) == 0b00000000:
-                        com = {"type": "Single0"}
-                        com["event"] = (byte_stream[cursor]) >> 4 & 0b111
-                        com["cycles"] = (byte_stream[cursor]) & 0b1111
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11100000) == 0b10000000:
-                        com = {"type": "Single1"}
-                        com["event"] = (byte_stream[cursor]) >> 2 & 0b111
-                        com["cycles"] = ((byte_stream[cursor]) & 0b11) * 256
-                        com["cycles"] += byte_stream[cursor + 1]
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11100000) == 0b10100000:
-                        com = {"type": "Single2"}
-                        com["event"] = (byte_stream[cursor]) >> 2 & 0b111
-                        com["cycles"] = ((byte_stream[cursor]) & 0b11) * 256 * 256
-                        com["cycles"] += byte_stream[cursor + 1] * 256
-                        com["cycles"] += byte_stream[cursor + 2]
-                        commands[t][key].append(com)
-                        cursor = cursor + 3
-                    if (byte_stream[cursor] & 0b11110000) == 0b11000000:
-                        com = {"type": "Multiple0"}
-                        com["cycles"] = byte_stream[cursor + 1] & 0b1111
-                        events = (byte_stream[cursor] & 0b1111) << 4
-                        events = events + (byte_stream[cursor + 1] >> 4)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11111100) == 0b11010000:
-                        # TODO Don't we need to extract events here?
-                        # print("Multiple1")
-                        com = {"type": "Multiple1"}
-                        cycles = (byte_stream[cursor + 1] & 0b11) << 8
-                        com["cycles"] = cycles + (byte_stream[cursor + 2])
-                        events = (byte_stream[cursor] & 0b11) << 6
-                        events = events + (byte_stream[cursor + 1] >> 2)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 3
-                    if (byte_stream[cursor] & 0b11111100) == 0b11010100:
-                        # TODO Don't we need to extract events here?
-                        # print("Multiple2")
-                        com = {"type": "Multiple2"}
-                        cycles = (byte_stream[cursor + 1] & 0b11) << 16
-                        cycles = cycles + ((byte_stream[cursor + 2]) << 8)
-                        com["cycles"] = cycles + (byte_stream[cursor + 3])
-                        events = (byte_stream[cursor] & 0b11) << 6
-                        events = events + (byte_stream[cursor + 1] >> 2)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 4
-                    if (byte_stream[cursor] & 0b11110000) == 0b11100000:
-                        com = {"type": "Repeat0"}
-                        com["repeats"] = (byte_stream[cursor]) & 0b1111
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11111100) == 0b11011000:
-                        com = {"type": "Repeat1"}
-                        com["repeats"] = ((byte_stream[cursor]) & 0b11) * 256
-                        com["repeats"] += byte_stream[cursor + 1]
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11111111) == 0b11111110:
-                        # No one likes you filler, get out of here
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11111111) == 0b11111111:
-                        com = {"type": "Event_Sync"}
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-            except IndexError:
-                pass
-
-    return commands
 
 
 def make_event_lists(commands):
@@ -1042,7 +815,6 @@ def print_config_json(pid_events):
             f.write('              "start_event": 0,\n')
             f.write('              "stop_event": 0,\n')
             f.write('              "traced_events": [\n')
-            f.write("                0,\n")
             f.write("                0,\n")
             f.write("                0,\n")
             f.write("                0,\n")
