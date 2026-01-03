@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from aie.iron.device import Device
 from .tensor_class import Tensor
 from ..trace import TraceConfig
+from ..trace.utils import create_ctrl_pkt, extract_tile
 from ..npukernel import NPUKernel
 
 
@@ -160,8 +161,8 @@ class HostRuntime(ABC):
             if trace_config.enable_ctrl_pkts:
                 # write ctrl packets
                 ctrl_pkts = [
-                    TraceConfig.create_ctrl_pkt(1, 0, 0x32004),  # core status
-                    TraceConfig.create_ctrl_pkt(1, 0, 0x340D8),  # trace status
+                    create_ctrl_pkt(1, 0, 0x32004),  # core status
+                    create_ctrl_pkt(1, 0, 0x340D8),  # trace status
                 ]
                 # Pad to 8 words
                 ctrl_pkts += [0] * (8 - len(ctrl_pkts))
@@ -228,9 +229,7 @@ class HostRuntime(ABC):
                 print("ctrl_buffer dtype: ", ctrl_buffer.dtype)
                 print("ctrl buffer: ", [hex(d) for d in ctrl_buffer])
             for i in range(ctrl_buffer.size // 2):
-                col, row, pkt_type, pkt_id = TraceConfig.extract_tile(
-                    ctrl_buffer[i * 2]
-                )
+                col, row, pkt_type, pkt_id = extract_tile(ctrl_buffer[i * 2])
                 overflow = True if (ctrl_buffer[i * 2 + 1] >> 8) == 3 else False
                 if overflow:
                     print(
