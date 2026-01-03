@@ -6,13 +6,13 @@ import numpy as np
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import tensor
+from .. import tensor
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
 from .tensor_class import Tensor
-from .trace import TraceConfig
-from .npukernel import NPUKernel
+from ..trace import TraceConfig
+from ..npukernel import NPUKernel
 
 
 class HostRuntimeError(Exception):

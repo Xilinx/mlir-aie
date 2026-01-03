@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 import sys
-from .tensor_class import Tensor
+from .hostruntime.tensor_class import Tensor
 
 try:
     import pyxrt
@@ -20,11 +20,11 @@ except ImportError as e:
     has_xrt = False
 
 if has_xrt:
-    from .xrtruntime.tensor import XRTTensor
+    from .hostruntime.xrtruntime.tensor import XRTTensor
 
     DEFAULT_TENSOR_CLASS = XRTTensor
 else:
-    from .tensor_class import CPUOnlyTensor
+    from .hostruntime.tensor_class import CPUOnlyTensor
 
     DEFAULT_TENSOR_CLASS = CPUOnlyTensor
 
@@ -66,12 +66,12 @@ def set_tensor_class(cls):
     DEFAULT_TENSOR_CLASS = cls
 
 
-from .hostruntime import HostRuntime
+from .hostruntime.hostruntime import HostRuntime
 from .trace import TraceConfig
 from .npukernel import NPUKernel
 
 if has_xrt:
-    from .xrtruntime.hostruntime import XRTHostRuntime
+    from .hostruntime.xrtruntime.hostruntime import XRTHostRuntime
 
     DEFAULT_NPU_RUNTIME = XRTHostRuntime()
 else:
