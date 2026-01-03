@@ -9,7 +9,7 @@ import numpy as np
 import sys
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.utils import DEFAULT_IRON_RUNTIME
+from aie.utils import DEFAULT_NPU_RUNTIME
 
 
 def main(opts):
@@ -56,7 +56,7 @@ def main(opts):
         npu_opts.npu_kernel.trace_config.enable_ctrl_pkts = True
 
     print("Running...\n")
-    res = DEFAULT_IRON_RUNTIME.run_test(
+    res = DEFAULT_NPU_RUNTIME.run_test(
         [in1, in2, out],
         [(2, ref)],
         npu_opts.npu_kernel,

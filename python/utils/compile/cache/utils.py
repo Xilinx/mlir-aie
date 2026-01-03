@@ -11,7 +11,6 @@ import os
 import time
 
 from aie.utils.tensor_class import Tensor
-from ...kernel import ExternalFunction
 
 
 def _create_function_cache_key(function, args, kwargs):
@@ -31,10 +30,6 @@ def _create_function_cache_key(function, args, kwargs):
         if isinstance(arg, Tensor):
             # Tensor argument - include shape and dtype
             signature_parts.append(f"tensor_{arg.shape}_{arg.dtype}")
-        elif isinstance(arg, ExternalFunction):
-            # ExternalFunction argument - use its custom hash method
-            func_hash = hash(arg)
-            signature_parts.append(f"externalfunction_{func_hash}")
         elif callable(arg):
             if hasattr(arg, "__code__"):
                 # Use bytecode and constants hash for Python functions/lambdas
@@ -46,17 +41,14 @@ def _create_function_cache_key(function, args, kwargs):
                 func_hash = hash(arg)
                 signature_parts.append(f"function_{func_hash}")
         else:
-            # Unsupported type - use type name
-            signature_parts.append(f"{type(arg).__name__}")
+            # Other type - use type name
+            arg_hash = hash(arg)
+            signature_parts.append(f"{type(arg).__name__}_{arg_hash}")
 
     for key, value in sorted(kwargs.items()):
         if isinstance(value, Tensor):
             # Tensor argument - include shape and dtype
             signature_parts.append(f"{key}_tensor_{value.shape}_{value.dtype}")
-        elif isinstance(value, ExternalFunction):
-            # ExternalFunction argument - use its custom hash method
-            func_hash = hash(value)
-            signature_parts.append(f"{key}_externalfunction_{func_hash}")
         elif callable(value):
             if hasattr(value, "__code__"):
                 # Use bytecode and constants hash for Python functions/lambdas

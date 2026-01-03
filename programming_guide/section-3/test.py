@@ -32,7 +32,7 @@ def main(opts):
     # Prepare buffers and load compiled artifacts onto the device
     # ----------------------------------------------------
     npu_kernel = NPUKernel(opts.xclbin, opts.instr)
-    kernel_handle = aie.utils.hostruntime.DEFAULT_IRON_RUNTIME.load(npu_kernel)
+    kernel_handle = aie.utils.hostruntime.DEFAULT_NPU_RUNTIME.load(npu_kernel)
 
     # ------------------------------------------------------
     # Initialize run configs
@@ -46,7 +46,7 @@ def main(opts):
     # Run kernel
     if opts.verbosity >= 1:
         print("Running Kernel.")
-    npu_time = aie.utils.hostruntime.DEFAULT_IRON_RUNTIME.run(
+    npu_time = aie.utils.hostruntime.DEFAULT_NPU_RUNTIME.run(
         kernel_handle, [in_buffer, in_factor, out]
     )
 

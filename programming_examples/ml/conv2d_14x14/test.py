@@ -114,7 +114,7 @@ def main(opts):
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
     npu_kernel = NPUKernel(xclbin_path, insts_path)
-    kernel_handle = iron.DEFAULT_IRON_RUNTIME.load(npu_kernel)
+    kernel_handle = iron.DEFAULT_NPU_RUNTIME.load(npu_kernel)
 
     # ------------------------------------------------------
     # Define your golden reference
@@ -222,7 +222,7 @@ def main(opts):
         HostRuntime.prepare_args_for_trace(buffers, trace_config)
     for i in range(num_iter):
 
-        ret = iron.DEFAULT_IRON_RUNTIME.run(kernel_handle, buffers)
+        ret = iron.DEFAULT_NPU_RUNTIME.run(kernel_handle, buffers)
 
         trace_buffer = None
         if trace_config:

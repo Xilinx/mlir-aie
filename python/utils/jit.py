@@ -11,16 +11,16 @@ import functools
 import hashlib
 
 from aie.extras.context import mlir_mod_ctx
-from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
-from ..compile import compile_mlir_module, compile_external_kernel
-from ..kernel import ExternalFunction
+from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
+from .compile import compile_mlir_module, compile_external_kernel
+from aie.iron.kernel import ExternalFunction
 from .npukernel import NPUKernel
 from aie.dialects.aie import AIEDevice
-from ..compile.cache.circular_cache import CircularCache
-from ..compile.cache.utils import _create_function_cache_key, file_lock
-from ..compile import IRON_CACHE_HOME
-from ..compile.utils import _cleanup_failed_compilation
-from . import DEFAULT_IRON_RUNTIME
+from .compile.cache.circular_cache import CircularCache
+from .compile.cache.utils import _create_function_cache_key, file_lock
+from .compile import IRON_CACHE_HOME
+from .compile.utils import _cleanup_failed_compilation
+from . import DEFAULT_NPU_RUNTIME
 
 
 # Global cache for compiled kernels at the function level
@@ -42,8 +42,8 @@ def jit(function=None, is_placed=True, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
-        if DEFAULT_IRON_RUNTIME is None:
-            raise Exception("Cannot use JIT; DEFAULT_IRON_RUNTIME not set.")
+        if DEFAULT_NPU_RUNTIME is None:
+            raise Exception("Cannot use JIT; DEFAULT_NPU_RUNTIME not set.")
 
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
@@ -82,7 +82,7 @@ def jit(function=None, is_placed=True, use_cache=True):
                 external_kernels.append(func)
 
         # Determine target architecture based on device type
-        current_device = DEFAULT_IRON_RUNTIME.device()
+        current_device = DEFAULT_NPU_RUNTIME.device()
 
         # Determine target architecture based on device type
         if isinstance(current_device, (NPU2, NPU2Col1)):

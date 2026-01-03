@@ -26,17 +26,17 @@ if has_xrt:
     from .xrtruntime.hostruntime import XRTHostRuntime
     from .xrtruntime.tensor import XRTTensor
 
-    DEFAULT_IRON_RUNTIME = XRTHostRuntime()
+    DEFAULT_NPU_RUNTIME = XRTHostRuntime()
     DEFAULT_IRON_TENSOR_CLASS = XRTTensor
 else:
     from .tensor_class import CPUOnlyTensor
 
-    DEFAULT_IRON_RUNTIME = None
+    DEFAULT_NPU_RUNTIME = None
     DEFAULT_IRON_TENSOR_CLASS = CPUOnlyTensor
 
 
 def get_current_device():
-    return DEFAULT_IRON_RUNTIME.device()
+    return DEFAULT_NPU_RUNTIME.device()
 
 
 def tensor(*args, **kwargs):
