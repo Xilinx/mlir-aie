@@ -3,7 +3,7 @@ import json
 import argparse
 import sys
 import re
-from aie.utils import TraceConfig
+from .trace import get_cycles_summary
 
 
 def parse_args():
@@ -22,7 +22,7 @@ def parse_args():
 
 
 opts = parse_args()
-cycles = TraceConfig.get_cycles_summary(opts.input)
+cycles = get_cycles_summary(opts.input)
 
 # print(cycles)
 for i in range(len(cycles)):

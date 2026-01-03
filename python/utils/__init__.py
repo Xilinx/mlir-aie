@@ -67,7 +67,7 @@ def set_tensor_class(cls):
 
 
 from .hostruntime import HostRuntime
-from .trace_config import TraceConfig
+from .trace import TraceConfig
 from .npukernel import NPUKernel
 
 if has_xrt:
