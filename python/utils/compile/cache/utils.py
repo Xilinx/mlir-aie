@@ -10,7 +10,7 @@ import fcntl
 import os
 import time
 
-from aie.utils.tensor_class import Tensor
+from aie.utils.hostruntime.tensor_class import Tensor
 
 
 def _create_function_cache_key(function, args, kwargs):
