@@ -41,11 +41,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/config.py
     utils/jit.py
     utils/npukernel.py
-    utils/tensor_class.py
-    utils/hostruntime.py
-    utils/xrtruntime/__init__.py
-    utils/xrtruntime/hostruntime.py
-    utils/xrtruntime/tensor.py
+    utils/hostruntime/__init__.py
+    utils/hostruntime/hostruntime.py
+    utils/hostruntime/tensor_class.py
+    utils/hostruntime/xrtruntime/__init__.py
+    utils/hostruntime/xrtruntime/hostruntime.py
+    utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/link.py
     utils/compile/utils.py
