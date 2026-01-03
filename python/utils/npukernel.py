@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 from pathlib import Path
-from .trace_config import TraceConfig
+from .trace import TraceConfig
 
 
 class NPUKernel:
