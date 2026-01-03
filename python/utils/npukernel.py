@@ -6,8 +6,7 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 from pathlib import Path
-from . import DEFAULT_NPU_RUNTIME
-from .hostruntime import TraceConfig
+from .trace_config import TraceConfig
 
 
 class NPUKernel:
@@ -42,8 +41,10 @@ class NPUKernel:
 
     # Blocking call.
     def __call__(self, *args):
+        from . import DEFAULT_NPU_RUNTIME
+
         return DEFAULT_NPU_RUNTIME.load_and_run(
-            [self],
+            self,
             list(args),
             trace_config=self._trace_config,
         )

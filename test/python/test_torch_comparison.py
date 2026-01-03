@@ -124,7 +124,7 @@ def test_arange_floats(dtype, torch_dtype, tensorclass):
 )
 @pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
 def test_rand(shape, dtype, torch_dtype, tensorclass):
-    iron.set_iron_tensor_class(tensorclass)
+    iron.set_tensor_class(tensorclass)
     if shape == ():
         with pytest.raises(ValueError, match="rand.. received no arguments"):
             iron.rand(*shape, dtype=dtype)

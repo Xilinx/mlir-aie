@@ -3,6 +3,7 @@
 
 import numpy as np
 from aie.utils.parse_trace import parse_trace
+from aie.utils.trace_packet import parity, extract_tile
 import json
 
 
@@ -30,7 +31,7 @@ class TraceConfig:
     # checks # of bits. Odd number returns a 1. Even returns 0.
     @staticmethod
     def parity(x):
-        return x.bit_count() & 1
+        return parity(x)
 
     # create control packet
     @staticmethod
@@ -42,16 +43,12 @@ class TraceConfig:
         # WARNING: this needs to match the packet id used in packetflow/.py
     ):
         header = (ctrl_pkt_read_id << 24) | (operation << 22) | (beats << 20) | addr
-        header |= (0x1 ^ TraceConfig.parity(header)) << 31
+        header |= (0x1 ^ parity(header)) << 31
         return header
 
     @staticmethod
     def extract_tile(data):
-        col = (data >> 21) & 0x7F
-        row = (data >> 16) & 0x1F
-        pkt_type = (data >> 12) & 0x3
-        pkt_id = data & 0x1F
-        return (col, row, pkt_type, pkt_id)
+        return extract_tile(data)
 
     def write_trace(self, trace):
         out_str = "\n".join(f"{i:0{8}x}" for i in trace if i != 0)

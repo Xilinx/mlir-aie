@@ -9,6 +9,7 @@ from . import tensor
 from aie.iron.device import Device
 from .tensor_class import Tensor
 from .trace_config import TraceConfig
+from .npukernel import NPUKernel
 
 
 class HostRuntimeError(Exception):
