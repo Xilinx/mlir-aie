@@ -13,6 +13,7 @@ import numpy as np
 import pyxrt
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
+from ...npu_utils import get_npu_generation
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
@@ -152,26 +153,10 @@ class XRTHostRuntime(HostRuntime):
     def device(self) -> "Device":
         from aie.iron.device import NPU1, NPU2
 
-        # Fetch the device type by matching strings for NPU2 or NPU1
-        if any(
-            keyword in self._device_type_str
-            for keyword in [
-                "NPU Strix",
-                "NPU Strix Halo",
-                "NPU Krackan",
-                "RyzenAI-npu4",
-                "RyzenAI-npu6",
-            ]
-        ):
+        gen = get_npu_generation(self._device_type_str)
+        if gen == "npu2":
             return NPU2()
-        elif any(
-            keyword in self._device_type_str
-            for keyword in [
-                "NPU",
-                "NPU Phoenix",
-                "RyzenAI-npu1",
-            ]
-        ):
+        elif gen == "npu1":
             return NPU1()
         else:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")

@@ -62,6 +62,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/trace/port_events.py
     utils/trace/setup.py
     utils/trace/utils.py
+    utils/npu_utils.py
+)
+
+install(
+  FILES utils/npu_models.json
+  DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils
 )
 
 declare_mlir_python_sources(AIEPythonSources.Helpers
