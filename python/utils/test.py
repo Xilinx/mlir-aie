@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 import argparse
-from aie.iron.hostruntime import TraceConfig, NPUKernel
+from aie.utils import TraceConfig, NPUKernel
 
 
 # Add default args to standard parser object

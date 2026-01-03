@@ -3,7 +3,7 @@ import json
 import argparse
 import sys
 import re
-from aie.iron.hostruntime import TraceConfig
+from aie.utils import TraceConfig
 
 
 def parse_args():

@@ -12,7 +12,7 @@ import numpy as np
 import pyxrt
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
-from ...device import Device, NPU1, NPU2
+from aie.iron.device import Device, NPU1, NPU2
 from .tensor import XRTTensor
 
 

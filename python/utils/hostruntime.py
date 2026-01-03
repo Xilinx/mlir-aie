@@ -5,7 +5,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 from pathlib import Path
 
-from ..device import Device
+from . import tensor
+from aie.iron.device import Device
 from .tensor_class import Tensor
 from .trace_config import TraceConfig
 
@@ -119,8 +120,6 @@ class HostRuntime(ABC):
     def prepare_args_for_trace(
         cls, args: list[Tensor], trace_config: TraceConfig
     ) -> list[Tensor]:
-        from aie.iron.hostruntime import tensor
-
         if trace_config.trace_after_last_tensor:
             # Create a new, extended out tensor.
             out_size = trace_config.trace_size

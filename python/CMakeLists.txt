@@ -35,6 +35,7 @@ declare_mlir_python_sources(AIEPythonSources.Tools
 declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
+    utils/__init__.py
     utils/test.py
     utils/ml.py
     utils/trace.py
@@ -44,6 +45,14 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/parse_eventIR.py
     utils/get_trace_summary.py
     utils/trace_utils.py
+    utils/jit.py
+    utils/npukernel.py
+    utils/tensor_class.py
+    utils/trace_config.py
+    utils/hostruntime.py
+    utils/xrtruntime/__init__.py
+    utils/xrtruntime/hostruntime.py
+    utils/xrtruntime/tensor.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Helpers

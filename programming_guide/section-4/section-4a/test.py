@@ -12,7 +12,7 @@ from pathlib import Path
 
 import aie.iron as iron
 import aie.utils.test as test_utils
-from aie.iron.hostruntime import NPUKernel
+from aie.utils.hostruntime import NPUKernel
 
 
 def main(opts):
@@ -32,7 +32,7 @@ def main(opts):
     # Prepare buffers and load compiled artifacts onto the device
     # ----------------------------------------------------
     npu_kernel = NPUKernel(opts.xclbin, opts.instr)
-    kernel_handle = iron.hostruntime.DEFAULT_IRON_RUNTIME.load(npu_kernel)
+    kernel_handle = aie.utils.hostruntime.DEFAULT_IRON_RUNTIME.load(npu_kernel)
 
     # ------------------------------------------------------
     # Initialize run configs
@@ -48,7 +48,7 @@ def main(opts):
     # ------------------------------------------------------
     for i in range(num_iter):
         # Run kernel
-        result = iron.hostruntime.DEFAULT_IRON_RUNTIME.run(
+        result = aie.utils.hostruntime.DEFAULT_IRON_RUNTIME.run(
             kernel_handle, [in_buffer, in_factor, out]
         )
         npu_time = result.npu_time

@@ -25,7 +25,7 @@ from pathlib import Path
 from aie.utils.parse_trace import parse_trace
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.iron.hostruntime import DEFAULT_IRON_RUNTIME
+from aie.utils import DEFAULT_IRON_RUNTIME
 
 IN_OUT_SIZE = 4096
 IN_OUT_DTYPE = np.int32

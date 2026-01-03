@@ -5,8 +5,8 @@ from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .dataflow import ObjectFifo
 from .dtype import str_to_dtype, dtype_to_str
-from .hostruntime.jit import jit
-from .hostruntime import (
+from aie.utils.jit import jit
+from aie.utils import (
     tensor,
     ones,
     zeros,

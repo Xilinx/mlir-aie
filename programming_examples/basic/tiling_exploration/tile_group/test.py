@@ -11,7 +11,7 @@ import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.iron.hostruntime import DEFAULT_IRON_RUNTIME
+from aie.utils import DEFAULT_IRON_RUNTIME
 import sys
 
 
