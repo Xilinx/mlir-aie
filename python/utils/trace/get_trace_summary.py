@@ -3,7 +3,7 @@ import json
 import argparse
 import sys
 import re
-from .trace import get_cycles_summary
+from .utils import get_cycles_summary
 
 
 def parse_args():
