@@ -80,7 +80,21 @@ class HostRuntime(ABC):
         trace_config: TraceConfig | None = None,
     ) -> tuple[KernelHandle, KernelResult]:
         handle = self.load(npu_kernel)
-        return handle, self.run(handle, list(run_args), trace_config)
+        if trace_config:
+            if trace_config.trace_after_last_tensor and len(run_args) > 0:
+                trace_config.last_tensor_shape = run_args[-1].shape
+                trace_config.last_tensor_dtype = np.dtype(run_args[-1].dtype)
+            self.prepare_args_for_trace(run_args, trace_config)
+
+        ret = self.run(handle, list(run_args), trace_config=trace_config)
+
+        if trace_config:
+            trace_buffer, ctrl_buffer = self.extract_trace_from_args(
+                run_args, trace_config
+            )
+            self.process_trace(trace_buffer, ctrl_buffer, trace_config)
+
+        return handle, ret
 
     @abstractmethod
     def device(self) -> "Device":

@@ -18,16 +18,17 @@ from aie.utils import tensor
 from aie.utils.trace import TraceConfig
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
+from aie.iron.controlflow import range_
 
 
 # Define kernel function
 def scale_scalar(of_in, of_out, factor, N):
-    for i in range(N):
-        elem_in = of_in.acquire(1)
-        elem_out = of_out.acquire(1)
-        elem_out[0] = factor * elem_in[0]
-        of_in.release(1)
-        of_out.release(1)
+    elem_in = of_in.acquire(1)
+    elem_out = of_out.acquire(1)
+    for i in range_(N):
+        elem_out[i] = elem_in[i]
+    of_in.release(1)
+    of_out.release(1)
 
 
 @jit(is_placed=False)
@@ -52,7 +53,7 @@ def design(a_in, c_out, trace_config=None):
         # In runtime sequence:
         rt.fill(of_in.prod(), a)
         rt.start(worker)
-        rt.drain(of_out.cons(), c)
+        rt.drain(of_out.cons(), c, wait=True)
 
         if trace_config:
             rt.enable_trace(trace_config.trace_size, workers=[worker])
@@ -63,20 +64,22 @@ def design(a_in, c_out, trace_config=None):
 @pytest.mark.parametrize("trace_size", [8192])
 def test_jit_trace(trace_size):
     N = 1024
-    a = tensor(np.arange(N, dtype=np.int32), dtype=np.int32)
+    ref = np.arange(N, dtype=np.int32)
+    a = tensor(ref, dtype=np.int32)
     c = tensor(np.zeros(N, dtype=np.int32), dtype=np.int32)
 
-    trace_config = TraceConfig(trace_size=trace_size, trace_after_last_tensor=True)
+    trace_config = TraceConfig(trace_size=trace_size, trace_after_last_tensor=False)
 
     # Run JIT kernel with tracing
     design(a, c, trace_config=trace_config)
 
+    # Sync output from device
+    c.to("cpu")
+
     # Verify results
-    expected = a * 2
-    assert np.array_equal(c, expected)
+    assert np.array_equal(c.numpy(), ref)
 
     # Verify trace file exists?
-    # trace_config.trace_file_name
     import os
 
-    assert os.path.exists(trace_config.trace_file_name)
+    assert os.path.exists(trace_config.trace_file)

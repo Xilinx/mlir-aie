@@ -109,6 +109,7 @@ class XRTHostRuntime(HostRuntime):
         self,
         kernel_handle: XRTKernelHandle,
         args,
+        trace_config=None,
         fail_on_error: bool = True,
     ) -> XRTKernelResult:
         # Filter out callable functions and check arg types
