@@ -71,7 +71,7 @@ def main(opts):
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    npu_kernel = NPUKernel(xclbin_path, insts_path, kernel_name=opts.kernel)
     kernel_handle = DEFAULT_NPU_RUNTIME.load(npu_kernel)
 
     # ------------------------------------------------------
