@@ -6,14 +6,15 @@ import re
 import subprocess
 import shutil
 import os
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+from .event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from .port_events import NUM_TRACE_TYPES
+from .utils import (
+    parse_pkt_hdr_in_stream,
+    trace_pkts_de_interleave,
+    convert_to_byte_stream,
+    convert_to_commands,
+)
 
-# Number of different trace types, currently 4
-# core:    pkt type 0
-# mem:     pkt type 1
-# intfc:   pkt type 2
-# memtile: pkt type 3
-NumTraceTypes = 4
 NUM_EVENTS = 8  # number of events we can view per trace
 
 rowoffset = 1  # TODO tmeporary workaround to figure out row offset for AIE2 for tiles
@@ -40,244 +41,6 @@ def parse_args():
     #         nargs='+',
     #         help='Labels for traces', required=False)
     return parser.parse_args(sys.argv[1:])
-
-
-def check_odd_word_parity(word):
-    val = 0
-    for i in range(32):
-        val = val ^ ((word >> i) & 0x1)
-    return val == 1
-
-
-def parse_pkt_hdr_in_stream(word):
-    hdr = dict()
-    w = int(word)
-    hdr["valid"] = check_odd_word_parity(w)
-    # TODO can we assume non used fields must be 0 to rule out other data packets?
-    # what about bit[5:10]?
-    if (((w >> 5) & 0x7F) != 0) or (((w >> 19) & 0x1) != 0) or (((w >> 28) & 0x7) != 0):
-        hdr["valid"] = False
-    else:
-        # TODO Do we need to check for valid row/col for given device?
-        hdr["col"] = (w >> 21) & 0x7F
-        hdr["row"] = (w >> 16) & 0x1F
-        hdr["type"] = (w >> 12) & 0x3
-        hdr["id"] = w & 0x1F
-    return hdr
-
-
-# toks_list:   list (idx = types of traces, currently 4, value = stream_dict)
-# stream_dict: dict (key = row,col, value = list of word streams)
-def core_trace_and_mem_trace_de_interleave(word_stream):
-    toks_list = list()
-    for t in range(NumTraceTypes):
-        toks_list.append(dict())
-
-    # core_streams = dict()   # pkt type 0
-    # mem_stream = dict()     # pkt type 1
-    # intfc_stream = dict()   # pkt type 2
-    # memtile_stream = dict() # pkt type 3
-
-    # index lists based on row/col and if its not null, that means it already exists
-
-    curr_pkt_type = 0
-    curr_loc = ""
-    curr_vld = False  # only used in the beginning
-
-    # print(len(word_stream))
-    for i in range(len(word_stream)):
-        if word_stream[i] == "":
-            break  # TODO Assumes a blank line is the last line
-        if (i % 8) == 0:
-            # print(str(i)+':'+word_stream[i])
-            pkt_hdr = parse_pkt_hdr_in_stream(int(word_stream[i], 16))
-            if pkt_hdr["valid"]:
-                curr_loc = str(pkt_hdr["row"]) + "," + str(pkt_hdr["col"])
-                valid_type_found = False
-                for tt in range(NumTraceTypes):
-                    if pkt_hdr["type"] == tt:
-                        curr_pkt_type = tt
-                        if toks_list[tt].get(curr_loc) == None:
-                            toks_list[tt][curr_loc] = list()
-                        valid_type_found = True
-                if not valid_type_found:
-                    sys.exit("Error: Invalid packet type")
-            # Crate a list for the loc if it doesn't exist
-            curr_vld = True
-        else:
-            if (
-                curr_vld
-            ):  # ignores first 8 chunks of data is pkt hdr was invalid. TODO Is this right?
-                # or shoudl we require valid header in first chunk of data
-                toks_list[curr_pkt_type][curr_loc].append(
-                    word_stream[i]
-                )  # TODO assuem curr_pkt_type is valid
-                # for tt in range(NumTraceTypes):
-                #     if curr_pkt_type == tt:
-                #         toks_list[tt][curr_loc].append(word_stream[i])
-    return toks_list
-
-
-# toks_list is a list of toks dictionaries where each dictionary is a type (core, mem, intfc, memtile)
-# each dictionary key is a tile location (row,col) whose value is a list of stream data
-def convert_to_byte_stream(toks_list):
-    byte_stream_list = list()
-    for l in toks_list:
-        byte_stream_dict = dict()
-        for loc, stream in l.items():
-            # byte_stream = list()
-            byte_stream_dict[loc] = list()
-            f = ["", "a5a5a5a5"]
-            toks = [t for t in stream if not t in f]
-            events = [int(t, 16) for t in toks]
-            for event in events:
-                for top in range(4):
-                    byte = 3 - top
-                    opcode = event >> (byte * 8) & 0xFF
-                    byte_stream_dict[loc].append(opcode)
-        # for key, value in l.items():
-        #     # byte_stream = list()
-        #     byte_stream_dict[key] = list()
-        #     f = ['', 'a5a5a5a5']
-        #     toks = [t for t in value if not t in f]
-        #     events = [int(t,16) for t in toks]
-        #     for (i,event) in enumerate(events):
-        #         if ((i % 8) == 0): # assumed hdr every 8 words and ignores it
-        #             pass
-        #         else: # breaks line into list of bytes
-        #             for top in range(4):
-        #                 byte = 3-top
-        #                 opcode = (event >> (byte * 8) & 0xff)
-        #                 byte_stream_dict[key].append(opcode)
-        byte_stream_list.append(byte_stream_dict)
-    return byte_stream_list
-
-
-# byte_stream_list: list (idx = trace type, value = word_stream_dict)
-# word_stream_dict: dict (key = row,col, value = list of words)
-#
-# return commands:  list (idx = trace type, value = byte_stream_dict)
-# byte_stream_dict: dict (key = row,col, value = list of commands)
-#
-# command: dict
-#   keys: type (Single0/1, Multiple0/1/2, Start, Repeat0/1, EventSync)
-#         event (integer value)
-#         cycles (integer value)
-#         event# (integer value matching event number #)
-#         repeats (integer value)
-def convert_to_commands(byte_stream_list, zero=True):
-    # commands = dict()
-    commands = list()
-    for t in range(NumTraceTypes):
-        commands.append(dict())
-
-    for t in range(NumTraceTypes):
-        for key, byte_stream in byte_stream_list[t].items():
-            cursor = 0
-            commands[t][key] = list()
-            try:
-                while True:
-                    if (byte_stream[cursor] & 0b11111011) == 0b11110000:
-                        com = {"type": "Start", "timer_value": 0}
-                        if not zero:
-                            for i in range(7):
-                                com["timer_value"] += (byte_stream[cursor + i + 1]) * (
-                                    256 ** (6 - i)
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 8
-                    if (byte_stream[cursor] & 0b11111100) == 0b11011100:
-                        # We don't care about these
-                        cursor = cursor + 4
-                    if (byte_stream[cursor] & 0b10000000) == 0b00000000:
-                        com = {"type": "Single0"}
-                        com["event"] = (byte_stream[cursor]) >> 4 & 0b111
-                        com["cycles"] = (byte_stream[cursor]) & 0b1111
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11100000) == 0b10000000:
-                        com = {"type": "Single1"}
-                        com["event"] = (byte_stream[cursor]) >> 2 & 0b111
-                        com["cycles"] = ((byte_stream[cursor]) & 0b11) * 256
-                        com["cycles"] += byte_stream[cursor + 1]
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11100000) == 0b10100000:
-                        com = {"type": "Single2"}
-                        com["event"] = (byte_stream[cursor]) >> 2 & 0b111
-                        com["cycles"] = ((byte_stream[cursor]) & 0b11) * 256 * 256
-                        com["cycles"] += byte_stream[cursor + 1] * 256
-                        com["cycles"] += byte_stream[cursor + 2]
-                        commands[t][key].append(com)
-                        cursor = cursor + 3
-                    if (byte_stream[cursor] & 0b11110000) == 0b11000000:
-                        com = {"type": "Multiple0"}
-                        com["cycles"] = byte_stream[cursor + 1] & 0b1111
-                        events = (byte_stream[cursor] & 0b1111) << 4
-                        events = events + (byte_stream[cursor + 1] >> 4)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11111100) == 0b11010000:
-                        # TODO Don't we need to extract events here?
-                        # print("Multiple1")
-                        com = {"type": "Multiple1"}
-                        cycles = (byte_stream[cursor + 1] & 0b11) << 8
-                        com["cycles"] = cycles + (byte_stream[cursor + 2])
-                        events = (byte_stream[cursor] & 0b11) << 6
-                        events = events + (byte_stream[cursor + 1] >> 2)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 3
-                    if (byte_stream[cursor] & 0b11111100) == 0b11010100:
-                        # TODO Don't we need to extract events here?
-                        # print("Multiple2")
-                        com = {"type": "Multiple2"}
-                        cycles = (byte_stream[cursor + 1] & 0b11) << 16
-                        cycles = cycles + ((byte_stream[cursor + 2]) << 8)
-                        com["cycles"] = cycles + (byte_stream[cursor + 3])
-                        events = (byte_stream[cursor] & 0b11) << 6
-                        events = events + (byte_stream[cursor + 1] >> 2)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 4
-                    if (byte_stream[cursor] & 0b11110000) == 0b11100000:
-                        com = {"type": "Repeat0"}
-                        com["repeats"] = (byte_stream[cursor]) & 0b1111
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11111100) == 0b11011000:
-                        com = {"type": "Repeat1"}
-                        com["repeats"] = ((byte_stream[cursor]) & 0b11) * 256
-                        com["repeats"] += byte_stream[cursor + 1]
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11111111) == 0b11111110:
-                        # No one likes you filler, get out of here
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11111111) == 0b11111111:
-                        com = {"type": "Event_Sync"}
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-            except IndexError:
-                pass
-
-    return commands
 
 
 def make_event_lists(commands):
@@ -600,7 +363,7 @@ def parse_mlir_trace_events(lines):
     pattern = r"aiex.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
 
     pid_events = list()
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         pid_events.append(dict())
 
     for i in range(len(lines)):
@@ -833,7 +596,7 @@ def lookup_event_name_by_type(trace_type, code):
 # NOTE: This assume the pid_events has already be analyzed and populated.
 def setup_trace_metadata(trace_events, pid_events):
     pid = 0
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         # for j in len(pid_events[i]):
         for loc in pid_events[t]:  # return loc
             process_name_metadata(trace_events, pid, t, loc)
@@ -1058,7 +821,6 @@ def print_config_json(pid_events):
             f.write("                0,\n")
             f.write("                0,\n")
             f.write("                0,\n")
-            f.write("                0,\n")
             f.write("                0\n")
             f.write("              ],\n")
             f.write('              "group_event_config": {\n')
@@ -1170,69 +932,71 @@ def run_hwfrontend(fileInName, fileOutName):
 # Script execution start - Open trace file and convert to commands
 # ------------------------------------------------------------------------------
 
-lines = list()
-pid_events = list()
-trace_events = list()
 
-opts = parse_args()
+if __name__ == "__main__":
+    lines = list()
+    pid_events = list()
+    trace_events = list()
 
-# set colshift based on optional argument
-colshift = int(opts.colshift) if opts.colshift else 0
+    opts = parse_args()
 
-try:
-    os.mkdir(tmpTraceDirName)
-except FileExistsError:
-    pass
-if opts.verbose:
-    print("created temporary directory", tmpTraceDirName)
-tmpTraceDir = os.path.abspath(tmpTraceDirName)
+    # set colshift based on optional argument
+    colshift = int(opts.colshift) if opts.colshift else 0
 
-mlirFile = os.path.abspath(opts.mlir)
-rawTraceFile = os.path.abspath(opts.filename)
-srcTraceFileName = "prep." + str(opts.filename)
-srcTraceFile = os.path.join(tmpTraceDir, srcTraceFileName)
-
-# Check source file and prepend 0x
-fix_raw_trace_data(rawTraceFile, srcTraceFile)
-
-if opts.mlir:
     try:
-        with open(opts.mlir, "rt") as mf:
-            mlir_lines = mf.read().split("\n")
-            pid_events = parse_mlir_trace_events(mlir_lines)
+        os.mkdir(tmpTraceDirName)
+    except FileExistsError:
+        pass
+    if opts.verbose:
+        print("created temporary directory", tmpTraceDirName)
+    tmpTraceDir = os.path.abspath(tmpTraceDirName)
+
+    mlirFile = os.path.abspath(opts.mlir)
+    rawTraceFile = os.path.abspath(opts.filename)
+    srcTraceFileName = "prep." + str(opts.filename)
+    srcTraceFile = os.path.join(tmpTraceDir, srcTraceFileName)
+
+    # Check source file and prepend 0x
+    fix_raw_trace_data(rawTraceFile, srcTraceFile)
+
+    if opts.mlir:
+        try:
+            with open(opts.mlir, "rt") as mf:
+                mlir_lines = mf.read().split("\n")
+                pid_events = parse_mlir_trace_events(mlir_lines)
+        except Exception as e:
+            print(e)
+            sys.exit(1)
+
+    os.chdir(tmpTraceDirName)
+
+    create_target()
+
+    print_config_json(pid_events)
+
+    run_hwfrontend(srcTraceFile, eventIRFile)
+
+    # with open(opts.filename, "r") as f:
+    try:
+        with open(eventIRFile, "rt") as f:
+            lines = f.read().split("\n")
+            ignore = [""]
+            lines = [l for l in lines if not l in ignore]
     except Exception as e:
         print(e)
         sys.exit(1)
 
-os.chdir(tmpTraceDirName)
+    if DEBUG:
+        print("\nDEBUG: lines\n")
+        print(lines)
+        print("\n\n")
 
-create_target()
+    setup_trace_metadata(trace_events, pid_events)
+    if DEBUG:
+        print("\nDEBUG: pid events\n")
+        print(pid_events)
+        print("\n\n")
 
-print_config_json(pid_events)
+    convert_eventIR_to_json(trace_events, lines, pid_events)
 
-run_hwfrontend(srcTraceFile, eventIRFile)
-
-# with open(opts.filename, "r") as f:
-try:
-    with open(eventIRFile, "rt") as f:
-        lines = f.read().split("\n")
-        ignore = [""]
-        lines = [l for l in lines if not l in ignore]
-except Exception as e:
-    print(e)
-    sys.exit(1)
-
-if DEBUG:
-    print("\nDEBUG: lines\n")
-    print(lines)
-    print("\n\n")
-
-setup_trace_metadata(trace_events, pid_events)
-if DEBUG:
-    print("\nDEBUG: pid events\n")
-    print(pid_events)
-    print("\n\n")
-
-convert_eventIR_to_json(trace_events, lines, pid_events)
-
-print(json.dumps(trace_events))
+    print(json.dumps(trace_events))

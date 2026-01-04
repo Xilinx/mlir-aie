@@ -6,17 +6,21 @@ import re
 
 from aie.extras.util import find_ops
 from aie.ir import Context, Module, Location
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace.event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace.utils import (
+    parity,
+    extract_tile,
+    parse_pkt_hdr_in_stream,
+    trace_pkts_de_interleave,
+    convert_to_byte_stream,
+    convert_to_commands,
+    trim_trace_pkts,
+)
+from aie.utils.trace.port_events import NUM_TRACE_TYPES, PacketType
 
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
 
-# Number of different trace types, currently 4
-# core:    pkt type 0
-# mem:     pkt type 1
-# shim:   pkt type 2
-# memtile: pkt type 3
-NumTraceTypes = 4
 NUM_EVENTS = 8  # number of events we can view per trace
 
 
@@ -55,260 +59,6 @@ def check_for_valid_trace(filename, trace_pkts, of=None, debug=False):
         )
         return False
     return True
-
-
-def trim_trace_pkts(trace_pkts):
-    for i in range(len(trace_pkts)):
-        if trace_pkts[i] == "fefefefe" or trace_pkts[i] == "FEFEFEFE":
-            if i + 2 < len(trace_pkts):
-                if trace_pkts[i + 1] == "00000000" and trace_pkts[i + 2] == "00000000":
-                    return trace_pkts[0 : i + 1]
-    return trace_pkts
-
-
-def check_odd_word_parity(word):
-    val = 0
-    for i in range(32):
-        val = val ^ ((word >> i) & 0x1)
-    return val == 1
-
-
-def parse_pkt_hdr_in_stream(word):
-    hdr = dict()
-    w = int(word)
-    hdr["valid"] = check_odd_word_parity(w)
-    # TODO can we assume non used fields must be 0 to rule out other data packets?
-    # what about bit[5:10]?
-    if (((w >> 5) & 0x7F) != 0) or (((w >> 19) & 0x1) != 0) or (((w >> 28) & 0x7) != 0):
-        hdr["valid"] = False
-    else:
-        # TODO Do we need to check for valid row/col for given device?
-        hdr["col"] = (w >> 21) & 0x7F
-        hdr["row"] = (w >> 16) & 0x1F
-        hdr["type"] = (w >> 12) & 0x3
-        hdr["id"] = w & 0x1F
-    return hdr
-
-
-# Sorts list of trace packets into a list indexed by trace type (core, mem, shim, memtile)
-# and the value is dictionary tile location (key) and trace packets (value)
-#
-# trace_pkts_sorted:   list (idx = types of traces, currently 4, value = stream_dict)
-# stream_dict: dict (key = row,col, value = list of word streams)
-def trace_pkts_de_interleave(word_stream):
-    trace_pkts_sorted = list()
-    for t in range(NumTraceTypes):
-        trace_pkts_sorted.append(dict())
-
-    # core_streams = dict()   # pkt type 0
-    # mem_stream = dict()     # pkt type 1
-    # shim_stream = dict()   # pkt type 2
-    # memtile_stream = dict() # pkt type 3
-
-    # index lists based on row/col and if its not null, that means it already exists
-
-    curr_pkt_type = 0
-    curr_loc = ""
-    curr_vld = False  # only used in the beginning
-
-    # print(len(word_stream))
-    for i in range(len(word_stream)):
-        if word_stream[i] == "":
-            break  # TODO Assumes a blank line is the last line
-        if (i % 8) == 0:
-            # print(str(i)+':'+word_stream[i])
-            pkt_hdr = parse_pkt_hdr_in_stream(int(word_stream[i], 16))
-            if pkt_hdr["valid"]:
-                curr_loc = str(pkt_hdr["row"]) + "," + str(pkt_hdr["col"])
-                valid_type_found = False
-                for tt in range(NumTraceTypes):
-                    if pkt_hdr["type"] == tt:
-                        curr_pkt_type = tt
-                        if trace_pkts_sorted[tt].get(curr_loc) == None:
-                            trace_pkts_sorted[tt][curr_loc] = list()
-                        valid_type_found = True
-                if not valid_type_found:
-                    sys.exit("Error: Invalid packet type")
-            # Crate a list for the loc if it doesn't exist
-            curr_vld = True
-        else:
-            if (
-                curr_vld
-            ):  # ignores first 8 chunks of data is pkt hdr was invalid. TODO Is this right?
-                # or shoudl we require valid header in first chunk of data
-                trace_pkts_sorted[curr_pkt_type][curr_loc].append(
-                    word_stream[i]
-                )  # TODO assume curr_pkt_type is valid
-                # for tt in range(NumTraceTypes):
-                #     if curr_pkt_type == tt:
-                #         toks_list[tt][curr_loc].append(word_stream[i])
-    return trace_pkts_sorted
-
-
-# Convert trace packets into byte streams
-#
-# toks_list is a list of toks dictionaries where each dictionary is a type (core, mem, shim, memtile)
-# each dictionary key is a tile location (row,col) whose value is a list of stream data
-def convert_to_byte_stream(toks_list):
-    byte_stream_list = list()
-    for l in toks_list:
-        byte_stream_dict = dict()
-        for loc, stream in l.items():
-            # byte_stream = list()
-            byte_stream_dict[loc] = list()
-            f = ["", "a5a5a5a5"]
-            toks = [t for t in stream if not t in f]
-            events = [int(t, 16) for t in toks]
-            for event in events:
-                for top in range(4):
-                    byte = 3 - top
-                    opcode = event >> (byte * 8) & 0xFF
-                    byte_stream_dict[loc].append(opcode)
-        # for key, value in l.items():
-        #     # byte_stream = list()
-        #     byte_stream_dict[key] = list()
-        #     f = ['', 'a5a5a5a5']
-        #     toks = [t for t in value if not t in f]
-        #     events = [int(t,16) for t in toks]
-        #     for (i,event) in enumerate(events):
-        #         if ((i % 8) == 0): # assumed hdr every 8 words and ignores it
-        #             pass
-        #         else: # breaks line into list of bytes
-        #             for top in range(4):
-        #                 byte = 3-top
-        #                 opcode = (event >> (byte * 8) & 0xff)
-        #                 byte_stream_dict[key].append(opcode)
-        byte_stream_list.append(byte_stream_dict)
-    return byte_stream_list
-
-
-# Convert byte streams to equivalent packet commands
-#
-# byte_stream_list: list (idx = trace type, value = word_stream_dict)
-# word_stream_dict: dict (key = row,col, value = list of words)
-#
-# return commands:  list (idx = trace type, value = byte_stream_dict)
-# byte_stream_dict: dict (key = row,col, value = list of commands)
-#
-# command: dict
-#   keys: type (Single0/1, Multiple0/1/2, Start, Repeat0/1, EventSync)
-#         event (integer value)
-#         cycles (integer value)
-#         event# (integer value matching event number #)
-#         repeats (integer value)
-def convert_to_commands(byte_stream_list, zero=True):
-    # commands = dict()
-    commands = list()
-    for t in range(NumTraceTypes):
-        commands.append(dict())
-
-    for t in range(NumTraceTypes):
-        for key, byte_stream in byte_stream_list[t].items():
-            cursor = 0
-            commands[t][key] = list()
-            try:
-                while True:
-                    if (byte_stream[cursor] & 0b11111011) == 0b11110000:
-                        com = {"type": "Start", "timer_value": 0}
-                        if not zero:
-                            for i in range(7):
-                                com["timer_value"] += (byte_stream[cursor + i + 1]) * (
-                                    256 ** (6 - i)
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 8
-                    if (byte_stream[cursor] & 0b11111100) == 0b11011100:
-                        # We don't care about these
-                        cursor = cursor + 4
-                    if (byte_stream[cursor] & 0b10000000) == 0b00000000:
-                        com = {"type": "Single0"}
-                        com["event"] = (byte_stream[cursor]) >> 4 & 0b111
-                        com["cycles"] = (byte_stream[cursor]) & 0b1111
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11100000) == 0b10000000:
-                        com = {"type": "Single1"}
-                        com["event"] = (byte_stream[cursor]) >> 2 & 0b111
-                        com["cycles"] = ((byte_stream[cursor]) & 0b11) * 256
-                        com["cycles"] += byte_stream[cursor + 1]
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11100000) == 0b10100000:
-                        com = {"type": "Single2"}
-                        com["event"] = (byte_stream[cursor]) >> 2 & 0b111
-                        com["cycles"] = ((byte_stream[cursor]) & 0b11) * 256 * 256
-                        com["cycles"] += byte_stream[cursor + 1] * 256
-                        com["cycles"] += byte_stream[cursor + 2]
-                        commands[t][key].append(com)
-                        cursor = cursor + 3
-                    if (byte_stream[cursor] & 0b11110000) == 0b11000000:
-                        com = {"type": "Multiple0"}
-                        com["cycles"] = byte_stream[cursor + 1] & 0b1111
-                        events = (byte_stream[cursor] & 0b1111) << 4
-                        events = events + (byte_stream[cursor + 1] >> 4)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11111100) == 0b11010000:
-                        # TODO Don't we need to extract events here?
-                        # print("Multiple1")
-                        com = {"type": "Multiple1"}
-                        cycles = (byte_stream[cursor + 1] & 0b11) << 8
-                        com["cycles"] = cycles + (byte_stream[cursor + 2])
-                        events = (byte_stream[cursor] & 0b11) << 6
-                        events = events + (byte_stream[cursor + 1] >> 2)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 3
-                    if (byte_stream[cursor] & 0b11111100) == 0b11010100:
-                        # TODO Don't we need to extract events here?
-                        # print("Multiple2")
-                        com = {"type": "Multiple2"}
-                        cycles = (byte_stream[cursor + 1] & 0b11) << 16
-                        cycles = cycles + ((byte_stream[cursor + 2]) << 8)
-                        com["cycles"] = cycles + (byte_stream[cursor + 3])
-                        events = (byte_stream[cursor] & 0b11) << 6
-                        events = events + (byte_stream[cursor + 1] >> 2)
-                        for i in range(0, 8):
-                            e = (events >> i) & 0b1
-                            if e:
-                                com["event" + str(i)] = (
-                                    i  # TODO is this how event# is stored in IR?
-                                )
-                        commands[t][key].append(com)
-                        cursor = cursor + 4
-                    if (byte_stream[cursor] & 0b11110000) == 0b11100000:
-                        com = {"type": "Repeat0"}
-                        com["repeats"] = (byte_stream[cursor]) & 0b1111
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11111100) == 0b11011000:
-                        com = {"type": "Repeat1"}
-                        com["repeats"] = ((byte_stream[cursor]) & 0b11) * 256
-                        com["repeats"] += byte_stream[cursor + 1]
-                        commands[t][key].append(com)
-                        cursor = cursor + 2
-                    if (byte_stream[cursor] & 0b11111111) == 0b11111110:
-                        # No one likes you filler, get out of here
-                        cursor = cursor + 1
-                    if (byte_stream[cursor] & 0b11111111) == 0b11111111:
-                        com = {"type": "Event_Sync"}
-                        commands[t][key].append(com)
-                        cursor = cursor + 1
-            except IndexError:
-                pass
-
-    return commands
 
 
 def make_event_lists(commands):
@@ -615,17 +365,13 @@ def process_name_metadata(trace_events, pid, trace_type, loc):
     trace_event["ph"] = "M"
     trace_event["pid"] = pid
     trace_event["args"] = {}
-    # if (pid == 0 or pid == 2):
-    if trace_type == 0:
-        trace_event["args"]["name"] = "core_trace for tile" + str(loc)
-    # if (pid == 1 or pid == 3):
-    elif trace_type == 1:
-        trace_event["args"]["name"] = "mem_trace for tile" + str(loc)
-    elif trace_type == 2:
-        trace_event["args"]["name"] = "shim_trace for tile" + str(loc)
-    elif trace_type == 3:
-        trace_event["args"]["name"] = "memtile_trace for tile" + str(loc)
 
+    pt = PacketType(trace_type)
+    name = pt.name.lower()
+    if name == "shimtile":
+        name = "shim"
+
+    trace_event["args"]["name"] = f"{name}_trace for tile{loc}"
     trace_events.append(trace_event)
 
 
@@ -655,7 +401,7 @@ def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
 def parse_mlir_trace_events(mlir_module_str, colshift=None):
 
     pid_events = list()
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         pid_events.append(dict())
 
     with Context(), Location.unknown():
@@ -779,24 +525,22 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
     return pid_events
 
 
+_TRACE_TYPE_TO_EVENT_ENUM = {
+    PacketType.CORE: CoreEvent,
+    PacketType.MEM: MemEvent,
+    PacketType.SHIMTILE: ShimTileEvent,
+    PacketType.MEMTILE: MemTileEvent,
+}
+
+
 def lookup_event_name_by_type(trace_type, code):
-    # def lookup_event_name_by_type(trace_type, loc, event, pid_events):
-    event = ""
-    # code = pid_events[trace_type][loc][event]
-    events_enum = None
-    if trace_type == 0:  # Core traces
-        events_enum = CoreEvent
-    elif trace_type == 1:  # Mem traces
-        events_enum = MemEvent
-    elif trace_type == 2:  # Shim traces
-        events_enum = ShimTileEvent
-    elif trace_type == 3:  # MemTile traces
-        events_enum = MemTileEvent
-    if events_enum is not None and code in set(x.value for x in events_enum):
-        event = events_enum(code).name
-    else:
-        event = "Unknown"
-    return event
+    events_enum = _TRACE_TYPE_TO_EVENT_ENUM.get(trace_type)
+    if events_enum:
+        try:
+            return events_enum(code).name
+        except ValueError:
+            pass
+    return "Unknown"
 
 
 # def lookup_event_name_by_code(code, traceType):
@@ -890,7 +634,7 @@ def lookup_event_name_by_type(trace_type, code):
 # NOTE: This assume the pid_events has already be analyzed and populated.
 def setup_trace_metadata(trace_events, pid_events):
     pid = 0
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         # for j in len(pid_events[i]):
         for loc in pid_events[t]:  # return loc
             process_name_metadata(trace_events, pid, t, loc)
@@ -906,7 +650,7 @@ def setup_trace_metadata(trace_events, pid_events):
 def align_column_start_index(events, commands):
     # find min column of commands
     min_commands_col = float("inf")
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         for loc in commands[t]:
             col = int(loc.split(",")[1])
             if col < min_commands_col:
@@ -914,7 +658,7 @@ def align_column_start_index(events, commands):
 
     # find min column of events
     min_events_col = float("inf")
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         for loc in events[t]:
             col = int(loc.split(",")[1])
             if col < min_events_col:
@@ -926,7 +670,7 @@ def align_column_start_index(events, commands):
 
     # Shift all event keys by colshift
     new_events = []
-    for t in range(NumTraceTypes):
+    for t in range(NUM_TRACE_TYPES):
         updated = {}
         for loc, l in events[t].items():
             row, col = map(int, loc.split(","))

@@ -1,54 +1,15 @@
-<!---//===- README.md --------------------------*- Markdown -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-// 
-//===----------------------------------------------------------------------===//-->
+# SPDX-FileCopyrightText: Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# Python Utilities
-
-The python utilties are designed to simplify commonly repeated tasks and wrap them up into helper functions. They are divided into separate categories and can be added to any python code via:
-```
-import aie.utils.trace as trace_utils
-import aie.utils.test as test_utils
-improt aie.utils.xrt as xrt_utils
-```
-Thereafter, functions defined in the particular utils file such as `trace_utils` can be called via `trace_utils.configure_packet_tracing_aie2(...)`.
-
-- [Test utilities](#test-utilites-testpy) ([test.py](./test.py))
-- [Trace utilities](#trace-utilites-tracepy) ([trace.py](./trace.py))
-    - [Trace Mechanisms and Explanations](#trace-mechanisms-and-explanations)
-    - [Trace parser](#trace-parser-parse_tracepy) ([parse_trace.py](./parse_trace.py))
-    - [Trace parser - eventIR based](#trace-parser---eventir-based-parse_eventirpy) ([parse_eventIR.py](./parse_eventIR.py))
-- [XRT utilities](#xrt-utilites-xrtpy) ([xrt.py](./xrt.py))
-- [Machine Learning (ML) utilities](#machine-language-ml-utilites-mlpyss) ([ml.py](./ml.py))
-
-## Test utilites ([test.py](./test.py))
-Test/ Host code utilities.
-* `create_default_argparser`
-    * This creates a ArgumentParser with the following args: --xclbin, --kernel, --instr, -v, --verify, --iters, --warmup, --trace_sz, --trace_file
-    * It returns the ArgumentParser which allows you to add more arguments
-* `parse_args` 
-    * Calls create_default_argparser and returns the parsed results
-    * Useful if you don't need additional custom args
-* `init_xrt_load_kernel`
-    * Helpful wrapper for a number of commonly used XRT calls in `test.py`
-        * Declare an XRT `device`
-        * Load the xclbin file and register the `xclbin`
-        * Declare hardware context and use that to return the `device` and `kernel`
-
-
-## Trace utilites ([trace.py](./trace.py))
+"""
+Trace utilites
 
 Trace utilities are designed to take the low level tile cofigurations need to configure trace and wrap them into convenient wrapper functions. We will go over descriptions of the functions and then dive deeper into Trace mechanisms and explanations.
 
 * `class GenericEvent`
 * `PortEventCodes`, `MemTileEventcodes`, `ShimTileEventCodes`
     * event codes for port events for the different tile types: core, memtile, shimtile
-* `class PacketType` 
+* `class PacketType`
     * We use the packet type field in the packet header to help differentiate the tile that the packet came from. Since packet types don't inherently have meaning, we assign numerical values to each tile type: core, mem (for core), shimtilem, memtile
 * `class PortEvent`, `class MemTilePortEvent`, `class ShimTilePortEvent`
     * class for port events to define accesses and `get_register_writes`
@@ -73,9 +34,9 @@ Trace utilities are designed to take the low level tile cofigurations need to co
     * Configures timer in each tile type to reset based on an `event`
 
 * `configure_broadcast_core_aie2`
-    *  Configure broadcast event based on an internal triggered event. 
+    *  Configure broadcast event based on an internal triggered event.
         function arguments:
-        * `num` - broadcaast number we want to broadcast on 
+        * `num` - broadcaast number we want to broadcast on
         * `event` - the triggering broadcast event
 
 * `configure_event_gen_core_aie2`
@@ -89,10 +50,10 @@ Trace utilities are designed to take the low level tile cofigurations need to co
         1. Configure core tile based on start/ stop, events, and flow id. The flow id needs to be unique per flow.
         2. Configure timer based on broadcast event (default is 15). This ensures all tiles keying off this event has a synchronized timer so their trace are synchronized. This event is also used as the start event for tracing.
         3. Configure shim tile to receive this flow and move the data to offset/ size.
-    It does this by calling `configure_coretile_tracing_aie2`, `configure_time_ctrl_coretile_aie2` and `configure_shimtile_dma_tracing_aie2`. 
+    It does this by calling `configure_coretile_tracing_aie2`, `configure_time_ctrl_coretile_aie2` and `configure_shimtile_dma_tracing_aie2`.
 
 * `configure_packet_tracing_flow`
-    * Wrapper around packeflows to itereate over tiles_to_trace and route them to the shim for outputing the trace to L3 memory. This uses default values for the packet id that increases for each tile we trace, starting with 1. This should match the tile trace config that's set by configure_coretile_packet_tracing_aie2. 
+    * Wrapper around packeflows to itereate over tiles_to_trace and route them to the shim for outputing the trace to L3 memory. This uses default values for the packet id that increases for each tile we trace, starting with 1. This should match the tile trace config that's set by configure_coretile_packet_tracing_aie2.
     * *NOTE* - Because we do it this way, we inherently cannot trace more than 31 tiles.
 
         Function arguments:
@@ -120,7 +81,7 @@ Trace utilities are designed to take the low level tile cofigurations need to co
 
 * `configure_packet_tracing_aie2` (packet switched multi-tile tracing)
     * This wrapper function iterates over the `tiles_to_trace` array and calls the right version of `configure_*tile_packet_tracing_aie2`. A key distinction is made to choose the right start and stop event depending on the tile type. We pass in 3 sets of optional event arguments that allows them to be customized depending on the tile type.
-        
+
         Function arguments:
         * `tiles to trace` - array of tiles to trace
         * `shim tile` - Single shim tile to configure for writing trace packets to DDR
@@ -143,7 +104,7 @@ Trace utilities are designed to take the low level tile cofigurations need to co
         ```
 
 * `configure_simple_tracing_aie2` (**DEPRECATED** cicuit switched single tile tracing)
-    * This function abstracts a number of python functions for configuring a core tile and an associated shim tile. It does not define the trace packet routing between the two however. 
+    * This function abstracts a number of python functions for configuring a core tile and an associated shim tile. It does not define the trace packet routing between the two however.
 
         Function arguments:
         * `channel` - S2MM channel used
@@ -178,7 +139,7 @@ Trace utilities are designed to take the low level tile cofigurations need to co
                     PortEvent(CoreEvent.PORT_RUNNING_0, 1, True),  # master(1)
                     PortEvent(CoreEvent.PORT_RUNNING_1, 1, False),  # slave(1)
                    ]
-           ``` 
+           ```
 
         A more common use case might be:
         ```python
@@ -190,18 +151,18 @@ Trace utilities are designed to take the low level tile cofigurations need to co
 
 * Additional helper functions can be found in the `trace.py` and are documented in the source directly.
 
-## Trace Mechanisms and Explanations
+Trace Mechanisms and Explanations
 
 The basic concept for trace configuration as summarized in [section-4b](../../programming_guide/section-4/section-4b/). MOre details about the trace hardware can be found for AIE-ML/AIE2 at [am020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace).
 
 ### Trace Packet Routing
-Digging one level lower, tracing can be configured such that trace data is moved via circuit switch routing or packet switched routing. The deprecated `configure_simple_tracing_aie2` uses circuit switch tracing but this mechanism utilizes a dedicate stream along the stream switch path and limits the number of parallel tiles that can be traced. The preferred default mechanism is to use packet swtiched routing instead. This has the benefit of using a shared stream to route multiple tiles' trace packets. In practice, if a large amount trace data is being produced among a large number of tiles and aggregated into a single stream, there can be a limit to how much data that stream can support which may exert back pressure can cause overrun of trace data leading to invalid trace results. One limitation of packet switched routing is the additional packet header prepended to each packet (32b header for 7x 32b of data payload). This reduces the effective bandwidth of the trace data but the benefit of packet switched routing far outweigh this overhead limitation. 
+Digging one level lower, tracing can be configured such that trace data is moved via circuit switch routing or packet switched routing. The deprecated `configure_simple_tracing_aie2` uses circuit switch tracing but this mechanism utilizes a dedicate stream along the stream switch path and limits the number of parallel tiles that can be traced. The preferred default mechanism is to use packet swtiched routing instead. This has the benefit of using a shared stream to route multiple tiles' trace packets. In practice, if a large amount trace data is being produced among a large number of tiles and aggregated into a single stream, there can be a limit to how much data that stream can support which may exert back pressure can cause overrun of trace data leading to invalid trace results. One limitation of packet switched routing is the additional packet header prepended to each packet (32b header for 7x 32b of data payload). This reduces the effective bandwidth of the trace data but the benefit of packet switched routing far outweigh this overhead limitation.
 
 ### Trace Array Level Configuration (packet switched routing)
 We have already discussed configuring individual trace units in each tile to enable tracing and packetization of the trace data, configuring packet flows to route the trace data packets to a shim, and configuring the shim to write that data to DDR. However, a key aspect of full array level configuration involves supporting multi-tile trace which requires synchronization of trace data. This is done via using broadcasted user events as both local timer reset and start and stop synchronization, as explained below:
 
 1. Configure shim to generate a custom user event (#1) and broadcast event (#15) throughout array
-2. Reset all timers in shim and traced tiles based on this broadcast event so all timers are synchronized. NOTE: In practice, there is a slight delay since the delay of this signal can be a few clock cycles between tiles. 
+2. Reset all timers in shim and traced tiles based on this broadcast event so all timers are synchronized. NOTE: In practice, there is a slight delay since the delay of this signal can be a few clock cycles between tiles.
 3. Configure tiles to use this broadcast event (#15) as the start event
 4. Continue with rest of runtime sequence (e.g. data movement for input and output buffers)
 5. Generate another user event (#0) and broadcast event (#14) throughout array. This will be used as the trace stop event for all tiles
@@ -238,7 +199,7 @@ configure_packet_tracing_aie2(
 `PortEvent` is defined in [trace.py](../../python/utils/trace.py) and `CoreEvent` is defined in [trace_events_enum.py](../../python/utils/trace_events_enum.py). Likewise for memtiles and shimtiles, we have `MemTilePortEvent` and `ShimTilePortEvent` in [trace.py](../../python/utils/trace.py) and `MemTileEvent` and `ShimTileEvent` are in [trace_events_enum.py](../../python/utils/trace_events_enum.py).
 
 ### Configure tile trace settings
-Under the hood of `configure_coretile_tracing_aie2`/ `configure_memtile_tracing_aie2`/ `configure_shimtile_tracing_aie2`, we perform trace configurations by writing specific values to trace configuration registers. This is done within the `aiex.runtime_sequence` block, where we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd`) to configure the shimDMA. 
+Under the hood of `configure_coretile_tracing_aie2`/ `configure_memtile_tracing_aie2`/ `configure_shimtile_tracing_aie2`, we perform trace configurations by writing specific values to trace configuration registers. This is done within the `aiex.runtime_sequence` block, where we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd`) to configure the shimDMA.
 
 For a give AIE2 tile, we configure the trace control registers for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace unit behavior. 2 are for configuring the general trace control and the other 2 are to specify which events our tile's trace hardware is monitoring.
 
@@ -247,7 +208,7 @@ The table below describes the trace control registers for the core module.
 
 | Config Register | Address | Field | Bits | Reset Value | Description |
 |-----------------|---------|-------|------|-------------|-------------|
-| Trace Control 0 | 0x340D0 | Stop Event | [30:24], 0xNN------ | 0 | Event to stop trace capture | 
+| Trace Control 0 | 0x340D0 | Stop Event | [30:24], 0xNN------ | 0 | Event to stop trace capture |
 | Trace Control 0 | 0x340D0 | Start Event | [22:16], 0x--NN---- | 0 | Event to start trace capture |
 | Trace Control 0 | 0x340D0 | Mode | [1:0], 0x-------N | 0 | Trace mode. 00=event-time, 01=event-PC, 10=execution |
 | Trace Control 1 | 0x340D4 | Packet Type | [14:12], 0x----N--- | 0 | Detination trace packet - packet type |
@@ -304,10 +265,10 @@ There is an extensive lists of trace events in the [trace_events_enum.py](../../
 | Core Instruction - Event 1  |INSTR_EVENT_1| 0x22| 34 |
 | Vector Instructions (e.g. VMAC, VADD, VCMP) |INSTR_VECTOR| 0x25|  37 |
 | Lock acquire requests      |INSTR_LOCK_ACQUIRE_REQ| 0x2C|  44 |
-| Lock release requests      |INSTR_LOCK_RELEASE_REQ| 0x2D|  45 | 
+| Lock release requests      |INSTR_LOCK_RELEASE_REQ| 0x2D|  45 |
 | Lock stall                 |LOCK_STALL| 0x1A|  26 |
 | Core Port Running 1        |PORT_RUNNING_1| 0x4F|  79 |
-| Core Port Running 0        |PORT_RUNNING_0| 0x4B|  75 | 
+| Core Port Running 0        |PORT_RUNNING_0| 0x4B|  75 |
 
 **NOTE**: The "Core Instruction - Event 0/1" are special intrinsics you can add to your kernel code to trigger an event during the running of your core program. Within the kernel code, they look like:
 ```c++
@@ -328,7 +289,7 @@ in C/C++
 // Vector instrucitons (0x25)
 // Core Instruction - Event 0 (0x21)
 // Core Instruction - Event 1 (0x22)
-// Core Port Running 0 (0x4B) 
+// Core Port Running 0 (0x4B)
 aiex.npu.write32 { column = 0 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
 
 // Events 4-7 monitored
@@ -346,7 +307,7 @@ npu_write32(column=0, row=4, address=0x340E0, value=*events[0:4],)
 npu_write32(column=0, row=4, address=0x340E4, value=*events[4:8],)
 ```
 
-Some configurations like the Port Running 0/1 events are further configured by a secondary configuration register. In this case, we route the port activity from the stream switch to Port running 0 or 1. 
+Some configurations like the Port Running 0/1 events are further configured by a secondary configuration register. In this case, we route the port activity from the stream switch to Port running 0 or 1.
 | Config Register | Address | Field | Bits | Reset Value | Description |
 |-----------------|---------|-------|------|-------------|-------------|
 | Stream Switch Event Port Selection 1 | 0x3FF04 | Port 7 Master/Slave | [29], 0xN------- | 0 | Master or slave for port 7, 1=master, 0=slave |
@@ -399,7 +360,7 @@ The shimDMA needs to be configured to write the trace stream data to a valid loc
 * `buffer_offset` - specifies in bytes where the trace buffer starts in the output buffer and occurs after the main output buffer ends. If the output buffer size in words is 65,536, then the buffer offset would be 4*65,536 = 262,144 bytes.
 * `bd_id` - unique bd (out of 16 bds) to program for data movement. Since we're delcaring this manually, it's important that we dont' overlap with existing (and possibly auto-declared bd id values). In the matmul design, we needed this value to be at least 13.
 * `column` - this shimDMA's column
-* `ddr_id` - very important to indicate which inout buffer DDR region we're mapping to. 
+* `ddr_id` - very important to indicate which inout buffer DDR region we're mapping to.
 
 An example ddr_id to inout buffer mapping is below:
 | ddr ID value | buffer | group_id |
@@ -482,9 +443,9 @@ npu_writebd(
     use_next_bd=0,
     valid_bd=1,
 )
-```    
+```
 
-### <u>Trace parser ([parse_trace.py](./parse_trace.py))</u>
+### <u>Trace parser ([parse_trace.py](./parse.py))</u>
 The text file generated by the host code (`test.cpp` or `test.py`) are formatted as 32-bit hex values, one per line. This python script parses the raw trace packet data and creates a waveform json file for view on Perfetto http://ui.perfetto.dev. The script syntax is:
 
 ```bash
@@ -495,11 +456,11 @@ parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output parse_even
 * **--mlir**     : MLIR source. This is needed to parse what events and tiles we are monitoring to generate labels for our waveform visualizer.
 * **--colshift (optional)** : runtime column shift. This specifies how much the actual design was shifted from the default position when it was scheduled and called. The reason we need this is becuase even if our design is configured for column 0, the actual loading and execution of the design may place it in column 1, 2, 3 etc. We account for this shift since the parser needs to match the actual column location of the generated trace data. For npu devices (phoenix), this is typically 1 while npu2 (strix) uses 0. The script should be able to automatically figure out the starting column and set this correctly but can be overrided via this argument.
 
-    **NOTE** - the underlying tools currently default to column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment. 
+    **NOTE** - the underlying tools currently default to column 1 to avoid using column 0 on Ryzen AI since that column does not have a shimDMA and is therefore avoided at the moment.
 * **--output** : output json file
 
 
-### <u>Trace parser - eventIR based ([parse_eventIR.py](./parse_eventIR.py))</u>
+### <u>Trace parser - eventIR based ([event_ir.py](./event_ir.py))</u>
 The text file generated by the host code (`test.cpp` or `test.py`) are formatted as 32-bit hex values, one per line. This python script executes a number of steps in order to transform it from trace packet text file into a waveform json file.
 
 **NOTE** - There seems to be some inconsistencies in the results generated by this parser. As of now, it is used to compare to existing the `hwfrontend` tool only.
@@ -526,7 +487,7 @@ The parse script create a temporary directory `tmpTrace` performs the following 
 We prepend `0x` before each hex line and save it `prep.<trace file>` since the `hwfrontend` utility expects it.
 
 #### <u>2. Parse MLIR to build event table</u>
-The MLIR parser is pretty rudimentary as it scans the source mlir file looking for `aiex.npu.write32` calls and does a pattern match for trace unit config address and then grab the hex events, which it looks up from an internal table to provide waveform labels. It would be better to use an MLIR pass that already has the config information and cross reference it with a more official event-to-label lookup table instead. 
+The MLIR parser is pretty rudimentary as it scans the source mlir file looking for `aiex.npu.write32` calls and does a pattern match for trace unit config address and then grab the hex events, which it looks up from an internal table to provide waveform labels. It would be better to use an MLIR pass that already has the config information and cross reference it with a more official event-to-label lookup table instead.
 
 #### <u>3. Create .target file</u>
 Create a dummy file (`.target`) in the `tmpTrace` with the file content 'hw' since `hwfrontend` utility expects it.
@@ -537,7 +498,7 @@ This step uses the information from the MLIR parse step to create a fixed config
 #### <u>5. Run Vitis/aietools hwfrontend utility to parse raw trace data --> generates eventIR.txt</u>
 This is the main parse utility that generates a much more friendly eventIR file format. This utilty is the same one used by the adf tools for aiesimulator. However, the utility is very particular and some combinations of trace packet data might confuse the parser or cause an error. See the **Tips** section at the end for workarounds to known issues.
 
-#### <u>6. Convert eventIR.txt to perfetto_compatible.json</u> 
+#### <u>6. Convert eventIR.txt to perfetto_compatible.json</u>
 While the Perfetto-compliant json file format is not the same as the eventIR file format. The conversion between them is more straightforward that between trace packets and Perfetto-compliant json. Having said that, it is still possible this pass to be further tested and improved.
 
 #### <u>Tips</u>
@@ -560,43 +521,50 @@ to
 0x0005d0f7
 ```
 which reduces the timer from 11,091,042 cycles to 381,175 seems to fix it.
+"""
 
-## XRT utilites ([xrt.py](./xrt.py))
-XRT wrapped utilities. These classes and utilities help simplify the the declaration and instantiation of XRT components in the host code.
-
-In particular, `setup_and_run_aie` is a helpful convenience wrapper to simplify the setup and runnin of kernel with 1 or 2 inputs buffers and 1 output buffer. See [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul/) for an template example of how this is ued.
-
-* class `AIE_Application`
-    * This class configures and invokes the XRT components needed to run an AIE Application. This includes xrt.device, xrt.kernel, xrt.hw_context and XRT buffers as enacpuslated by the AIE_Buffer class. You can use this class to simplify and reduce the amount of code needed to set up an AIE application.
-        * `__init__` - Registers xclbin to set up the device, hw context and kernel. This also sets up the instruction stream
-        * `register_buffer` - Registers an AIE_Buffer class object given group_id, datatype and shape
-        * `run` - This syncs the instruction buffer to the device and then invokes the `call` function before wait for the call to complete
-        * `call` - Wrapper for xrt.kernel function passing in opcode and buffers objects
-* class `AIE_Buffer`
-    * This class wraps up access to the xrt.bo buffer object where sync calls are added to read and write calls to ensure data is synchronized.
-    * `__init__` - Declare xrt.bo object given group_id, datatype, shape
-    * `read` - Synchronize data from device before reading xrt.bo data
-    * `write` - Write data to xrt.bo and synchronize data to device
-    * `sync_to_device` - Wrapper for xrt.bo.sync call (to device)
-    * `sync_from_device` - Wrapper for xrt.bo.sync call (from device)
-* class `AIE_Application_Error`
-* `read_insts` - Read instruction stream from text file and reformat it to be passed into the instructoin buffer for the xrt.kernel call
-* `setup_aie`
-    * Sets up the AIE application with support for up to 2 input buffers, 1 output buffer, and an optional trace buffer. Under the hood, we call declare an AIE_Application object and register the buffers used given the buffer datatype and shapes. 
-* `execute`
-    * Wrapper function to write buffer arguments into registered input buffers, then call `run` function for AIE Application, and finally return the output buffer data.
-* `extract_trace`
-    * Wrapper function to separate output data and trace data from a single output buffer stream
-* `write_out_trace`
-    * Wrapper function to write trace buffer values to a text file
-* `setup_and_run_aie`
-    * This wrapper function abstracts the full set of functions to setup the aie and run the kernel program including check for functional correctness and reporting the run time. Under the hood, we call `setup_aie` to set up the AIE application before calling `execute` and checking results. The datatypes and shape for the 2 inputs and 1 output buffers are passed in as arguments, along with the gold reference data to compare it against. Trace buffers is also written out to a text file if trace is enabled. 
-
-## Machine Language (ML) utilites ([ml.py](./ml.py))
-ML related utilties
-
-* class `CSVLogger`
-* `load_class_label`
-* `unpickle`
-* `fuse_single_conv_bn_pair`
-* class `DataShaper`
+from .config import TraceConfig
+from .event_enums import (
+    CoreEvent,
+    MemEvent,
+    ShimTileEvent,
+    MemTileEvent,
+)
+from .events import (
+    GenericEvent,
+    PortEvent,
+    MemTilePortEvent,
+    ShimTilePortEvent,
+)
+from .parse import parse_trace
+from .port_events import (
+    PacketType,
+    PortEventCodes,
+    MemTilePortEventCodes,
+    ShimTilePortEventCodes,
+    NUM_TRACE_TYPES,
+)
+from .setup import (
+    configure_coremem_tracing_aie2,
+    configure_coretile_tracing_aie2,
+    configure_memtile_tracing_aie2,
+    configure_shimtile_tracing_aie2,
+    configure_packet_tracing_flow,
+    configure_shim_trace_start_aie2,
+    gen_trace_done_aie2,
+    configure_packet_tracing_aie2,
+    configure_simple_tracing_aie2,
+    configure_packet_ctrl_flow,
+    config_ctrl_pkts_aie,
+)
+from .utils import (
+    parity,
+    extract_tile,
+    pack4bytes,
+    create_ctrl_pkt,
+    get_kernel_code,
+    extract_buffers,
+    get_cycles,
+    get_cycles_summary,
+    get_vector_time,
+)

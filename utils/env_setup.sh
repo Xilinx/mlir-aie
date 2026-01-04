@@ -57,11 +57,30 @@ if ! test -f "$XRTSMI"; then
     echo "xrt-smi not found. Is XRT installed?"
     return 1
 fi
-NPU=`xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
-NPU="${NPU:-$(/mnt/c/Windows/System32/AMD/xrt-smi.exe examine 2>/dev/null | tr -d '\r' | grep -E 'NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]' || true)}"
-# Check if the current environment is NPU2
-# npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
-if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]"; then
+
+# Get NPU info string
+NPU_INFO=`$XRTSMI examine 2>/dev/null`
+if [ -z "$NPU_INFO" ]; then
+    NPU_INFO=`/mnt/c/Windows/System32/AMD/xrt-smi.exe examine 2>/dev/null`
+fi
+
+# Use python helper to detect NPU generation
+NPU_GEN=$(python3 -c "
+import sys
+try:
+    from aie.utils.npu_utils import get_npu_generation
+    # Read from stdin
+    info = sys.stdin.read()
+    gen = get_npu_generation(info)
+    if gen:
+        print(gen)
+    else:
+        print('unknown')
+except Exception:
+    print('error')
+" <<< "$NPU_INFO")
+
+if [ "$NPU_GEN" == "npu2" ]; then
     export NPU2=1
 else
     export NPU2=0

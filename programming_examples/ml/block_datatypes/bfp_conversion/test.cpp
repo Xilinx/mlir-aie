@@ -209,11 +209,13 @@ int main(int argc, const char *argv[]) {
     // handled for any bfp type.
     if (!test_utils::nearly_equal(outputTransformed[i], expectedResultVec[i],
                                   0.25, 3.5)) {
-      std::cout << "Error in output " << outputTransformed[i]
-                << " != " << expectedResultVec[i] << std::endl;
+      if (verbosity >= 1) {
+        std::cout << "Error in output " << outputTransformed[i]
+                  << " != " << expectedResultVec[i] << std::endl;
+      }
       errors++;
     } else {
-      if (verbosity > 1)
+      if (verbosity >= 1)
         std::cout << "Correct output " << outputTransformed[i]
                   << " ~= " << expectedResultVec[i] << std::endl;
     }

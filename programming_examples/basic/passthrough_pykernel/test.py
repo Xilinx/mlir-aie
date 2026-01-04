@@ -7,8 +7,9 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-from aie.utils.xrt import setup_aie, execute
 import aie.utils.test as test_utils
+import aie.iron as iron
+from aie.utils import DEFAULT_NPU_RUNTIME
 
 
 def main(opts):
@@ -17,34 +18,21 @@ def main(opts):
     data_size = int(opts.size)
     dtype = np.uint8
 
-    app = setup_aie(
-        opts.xclbin,
-        opts.instr,
-        data_size,
-        dtype,
-        None,
-        None,
-        data_size,
-        dtype,
+    input_data = np.arange(1, data_size + 1, dtype=dtype)
+    in1 = iron.tensor(input_data, dtype=dtype)
+    out = iron.zeros(data_size, dtype=dtype)
+
+    npu_opts = test_utils.create_npu_kernel(opts)
+    res = DEFAULT_NPU_RUNTIME.run_test(
+        [in1, out],
+        [(1, input_data)],
+        npu_opts.npu_kernel,
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     )
-    input = np.arange(1, data_size + 1, dtype=dtype)
-    aie_output = execute(app, input)
-
-    # Copy output results and verify they are correct
-    errors = 0
-    if opts.verify:
-        if opts.verbosity >= 1:
-            print("Verifying results ...")
-        e = np.equal(input, aie_output)
-        errors = np.size(e) - np.count_nonzero(e)
-
-    if not errors:
+    if res == 0:
         print("\nPASS!\n")
-        exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
-        exit(-1)
+    sys.exit(res)
 
 
 if __name__ == "__main__":

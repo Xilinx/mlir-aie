@@ -9,66 +9,16 @@
 import os
 import functools
 import hashlib
-import fcntl
-import contextlib
-import time
 
 from aie.extras.context import mlir_mod_ctx
-from ..device import NPU1, NPU2, NPU1Col1, NPU2Col1
-from ..compile import compile_mlir_module, compile_external_kernel
-from ..kernel import ExternalFunction
-from .config import get_current_device
-from .kernelrunner import NPUKernel
+from .compile import compile_mlir_module, compile_external_kernel
+from .npukernel import NPUKernel
 from aie.dialects.aie import AIEDevice
-from ..compile.cache.circular_cache import CircularCache
-from ..compile.cache.utils import _create_function_cache_key
-from ..compile import IRON_CACHE_HOME
-from ..compile.utils import _cleanup_failed_compilation
-
-
-@contextlib.contextmanager
-def file_lock(lock_file_path, timeout_seconds=60):
-    """
-    Context manager for file locking using flock to prevent race conditions.
-
-    Args:
-        lock_file_path (str): Path to the lock file
-        timeout_seconds (int): Maximum time to wait for lock acquisition in seconds
-    """
-    lock_file = None
-    try:
-        # Create lock file if it doesn't exist
-        os.makedirs(os.path.dirname(lock_file_path), exist_ok=True)
-        try:
-            f = os.open(lock_file_path, os.O_CREAT | os.O_EXCL)
-            os.close(f)
-        except FileExistsError:
-            pass  # File already exists
-        lock_file = open(lock_file_path, "a")
-
-        # Try to acquire exclusive lock with timeout
-        start_time = time.time()
-        while True:
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except OSError:
-                # Lock is held by another process
-                if time.time() - start_time > timeout_seconds:
-                    raise TimeoutError(
-                        f"Could not acquire lock on {lock_file_path} within {timeout_seconds} seconds"
-                    )
-                time.sleep(0.1)
-
-        yield lock_file
-
-    finally:
-        if lock_file is not None:
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            except OSError:
-                pass  # Ignore errors when releasing lock
-            lock_file.close()
+from .compile.cache.circular_cache import CircularCache
+from .compile.cache.utils import _create_function_cache_key, file_lock
+from .compile import IRON_CACHE_HOME
+from .compile.utils import _cleanup_failed_compilation
+from . import DEFAULT_NPU_RUNTIME
 
 
 # Global cache for compiled kernels at the function level
@@ -90,6 +40,14 @@ def jit(function=None, is_placed=True, use_cache=True):
 
     @functools.wraps(function)
     def decorator(*args, **kwargs):
+        from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
+        from aie.iron.kernel import ExternalFunction
+
+        if DEFAULT_NPU_RUNTIME is None:
+            raise Exception("Cannot use JIT; DEFAULT_NPU_RUNTIME not set.")
+
+        trace_config = kwargs.get("trace_config")
+
         # Check if we already have a compiled kernel for this function signature
         cache_key = _create_function_cache_key(function, args, kwargs)
         if cache_key in _compiled_kernels:
@@ -109,18 +67,15 @@ def jit(function=None, is_placed=True, use_cache=True):
                 external_kernels.append(value)
 
         # Execute the function to generate MLIR
-        try:
-            if is_placed:
-                with mlir_mod_ctx() as ctx:
-                    function(*args, **kwargs)
-                    assert (
-                        ctx.module.operation.verify()
-                    ), f"Verification failed for '{function.__name__}'"
-                    mlir_module = ctx.module
-            else:
-                mlir_module = function(*args, **kwargs)
-        except Exception as e:
-            raise
+        if is_placed:
+            with mlir_mod_ctx() as ctx:
+                function(*args, **kwargs)
+                assert (
+                    ctx.module.operation.verify()
+                ), f"Verification failed for '{function.__name__}'"
+                mlir_module = ctx.module
+        else:
+            mlir_module = function(*args, **kwargs)
 
         # Compile all ExternalFunction instances that were created during this JIT compilation
         for func in ExternalFunction._instances:
@@ -130,28 +85,25 @@ def jit(function=None, is_placed=True, use_cache=True):
                 external_kernels.append(func)
 
         # Determine target architecture based on device type
-        try:
-            current_device = get_current_device()
+        current_device = DEFAULT_NPU_RUNTIME.device()
 
-            # Determine target architecture based on device type
-            if isinstance(current_device, (NPU2, NPU2Col1)):
-                target_arch = "aie2p"
-            elif isinstance(current_device, (NPU1, NPU1Col1)):
-                target_arch = "aie2"
-            elif current_device in (AIEDevice.npu2, AIEDevice.npu2_1col):
-                target_arch = "aie2p"
-            elif current_device in (AIEDevice.npu1, AIEDevice.npu1_1col):
-                target_arch = "aie2"
-            else:
-                raise RuntimeError(f"Unsupported device type: {type(current_device)}")
-        except Exception as e:
-            raise
+        # Determine target architecture based on device type
+        if isinstance(current_device, (NPU2, NPU2Col1)):
+            target_arch = "aie2p"
+        elif isinstance(current_device, (NPU1, NPU1Col1)):
+            target_arch = "aie2"
+        elif current_device in (AIEDevice.npu2, AIEDevice.npu2_1col):
+            target_arch = "aie2p"
+        elif current_device in (AIEDevice.npu1, AIEDevice.npu1_1col):
+            target_arch = "aie2"
+        else:
+            raise RuntimeError(f"Unsupported device type: {type(current_device)}")
 
         # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)
-        kernel_dir = os.path.join(IRON_CACHE_HOME, f"{module_hash}")
-        lock_file_path = os.path.join(kernel_dir, ".lock")
-        mlir_path = os.path.join(kernel_dir, "aie.mlir")
+        kernel_dir = IRON_CACHE_HOME / f"{module_hash}"
+        lock_file_path = kernel_dir / ".lock"
+        mlir_path = kernel_dir / "aie.mlir"
 
         # Use file locking to prevent race conditions when accessing cache directory
         with file_lock(lock_file_path):
@@ -161,8 +113,8 @@ def jit(function=None, is_placed=True, use_cache=True):
             # Write MLIR to file if not already cached
             inst_filename = "insts.bin"
             xclbin_filename = "final.xclbin"
-            xclbin_path = os.path.join(kernel_dir, xclbin_filename)
-            inst_path = os.path.join(kernel_dir, inst_filename)
+            xclbin_path = kernel_dir / xclbin_filename
+            inst_path = kernel_dir / inst_filename
 
             xclbin_exists = os.path.exists(xclbin_path)
             inst_exists = os.path.exists(inst_path)
@@ -188,17 +140,13 @@ def jit(function=None, is_placed=True, use_cache=True):
                     _cleanup_failed_compilation(kernel_dir)
                     raise e
 
-        kernel_name = "MLIR_AIE"
-        try:
-            kernel = NPUKernel(xclbin_path, inst_path, kernel_name=kernel_name)
-
-            # Cache the kernel for this function signature
-            _compiled_kernels[cache_key] = kernel
-
-            result = kernel(*args, **kwargs)
-            return result
-        except Exception as e:
-            raise
+        _compiled_kernels[cache_key] = NPUKernel(
+            xclbin_path,
+            inst_path,
+            kernel_name="MLIR_AIE",
+            trace_config=trace_config,
+        )
+        _compiled_kernels[cache_key](*args)
 
     return decorator
 
@@ -212,7 +160,6 @@ def hash_module(module, external_kernels=None, target_arch=None):
     # Include ExternalFunction compiler options and source code in the hash
     if external_kernels:
         running_hash = ""
-        source_contents = []
         for func in external_kernels:
             running_hash += str(hash(func))
 

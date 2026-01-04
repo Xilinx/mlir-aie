@@ -41,11 +41,13 @@ int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
   for (uint32_t i = 0; i < size; i++) {
     T ref = A[i] * B[i] + C[i];
     if (!test_utils::nearly_equal(ref, D[i], 0.002)) {
-      std::cout << "Error in output " << D[i] << " != " << ref << " from "
-                << A[i] << " * " << B[i] << " + " << C[i] << std::endl;
+      if (verbosity >= 1) {
+        std::cout << "Error in output " << D[i] << " != " << ref << " from "
+                  << A[i] << " * " << B[i] << " + " << C[i] << std::endl;
+      }
       errors++;
     } else {
-      if (verbosity > 1)
+      if (verbosity >= 1)
         std::cout << "Correct output " << D[i] << " == " << ref << std::endl;
     }
   }

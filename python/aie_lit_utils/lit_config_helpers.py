@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import subprocess
+import json
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
 
@@ -55,13 +56,6 @@ class HardwareConfig:
 
 class LitConfigHelper:
     """Helper class for managing lit test configurations."""
-
-    # NPU Model mappings - centralized for easy updates
-    # Maps generation name to list of model strings that may appear in xrt-smi
-    NPU_MODELS = {
-        "npu1": ["npu1", "Phoenix"],
-        "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
-    }
 
     @staticmethod
     def prepend_path(llvm_config, path: str) -> None:
@@ -257,15 +251,19 @@ class LitConfigHelper:
                 run_on_npu = f"{aie_src_root}/utils/run_on_npu.sh"
 
                 # Map model to NPU generation and filter by available components
-                if model in LitConfigHelper.NPU_MODELS["npu1"]:
-                    if "AIE2" in vitis_components:
-                        run_on_npu1 = run_on_npu
-                        config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
-                        config.substitutions["%run_on_npu1%"] = run_on_npu1
-                        print(f"Running tests on NPU1 with command line: {run_on_npu1}")
-                    else:
-                        print("NPU1 detected but aietools for aie2 not available")
-                elif model in LitConfigHelper.NPU_MODELS["npu2"]:
+                # Load NPU models from JSON file
+                json_path = os.path.join(
+                    os.path.dirname(__file__), "..", "utils", "npu_models.json"
+                )
+                try:
+                    with open(json_path, "r") as f:
+                        npu_models = json.load(f)
+                except Exception as e:
+                    print(f"Failed to load NPU models from {json_path}: {e}")
+                    npu_models = {"npu1": [], "npu2": []}
+
+                # Check for NPU2 keywords first as they are more specific
+                if any(k in model for k in npu_models.get("npu2", [])):
                     if "AIE2P" in vitis_components:
                         run_on_npu2 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
@@ -273,6 +271,14 @@ class LitConfigHelper:
                         print(f"Running tests on NPU2 with command line: {run_on_npu2}")
                     else:
                         print("NPU2 detected but aietools for aie2p not available")
+                elif any(k in model for k in npu_models.get("npu1", [])):
+                    if "AIE2" in vitis_components:
+                        run_on_npu1 = run_on_npu
+                        config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
+                        config.substitutions["%run_on_npu1%"] = run_on_npu1
+                        print(f"Running tests on NPU1 with command line: {run_on_npu1}")
+                    else:
+                        print("NPU1 detected but aietools for aie2 not available")
                 else:
                     print(f"WARNING: xrt-smi reported unknown NPU model '{model}'.")
                 break

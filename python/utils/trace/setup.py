@@ -1,284 +1,37 @@
-# trace.py -*- Python -*-
-#
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-FileCopyrightText: Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
 
-import typing
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
+from aie.dialects.aie import packetflow, WireBundle
+from aie.dialects.aiex import (
+    npu_write32,
+    npu_writebd,
+    npu_maskwrite32,
+    npu_address_patch,
+    npu_sync,
+)
 from aie.dialects.aie import get_target_model
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
-from enum import IntEnum
-
-
-class GenericEvent:
-    def __init__(
-        self, code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent]
-    ):
-        # For backwards compatibility, allow integer as event
-        if isinstance(code, int):
-            code = CoreEvent(code)
-        self.code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent] = code
-
-    def get_register_writes(self):
-        """
-        Sub-classes for specific events that require writing to a specific
-        register should overwrite this method to return a dicitionary
-        address -> register value.
-
-        Note that if multiple event(-types) request writing to the same
-        register, their writes will be ORed together. (This makes sense if
-        configuration requires only writing some bits of the whole register.)
-        """
-        return {}
-
-
-# fmt: off
-PortEventCodes = { CoreEvent.PORT_IDLE_0, CoreEvent.PORT_IDLE_1,
-                   CoreEvent.PORT_IDLE_2, CoreEvent.PORT_IDLE_3,
-                   CoreEvent.PORT_IDLE_4, CoreEvent.PORT_IDLE_5,
-                   CoreEvent.PORT_IDLE_6, CoreEvent.PORT_IDLE_7,
-                   CoreEvent.PORT_RUNNING_0, CoreEvent.PORT_RUNNING_1,
-                   CoreEvent.PORT_RUNNING_2, CoreEvent.PORT_RUNNING_3,
-                   CoreEvent.PORT_RUNNING_4, CoreEvent.PORT_RUNNING_5,
-                   CoreEvent.PORT_RUNNING_6, CoreEvent.PORT_RUNNING_7,
-                   CoreEvent.PORT_STALLED_0, CoreEvent.PORT_STALLED_1,
-                   CoreEvent.PORT_STALLED_2, CoreEvent.PORT_STALLED_3,
-                   CoreEvent.PORT_STALLED_4, CoreEvent.PORT_STALLED_5,
-                   CoreEvent.PORT_STALLED_6, CoreEvent.PORT_STALLED_7,
-                   CoreEvent.PORT_TLAST_0, CoreEvent.PORT_TLAST_1,
-                   CoreEvent.PORT_TLAST_2, CoreEvent.PORT_TLAST_3,
-                   CoreEvent.PORT_TLAST_4, CoreEvent.PORT_TLAST_5,
-                   CoreEvent.PORT_TLAST_6, CoreEvent.PORT_TLAST_7, }
-
-MemTilePortEventCodes = { MemTileEvent.PORT_IDLE_0, MemTileEvent.PORT_IDLE_1,
-                   MemTileEvent.PORT_IDLE_2, MemTileEvent.PORT_IDLE_3,
-                   MemTileEvent.PORT_IDLE_4, MemTileEvent.PORT_IDLE_5,
-                   MemTileEvent.PORT_IDLE_6, MemTileEvent.PORT_IDLE_7,
-                   MemTileEvent.PORT_RUNNING_0, MemTileEvent.PORT_RUNNING_1,
-                   MemTileEvent.PORT_RUNNING_2, MemTileEvent.PORT_RUNNING_3,
-                   MemTileEvent.PORT_RUNNING_4, MemTileEvent.PORT_RUNNING_5,
-                   MemTileEvent.PORT_RUNNING_6, MemTileEvent.PORT_RUNNING_7,
-                   MemTileEvent.PORT_STALLED_0, MemTileEvent.PORT_STALLED_1,
-                   MemTileEvent.PORT_STALLED_2, MemTileEvent.PORT_STALLED_3,
-                   MemTileEvent.PORT_STALLED_4, MemTileEvent.PORT_STALLED_5,
-                   MemTileEvent.PORT_STALLED_6, MemTileEvent.PORT_STALLED_7,
-                   MemTileEvent.PORT_TLAST_0, MemTileEvent.PORT_TLAST_1,
-                   MemTileEvent.PORT_TLAST_2, MemTileEvent.PORT_TLAST_3,
-                   MemTileEvent.PORT_TLAST_4, MemTileEvent.PORT_TLAST_5,
-                   MemTileEvent.PORT_TLAST_6, MemTileEvent.PORT_TLAST_7, }
-
-
-ShimTilePortEventCodes = { ShimTileEvent.PORT_IDLE_0, ShimTileEvent.PORT_IDLE_1,
-                   ShimTileEvent.PORT_IDLE_2, ShimTileEvent.PORT_IDLE_3,
-                   ShimTileEvent.PORT_IDLE_4, ShimTileEvent.PORT_IDLE_5,
-                   ShimTileEvent.PORT_IDLE_6, ShimTileEvent.PORT_IDLE_7,
-                   ShimTileEvent.PORT_RUNNING_0, ShimTileEvent.PORT_RUNNING_1,
-                   ShimTileEvent.PORT_RUNNING_2, ShimTileEvent.PORT_RUNNING_3,
-                   ShimTileEvent.PORT_RUNNING_4, ShimTileEvent.PORT_RUNNING_5,
-                   ShimTileEvent.PORT_RUNNING_6, ShimTileEvent.PORT_RUNNING_7,
-                   ShimTileEvent.PORT_STALLED_0, ShimTileEvent.PORT_STALLED_1,
-                   ShimTileEvent.PORT_STALLED_2, ShimTileEvent.PORT_STALLED_3,
-                   ShimTileEvent.PORT_STALLED_4, ShimTileEvent.PORT_STALLED_5,
-                   ShimTileEvent.PORT_STALLED_6, ShimTileEvent.PORT_STALLED_7,
-                   ShimTileEvent.PORT_TLAST_0, ShimTileEvent.PORT_TLAST_1,
-                   ShimTileEvent.PORT_TLAST_2, ShimTileEvent.PORT_TLAST_3,
-                   ShimTileEvent.PORT_TLAST_4, ShimTileEvent.PORT_TLAST_5,
-                   ShimTileEvent.PORT_TLAST_6, ShimTileEvent.PORT_TLAST_7, }
-
-# fmt: on
-
-
-# We use the packet type field in the packet header to help differentiate the tile
-# that the packet came from. Since packet types don't inherently have meaning, we
-# assign numerical values to each tile type: core, mem (for core), shimtilem, memtile
-class PacketType(IntEnum):
-    CORE = 0
-    MEM = 1
-    SHIMTILE = 2
-    MEMTILE = 3
-
-
-class PortEvent(GenericEvent):
-    def __init__(self, code, port_number, master=True):
-        # For backwards compatibility, allow integer as event
-        if isinstance(code, int):
-            code = CoreEvent(code)
-        assert code in PortEventCodes
-        # fmt: off
-        self.event_number = (
-                 0 if code in { CoreEvent.PORT_IDLE_0,    CoreEvent.PORT_RUNNING_0, 
-                                CoreEvent.PORT_STALLED_0, CoreEvent.PORT_TLAST_0    }
-            else 1 if code in { CoreEvent.PORT_IDLE_1,    CoreEvent.PORT_RUNNING_1,
-                                CoreEvent.PORT_STALLED_1, CoreEvent.PORT_TLAST_1,   }
-            else 2 if code in { CoreEvent.PORT_IDLE_2,    CoreEvent.PORT_RUNNING_2,
-                                CoreEvent.PORT_STALLED_2, CoreEvent.PORT_TLAST_2    }
-            else 3 if code in { CoreEvent.PORT_IDLE_3,    CoreEvent.PORT_RUNNING_3,
-                                CoreEvent.PORT_STALLED_3, CoreEvent.PORT_TLAST_3    }
-            else 4 if code in { CoreEvent.PORT_IDLE_4,    CoreEvent.PORT_RUNNING_4,
-                                CoreEvent.PORT_STALLED_4, CoreEvent.PORT_TLAST_4    }
-            else 5 if code in { CoreEvent.PORT_IDLE_5,    CoreEvent.PORT_RUNNING_5,
-                                CoreEvent.PORT_STALLED_5, CoreEvent.PORT_TLAST_5    }
-            else 6 if code in { CoreEvent.PORT_IDLE_6,    CoreEvent.PORT_RUNNING_6,
-                                CoreEvent.PORT_STALLED_6, CoreEvent.PORT_TLAST_6    }
-            else 7
-        )
-        # fmt: on
-        self.port_number = port_number
-        self.master = master
-        super().__init__(code)
-
-    def get_register_writes(self):
-        def master(port):
-            return port | (1 << 5)
-
-        def slave(port):
-            return port
-
-        # 0x3FF00: Stream switch event port selection 0
-        # 0x3FF04: Stream switch event port selection 1
-        address = 0x3FF00 if self.event_number < 4 else 0x3FF04
-        value = master(self.port_number) if self.master else slave(self.port_number)
-
-        value = (value & 0xFF) << 8 * (self.event_number % 4)
-
-        ret = {0x3FF00: 0, 0x3FF04: 0}
-        ret[address] = value
-
-        return ret
-
-
-class MemTilePortEvent(GenericEvent):
-    def __init__(self, code, port_number, master=True):
-        # For backwards compatibility, allow integer as event
-        if isinstance(code, int):
-            code = MemTileEvent(code)
-        assert code in MemTilePortEventCodes
-        # fmt: off
-        self.event_number = (
-                 0 if code in { MemTileEvent.PORT_IDLE_0,    MemTileEvent.PORT_RUNNING_0, 
-                                MemTileEvent.PORT_STALLED_0, MemTileEvent.PORT_TLAST_0    }
-            else 1 if code in { MemTileEvent.PORT_IDLE_1,    MemTileEvent.PORT_RUNNING_1,
-                                MemTileEvent.PORT_STALLED_1, MemTileEvent.PORT_TLAST_1,   }
-            else 2 if code in { MemTileEvent.PORT_IDLE_2,    MemTileEvent.PORT_RUNNING_2,
-                                MemTileEvent.PORT_STALLED_2, MemTileEvent.PORT_TLAST_2    }
-            else 3 if code in { MemTileEvent.PORT_IDLE_3,    MemTileEvent.PORT_RUNNING_3,
-                                MemTileEvent.PORT_STALLED_3, MemTileEvent.PORT_TLAST_3    }
-            else 4 if code in { MemTileEvent.PORT_IDLE_4,    MemTileEvent.PORT_RUNNING_4,
-                                MemTileEvent.PORT_STALLED_4, MemTileEvent.PORT_TLAST_4    }
-            else 5 if code in { MemTileEvent.PORT_IDLE_5,    MemTileEvent.PORT_RUNNING_5,
-                                MemTileEvent.PORT_STALLED_5, MemTileEvent.PORT_TLAST_5    }
-            else 6 if code in { MemTileEvent.PORT_IDLE_6,    MemTileEvent.PORT_RUNNING_6,
-                                MemTileEvent.PORT_STALLED_6, MemTileEvent.PORT_TLAST_6    }
-            else 7
-        )
-        # fmt: on
-        self.port_number = port_number
-        self.master = master
-        super().__init__(code)
-
-    def get_register_writes(self):
-        def master(port):
-            return port | (1 << 5)
-
-        def slave(port):
-            return port
-
-        # 0x3FF00: Stream switch event port selection 0
-        # 0x3FF04: Stream switch event port selection 1
-        address = 0xB0F00 if self.event_number < 4 else 0xB0F04
-        value = master(self.port_number) if self.master else slave(self.port_number)
-
-        value = (value & 0xFF) << 8 * (self.event_number % 4)
-
-        ret = {0xB0F00: 0, 0xB0F04: 0}
-        ret[address] = value
-
-        return ret
-
-
-class ShimTilePortEvent(GenericEvent):
-    def __init__(self, code, port_number, master=True):
-        # For backwards compatibility, allow integer as event
-        if isinstance(code, int):
-            code = ShimTileEvent(code)
-        assert code in ShimTilePortEventCodes
-        # fmt: off
-        self.event_number = (
-                 0 if code in { ShimTileEvent.PORT_IDLE_0,    ShimTileEvent.PORT_RUNNING_0, 
-                                ShimTileEvent.PORT_STALLED_0, ShimTileEvent.PORT_TLAST_0    }
-            else 1 if code in { ShimTileEvent.PORT_IDLE_1,    ShimTileEvent.PORT_RUNNING_1,
-                                ShimTileEvent.PORT_STALLED_1, ShimTileEvent.PORT_TLAST_1,   }
-            else 2 if code in { ShimTileEvent.PORT_IDLE_2,    ShimTileEvent.PORT_RUNNING_2,
-                                ShimTileEvent.PORT_STALLED_2, ShimTileEvent.PORT_TLAST_2    }
-            else 3 if code in { ShimTileEvent.PORT_IDLE_3,    ShimTileEvent.PORT_RUNNING_3,
-                                ShimTileEvent.PORT_STALLED_3, ShimTileEvent.PORT_TLAST_3    }
-            else 4 if code in { ShimTileEvent.PORT_IDLE_4,    ShimTileEvent.PORT_RUNNING_4,
-                                ShimTileEvent.PORT_STALLED_4, ShimTileEvent.PORT_TLAST_4    }
-            else 5 if code in { ShimTileEvent.PORT_IDLE_5,    ShimTileEvent.PORT_RUNNING_5,
-                                ShimTileEvent.PORT_STALLED_5, ShimTileEvent.PORT_TLAST_5    }
-            else 6 if code in { ShimTileEvent.PORT_IDLE_6,    ShimTileEvent.PORT_RUNNING_6,
-                                ShimTileEvent.PORT_STALLED_6, ShimTileEvent.PORT_TLAST_6    }
-            else 7
-        )
-        # fmt: on
-        self.port_number = port_number
-        self.master = master
-        super().__init__(code)
-
-    def get_register_writes(self):
-        def master(port):
-            return port | (1 << 5)
-
-        def slave(port):
-            return port
-
-        # 0x3FF00: Stream switch event port selection 0
-        # 0x3FF04: Stream switch event port selection 1
-        address = 0x3FF00 if self.event_number < 4 else 0x3FF04
-        value = master(self.port_number) if self.master else slave(self.port_number)
-
-        value = (value & 0xFF) << 8 * (self.event_number % 4)
-
-        ret = {0x3FF00: 0, 0x3FF04: 0}
-        ret[address] = value
-
-        return ret
-
-
-# TODO Should be expanded to be check for valid shim tile based on device
-# Checks if tile is a shim tile (for now, assumes row 0 is only shim tile, true for aie1/aie2/aie2p)
-def isShimTile(tile):
-    return int(tile.row) == 0
-
-
-# TODO Should be expanded to be check for valid shim tile based on device
-# Checks if tile is a Mem tile (for now, assumes row 1 is only mem tile, true for aie1/aie2/aie2p)
-def isMemTile(tile):
-    return int(tile.row) == 1
-
-
-# TODO Should be expanded to be check for valid shim tile based on device
-# Checks if tile is a Core tile (for now, assumes any row > 1 is core tile, true for aie1/aie2/aie2p)
-# though we're not checking max row value so this isn't 100% accurate
-def isCoreTile(tile):
-    return int(tile.row) > 1
+from .event_enums import (
+    CoreEvent,
+    MemEvent,
+    ShimTileEvent,
+    MemTileEvent,
+)
+from .port_events import (
+    PacketType,
+    PortEventCodes,
+)
+from .events import (
+    GenericEvent,
+    PortEvent,
+    MemTilePortEvent,
+    ShimTilePortEvent,
+)
+from .utils import pack4bytes
 
 
 # Globally defined constants
 direction_s2mm = 0
 direction_mm2s = 1
-
-
-def pack4bytes(b3, b2, b1, b0):
-    w = (b3 & 0xFF) << 24
-    w |= (b2 & 0xFF) << 16
-    w |= (b1 & 0xFF) << 8
-    w |= (b0 & 0xFF) << 0
-    return w
 
 
 # This function configures the a tile's memory trace unit given a set of configurations as described below:
@@ -765,11 +518,13 @@ def configure_timer_ctrl_shimtile_aie2(tile, event):
 # * `num` - broadcaast number we want to broadcast on
 # * `event` - the triggering broadcast event
 def configure_broadcast_core_aie2(tile, num, event):
-    if isShimTile(tile):
+    tm = get_target_model(tile.parent.attributes["device"])
+    col, row = int(tile.col), int(tile.row)
+    if tm.is_shim_noc_or_pl_tile(col, row):
         base_addr = 0x34010
-    elif isMemTile(tile):
+    elif tm.is_mem_tile(col, row):
         base_addr = 0x94010
-    elif isCoreTile(tile):
+    elif tm.is_core_tile(col, row):
         base_addr = 0x34010
     else:
         raise ValueError(
@@ -1393,10 +1148,14 @@ def configure_packet_tracing_aie2(
         else:
             p_id = i + 1
 
-        if isShimTile(tiles_to_trace[i]):
-            if tiles_to_trace[i] == shim:
+        tile = tiles_to_trace[i]
+        tm = get_target_model(tile.parent.attributes["device"])
+        col, row = int(tile.col), int(tile.row)
+
+        if tm.is_shim_noc_or_pl_tile(col, row):
+            if tile == shim:
                 configure_shimtile_tracing_aie2(
-                    tile=tiles_to_trace[i],
+                    tile=tile,
                     start=start_user_event,
                     stop=stop_user_event,
                     events=shimtile_events,
@@ -1404,10 +1163,10 @@ def configure_packet_tracing_aie2(
                     packet_id=p_id,
                     packet_type=PacketType.SHIMTILE,
                 )
-                configure_timer_ctrl_shimtile_aie2(tiles_to_trace[i], start_user_event)
+                configure_timer_ctrl_shimtile_aie2(tile, start_user_event)
             else:
                 configure_shimtile_tracing_aie2(
-                    tile=tiles_to_trace[i],
+                    tile=tile,
                     start=start_shimtile_broadcast_event,
                     stop=stop_shimtile_broadcast_event,
                     events=shimtile_events,
@@ -1415,12 +1174,10 @@ def configure_packet_tracing_aie2(
                     packet_id=p_id,
                     packet_type=PacketType.SHIMTILE,
                 )
-                configure_timer_ctrl_shimtile_aie2(
-                    tiles_to_trace[i], start_shimtile_broadcast_event
-                )
-        elif isMemTile(tiles_to_trace[i]):
+                configure_timer_ctrl_shimtile_aie2(tile, start_shimtile_broadcast_event)
+        elif tm.is_mem_tile(col, row):
             configure_memtile_tracing_aie2(
-                tile=tiles_to_trace[i],
+                tile=tile,
                 start=start_memtile_broadcast_event,
                 stop=stop_memtile_broadcast_event,
                 events=memtile_events,
@@ -1428,13 +1185,11 @@ def configure_packet_tracing_aie2(
                 packet_id=p_id,
                 packet_type=PacketType.MEMTILE,
             )
-            configure_timer_ctrl_memtile_aie2(
-                tiles_to_trace[i], start_memtile_broadcast_event
-            )
-        elif isCoreTile(tiles_to_trace[i]):
-            if tiles_to_trace[i] not in exist_core_tile_traces:
+            configure_timer_ctrl_memtile_aie2(tile, start_memtile_broadcast_event)
+        elif tm.is_core_tile(col, row):
+            if tile not in exist_core_tile_traces:
                 configure_coretile_tracing_aie2(
-                    tile=tiles_to_trace[i],
+                    tile=tile,
                     start=start_core_broadcast_event,
                     stop=stop_core_broadcast_event,
                     events=coretile_events,
@@ -1442,13 +1197,11 @@ def configure_packet_tracing_aie2(
                     packet_id=p_id,
                     packet_type=PacketType.CORE,
                 )
-                configure_timer_ctrl_coretile_aie2(
-                    tiles_to_trace[i], start_core_broadcast_event
-                )
-                exist_core_tile_traces.append(tiles_to_trace[i])
+                configure_timer_ctrl_coretile_aie2(tile, start_core_broadcast_event)
+                exist_core_tile_traces.append(tile)
             else:
                 configure_coremem_tracing_aie2(
-                    tile=tiles_to_trace[i],
+                    tile=tile,
                     start=start_core_mem_broadcast_event,
                     stop=stop_core_mem_broadcast_event,
                     events=coremem_events,
@@ -1456,15 +1209,13 @@ def configure_packet_tracing_aie2(
                     packet_id=p_id,
                     packet_type=PacketType.MEM,
                 )
-                configure_timer_ctrl_coremem_aie2(
-                    tiles_to_trace[i], start_core_mem_broadcast_event
-                )
+                configure_timer_ctrl_coremem_aie2(tile, start_core_mem_broadcast_event)
         else:
             raise ValueError(
                 "Invalid tile("
-                + str(tiles_to_trace[i].col)
+                + str(tile.col)
                 + ","
-                + str(tiles_to_trace[i].row)
+                + str(tile.row)
                 + "). Check tile coordinates are within a valid range."
             )
     configure_shimtile_dma_aie2(

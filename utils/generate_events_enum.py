@@ -25,7 +25,7 @@ class MemEvent(Enum):
 {mem_items}
 
 
-class PLEvent(Enum):
+class ShimTileEvent(Enum):
 {pl_items}
 
 

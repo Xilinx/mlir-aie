@@ -162,11 +162,13 @@ int main(int argc, const char *argv[]) {
       std::cout << "Block " << i / 9 << "\n";
     }
     if (*(bufOut + i) != *(bufInA + i)) {
-      std::cout << "Error in output " << int(*(bufOut + i))
-                << " != " << int(*(bufInA + i)) << std::endl;
+      if (verbosity >= 1) {
+        std::cout << "Error in output " << int(*(bufOut + i))
+                  << " != " << int(*(bufInA + i)) << std::endl;
+      }
       errors++;
     } else {
-      if (verbosity > 1)
+      if (verbosity >= 1)
         std::cout << "Correct output " << int(*(bufOut + i))
                   << " == " << int(*(bufInA + i)) << std::endl;
     }

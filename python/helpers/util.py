@@ -191,7 +191,9 @@ def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]
     shape = get_args(ndarray_type)[0]
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
     for elem in shape:
-        assert isinstance(elem, int), "np.ndarray shape must be a tuple of integers"
+        assert isinstance(
+            elem, (int, np.integer)
+        ), "np.ndarray shape must be a tuple of integers"
     return shape
 
 
