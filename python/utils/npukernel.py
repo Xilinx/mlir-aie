@@ -15,7 +15,7 @@ class NPUKernel:
         xclbin_path,
         insts_path,
         device_index=0,
-        kernel_name="PP_FD_PRE",
+        kernel_name="MLIR_AIE",
         trace_config: TraceConfig | None = None,
     ):
         self._xclbin_path = xclbin_path
