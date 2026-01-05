@@ -6,7 +6,7 @@ import re
 
 from aie.extras.util import find_ops
 from aie.ir import Context, Module, Location
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace_events.aie2 import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
