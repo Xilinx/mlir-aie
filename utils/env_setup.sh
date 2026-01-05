@@ -52,10 +52,13 @@ if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 2 && -z "$(pip show llvm-aie | grep '^L
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep '^Location:' | awk '{print $2}')/llvm-aie"
 fi
 
-XRTSMI=`which xrt-smi`
+XRTSMI=`which xrt-smi 2>/dev/null`
 if ! test -f "$XRTSMI"; then
-    echo "xrt-smi not found. Is XRT installed?"
-    return 1
+    XRTSMI=`which xrt-smi.exe 2>/dev/null`
+    if ! test -f "$XRTSMI"; then
+        echo "xrt-smi not found. Is XRT installed?"
+        return 1
+    fi
 fi
 
 # Get NPU info string
@@ -88,7 +91,8 @@ fi
 
 echo ""
 echo "Note: Peano (llvm-aie) has not been added to PATH to avoid conflict with"
-echo "      system clang/clang++. It can be found in: \$PEANO_INSTALL_DIR/bin"
+echo "      system clang/clang++. It can be found in:"
+echo "      $PEANO_INSTALL_DIR/bin"
 echo ""
 echo "PATH              : $PATH"
 echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
