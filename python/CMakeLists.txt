@@ -63,6 +63,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/trace/setup.py
     utils/trace/utils.py
     utils/npu_utils.py
+    utils/npu_models.json
 )
 
 install(
