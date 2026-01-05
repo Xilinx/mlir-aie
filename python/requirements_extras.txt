@@ -1,3 +1,2 @@
-mlir-python-bindings==20251205+e067be338
 eudsl-python-extras==0.1.0.20251215.1800+3c7ac1b
 -f https://llvm.github.io/eudsl
