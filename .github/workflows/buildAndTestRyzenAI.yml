@@ -84,6 +84,7 @@ jobs:
           source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
+          pip install --upgrade pip
           pip install -r python/requirements.txt
           EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_notebook.txt
@@ -176,6 +177,7 @@ jobs:
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
+          pip install --upgrade pip
           pip install -r python/requirements_dev.txt
 
           ./utils/build-mlir-aie-from-wheels.sh
