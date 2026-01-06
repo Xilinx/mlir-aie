@@ -87,3 +87,6 @@ mlir_tablegen(AIEAttrs.cpp.inc -gen-attrdef-defs)
 add_public_tablegen_target(MLIRAIEAttrDefsIncGen)
 add_dependencies(aie-headers MLIRAIEAttrDefsIncGen)
 add_dependencies(MLIRAIEAttrDefsIncGen GenerateAIEEventsTD)
+
+# Ensure generated event enums exist before generating documentation
+add_dependencies(AIEDialectDocGen GenerateAIEEventsTD)
