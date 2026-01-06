@@ -36,26 +36,7 @@ else
 fi
 # Check if the current environment is NPU2
 # npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
-
-# Use python helper to detect NPU generation
-# We assume we are in the root of the repo, so python/ is available.
-export PYTHONPATH=$PWD/python:$PYTHONPATH
-NPU_GEN=$(python3 -c "
-import sys
-try:
-    from utils.npu_utils import get_npu_generation
-    # Read from stdin
-    info = sys.stdin.read()
-    gen = get_npu_generation(info)
-    if gen:
-        print(gen)
-    else:
-        print('unknown')
-except Exception:
-    print('error')
-" <<< "$NPU")
-
-if [ "$NPU_GEN" == "npu2" ]; then
+if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]"; then
     export NPU2=1
 else
     export NPU2=0

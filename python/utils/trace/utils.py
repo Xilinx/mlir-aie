@@ -7,7 +7,7 @@ import json
 import re
 import os
 import sys
-from .event_enums import NUM_TRACE_TYPES
+from .events import NUM_TRACE_TYPES
 
 
 # checks # of bits. Odd number returns a 1. Even returns 0.
