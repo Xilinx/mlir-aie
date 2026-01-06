@@ -9,7 +9,7 @@ import numpy as np
 import sys
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.utils.hostruntime import DEFAULT_NPU_RUNTIME
+from aie.utils import DEFAULT_NPU_RUNTIME
 
 
 def main(opts):
