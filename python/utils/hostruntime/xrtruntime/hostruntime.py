@@ -159,9 +159,9 @@ class XRTHostRuntime(HostRuntime):
         }
 
         if any([model in self._device_type_str for model in NPU_MODELS["npu1"]]):
-            return NPU2()
-        elif any([model in self._device_type_str for model in NPU_MODELS["npu2"]]):
             return NPU1()
+        elif any([model in self._device_type_str for model in NPU_MODELS["npu2"]]):
+            return NPU2()
         else:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
 
