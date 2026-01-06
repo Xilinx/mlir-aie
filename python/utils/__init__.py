@@ -71,9 +71,9 @@ from .trace import TraceConfig
 from .npukernel import NPUKernel
 
 if has_xrt:
-    from .hostruntime.xrtruntime.hostruntime import XRTHostRuntime
+    from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
 
-    DEFAULT_NPU_RUNTIME = XRTHostRuntime()
+    DEFAULT_NPU_RUNTIME = CachedXRTRuntime()
 else:
     DEFAULT_NPU_RUNTIME = None
 
