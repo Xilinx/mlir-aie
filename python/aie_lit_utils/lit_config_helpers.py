@@ -266,13 +266,13 @@ class LitConfigHelper:
                     else:
                         print("NPU1 detected but aietools for aie2 not available")
                 elif model in LitConfigHelper.NPU_MODELS["npu2"]:
-                    if "AIE2" in vitis_components:
-                        run_on_npu1 = run_on_npu
-                        config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
-                        config.substitutions["%run_on_npu1%"] = run_on_npu1
-                        print(f"Running tests on NPU1 with command line: {run_on_npu1}")
+                    if "AIE2P" in vitis_components:
+                        run_on_npu2 = run_on_npu
+                        config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
+                        config.substitutions["%run_on_npu2%"] = run_on_npu2
+                        print(f"Running tests on NPU2 with command line: {run_on_npu2}")
                     else:
-                        print("NPU1 detected but aietools for aie2 not available")
+                        print("NPU2 detected but aietools for aie2p not available")
                 else:
                     print(f"WARNING: xrt-smi reported unknown NPU model '{model}'.")
                 break
