@@ -502,14 +502,7 @@ class LitConfigHelper:
 
             # Add environment variables
             for key, value in hw_config.environment.items():
-                # Special handling for LD_LIBRARY_PATH to append instead of overwrite
-                if key == "LD_LIBRARY_PATH" and key in config_obj.environment:
-                    existing = config_obj.environment[key]
-                    # Only append if not already present
-                    if value not in existing.split(os.pathsep):
-                        config_obj.environment[key] = f"{existing}{os.pathsep}{value}"
-                else:
-                    config_obj.environment[key] = value
+                config_obj.environment[key] = value
 
     @staticmethod
     def setup_standard_environment(
