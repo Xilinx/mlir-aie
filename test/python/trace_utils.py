@@ -24,6 +24,7 @@ from aie.dialects.aiex import *
 from aie.iron.controlflow import range_
 from aie.extras.context import mlir_mod_ctx
 from aie.utils.trace import *
+from aie.utils.trace.events import *
 
 N = 1024
 

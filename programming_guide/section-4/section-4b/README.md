@@ -273,11 +273,11 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * `INSTR_VECTOR` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
     * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 7 ports. To select which port to listen to, use the `PortEvent` Python class as your event. For example, to listen to master port 1:
         ```
-        from aie.utils.trace import configure_simple_tracing_aie2, PortEvent
-        from aie.utils.trace_events.aie2 import CoreEvent, MemEvent, PLEvent, MemTileEvent
+        from aie.utils.trace import configure_simple_tracing_aie2
+        from aie.utils.trace.events import PortEvent, CoreEvent, MemEvent, PLEvent, MemTileEvent
         trace_utils.configure_simple_tracing_aie2(
             # ... other arguments as above
-            events=[trace_utils.PortEvent(CoreEvent.PORT_RUNNING_0, 1, master=True)]
+            events=[trace_utils.events.PortEvent(CoreEvent.PORT_RUNNING_0, 1, master=True)]
         )
         ```
     * `PORT_RUNNING_1` - Mapped to Port 1 which is by default configured to the MM2S0 output (DMA from local memory to stream). This is usually the first output.
