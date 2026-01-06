@@ -6,6 +6,7 @@ XRT-based implementation of the HostRuntime
 """
 import logging
 import time
+import weakref
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -162,3 +163,110 @@ class XRTHostRuntime(HostRuntime):
             return NPU1()
         else:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
+
+
+class CachedXRTKernelHandle(XRTKernelHandle):
+    def __init__(self, kernel, xclbin, context, insts):
+        super().__init__(kernel, xclbin, context, insts)
+        self._is_valid = True
+
+    def invalidate(self):
+        self._is_valid = False
+        if hasattr(self, "context"):
+            del self.context
+        if hasattr(self, "kernel"):
+            del self.kernel
+        if hasattr(self, "xclbin"):
+            del self.xclbin
+        if hasattr(self, "insts"):
+            del self.insts
+
+
+class CachedXRTRuntime(XRTHostRuntime):
+    """
+    A cached version of XRTHostRuntime that caches up to 32 contexts.
+    It reuses contexts for the same xclbin (identified by path and mtime).
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._context_cache = OrderedDict()
+        self._cache_size = 32
+
+    def _evict(self):
+        # Pop the oldest item
+        key, entry = self._context_cache.popitem(last=False)
+        context = entry["context"]
+        handles = entry["handles"]
+
+        # Invalidate all handles
+        for ref in handles:
+            handle = ref()
+            if handle:
+                handle.invalidate()
+
+        # Explicitly delete context
+        del context
+
+    def load(
+        self,
+        npu_kernel,
+    ) -> XRTKernelHandle:
+        xclbin_path = Path(npu_kernel.xclbin_path).resolve()
+        insts_path = Path(npu_kernel.insts_path).resolve()
+        kernel_name = npu_kernel.kernel_name
+
+        if not xclbin_path.exists() or not xclbin_path.is_file():
+            raise HostRuntimeError(
+                f"xclbin {xclbin_path} does not exist or is not a file."
+            )
+        if not insts_path.exists() or not insts_path.is_file():
+            raise HostRuntimeError(
+                f"insts {insts_path} does not exist or is not a file."
+            )
+
+        xclbin_mtime = xclbin_path.stat().st_mtime
+
+        # Context Cache Lookup
+        context_key = (str(xclbin_path), xclbin_mtime)
+        if context_key in self._context_cache:
+            entry = self._context_cache[context_key]
+            self._context_cache.move_to_end(context_key)
+            context = entry["context"]
+            xclbin = entry["xclbin"]
+            # Clean up dead handles
+            entry["handles"] = [ref for ref in entry["handles"] if ref() is not None]
+        else:
+            if len(self._context_cache) >= self._cache_size:
+                self._evict()
+
+            xclbin = pyxrt.xclbin(str(xclbin_path))
+            self._device.register_xclbin(xclbin)
+            xclbin_uuid = xclbin.get_uuid()
+            context = pyxrt.hw_context(self._device, xclbin_uuid)
+
+            entry = {"context": context, "xclbin": xclbin, "handles": []}
+            self._context_cache[context_key] = entry
+
+        # Kernel Name Resolution
+        if kernel_name is None:
+            kernels = xclbin.get_kernels()
+            if not kernels:
+                raise RuntimeError("No kernels found in xclbin")
+            kernel_name = kernels[0].get_name()
+        else:
+            if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
+                raise HostRuntimeError(
+                    f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
+                )
+
+        insts = self.read_insts(insts_path)
+        if isinstance(insts, pyxrt.module):
+            kernel = pyxrt.ext.kernel(context, insts, kernel_name)
+        else:
+            kernel = pyxrt.kernel(context, kernel_name)
+
+        kernel_handle = CachedXRTKernelHandle(kernel, xclbin, context, insts)
+        entry["handles"].append(weakref.ref(kernel_handle))
+
+        return kernel_handle
