@@ -1093,45 +1093,6 @@ DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module,
   return deviceOp;
 }
 
-SwitchboxOp DeviceOp::lookupSwitchbox(int col, int row) {
-  for (auto sb : getOps<SwitchboxOp>()) {
-    if (sb.colIndex() == col && sb.rowIndex() == row)
-      return sb;
-  }
-  return nullptr;
-}
-
-CoreOp DeviceOp::lookupCore(int col, int row) {
-  for (auto core : getOps<CoreOp>()) {
-    if (core.colIndex() == col && core.rowIndex() == row)
-      return core;
-  }
-  return nullptr;
-}
-
-Operation *DeviceOp::lookupDMA(int col, int row) {
-  const AIETargetModel &targetModel = getTargetModel();
-
-  // Use target model to determine which type of DMA op to look for
-  if (targetModel.isMemTile(col, row)) {
-    for (auto mem : getOps<MemTileDMAOp>()) {
-      if (mem.colIndex() == col && mem.rowIndex() == row)
-        return mem.getOperation();
-    }
-  } else if (targetModel.isCoreTile(col, row)) {
-    for (auto mem : getOps<MemOp>()) {
-      if (mem.colIndex() == col && mem.rowIndex() == row)
-        return mem.getOperation();
-    }
-  } else if (targetModel.isShimNOCTile(col, row)) {
-    for (auto shim : getOps<ShimDMAOp>()) {
-      if (shim.colIndex() == col && shim.rowIndex() == row)
-        return shim.getOperation();
-    }
-  }
-  return nullptr;
-}
-
 //===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//
@@ -2538,7 +2499,7 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp or BufferOp, but got: "
+                   "RuntimeSequenceOp, BufferOp or GlobalOp, but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }

@@ -76,11 +76,6 @@ def AIE_DeviceOp: AIE_Op<"device", [
     static xilinx::AIE::DeviceOp getForSymbolInModule(mlir::ModuleOp module, llvm::StringRef symbol);
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
     static llvm::StringRef getDefaultDeviceName() { return "main"; }
-    
-    // Helper methods to find operations by tile coordinates, if they already exist (nullptr otherwise)
-    xilinx::AIE::SwitchboxOp lookupSwitchbox(int col, int row);
-    xilinx::AIE::CoreOp lookupCore(int col, int row);
-    mlir::Operation* lookupDMA(int col, int row);
   }];
 }
 
