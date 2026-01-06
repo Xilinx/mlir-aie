@@ -19,6 +19,9 @@ add_mlir_dialect_library(
   AIELocalizeLocks.cpp
   AIENormalizeAddressSpaces.cpp
   AIEVectorOpt.cpp
+  AIEVectorToPointerLoops.cpp
+  AIEVectorTransferLowering.cpp
+  AIEHoistVectorTransferPointers.cpp
   AIEObjectFifoStatefulTransform.cpp
   AIEObjectFifoRegisterProcess.cpp
   AIELowerCascadeFlows.cpp

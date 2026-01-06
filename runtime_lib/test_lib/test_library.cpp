@@ -168,8 +168,9 @@ void mlir_aie_deinit_libxaie(aie_libxaie_ctx_t *ctx) {
 }
 
 /// @brief Initialize the device represented by the context.
-/// @param ctx The context
-/// @return Zero on success
+/// @param ctx The AIE context
+/// @param device_id The device ID to initialize
+/// @return Zero on success, negative value on error
 int mlir_aie_init_device(aie_libxaie_ctx_t *ctx, uint32_t device_id) {
   AieRC RC = XAIE_OK;
 
@@ -338,8 +339,11 @@ void mlir_aie_write32(aie_libxaie_ctx_t *ctx, u64 addr, u32 val) {
 }
 
 /// @brief Read a value from the data memory of a particular tile memory
-/// @param addr The address in the given tile.
-/// @return The data
+/// @param ctx The AIE context
+/// @param col The column coordinate of the tile
+/// @param row The row coordinate of the tile
+/// @param addr The address within the tile\'s data memory
+/// @return The 32-bit data value read from the specified address
 u32 mlir_aie_data_mem_rd_word(aie_libxaie_ctx_t *ctx, int col, int row,
                               u64 addr) {
   u32 data;
@@ -348,8 +352,11 @@ u32 mlir_aie_data_mem_rd_word(aie_libxaie_ctx_t *ctx, int col, int row,
 }
 
 /// @brief Write a value to the data memory of a particular tile memory
-/// @param addr The address in the given tile.
-/// @param data The data
+/// @param ctx The AIE context
+/// @param col The column coordinate of the tile
+/// @param row The row coordinate of the tile
+/// @param addr The address within the tile\'s data memory
+/// @param data The 32-bit data value to write
 void mlir_aie_data_mem_wr_word(aie_libxaie_ctx_t *ctx, int col, int row,
                                u64 addr, u32 data) {
   XAie_DataMemWrWord(ctx->XAieDevInst, XAie_TileLoc(col, row), addr, data);

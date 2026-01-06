@@ -249,16 +249,17 @@ struct AIEGenerateColumnControlOverlayPass
                                        mlir::BoolAttr ctrl_pkt_flow = nullptr) {
     OpBuilder::InsertionGuard guard(builder);
 
-    AIE::PacketFlowOp pktFlow = builder.create<AIE::PacketFlowOp>(
-        builder.getUnknownLoc(), flowID++, keep_pkt_header, ctrl_pkt_flow);
+    AIE::PacketFlowOp pktFlow =
+        AIE::PacketFlowOp::create(builder, builder.getUnknownLoc(), flowID++,
+                                  keep_pkt_header, ctrl_pkt_flow);
     Region &r_pktFlow = pktFlow.getPorts();
     Block *b_pktFlow = builder.createBlock(&r_pktFlow);
     builder.setInsertionPointToStart(b_pktFlow);
-    builder.create<AIE::PacketSourceOp>(builder.getUnknownLoc(), source,
-                                        sourceBundle, sourceChannel);
-    builder.create<AIE::PacketDestOp>(builder.getUnknownLoc(), dest, destBundle,
-                                      destChannel);
-    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    AIE::PacketSourceOp::create(builder, builder.getUnknownLoc(), source,
+                                sourceBundle, sourceChannel);
+    AIE::PacketDestOp::create(builder, builder.getUnknownLoc(), dest,
+                              destBundle, destChannel);
+    AIE::EndOp::create(builder, builder.getUnknownLoc());
     return pktFlow;
   }
 
@@ -361,15 +362,10 @@ struct AIEGenerateColumnControlOverlayPass
       if (device.lookupSymbol(dma_name))
         continue;
 
-      builder.create<AIE::ShimDMAAllocationOp>(
-          builder.getUnknownLoc(), StringRef(dma_name), dir,
-          rowToShimChanMap[tOp.rowIndex()], shimTile.colIndex(), false);
-      MemRefType memref_ty = MemRefType::get(
-          ArrayRef<int64_t>{2048}, IntegerType::get(builder.getContext(), 32),
-          nullptr, 0);
-      builder.create<memref::GlobalOp>(builder.getUnknownLoc(), dma_name,
-                                       builder.getStringAttr("public"),
-                                       memref_ty, nullptr, false, nullptr);
+      AIE::ShimDMAAllocationOp::create(
+          builder, builder.getUnknownLoc(), StringRef(dma_name),
+          shimTile.getResult(), dir, rowToShimChanMap[tOp.rowIndex()], false,
+          nullptr);
     }
   }
 

@@ -18,7 +18,7 @@
 // CHECK: aiex.npu.maskwrite32 {address = 102965248 : ui32, mask = 1 : ui32, value = 1 : ui32}
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
       aiex.npu.maskwrite32 {address = 2301952 : ui32, mask = 1 : ui32, value = 1 : ui32}
       aiex.npu.maskwrite32 {address = 35856384 : ui32, mask = 1 : ui32, value = 1 : ui32}
       aiex.npu.maskwrite32 {address = 69410816 : ui32, mask = 1 : ui32, value = 1 : ui32}

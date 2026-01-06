@@ -10,10 +10,10 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace_events.aie2 import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
 
 def conv2dk14(
@@ -207,8 +207,6 @@ def conv2dk14(
                         tiles_to_trace=tiles_to_trace,
                         shim=ShimTile,
                         trace_size=trace_size,
-                        trace_offset=N_in_bytes,
-                        ddr_id=2,
                         coretile_events=[
                             CoreEvent.INSTR_EVENT_0,
                             CoreEvent.INSTR_EVENT_1,

@@ -8,7 +8,7 @@ import numpy as np
 import sys
 
 from aie.iron import (
-    GlobalBuffer,
+    Buffer,
     Kernel,
     ObjectFifo,
     Program,
@@ -122,12 +122,12 @@ def bottleneck4AIEs():
     )
 
     # Buffers used to hold runtime parameters
-    rtp2 = GlobalBuffer(
+    rtp2 = Buffer(
         np.ndarray[(16,), np.dtype[np.int32]],
         name="rtp2",
         use_write_rtp=True,
     )
-    rtp4 = GlobalBuffer(
+    rtp4 = Buffer(
         np.ndarray[(16,), np.dtype[np.int32]],
         name="rtp4",
         use_write_rtp=True,

@@ -17,7 +17,12 @@
 // CHECK: test start.
 // CHECK: PASS!
 
+// --no-xchesscc --xbridge does not work
+// XFAIL: *
+
 module {
+aie.device(xcvc1902) { 
+
   %tile13 = aie.tile(1, 3)
   %tile23 = aie.tile(2, 3)
 
@@ -52,4 +57,5 @@ module {
     aie.end
   }
 
+}
 }

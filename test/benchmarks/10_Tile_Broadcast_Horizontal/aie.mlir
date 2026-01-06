@@ -12,11 +12,9 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark10_tile_broadcast_horizontal {
+aie.device(xcvc1902) {
   %t63 = aie.tile(6, 3)
   %t73 = aie.tile(7, 3)
   %t83 = aie.tile(8,3)
-  
-
 }
-  
-
+}

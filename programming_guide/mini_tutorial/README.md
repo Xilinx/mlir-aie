@@ -10,18 +10,18 @@ Compute code using workers:
 data_size = 256
 data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 
-def core_fn():
-    buff = LocalBuffer(
-        data_ty,
-        name="buff",
-        initial_value=np.array(range(data_size), dtype=np.int32),
-    )
+buffer = Buffer(
+    data_ty,
+    name="buff",
+    initial_value=np.array(range(data_size), dtype=np.int32),
+)
 
+def core_fn(buff):
     for i in range_(data_size):
         buff[i] = buff[i] + 1
 
 # Create a worker to perform the task
-my_worker = Worker(core_fn, []) # placement can be enforced: placement=Tile(1, 3)
+my_worker = Worker(core_fn, [buffer]) # placement can be enforced: placement=Tile(1, 3)
 ```
 More on the Worker in [Section 1](../section-1/README.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 
@@ -216,7 +216,7 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 rtps = []
 for i in range(n_workers):
     rtps.append(
-        GlobalBuffer(
+        Buffer(
             np.ndarray[(16,), np.dtype[np.int32]],
             name=f"rtp{i}",
             use_write_rtp=True,

@@ -60,16 +60,15 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
   int wts_indx = 0;
   int out_indx = 0;
 
-  const int output_channels_div_8 = output_channels / 8;
-  const int tiles_div_8 = input_width / kernel_width / 8;
-  const int pixels_div_2 = kernel_width * kernel_width / 2;
+  const int output_channels_div_8 = output_channels / 8;    // 2
+  const int tiles_div_8 = input_width / kernel_width / 8;   // 2
+  const int pixels_div_2 = kernel_width * kernel_width / 2; // 98
 
   for (oc = 0; oc < output_channels_div_8; oc++) { // 16 out of 1152
     for (oc8 = 0; oc8 < 8; oc8++) {
       for (nt = 0; nt < tiles_div_8; nt++) { // 16 out of 64 tiles in row
         for (nt8 = 0; nt8 < 8; nt8++) {
           int sum = 0;
-          int sum_srs = 0;
           for (pix = 0; pix < pixels_div_2; pix++) { // 196 // 2 = 98
             for (p2 = 0; p2 < 2; p2++) {
               in_indx = ((nt * (pixels_div_2) * 8 * 2) + (pix * 8 * 2) +
@@ -83,7 +82,7 @@ void conv2dk14_i8_scalar(uint8_t *input, int8_t *kernels, int8_t *output,
                      input[in_indx + 3] * kernels[wts_indx + 24];
             }
           }
-          sum_srs = (sum + (1 << (scale - 1))) >> scale;
+          int sum_srs = (sum + (1 << (scale - 1))) >> scale;
           sum_srs = (sum_srs > SMAX)    ? SMAX
                     : (sum_srs < -SMIN) ? -SMIN
                                         : sum_srs;
@@ -154,7 +153,7 @@ void conv2dk14_i8_vector(uint8_t *input, int8_t *kernels, int8_t *output,
   int8_t *__restrict out_ptr = output;
 
   for (int k = 0; k < output_channels_div_8; k++) { // 2
-    for (int j = 0; j < tiles_div_16; j++) {        // 2
+    for (int j = 0; j < tiles_div_16; j++) {        // 1
       AIE_PREPARE_FOR_PIPELINING
       AIE_LOOP_MIN_ITERATION_COUNT(98)
       // AIE_LOOP_UNROLL_FULL

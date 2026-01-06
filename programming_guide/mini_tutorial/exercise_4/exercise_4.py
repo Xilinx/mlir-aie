@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo, GlobalBuffer
+from aie.iron import Program, Runtime, Worker, ObjectFifo, Buffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
@@ -28,7 +28,7 @@ def exercise_4(output):
     # Runtime parameters
     rtps = []
     rtps.append(
-        GlobalBuffer(
+        Buffer(
             data_ty,
             name=f"rtp",
             use_write_rtp=True,

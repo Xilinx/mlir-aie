@@ -121,7 +121,7 @@ def main(opts):
         dtype_out,
         enable_trace=enable_trace,
         trace_size=trace_size,
-        trace_after_output=True,
+        trace_after_output=False,
     )
 
     # ------------------------------------------------------
@@ -212,15 +212,18 @@ def main(opts):
     # ------------------------------------------------------
     for i in range(num_iter):
         start = time.time_ns()
-        # entire_buffer = execute(app, ifm_mem_fmt, total_wts)
-        entire_buffer = execute(app, ifm_mem_fmt_grp, total_wts)
+        if enable_trace:
+            data_buffer, trace_buffer = execute(
+                app, ifm_mem_fmt_grp, total_wts, enable_trace, False
+            )
+        else:
+            entire_buffer = execute(
+                app, ifm_mem_fmt_grp, total_wts, enable_trace, False
+            )
         stop = time.time_ns()
 
         if enable_trace:
-            #  Separate data and trace
-            data_buffer, trace_buffer = extract_trace(
-                entire_buffer, shape_out, dtype_out, trace_size
-            )
+            trace_buffer = trace_buffer.view(np.uint32)
             # Scale the data
             scaled_data_buffer = data_buffer * int8_scale
             # Write out the trace

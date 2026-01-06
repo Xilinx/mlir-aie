@@ -16,7 +16,7 @@ module @test_invalid_lock_value {
     %lock22_0 = aie.lock(%tile22, 0)  {init = 1 : i32}
     %lock22_15 = aie.lock(%tile22, 15)  {init = 0 : i32}
 
-    aiex.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
+    aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
         // Set some runtime parameters before starting execution
 
         // CHECK: Lock value exceeds the maximum value
@@ -33,7 +33,7 @@ module @test_invalid_lock_value {
     %lock22_0 = aie.lock(%tile22, 0)  {init = 1 : i32}
     %lock22_15 = aie.lock(%tile22, 15)  {init = 0 : i32}
 
-    aiex.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
+    aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
         // Set some runtime parameters before starting execution
 
         // CHECK: SetLockOp is not supported on AIE1.

@@ -14,14 +14,6 @@
 
 // CHECK: module @link_distribute_offsets {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @link4_cons : memref<48xi32>
-// CHECK:     memref.global "public" @link4 : memref<48xi32>
-// CHECK:     memref.global "public" @link3_cons : memref<12xi32>
-// CHECK:     memref.global "public" @link3 : memref<12xi32>
-// CHECK:     memref.global "public" @link2_cons : memref<20xi32>
-// CHECK:     memref.global "public" @link2 : memref<20xi32>
-// CHECK:     memref.global "public" @link1_cons : memref<4x4xi32>
-// CHECK:     memref.global "public" @link1 : memref<4x4xi32>
 // CHECK:     %{{.*}}tile_2_0 = aie.tile(2, 0)
 // CHECK:     %{{.*}}tile_2_1 = aie.tile(2, 1)
 // CHECK:     %{{.*}}tile_2_2 = aie.tile(2, 2)
@@ -167,7 +159,7 @@
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @link4(S2MM, 0, 2)
+// CHECK:     aie.shim_dma_allocation @link4_shim_alloc(%shim_noc_tile_2_0, S2MM, 0)
 // CHECK:   }
 // CHECK: }
 

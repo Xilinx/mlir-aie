@@ -11,14 +11,6 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcve2302) {
-// CHECK-DAG:     memref.global "public" @[[OF2_0_CONS:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF2_1_CONS:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF2:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF1_0_CONS:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF1_1_CONS:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF1:.+]] : memref<128xi32>
-// CHECK-DAG:     memref.global "public" @[[OF0_CONS:.+]] : memref<256xi32>
-// CHECK-DAG:     memref.global "public" @[[OF0:.+]] : memref<256xi32>
 // CHECK-DAG:     %[[TILE_1_0:.+]] = aie.tile(1, 0)
 // CHECK-DAG:     %[[TILE_1_1:.+]] = aie.tile(1, 1)
 // CHECK-DAG:     %[[TILE_1_2:.+]] = aie.tile(1, 2)
@@ -52,7 +44,7 @@
 // CHECK-DAG:     aie.flow(%[[TILE_1_1]], DMA : 0, %[[TILE_1_2]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[TILE_1_1]], DMA : 1, %[[TILE_2_3]], DMA : 0)
 // CHECK-DAG:     aie.flow(%[[TILE_1_1]], DMA : 1, %[[TILE_1_3]], DMA : 0)
-// CHECK:         aie.shim_dma_allocation @[[OF0]](MM2S, 0, 1)
+// CHECK:         aie.shim_dma_allocation @[[OF0:.*]]_shim_alloc(%[[TILE_1_0]], MM2S, 0)
 // CHECK:         %{{.+}} = aie.memtile_dma(%[[TILE_1_1]]) {
 // CHECK:           %[[VAL_0:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:         ^bb1:  // 2 preds: ^bb0, ^bb4

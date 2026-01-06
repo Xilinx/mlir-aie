@@ -8,7 +8,6 @@ import argparse
 import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.localbuffer import LocalBuffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.dialects.aiex import v8bfp16ebs8
@@ -56,9 +55,6 @@ def my_matmul(M, K, N, m, k, n):
     def core_fn(of_a, of_c, scalar_shuffle_kernel):
         elem_out = of_c.acquire(1)
         elem_in_a = of_a.acquire(1)
-        # Note that it is possible to use a buffer here to
-        # do the shuffling in instead:
-        # buffer = LocalBuffer(a_ty)
         scalar_shuffle_kernel(elem_in_a, elem_out, k, m, False)
         of_a.release(1)
         of_c.release(1)

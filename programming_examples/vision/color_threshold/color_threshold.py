@@ -8,7 +8,7 @@ import numpy as np
 import sys
 
 from aie.iron import (
-    GlobalBuffer,
+    Buffer,
     Kernel,
     ObjectFifo,
     Program,
@@ -19,7 +19,7 @@ from aie.iron import (
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 
-from aie.extras.dialects.ext import arith
+from aie.extras.dialects import arith
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.dialects.aie import T
 
@@ -62,7 +62,7 @@ def color_threshold(dev, width, height):
     rtps = []
     for i in range(4):
         rtps.append(
-            GlobalBuffer(
+            Buffer(
                 np.ndarray[(16,), np.dtype[np.int32]],
                 name=f"rtp{i}",
                 use_write_rtp=True,

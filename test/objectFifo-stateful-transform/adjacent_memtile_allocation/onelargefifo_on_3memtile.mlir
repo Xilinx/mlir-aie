@@ -1,4 +1,4 @@
-//===- global_generation_test.mlir ------------------------------*- MLIR -*-===//
+//===- onelargefifo_on_3memtile.mlir ---------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,14 +10,6 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
-// CHECK-DAG: memref.global "public" @out1_cons : memref<8xi32>
-// CHECK-DAG: memref.global "public" @out1 : memref<8xi32>
-// CHECK-DAG: memref.global "public" @out0_cons : memref<8xi32>
-// CHECK-DAG: memref.global "public" @out0 : memref<8xi32>
-// CHECK-DAG: memref.global "public" @in1_cons : memref<8xi32>
-// CHECK-DAG: memref.global "public" @in1 : memref<8xi32>
-// CHECK-DAG: memref.global "public" @in0_cons : memref<96000xi32>
-// CHECK-DAG: memref.global "public" @in0 : memref<96000xi32>
 // CHECK-DAG: %[[SHIM_NOC_TILE_1_0:.*]] = aie.tile(1, 0)
 // CHECK-DAG: %[[MEM_TILE_1_1:.*]] = aie.tile(1, 1)
 // CHECK-DAG: %[[MEM_TILE_2_1:.*]] = aie.tile(2, 1)
@@ -58,6 +50,3 @@ module {
     aie.objectfifo.link [@out1] -> [@out0]([] [])
   }
 }
-
-
-

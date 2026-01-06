@@ -63,6 +63,7 @@ def main(opts):
         out_volume,
         ref,
         opts,
+        enable_ctrl_pkts=True,
     )
     sys.exit(res)
 

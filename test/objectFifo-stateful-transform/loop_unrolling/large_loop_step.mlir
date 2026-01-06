@@ -12,7 +12,6 @@
 
 // CHECK:  module {
 // CHECK:    aie.device(xcvc1902) {
-// CHECK:      memref.global "public" @loop_of : memref<16xi32>
 // CHECK:      %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:      %{{.*}}tile_1_3 = aie.tile(1, 3)
 // CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_0"} : memref<16xi32> 
