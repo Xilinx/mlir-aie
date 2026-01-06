@@ -121,19 +121,15 @@ class XRTHostRuntime(HostRuntime):
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
 
-        # TODO: use tensor?
         insts_bo = None
         insts_bytes = 0
         if not isinstance(kernel_handle.insts, pyxrt.module):
             insts_bytes = kernel_handle.insts.nbytes
-            insts_bo = pyxrt.bo(
-                self._device,
-                insts_bytes,
-                pyxrt.bo.cacheable,
-                kernel_handle.kernel.group_id(1),
-            )
-            insts_bo.write(kernel_handle.insts.view(np.uint8), 0)
-            insts_bo.sync(pyxrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
+            insts_bo = self._tensor_class(
+                kernel_handle.insts,
+                flags=pyxrt.bo.cacheable,
+                group_id=kernel_handle.kernel.group_id(1),
+            ).buffer_object()
 
         start = time.time_ns()
         h = kernel_handle.kernel(3, insts_bo, insts_bytes, *buffers)
