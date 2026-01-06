@@ -280,19 +280,19 @@ def my_matmul(
                         coretile_events=[
                             # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
                             trace_utils.events.PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_0,
+                                trace_utils.events.CoreEvent.PORT_RUNNING_0,
                                 port_number=1,
                                 master=True,
                             ),
                             # captures input B (PORT_RUNNING_1, at port number 2, master for inputs)
                             trace_utils.events.PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_1,
+                                trace_utils.events.CoreEvent.PORT_RUNNING_1,
                                 port_number=2,
                                 master=True,
                             ),
                             # captures output C (PORT_RUNNING_2, at port number 1, slave for outputs)
                             trace_utils.events.PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_2,
+                                trace_utils.events.CoreEvent.PORT_RUNNING_2,
                                 port_number=1,
                                 master=False,
                             ),
