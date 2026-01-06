@@ -18,7 +18,10 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 import aie.utils
 import aie.utils.jit
-from aie.utils.hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
+from aie.utils.hostruntime.xrtruntime.hostruntime import (
+    CachedXRTRuntime,
+    XRTHostRuntime,
+)
 
 
 @pytest.fixture
@@ -310,3 +313,45 @@ def test_runtime_cleanup(runtime):
 
     assert len(runtime._context_cache) == 0
     assert not handle._is_valid
+
+
+def test_base_runtime_load_run(runtime):
+    """Test that the base XRTHostRuntime works correctly (no caching)."""
+
+    input_tensor = iron.tensor((32,), dtype=np.int32)
+    input_tensor[:] = np.arange(32, dtype=np.int32)
+
+    # Run transform to generate artifacts using the cached runtime (fixture)
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    # Get paths from cached runtime to use with base runtime
+    key = list(runtime._context_cache.keys())[0]
+    xclbin_path = key[0]
+    insts_path = key[2]
+
+    class MockNPUKernel:
+        def __init__(self, x, i):
+            self.xclbin_path = x
+            self.insts_path = i
+            self.kernel_name = "MLIR_AIE"
+            self.trace_config = None
+
+    npu_kernel = MockNPUKernel(xclbin_path, insts_path)
+
+    # Create base runtime
+    base_runtime = XRTHostRuntime()
+
+    # Load
+    handle = base_runtime.load(npu_kernel)
+    assert handle is not None
+
+    # Run
+    base_runtime.run(handle, [input_tensor, input_tensor])
+
+    # Verify result
+    res = input_tensor.numpy()
+    expected = np.arange(32, dtype=np.int32) + 1
+    np.testing.assert_array_equal(res, expected)
+
+    # Verify no caching in base runtime
+    assert not hasattr(base_runtime, "_context_cache")
