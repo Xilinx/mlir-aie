@@ -4,6 +4,7 @@
 """
 XRT-based implementation of the HostRuntime
 """
+import atexit
 import logging
 import time
 import weakref
@@ -192,6 +193,11 @@ class CachedXRTRuntime(XRTHostRuntime):
         super().__init__()
         self._context_cache = OrderedDict()
         self._cache_size = 32
+        atexit.register(self.cleanup)
+
+    def cleanup(self):
+        while self._context_cache:
+            self._evict()
 
     def _evict(self):
         # Pop the oldest item
