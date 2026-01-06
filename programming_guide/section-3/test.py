@@ -12,7 +12,7 @@ import sys
 
 import aie.iron as iron
 import aie.utils.test as test_utils
-from aie.utils.hostruntime import NPUKernel
+from aie.utils.npukernel import NPUKernel
 
 
 def main(opts):
