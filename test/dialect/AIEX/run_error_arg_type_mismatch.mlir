@@ -1,4 +1,4 @@
-//===- error_arg_type_mismatch.mlir ----------------------------*- MLIR -*-===//
+//===- run_error_arg_type_mismatch.mlir ------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --verify-diagnostics --aie-materialize-runtime-sequences %s
+// RUN: aie-opt --verify-diagnostics %s
 
 // Test detection of argument type mismatches when calling runtime sequences
 
