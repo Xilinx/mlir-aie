@@ -14,6 +14,10 @@ Available modules:
 from enum import IntEnum
 import typing
 
+from . import aie
+from . import aie2
+from . import aie2p
+
 from .aie2 import (
     CoreEvent,
     MemEvent,
@@ -34,6 +38,15 @@ class PacketType(IntEnum):
 
 # Number of different trace types
 NUM_TRACE_TYPES = len(PacketType)
+
+
+def get_events_for_device(device: str):
+    if "npu1" in device:
+        return aie
+    elif "npu2p" in device:
+        return aie2p
+    else:
+        return aie2p
 
 
 def _get_port_events(enum_class):

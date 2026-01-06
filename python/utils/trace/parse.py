@@ -22,6 +22,7 @@ from aie.utils.trace.events import (
     MemEvent,
     ShimTileEvent,
     MemTileEvent,
+    get_events_for_device,
 )
 
 import aie.dialects.aie as aiedialect
@@ -169,6 +170,7 @@ def deactivate_events(
     loc,
     pid_events,
     trace_events,
+    events_module,
 ):
     for k in active_events.keys():  # an active event
         if cycles > 0 or (cycles == 0 and not k in multiples):
@@ -176,7 +178,7 @@ def deactivate_events(
             if active_events[k] > 0:
                 trace_event = {
                     "name": lookup_event_name_by_type(
-                        trace_type, pid_events[trace_type][loc][k]
+                        trace_type, pid_events[trace_type][loc][k], events_module
                     )
                 }  # TODO remove
                 trace_event["ts"] = timer
@@ -189,11 +191,15 @@ def deactivate_events(
 
 
 # Assert a begin siganl for the current event unless the event is still active
-def activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_events):
+def activate_event(
+    event, tt, loc, timer, pid, active_events, pid_events, trace_events, events_module
+):
     try:
         if active_events[event] == 0:
             trace_event = {
-                "name": lookup_event_name_by_type(tt, pid_events[tt][loc][event])
+                "name": lookup_event_name_by_type(
+                    tt, pid_events[tt][loc][event], events_module
+                )
             }
             trace_event["ts"] = timer
             trace_event["ph"] = "B"
@@ -211,7 +217,9 @@ def activate_event(event, tt, loc, timer, pid, active_events, pid_events, trace_
 #
 # commands:  list (idx = trace type, value = byte_stream_dict)
 # byte_stream_dict: dict (key = row,col, value = list of commands)
-def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=False):
+def convert_commands_to_json(
+    trace_events, commands, pid_events, events_module, of=None, debug=False
+):
     # byte_stream_dict for each trace type.
     for [tt, byte_stream_dict] in enumerate(commands):  # tt = trace type
 
@@ -274,6 +282,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=
                         loc,
                         pid_events,
                         trace_events,
+                        events_module,
                     )
                     timer = timer + cycles
                     activate_event(
@@ -285,6 +294,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=
                         active_events,
                         pid_events,
                         trace_events,
+                        events_module,
                     )
 
                 elif "Multiple" in t:
@@ -304,6 +314,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=
                         loc,
                         pid_events,
                         trace_events,
+                        events_module,
                     )
                     timer = timer + cycles
 
@@ -318,6 +329,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=
                                 active_events,
                                 pid_events,
                                 trace_events,
+                                events_module,
                             )
 
                 elif "Repeat" in t:
@@ -338,6 +350,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=
                                 loc,
                                 pid_events,
                                 trace_events,
+                                events_module,
                             )
                             timer = timer + cycles
                             if len(multiple_list) > 1:
@@ -352,6 +365,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=
                                             active_events,
                                             pid_events,
                                             trace_events,
+                                            events_module,
                                         )
                             else:
                                 activate_event(
@@ -363,6 +377,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=
                                     active_events,
                                     pid_events,
                                     trace_events,
+                                    events_module,
                                 )
 
 
@@ -382,7 +397,9 @@ def process_name_metadata(trace_events, pid, trace_type, loc):
 
 
 # def thread_name_metadata(trace_events, pid, tid, pid_events):
-def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
+def thread_name_metadata(
+    trace_events, trace_type, loc, pid, tid, pid_events, events_module
+):
     # def thread_name_metadata(trace_events, trace_type, pid, tid):
     trace_event = {"name": "thread_name"}
     trace_event["ph"] = "M"
@@ -391,7 +408,7 @@ def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
     trace_event["args"] = {}
     # trace_event['args']['name'] = lookupEventNameInStr(str(tid), pid, pid_events)
     trace_event["args"]["name"] = lookup_event_name_by_type(
-        trace_type, pid_events[trace_type][loc][tid]
+        trace_type, pid_events[trace_type][loc][tid], events_module
     )
     trace_events.append(trace_event)
 
@@ -423,6 +440,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         )
         device = aiedialect.AIEDevice(int(device[0].device))
         target_model = aiedialect.get_target_model(device)
+        events_module = get_events_for_device(str(device))
 
     for write32 in write32s:
         address = None
@@ -528,24 +546,25 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
     #     print("row:",j['row'],", col: ",j['col'])
     #     print("0: ", j[0], "1: ", j[1], "2: ", j[2], "3: ", j[3])
     #     print("4: ", j[4], "5: ", j[5], "6: ", j[6], "7: ", j[7])
-    return pid_events
+    return pid_events, events_module
 
 
-_TRACE_TYPE_TO_EVENT_ENUM = {
-    PacketType.CORE: CoreEvent,
-    PacketType.MEM: MemEvent,
-    PacketType.SHIMTILE: ShimTileEvent,
-    PacketType.MEMTILE: MemTileEvent,
-}
+def lookup_event_name_by_type(trace_type, code, events_module):
+    if trace_type == PacketType.CORE:
+        enum_class = events_module.CoreEvent
+    elif trace_type == PacketType.MEM:
+        enum_class = events_module.MemEvent
+    elif trace_type == PacketType.SHIMTILE:
+        enum_class = events_module.ShimTileEvent
+    elif trace_type == PacketType.MEMTILE:
+        enum_class = events_module.MemTileEvent
+    else:
+        return "Unknown"
 
-
-def lookup_event_name_by_type(trace_type, code):
-    events_enum = _TRACE_TYPE_TO_EVENT_ENUM.get(trace_type)
-    if events_enum:
-        try:
-            return events_enum(code).name
-        except ValueError:
-            pass
+    try:
+        return enum_class(code).name
+    except ValueError:
+        pass
     return "Unknown"
 
 
@@ -638,14 +657,16 @@ def lookup_event_name_by_type(trace_type, code):
 # This sets up the trace metadata and also assigned the unique pid that's referred
 # eleswhere for each process (combination of tile(row,col) and trace type).
 # NOTE: This assume the pid_events has already be analyzed and populated.
-def setup_trace_metadata(trace_events, pid_events):
+def setup_trace_metadata(trace_events, pid_events, events_module):
     pid = 0
     for t in range(NUM_TRACE_TYPES):
         # for j in len(pid_events[i]):
         for loc in pid_events[t]:  # return loc
             process_name_metadata(trace_events, pid, t, loc)
             for e in range(8):
-                thread_name_metadata(trace_events, t, loc, pid, e, pid_events)
+                thread_name_metadata(
+                    trace_events, t, loc, pid, e, pid_events, events_module
+                )
                 pid_events[t][loc].append(pid)  # assign unique pid
             pid = pid + 1
 
@@ -714,7 +735,7 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None, debug=False):
         trace_pkts.append(hex_str)
 
     # Parse MLIR to extract event configuration
-    pid_events = parse_mlir_trace_events(mlir_module_str, colshift)
+    pid_events, events_module = parse_mlir_trace_events(mlir_module_str, colshift)
 
     # Check for valid trace
     if not check_for_valid_trace("<numpy_array>", trace_pkts, of=None, debug=debug):
@@ -740,10 +761,12 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None, debug=False):
     trace_events = []
 
     # Setup metadata (process names, thread names, assign PIDs)
-    setup_trace_metadata(trace_events, pid_events)
+    setup_trace_metadata(trace_events, pid_events, events_module)
 
     # Convert commands to Chrome Trace Event Format
-    convert_commands_to_json(trace_events, commands, pid_events, of=None, debug=debug)
+    convert_commands_to_json(
+        trace_events, commands, pid_events, events_module, of=None, debug=debug
+    )
 
     return trace_events
 
@@ -779,7 +802,7 @@ def main():
     try:
         with open(opts.mlir, "r") as mf:
             mlir_module_str = mf.read()
-        pid_events = parse_mlir_trace_events(mlir_module_str, colshift)
+        pid_events, events_module = parse_mlir_trace_events(mlir_module_str, colshift)
     except Exception as e:
         print("ERROR:", opts.mlir, "could not be opened. Check for valid MLIR file.", e)
         sys.exit(1)
@@ -858,9 +881,11 @@ def main():
 
     trace_events = list()
 
-    setup_trace_metadata(trace_events, pid_events)
+    setup_trace_metadata(trace_events, pid_events, events_module)
 
-    convert_commands_to_json(trace_events, commands_0, pid_events, of, DEBUG)
+    convert_commands_to_json(
+        trace_events, commands_0, pid_events, events_module, of, DEBUG
+    )
 
     print(json.dumps(trace_events).replace("'", '"').replace(", {", ",\n{"), file=of)
 
