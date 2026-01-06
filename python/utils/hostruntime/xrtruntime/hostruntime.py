@@ -199,9 +199,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         while self._context_cache:
             self._evict()
 
-    def _evict(self):
-        # Pop the oldest item
-        key, entry = self._context_cache.popitem(last=False)
+    def _cleanup_entry(self, entry):
         context = entry["context"]
         handles = entry["handles"]
 
@@ -213,6 +211,11 @@ class CachedXRTRuntime(XRTHostRuntime):
 
         # Explicitly delete context
         del context
+
+    def _evict(self):
+        # Pop the oldest item
+        key, entry = self._context_cache.popitem(last=False)
+        self._cleanup_entry(entry)
 
     def load(
         self,
@@ -232,9 +235,11 @@ class CachedXRTRuntime(XRTHostRuntime):
             )
 
         xclbin_mtime = xclbin_path.stat().st_mtime
+        insts_mtime = insts_path.stat().st_mtime
 
         # Context Cache Lookup
-        context_key = (str(xclbin_path), xclbin_mtime)
+        context_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime)
+
         if context_key in self._context_cache:
             entry = self._context_cache[context_key]
             self._context_cache.move_to_end(context_key)
@@ -243,15 +248,32 @@ class CachedXRTRuntime(XRTHostRuntime):
             # Clean up dead handles
             entry["handles"] = [ref for ref in entry["handles"] if ref() is not None]
         else:
+            xclbin = pyxrt.xclbin(str(xclbin_path))
+            xclbin_uuid = xclbin.get_uuid()
+
+            # Evict any existing contexts with the same UUID to prevent conflicts
+            # when running different AIE configurations on the same shell.
+            keys_to_evict = [
+                k
+                for k, v in self._context_cache.items()
+                if str(v.get("uuid")) == str(xclbin_uuid)
+            ]
+            for k in keys_to_evict:
+                entry = self._context_cache.pop(k)
+                self._cleanup_entry(entry)
+
             if len(self._context_cache) >= self._cache_size:
                 self._evict()
 
-            xclbin = pyxrt.xclbin(str(xclbin_path))
             self._device.register_xclbin(xclbin)
-            xclbin_uuid = xclbin.get_uuid()
             context = pyxrt.hw_context(self._device, xclbin_uuid)
 
-            entry = {"context": context, "xclbin": xclbin, "handles": []}
+            entry = {
+                "context": context,
+                "xclbin": xclbin,
+                "handles": [],
+                "uuid": xclbin_uuid,
+            }
             self._context_cache[context_key] = entry
 
         # Kernel Name Resolution
