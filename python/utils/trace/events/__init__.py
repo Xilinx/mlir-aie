@@ -46,7 +46,7 @@ def get_events_for_device(device: str):
     elif "npu2p" in device:
         return aie2p
     else:
-        return aie2p
+        return aie2
 
 
 def _get_port_events(enum_class):
