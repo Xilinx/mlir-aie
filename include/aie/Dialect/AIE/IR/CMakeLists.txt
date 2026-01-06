@@ -77,9 +77,6 @@ add_custom_target(GenerateAIEEventsTD
   DEPENDS ${GENERATED_EVENTS_TD_FILES}
 )
 
-# Ensure generated event enums exist before any headers that depend on them
-add_dependencies(aie-headers GenerateAIEEventsTD)
-
 # Add AIE attributes
 set(LLVM_TARGET_DEFINITIONS AIEAttrs.td)
 mlir_tablegen(AIEAttrs.h.inc -gen-attrdef-decls)
@@ -87,3 +84,6 @@ mlir_tablegen(AIEAttrs.cpp.inc -gen-attrdef-defs)
 add_public_tablegen_target(MLIRAIEAttrDefsIncGen)
 add_dependencies(aie-headers MLIRAIEAttrDefsIncGen)
 add_dependencies(MLIRAIEAttrDefsIncGen GenerateAIEEventsTD)
+
+# Ensure generated event enums exist before generating documentation
+add_dependencies(AIEDialectDocGen GenerateAIEEventsTD)

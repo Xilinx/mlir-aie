@@ -72,6 +72,8 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME aie
   GEN_ENUM_BINDINGS_TD_FILE
     "dialects/AIEBinding.td"
+  DEPENDS
+    aie-headers
 )
 
 declare_mlir_dialect_python_bindings(
@@ -81,6 +83,8 @@ declare_mlir_dialect_python_bindings(
   SOURCES
     dialects/aiex.py
   DIALECT_NAME aiex
+  DEPENDS
+    aie-headers
 )
 
 declare_mlir_dialect_python_bindings(
@@ -90,6 +94,8 @@ declare_mlir_dialect_python_bindings(
   SOURCES
     dialects/aievec.py
   DIALECT_NAME aievec
+  DEPENDS
+    aie-headers
 )
 
 configure_file(compiler/aiecc/configure.py.in aie/compiler/aiecc/configure.py)
