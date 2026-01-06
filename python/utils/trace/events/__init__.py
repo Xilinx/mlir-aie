@@ -41,7 +41,7 @@ NUM_TRACE_TYPES = len(PacketType)
 
 
 def get_events_for_device(device: str):
-    if "npu1" in device:
+    if "xcvc1902" in device:
         return aie
     elif "npu2p" in device:
         return aie2p
