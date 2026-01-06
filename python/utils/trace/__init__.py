@@ -524,26 +524,7 @@ which reduces the timer from 11,091,042 cycles to 381,175 seems to fix it.
 """
 
 from .config import TraceConfig
-from .event_enums import (
-    CoreEvent,
-    MemEvent,
-    ShimTileEvent,
-    MemTileEvent,
-)
-from .events import (
-    GenericEvent,
-    PortEvent,
-    MemTilePortEvent,
-    ShimTilePortEvent,
-)
 from .parse import parse_trace
-from .port_events import (
-    PacketType,
-    PortEventCodes,
-    MemTilePortEventCodes,
-    ShimTilePortEventCodes,
-    NUM_TRACE_TYPES,
-)
 from .setup import (
     configure_coremem_tracing_aie2,
     configure_coretile_tracing_aie2,

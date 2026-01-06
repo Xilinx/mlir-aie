@@ -33,9 +33,9 @@
 # CHECK: AIE2.CoreEvent.SRS_SATURATE does not exist
 # CHECK: All tests passed!
 
-import aie.utils.trace_events.aie as aie1
-import aie.utils.trace_events.aie2 as aie2
-import aie.utils.trace_events.aie2p as aie2p
+import aie.utils.trace.events.aie as aie1
+import aie.utils.trace.events.aie2 as aie2
+import aie.utils.trace.events.aie2p as aie2p
 
 
 def test_arch(name, core_cls, mem_cls, shim_cls, mem_tile_cls=None):

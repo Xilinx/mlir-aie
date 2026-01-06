@@ -54,12 +54,10 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/compile/cache/utils.py
     utils/trace/__init__.py
     utils/trace/config.py
-    utils/trace/event_enums/__init__.py
+    utils/trace/events/__init__.py
     utils/trace/event_ir.py
-    utils/trace/events.py
     utils/trace/get_trace_summary.py
     utils/trace/parse.py
-    utils/trace/port_events.py
     utils/trace/setup.py
     utils/trace/utils.py
     utils/npu_utils.py
@@ -433,10 +431,10 @@ else ()
     get_filename_component(_filename ${_file} NAME)
     add_custom_command(
       TARGET AIEPythonModules POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace/event_enums
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace/events
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${_file}
-        ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace/event_enums/${_filename}
+        ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace/events/${_filename}
       COMMENT "Copying ${_filename} to build Python package"
     )
   endforeach()
@@ -445,7 +443,7 @@ else ()
   install(
     FILES 
       ${GENERATED_EVENTS_ENUM_FILES}
-    DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils/trace/event_enums
+    DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils/trace/events
     COMPONENT aie-python
   )
 

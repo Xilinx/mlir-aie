@@ -10,21 +10,17 @@ from aie.dialects.aiex import (
     npu_sync,
 )
 from aie.dialects.aie import get_target_model
-from .event_enums.aie2 import (
+from .events import (
+    GenericEvent,
+    PortEvent,
     CoreEvent,
     MemEvent,
     ShimTileEvent,
     MemTileEvent,
-)
-from .port_events import (
-    PacketType,
-    PortEventCodes,
-)
-from .event_enums import (
-    GenericEvent,
-    PortEvent,
     MemTilePortEvent,
     ShimTilePortEvent,
+    PacketType,
+    PortEventCodes,
 )
 from .utils import pack4bytes
 
