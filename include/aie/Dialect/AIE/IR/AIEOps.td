@@ -217,7 +217,6 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    bool isEquivalent(SwitchboxOp other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
@@ -328,7 +327,6 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    bool isEquivalent(mlir::Operation *other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
@@ -396,9 +394,6 @@ def AIE_CoreOp: AIE_Op<"core", [
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
     TileOp getTileOp();
-    // Check whether another core has equivalent program memory.
-    // Note that this currently only checks the ELF attribute, so only produces a meaningful result after compiling the program memory.
-    bool isEquivalent(CoreOp other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
@@ -1145,7 +1140,6 @@ def AIE_MemOp: AIE_Op<"mem", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    bool isEquivalent(mlir::Operation *other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
@@ -1193,7 +1187,6 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     int colIndex();
     int rowIndex();
     TileOp getTileOp();
-    bool isEquivalent(mlir::Operation *other);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);
