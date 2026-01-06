@@ -251,17 +251,6 @@ class CachedXRTRuntime(XRTHostRuntime):
             xclbin = pyxrt.xclbin(str(xclbin_path))
             xclbin_uuid = xclbin.get_uuid()
 
-            # Evict any existing contexts with the same UUID to prevent conflicts
-            # when running different AIE configurations on the same shell.
-            keys_to_evict = [
-                k
-                for k, v in self._context_cache.items()
-                if str(v.get("uuid")) == str(xclbin_uuid)
-            ]
-            for k in keys_to_evict:
-                entry = self._context_cache.pop(k)
-                self._cleanup_entry(entry)
-
             if len(self._context_cache) >= self._cache_size:
                 self._evict()
 

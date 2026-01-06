@@ -14,12 +14,27 @@ import aie.iron as iron
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
-from aie.utils import DEFAULT_NPU_RUNTIME
+import aie.utils
+import aie.utils.jit
 from aie.utils.hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
 
-# Skip tests if XRT is not available or if DEFAULT_NPU_RUNTIME is not CachedXRTRuntime
-if not isinstance(DEFAULT_NPU_RUNTIME, CachedXRTRuntime):
-    pytest.skip("CachedXRTRuntime not available", allow_module_level=True)
+
+@pytest.fixture
+def runtime():
+    # Create new runtime instance
+    rt = CachedXRTRuntime()
+
+    # Save old values
+    old_utils_runtime = aie.utils.DEFAULT_NPU_RUNTIME
+
+    # Set new values
+    aie.utils.DEFAULT_NPU_RUNTIME = rt
+
+    yield rt
+
+    # Restore
+    aie.utils.DEFAULT_NPU_RUNTIME = old_utils_runtime
+    rt.cleanup()
 
 
 @iron.jit(is_placed=False)
@@ -84,11 +99,8 @@ def transform(input, output, func):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-def test_runtime_caching_reuse():
+def test_runtime_caching_reuse(runtime):
     """Test that CachedXRTRuntime reuses contexts for the same kernel."""
-
-    # Clear cache to start fresh
-    DEFAULT_NPU_RUNTIME._context_cache.clear()
 
     input_tensor = iron.tensor((32,), dtype=np.int32)
     input_tensor[:] = np.arange(32, dtype=np.int32)
@@ -96,52 +108,49 @@ def test_runtime_caching_reuse():
     # First run with lambda
     transform(input_tensor, input_tensor, lambda x: x + 1)
 
-    assert len(DEFAULT_NPU_RUNTIME._context_cache) == 1
+    assert len(runtime._context_cache) == 1
 
     # Get the context from the cache
-    key1 = list(DEFAULT_NPU_RUNTIME._context_cache.keys())[0]
-    entry1 = DEFAULT_NPU_RUNTIME._context_cache[key1]
+    key1 = list(runtime._context_cache.keys())[0]
+    entry1 = runtime._context_cache[key1]
     context1 = entry1["context"]
 
     # Second run with same lambda (jit cache should hit, returning same NPUKernel)
     transform(input_tensor, input_tensor, lambda x: x + 1)
 
-    assert len(DEFAULT_NPU_RUNTIME._context_cache) == 1
+    assert len(runtime._context_cache) == 1
 
     # Verify it's the same context
-    key2 = list(DEFAULT_NPU_RUNTIME._context_cache.keys())[0]
-    entry2 = DEFAULT_NPU_RUNTIME._context_cache[key2]
+    key2 = list(runtime._context_cache.keys())[0]
+    entry2 = runtime._context_cache[key2]
     context2 = entry2["context"]
 
     assert key1 == key2
     assert context1 is context2
 
 
-def test_runtime_caching_multiple_kernels():
+def test_runtime_caching_multiple_kernels(runtime):
     """Test that CachedXRTRuntime caches multiple different kernels."""
-
-    DEFAULT_NPU_RUNTIME._context_cache.clear()
 
     input_tensor = iron.tensor((32,), dtype=np.int32)
     input_tensor[:] = np.arange(32, dtype=np.int32)
 
     # Run first kernel (add 1)
     transform(input_tensor, input_tensor, lambda x: x + 1)
-    assert len(DEFAULT_NPU_RUNTIME._context_cache) == 1
+    assert len(runtime._context_cache) == 1
 
     # Run second kernel (multiply by 2)
     transform(input_tensor, input_tensor, lambda x: x * 2)
 
     # Should have 2 entries now
-    assert len(DEFAULT_NPU_RUNTIME._context_cache) == 2
+    assert len(runtime._context_cache) == 2
 
 
-def test_runtime_eviction_logic():
+def test_runtime_eviction_logic(runtime):
     """Test eviction logic by artificially lowering cache size."""
 
-    DEFAULT_NPU_RUNTIME._context_cache.clear()
-    original_size = DEFAULT_NPU_RUNTIME._cache_size
-    DEFAULT_NPU_RUNTIME._cache_size = 1  # Set small cache size
+    original_size = runtime._cache_size
+    runtime._cache_size = 1  # Set small cache size
 
     try:
         input_tensor = iron.tensor((32,), dtype=np.int32)
@@ -149,17 +158,48 @@ def test_runtime_eviction_logic():
 
         # Run first kernel
         transform(input_tensor, input_tensor, lambda x: x + 1)
-        assert len(DEFAULT_NPU_RUNTIME._context_cache) == 1
-        key1 = list(DEFAULT_NPU_RUNTIME._context_cache.keys())[0]
+        assert len(runtime._context_cache) == 1
+        key1 = list(runtime._context_cache.keys())[0]
 
         # Run second kernel (different lambda -> different xclbin)
         transform(input_tensor, input_tensor, lambda x: x * 2)
 
-        assert len(DEFAULT_NPU_RUNTIME._context_cache) == 1
-        key2 = list(DEFAULT_NPU_RUNTIME._context_cache.keys())[0]
+        assert len(runtime._context_cache) == 1
+        key2 = list(runtime._context_cache.keys())[0]
 
         # Verify key changed (eviction happened)
         assert key1 != key2
 
     finally:
-        DEFAULT_NPU_RUNTIME._cache_size = original_size
+        runtime._cache_size = original_size
+
+
+def test_runtime_cache_fill(runtime):
+    """Test filling the cache to its capacity."""
+
+    # Ensure cache is empty
+    runtime._context_cache.clear()
+
+    input_tensor = iron.tensor((32,), dtype=np.int32)
+    input_tensor[:] = np.arange(32, dtype=np.int32)
+
+    # Load 32 different kernels
+    # We use a loop and define lambdas.
+    # Note: lambda x, val=i: x + val captures i as a default argument, making the functions distinct.
+    first_key = None
+    for i in range(32):
+        transform(input_tensor, input_tensor, lambda x, val=i: x + val)
+        if i == 0:
+            first_key = list(runtime._context_cache.keys())[0]
+
+    assert len(runtime._context_cache) == 32
+    assert first_key in runtime._context_cache
+
+    # Load one more
+    transform(input_tensor, input_tensor, lambda x: x + 100)
+
+    # Size should remain 32 (eviction happened)
+    assert len(runtime._context_cache) == 32
+
+    # Verify the first one was evicted
+    assert first_key not in runtime._context_cache

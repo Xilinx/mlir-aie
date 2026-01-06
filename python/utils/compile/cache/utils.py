@@ -34,7 +34,10 @@ def _create_function_cache_key(function, args, kwargs):
             if hasattr(arg, "__code__"):
                 # Use bytecode and constants hash for Python functions/lambdas
                 code = arg.__code__
-                func_hash = hash((code.co_code, code.co_consts, code.co_names))
+                defaults = arg.__defaults__ if hasattr(arg, "__defaults__") else None
+                func_hash = hash(
+                    (code.co_code, code.co_consts, code.co_names, defaults)
+                )
                 signature_parts.append(f"function_{func_hash}")
             else:
                 # Function argument - use hash of function address for uniqueness
@@ -53,7 +56,12 @@ def _create_function_cache_key(function, args, kwargs):
             if hasattr(value, "__code__"):
                 # Use bytecode and constants hash for Python functions/lambdas
                 code = value.__code__
-                func_hash = hash((code.co_code, code.co_consts, code.co_names))
+                defaults = (
+                    value.__defaults__ if hasattr(value, "__defaults__") else None
+                )
+                func_hash = hash(
+                    (code.co_code, code.co_consts, code.co_names, defaults)
+                )
                 signature_parts.append(f"{key}_function_{func_hash}")
             else:
                 # Function argument - use hash of function address for uniqueness

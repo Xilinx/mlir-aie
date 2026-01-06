@@ -18,7 +18,6 @@ from .compile.cache.circular_cache import CircularCache
 from .compile.cache.utils import _create_function_cache_key, file_lock
 from .compile import IRON_CACHE_HOME
 from .compile.utils import _cleanup_failed_compilation
-from . import DEFAULT_NPU_RUNTIME
 
 
 # Global cache for compiled kernels at the function level
@@ -42,6 +41,7 @@ def jit(function=None, is_placed=True, use_cache=True):
     def decorator(*args, **kwargs):
         from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
         from aie.iron.kernel import ExternalFunction
+        from . import DEFAULT_NPU_RUNTIME
 
         if DEFAULT_NPU_RUNTIME is None:
             raise Exception("Cannot use JIT; DEFAULT_NPU_RUNTIME not set.")
