@@ -16,7 +16,7 @@ from aie.iron.controlflow import range_
 
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
-from aie.utils.trace import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace.events_enum.aie2 import CoreEvent, MemEvent
 
 
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size):

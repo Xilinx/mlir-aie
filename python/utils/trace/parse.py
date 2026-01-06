@@ -6,7 +6,12 @@ import re
 
 from aie.extras.util import find_ops
 from aie.ir import Context, Module, Location
-from aie.utils.trace.event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace.event_enums.aie2 import (
+    CoreEvent,
+    MemEvent,
+    ShimTileEvent,
+    MemTileEvent,
+)
 from aie.utils.trace.utils import (
     parity,
     extract_tile,

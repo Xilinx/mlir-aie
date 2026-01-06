@@ -6,7 +6,7 @@ import re
 import subprocess
 import shutil
 import os
-from .event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+
 from .port_events import NUM_TRACE_TYPES
 from .utils import (
     parse_pkt_hdr_in_stream,
@@ -14,6 +14,7 @@ from .utils import (
     convert_to_byte_stream,
     convert_to_commands,
 )
+from .trace.event_enums import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
