@@ -54,7 +54,7 @@ void test() {
   // AIEDevice::xcve2802
   if (!llvm::isa<AIE::VE2802TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::xcve2802))) {
-    throw std::runtime_error("Failed xcvc1902 isa<VE2802TargetModel>");
+    throw std::runtime_error("Failed xcve2802 isa<VE2802TargetModel>");
   }
   if (!llvm::isa<AIE::AIE2TargetModel>(
           AIE::getTargetModel(AIE::AIEDevice::xcve2802))) {

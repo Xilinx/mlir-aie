@@ -89,6 +89,7 @@ jobs:
               git reset --hard ${{ inputs.AIE_COMMIT }}
             fi
 
+            pip install --upgrade pip
             pip install onnxruntime==1.17.0
             pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
