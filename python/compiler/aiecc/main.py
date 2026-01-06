@@ -150,15 +150,7 @@ AIE_LOWER_TO_LLVM = _create_aie_lower_to_llvm_pipeline
 
 
 # pipeline to lower and legalize runtime sequence for NPU
-def _create_npu_lowering_pipeline(
-    expand_load_pdis=False,
-    reset_dmas_tiles="",
-    reset_dmas_mode="never",
-    reset_switches_tiles="",
-    reset_switches_mode="never",
-    reset_locks_tiles="",
-    reset_locks_mode="never",
-):
+def _create_npu_lowering_pipeline(expand_load_pdis=False):
     pipeline = Pipeline()
     if opts.materialize_runtime_sequence:
         pipeline = pipeline.add_pass("aie-materialize-runtime-sequences")
@@ -173,15 +165,7 @@ def _create_npu_lowering_pipeline(
         .add_pass("aie-lower-set-lock"),
     )
     if expand_load_pdis:
-        pipeline = pipeline.add_pass(
-            "aie-expand-load-pdi",
-            reset_dmas_tiles=reset_dmas_tiles,
-            reset_dmas_mode=reset_dmas_mode,
-            reset_switches_tiles=reset_switches_tiles,
-            reset_switches_mode=reset_switches_mode,
-            reset_locks_tiles=reset_locks_tiles,
-            reset_locks_mode=reset_locks_mode,
-        )
+        pipeline = pipeline.add_pass("aie-expand-load-pdi")
     return pipeline
 
 
@@ -1724,15 +1708,7 @@ class FlowRunner:
                     input_physical_with_elfs_module = Module.parse(
                         await read_file_async(input_physical_with_elfs)
                     )
-                    npu_pipeline = _create_npu_lowering_pipeline(
-                        opts.expand_load_pdis,
-                        reset_dmas_tiles=opts.reset_dmas_tiles,
-                        reset_dmas_mode=opts.reset_dmas_mode,
-                        reset_switches_tiles=opts.reset_switches_tiles,
-                        reset_switches_mode=opts.reset_switches_mode,
-                        reset_locks_tiles=opts.reset_locks_tiles,
-                        reset_locks_mode=opts.reset_locks_mode,
-                    )
+                    npu_pipeline = _create_npu_lowering_pipeline(opts.expand_load_pdis)
                     pass_pipeline = npu_pipeline.materialize(module=True)
                     npu_insts_file = self.prepend_tmp(f"npu_insts.mlir")
                     self.progress_bar.update(

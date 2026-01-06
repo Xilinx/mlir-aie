@@ -623,16 +623,10 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
   return success();
 }
 
-// an enum to represent the output type of the transaction binary
-enum OutputType {
-  Transaction,
-  ControlPacket,
-};
-
 // Take transaction operations and insert them at the _current_ insertion point
 // of the supplied builder.
 static LogicalResult convertTransactionOpsToMLIR(
-    OpBuilder builder, OutputType outputType,
+    OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
     std::vector<TransactionBinaryOperation> &operations) {
 
   auto loc = builder.getUnknownLoc();
@@ -673,10 +667,10 @@ static LogicalResult convertTransactionOpsToMLIR(
   }
 
   // create the txn ops
-  if (outputType == OutputType::Transaction) {
+  if (outputType == AIE::AIEToConfigurationOutputType::Transaction) {
     if (failed(emitTransactionOps(builder, operations, global_data)))
       return failure();
-  } else if (outputType == OutputType::ControlPacket) {
+  } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
     if (failed(emitControlPacketOps(builder, operations, global_data)))
       return failure();
     // resolve mask writes; control packet doesn't natively support mask write.
@@ -723,151 +717,16 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   builder.setInsertionPointToStart(device.getBody());
 
   // convert the parsed ops to MLIR
-  if (failed(convertTransactionOpsToMLIR(builder, OutputType::Transaction,
-                                         operations)))
+  if (failed(convertTransactionOpsToMLIR(
+          builder, AIE::AIEToConfigurationOutputType::Transaction, operations)))
     return std::nullopt;
 
   return module;
 }
 
-static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
-                                               StringRef clElfDir,
-                                               OutputType outputType) {
-
-  const AIETargetModel &targetModel =
-      (const AIETargetModel &)device.getTargetModel();
-
-  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
-    return failure();
-
-  bool aieSim = false;
-  bool xaieDebug = false;
-
-  AIERTControl ctl(targetModel);
-  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
-    return failure();
-
-  // start collecting transations
-  ctl.startTransaction();
-
-  bool generateElfs = clElfDir.size() > 0;
-  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
-                                  true, true)))
-    return failure();
-
-  // Export the transactions to a binary buffer
-  std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
-
-  // parse the binary data
-  std::vector<TransactionBinaryOperation> operations;
-  if (!parseTransactionBinary(txn_data, operations)) {
-    llvm::errs() << "Failed to parse binary\n";
-    return failure();
-  }
-
-  OpBuilder builder(device.getBodyRegion());
-  // search for aiex.configure ops in runtime sequences by walking the device
-  // and collect them in a vector. If there are none, create a new runtime
-  // sequence. Otherwise assume the insertion point is the first
-  // aiex.configure op.
-  auto loc = builder.getUnknownLoc();
-  SmallVector<AIEX::ConfigureOp> configureOps;
-  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
-
-  if (configureOps.empty()) {
-    // create aiex.runtime_sequence
-    int id = 0;
-    std::string seq_name = "configure";
-    while (device.lookupSymbol(seq_name))
-      seq_name = "configure" + std::to_string(id++);
-    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
-    seq.getBody().push_back(new Block);
-    builder.setInsertionPointToStart(&seq.getBody().front());
-  } else {
-    builder.setInsertionPoint(configureOps.front());
-  }
-
-  // convert the parsed ops to MLIR
-  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations)))
-    return failure();
-
-  // If we chose the first aiex.configure as insertion point, erase it
-  // and inline its child operations.
-  if (!configureOps.empty()) {
-    // splice the body into the current insertion point
-    builder.getBlock()->getOperations().splice(
-        builder.getInsertionPoint(),
-        configureOps.front().getBody().front().getOperations());
-    configureOps.front().erase();
-  }
-
-  return success();
-}
-
-namespace {
-
-template <typename BaseClass, OutputType MyOutputType>
-struct ConvertAIEToConfigurationPass : BaseClass {
-  std::string &ref_clElfDir;
-  std::string &ref_clDeviceName;
-  ConvertAIEToConfigurationPass(std::string &clElfDir,
-                                std::string &clDeviceName)
-      : ref_clElfDir(clElfDir), ref_clDeviceName(clDeviceName) {}
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
-  }
-
-  void runOnOperation() override {
-    AIE::DeviceOp deviceOp = BaseClass::getOperation();
-    if (!ref_clDeviceName.empty() &&
-        deviceOp.getSymName() != ref_clDeviceName) {
-      return;
-    }
-    if (failed(
-            convertAIEToConfiguration(deviceOp, ref_clElfDir, MyOutputType))) {
-      return BaseClass::signalPassFailure();
-    }
-  }
-};
-
-struct ConvertAIEToTransactionPass
-    : ConvertAIEToConfigurationPass<
-          ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
-          OutputType::Transaction> {
-  ConvertAIEToTransactionPass()
-      : ConvertAIEToConfigurationPass<
-            ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
-            OutputType::Transaction>(clElfDir, clDeviceName) {}
-};
-
-struct ConvertAIEToControlPacketsPass
-    : ConvertAIEToConfigurationPass<
-          ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
-          OutputType::ControlPacket> {
-  ConvertAIEToControlPacketsPass()
-      : ConvertAIEToConfigurationPass<
-            ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
-            OutputType::ControlPacket>(clElfDir, clDeviceName) {}
-};
-
-} // end anonymous namespace
-
-std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
-xilinx::AIE::createConvertAIEToTransactionPass() {
-  return std::make_unique<ConvertAIEToTransactionPass>();
-}
-
-std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
-xilinx::AIE::createConvertAIEToControlPacketsPass() {
-  return std::make_unique<ConvertAIEToControlPacketsPass>();
-}
-
-mlir::LogicalResult
-xilinx::AIE::generateAndInsertConfigOps(OpBuilder &builder,
-                                        xilinx::AIE::DeviceOp device,
-                                        llvm::StringRef clElfDir) {
+LogicalResult xilinx::AIE::generateAndInsertConfigOps(
+    OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
+    AIE::AIEToConfigurationOutputType outputType) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -899,366 +758,114 @@ xilinx::AIE::generateAndInsertConfigOps(OpBuilder &builder,
     return failure();
   }
 
-  if (failed(convertTransactionOpsToMLIR(builder, OutputType::Transaction,
-                                         operations))) {
+  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations))) {
     return failure();
   }
 
   return success();
 }
 
-// Helper function to check DMA equivalence for different operation types
-static bool areDMAsEquivalent(Operation *dma1, Operation *dma2) {
-  if (!dma1 || !dma2)
-    return dma1 == dma2;
-  if (auto mem1 = dyn_cast<MemOp>(dma1)) {
-    return mem1.isEquivalent(dma2);
-  } else if (auto memTile1 = dyn_cast<MemTileDMAOp>(dma1)) {
-    return memTile1.isEquivalent(dma2);
-  } else if (auto shim1 = dyn_cast<ShimDMAOp>(dma1)) {
-    return shim1.isEquivalent(dma2);
+static LogicalResult
+convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
+                          AIE::AIEToConfigurationOutputType outputType) {
+
+  OpBuilder builder(device.getBodyRegion());
+  // search for aiex.configure ops in runtime sequences by walking the device
+  // and collect them in a vector. If there are none, create a new runtime
+  // sequence. Otherwise assume the insertion point is the first
+  // aiex.configure op.
+  auto loc = builder.getUnknownLoc();
+  SmallVector<AIEX::ConfigureOp> configureOps;
+  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
+
+  if (configureOps.empty()) {
+    // create aiex.runtime_sequence
+    int id = 0;
+    std::string seq_name = "configure";
+    while (device.lookupSymbol(seq_name))
+      seq_name = "configure" + std::to_string(id++);
+    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
+    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
+    seq.getBody().push_back(new Block);
+    builder.setInsertionPointToStart(&seq.getBody().front());
+  } else {
+    builder.setInsertionPoint(configureOps.front());
   }
-  return false;
+
+  // convert the parsed ops to MLIR
+  if (failed(generateAndInsertConfigOps(builder, device, clElfDir, outputType)))
+    return failure();
+
+  // If we chose the first aiex.configure as insertion point, erase it
+  // and inline its child operations.
+  if (!configureOps.empty()) {
+    // splice the body into the current insertion point
+    builder.getBlock()->getOperations().splice(
+        builder.getInsertionPoint(),
+        configureOps.front().getBody().front().getOperations());
+    configureOps.front().erase();
+  }
+
+  return success();
 }
 
-// Reset cores used in `device` based on the provided configuration;
-// if in "ifchanged" mode, cores are only reset if they are different in
-// `device` from `previousDevice`.
-static LogicalResult resetCores(DeviceOp device, DeviceOp previousDevice,
-                                ResetConfig coreConfig, AIERTControl &ctl) {
-  const AIETargetModel &targetModel = device.getTargetModel();
+namespace {
 
-  if (coreConfig.mode == ResetMode::Never ||
-      !hasFlag(coreConfig.tileType, ResetTileType::CoreTile))
-    return success();
+template <typename BaseClass, AIE::AIEToConfigurationOutputType MyOutputType>
+struct ConvertAIEToConfigurationPass : BaseClass {
+  std::string &ref_clElfDir;
+  std::string &ref_clDeviceName;
+  ConvertAIEToConfigurationPass(std::string &clElfDir,
+                                std::string &clDeviceName)
+      : ref_clElfDir(clElfDir), ref_clDeviceName(clDeviceName) {}
 
-  int numCols = targetModel.columns();
-  int numRows = targetModel.rows();
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
+  }
 
-  for (int col = 0; col < numCols; col++) {
-    for (int row = 0; row < numRows; row++) {
-      if (!targetModel.isCoreTile(col, row))
-        continue;
-
-      bool shouldReset = false;
-
-      if (coreConfig.mode == ResetMode::Always) {
-        shouldReset = true;
-      } else if (coreConfig.mode == ResetMode::IfUsed ||
-                 coreConfig.mode == ResetMode::IfUsedFineGrained) {
-        shouldReset = device.lookupCore(col, row) != nullptr;
-      } else if (coreConfig.mode == ResetMode::IfChanged ||
-                 coreConfig.mode == ResetMode::IfChangedFineGrained) {
-        auto currentCore = device.lookupCore(col, row);
-        auto prevCore =
-            previousDevice ? previousDevice.lookupCore(col, row) : nullptr;
-        shouldReset = currentCore && !currentCore.isEquivalent(prevCore);
-      }
-
-      if (shouldReset && failed(ctl.resetCore(col, row)))
-        return failure();
+  void runOnOperation() override {
+    AIE::DeviceOp deviceOp = BaseClass::getOperation();
+    if (!ref_clDeviceName.empty() &&
+        deviceOp.getSymName() != ref_clDeviceName) {
+      return;
+    }
+    if (failed(
+            convertAIEToConfiguration(deviceOp, ref_clElfDir, MyOutputType))) {
+      return BaseClass::signalPassFailure();
     }
   }
+};
 
-  return success();
+struct ConvertAIEToTransactionPass
+    : ConvertAIEToConfigurationPass<
+          ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
+          AIE::AIEToConfigurationOutputType::Transaction> {
+  ConvertAIEToTransactionPass()
+      : ConvertAIEToConfigurationPass<
+            ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
+            AIE::AIEToConfigurationOutputType::Transaction>(clElfDir,
+                                                            clDeviceName) {}
+};
+
+struct ConvertAIEToControlPacketsPass
+    : ConvertAIEToConfigurationPass<
+          ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
+          AIE::AIEToConfigurationOutputType::ControlPacket> {
+  ConvertAIEToControlPacketsPass()
+      : ConvertAIEToConfigurationPass<
+            ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
+            AIE::AIEToConfigurationOutputType::ControlPacket>(clElfDir,
+                                                              clDeviceName) {}
+};
+
+} // end anonymous namespace
+
+std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
+xilinx::AIE::createConvertAIEToTransactionPass() {
+  return std::make_unique<ConvertAIEToTransactionPass>();
 }
 
-// Reset DMAs used in `device` based on the provided configuration;
-// if in "ifchanged" mode, DMAs are only reset if they are different in
-// `device` from `previousDevice`.
-static LogicalResult resetDMAs(DeviceOp device, DeviceOp previousDevice,
-                               ResetConfig dmaConfig, AIERTControl &ctl) {
-  const AIETargetModel &targetModel = device.getTargetModel();
-
-  if (dmaConfig.mode == ResetMode::Never)
-    return success();
-
-  int numCols = targetModel.columns();
-  int numRows = targetModel.rows();
-
-  for (int col = 0; col < numCols; col++) {
-    for (int row = 0; row < numRows; row++) {
-      if ((targetModel.isMemTile(col, row) &&
-           !hasFlag(dmaConfig.tileType, ResetTileType::MemTile)) ||
-          (targetModel.isCoreTile(col, row) &&
-           !hasFlag(dmaConfig.tileType, ResetTileType::CoreTile)) ||
-          (targetModel.isShimNOCTile(col, row) &&
-           !hasFlag(dmaConfig.tileType, ResetTileType::ShimNOC))) {
-        continue;
-      }
-
-      bool shouldReset = false;
-
-      if (dmaConfig.mode == ResetMode::Always) {
-        shouldReset = true;
-      } else if (dmaConfig.mode == ResetMode::IfUsed ||
-                 dmaConfig.mode == ResetMode::IfUsedFineGrained) {
-        shouldReset = nullptr != device.lookupDMA(col, row);
-      } else if (dmaConfig.mode == ResetMode::IfChanged ||
-                 dmaConfig.mode == ResetMode::IfChangedFineGrained) {
-        Operation *currentDMA = device.lookupDMA(col, row);
-        Operation *prevDMA =
-            previousDevice ? previousDevice.lookupDMA(col, row) : nullptr;
-        shouldReset = currentDMA && !areDMAsEquivalent(currentDMA, prevDMA);
-      }
-
-      if (shouldReset && failed(ctl.resetDMA(col, row, false)))
-        return failure();
-    }
-  }
-
-  return success();
-}
-
-// Reset switchboxes used in `device` based on the provided configuration;
-// if in "ifchanged" mode, switchboxes are only reset if they are different in
-// `device` from `previousDevice`.
-static LogicalResult resetSwitches(DeviceOp device, DeviceOp previousDevice,
-                                   ResetConfig switchConfig,
-                                   AIERTControl &ctl) {
-  const AIETargetModel &targetModel = device.getTargetModel();
-
-  if (switchConfig.mode == ResetMode::Never)
-    return success();
-
-  int numCols = targetModel.columns();
-  int numRows = targetModel.rows();
-
-  for (int col = 0; col < numCols; col++) {
-    for (int row = 0; row < numRows; row++) {
-      if ((targetModel.isMemTile(col, row) &&
-           !hasFlag(switchConfig.tileType, ResetTileType::MemTile)) ||
-          (targetModel.isCoreTile(col, row) &&
-           !hasFlag(switchConfig.tileType, ResetTileType::CoreTile)) ||
-          (targetModel.isShimNOCTile(col, row) &&
-           !hasFlag(switchConfig.tileType, ResetTileType::ShimNOC))) {
-        continue;
-      }
-
-      bool shouldReset = false;
-
-      if (switchConfig.mode == ResetMode::Always) {
-        shouldReset = true;
-      } else if (switchConfig.mode == ResetMode::IfUsed) {
-        shouldReset = nullptr != device.lookupSwitchbox(col, row);
-      } else if (switchConfig.mode == ResetMode::IfChanged) {
-        SwitchboxOp currentSB = device.lookupSwitchbox(col, row);
-        SwitchboxOp prevSB =
-            previousDevice ? previousDevice.lookupSwitchbox(col, row) : nullptr;
-        shouldReset = currentSB && !currentSB.isEquivalent(prevSB);
-      }
-
-      if (shouldReset && failed(ctl.resetSwitch(col, row)))
-        return failure();
-    }
-  }
-
-  return success();
-}
-
-// Reset locks used in `device` based on the provided configuration;
-// if in "ifchanged" mode, locks are only reset if they are different in
-// `device` from `previousDevice`.
-static LogicalResult resetLocks(DeviceOp device, DeviceOp previousDevice,
-                                ResetConfig lockConfig, AIERTControl &ctl) {
-  const AIETargetModel &targetModel = device.getTargetModel();
-
-  if (lockConfig.mode == ResetMode::Never)
-    return success();
-
-  int numCols = targetModel.columns();
-  int numRows = targetModel.rows();
-
-  for (int col = 0; col < numCols; col++) {
-    for (int row = 0; row < numRows; row++) {
-      if ((targetModel.isMemTile(col, row) &&
-           !hasFlag(lockConfig.tileType, ResetTileType::MemTile)) ||
-          (targetModel.isCoreTile(col, row) &&
-           !hasFlag(lockConfig.tileType, ResetTileType::CoreTile))) {
-        continue;
-      }
-
-      if (lockConfig.mode == ResetMode::Always) {
-        // Reset all locks on this tile;
-        int numLocks = targetModel.getNumLocks(col, row);
-        for (int lockID = 0; lockID < numLocks; lockID++) {
-          if (failed(ctl.resetLock(col, row, lockID)))
-            return failure();
-        }
-      } else {
-        // treat "ifUsed" and "ifChanged" as the same -- if a tile defined some
-        // locks, it probably also toggled them, so we should reset them
-        for (auto lockOp : device.getOps<LockOp>()) {
-          auto tileOp = lockOp.getTileOp();
-          if (tileOp.getCol() == col && tileOp.getRow() == row) {
-            if (auto lockId = lockOp.getLockID()) {
-              if (failed(ctl.resetLock(col, row, *lockId))) {
-                return failure();
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return success();
-}
-
-// Reset fine-grained switch connections based on the provided configuration
-static LogicalResult resetSwitchConnectionsFineGrained(DeviceOp device,
-                                                       DeviceOp previousDevice,
-                                                       ResetConfig switchConfig,
-                                                       AIERTControl &ctl) {
-  const AIETargetModel &targetModel = device.getTargetModel();
-
-  if (switchConfig.mode != ResetMode::IfUsedFineGrained &&
-      switchConfig.mode != ResetMode::IfChangedFineGrained)
-    return success();
-
-  int numCols = targetModel.columns();
-  int numRows = targetModel.rows();
-
-  for (int col = 0; col < numCols; col++) {
-    for (int row = 0; row < numRows; row++) {
-      if ((targetModel.isMemTile(col, row) &&
-           !hasFlag(switchConfig.tileType, ResetTileType::MemTile)) ||
-          (targetModel.isCoreTile(col, row) &&
-           !hasFlag(switchConfig.tileType, ResetTileType::CoreTile)) ||
-          (targetModel.isShimNOCTile(col, row) &&
-           !hasFlag(switchConfig.tileType, ResetTileType::ShimNOC))) {
-        continue;
-      }
-
-      auto currentSB = device.lookupSwitchbox(col, row);
-      if (!currentSB)
-        continue;
-
-      // Collect unique sources and active connections
-      DenseSet<std::pair<WireBundle, int>> uniqueSources;
-      DenseSet<std::tuple<WireBundle, int, WireBundle, int>> activeConns;
-      for (auto connectOp : currentSB.getOps<ConnectOp>()) {
-        WireBundle srcBundle = connectOp.getSourceBundle();
-        int srcChan = connectOp.getSourceChannel();
-        WireBundle dstBundle = connectOp.getDestBundle();
-        int dstChan = connectOp.getDestChannel();
-        uniqueSources.insert({srcBundle, srcChan});
-        activeConns.insert({srcBundle, srcChan, dstBundle, dstChan});
-      }
-      DenseSet<std::tuple<WireBundle, int, WireBundle, int>> prevConnsSet;
-      auto prevSB =
-          previousDevice ? previousDevice.lookupSwitchbox(col, row) : nullptr;
-      if (prevSB) {
-        for (auto connectOp : prevSB.getOps<ConnectOp>()) {
-          prevConnsSet.insert(
-              {connectOp.getSourceBundle(), connectOp.getSourceChannel(),
-               connectOp.getDestBundle(), connectOp.getDestChannel()});
-        }
-      }
-
-      // Get all possible destinations
-      llvm::SmallVector<std::pair<WireBundle, uint32_t>> possibleDests;
-      for (auto bundle :
-           {WireBundle::Core, WireBundle::DMA, WireBundle::FIFO,
-            WireBundle::South, WireBundle::West, WireBundle::North,
-            WireBundle::East, WireBundle::PLIO, WireBundle::NOC,
-            WireBundle::Trace, WireBundle::TileControl}) {
-        uint32_t numDestChans =
-            targetModel.getNumDestSwitchboxConnections(col, row, bundle);
-        if (numDestChans > 0) {
-          possibleDests.push_back(std::make_pair(bundle, numDestChans));
-        }
-      }
-
-      // Iterate over all sources of connections in the current device
-      for (auto [srcBundle, srcChan] : uniqueSources) {
-        // Iterate over all legal destinations from this source
-        for (auto [altDstBundle, numDestChans] : possibleDests) {
-          for (uint32_t altDstChan = 0; altDstChan < numDestChans;
-               altDstChan++) {
-            if (!targetModel.isLegalTileConnection(col, row, srcBundle, srcChan,
-                                                   altDstBundle, altDstChan)) {
-              continue;
-            }
-            // Skip if this is an active connection in the new configuration
-            if (activeConns.contains(
-                    {srcBundle, srcChan, altDstBundle, altDstChan})) {
-              continue;
-            }
-
-            if (switchConfig.mode == ResetMode::IfUsedFineGrained ||
-                prevConnsSet.contains(
-                    {srcBundle, srcChan, altDstBundle, altDstChan})) {
-              // Reset any legal destination that's not the active one
-              if (failed(ctl.resetSwitchConnection(col, row, srcBundle, srcChan,
-                                                   altDstBundle, altDstChan))) {
-                return failure();
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return success();
-}
-
-// Generate reset operations that should be emitted before configuring device
-// configuration `device`. Reset operations are inserted depending on mode and
-// the device to be configured after the reset. In "ifchanged" mode, the
-// previously configured device, `previousDevice` is additionally also
-// considered: reset operations are only inserted for operations that are
-// different between `device` and `previousDevice`.
-mlir::LogicalResult xilinx::AIE::generateAndInsertResetOps(
-    OpBuilder &builder, xilinx::AIE::DeviceOp device, ResetConfig dmaConfig,
-    ResetConfig switchConfig, ResetConfig lockConfig, ResetConfig coreConfig,
-    xilinx::AIE::DeviceOp previousDevice) {
-  const AIETargetModel &targetModel = device.getTargetModel();
-
-  if (!targetModel.hasProperty(AIETargetModel::IsNPU))
-    return failure();
-
-  AIERTControl ctl(targetModel);
-
-  bool aieSim = false;
-  bool xaieDebug = false;
-  if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
-    return failure();
-
-  ctl.startTransaction();
-
-  if (failed(resetCores(device, previousDevice, coreConfig, ctl)))
-    return failure();
-
-  if (failed(resetDMAs(device, previousDevice, dmaConfig, ctl)))
-    return failure();
-
-  if (failed(resetSwitches(device, previousDevice, switchConfig, ctl)))
-    return failure();
-
-  if (failed(resetSwitchConnectionsFineGrained(device, previousDevice,
-                                               switchConfig, ctl)))
-    return failure();
-
-  if (failed(resetLocks(device, previousDevice, lockConfig, ctl)))
-    return failure();
-
-  // Export the reset transactions
-  std::vector<uint8_t> txn_data = ctl.exportSerializedTransaction();
-
-  // Parse the binary data
-  std::vector<TransactionBinaryOperation> operations;
-  if (!parseTransactionBinary(txn_data, operations)) {
-    llvm::errs() << "Failed to parse reset transaction binary\n";
-    return failure();
-  }
-
-  // convert the parsed ops to MLIR, inserting after the provided point
-  if (failed(convertTransactionOpsToMLIR(builder, OutputType::Transaction,
-                                         operations))) {
-    return failure();
-  }
-
-  return success();
+std::unique_ptr<mlir::OperationPass<xilinx::AIE::DeviceOp>>
+xilinx::AIE::createConvertAIEToControlPacketsPass() {
+  return std::make_unique<ConvertAIEToControlPacketsPass>();
 }
