@@ -59,7 +59,7 @@ class XRTHostRuntime(HostRuntime):
     def read_insts(cls, insts_path: Path):
         # Overload the function in the generic class so we can use xrt-specific handling of elf files.
         ext = insts_path.suffix.lower()
-        if ext == ".elf":
+        if ext == ".elf" and hasattr(pyxrt, "module"):
             elf = pyxrt.elf(str(insts_path))
             return pyxrt.module(elf)
         else:
@@ -99,7 +99,7 @@ class XRTHostRuntime(HostRuntime):
                 )
 
         insts = self.read_insts(insts_path)
-        if isinstance(insts, pyxrt.module):
+        if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
             kernel = pyxrt.ext.kernel(context, insts, kernel_name)
         else:
             kernel = pyxrt.kernel(context, kernel_name)
@@ -125,25 +125,29 @@ class XRTHostRuntime(HostRuntime):
 
         insts_bo = None
         insts_bytes = 0
-        if not isinstance(kernel_handle.insts, pyxrt.module):
-            insts_bytes = kernel_handle.insts.nbytes
-            insts_bo = self._tensor_class(
-                kernel_handle.insts,
-                flags=pyxrt.bo.cacheable,
-                group_id=kernel_handle.kernel.group_id(1),
-            ).buffer_object()
+        try:
+            is_module = hasattr(pyxrt, "module") and isinstance(
+                kernel_handle.insts, pyxrt.module
+            )
+            if not is_module:
+                insts_bytes = kernel_handle.insts.nbytes
+                insts_bo = self._tensor_class(
+                    kernel_handle.insts,
+                    flags=pyxrt.bo.cacheable,
+                    group_id=kernel_handle.kernel.group_id(1),
+                ).buffer_object()
 
-        start = time.time_ns()
-        h = kernel_handle.kernel(3, insts_bo, insts_bytes, *buffers)
-        r = h.wait()
-        stop = time.time_ns()
+            start = time.time_ns()
+            h = kernel_handle.kernel(3, insts_bo, insts_bytes, *buffers)
+            r = h.wait()
+            stop = time.time_ns()
 
-        if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
-            raise HostRuntimeError(f"Kernel returned {str(r)}")
-
-        # delete insts buffer
-        if insts_bo:
-            del insts_bo
+            if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+                raise HostRuntimeError(f"Kernel returned {str(r)}")
+        finally:
+            # delete insts buffer
+            if insts_bo:
+                del insts_bo
 
         return XRTKernelResult(r, stop - start)
 
@@ -240,50 +244,65 @@ class CachedXRTRuntime(XRTHostRuntime):
         # Context Cache Lookup
         context_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime)
 
-        if context_key in self._context_cache:
-            entry = self._context_cache[context_key]
-            self._context_cache.move_to_end(context_key)
-            context = entry["context"]
-            xclbin = entry["xclbin"]
-            # Clean up dead handles
-            entry["handles"] = [ref for ref in entry["handles"] if ref() is not None]
-        else:
-            xclbin = pyxrt.xclbin(str(xclbin_path))
-            xclbin_uuid = xclbin.get_uuid()
+        try:
+            if context_key in self._context_cache:
+                entry = self._context_cache[context_key]
+                self._context_cache.move_to_end(context_key)
+                context = entry["context"]
+                xclbin = entry["xclbin"]
+                # Clean up dead handles
+                entry["handles"] = [
+                    ref for ref in entry["handles"] if ref() is not None
+                ]
+            else:
+                xclbin = pyxrt.xclbin(str(xclbin_path))
+                xclbin_uuid = xclbin.get_uuid()
 
-            if len(self._context_cache) >= self._cache_size:
-                self._evict()
+                if len(self._context_cache) >= self._cache_size:
+                    self._evict()
 
-            self._device.register_xclbin(xclbin)
-            context = pyxrt.hw_context(self._device, xclbin_uuid)
+                self._device.register_xclbin(xclbin)
+                context = pyxrt.hw_context(self._device, xclbin_uuid)
 
-            entry = {
-                "context": context,
-                "xclbin": xclbin,
-                "handles": [],
-                "uuid": xclbin_uuid,
-            }
-            self._context_cache[context_key] = entry
+                entry = {
+                    "context": context,
+                    "xclbin": xclbin,
+                    "handles": [],
+                    "uuid": xclbin_uuid,
+                }
+                self._context_cache[context_key] = entry
 
-        # Kernel Name Resolution
-        if kernel_name is None:
-            kernels = xclbin.get_kernels()
-            if not kernels:
-                raise RuntimeError("No kernels found in xclbin")
-            kernel_name = kernels[0].get_name()
-        else:
-            if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
-                raise HostRuntimeError(
-                    f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
-                )
+            # Kernel Name Resolution
+            if kernel_name is None:
+                kernels = xclbin.get_kernels()
+                if not kernels:
+                    raise RuntimeError("No kernels found in xclbin")
+                kernel_name = kernels[0].get_name()
+            else:
+                if not kernel_name in [k.get_name() for k in xclbin.get_kernels()]:
+                    raise HostRuntimeError(
+                        f"Kernel {kernel_name} not found in xclbin (kernels found: {[k.get_name() for k in xclbin.get_kernels()]})"
+                    )
 
-        insts = self.read_insts(insts_path)
-        if isinstance(insts, pyxrt.module):
-            kernel = pyxrt.ext.kernel(context, insts, kernel_name)
-        else:
-            kernel = pyxrt.kernel(context, kernel_name)
+            insts = self.read_insts(insts_path)
+            if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
+                kernel = pyxrt.ext.kernel(context, insts, kernel_name)
+            else:
+                kernel = pyxrt.kernel(context, kernel_name)
 
-        kernel_handle = CachedXRTKernelHandle(kernel, xclbin, context, insts)
-        entry["handles"].append(weakref.ref(kernel_handle))
+            kernel_handle = CachedXRTKernelHandle(kernel, xclbin, context, insts)
+            entry["handles"].append(weakref.ref(kernel_handle))
 
-        return kernel_handle
+            return kernel_handle
+
+        except Exception:
+            if context_key in self._context_cache:
+                entry = self._context_cache[context_key]
+                # Clean up dead handles
+                entry["handles"] = [
+                    ref for ref in entry["handles"] if ref() is not None
+                ]
+                if not entry["handles"]:
+                    del self._context_cache[context_key]
+                    self._cleanup_entry(entry)
+            raise
