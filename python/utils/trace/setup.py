@@ -1219,7 +1219,7 @@ def configure_packet_tracing_aie2(
         channel=1,
         bd_id=15,
         ddr_id=ddr_id,
-        size=trace_size,
+        size=trace_size // 4,
         offset=trace_offset,
         enable_token=enable_token,
         shim_burst_length=shim_burst_length,
