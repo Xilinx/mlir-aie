@@ -155,6 +155,9 @@ if config.enable_board_tests:
 # Concurrency tests control their own parallelism, so run them serially
 lit_config.parallelism_groups["concurrency"] = 1
 
+# NPU XRT tests should run serially to avoid resource contention
+lit_config.parallelism_groups["npu-xrt"] = 1
+
 if config.python_passes:
     config.available_features.add("python_passes")
 
