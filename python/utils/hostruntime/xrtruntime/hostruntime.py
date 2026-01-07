@@ -298,7 +298,26 @@ class CachedXRTRuntime(XRTHostRuntime):
                     self._evict()
 
                 self._device.register_xclbin(xclbin)
-                context = pyxrt.hw_context(self._device, xclbin_uuid)
+
+                # Try to create context, evicting if necessary
+                context = None
+                retries = 0
+                max_retries = len(self._context_cache)
+                while context is None:
+                    try:
+                        context = pyxrt.hw_context(self._device, xclbin_uuid)
+                    except RuntimeError as e:
+                        # If we hit a resource limit (err=-2 usually means EMFILE/ENFILE or similar resource exhaustion)
+                        # and we have items in the cache, try evicting.
+                        if (
+                            "No such file or directory" in str(e)
+                            and self._context_cache
+                            and retries < max_retries
+                        ):
+                            self._evict()
+                            retries += 1
+                        else:
+                            raise e
 
                 entry = {
                     "context": context,

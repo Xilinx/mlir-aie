@@ -183,7 +183,7 @@ def test_runtime_cache_fill(runtime):
     """Test filling the cache to its capacity."""
 
     # Ensure cache is empty
-    runtime._context_cache.clear()
+    runtime.cleanup()
 
     input_tensor = iron.tensor((32,), dtype=np.int32)
     input_tensor[:] = np.arange(32, dtype=np.int32)

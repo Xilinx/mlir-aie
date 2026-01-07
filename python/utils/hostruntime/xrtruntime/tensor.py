@@ -91,7 +91,7 @@ class XRTTensor(Tensor):
 
         Releases associated device memory (e.g., XRT buffer object).
         """
-        if hasattr(self, "bo"):
+        if hasattr(self, "_bo"):
             del self._bo
             self._bo = None
 
