@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from aie.iron.device import Device
 from .tensor import XRTTensor
 
+# I got these values through experimentation on two machines
 NPU1_CACHE_SIZE = 6
 NPU2_CACHE_SIZE = 32
 
