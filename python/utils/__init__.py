@@ -79,4 +79,4 @@ else:
 
 
 def get_current_device():
-    return DEFAULT_NPU_RUNTIME.device()
+    return DEFAULT_NPU_RUNTIME.device() if DEFAULT_NPU_RUNTIME else None
