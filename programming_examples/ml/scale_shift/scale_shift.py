@@ -10,13 +10,13 @@ import numpy as np
 import argparse
 import sys
 
-from aie.extras.dialects.ext import arith
+from aie.extras.dialects import arith
 from aie.dialects.aie import T
 from aie.iron import (
     Kernel,
     ObjectFifo,
     Program,
-    GlobalBuffer,
+    Buffer,
     Runtime,
     Worker,
     WorkerRuntimeBarrier,
@@ -126,7 +126,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
     rtps = []
     for i in range(n_cores):
         rtps.append(
-            GlobalBuffer(
+            Buffer(
                 np.ndarray[(1,), np.dtype[np.int32]],
                 name=f"rtp{i}",
                 initial_value=np.array([1], dtype=np.int32),
@@ -193,11 +193,13 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
             rt.set_barrier(workerBarriers[i], 1)
 
         # Fill the input objectFIFOs with data
-        rt.fill(inA.prod(), A)
-        rt.fill(inB.prod(), B)
+        tg1 = rt.task_group()
+        rt.fill(inA.prod(), A, task_group=tg1)
+        rt.fill(inB.prod(), B, task_group=tg1)
         # Drain the output objectFIFOs to the external memory
         # Wait for the data to be drained before continuing
-        rt.drain(outC.cons(), D, wait=True)
+        rt.drain(outC.cons(), D, wait=True, task_group=tg1)
+        rt.finish_task_group(tg1)
 
         # Set runtime parameters
         # 0 == add
@@ -214,11 +216,13 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
 
         # Fill the input objectFIFOs with data
         # The input D is the output of the previous operation
-        rt.fill(inA.prod(), D)
-        rt.fill(inB.prod(), C)
+        tg2 = rt.task_group()
+        rt.fill(inA.prod(), D, task_group=tg2)
+        rt.fill(inB.prod(), C, task_group=tg2)
         # Drain the output objectFIFOs to the external memory
         # Wait for the data to be drained before continuing
-        rt.drain(outC.cons(), D, wait=True)
+        rt.drain(outC.cons(), D, wait=True, task_group=tg2)
+        rt.finish_task_group(tg2)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())

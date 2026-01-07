@@ -15,6 +15,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
@@ -87,49 +88,6 @@ void AIEDialect::initialize() {
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
       >();
   addInterfaces<AIEInlinerInterface, AIEDialectFoldInterface>();
-}
-
-// Helper class to get a ShimDMAAllocationOp for a given <device, symbol name>
-//  pair. An object of this class is invalidated if, for any symbol_name, a
-//  ShimDMAAllocationOp that uses it changes, as the cache is not updated in
-//  this case.
-
-// Return the first ShimDMAAllocationOp nested inside the DeviceOp 'dev' that
-// uses the symbol 'sym_name'
-std::optional<xilinx::AIE::ShimDMAAllocationOp>
-xilinx::AIE::ShimDMAllocationGetter::get(DeviceOp dev, StringRef sym_name) {
-  auto key = std::make_pair(dev, sym_name);
-  auto it = allocGetter.find(key);
-  if (it != allocGetter.end()) {
-    return it->second;
-  }
-
-  // Call cachelessGet to look for the allocation operation
-  auto allocOp = cachelessGet(dev, sym_name);
-
-  // Only cache the value if it's not empty (i.e., not std::nullopt)
-  if (allocOp.has_value()) {
-    allocGetter[key] = allocOp; // Cache it
-  }
-
-  return allocOp; // Return the found or empty optional
-}
-
-// Finding the ShimDMAAllocationOp for a given <DeviceOp, symbol_name> pair
-// can be slow when the symbol is used in many places. This version of the
-// function is only called when the cache does not have a ShimDMAAllocationOp
-// stored from a previous lookup.
-std::optional<xilinx::AIE::ShimDMAAllocationOp>
-xilinx::AIE::ShimDMAllocationGetter::cachelessGet(DeviceOp dev,
-                                                  mlir::StringRef sym_name) {
-  auto *sym = dev.lookupSymbol(sym_name);
-  if (!sym)
-    return std::nullopt;
-  auto uses = SymbolTable::getSymbolUses(sym, dev);
-  for (auto use : *uses)
-    if (auto infoOp = dyn_cast<AIE::ShimDMAAllocationOp>(use.getUser()))
-      return infoOp;
-  return std::nullopt;
 }
 
 // Helper methods to retrieve the encoding associated to a burst length,
@@ -432,6 +390,25 @@ LogicalResult ObjectFifoCreateOp::verify() {
   if (getInitValues().has_value()) {
     if ((int)getInitValues().value().size() != size())
       return emitError("`init_values` does not initialize all objects");
+  }
+
+  if (getIterCount().has_value()) {
+    int iterCount = getIterCount().value();
+    if (iterCount < 1 || iterCount > 256)
+      return emitError("`iter_count` must be between 1 and 256");
+
+    // Check that either producer or at least one consumer is a MemTile
+    bool hasMemTile = getProducerTileOp().isMemTile();
+    if (!hasMemTile) {
+      for (auto consumerTile : getConsumerTiles()) {
+        if (cast<TileOp>(consumerTile.getDefiningOp()).isMemTile()) {
+          hasMemTile = true;
+          break;
+        }
+      }
+    }
+    if (!hasMemTile)
+      return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
   return success();
@@ -739,7 +716,7 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
         auto name = dyn_cast<FlatSymbolRefAttr>(sym);
-        if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
+        if (auto *st = mlir::SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
           outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
       }
@@ -1087,6 +1064,35 @@ const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
 }
 
+xilinx::AIE::DeviceOp DeviceOp::getForSymbolInModule(mlir::ModuleOp module,
+                                                     llvm::StringRef symbol) {
+  DeviceOp deviceOp;
+  if (!symbol.size()) {
+    // If no device name is given, assume 'main'
+    symbol = "main";
+  }
+  Operation *maybeDeviceOp = mlir::SymbolTable::lookupSymbolIn(module, symbol);
+  if (!maybeDeviceOp) {
+    return nullptr;
+  }
+  deviceOp = llvm::dyn_cast<DeviceOp>(maybeDeviceOp);
+  return deviceOp;
+}
+
+xilinx::AIE::DeviceOp
+DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module,
+                                      llvm::StringRef symbol) {
+  DeviceOp deviceOp = getForSymbolInModule(module, symbol);
+  if (!deviceOp) {
+    if (!symbol.empty()) {
+      module.emitError("No such device: ") << symbol;
+    } else {
+      module.emitError("No 'main' device in module");
+    }
+  }
+  return deviceOp;
+}
+
 //===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//
@@ -1209,8 +1215,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = builder.create<TileOp>(builder.getUnknownLoc(),
-                                  builder.getIndexType(), col, row);
+    tile = TileOp::create(builder, builder.getUnknownLoc(),
+                          builder.getIndexType(), col, row);
   }
   return tile;
 }
@@ -1344,6 +1350,16 @@ LogicalResult CoreOp::verify() {
     return emitOpError("CoreOp cannot be created on shim tile, i.e. row == 0");
   if (getTileOp().isMemTile())
     return emitOpError("CoreOp cannot be created on mem tile");
+  if (getElfFile()) {
+    // If an ELF file is specified, no MLIR body is allowed (to remove
+    // ambiguity); the ELF file will fully dictate what runs on the
+    // core and any MLIR would be ignored.
+    if (!isEmpty()) {
+      return emitOpError(
+          "When `elf_file` attribute is specified, core body must be empty "
+          "(consist of exactly one `aie.end` op).");
+    }
+  }
   return success();
 }
 
@@ -1352,6 +1368,13 @@ int CoreOp::colIndex() { return getTileOp().colIndex(); }
 int CoreOp::rowIndex() { return getTileOp().rowIndex(); }
 
 TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
+
+bool CoreOp::isEmpty() {
+  Region &body = getBody();
+  // Return iff. core body contains exactly one block with exactly one AIE.EndOp
+  return (body.hasOneBlock() && body.front().getOperations().size() == 1 &&
+          llvm::isa<AIE::EndOp>(body.front().front()));
+}
 
 //===----------------------------------------------------------------------===//
 // BufferOp
@@ -2318,16 +2341,142 @@ void BDChainOp::print(OpAsmPrinter &printer) {
 // ShimDMAAllocationOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult ShimDMAAllocationOp::verify() {
+  TileOp tileOp = getTileOp();
+  if (!tileOp) {
+    return emitOpError("tile operand must be a TileOp");
+  }
+
+  const auto &targetModel = getTargetModel(*this);
+  int col = tileOp.getCol();
+  int row = tileOp.getRow();
+
+  if (!targetModel.isShimNOCorPLTile(col, row)) {
+    return emitOpError("tile must be a shim tile, but got tile(")
+           << col << ", " << row << ")";
+  }
+
+  return success();
+}
+
+TileOp ShimDMAAllocationOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
+}
+
 ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
                                                       llvm::StringRef symbol) {
-  auto alloc_ops = device.getOps<ShimDMAAllocationOp>();
-  for (auto it = alloc_ops.begin(); it != alloc_ops.end(); ++it) {
-    AIE::ShimDMAAllocationOp a = *it;
-    if (a.getSymName() == symbol) {
-      return a;
+  Operation *maybeOp = device.lookupSymbol(symbol);
+  if (maybeOp) {
+    if (ShimDMAAllocationOp op = dyn_cast<ShimDMAAllocationOp>(maybeOp)) {
+      return op;
     }
   }
   return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// RuntimeSequenceOp
+//===----------------------------------------------------------------------===//
+
+ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+
+  // Name of this runtime sequence
+  StringAttr nameAttr;
+  (void)parser.parseOptionalSymbolName(
+      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
+
+  SmallVector<OpAsmParser::Argument> entryArgs;
+
+  // Entry arguments,  e.g. (%addr: memref<1xi32>)
+  ParseResult argParseResult = parser.parseCommaSeparatedList(
+      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+        OpAsmParser::Argument argument;
+        if (parser.parseArgument(argument, true, true)) {
+          return failure();
+        }
+        entryArgs.push_back(argument);
+        return success();
+      });
+  if (argParseResult) {
+    return argParseResult;
+  }
+
+  // Body
+  auto *body = result.addRegion();
+  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
+  if (bodyParseResult) {
+    return bodyParseResult;
+  }
+
+  return success();
+}
+
+void RuntimeSequenceOp::print(OpAsmPrinter &printer) {
+  Region &body = getRegion();
+
+  auto nameAttr = (*this)->getAttrOfType<StringAttr>(
+      mlir::SymbolTable::getSymbolAttrName());
+  if (nameAttr &&
+      nameAttr != ::mlir::OpBuilder((*this)->getContext())
+                      .getStringAttr(getDefaultRuntimeSequenceName())) {
+    printer << ' ';
+    printer.printSymbolName(nameAttr);
+  }
+
+  printer << '(';
+  for (unsigned i = 0, n = body.getNumArguments(); i < n; i++) {
+    if (i > 0) {
+      printer << ", ";
+    }
+    printer.printRegionArgument(body.getArgument(i));
+  }
+  printer << ')';
+
+  printer << ' ';
+  printer.printRegion(body, false, true);
+}
+
+LogicalResult RuntimeSequenceOp::verify() {
+  DeviceOp device = (*this)->getParentOfType<DeviceOp>();
+  if (!device) {
+    // this check is redudnant with the HasParent trait, but can't hurt
+    (*this)->emitOpError() << "must be inside AIE device operation.";
+    return failure();
+  }
+  return success();
+}
+
+RuntimeSequenceOp
+RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,
+                                        llvm::StringRef symbol) {
+  RuntimeSequenceOp runtimeSequenceOp;
+  if (!symbol.size()) {
+    runtimeSequenceOp = *deviceOp.getOps<RuntimeSequenceOp>().begin();
+  } else {
+    Operation *maybeRuntimeSequenceOp =
+        mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);
+    if (!maybeRuntimeSequenceOp) {
+      return nullptr;
+    }
+    runtimeSequenceOp =
+        llvm::dyn_cast<RuntimeSequenceOp>(maybeRuntimeSequenceOp);
+  }
+  return runtimeSequenceOp;
+}
+
+RuntimeSequenceOp
+RuntimeSequenceOp::getForSymbolInDeviceOrError(DeviceOp deviceOp,
+                                               llvm::StringRef symbol) {
+  RuntimeSequenceOp runtimeSequenceOp = getForSymbolInDevice(deviceOp, symbol);
+  if (!runtimeSequenceOp) {
+    if (!symbol.empty()) {
+      deviceOp.emitError("No such runtime sequence: ") << symbol;
+    } else {
+      deviceOp.emitError("No runtime sequence in device");
+    }
+  }
+  return runtimeSequenceOp;
 }
 
 // Include implementations for custom attributes

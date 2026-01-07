@@ -194,7 +194,7 @@ func.func @vecaddf_bf16(%arg0: vector<16xbf16>, %arg1: vector<16xbf16>) -> vecto
 func.func @vecsubf_f32(%arg0: vector<16xf32>, %arg1: vector<16xf32>) -> vector<16xf32> {
   // CHECK:  %[[LCAST:.*]] = aievec.cast %[[LHS]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
   // CHECK:  %[[RCAST:.*]] = aievec.cast %[[RHS]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
-  // CHECK:  %[[SUB:.*]] = aievec.sub_elem %[[LCAST]], %[[RCAST:.*]] : vector<16xf32>
+  // CHECK:  %[[SUB:.*]] = aievec.sub_elem %[[LCAST]], %[[RCAST]] : vector<16xf32>
   // CHECK:  %[[CAST:.*]] = aievec.cast %[[SUB]] {isResAcc = false} : vector<16xf32>, vector<16xf32>
   %0 = arith.subf %arg0, %arg1 : vector<16xf32>
   // CHECK: return %[[CAST]] : vector<16xf32>
@@ -215,3 +215,31 @@ func.func @vecsubf_bf16(%arg0: vector<16xbf16>, %arg1: vector<16xbf16>) -> vecto
   return %0 : vector<16xbf16>
 }
 
+// CHECK-LABEL: func @vecaddf_f32_with_const(
+// CHECK-SAME: %[[ARG:.*]]: vector<16xf32>)
+func.func @vecaddf_f32_with_const(%arg0: vector<16xf32>) -> vector<16xf32> {
+  // CHECK: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<16xf32>
+  // CHECK: %[[LCAST:.*]] = aievec.cast %[[ARG]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
+  // CHECK: %[[RCAST:.*]] = aievec.cast %[[CST]] {isResAcc = true} : vector<16xf32>, vector<16xf32>
+  // CHECK: %[[ADD:.*]] = aievec.add_elem %[[LCAST]], %[[RCAST]] : vector<16xf32>
+  // CHECK: %[[RES:.*]] = aievec.cast %[[ADD]] {isResAcc = false} : vector<16xf32>, vector<16xf32>
+  %cst = arith.constant dense<0.0> : vector<16xf32>
+  %0 = arith.addf %arg0, %cst : vector<16xf32>
+  // CHECK: return %[[RES]] : vector<16xf32>
+  return %0 : vector<16xf32>
+}
+
+// CHECK-LABEL: func @vecaddf_bf16_with_const(
+// CHECK-SAME: %[[ARG:.*]]: vector<16xbf16>)
+func.func @vecaddf_bf16_with_const(%arg0: vector<16xbf16>) -> vector<16xbf16> {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[CST:.*]] = arith.constant dense<0.000000e+00> : vector<16xbf16>
+  // CHECK: %[[LUPS:.*]] = aievec.ups %[[ARG]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // CHECK: %[[RUPS:.*]] = aievec.ups %[[CST]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // CHECK: %[[ADD:.*]] = aievec.add_elem %[[LUPS]], %[[RUPS]] : vector<16xf32>
+  // CHECK: %[[SRS:.*]] = aievec.srs %[[ADD]], %[[C0]] : vector<16xf32>, i32, vector<16xbf16>
+  %cst = arith.constant dense<0.0> : vector<16xbf16>
+  %0 = arith.addf %arg0, %cst : vector<16xbf16>
+  // CHECK: return %[[SRS]] : vector<16xbf16>
+  return %0 : vector<16xbf16>
+}

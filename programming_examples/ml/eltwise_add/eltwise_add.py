@@ -90,29 +90,29 @@ def my_eltwise_add(dev, num_elements, trace_size):
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
         rt.start(*my_workers)
+
+        # Initialize a group for parallel drain tasks, with fill resources free'd when drains complete.
+        tg = rt.task_group()
+
         # Fill the input objectFIFOs with data
         for i in range(num_columns):
             rt.fill(
                 of_in1s[i].prod(),
                 A,
                 taps[i],
+                task_group=tg,
             )
-            rt.fill(
-                of_in2s[i].prod(),
-                B,
-                taps[i],
-            )
+            rt.fill(of_in2s[i].prod(), B, taps[i], task_group=tg)
         # Drain the output objectFIFOs with data
-        tg_out = rt.task_group()
         for i in range(num_columns):
             rt.drain(
                 of_outs[i].cons(),
                 C,
                 taps[i],
                 wait=True,  # wait for the transfer to complete and data to be available
-                task_group=tg_out,
+                task_group=tg,
             )
-        rt.finish_task_group(tg_out)
+        rt.finish_task_group(tg)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())

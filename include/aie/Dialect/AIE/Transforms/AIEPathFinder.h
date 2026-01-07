@@ -245,6 +245,8 @@ public:
 
   DynamicTileAnalysis() : pathfinder(std::make_shared<Pathfinder>()) {}
   DynamicTileAnalysis(std::shared_ptr<Router> p) : pathfinder(std::move(p)) {}
+  DynamicTileAnalysis(mlir::Operation *op)
+      : pathfinder(std::make_shared<Pathfinder>()) {}
 
   mlir::LogicalResult runAnalysis(DeviceOp &device);
 
@@ -252,6 +254,7 @@ public:
   int getMaxRow() const { return maxRow; }
 
   TileOp getTile(mlir::OpBuilder &builder, int col, int row);
+  TileOp getTile(mlir::OpBuilder &builder, const TileID &tileId);
 
   SwitchboxOp getSwitchbox(mlir::OpBuilder &builder, int col, int row);
 

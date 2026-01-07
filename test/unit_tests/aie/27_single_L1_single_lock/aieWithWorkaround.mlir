@@ -13,6 +13,8 @@
 // RUN: %run_on_board ./test.elf
 
 module @test27_simple_shim_dma_single_lock {
+aie.device(xcvc1902) {
+
   %tile73 = aie.tile(7, 3)
   %lockCore = aie.lock(%tile73, 0) { sym_name = "coreLock"}
   %dummyLock = aie.lock(%tile73, 1) { sym_name = "dummyLock"}
@@ -65,4 +67,6 @@ module @test27_simple_shim_dma_single_lock {
 
     aie.end
   }
+  
+}
 }

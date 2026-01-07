@@ -12,6 +12,8 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test03_sync_with_locks {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
@@ -35,4 +37,5 @@ module @test03_sync_with_locks {
     aie.use_lock(%lock13_5, "Release", 1) // release for read
     aie.end
   }
+}
 }

@@ -10,10 +10,6 @@
 
 module {
   aie.device(NPUDEVICE) {
-    memref.global "public" @out_cons : memref<16xi32>
-    memref.global "public" @out : memref<16xi32>
-    memref.global "public" @in1_cons : memref<16xi32>
-    memref.global "public" @in1 : memref<16xi32>
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_3 = aie.tile(0, 3)
@@ -143,8 +139,8 @@ module {
       }
       aie.end
     }
-    aie.shim_dma_allocation @in1(MM2S, 0, 0)
-    aiex.runtime_sequence(%arg0: memref<256xi32>, %arg1: memref<256xi32>, %arg2: memref<256xi32>) {
+    aie.shim_dma_allocation @in1 (%tile_0_0, MM2S, 0)
+    aie.runtime_sequence(%arg0: memref<256xi32>, %arg1: memref<256xi32>, %arg2: memref<256xi32>) {
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1]) {id = 1 : i64, metadata = @in1} : memref<256xi32>
       aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1]) {id = 0 : i64, metadata = @out} : memref<256xi32>
       aiex.npu.dma_wait {symbol = @out}
@@ -176,6 +172,6 @@ module {
     ^bb9:  // pred: ^bb6
       aie.end
     }
-    aie.shim_dma_allocation @out(S2MM, 0, 0)
+    aie.shim_dma_allocation @out (%tile_0_0, S2MM, 0)
   }
 }

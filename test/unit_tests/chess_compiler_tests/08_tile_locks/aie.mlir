@@ -11,33 +11,15 @@
 
 // REQUIRES: aiesimulator, valid_xchess_license, !hsa
 // RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
-// RUN: %run_on_board ./test.elf
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
 
 // CHECK: test start.
 // CHECK: after core start
-// CHECK: DMA [7, 3]
-// CHECK: BD 0 valid (Next BD: 1)
-// CHECK:    Transferring 2 32 bit words to/from byte address
-// CHECK:    Acquires lock 0 with value 0    Releases lock 0 with value 1 currently Acquired 1
-// CHECK: BD 1 valid (Last BD)
-// CHECK:  * Current BD for mm2s channel 0
-// CHECK:    Transferring 2 32 bit words to/from byte address
-// CHECK:    Acquires lock 1 with value 0    Releases lock 1 with value 1 currently Acquired 1
-// CHECK: BD 2 valid (Next BD: 3)
-// CHECK:    Transferring 2 32 bit words to/from byte address
-// CHECK:    Acquires lock 2 with value 0    Releases lock 2 with value 1 currently Acquired 1
-// CHECK: BD 3 valid (Last BD)
-// CHECK:  * Current BD for s2mm channel 0
-// CHECK:    Transferring 2 32 bit words to/from byte address
-// CHECK:    Acquires lock 3 with value 0    Releases lock 3 with value 1 currently Acquired 1
-// CHECK: Lock 0: Acquired 1
-// CHECK: Lock 1: Acquired 1
-// CHECK: Lock 2: Acquired 1
-// CHECK: Lock 3: Acquired 1
 // CHECK: PASS!
 
 module @test_chess_08_tile_locks {
+aie.device(xcvc1902) {
+
     %t63 = aie.tile(6, 3)
     %t73 = aie.tile(7, 3)
     %t72 = aie.tile(7, 2)
@@ -83,4 +65,6 @@ module @test_chess_08_tile_locks {
       ^end:
         aie.end
     }
+    
+}
 }

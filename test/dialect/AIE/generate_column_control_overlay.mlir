@@ -39,8 +39,7 @@
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(MM2S, 0, 0)
-// CTRLPKT: memref.global "public" @ctrlpkt_col0_mm2s_chan0 : memref<2048xi32>
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0)
 // CTRLPKT: aie.packet_flow(26) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_1]], TileControl : 0>
@@ -98,8 +97,7 @@ aie.device(npu1_1col) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(MM2S, 0, 0)
-// CTRLPKT: memref.global "public" @ctrlpkt_col0_mm2s_chan0 : memref<2048xi32>
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0)
 // CTRLPKT: aie.packet_flow(26) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_1]], TileControl : 0>
@@ -108,8 +106,7 @@ aie.device(npu1_1col) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0(MM2S, 0, 1)
-// CTRLPKT: memref.global "public" @ctrlpkt_col1_mm2s_chan0 : memref<2048xi32>
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0(%[[tile_1_0]], MM2S, 0)
 // CTRLPKT: aie.packet_flow(26) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_1]], TileControl : 0>
@@ -198,8 +195,7 @@ aie.device(npu1_2col) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(MM2S, 0, 0)
-// CTRLPKT: memref.global "public" @ctrlpkt_col0_mm2s_chan0 : memref<2048xi32>
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0(%[[tile_0_0]], MM2S, 0)
 // CTRLPKT: aie.packet_flow(3) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_1]], TileControl : 0>
@@ -212,8 +208,7 @@ aie.device(npu1_2col) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 1>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_3]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(MM2S, 1, 0)
-// CTRLPKT: memref.global "public" @ctrlpkt_col0_mm2s_chan1 : memref<2048xi32>
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan1(%[[tile_0_0]], MM2S, 1)
 // CTRLPKT: aie.packet_flow(6) {
 // CTRLPKT:   aie.packet_source<%[[tile_0_0]], DMA : 1>
 // CTRLPKT:   aie.packet_dest<%[[tile_0_4]], TileControl : 0>
@@ -226,8 +221,7 @@ aie.device(npu1_2col) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_0]], TileControl : 0>
 // CTRLPKT: }
-// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0(MM2S, 0, 1)
-// CTRLPKT: memref.global "public" @ctrlpkt_col1_mm2s_chan0 : memref<2048xi32>
+// CTRLPKT: aie.shim_dma_allocation @ctrlpkt_col1_mm2s_chan0(%[[tile_1_0]], MM2S, 0)
 // CTRLPKT: aie.packet_flow(7) {
 // CTRLPKT:   aie.packet_source<%[[tile_1_0]], DMA : 0>
 // CTRLPKT:   aie.packet_dest<%[[tile_1_1]], TileControl : 0>

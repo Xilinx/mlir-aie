@@ -498,6 +498,24 @@ def AIEVec_NegOp:
   let hasVerifier = 0;
 }
 
+def AIEVec_ExpOp:
+  AIEVec_Op<"exp", [
+    Pure,
+    AllTypesMatch<["source", "result"]>
+  ]>,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+  let summary = "AIE vector exponential";
+  let description = [{
+    AMD-specific intrinsic that computes the exponential of the input vector.
+    For AIE2P, this will be lowered to the exp2 intrinsic using the identity
+    exp(x) = exp2(x * log2(e)).
+    `$result = exp(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
 def AIEVec_BxorOp:
   AIEVec_Op<"bxor", [
     Pure,
@@ -611,6 +629,40 @@ def AIEVec_MatMulOp:
          `vector<4x4xi16>`  | `vector<4x4xi16>`  | `vector<4x4xi64>`
          `vector<4x2xi32>`  | `vector<2x4xi16>`  | `vector<4x4xi64>`
          `vector<4x8xbf16>` | `vector<8x4xbf16>` | `vector<4x4xf32>`
+  }];
+  let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
+                         type($rhs) `into` type($acc)}];
+  let hasVerifier = 0;
+}
+
+def AIEVec_MatMulOp_AIE2P:
+  AIEVec_Op<"matmul_aie2p", [
+    Pure,
+    AllRanksMatch<["lhs", "rhs", "acc"]>,
+    AllTypesMatch<["acc", "result"]>,
+    ShapesCompatibleWithContraction<"lhs", "rhs", "acc">,
+    IsValidAIE2PMatMulShapeAndType<"lhs", "rhs", "acc">
+  ]>,
+  Arguments<(ins AIE2PMatMulLHS:$lhs,
+                 AIE2PMatMulRHS:$rhs,
+                 AIE2PMatMulACC:$acc)>,
+  Results<(outs AIE2PMatMulACC:$result)> {
+  let summary = "AIE2P matrix-multiply and accummulate";
+  let description = [{
+    AMD AIEv2P-specific intrinsic that performs a matrix multiplication
+    between `lhs` and `rhs`, and accumulates the result in `acc`.
+
+    Currently, this intrinsic supports the following type combinations:
+
+         lhs                 | rhs                 | Accumulator
+        :-------------------:|:-------------------:|:------------------:
+         `vector<8x8xbf16>`  | `vector<8x8xbf16>`  | `vector<8x8xf32>`
+         `vector<4x8xbf16>`  | `vector<8x4xbf16>`  | `vector<4x4xf32>`
+         `vector<4x8xbf16>`  | `vector<8x8xbf16>`  | `vector<4x8xf32>`
+         `vector<8x1xbf16>`  | `vector<1x8xbf16>`  | `vector<8x8xf32>`
+         `vector<8x8xbf16>`  | `vector<8x4xbf16>`  | `vector<8x4xf32>`
+         `vector<8x8xi8>`    | `vector<8x8xi8>`    | `vector<8x8xi32>`
+         `vector<8x2xi16>`   | `vector<2x8xi16>`   | `vector<8x8xi32>`
   }];
   let assemblyFormat = [{$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs) `,`
                          type($rhs) `into` type($acc)}];

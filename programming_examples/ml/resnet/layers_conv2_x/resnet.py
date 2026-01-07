@@ -7,7 +7,7 @@
 import numpy as np
 import sys
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col3, NPU2, Tile
 from aie.iron.controlflow import range_
@@ -210,7 +210,7 @@ for i in range(3):
     rtp.append([])
     for j in range(2, 6):
         rtp[i].append(
-            GlobalBuffer(
+            Buffer(
                 np.ndarray[(16,), np.dtype[np.int32]],
                 name=f"rtpComputeTile{i}{j}",
                 use_write_rtp=True,

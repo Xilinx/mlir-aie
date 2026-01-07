@@ -12,6 +12,8 @@
 // RUN: %run_on_board ./test.elf
 
 module @benchmark06_lock_release {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %l13_0 = aie.lock(%tile13, 0)
@@ -20,4 +22,6 @@ aie.core(%tile13) {
     aie.use_lock(%l13_0, "Release", 0)
     aie.end
   }
+
+}
 }

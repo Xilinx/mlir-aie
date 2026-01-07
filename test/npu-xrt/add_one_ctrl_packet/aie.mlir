@@ -10,9 +10,6 @@
 
 module {
   aie.device(NPUDEVICE) {
-    memref.global "public" @out0 : memref<8xi32>
-    memref.global "public" @ctrl0 : memref<8xi32>
-
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
     %tile_0_2 = aie.tile(0, 2)
 
@@ -107,11 +104,11 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @ctrl0(S2MM, 0, 0)
-    aie.shim_dma_allocation @out0(S2MM, 1, 0)
+    aie.shim_dma_allocation @ctrl0 (%tile_0_0, S2MM, 0)
+    aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 1)
 
     memref.global "private" constant @blockwrite_data_0 : memref<8xi32> = dense<[2, 0, 0x40090000, 0, 0x40000000, 0, 0, 0x2000000]>
-    aiex.runtime_sequence @seq(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: memref<8xi32>) {
+    aie.runtime_sequence @seq(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: memref<8xi32>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c2_i64 = arith.constant 2 : i64

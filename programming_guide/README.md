@@ -78,4 +78,7 @@ This IRON AIE programming guide first introduces the language bindings for AIE-a
 ## AMD XDNA™ references
 * [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049)
 
+## IRON Configuration
+* [Configuration Options for IRON Python Bindings](./iron_configuration.md)
+
 

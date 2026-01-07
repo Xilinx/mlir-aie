@@ -61,9 +61,9 @@ struct AIELowerMulticastPass : public AIEMulticastBase<AIELowerMulticastPass> {
           TileOp destTile =
               dyn_cast<TileOp>(multiDest.getTile().getDefiningOp());
           Port destPort = multiDest.port();
-          builder.create<FlowOp>(builder.getUnknownLoc(), srcTile,
-                                 sourcePort.bundle, sourcePort.channel,
-                                 destTile, destPort.bundle, destPort.channel);
+          FlowOp::create(builder, builder.getUnknownLoc(), srcTile,
+                         sourcePort.bundle, sourcePort.channel, destTile,
+                         destPort.bundle, destPort.channel);
         }
       }
     }
