@@ -13,7 +13,6 @@ from aie.utils.ml import DataShaper
 import time
 import os
 import numpy as np
-from aie.utils.xrtruntime.xrt import write_out_trace
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.utils import TraceConfig, HostRuntime, NPUKernel, DEFAULT_NPU_RUNTIME
