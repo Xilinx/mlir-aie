@@ -28,11 +28,12 @@ NPU2_CACHE_SIZE = 32
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
 class XRTKernelHandle(KernelHandle):
-    def __init__(self, kernel, xclbin, context, insts):
+    def __init__(self, kernel, xclbin, context, insts, insts_bo=None):
         self.kernel = kernel
         self.xclbin = xclbin
         self.context = context
         self.insts = insts
+        self.insts_bo = insts_bo
 
 
 class XRTKernelResult(KernelResult):
@@ -151,11 +152,14 @@ class XRTHostRuntime(HostRuntime):
             )
             if not is_module:
                 insts_bytes = kernel_handle.insts.nbytes
-                insts_bo = self._tensor_class(
-                    kernel_handle.insts,
-                    flags=pyxrt.bo.cacheable,
-                    group_id=kernel_handle.kernel.group_id(1),
-                ).buffer_object()
+                if kernel_handle.insts_bo:
+                    insts_bo = kernel_handle.insts_bo
+                else:
+                    insts_bo = self._tensor_class(
+                        kernel_handle.insts,
+                        flags=pyxrt.bo.cacheable,
+                        group_id=kernel_handle.kernel.group_id(1),
+                    ).buffer_object()
 
             start = time.time_ns()
             h = kernel_handle.kernel(3, insts_bo, insts_bytes, *buffers)
@@ -165,8 +169,8 @@ class XRTHostRuntime(HostRuntime):
             if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
                 raise HostRuntimeError(f"Kernel returned {str(r)}")
         finally:
-            # delete insts buffer
-            if insts_bo:
+            # delete insts buffer if it was created locally
+            if insts_bo and not kernel_handle.insts_bo:
                 del insts_bo
 
         return XRTKernelResult(r, stop - start)
@@ -181,8 +185,8 @@ class XRTHostRuntime(HostRuntime):
 
 
 class CachedXRTKernelHandle(XRTKernelHandle):
-    def __init__(self, kernel, xclbin, context, insts):
-        super().__init__(kernel, xclbin, context, insts)
+    def __init__(self, kernel, xclbin, context, insts, insts_bo=None):
+        super().__init__(kernel, xclbin, context, insts, insts_bo)
         self._is_valid = True
 
     def invalidate(self):
@@ -195,6 +199,8 @@ class CachedXRTKernelHandle(XRTKernelHandle):
             del self.xclbin
         if hasattr(self, "insts"):
             del self.insts
+        if hasattr(self, "insts_bo"):
+            del self.insts_bo
 
 
 class CachedXRTRuntime(XRTHostRuntime):
@@ -207,6 +213,7 @@ class CachedXRTRuntime(XRTHostRuntime):
     def __init__(self):
         super().__init__()
         self._context_cache = OrderedDict()
+        self._insts_cache = OrderedDict()
         if self.npu_str == "npu1":
             self._cache_size = NPU1_CACHE_SIZE
         else:
@@ -221,6 +228,8 @@ class CachedXRTRuntime(XRTHostRuntime):
     def cleanup(self):
         while self._context_cache:
             self._evict()
+        while self._insts_cache:
+            self._evict_insts()
 
     def _cleanup_entry(self, entry):
         context = entry["context"]
@@ -239,6 +248,14 @@ class CachedXRTRuntime(XRTHostRuntime):
         # Pop the oldest item
         key, entry = self._context_cache.popitem(last=False)
         self._cleanup_entry(entry)
+
+    def _cleanup_insts_entry(self, entry):
+        insts_bo = entry["insts_bo"]
+        del insts_bo
+
+    def _evict_insts(self):
+        key, entry = self._insts_cache.popitem(last=False)
+        self._cleanup_insts_entry(entry)
 
     def load(
         self,
@@ -304,12 +321,37 @@ class CachedXRTRuntime(XRTHostRuntime):
                     )
 
             insts = self.read_insts(insts_path)
+            insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
                 kernel = pyxrt.ext.kernel(context, insts, kernel_name)
             else:
                 kernel = pyxrt.kernel(context, kernel_name)
+                # Handle insts caching
+                group_id = kernel.group_id(1)
+                insts_key = (str(insts_path), insts_mtime, group_id)
 
-            kernel_handle = CachedXRTKernelHandle(kernel, xclbin, context, insts)
+                if insts_key in self._insts_cache:
+                    insts_entry = self._insts_cache[insts_key]
+                    self._insts_cache.move_to_end(insts_key)
+                    insts_bo = insts_entry["insts_bo"]
+                else:
+                    if len(self._insts_cache) >= self._cache_size:
+                        self._evict_insts()
+
+                    insts_bo = self._tensor_class(
+                        insts,
+                        flags=pyxrt.bo.cacheable,
+                        group_id=group_id,
+                    ).buffer_object()
+
+                    insts_entry = {
+                        "insts_bo": insts_bo,
+                    }
+                    self._insts_cache[insts_key] = insts_entry
+
+            kernel_handle = CachedXRTKernelHandle(
+                kernel, xclbin, context, insts, insts_bo
+            )
             entry["handles"].append(weakref.ref(kernel_handle))
 
             return kernel_handle
