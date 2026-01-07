@@ -188,25 +188,21 @@ def test_runtime_cache_fill(runtime):
     input_tensor = iron.tensor((32,), dtype=np.int32)
     input_tensor[:] = np.arange(32, dtype=np.int32)
 
-    # Load 32 different kernels
-    # We use a loop and define lambdas.
-    # Note: lambda x, val=i: x + val captures i as a default argument, making the functions distinct.
+    # Load kernels up to capacity + 1
+    limit = runtime._cache_size
     first_key = None
-    for i in range(32):
+
+    for i in range(limit + 1):
         transform(input_tensor, input_tensor, lambda x, val=i: x + val)
+
         if i == 0:
             first_key = list(runtime._context_cache.keys())[0]
 
-    assert len(runtime._context_cache) == 32
-    assert first_key in runtime._context_cache
+        # Check size
+        expected_size = min(i + 1, limit)
+        assert len(runtime._context_cache) == expected_size
 
-    # Load one more
-    transform(input_tensor, input_tensor, lambda x: x + 100)
-
-    # Size should remain 32 (eviction happened)
-    assert len(runtime._context_cache) == 32
-
-    # Verify the first one was evicted
+    # Verify the first one was evicted (since we went to limit + 1)
     assert first_key not in runtime._context_cache
 
 
@@ -324,6 +320,11 @@ def test_base_runtime_load_run(runtime):
     # Run transform to generate artifacts using the cached runtime (fixture)
     transform(input_tensor, input_tensor, lambda x: x + 1)
 
+    # Verify result
+    res = input_tensor.numpy()
+    expected = np.arange(32, dtype=np.int32) + 1
+    np.testing.assert_array_equal(res, expected)
+
     # Get paths from cached runtime to use with base runtime
     key = list(runtime._context_cache.keys())[0]
     xclbin_path = key[0]
@@ -350,8 +351,21 @@ def test_base_runtime_load_run(runtime):
 
     # Verify result
     res = input_tensor.numpy()
-    expected = np.arange(32, dtype=np.int32) + 1
+    expected = expected + 1
     np.testing.assert_array_equal(res, expected)
 
     # Verify no caching in base runtime
     assert not hasattr(base_runtime, "_context_cache")
+
+
+def test_cache_size_limit(runtime):
+    """Test that cache size is set correctly based on device."""
+    from aie.utils.hostruntime.xrtruntime.hostruntime import (
+        NPU1_CACHE_SIZE,
+        NPU2_CACHE_SIZE,
+    )
+
+    if runtime.npu_str == "npu1":
+        assert runtime._cache_size == NPU1_CACHE_SIZE
+    else:
+        assert runtime._cache_size == NPU2_CACHE_SIZE

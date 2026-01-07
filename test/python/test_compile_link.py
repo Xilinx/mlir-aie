@@ -35,66 +35,61 @@ void add_two(int* input, int* output, int tile_size) {
 
 def test_compile():
     """Test compilation of a C++ source file to an object file."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".cpp", delete_on_close=False, delete=True
-    ) as source_file, tempfile.NamedTemporaryFile(
-        mode="r", suffix=".o", delete_on_close=True
-    ) as output_file:
-        source_file.write(SOURCE_STRING1)
-        source_file.close()
-        assert os.path.getsize(source_file.name) > 0
+    with tempfile.TemporaryDirectory() as tmpdir:
+        source_path = os.path.join(tmpdir, "source.cpp")
+        output_path = os.path.join(tmpdir, "output.o")
 
-        assert os.path.getsize(output_file.name) == 0
+        with open(source_path, "w") as f:
+            f.write(SOURCE_STRING1)
+
+        assert os.path.getsize(source_path) > 0
+        assert not os.path.exists(output_path)
+
         compile_cxx_core_function(
-            source_path=source_file.name,
+            source_path=source_path,
             target_arch="aie2",
-            output_path=output_file.name,
+            output_path=output_path,
             compile_args=["-DTEST"],
         )
-        assert os.path.getsize(output_file.name) > 0
+        assert os.path.getsize(output_path) > 0
 
 
 def test_compile_and_link():
     """Test compilation of two C++ source files and link them."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".cpp", delete_on_close=False, delete=True
-    ) as source_file1, tempfile.NamedTemporaryFile(
-        mode="w", suffix=".cpp", delete_on_close=False, delete=True
-    ) as source_file2, tempfile.NamedTemporaryFile(
-        mode="r", suffix=".o", delete_on_close=True
-    ) as output_file1, tempfile.NamedTemporaryFile(
-        mode="r", suffix=".o", delete_on_close=True
-    ) as output_file2, tempfile.NamedTemporaryFile(
-        mode="r", suffix=".o", delete_on_close=True
-    ) as combined_output_file:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        source_path1 = os.path.join(tmpdir, "source1.cpp")
+        source_path2 = os.path.join(tmpdir, "source2.cpp")
+        output_path1 = os.path.join(tmpdir, "output1.o")
+        output_path2 = os.path.join(tmpdir, "output2.o")
+        combined_output_path = os.path.join(tmpdir, "combined.o")
 
-        source_file1.write(SOURCE_STRING1)
-        source_file1.close()
-        assert os.path.getsize(source_file1.name) > 0
+        with open(source_path1, "w") as f:
+            f.write(SOURCE_STRING1)
+        assert os.path.getsize(source_path1) > 0
 
-        source_file2.write(SOURCE_STRING2)
-        source_file2.close()
-        assert os.path.getsize(source_file2.name) > 0
+        with open(source_path2, "w") as f:
+            f.write(SOURCE_STRING2)
+        assert os.path.getsize(source_path2) > 0
 
-        assert os.path.getsize(output_file1.name) == 0
+        assert not os.path.exists(output_path1)
         compile_cxx_core_function(
-            source_path=source_file1.name,
+            source_path=source_path1,
             target_arch="aie2",
-            output_path=output_file1.name,
+            output_path=output_path1,
         )
-        assert os.path.getsize(output_file1.name) > 0
+        assert os.path.getsize(output_path1) > 0
 
-        assert os.path.getsize(output_file2.name) == 0
+        assert not os.path.exists(output_path2)
         compile_cxx_core_function(
-            source_path=source_file2.name,
+            source_path=source_path2,
             target_arch="aie2",
-            output_path=output_file2.name,
+            output_path=output_path2,
         )
-        assert os.path.getsize(output_file2.name) > 0
+        assert os.path.getsize(output_path2) > 0
 
-        assert os.path.getsize(combined_output_file.name) == 0
+        assert not os.path.exists(combined_output_path)
         merge_object_files(
-            object_paths=[output_file1.name, output_file2.name],
-            output_path=combined_output_file.name,
+            object_paths=[output_path1, output_path2],
+            output_path=combined_output_path,
         )
-        assert os.path.getsize(combined_output_file.name) > 0
+        assert os.path.getsize(combined_output_path) > 0

@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from aie.iron.device import Device
 from .tensor import XRTTensor
 
+NPU1_CACHE_SIZE = 6
+NPU2_CACHE_SIZE = 32
+
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
 class XRTKernelHandle(KernelHandle):
@@ -54,6 +57,21 @@ class XRTHostRuntime(HostRuntime):
     def __init__(self):
         self._device = pyxrt.device(0)
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
+
+        # TODO: this is duplicated from the LIT helpers.
+        # NPU Model mappings - centralized for easy updates
+        # Maps generation name to list of model strings that may appear in xrt-smi
+        NPU_MODELS = {
+            "npu1": ["npu1", "Phoenix"],
+            "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
+        }
+
+        if any([model in self._device_type_str for model in NPU_MODELS["npu1"]]):
+            self.npu_str = "npu1"
+        elif any([model in self._device_type_str for model in NPU_MODELS["npu2"]]):
+            self.npu_str = "npu2"
+        else:
+            raise RuntimeError(f"Unknown device type: {self._device_type_str}")
 
     @classmethod
     def read_insts(cls, insts_path: Path):
@@ -154,20 +172,10 @@ class XRTHostRuntime(HostRuntime):
     def device(self) -> "Device":
         from aie.iron.device import NPU1, NPU2
 
-        # TODO: this is duplicated from the LIT helpers.
-        # NPU Model mappings - centralized for easy updates
-        # Maps generation name to list of model strings that may appear in xrt-smi
-        NPU_MODELS = {
-            "npu1": ["npu1", "Phoenix"],
-            "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
-        }
-
-        if any([model in self._device_type_str for model in NPU_MODELS["npu1"]]):
+        if self.npu_str == "npu1":
             return NPU1()
-        elif any([model in self._device_type_str for model in NPU_MODELS["npu2"]]):
-            return NPU2()
         else:
-            raise RuntimeError(f"Unknown device type: {self._device_type_str}")
+            return NPU2()
 
 
 class CachedXRTKernelHandle(XRTKernelHandle):
@@ -189,14 +197,19 @@ class CachedXRTKernelHandle(XRTKernelHandle):
 
 class CachedXRTRuntime(XRTHostRuntime):
     """
-    A cached version of XRTHostRuntime that caches up to 32 contexts.
+    A cached version of XRTHostRuntime that caches up to n contexts,
+    depending on the type of NPU.
     It reuses contexts for the same xclbin (identified by path and mtime).
     """
 
     def __init__(self):
         super().__init__()
         self._context_cache = OrderedDict()
-        self._cache_size = 32
+        if self.npu_str == "npu1":
+            self._cache_size = NPU1_CACHE_SIZE
+        else:
+            self._cache_size = NPU2_CACHE_SIZE
+
         atexit.register(self.cleanup)
 
     def cleanup(self):
