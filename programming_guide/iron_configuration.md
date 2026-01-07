@@ -44,3 +44,11 @@ If the IRON device is not set, many designs will try it fetch it on demand using
 ## IRON Cache Location
 
 The IRON jit feature caches compiled objects in a directory defined by ```IRON_CACHE_DIR```. By default this value is the user's home directory.
+
+## IRON XRT Runtime Cache Size
+
+The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of this cache can be configured using the `XRT_CONTEXT_CACHE_SIZE` environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.
+
+```bash
+export XRT_CONTEXT_CACHE_SIZE=1
+```

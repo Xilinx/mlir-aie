@@ -365,7 +365,10 @@ def test_cache_size_limit(runtime):
         NPU2_CACHE_SIZE,
     )
 
-    if runtime.npu_str == "npu1":
-        assert runtime._cache_size == NPU1_CACHE_SIZE
-    else:
-        assert runtime._cache_size == NPU2_CACHE_SIZE
+    expected_size = NPU1_CACHE_SIZE if runtime.npu_str == "npu1" else NPU2_CACHE_SIZE
+
+    env_cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE")
+    if env_cache_size is not None:
+        expected_size = min(expected_size, int(env_cache_size))
+
+    assert runtime._cache_size == expected_size

@@ -114,8 +114,10 @@ jobs:
           # -j4 for 32GB RAM, -j12 for 64GB RAM
           if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
             LIT_OPTS="-j4 $LIT_OPTS"
+            export XRT_CONTEXT_CACHE_SIZE=1
           else
             LIT_OPTS="-j12 $LIT_OPTS"
+            export XRT_CONTEXT_CACHE_SIZE=2
           fi
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
@@ -196,8 +198,10 @@ jobs:
           # -j4 for 32GB RAM, -j12 for 64GB RAM
           if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
             LIT_OPTS="-j4 $LIT_OPTS"
+            export XRT_CONTEXT_CACHE_SIZE=1
           else
             LIT_OPTS="-j12 $LIT_OPTS"
+            export XRT_CONTEXT_CACHE_SIZE=2
           fi
 
           # Create runner-specific cache directory
