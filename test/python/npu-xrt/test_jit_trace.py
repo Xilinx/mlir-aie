@@ -49,16 +49,12 @@ def design(a_in, c_out, trace_config=None):
     rt = Runtime()
     with rt.sequence(a_type, c_type) as (a, c):
         if trace_config:
-            rt.enable_trace(trace_config.trace_size)
+            rt.enable_trace(trace_config.trace_size, workers=[worker])
 
         # In runtime sequence:
         rt.fill(of_in.prod(), a)
         rt.start(worker)
         rt.drain(of_out.cons(), c, wait=True)
-
-        if trace_config:
-            rt.enable_trace(trace_config.trace_size, workers=[worker])
-
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
