@@ -232,6 +232,15 @@ static TileElement getParentTileElement(Operation *op) {
   return llvm::dyn_cast<TileElement>(parent);
 }
 
+
+static int64_t getDimsMaxIdx(std::vector<BDDimLayoutAttr> dims) {
+  int64_t maxIdx = 0;
+  for (BDDimLayoutAttr dim : dims) {
+    maxIdx += dim.getStride() * (dim.getSize() - 1);
+  }
+  return maxIdx;
+}
+
 namespace {
 
 struct UsesAreAccessible {
@@ -1814,9 +1823,18 @@ LogicalResult DMABDOp::verify() {
                            << std::to_string(dims->size()) << " dimensions).";
 
     MemRefType buffer = getBuffer().getType();
-    int64_t maxIdx = 0;
-    for (BDDimLayoutAttr dim : *dims) {
-      maxIdx += dim.getStride() * (dim.getSize() - 1);
+    
+    std::vector<BDDimLayoutAttr> testDims = *dims;
+    int64_t maxIdx = getDimsMaxIdx(testDims);
+
+    if (buffer.getNumElements() <= maxIdx)
+      return emitOpError() << "Specified stride(s) and size(s) result in out "
+                              "of bounds access in buffer, for index "
+                           << std::to_string(maxIdx) << " in memref of length "
+                           << std::to_string(buffer.getNumElements()) << ".";
+
+
+   for (BDDimLayoutAttr dim : *dims) {
       if (0 == dim.getStride())
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
@@ -1830,11 +1848,6 @@ LogicalResult DMABDOp::verify() {
         return emitOpError() << "Stride may not exceed " << (1 << 20);
     }
 
-    if (buffer.getNumElements() <= maxIdx)
-      return emitOpError() << "Specified stride(s) and size(s) result in out "
-                              "of bounds access in buffer, for index "
-                           << std::to_string(maxIdx) << " in memref of length "
-                           << std::to_string(buffer.getNumElements()) << ".";
 
     // Since streams read 32b words, there's no way to read eg 16b with stride
     // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
