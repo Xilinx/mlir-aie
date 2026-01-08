@@ -78,13 +78,14 @@ class NPUKernel:
         return self._kernel_name
 
     # Blocking call.
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         """
         Run the kernel with the given arguments.
         This is a blocking call.
 
         Args:
             *args: Arguments passed to the kernel.
+            **kwargs: Additional arguments passed to the runtime load_and_run method.
 
         Returns:
             KernelResult: The result of the kernel execution.
@@ -94,5 +95,5 @@ class NPUKernel:
         return DefaultNPURuntime.load_and_run(
             self,
             list(args),
-            trace_config=self._trace_config,
+            **kwargs,
         )

@@ -95,12 +95,13 @@ class HostRuntime(ABC):
     """An abstract class for a generic host runtime"""
 
     @abstractmethod
-    def load(self, npu_kernel: NPUKernel) -> KernelHandle:
+    def load(self, npu_kernel: NPUKernel, **kwargs) -> KernelHandle:
         """
         Load an NPU kernel into the runtime.
 
         Args:
             npu_kernel (NPUKernel): The NPU kernel to load.
+            **kwargs: Additional arguments for loading.
 
         Returns:
             KernelHandle: A handle to the loaded kernel.
@@ -133,7 +134,7 @@ class HostRuntime(ABC):
         self,
         npu_kernel: NPUKernel,
         run_args: list,
-        trace_config: TraceConfig | None = None,
+        **kwargs,
     ) -> tuple[KernelHandle, KernelResult]:
         """
         Load and run an NPU kernel.
@@ -141,12 +142,13 @@ class HostRuntime(ABC):
         Args:
             npu_kernel (NPUKernel): The NPU kernel to load and run.
             run_args (list): Arguments to pass to the kernel.
-            trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+            **kwargs: Additional arguments passed to load.
 
         Returns:
             tuple[KernelHandle, KernelResult]: A tuple containing the kernel handle and the execution result.
         """
-        handle = self.load(npu_kernel)
+        trace_config = npu_kernel.trace_config
+        handle = self.load(npu_kernel, **kwargs)
         if trace_config:
             if trace_config.trace_after_last_tensor and len(run_args) > 0:
                 trace_config.last_tensor_shape = run_args[-1].shape

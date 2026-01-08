@@ -111,12 +111,14 @@ class XRTHostRuntime(HostRuntime):
     def load(
         self,
         npu_kernel,
+        **kwargs,
     ) -> XRTKernelHandle:
         """
         Load an NPU kernel into the XRT runtime.
 
         Args:
             npu_kernel: The NPU kernel to load.
+            **kwargs: Additional arguments for loading.
 
         Returns:
             XRTKernelHandle: A handle to the loaded kernel.
@@ -367,12 +369,16 @@ class CachedXRTRuntime(XRTHostRuntime):
     def load(
         self,
         npu_kernel,
+        retry: bool = True,
+        **kwargs,
     ) -> XRTKernelHandle:
         """
         Load an NPU kernel into the cached XRT runtime.
 
         Args:
             npu_kernel: The NPU kernel to load.
+            retry (bool, optional): Whether to retry loading if context creation fails due to resource limits. Defaults to True.
+            **kwargs: Additional arguments for loading.
 
         Returns:
             XRTKernelHandle: A handle to the loaded kernel.
@@ -421,7 +427,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                 # Try to create context, evicting if necessary
                 context = None
                 retries = 0
-                max_retries = len(self._context_cache)
+                max_retries = len(self._context_cache) if retry else 0
                 while context is None:
                     try:
                         context = pyxrt.hw_context(self._device, xclbin_uuid)
