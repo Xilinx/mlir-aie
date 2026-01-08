@@ -85,15 +85,14 @@ def transform(input, output, func):
 def test_cache_lambda_functions():
     """Test that caching works correctly with different lambda functions."""
     # Create input tensor
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(1, 33, dtype=np.int32)  # [1, 2, 3, ..., 32]
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Test 1: First execution with lambda function
     transform(input_tensor, input_tensor, lambda x: x + 1)
     result1 = input_tensor.numpy().copy()
 
     # Reset tensor
-    input_tensor[:] = np.arange(1, 33, dtype=np.int32)
+    input_tensor[:] = np.arange(32, dtype=np.int32)
 
     # Test 2: Second execution with same lambda function (should use cache)
     transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -116,8 +115,7 @@ def test_cache_lambda_functions():
 def test_cache_external_functions():
     """Test that ExternalFunction caching works correctly during execution."""
     # Create input tensor
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(1, 33, dtype=np.int32)  # [1, 2, 3, ..., 32]
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Test 1: First execution
     add_one_1 = ExternalFunction(
@@ -139,7 +137,7 @@ def test_cache_external_functions():
     result1 = input_tensor.numpy().copy()
 
     # Reset tensor
-    input_tensor[:] = np.arange(1, 33, dtype=np.int32)
+    input_tensor[:] = np.arange(32, dtype=np.int32)
 
     # Test 2: Second execution
     add_one_2 = ExternalFunction(
@@ -180,7 +178,7 @@ def test_cache_external_functions():
         ],
     )
 
-    input_tensor[:] = np.arange(1, 33, dtype=np.int32)
+    input_tensor[:] = np.arange(32, dtype=np.int32)
     transform(input_tensor, input_tensor, multiply_two)
     result3 = input_tensor.numpy()
 
@@ -193,8 +191,7 @@ def test_cache_external_functions():
 def test_cache_compile_flags():
     """Test that ExternalFunctions with different compile flags produce different results."""
     # Create input tensor
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(1, 33, dtype=np.int32)  # [1, 2, 3, ..., 32]
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Create ExternalFunctions with different compile flags
     add_5 = ExternalFunction(
@@ -236,7 +233,7 @@ def test_cache_compile_flags():
     result_5 = input_tensor.numpy().copy()
 
     # Reset and test with ADD_VALUE=10
-    input_tensor[:] = np.arange(1, 33, dtype=np.int32)
+    input_tensor[:] = np.arange(32, dtype=np.int32)
     transform(input_tensor, input_tensor, add_10)
     result_10 = input_tensor.numpy()
 
@@ -246,8 +243,8 @@ def test_cache_compile_flags():
     )
 
     # Verify expected results
-    expected_5 = np.arange(1, 33, dtype=np.int32) + 5
-    expected_10 = np.arange(1, 33, dtype=np.int32) + 10
+    expected_5 = np.arange(32, dtype=np.int32) + 5
+    expected_10 = np.arange(32, dtype=np.int32) + 10
 
     np.testing.assert_array_equal(result_5, expected_5)
     np.testing.assert_array_equal(result_10, expected_10)
@@ -360,8 +357,7 @@ def test_cache_file_source():
 def test_cache_include_directories():
     """Test that ExternalFunctions with include directories work correctly."""
     # Create input tensor
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(1, 33, dtype=np.int32)  # [1, 2, 3, ..., 32]
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Create temporary directory with header file
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -394,7 +390,7 @@ def test_cache_include_directories():
         result = input_tensor.numpy()
 
         # Verify expected results
-        expected = np.arange(1, 33, dtype=np.int32) + 42
+        expected = np.arange(32, dtype=np.int32) + 42
         np.testing.assert_array_equal(result, expected)
 
 
@@ -405,8 +401,7 @@ def test_cache_tensor_shapes():
     results = []
 
     for size in sizes:
-        input_tensor = iron.tensor((size,), dtype=np.int32)
-        input_tensor[:] = np.arange(1, size + 1, dtype=np.int32)
+        input_tensor = iron.arange(size, dtype=np.int32)
 
         # Apply transformation
         transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -414,7 +409,7 @@ def test_cache_tensor_shapes():
         results.append(result)
 
         # Verify expected results
-        expected = np.arange(1, size + 1, dtype=np.int32) + 1
+        expected = np.arange(size, dtype=np.int32) + 1
         np.testing.assert_array_equal(result, expected)
 
 
@@ -425,8 +420,7 @@ def test_cache_tensor_dtypes():
     results = []
 
     for dtype in dtypes:
-        input_tensor = iron.tensor((32,), dtype=dtype)
-        input_tensor[:] = np.arange(1, 33, dtype=dtype)
+        input_tensor = iron.arange(32, dtype=dtype)
 
         # Apply transformation
         transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -434,5 +428,5 @@ def test_cache_tensor_dtypes():
         results.append(result)
 
         # Verify expected results
-        expected = np.arange(1, 33, dtype=dtype) + 1
+        expected = np.arange(32, dtype=dtype) + 1
         np.testing.assert_array_equal(result, expected)

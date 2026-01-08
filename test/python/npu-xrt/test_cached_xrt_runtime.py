@@ -107,8 +107,7 @@ def transform(input, output, func):
 def test_runtime_caching_reuse(runtime):
     """Test that CachedXRTRuntime reuses contexts for the same kernel."""
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # First run with lambda
     transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -137,8 +136,7 @@ def test_runtime_caching_reuse(runtime):
 def test_runtime_caching_multiple_kernels(runtime):
     """Test that CachedXRTRuntime caches multiple different kernels."""
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Run first kernel (add 1)
     transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -158,8 +156,7 @@ def test_runtime_eviction_logic(runtime):
     runtime._cache_size = 1  # Set small cache size
 
     try:
-        input_tensor = iron.tensor((32,), dtype=np.int32)
-        input_tensor[:] = np.arange(32, dtype=np.int32)
+        input_tensor = iron.arange(32, dtype=np.int32)
 
         # Run first kernel
         transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -185,8 +182,7 @@ def test_runtime_cache_fill(runtime):
     # Ensure cache is empty
     runtime.cleanup()
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Load kernels up to capacity + 1
     limit = runtime._cache_size
@@ -209,9 +205,7 @@ def test_runtime_cache_fill(runtime):
 def test_runtime_mtime_sensitivity(runtime):
     """Test that updating the file (changing mtime) causes a reload."""
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
-
+    input_tensor = iron.arange(32, dtype=np.int32)
     # Load kernel
     transform(input_tensor, input_tensor, lambda x: x + 1)
     assert len(runtime._context_cache) == 1
@@ -255,8 +249,7 @@ def test_runtime_handle_invalidation(runtime):
     runtime.load = side_effect_load
 
     try:
-        input_tensor = iron.tensor((32,), dtype=np.int32)
-        input_tensor[:] = np.arange(32, dtype=np.int32)
+        input_tensor = iron.arange(32, dtype=np.int32)
 
         # Load first kernel to generate artifacts
         transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -294,8 +287,7 @@ def test_runtime_handle_invalidation(runtime):
 def test_runtime_cleanup(runtime):
     """Test that cleanup clears the cache and invalidates handles."""
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Capture load calls to get paths
     original_load = runtime.load
@@ -340,8 +332,7 @@ def test_runtime_cleanup(runtime):
 def test_base_runtime_load_run(runtime):
     """Test that the base XRTHostRuntime works correctly (no caching)."""
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Capture load calls to get paths
     original_load = runtime.load

@@ -107,8 +107,7 @@ def transform(input, output, func):
 def test_insts_caching(runtime):
     """Test that insts buffers are cached and reused."""
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # First run
     transform(input_tensor, input_tensor, lambda x: x + 1)
@@ -143,8 +142,7 @@ def test_insts_caching(runtime):
 def test_insts_initialization(runtime):
     """Test that insts_bo is initialized during load."""
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Capture load calls to get paths
     original_load = runtime.load
@@ -190,8 +188,7 @@ def test_insts_initialization(runtime):
 def test_insts_mtime_sensitivity(runtime):
     """Test that updating the insts file causes a reload."""
 
-    input_tensor = iron.tensor((32,), dtype=np.int32)
-    input_tensor[:] = np.arange(32, dtype=np.int32)
+    input_tensor = iron.arange(32, dtype=np.int32)
 
     # Load kernel
     transform(input_tensor, input_tensor, lambda x: x + 1)
