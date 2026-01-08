@@ -653,18 +653,18 @@ LogicalResult ObjectFifoLinkOp::verify() {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
-      MemRefType minInputBuffer;
+      int64_t minInputBufferSize = 0;
       for (auto fifoIn : getFifoIns()) {
         auto fifoInType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
         MemRefType buffer = llvm::cast<MemRefType>(fifoInType.getElementType());
-        if (buffer.getNumElements() <= minInputBuffer)
-          minInputBuffer = buffer;
+        if (buffer.getNumElements() <= minInputBufferSize)
+          minInputBufferSize = buffer.getNumElements();
       }
-      if (minInputBuffer.getNumElements() <= maxIdx) {
+      if (minInputBufferSize <= maxIdx) {
         return emitOpError() << "Specified stride(s) and size(s) result in out "
                                 "of bounds access in input objectfifo buffer, for index "
                              << std::to_string(maxIdx) << " in memref of length "
-                             << std::to_string(minInputBuffer.getNumElements()) << ".";
+                             << std::to_string(minInputBufferSize) << ".";
       }
     }
 
