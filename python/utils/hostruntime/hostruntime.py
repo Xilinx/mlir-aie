@@ -243,7 +243,7 @@ class HostRuntime(ABC):
                 )
             io_args[idx].to("cpu")
             o = io_args[idx].numpy()
-            e = bfloat16_safe_allclose(r, o)
+            e = bfloat16_safe_allclose(ref.dtype, ref, o)
             errors += np.size(e) - np.count_nonzero(e)
         return errors
 
