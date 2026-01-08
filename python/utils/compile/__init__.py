@@ -16,9 +16,9 @@ from .utils import (
     compile_external_kernel,
 )
 
-# Compiled kenrels are cached inside the `IRON_CACHE_HOME` directory.
+# Compiled kernels are cached inside the `NPU_CACHE_HOME` directory.
 # Kernels are cached based on their hash value of the MLIR module string. If during compilation,
 # we hit in the cache, the `aie.utils.jit` will load the xclbin and instruction binary files from the cache.
-IRON_CACHE_HOME = Path(
-    os.environ.get("IRON_CACHE_HOME", Path.home() / ".iron" / "cache")
+NPU_CACHE_HOME = Path(
+    os.environ.get("NPU_CACHE_HOME", Path.home() / ".npu" / "cache")
 ).resolve()

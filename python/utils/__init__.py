@@ -60,7 +60,7 @@ def zeros_like(*args, **kwargs):
 def set_tensor_class(cls):
     if not issubclass(cls, Tensor):
         raise ValueError(
-            f"IRON Tensors must inherit from the Tensor class but {cls} does not."
+            f"Tensors must inherit from the Tensor class but {cls} does not."
         )
     global DEFAULT_TENSOR_CLASS
     DEFAULT_TENSOR_CLASS = cls

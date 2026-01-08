@@ -93,7 +93,7 @@ make run
 | **Performance** | Baseline execution time | Microseconds overhead from JIT runtime |
 | **Flexibility** | Fixed at compile time | Runtime parameterization |
 | **Use Case** | Explicit XCLBIN management | Dynamic compilation |
-| **Binary Output** | Generates XCLBIN/inst.bin | Cached binaries in `IRON_CACHE_HOME` (defaults to `~/.iron/`) |
+| **Binary Output** | Generates XCLBIN/inst.bin | Cached binaries in `NPU_CACHE_HOME` (defaults to `~/.npu/`) |
 
 **When to use each approach:**
 - **Use JIT** for rapid prototyping, experimentation, runtime flexibility, and when you don't need control over XCLBINs

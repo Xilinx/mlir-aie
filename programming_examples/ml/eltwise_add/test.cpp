@@ -43,6 +43,9 @@ int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
       if (errors < 100) {
         std::cout << "Error in output " << C[i] << " != " << ref << " from "
                   << A[i] << " * " << B[i] << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
       }
       errors++;
     } else {

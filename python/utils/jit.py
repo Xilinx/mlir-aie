@@ -16,7 +16,7 @@ from .npukernel import NPUKernel
 from aie.dialects.aie import AIEDevice
 from .compile.cache.circular_cache import CircularCache
 from .compile.cache.utils import _create_function_cache_key, file_lock
-from .compile import IRON_CACHE_HOME
+from .compile import NPU_CACHE_HOME
 from .compile.utils import _cleanup_failed_compilation
 
 
@@ -28,7 +28,7 @@ _compiled_kernels = CircularCache(max_size=1)
 
 def jit(function=None, is_placed=True, use_cache=True):
     """
-    Decorator to compile an IRON kernel into a binary to run on the NPU.
+    Decorator to compile an NPU kernel into a binary to run on the NPU.
 
     Parameters:
     - is_placed (bool): Whether the kernel is using explicit or implicit placement Defaults to True.
@@ -101,7 +101,7 @@ def jit(function=None, is_placed=True, use_cache=True):
 
         # Hash of the IR string, ExternalFunction compiler options, and target architecture
         module_hash = hash_module(mlir_module, external_kernels, target_arch)
-        kernel_dir = IRON_CACHE_HOME / f"{module_hash}"
+        kernel_dir = NPU_CACHE_HOME / f"{module_hash}"
         lock_file_path = kernel_dir / ".lock"
         mlir_path = kernel_dir / "aie.mlir"
 
