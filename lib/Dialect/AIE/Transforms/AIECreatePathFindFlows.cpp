@@ -922,6 +922,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
               << ID << ", which is not supposed to pass through this port.";
           rule->emitRemark("Please consider changing all uses of packet id ")
               << ID << " to avoid deadlock.";
+          signalPassFailure();
         }
       }
 
