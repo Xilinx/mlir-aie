@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from aie.dialects.aie import packetflow, WireBundle

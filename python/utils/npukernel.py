@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
+# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 from pathlib import Path
 from .trace import TraceConfig
 

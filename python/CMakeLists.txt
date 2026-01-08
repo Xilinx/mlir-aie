@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2025, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include(AddMLIRPython)

@@ -1,3 +1,4 @@
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 from .buffer import Buffer
 from .kernel import ExternalFunction, Kernel
 from .program import Program

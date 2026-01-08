@@ -1,3 +1,4 @@
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 from collections import defaultdict
 import numpy as np
 from typing import Sequence, get_args, get_origin
