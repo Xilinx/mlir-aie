@@ -22,6 +22,13 @@ if TYPE_CHECKING:
 from .tensor import XRTTensor
 
 # I got these values through experimentation on two machines
+# These values are primarily determined by the hardware/driver, and could change
+# in the future. But currently, if you exceed these sizes, you will fail to be
+# able to create a new context. At the driver level, the cached contexts are
+# a system-wide constrained resource, so caching on systems with many concurrent
+# processes trying to create contexts (as in parallel CI jobs) can be flaky.
+# TODO: use some sort of file system artifact or figure out how to query the driver
+# for the state of the cache, and how to make loading operations atomic between processes.
 NPU1_CACHE_SIZE = 6
 NPU2_CACHE_SIZE = 32
 

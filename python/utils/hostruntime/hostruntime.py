@@ -138,7 +138,7 @@ class HostRuntime(ABC):
             out_size = trace_config.trace_size
             if len(args) > 0:
                 out_size += args[-1].nbytes
-                # TODO(erika): should really copy previous contents of output into this buffer...? What if it's in/out?
+                # TODO: should really copy previous contents of output into this buffer...? What if it's in/out?
                 args[-1] = tensor((out_size,), dtype=np.uint8)
             else:
                 out = tensor((out_size,), dtype=np.uint8)
