@@ -1,11 +1,13 @@
 <map id="include/aie/Targets/AIERT.h" name="include/aie/Targets/AIERT.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="363,5,507,45"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="534,5,678,45"/>
 <area shape="rect" id="Node000002" href="$Translation_8cpp.html" title=" " alt="" coords="5,101,180,126"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="351,50,139,103,138,98,349,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="521,42,192,96,152,103,151,98,191,91,520,37"/>
 <area shape="rect" id="Node000003" href="$AIEToConfiguration_8cpp.html" title=" " alt="" coords="204,93,445,133"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="401,56,351,95,348,91,398,52"/>
-<area shape="rect" id="Node000004" href="$AIERT_8cpp.html" title=" " alt="" coords="469,101,625,126"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="473,52,533,98,530,102,469,56"/>
-<area shape="rect" id="Node000005" href="$AIETargetCDODirect_8cpp.html" title=" " alt="" coords="649,101,899,126"/>
-<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="522,46,729,98,728,103,520,51"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="532,52,387,96,385,91,530,47"/>
+<area shape="rect" id="Node000004" href="$AIEMaterializeRuntimeSequences_8cpp.html" title=" " alt="" coords="470,93,742,133"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="609,59,609,93,603,93,603,59"/>
+<area shape="rect" id="Node000005" href="$AIERT_8cpp.html" title=" " alt="" coords="767,101,923,126"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="672,47,814,98,812,103,670,52"/>
+<area shape="rect" id="Node000006" href="$AIETargetCDODirect_8cpp.html" title=" " alt="" coords="947,101,1196,126"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="692,40,1010,98,1009,103,691,45"/>
 </map>

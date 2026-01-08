@@ -137,12 +137,6 @@ Traits: `HasParent<AIE::RuntimeSequenceOp>`, `NoTerminator`
 <tr><td><code>symbol</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 </table>
 
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | index |
-
 
 
 ### `aiex.connection` (::xilinx::AIEX::ConnectionOp)

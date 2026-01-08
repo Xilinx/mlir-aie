@@ -1,3 +1,17 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classstd_1_1shared__ptr_3_01bool_01_4.html" title=" " alt="" coords="5,5,155,31"/>
+<area shape="rect" id="Node000000" href="$classRewritePattern.html" title=" " alt="" coords="5,169,124,195"/>
+<area shape="rect" id="Node000001" href="$structDMAInlineBDChainPattern.html" title=" " alt="" coords="196,5,387,31"/>
+<area shape="poly" id="edge179_Node000000_Node000001" title=" " alt="" coords="76,155,112,96,139,65,171,40,194,28,197,33,173,44,142,69,116,100,80,158"/>
+<area shape="rect" id="Node000002" href="$structDMAStartBdChainForOpPattern.html" title=" " alt="" coords="180,55,403,80"/>
+<area shape="poly" id="edge180_Node000000_Node000002" title=" " alt="" coords="85,157,123,122,171,90,205,78,207,83,173,95,126,126,89,161"/>
+<area shape="rect" id="Node000003" href="$structDynamicSizeNoImplicitBroadcastPattern.html" title=" " alt="" coords="172,105,411,145"/>
+<area shape="poly" id="edge181_Node000000_Node000003" title=" " alt="" coords="128,163,211,142,212,147,129,169"/>
+<area shape="rect" id="Node000004" href="$structHoistCastOpToDataSourcePattern.html" title=" " alt="" coords="172,169,411,195"/>
+<area shape="poly" id="edge182_Node000000_Node000004" title=" " alt="" coords="138,179,172,179,172,185,138,185"/>
+<area shape="rect" id="Node000005" href="$structInlineRuntimeCallsPattern.html" title=" " alt="" coords="196,219,387,244"/>
+<area shape="poly" id="edge183_Node000000_Node000005" title=" " alt="" coords="135,195,173,203,231,216,229,221,171,209,134,200"/>
+<area shape="rect" id="Node000006" href="$structInsertLoadPdiForConfigurePattern.html" title=" " alt="" coords="195,269,387,309"/>
+<area shape="poly" id="edge184_Node000000_Node000006" title=" " alt="" coords="94,202,130,228,173,253,207,266,205,271,171,258,127,233,91,206"/>
+<area shape="rect" id="Node000007" href="$structSetInboundsToReadStoreOpPattern.html" title=" " alt="" coords="191,333,392,373"/>
+<area shape="poly" id="edge185_Node000000_Node000007" title=" " alt="" coords="81,205,117,263,143,293,173,318,195,330,193,335,171,323,139,297,113,266,76,208"/>
 </map>

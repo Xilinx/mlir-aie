@@ -1,5 +1,5 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classConvertAIEVecToLLVMBase.html" title=" " alt="" coords="5,13,203,38"/>
-<area shape="rect" id="Node000001" href="$structxilinx_1_1aievec_1_1ConvertAIEVecToLLVMPass.html" title=" " alt="" coords="251,5,463,45"/>
-<area shape="poly" id="edge33_Node000000_Node000001" title=" " alt="" coords="216,23,250,23,250,28,216,28"/>
+<area shape="rect" id="Node000000" href="$classConversionPattern.html" title=" " alt="" coords="5,5,147,31"/>
+<area shape="rect" id="Node000001" href="$classBfpToIntegerConversionPattern.html" title=" " alt="" coords="195,5,417,31"/>
+<area shape="poly" id="edge33_Node000000_Node000001" title=" " alt="" coords="160,15,195,15,195,21,160,21"/>
 </map>

@@ -66,7 +66,9 @@ $(function() {
 <code>#include &quot;xaiengine/xaie_interrupt.h&quot;</code><br />
 <code>#include &quot;xaiengine/xaie_locks.h&quot;</code><br />
 <code>#include &quot;xaiengine/xaie_mem.h&quot;</code><br />
+<code>#include &quot;xaiengine/xaie_perfcnt.h&quot;</code><br />
 <code>#include &quot;xaiengine/xaie_plif.h&quot;</code><br />
+<code>#include &quot;xaiengine/xaie_reset.h&quot;</code><br />
 <code>#include &quot;xaiengine/xaie_ss.h&quot;</code><br />
 <code>#include &quot;xaiengine/xaie_txn.h&quot;</code><br />
 <code>#include &quot;xaiengine/xaiegbl.h&quot;</code><br />
@@ -79,37 +81,41 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="AIERT_8cpp__incl.png" border="0" usemap="#alib_2Targets_2AIERT_8cpp" alt=""/></div>
 <map name="alib_2Targets_2AIERT_8cpp" id="alib_2Targets_2AIERT_8cpp">
-<area shape="rect" title=" " alt="" coords="3501,5,3657,31"/>
+<area shape="rect" title=" " alt="" coords="3695,5,3851,31"/>
 <area shape="rect" href="AIERT_8h.html" title=" " alt="" coords="2278,79,2423,104"/>
-<area shape="poly" title=" " alt="" coords="3501,24,3053,41,2750,57,2437,81,2437,76,2750,52,3053,35,3500,19"/>
+<area shape="poly" title=" " alt="" coords="3695,23,3172,38,2810,55,2437,81,2437,76,2810,49,3172,32,3695,18"/>
 <area shape="rect" href="AIETargetShared_8h.html" title=" " alt="" coords="1757,79,1971,104"/>
-<area shape="poly" title=" " alt="" coords="3501,25,1985,88,1985,82,3500,20"/>
+<area shape="poly" title=" " alt="" coords="3695,25,1985,88,1985,83,3695,20"/>
 <area shape="rect" title=" " alt="" coords="2448,79,2653,104"/>
-<area shape="poly" title=" " alt="" coords="3501,26,3145,47,2668,81,2667,76,3144,42,3500,21"/>
+<area shape="poly" title=" " alt="" coords="3695,25,3262,45,2969,61,2667,81,2667,76,2969,56,3262,39,3695,20"/>
 <area shape="rect" title=" " alt="" coords="2677,79,2843,104"/>
-<area shape="poly" title=" " alt="" coords="3501,27,3217,49,2856,81,2856,81,2855,76,2856,76,3216,44,3500,22"/>
+<area shape="poly" title=" " alt="" coords="3695,26,3333,46,2856,81,2856,81,2855,76,2856,76,3332,40,3695,20"/>
 <area shape="rect" title=" " alt="" coords="2867,79,3034,104"/>
-<area shape="poly" title=" " alt="" coords="3501,31,3048,81,3048,76,3500,25"/>
+<area shape="poly" title=" " alt="" coords="3695,27,3415,49,3048,81,3048,76,3414,43,3695,22"/>
 <area shape="rect" title=" " alt="" coords="3058,79,3251,104"/>
-<area shape="poly" title=" " alt="" coords="3511,33,3237,79,3236,74,3510,28"/>
+<area shape="poly" title=" " alt="" coords="3695,31,3266,80,3265,75,3695,26"/>
 <area shape="rect" title=" " alt="" coords="3275,79,3469,104"/>
-<area shape="poly" title=" " alt="" coords="3546,33,3419,77,3418,72,3545,28"/>
+<area shape="poly" title=" " alt="" coords="3709,33,3451,79,3450,74,3708,28"/>
 <area shape="rect" title=" " alt="" coords="3493,79,3664,104"/>
-<area shape="poly" title=" " alt="" coords="3581,31,3581,65,3576,65,3576,31"/>
+<area shape="poly" title=" " alt="" coords="3743,33,3624,76,3622,71,3741,28"/>
 <area shape="rect" title=" " alt="" coords="3688,79,3859,104"/>
-<area shape="poly" title=" " alt="" coords="3611,28,3730,71,3728,76,3609,33"/>
-<area shape="rect" title=" " alt="" coords="3883,79,4040,104"/>
-<area shape="poly" title=" " alt="" coords="3641,28,3886,73,3885,79,3640,33"/>
-<area shape="rect" title=" " alt="" coords="4065,79,4215,104"/>
-<area shape="poly" title=" " alt="" coords="3657,26,4052,76,4051,81,3657,32"/>
-<area shape="rect" title=" " alt="" coords="4239,79,4398,104"/>
-<area shape="poly" title=" " alt="" coords="3657,23,3906,44,4226,76,4225,81,3906,50,3656,28"/>
-<area shape="rect" title=" " alt="" coords="4422,79,4573,104"/>
-<area shape="poly" title=" " alt="" coords="3657,21,3981,41,4408,76,4408,81,3980,46,3657,26"/>
-<area shape="rect" title=" " alt="" coords="4597,79,4782,104"/>
-<area shape="poly" title=" " alt="" coords="3657,20,4050,40,4583,76,4583,81,4050,45,3657,25"/>
-<area shape="rect" title=" " alt="" coords="4807,79,4897,104"/>
-<area shape="poly" title=" " alt="" coords="3657,17,3854,19,4133,27,4459,45,4627,58,4793,76,4793,81,4627,64,4458,50,4133,32,3854,24,3657,22"/>
+<area shape="poly" title=" " alt="" coords="3776,31,3776,65,3771,65,3771,31"/>
+<area shape="rect" title=" " alt="" coords="3883,79,4066,104"/>
+<area shape="poly" title=" " alt="" coords="3807,28,3930,71,3928,77,3805,33"/>
+<area shape="rect" title=" " alt="" coords="4091,79,4248,104"/>
+<area shape="poly" title=" " alt="" coords="3837,28,4092,74,4091,79,3836,33"/>
+<area shape="rect" title=" " alt="" coords="4272,79,4443,104"/>
+<area shape="poly" title=" " alt="" coords="3852,26,4259,75,4258,81,3851,31"/>
+<area shape="rect" title=" " alt="" coords="4467,79,4618,104"/>
+<area shape="poly" title=" " alt="" coords="3852,22,4114,44,4454,76,4454,81,4114,49,3851,28"/>
+<area shape="rect" title=" " alt="" coords="4642,79,4801,104"/>
+<area shape="poly" title=" " alt="" coords="3852,21,4185,41,4628,76,4628,81,4185,46,3851,26"/>
+<area shape="rect" title=" " alt="" coords="4825,79,4975,104"/>
+<area shape="poly" title=" " alt="" coords="3852,19,4258,37,4531,54,4811,76,4811,81,4530,59,4258,42,3852,25"/>
+<area shape="rect" title=" " alt="" coords="4999,79,5185,104"/>
+<area shape="poly" title=" " alt="" coords="3852,19,4327,37,4651,53,4986,76,4985,81,4651,59,4326,42,3851,24"/>
+<area shape="rect" title=" " alt="" coords="5209,79,5300,104"/>
+<area shape="poly" title=" " alt="" coords="3852,16,4079,16,4409,22,4797,41,4998,56,5196,76,5195,81,4997,61,4796,46,4409,28,4079,21,3852,21"/>
 <area shape="rect" href="AIEDialect_8h.html" title=" " alt="" coords="1469,152,1603,192"/>
 <area shape="poly" title=" " alt="" coords="2278,102,1617,166,1616,160,2277,97"/>
 <area shape="rect" href="AIEEnums_8h.html" title=" " alt="" coords="2367,328,2465,353"/>
@@ -241,7 +247,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00032">32</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00034">34</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -257,7 +263,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00166">166</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00168">168</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -273,7 +279,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00194">194</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00196">196</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -289,7 +295,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00192">192</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00194">194</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -305,7 +311,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00193">193</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00195">195</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -321,7 +327,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00195">195</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00197">197</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -351,7 +357,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00102">102</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00104">104</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -393,9 +399,9 @@ Functions</h2></td></tr>
 <div class="line">    if (<span class="keyword">auto</span> r = API(__VA_ARGS__))                                             \</div>
 <div class="line">      <span class="keywordflow">return</span> OP.emitOpError() &lt;&lt; #API <span class="stringliteral">&quot; failed with &quot;</span> &lt;&lt; AIERCTOSTR.at(r);     \</div>
 <div class="line">  } <span class="keywordflow">while</span> (0)</div>
-<div class="ttc" id="aAIERT_8cpp_html_a462e3f3049380f8b1f649a0001f6a0c1"><div class="ttname"><a href="AIERT_8cpp.html#a462e3f3049380f8b1f649a0001f6a0c1">SHOW_AIERT_ARGS</a></div><div class="ttdeci">#define SHOW_AIERT_ARGS(os,...)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00102">AIERT.cpp:102</a></div></div>
+<div class="ttc" id="aAIERT_8cpp_html_a462e3f3049380f8b1f649a0001f6a0c1"><div class="ttname"><a href="AIERT_8cpp.html#a462e3f3049380f8b1f649a0001f6a0c1">SHOW_AIERT_ARGS</a></div><div class="ttdeci">#define SHOW_AIERT_ARGS(os,...)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00104">AIERT.cpp:104</a></div></div>
 </div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00118">118</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00120">120</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -433,7 +439,7 @@ Functions</h2></td></tr>
 <div class="line">                               AIERCTOSTR.at(r));                              \</div>
 <div class="line">  } <span class="keywordflow">while</span> (0)</div>
 </div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00108">108</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00110">110</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -472,7 +478,7 @@ Functions</h2></td></tr>
 <div class="line">    }                                                                          \</div>
 <div class="line">  } <span class="keywordflow">while</span> (0)</div>
 </div><!-- fragment -->
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00127">127</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00129">129</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -488,7 +494,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00187">187</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00189">189</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -504,7 +510,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00189">189</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00191">191</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -520,7 +526,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00190">190</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00192">192</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -536,7 +542,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00188">188</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00190">190</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -603,11 +609,11 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00326">326</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00328">328</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00869">xilinx::AIE::AIETargetModel::getMemLocalBaseAddress()</a>, <a class="el" href="AIEDialect_8cpp_source.html#l00118">xilinx::AIE::getShimBurstLengthBytes()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">xilinx::AIE::AIETargetModel::isMemTile()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a90a0fc9b36e2b77e4be4f99987b3336e">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00118">TRY_XAIE_API_EMIT_ERROR</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00869">xilinx::AIE::AIETargetModel::getMemLocalBaseAddress()</a>, <a class="el" href="AIEDialect_8cpp_source.html#l00118">xilinx::AIE::getShimBurstLengthBytes()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">xilinx::AIE::AIETargetModel::isMemTile()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a90a0fc9b36e2b77e4be4f99987b3336e">xilinx::AIE::AIETargetModel::isShimNOCTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00120">TRY_XAIE_API_EMIT_ERROR</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00510">xilinx::AIE::AIERTControl::configureLocksAndBd()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00512">xilinx::AIE::AIERTControl::configureLocksAndBd()</a>.</p>
 
 </div>
 </div>
@@ -655,11 +661,11 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00273">273</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00275">275</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">xilinx::AIE::AIETargetModel::getLockLocalBaseIndex()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">xilinx::AIE::AIETargetModel::isMemTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00118">TRY_XAIE_API_EMIT_ERROR</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIETargetModel_8cpp_source.html#l00843">xilinx::AIE::AIETargetModel::getLockLocalBaseIndex()</a>, <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a78ddfb308023713b1b668cf3c7c6988d">xilinx::AIE::AIETargetModel::isMemTile()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>, and <a class="el" href="AIERT_8cpp_source.html#l00120">TRY_XAIE_API_EMIT_ERROR</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00510">xilinx::AIE::AIERTControl::configureLocksAndBd()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00512">xilinx::AIE::AIERTControl::configureLocksAndBd()</a>.</p>
 
 </div>
 </div>
@@ -689,7 +695,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00174">174</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00176">176</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -719,7 +725,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00168">168</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00170">170</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -749,7 +755,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00180">180</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00182">182</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
 </div>
 </div>
@@ -787,9 +793,9 @@ template&lt;typename H1 &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00082">82</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00084">84</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00088">showAIEXRTArgs()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIERT_8cpp_source.html#l00090">showAIEXRTArgs()</a>.</p>
 
 </div>
 </div>
@@ -833,16 +839,16 @@ template&lt;typename H1 , typename... T&gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00088">88</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIERT_8cpp_source.html#l00090">90</a> of file <a class="el" href="AIERT_8cpp_source.html">AIERT.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00082">showAIEXRTArgs()</a>.</p>
+<p class="reference">References <a class="el" href="AIERT_8cpp_source.html#l00084">showAIEXRTArgs()</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jan 7 2026 20:33:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jan 8 2026 20:50:31 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

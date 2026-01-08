@@ -2577,9 +2577,58 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l02479" name="l02479"></a><span class="lineno"> 2479</span>  <span class="keywordflow">return</span> runtimeSequenceOp;</div>
 <div class="line"><a id="l02480" name="l02480"></a><span class="lineno"> 2480</span>}</div>
 <div class="line"><a id="l02481" name="l02481"></a><span class="lineno"> 2481</span> </div>
-<div class="line"><a id="l02482" name="l02482"></a><span class="lineno"> 2482</span><span class="comment">// Include implementations for custom attributes</span></div>
-<div class="line"><a id="l02483" name="l02483"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a2491ed70a2ad4f52db3cda183c0f649c"> 2483</a></span><span class="preprocessor">#define GET_ATTRDEF_CLASSES</span></div>
-<div class="line"><a id="l02484" name="l02484"></a><span class="lineno"> 2484</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEAttrs.cpp.inc&quot;</span></div>
+<div class="line"><a id="l02482" name="l02482"></a><span class="lineno"> 2482</span>LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {</div>
+<div class="line"><a id="l02483" name="l02483"></a><span class="lineno"> 2483</span>  <span class="comment">// Check that all symbol references within the runtime sequence</span></div>
+<div class="line"><a id="l02484" name="l02484"></a><span class="lineno"> 2484</span>  <span class="comment">// are either to ShimDMAAllocationOp, DeviceOp or another RuntimeSequenceOp;</span></div>
+<div class="line"><a id="l02485" name="l02485"></a><span class="lineno"> 2485</span>  <span class="comment">// these are the only symbols that can be lowered with the NPU passes</span></div>
+<div class="line"><a id="l02486" name="l02486"></a><span class="lineno"> 2486</span>  <span class="keyword">auto</span> result = (*this)-&gt;walk([&amp;](Operation *op) {</div>
+<div class="line"><a id="l02487" name="l02487"></a><span class="lineno"> 2487</span>    <span class="keywordflow">for</span> (NamedAttribute namedAttr : op-&gt;getAttrs()) {</div>
+<div class="line"><a id="l02488" name="l02488"></a><span class="lineno"> 2488</span>      Attribute attr = namedAttr.getValue();</div>
+<div class="line"><a id="l02489" name="l02489"></a><span class="lineno"> 2489</span>      <span class="keyword">auto</span> walkResult = attr.walk([&amp;](SymbolRefAttr symbolRef) {</div>
+<div class="line"><a id="l02490" name="l02490"></a><span class="lineno"> 2490</span>        Operation *symbolDefOp =</div>
+<div class="line"><a id="l02491" name="l02491"></a><span class="lineno"> 2491</span>            SymbolTable::lookupNearestSymbolFrom(*<span class="keyword">this</span>, symbolRef);</div>
+<div class="line"><a id="l02492" name="l02492"></a><span class="lineno"> 2492</span>        <span class="keywordflow">if</span> (symbolDefOp) {</div>
+<div class="line"><a id="l02493" name="l02493"></a><span class="lineno"> 2493</span>          <span class="keywordflow">if</span> (!llvm::isa&lt;ShimDMAAllocationOp&gt;(symbolDefOp) &amp;&amp;</div>
+<div class="line"><a id="l02494" name="l02494"></a><span class="lineno"> 2494</span>              !llvm::isa&lt;DeviceOp&gt;(symbolDefOp) &amp;&amp;</div>
+<div class="line"><a id="l02495" name="l02495"></a><span class="lineno"> 2495</span>              !llvm::isa&lt;RuntimeSequenceOp&gt;(symbolDefOp) &amp;&amp;</div>
+<div class="line"><a id="l02496" name="l02496"></a><span class="lineno"> 2496</span>              !llvm::isa&lt;BufferOp&gt;(symbolDefOp) &amp;&amp;</div>
+<div class="line"><a id="l02497" name="l02497"></a><span class="lineno"> 2497</span>              !llvm::isa&lt;memref::GlobalOp&gt;(symbolDefOp)) {</div>
+<div class="line"><a id="l02498" name="l02498"></a><span class="lineno"> 2498</span>            op-&gt;emitOpError()</div>
+<div class="line"><a id="l02499" name="l02499"></a><span class="lineno"> 2499</span>                &lt;&lt; <span class="stringliteral">&quot;references symbol &#39;&quot;</span></div>
+<div class="line"><a id="l02500" name="l02500"></a><span class="lineno"> 2500</span>                &lt;&lt; symbolRef.getRootReference().getValue()</div>
+<div class="line"><a id="l02501" name="l02501"></a><span class="lineno"> 2501</span>                &lt;&lt; <span class="stringliteral">&quot;&#39; which must be either a ShimDMAAllocationOp, DeviceOp, &quot;</span></div>
+<div class="line"><a id="l02502" name="l02502"></a><span class="lineno"> 2502</span>                   <span class="stringliteral">&quot;RuntimeSequenceOp, BufferOp or GlobalOp, but got: &quot;</span></div>
+<div class="line"><a id="l02503" name="l02503"></a><span class="lineno"> 2503</span>                &lt;&lt; symbolDefOp-&gt;getName().getStringRef();</div>
+<div class="line"><a id="l02504" name="l02504"></a><span class="lineno"> 2504</span>            <span class="keywordflow">return</span> WalkResult::interrupt();</div>
+<div class="line"><a id="l02505" name="l02505"></a><span class="lineno"> 2505</span>          }</div>
+<div class="line"><a id="l02506" name="l02506"></a><span class="lineno"> 2506</span>          <span class="keywordflow">if</span> (BufferOp bufferOp = llvm::dyn_cast&lt;BufferOp&gt;(symbolDefOp)) {</div>
+<div class="line"><a id="l02507" name="l02507"></a><span class="lineno"> 2507</span>            <span class="keywordflow">if</span> (!bufferOp.getAddress()) {</div>
+<div class="line"><a id="l02508" name="l02508"></a><span class="lineno"> 2508</span>              op-&gt;emitOpError()</div>
+<div class="line"><a id="l02509" name="l02509"></a><span class="lineno"> 2509</span>                  &lt;&lt; <span class="stringliteral">&quot;Unallocated buffer; fixed addresses are required before &quot;</span></div>
+<div class="line"><a id="l02510" name="l02510"></a><span class="lineno"> 2510</span>                     <span class="stringliteral">&quot;runtime sequence materialization.&quot;</span>;</div>
+<div class="line"><a id="l02511" name="l02511"></a><span class="lineno"> 2511</span>              <span class="keywordflow">return</span> WalkResult::interrupt();</div>
+<div class="line"><a id="l02512" name="l02512"></a><span class="lineno"> 2512</span>            }</div>
+<div class="line"><a id="l02513" name="l02513"></a><span class="lineno"> 2513</span>          }</div>
+<div class="line"><a id="l02514" name="l02514"></a><span class="lineno"> 2514</span>        }</div>
+<div class="line"><a id="l02515" name="l02515"></a><span class="lineno"> 2515</span>        <span class="keywordflow">return</span> WalkResult::advance();</div>
+<div class="line"><a id="l02516" name="l02516"></a><span class="lineno"> 2516</span>      });</div>
+<div class="line"><a id="l02517" name="l02517"></a><span class="lineno"> 2517</span>      <span class="keywordflow">if</span> (walkResult.wasInterrupted()) {</div>
+<div class="line"><a id="l02518" name="l02518"></a><span class="lineno"> 2518</span>        <span class="keywordflow">return</span> WalkResult::interrupt();</div>
+<div class="line"><a id="l02519" name="l02519"></a><span class="lineno"> 2519</span>      }</div>
+<div class="line"><a id="l02520" name="l02520"></a><span class="lineno"> 2520</span>    }</div>
+<div class="line"><a id="l02521" name="l02521"></a><span class="lineno"> 2521</span>    <span class="keywordflow">return</span> WalkResult::advance();</div>
+<div class="line"><a id="l02522" name="l02522"></a><span class="lineno"> 2522</span>  });</div>
+<div class="line"><a id="l02523" name="l02523"></a><span class="lineno"> 2523</span> </div>
+<div class="line"><a id="l02524" name="l02524"></a><span class="lineno"> 2524</span>  <span class="keywordflow">if</span> (result.wasInterrupted()) {</div>
+<div class="line"><a id="l02525" name="l02525"></a><span class="lineno"> 2525</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l02526" name="l02526"></a><span class="lineno"> 2526</span>  }</div>
+<div class="line"><a id="l02527" name="l02527"></a><span class="lineno"> 2527</span> </div>
+<div class="line"><a id="l02528" name="l02528"></a><span class="lineno"> 2528</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02529" name="l02529"></a><span class="lineno"> 2529</span>}</div>
+<div class="line"><a id="l02530" name="l02530"></a><span class="lineno"> 2530</span> </div>
+<div class="line"><a id="l02531" name="l02531"></a><span class="lineno"> 2531</span><span class="comment">// Include implementations for custom attributes</span></div>
+<div class="line"><a id="l02532" name="l02532"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a2491ed70a2ad4f52db3cda183c0f649c"> 2532</a></span><span class="preprocessor">#define GET_ATTRDEF_CLASSES</span></div>
+<div class="line"><a id="l02533" name="l02533"></a><span class="lineno"> 2533</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEAttrs.cpp.inc&quot;</span></div>
 <div class="ttc" id="aAIEDialect_8cpp_html_a7585c08f47b5f720ae1e3d2e8ee5f9b6"><div class="ttname"><a href="AIEDialect_8cpp.html#a7585c08f47b5f720ae1e3d2e8ee5f9b6">isLegalTileConnection</a></div><div class="ttdeci">bool isLegalTileConnection(TileOp tile, const AIETargetModel &amp;targetModel, MasterSetOp masterOp, PacketRulesOp slaveOp)</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8cpp_source.html#l01183">AIEDialect.cpp:1183</a></div></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEXDialect_8h_html"><div class="ttname"><a href="AIEXDialect_8h.html">AIEXDialect.h</a></div></div>
@@ -2642,7 +2691,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jan 7 2026 20:33:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jan 8 2026 20:50:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

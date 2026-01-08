@@ -1,3 +1,11 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$structPacketConnection.html" title=" " alt="" coords="5,5,143,31"/>
+<area shape="rect" id="Node000000" href="$classOpRewritePattern.html" title=" " alt="" coords="5,109,141,134"/>
+<area shape="rect" id="Node000001" href="$structCanonicalizeTrivialReadAccessSubviewOpPattern.html" title="Pattern to canonicalize trivial vector.transfer_read operations on subviews." alt="" coords="189,5,412,45"/>
+<area shape="poly" id="edge164_Node000000_Node000001" title=" " alt="" coords="104,99,144,76,188,55,221,43,223,48,190,60,146,81,107,104"/>
+<area shape="rect" id="Node000002" href="$structCanonicalizeTrivialWriteAccessSubviewOpPattern.html" title="Pattern to canonicalize trivial vector.transfer_write operations on subviews." alt="" coords="207,69,394,109"/>
+<area shape="poly" id="edge165_Node000000_Node000002" title=" " alt="" coords="154,107,207,100,207,105,155,113"/>
+<area shape="rect" id="Node000003" href="$structConvertLeadingUnitDimInsertToReshapePattern.html" title=" " alt="" coords="193,133,408,173"/>
+<area shape="poly" id="edge166_Node000000_Node000003" title=" " alt="" coords="155,130,194,136,193,141,154,135"/>
+<area shape="rect" id="Node000004" href="$structSwapUnaryOpsPattern.html" title=" " alt="" coords="205,197,397,237"/>
+<area shape="poly" id="edge167_Node000000_Node000004" title=" " alt="" coords="107,139,146,161,190,183,223,195,221,200,188,188,144,166,104,144"/>
 </map>
