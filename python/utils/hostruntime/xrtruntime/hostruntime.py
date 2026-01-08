@@ -21,17 +21,6 @@ if TYPE_CHECKING:
     from aie.iron.device import Device
 from .tensor import XRTTensor
 
-# I got these values through experimentation on two machines
-# These values are primarily determined by the hardware/driver, and could change
-# in the future. But currently, if you exceed these sizes, you will fail to be
-# able to create a new context. At the driver level, the cached contexts are
-# a system-wide constrained resource, so caching on systems with many concurrent
-# processes trying to create contexts (as in parallel CI jobs) can be flaky.
-# TODO: use some sort of file system artifact or figure out how to query the driver
-# for the state of the cache, and how to make loading operations atomic between processes.
-NPU1_CACHE_SIZE = 6
-NPU2_CACHE_SIZE = 32
-
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
 class XRTKernelHandle(KernelHandle):
@@ -62,25 +51,25 @@ class XRTKernelResult(KernelResult):
 class XRTHostRuntime(HostRuntime):
     """Singleton manager for AIE XRT resources."""
 
+    # TODO: this is duplicated from the LIT helpers.
+    # NPU Model mappings - centralized for easy updates
+    # Maps generation name to list of model strings that may appear in xrt-smi
+    NPU_MODELS = {
+        "npu1": ["npu1", "Phoenix"],
+        "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
+    }
     _tensor_class = XRTTensor
 
     def __init__(self):
         self._device = pyxrt.device(0)
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
-        # TODO: this is duplicated from the LIT helpers.
-        # NPU Model mappings - centralized for easy updates
-        # Maps generation name to list of model strings that may appear in xrt-smi
-        NPU_MODELS = {
-            "npu1": ["npu1", "Phoenix"],
-            "npu2": ["npu4", "Strix", "npu5", "Strix Halo", "npu6", "Krackan"],
-        }
-
-        if any([model in self._device_type_str for model in NPU_MODELS["npu1"]]):
-            self.npu_str = "npu1"
-        elif any([model in self._device_type_str for model in NPU_MODELS["npu2"]]):
-            self.npu_str = "npu2"
-        else:
+        self.npu_str = None
+        for key, value in NPU_MODELS.items():
+            if any([model in self._device_type_str for model in NPU_MODELS[key]]):
+                self.npu_str = key
+                break
+        if not self.npu_str:
             raise RuntimeError(f"Unknown device type: {self._device_type_str}")
 
     @classmethod
@@ -185,10 +174,17 @@ class XRTHostRuntime(HostRuntime):
     def device(self) -> "Device":
         from aie.iron.device import NPU1, NPU2
 
-        if self.npu_str == "npu1":
-            return NPU1()
+        devices = {
+            "npu1": NPU1(),
+            "npu2": NPU2(),
+        }
+
+        if self.npu_str in devices:
+            return devices[self.npu_str]
         else:
-            return NPU2()
+            raise HostRuntimeError(
+                f"Unknown device string: {self.npu_str}: expected npu1 or npu2"
+            )
 
 
 class CachedXRTKernelHandle(XRTKernelHandle):
@@ -217,18 +213,38 @@ class CachedXRTRuntime(XRTHostRuntime):
     It reuses contexts for the same xclbin (identified by path and mtime).
     """
 
+    # I got these values through experimentation on two machines
+    # These values are primarily determined by the hardware/driver, and could change
+    # in the future. But currently, if you exceed these sizes, you will fail to be
+    # able to create a new context. At the driver level, the cached contexts are
+    # a system-wide constrained resource, so caching on systems with many concurrent
+    # processes trying to create contexts (as in parallel CI jobs) can be flaky.
+    # TODO: use some sort of file system artifact or figure out how to query the driver
+    # for the state of the cache, and how to make loading operations atomic between processes.
+    NPU_CONTEXT_CACHE_SIZE = {
+        "npu1": 6,
+        "npu2": 32,
+    }
+
     def __init__(self):
         super().__init__()
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
 
-        if self.npu_str == "npu1":
-            self._cache_size = NPU1_CACHE_SIZE
-        else:
-            self._cache_size = NPU2_CACHE_SIZE
+        # Set default from dict if present
+        self._cache_size = None
+        if self.npu_str in NPU_CONTEXT_CACHE_SIZE.keys():
+            self._cache_size = NPU_CONTEXT_CACHE_SIZE[self.npu_str]
 
-        env_cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE")
+        # Environment variable always override default values
+        # TODO: should probably emit warning if exceeds recorded max size.
+        self._cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE", self._cache_size)
+
+        # Error if no default and no env var
+        if self._cache_size is None:
+            raise HostRuntimeError(f"No known cache size for {self.npu_str}")
+
         atexit.register(self.cleanup)
 
     def cleanup(self):
