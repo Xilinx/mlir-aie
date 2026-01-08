@@ -1095,10 +1095,8 @@ class FlowRunner:
                 input_physical.operation, self.tmpdirname, device_name
             )
 
-    async def process_txn(self, module_str, device_name):
+    async def process_txn(self, module, device_name):
         file_txn = self.prepend_tmp(f"{device_name}_txn.mlir")
-        with Context(), Location.unknown():
-            module = Module.parse(module_str)
         self.run_passes(
             f"builtin.module(aie.device(convert-aie-to-transaction{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
             module,
@@ -1231,41 +1229,41 @@ class FlowRunner:
         full_elf_path = self.opts.full_elf_name or "aie.elf"
         await self.assemble_full_elf(config_json_path, full_elf_path, parent_task)
 
-    async def process_ctrlpkt(self, module_str, device_op, device_name):
+    async def process_ctrlpkt(self, module, device_op, device_name):
         file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
         file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
         file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
             f"{device_name}_ctrlpkt_dma_seq.mlir"
         )
-        ctrlpkt_mlir_str = self.run_passes(
+        ctrlpkt_module = self.run_passes(
             "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
             + self.tmpdirname
             + "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))",
-            module_str,
+            module,
             outputfile=file_ctrlpkt_mlir,
             description="Transaction binary to control packet conversion",
         )
 
         # aie-translate --aie-ctrlpkt-to-bin -o ctrlpkt.bin
-        with Context(), Location.unknown():
+        with ctrlpkt_module.context, Location.unknown():
             ctrlpkt_bin = aiedialect.generate_control_packets(
-                Module.parse(ctrlpkt_mlir_str).operation, device_name
+                ctrlpkt_module.operation, device_name
             )
         with open(file_ctrlpkt_bin, "wb") as f:
             f.write(struct.pack("I" * len(ctrlpkt_bin), *ctrlpkt_bin))
 
         # aie-opt --aie-ctrl-packet-to-dma -aie-dma-to-npu
-        ctrl_seq_str = self.run_passes(
+        ctrl_seq_module = self.run_passes(
             "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
-            ctrlpkt_mlir_str,
+            ctrlpkt_module,
             outputfile=file_ctrlpkt_dma_seq_mlir,
             description="Control packet to DMA sequence conversion",
         )
 
         # aie-translate --aie-npu-to-binary -o npu_insts.bin
-        with Context(), Location.unknown():
+        with ctrl_seq_module.context, Location.unknown():
             insts_bin = aiedialect.translate_npu_to_binary(
-                Module.parse(ctrl_seq_str).operation, device_name, opts.sequence_name
+                ctrl_seq_module.operation, device_name, opts.sequence_name
             )
         with open(opts.insts_name.format(device_name, "seq"), "wb") as f:
             f.write(struct.pack("I" * len(insts_bin), *insts_bin))
@@ -2029,16 +2027,17 @@ class FlowRunner:
             processes.append(
                 self.process_pdi_gen(device_name, self.pdi_file_name(device_name))
             )
-
+        with Context(), Location.unknown():
+            input_physical_with_elfs_module = Module.parse(input_physical_with_elfs_str)
         if opts.txn and opts.execute:
             input_physical_with_elfs = await self.process_txn(
-                input_physical_with_elfs_str, device_name
+                input_physical_with_elfs_module, device_name
             )
 
         if opts.ctrlpkt and opts.execute:
             processes.append(
                 self.process_ctrlpkt(
-                    input_physical_with_elfs_str, device_op, device_name
+                    input_physical_with_elfs_module, device_op, device_name
                 )
             )
 
