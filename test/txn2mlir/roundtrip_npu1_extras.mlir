@@ -12,7 +12,7 @@
 // RUN: %python txn2mlir.py -f %t.cfg | FileCheck %s
 
 // CHECK: aie.device(npu1_1col)
-// CHECK: memref.global "private" constant @blockwrite_data
+// CHECK: memref.global "private" constant @config_blockwrite_data
 // CHECK: aiex.npu.sync {channel = 2 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
 // CHECK: aiex.npu.load_pdi {address = 305419896 : ui64, id = 7 : i32, size = 4096 : i32}
 // CHECK: aiex.npu.address_patch {addr = 123456 : ui32, arg_idx = 3 : i32, arg_plus = 4 : i32}

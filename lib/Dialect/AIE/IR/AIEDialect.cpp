@@ -2479,6 +2479,55 @@ RuntimeSequenceOp::getForSymbolInDeviceOrError(DeviceOp deviceOp,
   return runtimeSequenceOp;
 }
 
+LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
+  // Check that all symbol references within the runtime sequence
+  // are either to ShimDMAAllocationOp, DeviceOp or another RuntimeSequenceOp;
+  // these are the only symbols that can be lowered with the NPU passes
+  auto result = (*this)->walk([&](Operation *op) {
+    for (NamedAttribute namedAttr : op->getAttrs()) {
+      Attribute attr = namedAttr.getValue();
+      auto walkResult = attr.walk([&](SymbolRefAttr symbolRef) {
+        Operation *symbolDefOp =
+            SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
+        if (symbolDefOp) {
+          if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
+              !llvm::isa<DeviceOp>(symbolDefOp) &&
+              !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
+              !llvm::isa<BufferOp>(symbolDefOp) &&
+              !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
+            op->emitOpError()
+                << "references symbol '"
+                << symbolRef.getRootReference().getValue()
+                << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
+                   "RuntimeSequenceOp, BufferOp or GlobalOp, but got: "
+                << symbolDefOp->getName().getStringRef();
+            return WalkResult::interrupt();
+          }
+          if (BufferOp bufferOp = llvm::dyn_cast<BufferOp>(symbolDefOp)) {
+            if (!bufferOp.getAddress()) {
+              op->emitOpError()
+                  << "Unallocated buffer; fixed addresses are required before "
+                     "runtime sequence materialization.";
+              return WalkResult::interrupt();
+            }
+          }
+        }
+        return WalkResult::advance();
+      });
+      if (walkResult.wasInterrupted()) {
+        return WalkResult::interrupt();
+      }
+    }
+    return WalkResult::advance();
+  });
+
+  if (result.wasInterrupted()) {
+    return failure();
+  }
+
+  return success();
+}
+
 // Include implementations for custom attributes
 #define GET_ATTRDEF_CLASSES
 #include "aie/Dialect/AIE/IR/AIEAttrs.cpp.inc"

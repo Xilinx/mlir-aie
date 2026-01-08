@@ -387,8 +387,23 @@ def parse_args(args=None):
         default="aie.elf",
         help="Output filename for full ELF (default: aie.elf)",
     )
+    parser.add_argument(
+        "--expand-load-pdis",
+        dest="expand_load_pdis",
+        default=False,
+        action="store_true",
+        help="Expand load_pdi operations into explicit device reset and configuration sequences",
+    )
+    parser.add_argument(
+        "--no-materialize",
+        dest="materialize_runtime_sequence",
+        default=True,
+        action="store_false",
+        help="Do not 'materialize' the runtime sequence (lower aiex.configure and aiex.run operations)",
+    )
 
     opts = parser.parse_args(args)
+
     return opts
 
 
