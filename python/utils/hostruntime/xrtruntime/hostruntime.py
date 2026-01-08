@@ -9,7 +9,6 @@ import logging
 import os
 import time
 import weakref
-from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
@@ -212,8 +211,8 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     def __init__(self):
         super().__init__()
-        self._context_cache = OrderedDict()
-        self._insts_cache = OrderedDict()
+        self._context_cache = {}
+        self._insts_cache = {}
         if self.npu_str == "npu1":
             self._cache_size = NPU1_CACHE_SIZE
         else:
