@@ -534,8 +534,7 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
 def AIE_ConfigureOp: AIEX_Op<"configure", [
   HasParent<"AIE::RuntimeSequenceOp">,
   NoTerminator
-]>,
-  Results<(outs Index:$result)>
+]>
  {
   let summary = "Set up a configuration (program memories, stream switches, etc.) on the NPU device.";
   let arguments = (

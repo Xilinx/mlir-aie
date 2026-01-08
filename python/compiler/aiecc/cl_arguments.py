@@ -171,6 +171,66 @@ def parse_args(args=None):
         help="Use packet switched flows when lowering object fifos",
     )
     parser.add_argument(
+        "--reset-tiles",
+        dest="reset_tiles",
+        default="shim,mem,core",
+        help="Default comma-separated list of tile types to reset (shim,mem,core). Overridden by specific --reset-*-tiles options.",
+    )
+    parser.add_argument(
+        "--reset-mode",
+        dest="reset_mode",
+        default="ifchangedfinegrained",
+        help="Default reset mode: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always. Overridden by specific --reset-*-mode options.",
+    )
+    parser.add_argument(
+        "--reset-dmas-tiles",
+        dest="reset_dmas_tiles",
+        default=None,
+        help="Comma-separated list of tile types to reset DMAs for (shim,mem,core). Defaults to --reset-tiles if not specified.",
+    )
+    parser.add_argument(
+        "--reset-dmas-mode",
+        dest="reset_dmas_mode",
+        default=None,
+        help="When to reset DMAs: never, ifused, ifchanged, always. Defaults to --reset-mode if not specified.",
+    )
+    parser.add_argument(
+        "--reset-switches-tiles",
+        dest="reset_switches_tiles",
+        default=None,
+        help="Comma-separated list of tile types to reset switches for (shim,mem,core). Defaults to --reset-tiles if not specified.",
+    )
+    parser.add_argument(
+        "--reset-switches-mode",
+        dest="reset_switches_mode",
+        default=None,
+        help="When to reset switches: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always. Defaults to --reset-mode if not specified.",
+    )
+    parser.add_argument(
+        "--reset-locks-tiles",
+        dest="reset_locks_tiles",
+        default=None,
+        help="Comma-separated list of tile types to reset locks for (mem,core). Defaults to --reset-tiles if not specified.",
+    )
+    parser.add_argument(
+        "--reset-locks-mode",
+        dest="reset_locks_mode",
+        default=None,
+        help="When to reset locks: never, ifused, ifusedfinegrained, ifchanged, ifchangedfinegrained, always. Defaults to --reset-mode if not specified.",
+    )
+    parser.add_argument(
+        "--reset-cores-tiles",
+        dest="reset_cores_tiles",
+        default=None,
+        help="Comma-separated list of tile types to reset cores for (core). Defaults to --reset-tiles if not specified.",
+    )
+    parser.add_argument(
+        "--reset-cores-mode",
+        dest="reset_cores_mode",
+        default=None,
+        help="When to reset cores: never, ifused, ifchanged, always. Defaults to --reset-mode if not specified.",
+    )
+    parser.add_argument(
         "host_args",
         action="store",
         help="arguments for host compiler",
@@ -387,8 +447,52 @@ def parse_args(args=None):
         default="aie.elf",
         help="Output filename for full ELF (default: aie.elf)",
     )
+    parser.add_argument(
+        "--expand-load-pdis",
+        dest="expand_load_pdis",
+        default=False,
+        action="store_true",
+        help="Expand load_pdi operations into explicit device reset and configuration sequences",
+    )
+    parser.add_argument(
+        "--no-coalesce-write32s",
+        dest="coalesce_write32s",
+        default=True,
+        action="store_const",
+        const=False,
+        help="Do not coalesce write32 operations into blockwrites in the NPU instruction sequence",
+    )
+    parser.add_argument(
+        "--min-writes-to-coalesce",
+        dest="min_writes_to_coalesce",
+        default=2,
+        type=int,
+        help="Minimum number of consecutive write32 operations required to coalesce into a blockwrite (default: 2)",
+    )
 
     opts = parser.parse_args(args)
+
+    # Set defaults for specific reset options if not specified
+    if opts.reset_dmas_tiles is None:
+        opts.reset_dmas_tiles = opts.reset_tiles
+    if opts.reset_dmas_mode is None:
+        opts.reset_dmas_mode = opts.reset_mode
+
+    if opts.reset_switches_tiles is None:
+        opts.reset_switches_tiles = opts.reset_tiles
+    if opts.reset_switches_mode is None:
+        opts.reset_switches_mode = opts.reset_mode
+
+    if opts.reset_locks_tiles is None:
+        opts.reset_locks_tiles = opts.reset_tiles
+    if opts.reset_locks_mode is None:
+        opts.reset_locks_mode = opts.reset_mode
+
+    if opts.reset_cores_tiles is None:
+        opts.reset_cores_tiles = opts.reset_tiles
+    if opts.reset_cores_mode is None:
+        opts.reset_cores_mode = opts.reset_mode
+
     return opts
 
 
