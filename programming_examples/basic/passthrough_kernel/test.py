@@ -45,9 +45,9 @@ def main(opts):
     print("Running...\n")
     npu_opts = test_utils.create_npu_kernel(opts)
     res = DEFAULT_NPU_RUNTIME.run_test(
+        npu_opts.npu_kernel,
         [in1, out],
         {1: ref},
-        npu_opts.npu_kernel,
         verify=npu_opts.verify,
         verbosity=npu_opts.verbosity,
     )

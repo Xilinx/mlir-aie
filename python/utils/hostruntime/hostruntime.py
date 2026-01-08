@@ -249,9 +249,9 @@ class HostRuntime(ABC):
 
     def run_test(
         self,
+        npu_kernel,
         io_args,
         ref,
-        npu_kernel,
         verify: bool = True,
         verbosity: int = 0,
     ) -> int:
