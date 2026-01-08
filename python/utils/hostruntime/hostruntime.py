@@ -14,6 +14,7 @@ from .tensor_class import Tensor
 from ..trace import TraceConfig
 from ..trace.utils import create_ctrl_pkt, extract_tile
 from ..npukernel import NPUKernel
+from . import bfloat16_safe_allclose
 
 
 class HostRuntimeError(Exception):
@@ -25,7 +26,9 @@ class HostRuntimeError(Exception):
 
 
 class KernelHandle(ABC):
-    """KernelHandles may be used a cache keys, and so should implement these methods."""
+    """
+    Abstract representation that represents a kernel already registered/loaded with a runtime.
+    """
 
     ...
 
@@ -101,13 +104,6 @@ class HostRuntime(ABC):
     def device(self) -> "Device":
         pass
 
-    @classmethod
-    def read_insts_sequence(cls, insts_path: Path):
-        """Reads instructions from a text file (hex numbers, one per line)."""
-        with open(insts_path, "r") as f:
-            insts_text = f.readlines()
-        insts_text = [l for l in insts_text if l != ""]
-
     # Read instruction stream from bin file and reformat it to be passed into the
     # instruction buffer for the xrt.kernel call
     @classmethod
@@ -128,11 +124,9 @@ class HostRuntime(ABC):
         ext = insts_path.suffix.lower()
         if ext == ".bin":
             return cls.read_insts_binary(insts_path)
-        elif ext == ".txt":
-            return cls.read_insts_sequence(insts_path)
         else:
             raise HostRuntimeError(
-                "Unsupported file extension for instruction file: expected .bin or .txt"
+                "Unsupported file extension for instruction file: expected .bin"
             )
 
     @classmethod
@@ -237,30 +231,20 @@ class HostRuntime(ABC):
                     )
 
     @classmethod
-    def verify_results(cls, io_args, ref, verbosity=0):
+    def verify_results(cls, io_args, refs={}, verbosity=0):
         errors = 0
         if verbosity >= 1:
             print("Verifying results ...")
 
-        # Handle ref being list or single
-        if not isinstance(ref, list):
-            ref = [ref]
-
-        for item in ref:
-            if isinstance(item, tuple) and len(item) == 2:
-                idx, r = item
-                if idx >= len(io_args):
-                    print(
-                        f"Error: Reference index {idx} out of bounds for {len(io_args)} IO buffers"
-                    )
-                    return 1
-                io_args[idx].to("cpu")
-                o = io_args[idx].numpy()
-                e = np.equal(r, o)
-                errors += np.size(e) - np.count_nonzero(e)
-            else:
-                print("Error: Reference data must be a list of (index, data) tuples")
-                return 1
+        for idx, ref in refs.items():
+            if idx >= len(io_args):
+                raise HostRuntimeError(
+                    f"Error: Reference index {idx} out of bounds for {len(io_args)} IO buffers"
+                )
+            io_args[idx].to("cpu")
+            o = io_args[idx].numpy()
+            e = bfloat16_safe_allclose(r, o)
+            errors += np.size(e) - np.count_nonzero(e)
         return errors
 
     def run_test(

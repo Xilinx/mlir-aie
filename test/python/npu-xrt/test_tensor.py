@@ -13,23 +13,11 @@ import numpy as np
 import aie.iron as iron
 from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, Tensor
 from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
+from aie.utils.hostruntime import bfloat16_safe_allclose
 from ml_dtypes import bfloat16
 
 TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
 TEST_DTYPES = [np.float32, np.int32, bfloat16]
-
-
-def bfloat16_safe_allclose(dtype, arr1, arr2):
-    if dtype == bfloat16:
-        if isinstance(arr1, Tensor):
-            arr1 = np.array(arr1, dtype=np.float16)
-        else:
-            arr1 = arr1.astype(np.float16)
-        if isinstance(arr2, Tensor):
-            arr2 = np.array(arr2, dtype=np.float16)
-        else:
-            arr2 = arr2.astype(np.float16)
-    return np.allclose(arr1, arr2)
 
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)
