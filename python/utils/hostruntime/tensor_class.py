@@ -166,6 +166,8 @@ class Tensor(ABC):
     def _sync_to_device(self):
         """
         Syncs the tensor data from the host to the device memory.
+
+        This method should be implemented by subclasses to handle device-specific synchronization.
         """
         ...
 
@@ -173,11 +175,29 @@ class Tensor(ABC):
     def _sync_from_device(self):
         """
         Syncs the tensor data from the device to the host memory.
+
+        This method should be implemented by subclasses to handle device-specific synchronization.
         """
         ...
 
     @classmethod
     def __check_or_create(cls, *size, out=None, dtype=None, device=None, **kwargs):
+        """
+        Internal helper to check an output tensor or create a new one.
+
+        Args:
+            *size: Shape of the tensor.
+            out (Tensor, optional): Output tensor to check.
+            dtype (np.dtype, optional): Data type.
+            device (str, optional): Device.
+            **kwargs: Additional arguments for tensor creation.
+
+        Returns:
+            Tensor: The checked or created tensor.
+
+        Raises:
+            ValueError: If `out` tensor does not match shape, dtype, or device.
+        """
         # Normalize shape
         if len(size) == 1 and isinstance(size[0], (tuple, list)):
             shape = tuple(size[0])
@@ -218,6 +238,12 @@ class Tensor(ABC):
     def to_torch(self):
         """
         Returns a torch tensor with a copy of the data in this tensor.
+
+        Returns:
+            torch.Tensor: A torch tensor containing the data.
+
+        Raises:
+            ImportError: If torch is not installed.
         """
         try:
             import torch
@@ -234,6 +260,17 @@ class Tensor(ABC):
     def from_torch(cls, torch_tensor, device=None, **kwargs):
         """
         Returns a tensor with a copy of the data in the torch_tensor.
+
+        Args:
+            torch_tensor (torch.Tensor): The source torch tensor.
+            device (str, optional): The target device. Defaults to None.
+            **kwargs: Additional arguments for tensor creation.
+
+        Returns:
+            Tensor: A new tensor containing the data from the torch tensor.
+
+        Raises:
+            ImportError: If torch is not installed.
         """
         try:
             import torch

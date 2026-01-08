@@ -41,22 +41,53 @@ class KernelResult(ABC):
         npu_time: int,
         trace_config: TraceConfig | None = None,
     ):
+        """
+        Initialize the KernelResult.
+
+        Args:
+            npu_time (int): The execution time on the NPU in nanoseconds.
+            trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+        """
         self._npu_time = npu_time
         self._trace_config = trace_config
 
     @property
     def npu_time(self) -> int:
+        """
+        Get the NPU execution time.
+
+        Returns:
+            int: The execution time in nanoseconds.
+        """
         return self._npu_time
 
     @property
     def trace_config(self) -> TraceConfig | None:
+        """
+        Get the trace configuration.
+
+        Returns:
+            TraceConfig | None: The trace configuration if available, else None.
+        """
         return self._trace_config
 
     def has_trace(self) -> bool:
+        """
+        Check if trace data is available.
+
+        Returns:
+            bool: True if trace configuration is present, False otherwise.
+        """
         return not (self._trace_config is None)
 
     @abstractmethod
     def is_success(self) -> bool:
+        """
+        Check if the kernel execution was successful.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
         pass
 
 
@@ -65,6 +96,15 @@ class HostRuntime(ABC):
 
     @abstractmethod
     def load(self, npu_kernel: NPUKernel) -> KernelHandle:
+        """
+        Load an NPU kernel into the runtime.
+
+        Args:
+            npu_kernel (NPUKernel): The NPU kernel to load.
+
+        Returns:
+            KernelHandle: A handle to the loaded kernel.
+        """
         pass
 
     @abstractmethod
@@ -75,6 +115,18 @@ class HostRuntime(ABC):
         trace_config: TraceConfig | None = None,
         only_if_loaded=False,
     ) -> KernelResult:
+        """
+        Run a loaded kernel.
+
+        Args:
+            kernel_handle (KernelHandle): The handle to the loaded kernel.
+            *args: Arguments to pass to the kernel.
+            trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+            only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
+
+        Returns:
+            KernelResult: The result of the kernel execution.
+        """
         pass
 
     def load_and_run(
@@ -83,6 +135,17 @@ class HostRuntime(ABC):
         run_args: list,
         trace_config: TraceConfig | None = None,
     ) -> tuple[KernelHandle, KernelResult]:
+        """
+        Load and run an NPU kernel.
+
+        Args:
+            npu_kernel (NPUKernel): The NPU kernel to load and run.
+            run_args (list): Arguments to pass to the kernel.
+            trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+
+        Returns:
+            tuple[KernelHandle, KernelResult]: A tuple containing the kernel handle and the execution result.
+        """
         handle = self.load(npu_kernel)
         if trace_config:
             if trace_config.trace_after_last_tensor and len(run_args) > 0:
@@ -102,13 +165,27 @@ class HostRuntime(ABC):
 
     @abstractmethod
     def device(self) -> "Device":
+        """
+        Get the device associated with this runtime.
+
+        Returns:
+            Device: The device object.
+        """
         pass
 
     # Read instruction stream from bin file and reformat it to be passed into the
     # instruction buffer for the xrt.kernel call
     @classmethod
     def read_insts_binary(cls, insts_path: Path):
-        """Reads instructions from a binary file."""
+        """
+        Reads instructions from a binary file.
+
+        Args:
+            insts_path (Path): Path to the binary instruction file.
+
+        Returns:
+            np.ndarray: Array of uint32 instructions.
+        """
         with open(insts_path, "rb") as f:
             data = f.read()
         # Interpret the binary data as an array of uint32 values.
@@ -118,8 +195,18 @@ class HostRuntime(ABC):
     def read_insts(cls, insts_path: Path):
         """
         Reads instructions from the given file.
-        If the file extension is .bin or uses binary read.
+
+        If the file extension is .bin, uses binary read.
         If the file extension is .txt, uses sequence (text) read.
+
+        Args:
+            insts_path (Path): Path to the instruction file.
+
+        Returns:
+            np.ndarray: Array of instructions.
+
+        Raises:
+            HostRuntimeError: If the file extension is not supported.
         """
         ext = insts_path.suffix.lower()
         if ext == ".bin":
@@ -133,6 +220,16 @@ class HostRuntime(ABC):
     def prepare_args_for_trace(
         cls, args: list[Tensor], trace_config: TraceConfig
     ) -> list[Tensor]:
+        """
+        Prepare arguments for tracing by appending necessary buffers.
+
+        Args:
+            args (list[Tensor]): List of input/output tensors.
+            trace_config (TraceConfig): Trace configuration.
+
+        Returns:
+            list[Tensor]: The updated list of tensors with trace buffers appended.
+        """
         if trace_config.trace_after_last_tensor:
             # Create a new, extended out tensor.
             out_size = trace_config.trace_size
@@ -177,6 +274,16 @@ class HostRuntime(ABC):
     def extract_trace_from_args(
         cls, args: list[Tensor], trace_config: TraceConfig
     ) -> tuple[Tensor, Tensor | None]:
+        """
+        Extract trace and control buffers from the arguments.
+
+        Args:
+            args (list[Tensor]): List of tensors used in execution.
+            trace_config (TraceConfig): Trace configuration.
+
+        Returns:
+            tuple[Tensor, Tensor | None]: A tuple containing the trace buffer and optionally the control buffer.
+        """
         trace_buff = None
         ctrl_buff = None
 
@@ -199,6 +306,17 @@ class HostRuntime(ABC):
 
     @classmethod
     def _extract_prefix(cls, tensor, prefix_shape, prefix_dtype):
+        """
+        Separate output data and trace data from a single output buffer stream.
+
+        Args:
+            tensor (Tensor | np.ndarray): The combined tensor.
+            prefix_shape (tuple): Shape of the prefix (output data).
+            prefix_dtype (np.dtype): Data type of the prefix.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: A tuple containing the output prefix and the suffix (trace data).
+        """
         # Wrapper function to separate output data and trace data from a single output buffer stream
         if not isinstance(tensor, np.ndarray):
             tensor = tensor.numpy()
@@ -212,6 +330,15 @@ class HostRuntime(ABC):
 
     @classmethod
     def process_trace(cls, trace_buffer, ctrl_buffer, trace_config, verbosity=0):
+        """
+        Process the trace buffer and control buffer.
+
+        Args:
+            trace_buffer (np.ndarray): The trace data buffer.
+            ctrl_buffer (np.ndarray): The control packet buffer.
+            trace_config (TraceConfig): Trace configuration.
+            verbosity (int, optional): Verbosity level. Defaults to 0.
+        """
         if verbosity >= 1:
             print("trace_buffer shape: ", trace_buffer.shape)
             print("trace_buffer dtype: ", trace_buffer.dtype)
@@ -232,6 +359,20 @@ class HostRuntime(ABC):
 
     @classmethod
     def verify_results(cls, io_args, refs={}, verbosity=0):
+        """
+        Verify the results of the kernel execution against reference data.
+
+        Args:
+            io_args (list[Tensor]): List of input/output tensors.
+            refs (dict, optional): Dictionary mapping index to reference numpy array. Defaults to {}.
+            verbosity (int, optional): Verbosity level. Defaults to 0.
+
+        Returns:
+            int: Number of errors found.
+
+        Raises:
+            HostRuntimeError: If a reference index is out of bounds.
+        """
         errors = 0
         if verbosity >= 1:
             print("Verifying results ...")
@@ -255,6 +396,19 @@ class HostRuntime(ABC):
         verify: bool = True,
         verbosity: int = 0,
     ) -> int:
+        """
+        Run a test for the given NPU kernel.
+
+        Args:
+            npu_kernel (NPUKernel): The NPU kernel to test.
+            io_args (list[Tensor]): List of input/output tensors.
+            ref (dict): Reference data for verification.
+            verify (bool, optional): Whether to verify results. Defaults to True.
+            verbosity (int, optional): Verbosity level. Defaults to 0.
+
+        Returns:
+            int: 0 if successful, 1 otherwise.
+        """
         kernel_handle = self.load(npu_kernel)
         trace_config = npu_kernel.trace_config
 
