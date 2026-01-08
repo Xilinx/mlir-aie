@@ -6,6 +6,7 @@ XRT-based implementation of the HostRuntime
 """
 import atexit
 import logging
+from collections import OrderedDict
 import os
 import time
 import weakref
@@ -211,8 +212,10 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     def __init__(self):
         super().__init__()
-        self._context_cache = {}
-        self._insts_cache = {}
+        # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
+        self._context_cache = OrderedDict()
+        self._insts_cache = OrderedDict()
+
         if self.npu_str == "npu1":
             self._cache_size = NPU1_CACHE_SIZE
         else:

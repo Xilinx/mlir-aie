@@ -146,16 +146,29 @@ def test_insts_initialization(runtime):
     input_tensor = iron.tensor((32,), dtype=np.int32)
     input_tensor[:] = np.arange(32, dtype=np.int32)
 
+    # Capture load calls to get paths
+    original_load = runtime.load
+    captured_kernels = []
+
+    def side_effect_load(npu_kernel):
+        captured_kernels.append(npu_kernel)
+        return original_load(npu_kernel)
+
+    runtime.load = side_effect_load
+
     # Run once to generate artifacts
     transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    # Restore load
+    runtime.load = original_load
 
     if not hasattr(runtime, "_context_cache"):
         pytest.skip("CachedXRTRuntime does not have _context_cache")
 
     # Manually load to get a strong reference
-    ctx_key = list(runtime._context_cache.keys())[0]
-    xclbin_path = ctx_key[0]
-    insts_path = ctx_key[2]
+    npu_kernel_captured = captured_kernels[0]
+    xclbin_path = npu_kernel_captured.xclbin_path
+    insts_path = npu_kernel_captured.insts_path
 
     class MockNPUKernel:
         def __init__(self, x, i):

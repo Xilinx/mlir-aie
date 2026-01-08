@@ -7,6 +7,7 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 from ml_dtypes import bfloat16
 import numpy as np
+from .tensor_class import Tensor
 
 
 def bfloat16_safe_allclose(dtype, arr1, arr2):
