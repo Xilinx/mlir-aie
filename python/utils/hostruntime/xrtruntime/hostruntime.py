@@ -274,7 +274,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         insts_mtime = insts_path.stat().st_mtime
 
         # Context Cache Lookup
-        context_key = (str(xclbin_path), xclbin_mtime, str(insts_path), insts_mtime)
+        context_key = (str(xclbin_path), xclbin_mtime)
 
         try:
             if context_key in self._context_cache:

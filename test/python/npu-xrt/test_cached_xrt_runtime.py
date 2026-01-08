@@ -244,6 +244,16 @@ def test_runtime_handle_invalidation(runtime):
     original_size = runtime._cache_size
     runtime._cache_size = 1
 
+    # Capture load calls to get paths
+    original_load = runtime.load
+    captured_kernels = []
+
+    def side_effect_load(npu_kernel):
+        captured_kernels.append(npu_kernel)
+        return original_load(npu_kernel)
+
+    runtime.load = side_effect_load
+
     try:
         input_tensor = iron.tensor((32,), dtype=np.int32)
         input_tensor[:] = np.arange(32, dtype=np.int32)
@@ -251,10 +261,13 @@ def test_runtime_handle_invalidation(runtime):
         # Load first kernel to generate artifacts
         transform(input_tensor, input_tensor, lambda x: x + 1)
 
+        # Restore load
+        runtime.load = original_load
+
         # Manually load to get a strong reference to the handle
-        key1 = list(runtime._context_cache.keys())[0]
-        xclbin_path = key1[0]
-        insts_path = key1[2]
+        npu_kernel_captured = captured_kernels[0]
+        xclbin_path = npu_kernel_captured.xclbin_path
+        insts_path = npu_kernel_captured.insts_path
 
         class MockNPUKernel:
             def __init__(self, x, i):
@@ -284,13 +297,26 @@ def test_runtime_cleanup(runtime):
     input_tensor = iron.tensor((32,), dtype=np.int32)
     input_tensor[:] = np.arange(32, dtype=np.int32)
 
+    # Capture load calls to get paths
+    original_load = runtime.load
+    captured_kernels = []
+
+    def side_effect_load(npu_kernel):
+        captured_kernels.append(npu_kernel)
+        return original_load(npu_kernel)
+
+    runtime.load = side_effect_load
+
     # Load kernel to generate artifacts
     transform(input_tensor, input_tensor, lambda x: x + 1)
 
+    # Restore load
+    runtime.load = original_load
+
     # Manually load to get a strong reference to the handle
-    key = list(runtime._context_cache.keys())[0]
-    xclbin_path = key[0]
-    insts_path = key[2]
+    npu_kernel_captured = captured_kernels[0]
+    xclbin_path = npu_kernel_captured.xclbin_path
+    insts_path = npu_kernel_captured.insts_path
 
     class MockNPUKernel:
         def __init__(self, x, i):
@@ -317,8 +343,21 @@ def test_base_runtime_load_run(runtime):
     input_tensor = iron.tensor((32,), dtype=np.int32)
     input_tensor[:] = np.arange(32, dtype=np.int32)
 
+    # Capture load calls to get paths
+    original_load = runtime.load
+    captured_kernels = []
+
+    def side_effect_load(npu_kernel):
+        captured_kernels.append(npu_kernel)
+        return original_load(npu_kernel)
+
+    runtime.load = side_effect_load
+
     # Run transform to generate artifacts using the cached runtime (fixture)
     transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    # Restore load
+    runtime.load = original_load
 
     # Verify result
     res = input_tensor.numpy()
@@ -326,9 +365,9 @@ def test_base_runtime_load_run(runtime):
     np.testing.assert_array_equal(res, expected)
 
     # Get paths from cached runtime to use with base runtime
-    key = list(runtime._context_cache.keys())[0]
-    xclbin_path = key[0]
-    insts_path = key[2]
+    npu_kernel_captured = captured_kernels[0]
+    xclbin_path = npu_kernel_captured.xclbin_path
+    insts_path = npu_kernel_captured.insts_path
 
     class MockNPUKernel:
         def __init__(self, x, i):
