@@ -344,7 +344,9 @@ class CachedXRTRuntime(XRTHostRuntime):
                 kernel = pyxrt.ext.kernel(context, insts, kernel_name)
             else:
                 kernel = pyxrt.kernel(context, kernel_name)
-                # Handle insts caching
+
+                # Magic number for RyzenAI group id that will be fixed in the future. See same code at XRT:
+                # https://github.com/Xilinx/XRT/blob/56222ed5cfd119dff0d5bd920735b87024e8c829/src/runtime_src/core/common/api/xrt_module.cpp#L1621
                 group_id = kernel.group_id(1)
                 insts_key = (str(insts_path), insts_mtime, group_id)
 
