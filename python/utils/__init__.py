@@ -30,34 +30,113 @@ else:
 
 
 def tensor(*args, **kwargs):
+    """
+    Create a tensor using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the tensor constructor.
+        **kwargs: Keyword arguments passed to the tensor constructor.
+
+    Returns:
+        Tensor: The created tensor.
+    """
     return DEFAULT_TENSOR_CLASS(*args, **kwargs)
 
 
 def ones(*args, **kwargs):
+    """
+    Create a tensor filled with ones using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the ones method.
+        **kwargs: Keyword arguments passed to the ones method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
     return DEFAULT_TENSOR_CLASS.ones(*args, **kwargs)
 
 
 def zeros(*args, **kwargs):
+    """
+    Create a tensor filled with zeros using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the zeros method.
+        **kwargs: Keyword arguments passed to the zeros method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
     return DEFAULT_TENSOR_CLASS.zeros(*args, **kwargs)
 
 
 def randint(*args, **kwargs):
+    """
+    Create a tensor filled with random integers using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the randint method.
+        **kwargs: Keyword arguments passed to the randint method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
     return DEFAULT_TENSOR_CLASS.randint(*args, **kwargs)
 
 
 def rand(*args, **kwargs):
+    """
+    Create a tensor filled with random values using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the rand method.
+        **kwargs: Keyword arguments passed to the rand method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
     return DEFAULT_TENSOR_CLASS.rand(*args, **kwargs)
 
 
 def arange(*args, **kwargs):
+    """
+    Create a tensor with a range of values using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the arange method.
+        **kwargs: Keyword arguments passed to the arange method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
     return DEFAULT_TENSOR_CLASS.arange(*args, **kwargs)
 
 
 def zeros_like(*args, **kwargs):
+    """
+    Create a tensor filled with zeros with the same shape as another tensor using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the zeros_like method.
+        **kwargs: Keyword arguments passed to the zeros_like method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
     return DEFAULT_TENSOR_CLASS.zeros_like(*args, **kwargs)
 
 
 def set_tensor_class(cls):
+    """
+    Set the default tensor class.
+
+    Args:
+        cls: The new default tensor class. Must inherit from Tensor.
+
+    Raises:
+        ValueError: If cls does not inherit from Tensor.
+    """
     if not issubclass(cls, Tensor):
         raise ValueError(
             f"Tensors must inherit from the Tensor class but {cls} does not."
@@ -79,4 +158,10 @@ else:
 
 
 def get_current_device():
+    """
+    Get the current NPU device.
+
+    Returns:
+        Device | None: The current device if available, else None.
+    """
     return DefaultNPURuntime.device() if DefaultNPURuntime else None

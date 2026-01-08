@@ -30,9 +30,13 @@ def jit(function=None, is_placed=True, use_cache=True):
     """
     Decorator to compile an NPU kernel into a binary to run on the NPU.
 
-    Parameters:
-    - is_placed (bool): Whether the kernel is using explicit or implicit placement Defaults to True.
-    - use_cache (bool): Use cached MLIR module if available. Defaults to True.
+    Args:
+        function (callable, optional): The function to compile.
+        is_placed (bool, optional): Whether the kernel is using explicit or implicit placement. Defaults to True.
+        use_cache (bool, optional): Use cached MLIR module if available. Defaults to True.
+
+    Returns:
+        callable: The decorated function.
     """
     if function is None:
         return functools.partial(jit, is_placed=is_placed, use_cache=use_cache)
@@ -154,6 +158,14 @@ def jit(function=None, is_placed=True, use_cache=True):
 def hash_module(module, external_kernels=None, target_arch=None):
     """
     Hash the MLIR module and ExternalFunction compiler options to create a unique identifier.
+
+    Args:
+        module: The MLIR module.
+        external_kernels (list, optional): List of external kernels. Defaults to None.
+        target_arch (str, optional): Target architecture. Defaults to None.
+
+    Returns:
+        str: The hash string.
     """
     mlir_str = str(module)
 
