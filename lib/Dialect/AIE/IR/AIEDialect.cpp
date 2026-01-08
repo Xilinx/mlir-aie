@@ -654,7 +654,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
       int64_t minInputBufferSize = 0;
-      for (auto fifoIn : getFifoIns()) {
+      for (auto fifoIn : getInputObjectFifos()) {
         auto fifoInType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
         MemRefType buffer = llvm::cast<MemRefType>(fifoInType.getElementType());
         if (buffer.getNumElements() <= minInputBufferSize)
