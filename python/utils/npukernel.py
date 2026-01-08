@@ -41,9 +41,9 @@ class NPUKernel:
 
     # Blocking call.
     def __call__(self, *args):
-        from . import DEFAULT_NPU_RUNTIME
+        from . import DefaultNPURuntime
 
-        return DEFAULT_NPU_RUNTIME.load_and_run(
+        return DefaultNPURuntime.load_and_run(
             self,
             list(args),
             trace_config=self._trace_config,

@@ -41,10 +41,10 @@ def jit(function=None, is_placed=True, use_cache=True):
     def decorator(*args, **kwargs):
         from aie.iron.device import NPU1, NPU2, NPU1Col1, NPU2Col1
         from aie.iron.kernel import ExternalFunction
-        from . import DEFAULT_NPU_RUNTIME
+        from . import DefaultNPURuntime
 
-        if DEFAULT_NPU_RUNTIME is None:
-            raise Exception("Cannot use JIT; DEFAULT_NPU_RUNTIME not set.")
+        if DefaultNPURuntime is None:
+            raise Exception("Cannot use JIT; DefaultNPURuntime not set.")
 
         trace_config = kwargs.get("trace_config")
 
@@ -85,7 +85,7 @@ def jit(function=None, is_placed=True, use_cache=True):
                 external_kernels.append(func)
 
         # Determine target architecture based on device type
-        current_device = DEFAULT_NPU_RUNTIME.device()
+        current_device = DefaultNPURuntime.device()
 
         # Determine target architecture based on device type
         if isinstance(current_device, (NPU2, NPU2Col1)):

@@ -30,15 +30,15 @@ def runtime():
     rt = CachedXRTRuntime()
 
     # Save old values
-    old_utils_runtime = aie.utils.DEFAULT_NPU_RUNTIME
+    old_utils_runtime = aie.utils.DefaultNPURuntime
 
     # Set new values
-    aie.utils.DEFAULT_NPU_RUNTIME = rt
+    aie.utils.DefaultNPURuntime = rt
 
     yield rt
 
     # Restore
-    aie.utils.DEFAULT_NPU_RUNTIME = old_utils_runtime
+    aie.utils.DefaultNPURuntime = old_utils_runtime
     rt.cleanup()
 
 

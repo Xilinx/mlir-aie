@@ -25,7 +25,7 @@ from pathlib import Path
 from aie.utils.trace import parse_trace
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.utils import DEFAULT_NPU_RUNTIME
+from aie.utils import DefaultNPURuntime
 
 IN_OUT_SIZE = 4096
 IN_OUT_DTYPE = np.int32
@@ -83,7 +83,7 @@ def main(opts):
     opts.trace_size = IN_OUT_SIZE * 4
 
     npu_opts = test_utils.create_npu_kernel(opts)
-    if DEFAULT_NPU_RUNTIME.run_test(
+    if DefaultNPURuntime.run_test(
         npu_opts.npu_kernel,
         [in1, in2, out],
         {2: ref_data},

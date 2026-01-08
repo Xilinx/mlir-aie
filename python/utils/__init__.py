@@ -73,10 +73,10 @@ from .npukernel import NPUKernel
 if has_xrt:
     from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
 
-    DEFAULT_NPU_RUNTIME = CachedXRTRuntime()
+    DefaultNPURuntime = CachedXRTRuntime()
 else:
-    DEFAULT_NPU_RUNTIME = None
+    DefaultNPURuntime = None
 
 
 def get_current_device():
-    return DEFAULT_NPU_RUNTIME.device() if DEFAULT_NPU_RUNTIME else None
+    return DefaultNPURuntime.device() if DefaultNPURuntime else None

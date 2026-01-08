@@ -11,7 +11,7 @@ import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.utils import DEFAULT_NPU_RUNTIME
+from aie.utils import DefaultNPURuntime
 import sys
 
 
@@ -29,7 +29,7 @@ def main(opts):
     out = iron.zeros(data_size, dtype=dtype)
 
     npu_opts = test_utils.create_npu_kernel(opts)
-    res = DEFAULT_NPU_RUNTIME.run_test(
+    res = DefaultNPURuntime.run_test(
         npu_opts.npu_kernel,
         [out],
         {0: reference_access_order.flatten()},

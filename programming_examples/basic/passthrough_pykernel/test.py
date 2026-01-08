@@ -9,7 +9,7 @@ import numpy as np
 import sys
 import aie.utils.test as test_utils
 import aie.iron as iron
-from aie.utils import DEFAULT_NPU_RUNTIME
+from aie.utils import DefaultNPURuntime
 
 
 def main(opts):
@@ -23,7 +23,7 @@ def main(opts):
     out = iron.zeros(data_size, dtype=dtype)
 
     npu_opts = test_utils.create_npu_kernel(opts)
-    res = DEFAULT_NPU_RUNTIME.run_test(
+    res = DefaultNPURuntime.run_test(
         npu_opts.npu_kernel,
         [in1, out],
         {1: input_data},
