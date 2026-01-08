@@ -651,9 +651,31 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitOpError("dst offsets should be empty for join");
 
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
-    if (!fifoOut.getDimensionsToStream().empty())
-      return emitOpError("currently does not support objectFifos with "
-                         "dimensionsToStream for join output.");
+    if (!fifoOut.getDimensionsToStream().empty()) {
+      int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
+      MemRefType minInputBuffer;
+      for (auto fifoIn : getFifoIns()) {
+        auto fifoInType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
+        MemRefType buffer = llvm::cast<MemRefType>(fifoInType.getElementType());
+        if (buffer.getNumElements() <= minInputBuffer)
+          minInputBuffer = buffer;
+      }
+      if (minInputBuffer.getNumElements() <= maxIdx) {
+        return emitOpError() << "Specified stride(s) and size(s) result in out "
+                                "of bounds access in input objectfifo buffer, for index "
+                             << std::to_string(maxIdx) << " in memref of length "
+                             << std::to_string(minInputBuffer.getNumElements()) << ".";
+      }
+    }
+
+    // MemRefType buffer = getBuffer().getType();
+    
+    // std::vector<BDDimLayoutAttr> testDims = *dims;
+    // int64_t maxIdx = getDimsMaxIdx(testDims);
+
+    //   return emitOpError("currently does not support objectFifos with "
+    //                      "dimensionsToStream for join output.");
+    
 
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
