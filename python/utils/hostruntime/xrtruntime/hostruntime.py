@@ -65,8 +65,8 @@ class XRTHostRuntime(HostRuntime):
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
         self.npu_str = None
-        for key, value in NPU_MODELS.items():
-            if any([model in self._device_type_str for model in NPU_MODELS[key]]):
+        for key, value in self.NPU_MODELS.items():
+            if any([model in self._device_type_str for model in self.NPU_MODELS[key]]):
                 self.npu_str = key
                 break
         if not self.npu_str:
