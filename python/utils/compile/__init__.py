@@ -17,8 +17,6 @@ from .utils import (
 )
 
 # Compiled kernels are cached inside the `NPU_CACHE_HOME` directory.
-# Kernels are cached based on their hash value of the MLIR module string. If during compilation,
-# we hit in the cache, the `aie.utils.jit` will load the xclbin and instruction binary files from the cache.
 NPU_CACHE_HOME = Path(
     os.environ.get("NPU_CACHE_HOME", Path.home() / ".npu" / "cache")
 ).resolve()
