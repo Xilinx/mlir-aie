@@ -390,12 +390,11 @@ def test_base_runtime_load_run(runtime):
 
 def test_cache_size_limit(runtime):
     """Test that cache size is set correctly based on device."""
-    from aie.utils.hostruntime.xrtruntime.hostruntime import (
-        NPU1_CACHE_SIZE,
-        NPU2_CACHE_SIZE,
-    )
+    cache_sizes = CachedXRTRuntime.NPU_CONTEXT_CACHE_SIZE
+    npu1_size = cache_sizes["npu1"]
+    npu2_size = cache_sizes["npu2"]
 
-    expected_size = NPU1_CACHE_SIZE if runtime.npu_str == "npu1" else NPU2_CACHE_SIZE
+    expected_size = npu1_size if runtime.npu_str == "npu1" else npu2_size
 
     env_cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE")
     if env_cache_size is not None:
