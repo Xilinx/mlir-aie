@@ -242,9 +242,9 @@ def test_runtime_handle_invalidation(runtime):
     original_load = runtime.load
     captured_kernels = []
 
-    def side_effect_load(npu_kernel):
+    def side_effect_load(npu_kernel, **kwargs):
         captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel)
+        return original_load(npu_kernel, **kwargs)
 
     runtime.load = side_effect_load
 
@@ -293,9 +293,9 @@ def test_runtime_cleanup(runtime):
     original_load = runtime.load
     captured_kernels = []
 
-    def side_effect_load(npu_kernel):
+    def side_effect_load(npu_kernel, **kwargs):
         captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel)
+        return original_load(npu_kernel, **kwargs)
 
     runtime.load = side_effect_load
 
@@ -338,9 +338,9 @@ def test_base_runtime_load_run(runtime):
     original_load = runtime.load
     captured_kernels = []
 
-    def side_effect_load(npu_kernel):
+    def side_effect_load(npu_kernel, **kwargs):
         captured_kernels.append(npu_kernel)
-        return original_load(npu_kernel)
+        return original_load(npu_kernel, **kwargs)
 
     runtime.load = side_effect_load
 
@@ -401,3 +401,42 @@ def test_cache_size_limit(runtime):
         expected_size = min(expected_size, int(env_cache_size))
 
     assert runtime._cache_size == expected_size
+
+
+def test_runtime_retry_disable(runtime):
+    """Test that retry=False is accepted."""
+    input_tensor = iron.arange(32, dtype=np.int32)
+
+    # Capture load calls to get paths
+    original_load = runtime.load
+    captured_kernels = []
+
+    def side_effect_load(npu_kernel, **kwargs):
+        captured_kernels.append(npu_kernel)
+        return original_load(npu_kernel, **kwargs)
+
+    runtime.load = side_effect_load
+
+    # Run transform to generate artifacts
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    # Restore load
+    runtime.load = original_load
+
+    # Get paths
+    npu_kernel_captured = captured_kernels[0]
+    xclbin_path = npu_kernel_captured.xclbin_path
+    insts_path = npu_kernel_captured.insts_path
+
+    class MockNPUKernel:
+        def __init__(self, x, i):
+            self.xclbin_path = x
+            self.insts_path = i
+            self.kernel_name = "MLIR_AIE"
+            self.trace_config = None
+
+    npu_kernel = MockNPUKernel(xclbin_path, insts_path)
+
+    # Load with retry=False
+    handle = runtime.load(npu_kernel, retry=False)
+    assert handle is not None
