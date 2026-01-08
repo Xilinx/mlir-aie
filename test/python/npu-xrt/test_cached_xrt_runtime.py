@@ -440,3 +440,56 @@ def test_runtime_retry_disable(runtime):
     # Load with retry=False
     handle = runtime.load(npu_kernel, retry=False)
     assert handle is not None
+
+
+def test_runtime_run_only_if_loaded(runtime):
+    """Test that run with only_if_loaded=True fails if kernel is evicted."""
+    input_tensor = iron.arange(32, dtype=np.int32)
+
+    # Capture load calls to get paths
+    original_load = runtime.load
+    captured_kernels = []
+
+    def side_effect_load(npu_kernel, **kwargs):
+        captured_kernels.append(npu_kernel)
+        return original_load(npu_kernel, **kwargs)
+
+    runtime.load = side_effect_load
+
+    # Run transform to generate artifacts
+    transform(input_tensor, input_tensor, lambda x: x + 1)
+
+    # Restore load
+    runtime.load = original_load
+
+    # Get paths
+    npu_kernel_captured = captured_kernels[0]
+    xclbin_path = npu_kernel_captured.xclbin_path
+    insts_path = npu_kernel_captured.insts_path
+
+    class MockNPUKernel:
+        def __init__(self, x, i):
+            self.xclbin_path = x
+            self.insts_path = i
+            self.kernel_name = "MLIR_AIE"
+            self.trace_config = None
+
+    npu_kernel = MockNPUKernel(xclbin_path, insts_path)
+
+    # Load
+    handle = runtime.load(npu_kernel)
+    assert handle is not None
+    assert handle._is_valid
+
+    # Run with only_if_loaded=True (should succeed)
+    runtime.run(handle, [input_tensor, input_tensor], only_if_loaded=True)
+
+    # Invalidate handle (simulate eviction)
+    handle.invalidate()
+    assert not handle._is_valid
+
+    # Run with only_if_loaded=True (should fail)
+    from aie.utils.hostruntime.hostruntime import HostRuntimeError
+
+    with pytest.raises(HostRuntimeError, match="Kernel not loaded"):
+        runtime.run(handle, [input_tensor, input_tensor], only_if_loaded=True)

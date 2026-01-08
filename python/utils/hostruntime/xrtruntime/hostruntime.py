@@ -170,6 +170,7 @@ class XRTHostRuntime(HostRuntime):
         args,
         trace_config=None,
         fail_on_error: bool = True,
+        **kwargs,
     ) -> XRTKernelResult:
         """
         Run a loaded XRT kernel.
@@ -179,6 +180,7 @@ class XRTHostRuntime(HostRuntime):
             args: Arguments to pass to the kernel.
             trace_config (optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
+            **kwargs: Additional arguments.
 
         Returns:
             XRTKernelResult: The result of the kernel execution.
@@ -365,6 +367,41 @@ class CachedXRTRuntime(XRTHostRuntime):
     def _evict_insts(self):
         key, entry = self._insts_cache.popitem(last=False)
         self._cleanup_insts_entry(entry)
+
+    def run(
+        self,
+        kernel_handle: XRTKernelHandle,
+        args,
+        trace_config=None,
+        fail_on_error: bool = True,
+        only_if_loaded: bool = False,
+        **kwargs,
+    ) -> XRTKernelResult:
+        """
+        Run a loaded XRT kernel.
+
+        Args:
+            kernel_handle (XRTKernelHandle): The handle to the loaded kernel.
+            args: Arguments to pass to the kernel.
+            trace_config (optional): Configuration for tracing. Defaults to None.
+            fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
+            only_if_loaded (bool, optional): If True, only run if the kernel is currently loaded in the cache. Defaults to False.
+            **kwargs: Additional arguments.
+
+        Returns:
+            XRTKernelResult: The result of the kernel execution.
+
+        Raises:
+            HostRuntimeError: If arguments are invalid, kernel execution fails, or kernel is not loaded (if only_if_loaded=True).
+        """
+        if only_if_loaded:
+            if (
+                isinstance(kernel_handle, CachedXRTKernelHandle)
+                and not kernel_handle._is_valid
+            ):
+                raise HostRuntimeError("Kernel not loaded (evicted from cache)")
+
+        return super().run(kernel_handle, args, trace_config, fail_on_error, **kwargs)
 
     def load(
         self,
