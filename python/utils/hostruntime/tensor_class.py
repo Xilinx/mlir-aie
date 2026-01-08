@@ -28,7 +28,7 @@ class Tensor(ABC):
         """
         Initialize the tensor.
 
-        Parameters:
+        Args:
             shape_or_data (tuple or array-like):
                 - If a tuple, creates a new tensor with the given shape and dtype.
                 - If array-like, wraps the data into a tensor with optional dtype casting.
@@ -43,13 +43,23 @@ class Tensor(ABC):
     @property
     @abstractmethod
     def data(self):
-        """Subclasses must implement a data property."""
+        """
+        Subclasses must implement a data property.
+
+        Returns:
+            np.ndarray: The underlying data of the tensor.
+        """
         pass
 
     @property
     @abstractmethod
     def shape(self):
-        """Subclasses must implement a shape property."""
+        """
+        Subclasses must implement a shape property.
+
+        Returns:
+            tuple: The shape of the tensor.
+        """
         pass
 
     def __repr__(self):
@@ -89,7 +99,7 @@ class Tensor(ABC):
         """
         Retrieves the value at a specific index in the tensor.
 
-        Parameters:
+        Args:
             index (int): The index of the value to retrieve.
 
         Returns:
@@ -106,7 +116,7 @@ class Tensor(ABC):
         """
         Sets the value at a specific index in the tensor.
 
-        Parameters:
+        Args:
             index (int): The index of the value to set.
             value: The new value to assign.
 
@@ -121,6 +131,15 @@ class Tensor(ABC):
             self._sync_to_device()
 
     def __len__(self):
+        """
+        Return the length of the tensor.
+
+        Returns:
+            int: The length of the tensor (size of the first dimension).
+
+        Raises:
+            TypeError: If the tensor is 0-dimensional.
+        """
         if self.data.ndim == 0:
             raise TypeError("len() of a 0-d tensor")
         return self.shape[0]
@@ -143,7 +162,7 @@ class Tensor(ABC):
         """
         Moves the tensor to a specified target device.
 
-        Parameters:
+        Args:
             target_device (str): The target device.
 
         Returns:
@@ -294,7 +313,7 @@ class Tensor(ABC):
         """
         Fills the tensor with a scalar value (in-place operation).
 
-        Parameters:
+        Args:
             value: The scalar value to fill the tensor with.
 
         Note: For NPU tensors, this method syncs the filled data to device after modification.
@@ -317,10 +336,8 @@ class Tensor(ABC):
         """
         Returns a tensor filled with ones, with shape defined by size.
 
-        Parameters:
+        Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
-
-        Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
             device (str, optional): Target device. Defaults to 'npu'.
@@ -338,10 +355,8 @@ class Tensor(ABC):
         """
         Returns a tensor filled with zeros, with shape defined by size.
 
-        Parameters:
+        Args:
             *size (int...): Shape of the tensor, passed as separate ints or a single tuple/list.
-
-        Keyword Arguments:
             out (Tensor, optional): Optional output tensor to write into.
             dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
             device (str, optional): Target device. Defaults to 'npu'.
@@ -359,12 +374,10 @@ class Tensor(ABC):
         """
         Returns a tensor filled with random integers uniformly sampled from [low, high).
 
-        Parameters:
+        Args:
             low (int): Lowest integer to be drawn (inclusive).
             high (int): One above the highest integer to be drawn (exclusive).
             size (tuple): Shape of the returned tensor.
-
-        Keyword Arguments:
             out (Tensor, optional): Optional tensor to write the result into.
             dtype (np.dtype, optional): Data type. Defaults to np.int64.
             device (str, optional): Target device. Defaults to 'npu'.
@@ -391,10 +404,8 @@ class Tensor(ABC):
         """
         Returns a tensor filled with random numbers from a uniform distribution on [0, 1).
 
-        Parameters:
+        Args:
             *size (int...): Variable number of integers or a single tuple defining the shape.
-
-        Keyword Arguments:
             out (Tensor, optional): Output tensor to write into.
             dtype (np.dtype, optional): Desired data type. Defaults to np.float32.
             device (str, optional): Target device. Defaults to 'npu'.
@@ -439,12 +450,10 @@ class Tensor(ABC):
         """
         Returns a 1-D tensor with values from the interval [start, end) with spacing `step`.
 
-        Parameters:
+        Args:
             start (number): Start of interval. Defaults to 0.
             end (number): End of interval (exclusive). Required if only one argument is given.
             step (number): Gap between elements. Defaults to 1.
-
-        Keyword Arguments:
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
             out (Tensor, optional): Optional tensor to write output to (must match shape and dtype).
             device (str, optional): Target device. Defaults to 'npu'.
@@ -487,7 +496,7 @@ class Tensor(ABC):
         """
         Creates a new tensor with the same shape as `other`, filled with zeros.
 
-        Parameters:
+        Args:
             other (Tensor): The reference tensor to copy shape from.
             dtype (np.dtype, optional): Data type of the new tensor. Defaults to other's dtype.
             device (str, optional): Target device. Defaults to other's device.
@@ -517,6 +526,16 @@ class CPUOnlyTensor(Tensor):
     DEFAULT_DEVICE = "cpu"
 
     def __init__(self, shape_or_data, dtype=np.uint32, device="cpu"):
+        """
+        Initialize the CPUOnlyTensor.
+
+        Args:
+            shape_or_data (tuple or array-like):
+                - If a tuple, creates a new tensor with the given shape and dtype.
+                - If array-like, wraps the data into a tensor with optional dtype casting.
+            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            device (str, optional): Device string identifier. Defaults to 'cpu'.
+        """
         super().__init__(shape_or_data, dtype=dtype, device=device)
         if not isinstance(shape_or_data, tuple):
             self._data = np.array(shape_or_data, dtype=dtype)
@@ -526,16 +545,36 @@ class CPUOnlyTensor(Tensor):
 
     @property
     def data(self):
+        """
+        Get the underlying numpy array.
+
+        Returns:
+            np.ndarray: The underlying data.
+        """
         return self._data
 
     @property
     def shape(self):
+        """
+        Get the shape of the tensor.
+
+        Returns:
+            tuple: The shape of the tensor.
+        """
         return self._shape
 
     def _sync_to_device(self):
+        """
+        Syncs the tensor data from the host to the device memory.
+        For CPUOnlyTensor, this is a no-op.
+        """
         # Nothing to do for CPU only
         pass
 
     def _sync_from_device(self):
+        """
+        Syncs the tensor data from the device to the host memory.
+        For CPUOnlyTensor, this is a no-op.
+        """
         # Nothing to do for CPU only
         pass

@@ -30,6 +30,18 @@ class XRTTensor(Tensor):
         flags=xrt.bo.host_only,
         group_id=0,
     ):
+        """
+        Initialize the XRTTensor.
+
+        Args:
+            shape_or_data (tuple or array-like):
+                - If a tuple, creates a new tensor with the given shape and dtype.
+                - If array-like, wraps the data into a tensor with optional dtype casting.
+            dtype (np.dtype, optional): Data type of the tensor. Defaults to np.uint32.
+            device (str, optional): Device string identifier. Defaults to 'npu'.
+            flags (optional): XRT buffer object flags. Defaults to xrt.bo.host_only.
+            group_id (int, optional): XRT buffer object group ID. Defaults to 0.
+        """
         super().__init__(shape_or_data, dtype=dtype, device=device)
         device_index = 0
         self.xrt_device = xrt.device(device_index)
@@ -73,16 +85,34 @@ class XRTTensor(Tensor):
 
     @property
     def data(self):
+        """
+        Get the underlying numpy array.
+
+        Returns:
+            np.ndarray: The underlying data.
+        """
         return self._data
 
     @property
     def shape(self):
+        """
+        Get the shape of the tensor.
+
+        Returns:
+            tuple: The shape of the tensor.
+        """
         return self._shape
 
     def _sync_to_device(self):
+        """
+        Syncs the tensor data from the host to the device memory.
+        """
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def _sync_from_device(self):
+        """
+        Syncs the tensor data from the device to the host memory.
+        """
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):

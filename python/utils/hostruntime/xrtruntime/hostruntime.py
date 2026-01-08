@@ -24,7 +24,21 @@ from .tensor import XRTTensor
 
 # XRTKernelHandle(kernel, xclbin, context, insts_path)
 class XRTKernelHandle(KernelHandle):
+    """
+    Handle for a loaded XRT kernel.
+    """
+
     def __init__(self, kernel, xclbin, context, insts, insts_bo=None):
+        """
+        Initialize the XRTKernelHandle.
+
+        Args:
+            kernel: The XRT kernel object.
+            xclbin: The XRT xclbin object.
+            context: The XRT context object.
+            insts: The instructions for the kernel.
+            insts_bo (optional): The instruction buffer object. Defaults to None.
+        """
         self.kernel = kernel
         self.xclbin = xclbin
         self.context = context
@@ -61,6 +75,9 @@ class XRTHostRuntime(HostRuntime):
     _tensor_class = XRTTensor
 
     def __init__(self):
+        """
+        Initialize the XRTHostRuntime.
+        """
         self._device = pyxrt.device(0)
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
@@ -74,6 +91,15 @@ class XRTHostRuntime(HostRuntime):
 
     @classmethod
     def read_insts(cls, insts_path: Path):
+        """
+        Reads instructions from the given file, with XRT-specific handling for ELF files.
+
+        Args:
+            insts_path (Path): Path to the instruction file.
+
+        Returns:
+            The instructions (either as bytes/array or XRT module).
+        """
         # Overload the function in the generic class so we can use xrt-specific handling of elf files.
         ext = insts_path.suffix.lower()
         if ext == ".elf" and hasattr(pyxrt, "module"):
@@ -86,6 +112,18 @@ class XRTHostRuntime(HostRuntime):
         self,
         npu_kernel,
     ) -> XRTKernelHandle:
+        """
+        Load an NPU kernel into the XRT runtime.
+
+        Args:
+            npu_kernel: The NPU kernel to load.
+
+        Returns:
+            XRTKernelHandle: A handle to the loaded kernel.
+
+        Raises:
+            HostRuntimeError: If xclbin or insts files do not exist, or if kernel is not found.
+        """
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name
@@ -131,6 +169,21 @@ class XRTHostRuntime(HostRuntime):
         trace_config=None,
         fail_on_error: bool = True,
     ) -> XRTKernelResult:
+        """
+        Run a loaded XRT kernel.
+
+        Args:
+            kernel_handle (XRTKernelHandle): The handle to the loaded kernel.
+            args: Arguments to pass to the kernel.
+            trace_config (optional): Configuration for tracing. Defaults to None.
+            fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
+
+        Returns:
+            XRTKernelResult: The result of the kernel execution.
+
+        Raises:
+            HostRuntimeError: If arguments are invalid or kernel execution fails (and fail_on_error is True).
+        """
         # Filter out callable functions and check arg types
         args = [a for a in args if not callable(a)]
         if not all([isinstance(a, self._tensor_class) for a in args]):
@@ -172,6 +225,15 @@ class XRTHostRuntime(HostRuntime):
         return XRTKernelResult(r, stop - start)
 
     def device(self) -> "Device":
+        """
+        Get the device associated with this runtime.
+
+        Returns:
+            Device: The device object (NPU1 or NPU2).
+
+        Raises:
+            HostRuntimeError: If the device string is unknown.
+        """
         from aie.iron.device import NPU1, NPU2
 
         devices = {
@@ -188,11 +250,28 @@ class XRTHostRuntime(HostRuntime):
 
 
 class CachedXRTKernelHandle(XRTKernelHandle):
+    """
+    A cached handle for a loaded XRT kernel.
+    """
+
     def __init__(self, kernel, xclbin, context, insts, insts_bo=None):
+        """
+        Initialize the CachedXRTKernelHandle.
+
+        Args:
+            kernel: The XRT kernel object.
+            xclbin: The XRT xclbin object.
+            context: The XRT context object.
+            insts: The instructions for the kernel.
+            insts_bo (optional): The instruction buffer object. Defaults to None.
+        """
         super().__init__(kernel, xclbin, context, insts, insts_bo)
         self._is_valid = True
 
     def invalidate(self):
+        """
+        Invalidate the handle and release resources.
+        """
         self._is_valid = False
         if hasattr(self, "context"):
             del self.context
@@ -227,6 +306,9 @@ class CachedXRTRuntime(XRTHostRuntime):
     }
 
     def __init__(self):
+        """
+        Initialize the CachedXRTRuntime.
+        """
         super().__init__()
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
@@ -248,6 +330,9 @@ class CachedXRTRuntime(XRTHostRuntime):
         atexit.register(self.cleanup)
 
     def cleanup(self):
+        """
+        Clean up the cache by evicting all entries.
+        """
         while self._context_cache:
             self._evict()
         while self._insts_cache:
@@ -283,6 +368,18 @@ class CachedXRTRuntime(XRTHostRuntime):
         self,
         npu_kernel,
     ) -> XRTKernelHandle:
+        """
+        Load an NPU kernel into the cached XRT runtime.
+
+        Args:
+            npu_kernel: The NPU kernel to load.
+
+        Returns:
+            XRTKernelHandle: A handle to the loaded kernel.
+
+        Raises:
+            HostRuntimeError: If xclbin or insts files do not exist, or if kernel is not found.
+        """
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name

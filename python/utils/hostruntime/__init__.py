@@ -11,6 +11,17 @@ from .tensor_class import Tensor
 
 
 def bfloat16_safe_allclose(dtype, arr1, arr2):
+    """
+    Check if two arrays are element-wise equal within a tolerance, handling bfloat16 safely.
+
+    Args:
+        dtype: The data type of the arrays.
+        arr1: First input array.
+        arr2: Second input array.
+
+    Returns:
+        bool: True if the arrays are equal within tolerance, False otherwise.
+    """
     if dtype == bfloat16:
         if isinstance(arr1, Tensor):
             arr1 = np.array(arr1, dtype=np.float16)
