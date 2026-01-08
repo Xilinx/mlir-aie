@@ -234,8 +234,8 @@ class CachedXRTRuntime(XRTHostRuntime):
 
         # Set default from dict if present
         self._cache_size = None
-        if self.npu_str in NPU_CONTEXT_CACHE_SIZE.keys():
-            self._cache_size = NPU_CONTEXT_CACHE_SIZE[self.npu_str]
+        if self.npu_str in self.NPU_CONTEXT_CACHE_SIZE.keys():
+            self._cache_size = self.NPU_CONTEXT_CACHE_SIZE[self.npu_str]
 
         # Environment variable always override default values
         # TODO: should probably emit warning if exceeds recorded max size.
