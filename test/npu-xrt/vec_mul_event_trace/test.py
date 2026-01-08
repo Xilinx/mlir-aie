@@ -240,6 +240,9 @@ def main():
 
     # Read output buffer
     bufOut_bytes = bo_out.read(OUT_SIZE, 0)
+    # Ensure bytes for frombuffer
+    if not isinstance(bufOut_bytes, (bytes, bytearray)):
+        bufOut_bytes = bytes(bufOut_bytes)
     bufOut = np.frombuffer(bufOut_bytes, dtype=DATATYPE_OUT)
 
     # Verify results

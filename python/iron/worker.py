@@ -11,7 +11,7 @@ from typing import Callable
 from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
 from ..dialects.aiex import set_lock_value, LockAction
-from ..helpers.dialects.ext.scf import _for as range_
+from ..helpers.dialects.scf import _for as range_
 from .device import PlacementTile, AnyComputeTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint

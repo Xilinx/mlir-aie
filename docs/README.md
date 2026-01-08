@@ -64,6 +64,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    >  [0000:66:00.1]  :  NPU Strix
    >  ```
 
+   IRON requires that `xrt-smi` be in your path.
+
 ### Install IRON and MLIR-AIE Prerequisites
 
 1. Install the following packages needed for MLIR-AIE:
@@ -97,36 +99,38 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Install IRON library, mlir-aie and llvm-aie compilers from wheels and dependencies:
 
-   For release v1.0:
+   You can install a specific version of `mlir-aie` from the release wheels. To see available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
+
    ```bash
-   # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/v1.0
-
-   # Install Peano from a llvm-aie wheel
-   python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025041501+b2a279c1-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-
-   # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
-   python3 -m pip install -r python/requirements.txt
-
-   # Install MLIR Python Extras
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   # Install IRON library and mlir-aie from a specific release,
+   # e.g., <verison> in the following command could be replaced with v1.1.3
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
    ```
 
-   For daily latest:
+   Alternatively, you can install the latest released version of `mlir-aie`.
    ```bash
-   # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
+   # Get the latest release version
+   latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq -r '.tag_name')
+   latest_tag="${latest_tag_with_v#v}"
 
+   # Install IRON library and mlir-aie from the latest stable release
+   python3 -m pip install mlir_aie==${latest_tag} -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${latest_tag_with_v}
+   ```
+
+   For the latest wheels (not necessarily a release):
+   ```bash
+   # Install IRON library and mlir-aie from the latest wheel
+   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
+   ```
+
+   You will also need to install the `llvm-aie` wheel for the Peano compiler and MLIR Python extras.
+
+   ```bash
    # Install Peano from llvm-aie wheel
    python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
 
    # Install MLIR Python Extras
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
-   ```
-
-1. Setup environment
-   ```bash
-   source utils/env_setup.sh
+   EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
 1. (Optional) Install Python packages required for development and testing:
@@ -136,6 +140,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
+   ```
+
+1. Setup environment
+   ```bash
+   source utils/env_setup.sh
    ```
 
 1. (Optional) Install ML Python packages for ml programming examples:
@@ -186,6 +195,8 @@ For your design of interest, for instance from [programming_examples](../program
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
 1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
+
+1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please contact the [AMD University Program](mailto:aup@amd.com)
 
 ## Optional: Install AIETools
 
@@ -241,7 +252,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [Device Descriptions](Devices.md)
 
-[Building mlir-aie from source](Building.md)
+[Building mlir-aie tools from source](Building.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 

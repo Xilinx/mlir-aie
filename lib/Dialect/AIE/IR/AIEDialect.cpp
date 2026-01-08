@@ -1238,8 +1238,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = builder.create<TileOp>(builder.getUnknownLoc(),
-                                  builder.getIndexType(), col, row);
+    tile = TileOp::create(builder, builder.getUnknownLoc(),
+                          builder.getIndexType(), col, row);
   }
   return tile;
 }
@@ -2367,6 +2367,28 @@ void BDChainOp::print(OpAsmPrinter &printer) {
 //===----------------------------------------------------------------------===//
 // ShimDMAAllocationOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult ShimDMAAllocationOp::verify() {
+  TileOp tileOp = getTileOp();
+  if (!tileOp) {
+    return emitOpError("tile operand must be a TileOp");
+  }
+
+  const auto &targetModel = getTargetModel(*this);
+  int col = tileOp.getCol();
+  int row = tileOp.getRow();
+
+  if (!targetModel.isShimNOCorPLTile(col, row)) {
+    return emitOpError("tile must be a shim tile, but got tile(")
+           << col << ", " << row << ")";
+  }
+
+  return success();
+}
+
+TileOp ShimDMAAllocationOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
+}
 
 ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
                                                       llvm::StringRef symbol) {

@@ -10,10 +10,10 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 import aie.utils.trace as trace_utils
 from aie.utils.trace import PortEvent
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace_events.aie2 import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
 
 
 def conv2dk14(

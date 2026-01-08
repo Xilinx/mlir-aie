@@ -35,7 +35,7 @@ jobs:
       matrix:
         build_type: [ Assert, Release ]
         ubuntu_version: [ 22.04, 24.04 ]
-        python_version: [ "3.10", "3.11", "3.12", "3.13" ]
+        python_version: [ "3.10", "3.11", "3.12", "3.13", "3.14" ]
 
     steps:
       # Clone the repo and its submodules. Do shallow clone to save clone
@@ -52,8 +52,9 @@ jobs:
 
       - name: Install Python packages
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_dev.txt
 

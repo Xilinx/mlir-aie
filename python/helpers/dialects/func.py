@@ -1,14 +1,14 @@
 import numpy as np
-from functools import update_wrapper
+from functools import lru_cache, update_wrapper
 import sys
 from typing import get_args, get_origin
 
-from ....extras.meta import op_region_builder
-from ....extras.util import get_user_code_loc, make_maybe_no_args_decorator
-from ...util import get_arg_types, NpuDType, try_convert_np_type_to_mlir_type
-from ....dialects._ods_common import get_op_result_or_op_results
-from ....dialects.func import *
-from ....ir import (
+from ...extras.meta import op_region_builder
+from ...extras.util import get_user_code_loc, make_maybe_no_args_decorator
+from ..util import get_arg_types, NpuDType, try_convert_np_type_to_mlir_type
+from ...dialects._ods_common import get_op_result_or_op_results
+from ...dialects.func import *
+from ...ir import (
     FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
@@ -18,7 +18,7 @@ from ....ir import (
     TypeAttr,
     Value,
 )
-from ....extras.dialects.ext.arith import Scalar
+from ...extras.dialects.arith import ScalarValue
 
 
 def call(
@@ -57,7 +57,9 @@ def call(
                 # Get the type to convert the python value to based on the expected input to the function
                 # TODO: should check if it's safe to do this? What is int value is outside range?
                 args.append(
-                    Scalar(a, dtype=callee_or_results.function_type.value.inputs[i])
+                    ScalarValue(
+                        a, dtype=callee_or_results.function_type.value.inputs[i]
+                    )
                 )
             else:
                 args.append(a)
@@ -198,23 +200,13 @@ class FuncBase:
             self.emit()
 
     def _is_decl(self):
-        # magic constant found from looking at the code for an empty fn
-        if sys.version_info.minor == 13:
-            return self.body_builder.__code__.co_code == b"\x95\x00g\x00"
-        elif sys.version_info.minor == 12:
-            return self.body_builder.__code__.co_code == b"\x97\x00y\x00"
-        elif sys.version_info.minor == 11:
-            return self.body_builder.__code__.co_code == b"\x97\x00d\x00S\x00"
-        elif sys.version_info.minor in {8, 9, 10}:
-            return self.body_builder.__code__.co_code == b"d\x00S\x00"
-        else:
-            raise NotImplementedError(f"{sys.version_info.minor} not supported.")
+        return self.body_builder.__code__.co_code == _EMPTY_FN_CODE
 
     def __str__(self):
         return str(f"{self.__class__} {self.__dict__}")
 
-    def emit(self, *call_args, decl=False, force=False) -> FuncOp:
-        if self._func_op is None or decl or force:
+    def emit(self, *call_args, force=False) -> FuncOp:
+        if self._func_op is None or force:
             input_types = self.input_types[:]
             for i, v in enumerate(input_types):
                 if isinstance(v, str):
@@ -245,7 +237,7 @@ class FuncBase:
             )
             for k, v in self.func_attrs.items():
                 self._func_op.attributes[k] = v
-            if self._is_decl() or decl:
+            if self._is_decl():
                 return self._func_op
 
             self._func_op.regions[0].blocks.append(*input_types, arg_locs=self.arg_locs)
@@ -272,6 +264,10 @@ class FuncBase:
 
     def __call__(self, *call_args):
         return call(self.emit(*call_args), call_args)
+
+
+# The bytecode of an empty function, determined at Python startup and constant at runtime.
+_EMPTY_FN_CODE = (lambda: None).__code__.co_code
 
 
 @make_maybe_no_args_decorator

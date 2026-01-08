@@ -139,7 +139,7 @@ TileOp DynamicTileAnalysis::getTile(OpBuilder &builder, int col, int row) {
   if (coordToTile.count({col, row})) {
     return coordToTile[{col, row}];
   }
-  auto tileOp = builder.create<TileOp>(builder.getUnknownLoc(), col, row);
+  auto tileOp = TileOp::create(builder, builder.getUnknownLoc(), col, row);
   coordToTile[{col, row}] = tileOp;
   return tileOp;
 }
@@ -155,8 +155,8 @@ SwitchboxOp DynamicTileAnalysis::getSwitchbox(OpBuilder &builder, int col,
   if (coordToSwitchbox.count({col, row})) {
     return coordToSwitchbox[{col, row}];
   }
-  auto switchboxOp = builder.create<SwitchboxOp>(builder.getUnknownLoc(),
-                                                 getTile(builder, col, row));
+  auto switchboxOp = SwitchboxOp::create(builder, builder.getUnknownLoc(),
+                                         getTile(builder, col, row));
   SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
                                 builder.getUnknownLoc());
   coordToSwitchbox[{col, row}] = switchboxOp;
@@ -170,8 +170,8 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
     return coordToShimMux[{col, row}];
   }
   assert(getTile(builder, col, row).isShimNOCorPLTile());
-  auto switchboxOp = builder.create<ShimMuxOp>(builder.getUnknownLoc(),
-                                               getTile(builder, col, row));
+  auto switchboxOp = ShimMuxOp::create(builder, builder.getUnknownLoc(),
+                                       getTile(builder, col, row));
   SwitchboxOp::ensureTerminator(switchboxOp.getConnections(), builder,
                                 builder.getUnknownLoc());
   coordToShimMux[{col, row}] = switchboxOp;

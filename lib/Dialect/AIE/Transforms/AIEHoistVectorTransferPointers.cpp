@@ -273,8 +273,8 @@ struct HoistVectorTransferPointersPattern
         }
         reassociation.push_back(allDims);
 
-        flatMemref = rewriter.create<memref::CollapseShapeOp>(
-            loc, flatMemrefType, info.base, reassociation);
+        flatMemref = memref::CollapseShapeOp::create(
+            rewriter, loc, flatMemrefType, info.base, reassociation);
       }
       flatMemrefs.push_back(flatMemref);
 
@@ -304,8 +304,8 @@ struct HoistVectorTransferPointersPattern
               else
                 mappedOperands.push_back(operand);
             }
-            Value evaluatedIdx = rewriter.create<affine::AffineApplyOp>(
-                loc, affineOp.getAffineMap(), mappedOperands);
+            Value evaluatedIdx = affine::AffineApplyOp::create(
+                rewriter, loc, affineOp.getAffineMap(), mappedOperands);
             evaluatedIndices.push_back(evaluatedIdx);
           } else {
             // Direct IV usage - just use lower bound
@@ -326,8 +326,8 @@ struct HoistVectorTransferPointersPattern
         }
       }
 
-      Value basePointer = rewriter.create<affine::AffineApplyOp>(
-          loc, linearMap, evaluatedIndices);
+      Value basePointer = affine::AffineApplyOp::create(
+          rewriter, loc, linearMap, evaluatedIndices);
 
       newInitArgs.push_back(basePointer);
     }
@@ -408,8 +408,8 @@ struct HoistVectorTransferPointersPattern
             allDims.push_back(i);
           }
           reassociation.push_back(allDims);
-          flatMemref = rewriter.create<memref::CollapseShapeOp>(
-              loc, flatMemrefType, info.base, reassociation);
+          flatMemref = memref::CollapseShapeOp::create(
+              rewriter, loc, flatMemrefType, info.base, reassociation);
         }
         baseFlatMemrefs[info.base] = flatMemref;
       }
@@ -447,8 +447,8 @@ struct HoistVectorTransferPointersPattern
         }
         auto linearMap = AffineMap::get(rank, 0, linearExpr);
 
-        Value currentPointer = rewriter.create<affine::AffineApplyOp>(
-            loc, linearMap, info.indices);
+        Value currentPointer = affine::AffineApplyOp::create(
+            rewriter, loc, linearMap, info.indices);
 
         // Transform the transfer operation
         AffineMap identityMap1D = AffineMap::get(
@@ -456,17 +456,18 @@ struct HoistVectorTransferPointersPattern
         auto inBoundsAttr = rewriter.getBoolArrayAttr({true});
 
         if (auto readOp = dyn_cast<vector::TransferReadOp>(info.op)) {
-          Value flatRead = rewriter.create<vector::TransferReadOp>(
-              loc, flatVectorType, flatMemref, ValueRange{currentPointer},
-              AffineMapAttr::get(identityMap1D), readOp.getPadding(),
+          Value flatRead = vector::TransferReadOp::create(
+              rewriter, loc, flatVectorType, flatMemref,
+              ValueRange{currentPointer}, AffineMapAttr::get(identityMap1D),
+              readOp.getPadding(),
               /*mask=*/Value(), inBoundsAttr);
-          Value shapedRead = rewriter.create<vector::ShapeCastOp>(
-              loc, info.vectorType, flatRead);
+          Value shapedRead = vector::ShapeCastOp::create(
+              rewriter, loc, info.vectorType, flatRead);
           rewriter.replaceOp(readOp, shapedRead);
           madeChanges = true;
         } else if (auto writeOp = dyn_cast<vector::TransferWriteOp>(info.op)) {
-          Value flatValue = rewriter.create<vector::ShapeCastOp>(
-              loc, flatVectorType, writeOp.getVector());
+          Value flatValue = vector::ShapeCastOp::create(
+              rewriter, loc, flatVectorType, writeOp.getVector());
           rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
               writeOp, flatValue, flatMemref, ValueRange{currentPointer},
               AffineMapAttr::get(identityMap1D), /*mask=*/Value(),
@@ -507,16 +508,16 @@ struct HoistVectorTransferPointersPattern
         auto inBoundsAttr = b.getBoolArrayAttr({true});
 
         if (auto readOp = dyn_cast<vector::TransferReadOp>(info.op)) {
-          Value flatRead = b.create<vector::TransferReadOp>(
-              loc, flatVectorType, flatMemref, ValueRange{ptrIterArg},
+          Value flatRead = vector::TransferReadOp::create(
+              b, loc, flatVectorType, flatMemref, ValueRange{ptrIterArg},
               AffineMapAttr::get(identityMap1D), readOp.getPadding(),
               /*mask=*/Value(), inBoundsAttr);
           Value shapedRead =
-              b.create<vector::ShapeCastOp>(loc, info.vectorType, flatRead);
+              vector::ShapeCastOp::create(b, loc, info.vectorType, flatRead);
           rewriter.replaceOp(readOp, shapedRead);
         } else if (auto writeOp = dyn_cast<vector::TransferWriteOp>(info.op)) {
-          Value flatValue = b.create<vector::ShapeCastOp>(loc, flatVectorType,
-                                                          writeOp.getVector());
+          Value flatValue = vector::ShapeCastOp::create(b, loc, flatVectorType,
+                                                        writeOp.getVector());
           rewriter.replaceOpWithNewOp<vector::TransferWriteOp>(
               writeOp, flatValue, flatMemref, ValueRange{ptrIterArg},
               AffineMapAttr::get(identityMap1D), /*mask=*/Value(),
@@ -525,9 +526,9 @@ struct HoistVectorTransferPointersPattern
 
         // Compute next pointer value: current_ptr + constant_stride
         Value strideConst =
-            b.create<arith::ConstantIndexOp>(yieldLoc, info.constantStride);
+            arith::ConstantIndexOp::create(b, yieldLoc, info.constantStride);
         Value nextPtr =
-            b.create<arith::AddIOp>(yieldLoc, ptrIterArg, strideConst);
+            arith::AddIOp::create(b, yieldLoc, ptrIterArg, strideConst);
         yieldValues.push_back(nextPtr);
 
         iterArgIdx++;

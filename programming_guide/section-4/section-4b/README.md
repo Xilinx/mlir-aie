@@ -274,7 +274,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 7 ports. To select which port to listen to, use the `PortEvent` Python class as your event. For example, to listen to master port 1:
         ```
         from aie.utils.trace import configure_simple_tracing_aie2, PortEvent
-        from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+        from aie.utils.trace_events.aie2 import CoreEvent, MemEvent, PLEvent, MemTileEvent
         trace_utils.configure_simple_tracing_aie2(
             # ... other arguments as above
             events=[trace_utils.PortEvent(CoreEvent.PORT_RUNNING_0, 1, master=True)]
