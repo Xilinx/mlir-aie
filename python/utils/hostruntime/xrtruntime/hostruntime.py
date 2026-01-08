@@ -219,9 +219,6 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._cache_size = NPU2_CACHE_SIZE
 
         env_cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE")
-        if env_cache_size is not None:
-            self._cache_size = min(self._cache_size, int(env_cache_size))
-
         atexit.register(self.cleanup)
 
     def cleanup(self):
