@@ -14,7 +14,7 @@ EXTRACT_STATIC         = YES
 #---------------------------------------------------------------------------
 # Build related configuration options
 #---------------------------------------------------------------------------
-INPUT                  = helpers/taplib iron
+INPUT                  = helpers/taplib iron utils/hostruntime
 FILE_PATTERNS          = *.py
 RECURSIVE              = YES
 
