@@ -993,212 +993,213 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00922" name="l00922"></a><span class="lineno">  922</span>              &lt;&lt; ID &lt;&lt; <span class="stringliteral">&quot;, which is not supposed to pass through this port.&quot;</span>;</div>
 <div class="line"><a id="l00923" name="l00923"></a><span class="lineno">  923</span>          rule-&gt;emitRemark(<span class="stringliteral">&quot;Please consider changing all uses of packet id &quot;</span>)</div>
 <div class="line"><a id="l00924" name="l00924"></a><span class="lineno">  924</span>              &lt;&lt; ID &lt;&lt; <span class="stringliteral">&quot; to avoid deadlock.&quot;</span>;</div>
-<div class="line"><a id="l00925" name="l00925"></a><span class="lineno">  925</span>        }</div>
-<div class="line"><a id="l00926" name="l00926"></a><span class="lineno">  926</span>      }</div>
-<div class="line"><a id="l00927" name="l00927"></a><span class="lineno">  927</span> </div>
-<div class="line"><a id="l00928" name="l00928"></a><span class="lineno">  928</span>      builder.setInsertionPoint(rules.getTerminator());</div>
-<div class="line"><a id="l00929" name="l00929"></a><span class="lineno">  929</span>      PacketRuleOp::create(builder, builder.getUnknownLoc(), mask, ID, amsel);</div>
-<div class="line"><a id="l00930" name="l00930"></a><span class="lineno">  930</span>    }</div>
-<div class="line"><a id="l00931" name="l00931"></a><span class="lineno">  931</span>  }</div>
-<div class="line"><a id="l00932" name="l00932"></a><span class="lineno">  932</span> </div>
-<div class="line"><a id="l00933" name="l00933"></a><span class="lineno">  933</span>  <span class="comment">// Add support for shimDMA</span></div>
-<div class="line"><a id="l00934" name="l00934"></a><span class="lineno">  934</span>  <span class="comment">// From shimDMA to BLI: 1) shimDMA 0 --&gt; North 3</span></div>
-<div class="line"><a id="l00935" name="l00935"></a><span class="lineno">  935</span>  <span class="comment">//                      2) shimDMA 1 --&gt; North 7</span></div>
-<div class="line"><a id="l00936" name="l00936"></a><span class="lineno">  936</span>  <span class="comment">// From BLI to shimDMA: 1) North   2 --&gt; shimDMA 0</span></div>
-<div class="line"><a id="l00937" name="l00937"></a><span class="lineno">  937</span>  <span class="comment">//                      2) North   3 --&gt; shimDMA 1</span></div>
-<div class="line"><a id="l00938" name="l00938"></a><span class="lineno">  938</span> </div>
-<div class="line"><a id="l00939" name="l00939"></a><span class="lineno">  939</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> switchbox : make_early_inc_range(device.getOps&lt;SwitchboxOp&gt;())) {</div>
-<div class="line"><a id="l00940" name="l00940"></a><span class="lineno">  940</span>    <span class="keyword">auto</span> retVal = switchbox-&gt;getOperand(0);</div>
-<div class="line"><a id="l00941" name="l00941"></a><span class="lineno">  941</span>    <span class="keyword">auto</span> tileOp = retVal.getDefiningOp&lt;TileOp&gt;();</div>
-<div class="line"><a id="l00942" name="l00942"></a><span class="lineno">  942</span> </div>
-<div class="line"><a id="l00943" name="l00943"></a><span class="lineno">  943</span>    <span class="comment">// Check if it is a shim Tile</span></div>
-<div class="line"><a id="l00944" name="l00944"></a><span class="lineno">  944</span>    <span class="keywordflow">if</span> (!tileOp.isShimNOCTile())</div>
-<div class="line"><a id="l00945" name="l00945"></a><span class="lineno">  945</span>      <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00946" name="l00946"></a><span class="lineno">  946</span> </div>
-<div class="line"><a id="l00947" name="l00947"></a><span class="lineno">  947</span>    <span class="comment">// Check if the switchbox is empty</span></div>
-<div class="line"><a id="l00948" name="l00948"></a><span class="lineno">  948</span>    <span class="keywordflow">if</span> (&amp;switchbox.getBody()-&gt;front() == switchbox.getBody()-&gt;getTerminator())</div>
-<div class="line"><a id="l00949" name="l00949"></a><span class="lineno">  949</span>      <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00950" name="l00950"></a><span class="lineno">  950</span> </div>
-<div class="line"><a id="l00951" name="l00951"></a><span class="lineno">  951</span>    Region &amp;r = switchbox.getConnections();</div>
-<div class="line"><a id="l00952" name="l00952"></a><span class="lineno">  952</span>    Block &amp;b = r.front();</div>
-<div class="line"><a id="l00953" name="l00953"></a><span class="lineno">  953</span> </div>
-<div class="line"><a id="l00954" name="l00954"></a><span class="lineno">  954</span>    <span class="comment">// Find if the corresponding shimmux exsists or not</span></div>
-<div class="line"><a id="l00955" name="l00955"></a><span class="lineno">  955</span>    <span class="keywordtype">int</span> shimExist = 0;</div>
-<div class="line"><a id="l00956" name="l00956"></a><span class="lineno">  956</span>    ShimMuxOp shimOp;</div>
-<div class="line"><a id="l00957" name="l00957"></a><span class="lineno">  957</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> shimmux : device.getOps&lt;ShimMuxOp&gt;()) {</div>
-<div class="line"><a id="l00958" name="l00958"></a><span class="lineno">  958</span>      <span class="keywordflow">if</span> (shimmux.getTile() == tileOp) {</div>
-<div class="line"><a id="l00959" name="l00959"></a><span class="lineno">  959</span>        shimExist = 1;</div>
-<div class="line"><a id="l00960" name="l00960"></a><span class="lineno">  960</span>        shimOp = shimmux;</div>
-<div class="line"><a id="l00961" name="l00961"></a><span class="lineno">  961</span>        <span class="keywordflow">break</span>;</div>
-<div class="line"><a id="l00962" name="l00962"></a><span class="lineno">  962</span>      }</div>
-<div class="line"><a id="l00963" name="l00963"></a><span class="lineno">  963</span>    }</div>
-<div class="line"><a id="l00964" name="l00964"></a><span class="lineno">  964</span> </div>
-<div class="line"><a id="l00965" name="l00965"></a><span class="lineno">  965</span>    <span class="keywordflow">for</span> (Operation &amp;Op : b.getOperations()) {</div>
-<div class="line"><a id="l00966" name="l00966"></a><span class="lineno">  966</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> pktrules = dyn_cast&lt;PacketRulesOp&gt;(Op)) {</div>
-<div class="line"><a id="l00967" name="l00967"></a><span class="lineno">  967</span> </div>
-<div class="line"><a id="l00968" name="l00968"></a><span class="lineno">  968</span>        <span class="comment">// check if there is MM2S DMA in the switchbox of the 0th row</span></div>
-<div class="line"><a id="l00969" name="l00969"></a><span class="lineno">  969</span>        <span class="keywordflow">if</span> (pktrules.getSourceBundle() == WireBundle::DMA) {</div>
-<div class="line"><a id="l00970" name="l00970"></a><span class="lineno">  970</span> </div>
-<div class="line"><a id="l00971" name="l00971"></a><span class="lineno">  971</span>          <span class="comment">// If there is, then it should be put into the corresponding shimmux</span></div>
-<div class="line"><a id="l00972" name="l00972"></a><span class="lineno">  972</span>          <span class="comment">// If shimmux not defined then create shimmux</span></div>
-<div class="line"><a id="l00973" name="l00973"></a><span class="lineno">  973</span>          <span class="keywordflow">if</span> (!shimExist) {</div>
-<div class="line"><a id="l00974" name="l00974"></a><span class="lineno">  974</span>            builder.setInsertionPointAfter(tileOp);</div>
-<div class="line"><a id="l00975" name="l00975"></a><span class="lineno">  975</span>            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());</div>
-<div class="line"><a id="l00976" name="l00976"></a><span class="lineno">  976</span>            shimExist = 1;</div>
-<div class="line"><a id="l00977" name="l00977"></a><span class="lineno">  977</span>          }</div>
-<div class="line"><a id="l00978" name="l00978"></a><span class="lineno">  978</span> </div>
-<div class="line"><a id="l00979" name="l00979"></a><span class="lineno">  979</span>          Region &amp;r0 = shimOp.getConnections();</div>
-<div class="line"><a id="l00980" name="l00980"></a><span class="lineno">  980</span>          Block &amp;b0 = r0.front();</div>
-<div class="line"><a id="l00981" name="l00981"></a><span class="lineno">  981</span>          builder.setInsertionPointToStart(&amp;b0);</div>
-<div class="line"><a id="l00982" name="l00982"></a><span class="lineno">  982</span> </div>
-<div class="line"><a id="l00983" name="l00983"></a><span class="lineno">  983</span>          pktrules.setSourceBundle(WireBundle::South);</div>
-<div class="line"><a id="l00984" name="l00984"></a><span class="lineno">  984</span>          <span class="keywordflow">if</span> (pktrules.getSourceChannel() == 0) {</div>
-<div class="line"><a id="l00985" name="l00985"></a><span class="lineno">  985</span>            pktrules.setSourceChannel(3);</div>
-<div class="line"><a id="l00986" name="l00986"></a><span class="lineno">  986</span>            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,</div>
-<div class="line"><a id="l00987" name="l00987"></a><span class="lineno">  987</span>                              0, WireBundle::North, 3);</div>
-<div class="line"><a id="l00988" name="l00988"></a><span class="lineno">  988</span>          }</div>
-<div class="line"><a id="l00989" name="l00989"></a><span class="lineno">  989</span>          <span class="keywordflow">if</span> (pktrules.getSourceChannel() == 1) {</div>
-<div class="line"><a id="l00990" name="l00990"></a><span class="lineno">  990</span>            pktrules.setSourceChannel(7);</div>
-<div class="line"><a id="l00991" name="l00991"></a><span class="lineno">  991</span>            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,</div>
-<div class="line"><a id="l00992" name="l00992"></a><span class="lineno">  992</span>                              1, WireBundle::North, 7);</div>
-<div class="line"><a id="l00993" name="l00993"></a><span class="lineno">  993</span>          }</div>
-<div class="line"><a id="l00994" name="l00994"></a><span class="lineno">  994</span>        }</div>
-<div class="line"><a id="l00995" name="l00995"></a><span class="lineno">  995</span>      }</div>
-<div class="line"><a id="l00996" name="l00996"></a><span class="lineno">  996</span> </div>
-<div class="line"><a id="l00997" name="l00997"></a><span class="lineno">  997</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> mtset = dyn_cast&lt;MasterSetOp&gt;(Op)) {</div>
-<div class="line"><a id="l00998" name="l00998"></a><span class="lineno">  998</span> </div>
-<div class="line"><a id="l00999" name="l00999"></a><span class="lineno">  999</span>        <span class="comment">// check if there is S2MM DMA in the switchbox of the 0th row</span></div>
-<div class="line"><a id="l01000" name="l01000"></a><span class="lineno"> 1000</span>        <span class="keywordflow">if</span> (mtset.getDestBundle() == WireBundle::DMA) {</div>
-<div class="line"><a id="l01001" name="l01001"></a><span class="lineno"> 1001</span> </div>
-<div class="line"><a id="l01002" name="l01002"></a><span class="lineno"> 1002</span>          <span class="comment">// If there is, then it should be put into the corresponding shimmux</span></div>
-<div class="line"><a id="l01003" name="l01003"></a><span class="lineno"> 1003</span>          <span class="comment">// If shimmux not defined then create shimmux</span></div>
-<div class="line"><a id="l01004" name="l01004"></a><span class="lineno"> 1004</span>          <span class="keywordflow">if</span> (!shimExist) {</div>
-<div class="line"><a id="l01005" name="l01005"></a><span class="lineno"> 1005</span>            builder.setInsertionPointAfter(tileOp);</div>
-<div class="line"><a id="l01006" name="l01006"></a><span class="lineno"> 1006</span>            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());</div>
-<div class="line"><a id="l01007" name="l01007"></a><span class="lineno"> 1007</span>            shimExist = 1;</div>
-<div class="line"><a id="l01008" name="l01008"></a><span class="lineno"> 1008</span>          }</div>
-<div class="line"><a id="l01009" name="l01009"></a><span class="lineno"> 1009</span> </div>
-<div class="line"><a id="l01010" name="l01010"></a><span class="lineno"> 1010</span>          Region &amp;r0 = shimOp.getConnections();</div>
-<div class="line"><a id="l01011" name="l01011"></a><span class="lineno"> 1011</span>          Block &amp;b0 = r0.front();</div>
-<div class="line"><a id="l01012" name="l01012"></a><span class="lineno"> 1012</span>          builder.setInsertionPointToStart(&amp;b0);</div>
-<div class="line"><a id="l01013" name="l01013"></a><span class="lineno"> 1013</span> </div>
-<div class="line"><a id="l01014" name="l01014"></a><span class="lineno"> 1014</span>          mtset.setDestBundle(WireBundle::South);</div>
-<div class="line"><a id="l01015" name="l01015"></a><span class="lineno"> 1015</span>          <span class="keywordflow">if</span> (mtset.getDestChannel() == 0) {</div>
-<div class="line"><a id="l01016" name="l01016"></a><span class="lineno"> 1016</span>            mtset.setDestChannel(2);</div>
-<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span>            ConnectOp::create(builder, builder.getUnknownLoc(),</div>
-<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>                              WireBundle::North, 2, WireBundle::DMA, 0);</div>
-<div class="line"><a id="l01019" name="l01019"></a><span class="lineno"> 1019</span>          }</div>
-<div class="line"><a id="l01020" name="l01020"></a><span class="lineno"> 1020</span>          <span class="keywordflow">if</span> (mtset.getDestChannel() == 1) {</div>
-<div class="line"><a id="l01021" name="l01021"></a><span class="lineno"> 1021</span>            mtset.setDestChannel(3);</div>
-<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"> 1022</span>            ConnectOp::create(builder, builder.getUnknownLoc(),</div>
-<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>                              WireBundle::North, 3, WireBundle::DMA, 1);</div>
-<div class="line"><a id="l01024" name="l01024"></a><span class="lineno"> 1024</span>          }</div>
-<div class="line"><a id="l01025" name="l01025"></a><span class="lineno"> 1025</span>        }</div>
-<div class="line"><a id="l01026" name="l01026"></a><span class="lineno"> 1026</span>      }</div>
-<div class="line"><a id="l01027" name="l01027"></a><span class="lineno"> 1027</span>    }</div>
-<div class="line"><a id="l01028" name="l01028"></a><span class="lineno"> 1028</span>  }</div>
-<div class="line"><a id="l01029" name="l01029"></a><span class="lineno"> 1029</span> </div>
-<div class="line"><a id="l01030" name="l01030"></a><span class="lineno"> 1030</span>  RewritePatternSet patterns(&amp;getContext());</div>
-<div class="line"><a id="l01031" name="l01031"></a><span class="lineno"> 1031</span> </div>
-<div class="line"><a id="l01032" name="l01032"></a><span class="lineno"> 1032</span>  <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
-<div class="line"><a id="l01033" name="l01033"></a><span class="lineno"> 1033</span>    signalPassFailure();</div>
-<div class="line"><a id="l01034" name="l01034"></a><span class="lineno"> 1034</span>}</div>
+<div class="line"><a id="l00925" name="l00925"></a><span class="lineno">  925</span>          signalPassFailure();</div>
+<div class="line"><a id="l00926" name="l00926"></a><span class="lineno">  926</span>        }</div>
+<div class="line"><a id="l00927" name="l00927"></a><span class="lineno">  927</span>      }</div>
+<div class="line"><a id="l00928" name="l00928"></a><span class="lineno">  928</span> </div>
+<div class="line"><a id="l00929" name="l00929"></a><span class="lineno">  929</span>      builder.setInsertionPoint(rules.getTerminator());</div>
+<div class="line"><a id="l00930" name="l00930"></a><span class="lineno">  930</span>      PacketRuleOp::create(builder, builder.getUnknownLoc(), mask, ID, amsel);</div>
+<div class="line"><a id="l00931" name="l00931"></a><span class="lineno">  931</span>    }</div>
+<div class="line"><a id="l00932" name="l00932"></a><span class="lineno">  932</span>  }</div>
+<div class="line"><a id="l00933" name="l00933"></a><span class="lineno">  933</span> </div>
+<div class="line"><a id="l00934" name="l00934"></a><span class="lineno">  934</span>  <span class="comment">// Add support for shimDMA</span></div>
+<div class="line"><a id="l00935" name="l00935"></a><span class="lineno">  935</span>  <span class="comment">// From shimDMA to BLI: 1) shimDMA 0 --&gt; North 3</span></div>
+<div class="line"><a id="l00936" name="l00936"></a><span class="lineno">  936</span>  <span class="comment">//                      2) shimDMA 1 --&gt; North 7</span></div>
+<div class="line"><a id="l00937" name="l00937"></a><span class="lineno">  937</span>  <span class="comment">// From BLI to shimDMA: 1) North   2 --&gt; shimDMA 0</span></div>
+<div class="line"><a id="l00938" name="l00938"></a><span class="lineno">  938</span>  <span class="comment">//                      2) North   3 --&gt; shimDMA 1</span></div>
+<div class="line"><a id="l00939" name="l00939"></a><span class="lineno">  939</span> </div>
+<div class="line"><a id="l00940" name="l00940"></a><span class="lineno">  940</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> switchbox : make_early_inc_range(device.getOps&lt;SwitchboxOp&gt;())) {</div>
+<div class="line"><a id="l00941" name="l00941"></a><span class="lineno">  941</span>    <span class="keyword">auto</span> retVal = switchbox-&gt;getOperand(0);</div>
+<div class="line"><a id="l00942" name="l00942"></a><span class="lineno">  942</span>    <span class="keyword">auto</span> tileOp = retVal.getDefiningOp&lt;TileOp&gt;();</div>
+<div class="line"><a id="l00943" name="l00943"></a><span class="lineno">  943</span> </div>
+<div class="line"><a id="l00944" name="l00944"></a><span class="lineno">  944</span>    <span class="comment">// Check if it is a shim Tile</span></div>
+<div class="line"><a id="l00945" name="l00945"></a><span class="lineno">  945</span>    <span class="keywordflow">if</span> (!tileOp.isShimNOCTile())</div>
+<div class="line"><a id="l00946" name="l00946"></a><span class="lineno">  946</span>      <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00947" name="l00947"></a><span class="lineno">  947</span> </div>
+<div class="line"><a id="l00948" name="l00948"></a><span class="lineno">  948</span>    <span class="comment">// Check if the switchbox is empty</span></div>
+<div class="line"><a id="l00949" name="l00949"></a><span class="lineno">  949</span>    <span class="keywordflow">if</span> (&amp;switchbox.getBody()-&gt;front() == switchbox.getBody()-&gt;getTerminator())</div>
+<div class="line"><a id="l00950" name="l00950"></a><span class="lineno">  950</span>      <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00951" name="l00951"></a><span class="lineno">  951</span> </div>
+<div class="line"><a id="l00952" name="l00952"></a><span class="lineno">  952</span>    Region &amp;r = switchbox.getConnections();</div>
+<div class="line"><a id="l00953" name="l00953"></a><span class="lineno">  953</span>    Block &amp;b = r.front();</div>
+<div class="line"><a id="l00954" name="l00954"></a><span class="lineno">  954</span> </div>
+<div class="line"><a id="l00955" name="l00955"></a><span class="lineno">  955</span>    <span class="comment">// Find if the corresponding shimmux exsists or not</span></div>
+<div class="line"><a id="l00956" name="l00956"></a><span class="lineno">  956</span>    <span class="keywordtype">int</span> shimExist = 0;</div>
+<div class="line"><a id="l00957" name="l00957"></a><span class="lineno">  957</span>    ShimMuxOp shimOp;</div>
+<div class="line"><a id="l00958" name="l00958"></a><span class="lineno">  958</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> shimmux : device.getOps&lt;ShimMuxOp&gt;()) {</div>
+<div class="line"><a id="l00959" name="l00959"></a><span class="lineno">  959</span>      <span class="keywordflow">if</span> (shimmux.getTile() == tileOp) {</div>
+<div class="line"><a id="l00960" name="l00960"></a><span class="lineno">  960</span>        shimExist = 1;</div>
+<div class="line"><a id="l00961" name="l00961"></a><span class="lineno">  961</span>        shimOp = shimmux;</div>
+<div class="line"><a id="l00962" name="l00962"></a><span class="lineno">  962</span>        <span class="keywordflow">break</span>;</div>
+<div class="line"><a id="l00963" name="l00963"></a><span class="lineno">  963</span>      }</div>
+<div class="line"><a id="l00964" name="l00964"></a><span class="lineno">  964</span>    }</div>
+<div class="line"><a id="l00965" name="l00965"></a><span class="lineno">  965</span> </div>
+<div class="line"><a id="l00966" name="l00966"></a><span class="lineno">  966</span>    <span class="keywordflow">for</span> (Operation &amp;Op : b.getOperations()) {</div>
+<div class="line"><a id="l00967" name="l00967"></a><span class="lineno">  967</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> pktrules = dyn_cast&lt;PacketRulesOp&gt;(Op)) {</div>
+<div class="line"><a id="l00968" name="l00968"></a><span class="lineno">  968</span> </div>
+<div class="line"><a id="l00969" name="l00969"></a><span class="lineno">  969</span>        <span class="comment">// check if there is MM2S DMA in the switchbox of the 0th row</span></div>
+<div class="line"><a id="l00970" name="l00970"></a><span class="lineno">  970</span>        <span class="keywordflow">if</span> (pktrules.getSourceBundle() == WireBundle::DMA) {</div>
+<div class="line"><a id="l00971" name="l00971"></a><span class="lineno">  971</span> </div>
+<div class="line"><a id="l00972" name="l00972"></a><span class="lineno">  972</span>          <span class="comment">// If there is, then it should be put into the corresponding shimmux</span></div>
+<div class="line"><a id="l00973" name="l00973"></a><span class="lineno">  973</span>          <span class="comment">// If shimmux not defined then create shimmux</span></div>
+<div class="line"><a id="l00974" name="l00974"></a><span class="lineno">  974</span>          <span class="keywordflow">if</span> (!shimExist) {</div>
+<div class="line"><a id="l00975" name="l00975"></a><span class="lineno">  975</span>            builder.setInsertionPointAfter(tileOp);</div>
+<div class="line"><a id="l00976" name="l00976"></a><span class="lineno">  976</span>            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());</div>
+<div class="line"><a id="l00977" name="l00977"></a><span class="lineno">  977</span>            shimExist = 1;</div>
+<div class="line"><a id="l00978" name="l00978"></a><span class="lineno">  978</span>          }</div>
+<div class="line"><a id="l00979" name="l00979"></a><span class="lineno">  979</span> </div>
+<div class="line"><a id="l00980" name="l00980"></a><span class="lineno">  980</span>          Region &amp;r0 = shimOp.getConnections();</div>
+<div class="line"><a id="l00981" name="l00981"></a><span class="lineno">  981</span>          Block &amp;b0 = r0.front();</div>
+<div class="line"><a id="l00982" name="l00982"></a><span class="lineno">  982</span>          builder.setInsertionPointToStart(&amp;b0);</div>
+<div class="line"><a id="l00983" name="l00983"></a><span class="lineno">  983</span> </div>
+<div class="line"><a id="l00984" name="l00984"></a><span class="lineno">  984</span>          pktrules.setSourceBundle(WireBundle::South);</div>
+<div class="line"><a id="l00985" name="l00985"></a><span class="lineno">  985</span>          <span class="keywordflow">if</span> (pktrules.getSourceChannel() == 0) {</div>
+<div class="line"><a id="l00986" name="l00986"></a><span class="lineno">  986</span>            pktrules.setSourceChannel(3);</div>
+<div class="line"><a id="l00987" name="l00987"></a><span class="lineno">  987</span>            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,</div>
+<div class="line"><a id="l00988" name="l00988"></a><span class="lineno">  988</span>                              0, WireBundle::North, 3);</div>
+<div class="line"><a id="l00989" name="l00989"></a><span class="lineno">  989</span>          }</div>
+<div class="line"><a id="l00990" name="l00990"></a><span class="lineno">  990</span>          <span class="keywordflow">if</span> (pktrules.getSourceChannel() == 1) {</div>
+<div class="line"><a id="l00991" name="l00991"></a><span class="lineno">  991</span>            pktrules.setSourceChannel(7);</div>
+<div class="line"><a id="l00992" name="l00992"></a><span class="lineno">  992</span>            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,</div>
+<div class="line"><a id="l00993" name="l00993"></a><span class="lineno">  993</span>                              1, WireBundle::North, 7);</div>
+<div class="line"><a id="l00994" name="l00994"></a><span class="lineno">  994</span>          }</div>
+<div class="line"><a id="l00995" name="l00995"></a><span class="lineno">  995</span>        }</div>
+<div class="line"><a id="l00996" name="l00996"></a><span class="lineno">  996</span>      }</div>
+<div class="line"><a id="l00997" name="l00997"></a><span class="lineno">  997</span> </div>
+<div class="line"><a id="l00998" name="l00998"></a><span class="lineno">  998</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> mtset = dyn_cast&lt;MasterSetOp&gt;(Op)) {</div>
+<div class="line"><a id="l00999" name="l00999"></a><span class="lineno">  999</span> </div>
+<div class="line"><a id="l01000" name="l01000"></a><span class="lineno"> 1000</span>        <span class="comment">// check if there is S2MM DMA in the switchbox of the 0th row</span></div>
+<div class="line"><a id="l01001" name="l01001"></a><span class="lineno"> 1001</span>        <span class="keywordflow">if</span> (mtset.getDestBundle() == WireBundle::DMA) {</div>
+<div class="line"><a id="l01002" name="l01002"></a><span class="lineno"> 1002</span> </div>
+<div class="line"><a id="l01003" name="l01003"></a><span class="lineno"> 1003</span>          <span class="comment">// If there is, then it should be put into the corresponding shimmux</span></div>
+<div class="line"><a id="l01004" name="l01004"></a><span class="lineno"> 1004</span>          <span class="comment">// If shimmux not defined then create shimmux</span></div>
+<div class="line"><a id="l01005" name="l01005"></a><span class="lineno"> 1005</span>          <span class="keywordflow">if</span> (!shimExist) {</div>
+<div class="line"><a id="l01006" name="l01006"></a><span class="lineno"> 1006</span>            builder.setInsertionPointAfter(tileOp);</div>
+<div class="line"><a id="l01007" name="l01007"></a><span class="lineno"> 1007</span>            shimOp = analyzer.getShimMux(builder, tileOp.colIndex());</div>
+<div class="line"><a id="l01008" name="l01008"></a><span class="lineno"> 1008</span>            shimExist = 1;</div>
+<div class="line"><a id="l01009" name="l01009"></a><span class="lineno"> 1009</span>          }</div>
+<div class="line"><a id="l01010" name="l01010"></a><span class="lineno"> 1010</span> </div>
+<div class="line"><a id="l01011" name="l01011"></a><span class="lineno"> 1011</span>          Region &amp;r0 = shimOp.getConnections();</div>
+<div class="line"><a id="l01012" name="l01012"></a><span class="lineno"> 1012</span>          Block &amp;b0 = r0.front();</div>
+<div class="line"><a id="l01013" name="l01013"></a><span class="lineno"> 1013</span>          builder.setInsertionPointToStart(&amp;b0);</div>
+<div class="line"><a id="l01014" name="l01014"></a><span class="lineno"> 1014</span> </div>
+<div class="line"><a id="l01015" name="l01015"></a><span class="lineno"> 1015</span>          mtset.setDestBundle(WireBundle::South);</div>
+<div class="line"><a id="l01016" name="l01016"></a><span class="lineno"> 1016</span>          <span class="keywordflow">if</span> (mtset.getDestChannel() == 0) {</div>
+<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span>            mtset.setDestChannel(2);</div>
+<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>            ConnectOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l01019" name="l01019"></a><span class="lineno"> 1019</span>                              WireBundle::North, 2, WireBundle::DMA, 0);</div>
+<div class="line"><a id="l01020" name="l01020"></a><span class="lineno"> 1020</span>          }</div>
+<div class="line"><a id="l01021" name="l01021"></a><span class="lineno"> 1021</span>          <span class="keywordflow">if</span> (mtset.getDestChannel() == 1) {</div>
+<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"> 1022</span>            mtset.setDestChannel(3);</div>
+<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>            ConnectOp::create(builder, builder.getUnknownLoc(),</div>
+<div class="line"><a id="l01024" name="l01024"></a><span class="lineno"> 1024</span>                              WireBundle::North, 3, WireBundle::DMA, 1);</div>
+<div class="line"><a id="l01025" name="l01025"></a><span class="lineno"> 1025</span>          }</div>
+<div class="line"><a id="l01026" name="l01026"></a><span class="lineno"> 1026</span>        }</div>
+<div class="line"><a id="l01027" name="l01027"></a><span class="lineno"> 1027</span>      }</div>
+<div class="line"><a id="l01028" name="l01028"></a><span class="lineno"> 1028</span>    }</div>
+<div class="line"><a id="l01029" name="l01029"></a><span class="lineno"> 1029</span>  }</div>
+<div class="line"><a id="l01030" name="l01030"></a><span class="lineno"> 1030</span> </div>
+<div class="line"><a id="l01031" name="l01031"></a><span class="lineno"> 1031</span>  RewritePatternSet patterns(&amp;getContext());</div>
+<div class="line"><a id="l01032" name="l01032"></a><span class="lineno"> 1032</span> </div>
+<div class="line"><a id="l01033" name="l01033"></a><span class="lineno"> 1033</span>  <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
+<div class="line"><a id="l01034" name="l01034"></a><span class="lineno"> 1034</span>    signalPassFailure();</div>
+<div class="line"><a id="l01035" name="l01035"></a><span class="lineno"> 1035</span>}</div>
 </div>
-<div class="line"><a id="l01035" name="l01035"></a><span class="lineno"> 1035</span> </div>
-<div class="foldopen" id="foldopen01036" data-start="{" data-end="}">
-<div class="line"><a id="l01036" name="l01036"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a05e389bef68b9ecec669840cdbe47208"> 1036</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a05e389bef68b9ecec669840cdbe47208">AIEPathfinderPass::runOnOperation</a>() {</div>
-<div class="line"><a id="l01037" name="l01037"></a><span class="lineno"> 1037</span> </div>
-<div class="line"><a id="l01038" name="l01038"></a><span class="lineno"> 1038</span>  <span class="comment">// create analysis pass with routing graph for entire device</span></div>
-<div class="line"><a id="l01039" name="l01039"></a><span class="lineno"> 1039</span>  LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;---Begin AIEPathfinderPass---\n&quot;</span>);</div>
-<div class="line"><a id="l01040" name="l01040"></a><span class="lineno"> 1040</span> </div>
-<div class="line"><a id="l01041" name="l01041"></a><span class="lineno"> 1041</span>  DeviceOp d = getOperation();</div>
-<div class="line"><a id="l01042" name="l01042"></a><span class="lineno"> 1042</span>  <a class="code hl_class" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html">DynamicTileAnalysis</a> &amp;analyzer = getAnalysis&lt;DynamicTileAnalysis&gt;();</div>
-<div class="line"><a id="l01043" name="l01043"></a><span class="lineno"> 1043</span>  <span class="keywordflow">if</span> (failed(analyzer.<a class="code hl_function" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#ac9bacdd25df6dac19d171be66ec040ac">runAnalysis</a>(d)))</div>
-<div class="line"><a id="l01044" name="l01044"></a><span class="lineno"> 1044</span>    <span class="keywordflow">return</span> signalPassFailure();</div>
-<div class="line"><a id="l01045" name="l01045"></a><span class="lineno"> 1045</span>  OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());</div>
-<div class="line"><a id="l01046" name="l01046"></a><span class="lineno"> 1046</span> </div>
-<div class="line"><a id="l01047" name="l01047"></a><span class="lineno"> 1047</span>  <span class="keywordflow">if</span> (clRouteCircuit)</div>
-<div class="line"><a id="l01048" name="l01048"></a><span class="lineno"> 1048</span>    runOnFlow(d, analyzer);</div>
-<div class="line"><a id="l01049" name="l01049"></a><span class="lineno"> 1049</span>  <span class="keywordflow">if</span> (clRoutePacket)</div>
-<div class="line"><a id="l01050" name="l01050"></a><span class="lineno"> 1050</span>    runOnPacketFlow(d, builder, analyzer);</div>
-<div class="line"><a id="l01051" name="l01051"></a><span class="lineno"> 1051</span> </div>
-<div class="line"><a id="l01052" name="l01052"></a><span class="lineno"> 1052</span>  <span class="comment">// Populate wires between switchboxes and tiles.</span></div>
-<div class="line"><a id="l01053" name="l01053"></a><span class="lineno"> 1053</span>  builder.setInsertionPoint(d.getBody()-&gt;getTerminator());</div>
-<div class="line"><a id="l01054" name="l01054"></a><span class="lineno"> 1054</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = 0; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;= analyzer.<a class="code hl_function" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a2cf479638938a2670cb6ee7064ccdadd">getMaxCol</a>(); <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>++) {</div>
-<div class="line"><a id="l01055" name="l01055"></a><span class="lineno"> 1055</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = 0; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;= analyzer.<a class="code hl_function" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a4d02c67c84b58c7c6a1a91f48ff4b9d9">getMaxRow</a>(); <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>++) {</div>
-<div class="line"><a id="l01056" name="l01056"></a><span class="lineno"> 1056</span>      TileOp tile;</div>
-<div class="line"><a id="l01057" name="l01057"></a><span class="lineno"> 1057</span>      <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#aebc513de0136473e689e243a001b4e37">coordToTile</a>.count({col, row}))</div>
-<div class="line"><a id="l01058" name="l01058"></a><span class="lineno"> 1058</span>        tile = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#aebc513de0136473e689e243a001b4e37">coordToTile</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>}];</div>
-<div class="line"><a id="l01059" name="l01059"></a><span class="lineno"> 1059</span>      <span class="keywordflow">else</span></div>
-<div class="line"><a id="l01060" name="l01060"></a><span class="lineno"> 1060</span>        <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l01061" name="l01061"></a><span class="lineno"> 1061</span>      SwitchboxOp sw;</div>
-<div class="line"><a id="l01062" name="l01062"></a><span class="lineno"> 1062</span>      <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({col, row}))</div>
-<div class="line"><a id="l01063" name="l01063"></a><span class="lineno"> 1063</span>        sw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>}];</div>
-<div class="line"><a id="l01064" name="l01064"></a><span class="lineno"> 1064</span>      <span class="keywordflow">else</span></div>
-<div class="line"><a id="l01065" name="l01065"></a><span class="lineno"> 1065</span>        <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l01066" name="l01066"></a><span class="lineno"> 1066</span>      <span class="keywordflow">if</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &gt; 0) {</div>
-<div class="line"><a id="l01067" name="l01067"></a><span class="lineno"> 1067</span>        <span class="comment">// connections east-west between stream switches</span></div>
-<div class="line"><a id="l01068" name="l01068"></a><span class="lineno"> 1068</span>        <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({col - 1, row})) {</div>
-<div class="line"><a id="l01069" name="l01069"></a><span class="lineno"> 1069</span>          <span class="keyword">auto</span> westsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> - 1, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>}];</div>
-<div class="line"><a id="l01070" name="l01070"></a><span class="lineno"> 1070</span>          WireOp::create(builder, builder.getUnknownLoc(), westsw,</div>
-<div class="line"><a id="l01071" name="l01071"></a><span class="lineno"> 1071</span>                         WireBundle::East, sw, WireBundle::West);</div>
-<div class="line"><a id="l01072" name="l01072"></a><span class="lineno"> 1072</span>        }</div>
-<div class="line"><a id="l01073" name="l01073"></a><span class="lineno"> 1073</span>      }</div>
-<div class="line"><a id="l01074" name="l01074"></a><span class="lineno"> 1074</span>      <span class="keywordflow">if</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &gt; 0) {</div>
-<div class="line"><a id="l01075" name="l01075"></a><span class="lineno"> 1075</span>        <span class="comment">// connections between abstract &#39;core&#39; of tile</span></div>
-<div class="line"><a id="l01076" name="l01076"></a><span class="lineno"> 1076</span>        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::Core,</div>
-<div class="line"><a id="l01077" name="l01077"></a><span class="lineno"> 1077</span>                       sw, WireBundle::Core);</div>
-<div class="line"><a id="l01078" name="l01078"></a><span class="lineno"> 1078</span>        <span class="comment">// connections between abstract &#39;dma&#39; of tile</span></div>
-<div class="line"><a id="l01079" name="l01079"></a><span class="lineno"> 1079</span>        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::DMA,</div>
-<div class="line"><a id="l01080" name="l01080"></a><span class="lineno"> 1080</span>                       sw, WireBundle::DMA);</div>
-<div class="line"><a id="l01081" name="l01081"></a><span class="lineno"> 1081</span>        <span class="comment">// connections north-south inside array ( including connection to shim</span></div>
-<div class="line"><a id="l01082" name="l01082"></a><span class="lineno"> 1082</span>        <span class="comment">// row)</span></div>
-<div class="line"><a id="l01083" name="l01083"></a><span class="lineno"> 1083</span>        <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({col, row - 1})) {</div>
-<div class="line"><a id="l01084" name="l01084"></a><span class="lineno"> 1084</span>          <span class="keyword">auto</span> southsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> - 1}];</div>
-<div class="line"><a id="l01085" name="l01085"></a><span class="lineno"> 1085</span>          WireOp::create(builder, builder.getUnknownLoc(), southsw,</div>
-<div class="line"><a id="l01086" name="l01086"></a><span class="lineno"> 1086</span>                         WireBundle::North, sw, WireBundle::South);</div>
-<div class="line"><a id="l01087" name="l01087"></a><span class="lineno"> 1087</span>        }</div>
-<div class="line"><a id="l01088" name="l01088"></a><span class="lineno"> 1088</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> == 0) {</div>
-<div class="line"><a id="l01089" name="l01089"></a><span class="lineno"> 1089</span>        <span class="keywordflow">if</span> (tile.isShimNOCTile()) {</div>
-<div class="line"><a id="l01090" name="l01090"></a><span class="lineno"> 1090</span>          <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a936349436603104f270d1e292f502f43">coordToShimMux</a>.count({col, 0})) {</div>
-<div class="line"><a id="l01091" name="l01091"></a><span class="lineno"> 1091</span>            <span class="keyword">auto</span> shimsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a936349436603104f270d1e292f502f43">coordToShimMux</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, 0}];</div>
-<div class="line"><a id="l01092" name="l01092"></a><span class="lineno"> 1092</span>            WireOp::create(</div>
-<div class="line"><a id="l01093" name="l01093"></a><span class="lineno"> 1093</span>                builder, builder.getUnknownLoc(), shimsw,</div>
-<div class="line"><a id="l01094" name="l01094"></a><span class="lineno"> 1094</span>                WireBundle::North, <span class="comment">// Changed to connect into the north</span></div>
-<div class="line"><a id="l01095" name="l01095"></a><span class="lineno"> 1095</span>                sw, WireBundle::South);</div>
-<div class="line"><a id="l01096" name="l01096"></a><span class="lineno"> 1096</span>            <span class="comment">// PLIO is attached to shim mux</span></div>
-<div class="line"><a id="l01097" name="l01097"></a><span class="lineno"> 1097</span>            <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>.count(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>)) {</div>
-<div class="line"><a id="l01098" name="l01098"></a><span class="lineno"> 1098</span>              <span class="keyword">auto</span> plio = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>];</div>
-<div class="line"><a id="l01099" name="l01099"></a><span class="lineno"> 1099</span>              WireOp::create(builder, builder.getUnknownLoc(), plio,</div>
-<div class="line"><a id="l01100" name="l01100"></a><span class="lineno"> 1100</span>                             WireBundle::North, shimsw, WireBundle::South);</div>
-<div class="line"><a id="l01101" name="l01101"></a><span class="lineno"> 1101</span>            }</div>
-<div class="line"><a id="l01102" name="l01102"></a><span class="lineno"> 1102</span> </div>
-<div class="line"><a id="l01103" name="l01103"></a><span class="lineno"> 1103</span>            <span class="comment">// abstract &#39;DMA&#39; connection on tile is attached to shim mux ( in</span></div>
-<div class="line"><a id="l01104" name="l01104"></a><span class="lineno"> 1104</span>            <span class="comment">// row 0 )</span></div>
-<div class="line"><a id="l01105" name="l01105"></a><span class="lineno"> 1105</span>            WireOp::create(builder, builder.getUnknownLoc(), tile,</div>
-<div class="line"><a id="l01106" name="l01106"></a><span class="lineno"> 1106</span>                           WireBundle::DMA, shimsw, WireBundle::DMA);</div>
-<div class="line"><a id="l01107" name="l01107"></a><span class="lineno"> 1107</span>          }</div>
-<div class="line"><a id="l01108" name="l01108"></a><span class="lineno"> 1108</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (tile.isShimPLTile()) {</div>
-<div class="line"><a id="l01109" name="l01109"></a><span class="lineno"> 1109</span>          <span class="comment">// PLIO is attached directly to switch</span></div>
-<div class="line"><a id="l01110" name="l01110"></a><span class="lineno"> 1110</span>          <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>.count(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>)) {</div>
-<div class="line"><a id="l01111" name="l01111"></a><span class="lineno"> 1111</span>            <span class="keyword">auto</span> plio = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>];</div>
-<div class="line"><a id="l01112" name="l01112"></a><span class="lineno"> 1112</span>            WireOp::create(builder, builder.getUnknownLoc(), plio,</div>
-<div class="line"><a id="l01113" name="l01113"></a><span class="lineno"> 1113</span>                           WireBundle::North, sw, WireBundle::South);</div>
-<div class="line"><a id="l01114" name="l01114"></a><span class="lineno"> 1114</span>          }</div>
-<div class="line"><a id="l01115" name="l01115"></a><span class="lineno"> 1115</span>        }</div>
-<div class="line"><a id="l01116" name="l01116"></a><span class="lineno"> 1116</span>      }</div>
-<div class="line"><a id="l01117" name="l01117"></a><span class="lineno"> 1117</span>    }</div>
-<div class="line"><a id="l01118" name="l01118"></a><span class="lineno"> 1118</span>  }</div>
-<div class="line"><a id="l01119" name="l01119"></a><span class="lineno"> 1119</span>}</div>
+<div class="line"><a id="l01036" name="l01036"></a><span class="lineno"> 1036</span> </div>
+<div class="foldopen" id="foldopen01037" data-start="{" data-end="}">
+<div class="line"><a id="l01037" name="l01037"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a05e389bef68b9ecec669840cdbe47208"> 1037</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a05e389bef68b9ecec669840cdbe47208">AIEPathfinderPass::runOnOperation</a>() {</div>
+<div class="line"><a id="l01038" name="l01038"></a><span class="lineno"> 1038</span> </div>
+<div class="line"><a id="l01039" name="l01039"></a><span class="lineno"> 1039</span>  <span class="comment">// create analysis pass with routing graph for entire device</span></div>
+<div class="line"><a id="l01040" name="l01040"></a><span class="lineno"> 1040</span>  LLVM_DEBUG(llvm::dbgs() &lt;&lt; <span class="stringliteral">&quot;---Begin AIEPathfinderPass---\n&quot;</span>);</div>
+<div class="line"><a id="l01041" name="l01041"></a><span class="lineno"> 1041</span> </div>
+<div class="line"><a id="l01042" name="l01042"></a><span class="lineno"> 1042</span>  DeviceOp d = getOperation();</div>
+<div class="line"><a id="l01043" name="l01043"></a><span class="lineno"> 1043</span>  <a class="code hl_class" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html">DynamicTileAnalysis</a> &amp;analyzer = getAnalysis&lt;DynamicTileAnalysis&gt;();</div>
+<div class="line"><a id="l01044" name="l01044"></a><span class="lineno"> 1044</span>  <span class="keywordflow">if</span> (failed(analyzer.<a class="code hl_function" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#ac9bacdd25df6dac19d171be66ec040ac">runAnalysis</a>(d)))</div>
+<div class="line"><a id="l01045" name="l01045"></a><span class="lineno"> 1045</span>    <span class="keywordflow">return</span> signalPassFailure();</div>
+<div class="line"><a id="l01046" name="l01046"></a><span class="lineno"> 1046</span>  OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());</div>
+<div class="line"><a id="l01047" name="l01047"></a><span class="lineno"> 1047</span> </div>
+<div class="line"><a id="l01048" name="l01048"></a><span class="lineno"> 1048</span>  <span class="keywordflow">if</span> (clRouteCircuit)</div>
+<div class="line"><a id="l01049" name="l01049"></a><span class="lineno"> 1049</span>    runOnFlow(d, analyzer);</div>
+<div class="line"><a id="l01050" name="l01050"></a><span class="lineno"> 1050</span>  <span class="keywordflow">if</span> (clRoutePacket)</div>
+<div class="line"><a id="l01051" name="l01051"></a><span class="lineno"> 1051</span>    runOnPacketFlow(d, builder, analyzer);</div>
+<div class="line"><a id="l01052" name="l01052"></a><span class="lineno"> 1052</span> </div>
+<div class="line"><a id="l01053" name="l01053"></a><span class="lineno"> 1053</span>  <span class="comment">// Populate wires between switchboxes and tiles.</span></div>
+<div class="line"><a id="l01054" name="l01054"></a><span class="lineno"> 1054</span>  builder.setInsertionPoint(d.getBody()-&gt;getTerminator());</div>
+<div class="line"><a id="l01055" name="l01055"></a><span class="lineno"> 1055</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = 0; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;= analyzer.<a class="code hl_function" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a2cf479638938a2670cb6ee7064ccdadd">getMaxCol</a>(); <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>++) {</div>
+<div class="line"><a id="l01056" name="l01056"></a><span class="lineno"> 1056</span>    <span class="keywordflow">for</span> (<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = 0; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;= analyzer.<a class="code hl_function" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a4d02c67c84b58c7c6a1a91f48ff4b9d9">getMaxRow</a>(); <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>++) {</div>
+<div class="line"><a id="l01057" name="l01057"></a><span class="lineno"> 1057</span>      TileOp tile;</div>
+<div class="line"><a id="l01058" name="l01058"></a><span class="lineno"> 1058</span>      <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#aebc513de0136473e689e243a001b4e37">coordToTile</a>.count({col, row}))</div>
+<div class="line"><a id="l01059" name="l01059"></a><span class="lineno"> 1059</span>        tile = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#aebc513de0136473e689e243a001b4e37">coordToTile</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>}];</div>
+<div class="line"><a id="l01060" name="l01060"></a><span class="lineno"> 1060</span>      <span class="keywordflow">else</span></div>
+<div class="line"><a id="l01061" name="l01061"></a><span class="lineno"> 1061</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l01062" name="l01062"></a><span class="lineno"> 1062</span>      SwitchboxOp sw;</div>
+<div class="line"><a id="l01063" name="l01063"></a><span class="lineno"> 1063</span>      <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({col, row}))</div>
+<div class="line"><a id="l01064" name="l01064"></a><span class="lineno"> 1064</span>        sw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>}];</div>
+<div class="line"><a id="l01065" name="l01065"></a><span class="lineno"> 1065</span>      <span class="keywordflow">else</span></div>
+<div class="line"><a id="l01066" name="l01066"></a><span class="lineno"> 1066</span>        <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l01067" name="l01067"></a><span class="lineno"> 1067</span>      <span class="keywordflow">if</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &gt; 0) {</div>
+<div class="line"><a id="l01068" name="l01068"></a><span class="lineno"> 1068</span>        <span class="comment">// connections east-west between stream switches</span></div>
+<div class="line"><a id="l01069" name="l01069"></a><span class="lineno"> 1069</span>        <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({col - 1, row})) {</div>
+<div class="line"><a id="l01070" name="l01070"></a><span class="lineno"> 1070</span>          <span class="keyword">auto</span> westsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> - 1, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>}];</div>
+<div class="line"><a id="l01071" name="l01071"></a><span class="lineno"> 1071</span>          WireOp::create(builder, builder.getUnknownLoc(), westsw,</div>
+<div class="line"><a id="l01072" name="l01072"></a><span class="lineno"> 1072</span>                         WireBundle::East, sw, WireBundle::West);</div>
+<div class="line"><a id="l01073" name="l01073"></a><span class="lineno"> 1073</span>        }</div>
+<div class="line"><a id="l01074" name="l01074"></a><span class="lineno"> 1074</span>      }</div>
+<div class="line"><a id="l01075" name="l01075"></a><span class="lineno"> 1075</span>      <span class="keywordflow">if</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &gt; 0) {</div>
+<div class="line"><a id="l01076" name="l01076"></a><span class="lineno"> 1076</span>        <span class="comment">// connections between abstract &#39;core&#39; of tile</span></div>
+<div class="line"><a id="l01077" name="l01077"></a><span class="lineno"> 1077</span>        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::Core,</div>
+<div class="line"><a id="l01078" name="l01078"></a><span class="lineno"> 1078</span>                       sw, WireBundle::Core);</div>
+<div class="line"><a id="l01079" name="l01079"></a><span class="lineno"> 1079</span>        <span class="comment">// connections between abstract &#39;dma&#39; of tile</span></div>
+<div class="line"><a id="l01080" name="l01080"></a><span class="lineno"> 1080</span>        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::DMA,</div>
+<div class="line"><a id="l01081" name="l01081"></a><span class="lineno"> 1081</span>                       sw, WireBundle::DMA);</div>
+<div class="line"><a id="l01082" name="l01082"></a><span class="lineno"> 1082</span>        <span class="comment">// connections north-south inside array ( including connection to shim</span></div>
+<div class="line"><a id="l01083" name="l01083"></a><span class="lineno"> 1083</span>        <span class="comment">// row)</span></div>
+<div class="line"><a id="l01084" name="l01084"></a><span class="lineno"> 1084</span>        <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>.count({col, row - 1})) {</div>
+<div class="line"><a id="l01085" name="l01085"></a><span class="lineno"> 1085</span>          <span class="keyword">auto</span> southsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a6cb3e1e1e9b1c3e064d25550cda9959e">coordToSwitchbox</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> - 1}];</div>
+<div class="line"><a id="l01086" name="l01086"></a><span class="lineno"> 1086</span>          WireOp::create(builder, builder.getUnknownLoc(), southsw,</div>
+<div class="line"><a id="l01087" name="l01087"></a><span class="lineno"> 1087</span>                         WireBundle::North, sw, WireBundle::South);</div>
+<div class="line"><a id="l01088" name="l01088"></a><span class="lineno"> 1088</span>        }</div>
+<div class="line"><a id="l01089" name="l01089"></a><span class="lineno"> 1089</span>      } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> == 0) {</div>
+<div class="line"><a id="l01090" name="l01090"></a><span class="lineno"> 1090</span>        <span class="keywordflow">if</span> (tile.isShimNOCTile()) {</div>
+<div class="line"><a id="l01091" name="l01091"></a><span class="lineno"> 1091</span>          <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a936349436603104f270d1e292f502f43">coordToShimMux</a>.count({col, 0})) {</div>
+<div class="line"><a id="l01092" name="l01092"></a><span class="lineno"> 1092</span>            <span class="keyword">auto</span> shimsw = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#a936349436603104f270d1e292f502f43">coordToShimMux</a>[{<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, 0}];</div>
+<div class="line"><a id="l01093" name="l01093"></a><span class="lineno"> 1093</span>            WireOp::create(</div>
+<div class="line"><a id="l01094" name="l01094"></a><span class="lineno"> 1094</span>                builder, builder.getUnknownLoc(), shimsw,</div>
+<div class="line"><a id="l01095" name="l01095"></a><span class="lineno"> 1095</span>                WireBundle::North, <span class="comment">// Changed to connect into the north</span></div>
+<div class="line"><a id="l01096" name="l01096"></a><span class="lineno"> 1096</span>                sw, WireBundle::South);</div>
+<div class="line"><a id="l01097" name="l01097"></a><span class="lineno"> 1097</span>            <span class="comment">// PLIO is attached to shim mux</span></div>
+<div class="line"><a id="l01098" name="l01098"></a><span class="lineno"> 1098</span>            <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>.count(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>)) {</div>
+<div class="line"><a id="l01099" name="l01099"></a><span class="lineno"> 1099</span>              <span class="keyword">auto</span> plio = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>];</div>
+<div class="line"><a id="l01100" name="l01100"></a><span class="lineno"> 1100</span>              WireOp::create(builder, builder.getUnknownLoc(), plio,</div>
+<div class="line"><a id="l01101" name="l01101"></a><span class="lineno"> 1101</span>                             WireBundle::North, shimsw, WireBundle::South);</div>
+<div class="line"><a id="l01102" name="l01102"></a><span class="lineno"> 1102</span>            }</div>
+<div class="line"><a id="l01103" name="l01103"></a><span class="lineno"> 1103</span> </div>
+<div class="line"><a id="l01104" name="l01104"></a><span class="lineno"> 1104</span>            <span class="comment">// abstract &#39;DMA&#39; connection on tile is attached to shim mux ( in</span></div>
+<div class="line"><a id="l01105" name="l01105"></a><span class="lineno"> 1105</span>            <span class="comment">// row 0 )</span></div>
+<div class="line"><a id="l01106" name="l01106"></a><span class="lineno"> 1106</span>            WireOp::create(builder, builder.getUnknownLoc(), tile,</div>
+<div class="line"><a id="l01107" name="l01107"></a><span class="lineno"> 1107</span>                           WireBundle::DMA, shimsw, WireBundle::DMA);</div>
+<div class="line"><a id="l01108" name="l01108"></a><span class="lineno"> 1108</span>          }</div>
+<div class="line"><a id="l01109" name="l01109"></a><span class="lineno"> 1109</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (tile.isShimPLTile()) {</div>
+<div class="line"><a id="l01110" name="l01110"></a><span class="lineno"> 1110</span>          <span class="comment">// PLIO is attached directly to switch</span></div>
+<div class="line"><a id="l01111" name="l01111"></a><span class="lineno"> 1111</span>          <span class="keywordflow">if</span> (analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>.count(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>)) {</div>
+<div class="line"><a id="l01112" name="l01112"></a><span class="lineno"> 1112</span>            <span class="keyword">auto</span> plio = analyzer.<a class="code hl_variable" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html#afaefc07afbc342d868a189496807c180">coordToPLIO</a>[<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>];</div>
+<div class="line"><a id="l01113" name="l01113"></a><span class="lineno"> 1113</span>            WireOp::create(builder, builder.getUnknownLoc(), plio,</div>
+<div class="line"><a id="l01114" name="l01114"></a><span class="lineno"> 1114</span>                           WireBundle::North, sw, WireBundle::South);</div>
+<div class="line"><a id="l01115" name="l01115"></a><span class="lineno"> 1115</span>          }</div>
+<div class="line"><a id="l01116" name="l01116"></a><span class="lineno"> 1116</span>        }</div>
+<div class="line"><a id="l01117" name="l01117"></a><span class="lineno"> 1117</span>      }</div>
+<div class="line"><a id="l01118" name="l01118"></a><span class="lineno"> 1118</span>    }</div>
+<div class="line"><a id="l01119" name="l01119"></a><span class="lineno"> 1119</span>  }</div>
+<div class="line"><a id="l01120" name="l01120"></a><span class="lineno"> 1120</span>}</div>
 </div>
-<div class="line"><a id="l01120" name="l01120"></a><span class="lineno"> 1120</span> </div>
-<div class="foldopen" id="foldopen01121" data-start="{" data-end="}">
-<div class="line"><a id="l01121" name="l01121"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf"> 1121</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">createAIEPathfinderPass</a>() {</div>
-<div class="line"><a id="l01122" name="l01122"></a><span class="lineno"> 1122</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEPathfinderPass&gt;();</div>
-<div class="line"><a id="l01123" name="l01123"></a><span class="lineno"> 1123</span>}</div>
+<div class="line"><a id="l01121" name="l01121"></a><span class="lineno"> 1121</span> </div>
+<div class="foldopen" id="foldopen01122" data-start="{" data-end="}">
+<div class="line"><a id="l01122" name="l01122"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf"> 1122</a></span>std::unique_ptr&lt;OperationPass&lt;DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">createAIEPathfinderPass</a>() {</div>
+<div class="line"><a id="l01123" name="l01123"></a><span class="lineno"> 1123</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEPathfinderPass&gt;();</div>
+<div class="line"><a id="l01124" name="l01124"></a><span class="lineno"> 1124</span>}</div>
 </div>
-<div class="line"><a id="l01124" name="l01124"></a><span class="lineno"> 1124</span> </div>
-<div class="line"><a id="l01125" name="l01125"></a><span class="lineno"> 1125</span>} <span class="comment">// namespace xilinx::AIE</span></div>
+<div class="line"><a id="l01125" name="l01125"></a><span class="lineno"> 1125</span> </div>
+<div class="line"><a id="l01126" name="l01126"></a><span class="lineno"> 1126</span>} <span class="comment">// namespace xilinx::AIE</span></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
 <div class="ttc" id="aAIEPathFinder_8h_html"><div class="ttname"><a href="AIEPathFinder_8h.html">AIEPathFinder.h</a></div></div>
@@ -1232,20 +1233,20 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_ab66d81c9b6c34445a229064cf527f089"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ab66d81c9b6c34445a229064cf527f089">xilinx::AIE::port</a></div><div class="ttdeci">Port port</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00100">AIEPathFinder.h:100</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_ac23bcccb7c42df5f5fa7e78e980c1e28"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ac23bcccb7c42df5f5fa7e78e980c1e28">xilinx::AIE::srcCoords</a></div><div class="ttdeci">TileID srcCoords</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00039">AIEPathFinder.h:39</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_adb50ec93377e031b4e15ca75547fbd96"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">xilinx::AIE::PathEndPoint</a></div><div class="ttdeci">PathEndPoint { PathEndPoint()=default PathEndPoint</div><div class="ttdef"><b>Definition</b> <a href="AIEPathFinder_8h_source.html#l00095">AIEPathFinder.h:96</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_aebcf56adce24e361f0fb030b53d8adbf"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">xilinx::AIE::createAIEPathfinderPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEPathfinderPass()</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l01121">AIECreatePathFindFlows.cpp:1121</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_aebcf56adce24e361f0fb030b53d8adbf"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aebcf56adce24e361f0fb030b53d8adbf">xilinx::AIE::createAIEPathfinderPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEPathfinderPass()</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l01122">AIECreatePathFindFlows.cpp:1122</a></div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html">xilinx::AIE::AIEOpRemoval</a></div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00200">AIECreatePathFindFlows.cpp:200</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html_a01da3de9906e76b170348bd6df72022b"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html#a01da3de9906e76b170348bd6df72022b">xilinx::AIE::AIEOpRemoval::AIEOpRemoval</a></div><div class="ttdeci">AIEOpRemoval(MLIRContext *context, PatternBenefit benefit=1)</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00204">AIECreatePathFindFlows.cpp:204</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html_a17f3b170b9d87b61de227fb7f9aaf7e8"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html#a17f3b170b9d87b61de227fb7f9aaf7e8">xilinx::AIE::AIEOpRemoval::matchAndRewrite</a></div><div class="ttdeci">LogicalResult matchAndRewrite(MyOp op, OpAdaptor adaptor, ConversionPatternRewriter &amp;rewriter) const override</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00208">AIECreatePathFindFlows.cpp:208</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEOpRemoval_html_a2ac391a9a4bd8bb0a716805dc9ba68b1"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEOpRemoval.html#a2ac391a9a4bd8bb0a716805dc9ba68b1">xilinx::AIE::AIEOpRemoval::OpAdaptor</a></div><div class="ttdeci">typename MyOp::Adaptor OpAdaptor</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00202">AIECreatePathFindFlows.cpp:202</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIEPathfinderPass_html_a05e389bef68b9ecec669840cdbe47208"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a05e389bef68b9ecec669840cdbe47208">xilinx::AIE::AIEPathfinderPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l01036">AIECreatePathFindFlows.cpp:1036</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIEPathfinderPass_html_a05e389bef68b9ecec669840cdbe47208"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a05e389bef68b9ecec669840cdbe47208">xilinx::AIE::AIEPathfinderPass::runOnOperation</a></div><div class="ttdeci">void runOnOperation() override</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l01037">AIECreatePathFindFlows.cpp:1037</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEPathfinderPass_html_aaed4ee8d6a5b985c8e7763d66ec5e0b9"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#aaed4ee8d6a5b985c8e7763d66ec5e0b9">xilinx::AIE::AIEPathfinderPass::runOnFlow</a></div><div class="ttdeci">void runOnFlow(DeviceOp d, DynamicTileAnalysis &amp;analyzer)</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00183">AIECreatePathFindFlows.cpp:183</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEPathfinderPass_html_abd1f755183a9c7f64f84f17511784fcc"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#abd1f755183a9c7f64f84f17511784fcc">xilinx::AIE::AIEPathfinderPass::findPathToDest</a></div><div class="ttdeci">bool findPathToDest(SwitchSettings settings, TileID currTile, WireBundle currDestBundle, int currDestChannel, TileID finalTile, WireBundle finalDestBundle, int finalDestChannel)</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00217">AIECreatePathFindFlows.cpp:217</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIEPathfinderPass_html_af63a42ba8fbd9fe93ced08f68dd8c70d"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#af63a42ba8fbd9fe93ced08f68dd8c70d">xilinx::AIE::AIEPathfinderPass::runOnPacketFlow</a></div><div class="ttdeci">void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &amp;builder, DynamicTileAnalysis &amp;analyzer)</div><div class="ttdef"><b>Definition</b> <a href="AIECreatePathFindFlows_8cpp_source.html#l00268">AIECreatePathFindFlows.cpp:268</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Jan 9 2026 01:28:50 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Jan 9 2026 21:05:38 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
