@@ -1,0 +1,38 @@
+name: Bump LLVM
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  bump-llvm:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run bump script
+        id: bump
+        run: python3 utils/bump_llvm.py
+
+      - name: Create Pull Request
+        if: steps.bump.outputs.bump_required == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Bump LLVM to ${{ steps.bump.outputs.new_llvm_sha }} and eudsl-python-extras to ${{ steps.bump.outputs.new_eudsl_version }}"
+          title: "Bump LLVM to ${{ steps.bump.outputs.new_llvm_sha }}"
+          body: |
+            Bump LLVM to commit ${{ steps.bump.outputs.new_llvm_sha }}
+            Bump eudsl-python-extras to ${{ steps.bump.outputs.new_eudsl_version }}
+          branch: bump-llvm-${{ steps.bump.outputs.new_llvm_sha }}-${{ steps.bump.outputs.new_date }}
+          delete-branch: true
