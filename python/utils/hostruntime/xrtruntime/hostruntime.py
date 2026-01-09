@@ -126,6 +126,7 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If xclbin or insts files do not exist, or if kernel is not found.
         """
+        self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name
@@ -188,6 +189,7 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If arguments are invalid or kernel execution fails (and fail_on_error is True).
         """
+        self.check_device_consistency()
         # Filter out callable functions and check arg types
         args = [a for a in args if not callable(a)]
         if not all([isinstance(a, self._tensor_class) for a in args]):
@@ -423,6 +425,7 @@ class CachedXRTRuntime(XRTHostRuntime):
         Raises:
             HostRuntimeError: If xclbin or insts files do not exist, or if kernel is not found.
         """
+        self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name

@@ -36,3 +36,31 @@ def test_device_override():
     # If not, it returns None.
     # In both cases, it should match original_device (assuming runtime didn't change/disappear)
     assert type(utils.get_current_device()) == type(original_device)
+
+
+def test_device_consistency():
+    # Define a mock runtime class
+    class MockRuntime(utils.HostRuntime):
+        def load(self, *args, **kwargs):
+            pass
+
+        def run(self, *args, **kwargs):
+            pass
+
+        def device(self):
+            return NPU1()
+
+    runtime = MockRuntime()
+
+    # Set compatible override
+    utils.set_current_device(NPU1())
+    # Should not raise
+    runtime.check_device_consistency()
+
+    # Set incompatible override
+    utils.set_current_device(NPU2())
+    with pytest.raises(RuntimeError, match="does not match runtime device"):
+        runtime.check_device_consistency()
+
+    # Reset
+    utils.set_current_device(None)

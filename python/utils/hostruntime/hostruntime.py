@@ -4,6 +4,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 from pathlib import Path
+import sys
 from typing import TYPE_CHECKING
 
 from .. import tensor
@@ -93,6 +94,21 @@ class KernelResult(ABC):
 
 class HostRuntime(ABC):
     """An abstract class for a generic host runtime"""
+
+    def check_device_consistency(self):
+        """
+        Check if the overridden device matches the runtime device.
+        """
+        mod = sys.modules[__package__]
+        override = getattr(mod, "_CURRENT_DEVICE", None)
+        if override:
+            runtime_device = self.device()
+            if getattr(override, "_device", None) != getattr(
+                runtime_device, "_device", None
+            ):
+                raise RuntimeError(
+                    f"Overridden device {override} does not match runtime device {runtime_device}"
+                )
 
     @abstractmethod
     def load(self, npu_kernel: NPUKernel, **kwargs) -> KernelHandle:
