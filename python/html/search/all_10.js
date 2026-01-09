@@ -6,7 +6,9 @@ var searchData=
   ['placementtile_3',['PlacementTile',['../namespaceiron_1_1device_1_1tile.html#ab9bfbc80972b99cb357c7b8c6469e1a9',1,'iron::device::tile']]],
   ['placer_4',['Placer',['../classiron_1_1placers_1_1Placer.html',1,'iron::placers']]],
   ['placers_2epy_5',['placers.py',['../placers_8py.html',1,'']]],
-  ['prod_6',['prod',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a99b554ace7626a3b65076e54123aced2',1,'iron::dataflow::objectfifo::ObjectFifo']]],
-  ['program_7',['Program',['../classiron_1_1program_1_1Program.html',1,'iron::program']]],
-  ['program_2epy_8',['program.py',['../program_8py.html',1,'']]]
+  ['prepare_5fargs_5ffor_5ftrace_6',['prepare_args_for_trace',['../classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html#ac3d34d23e9f7d1b986b6f7dfa2e449a5',1,'utils::hostruntime::hostruntime::HostRuntime']]],
+  ['process_5ftrace_7',['process_trace',['../classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html#aca2c52ada82c8ad9fcb8011990d9eac7',1,'utils::hostruntime::hostruntime::HostRuntime']]],
+  ['prod_8',['prod',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a99b554ace7626a3b65076e54123aced2',1,'iron::dataflow::objectfifo::ObjectFifo']]],
+  ['program_9',['Program',['../classiron_1_1program_1_1Program.html',1,'iron::program']]],
+  ['program_2epy_10',['program.py',['../program_8py.html',1,'']]]
 ];

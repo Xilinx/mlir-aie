@@ -1,15 +1,15 @@
 var searchData=
 [
-  ['index_0',['index',['../classcircular__cache_1_1CircularCache.html#adb419ef60812e542fbfbb1cfaca43b6d',1,'circular_cache::CircularCache']]],
-  ['initial_5fvalue_1',['initial_value',['../classiron_1_1worker_1_1WorkerRuntimeBarrier.html#a12e97eb033a09a86975721371dc2ab99',1,'iron::worker::WorkerRuntimeBarrier']]],
-  ['inline_5fops_2',['inline_ops',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a77189d41cb28ba32bbf24cf23085c839',1,'iron::runtime::runtime::Runtime']]],
-  ['inlineopruntimetask_3',['InlineOpRuntimeTask',['../classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html',1,'iron::runtime::task']]],
-  ['insert_4',['insert',['../classtaplib_1_1tas_1_1TensorAccessSequence.html#ae087a931b910ec672866fd2696c514b4',1,'taplib::tas::TensorAccessSequence']]],
-  ['iron_5',['iron',['../namespaceiron.html',1,'']]],
-  ['iron_3a_3abuffer_6',['buffer',['../namespaceiron_1_1buffer.html',1,'iron']]],
-  ['iron_3a_3acompile_7',['compile',['../namespaceiron_1_1compile.html',1,'iron']]],
-  ['iron_3a_3acompile_3a_3alink_8',['link',['../namespaceiron_1_1compile_1_1link.html',1,'iron::compile']]],
-  ['iron_3a_3acompile_3a_3autils_9',['utils',['../namespaceiron_1_1compile_1_1utils.html',1,'iron::compile']]],
+  ['initial_5fvalue_0',['initial_value',['../classiron_1_1worker_1_1WorkerRuntimeBarrier.html#a12e97eb033a09a86975721371dc2ab99',1,'iron::worker::WorkerRuntimeBarrier']]],
+  ['inline_5fops_1',['inline_ops',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a77189d41cb28ba32bbf24cf23085c839',1,'iron::runtime::runtime::Runtime']]],
+  ['inlineopruntimetask_2',['InlineOpRuntimeTask',['../classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html',1,'iron::runtime::task']]],
+  ['insert_3',['insert',['../classtaplib_1_1tas_1_1TensorAccessSequence.html#ae087a931b910ec672866fd2696c514b4',1,'taplib::tas::TensorAccessSequence']]],
+  ['insts_4',['insts',['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a2b7aae8f07167057d775ef6d5ad6525f',1,'utils::hostruntime::xrtruntime::hostruntime::XRTKernelHandle']]],
+  ['insts_5fbo_5',['insts_bo',['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a5f28cf44b8d35dda4564016d22a7b1e2',1,'utils::hostruntime::xrtruntime::hostruntime::XRTKernelHandle']]],
+  ['insts_5fpath_6',['insts_path',['../classutils_1_1npukernel_1_1NPUKernel.html#ae8007df8bef5ffe12a695332bb160b93',1,'utils::npukernel::NPUKernel']]],
+  ['invalidate_7',['invalidate',['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTKernelHandle.html#a570d22762e6a8a47bb749acb6d2f7325',1,'utils::hostruntime::xrtruntime::hostruntime::CachedXRTKernelHandle']]],
+  ['iron_8',['iron',['../namespaceiron.html',1,'']]],
+  ['iron_3a_3abuffer_9',['buffer',['../namespaceiron_1_1buffer.html',1,'iron']]],
   ['iron_3a_3acontrolflow_10',['controlflow',['../namespaceiron_1_1controlflow.html',1,'iron']]],
   ['iron_3a_3adataflow_11',['dataflow',['../namespaceiron_1_1dataflow.html',1,'iron']]],
   ['iron_3a_3adataflow_3a_3aendpoint_12',['endpoint',['../namespaceiron_1_1dataflow_1_1endpoint.html',1,'iron::dataflow']]],
@@ -31,6 +31,6 @@ var searchData=
   ['iron_3a_3aruntime_3a_3atask_28',['task',['../namespaceiron_1_1runtime_1_1task.html',1,'iron::runtime']]],
   ['iron_3a_3aruntime_3a_3ataskgroup_29',['taskgroup',['../namespaceiron_1_1runtime_1_1taskgroup.html',1,'iron::runtime']]],
   ['iron_3a_3aworker_30',['worker',['../namespaceiron_1_1worker.html',1,'iron']]],
-  ['iron_5fcache_5fhome_31',['IRON_CACHE_HOME',['../namespaceiron_1_1compile.html#a7c7ba4881e396ff62367592b4d239837',1,'iron::compile']]],
-  ['is_5fmem_5faccessible_32',['is_mem_accessible',['../classiron_1_1device_1_1device_1_1Device.html#a1d138bfd235611c9db379c05ab22336a',1,'iron::device::device::Device']]]
+  ['is_5fmem_5faccessible_31',['is_mem_accessible',['../classiron_1_1device_1_1device_1_1Device.html#a1d138bfd235611c9db379c05ab22336a',1,'iron::device::device::Device']]],
+  ['is_5fsuccess_32',['is_success',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#a47e5044d1418240eebebf824911ee627',1,'utils.hostruntime.hostruntime.KernelResult.is_success()'],['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelResult.html#a21ca00f5118155efe6cc66ef21ed48a6',1,'utils.hostruntime.xrtruntime.hostruntime.XRTKernelResult.is_success()']]]
 ];

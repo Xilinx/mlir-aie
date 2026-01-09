@@ -1,0 +1,7 @@
+<map id="utils.hostruntime.tensor_class.CPUOnlyTensor" name="utils.hostruntime.tensor_class.CPUOnlyTensor">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,167,184,207"/>
+<area shape="rect" id="Node000002" href="$classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html" title=" " alt="" coords="5,79,184,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="97,133,97,166,92,166,92,133"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="70,5,119,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="97,44,97,79,92,79,92,44"/>
+</map>

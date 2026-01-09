@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['xrttensor_0',['XRTTensor',['../classxrtruntime_1_1tensor_1_1XRTTensor.html',1,'xrtruntime::tensor']]]
+  ['worker_0',['Worker',['../classiron_1_1worker_1_1Worker.html',1,'iron::worker']]],
+  ['workerruntimebarrier_1',['WorkerRuntimeBarrier',['../classiron_1_1worker_1_1WorkerRuntimeBarrier.html',1,'iron::worker']]]
 ];

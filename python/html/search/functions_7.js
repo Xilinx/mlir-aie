@@ -1,7 +1,7 @@
 var searchData=
 [
   ['get_5fcompute_5ftiles_0',['get_compute_tiles',['../classiron_1_1device_1_1device_1_1Device.html#a36da3996a16bd9a1c4e42d2d09db5576',1,'iron::device::device::Device']]],
-  ['get_5fcurrent_5fdevice_1',['get_current_device',['../namespaceconfig.html#a06e1709c122bffdb7cc2733a1212a61a',1,'config']]],
+  ['get_5fcurrent_5fdevice_1',['get_current_device',['../namespaceutils.html#a1ba7e8a2b4ce9deacd1a5a04286f005f',1,'utils']]],
   ['get_5ffirst_5fcons_5fshimtile_2',['get_first_cons_shimtile',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#af0b721becd44d6123fa39c95986880da',1,'iron::runtime::runtime::Runtime']]],
   ['get_5fmem_5ftiles_3',['get_mem_tiles',['../classiron_1_1device_1_1device_1_1Device.html#ac13b8897f9dd1209c8198e950f113e4c',1,'iron::device::device::Device']]],
   ['get_5fnum_5fconnections_4',['get_num_connections',['../classiron_1_1device_1_1device_1_1Device.html#a6d0e3973ef2ea151612fd5a53f2bb60c',1,'iron::device::device::Device']]],

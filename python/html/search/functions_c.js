@@ -1,7 +1,5 @@
 var searchData=
 [
-  ['name_0',['name',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#aa14fd266f46c72f6cfc83169d1bd8cd9',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
-  ['nbytes_1',['nbytes',['../classtensor_1_1Tensor.html#a73a8dddaf015abf9461cb2c2be5accc8',1,'tensor::Tensor']]],
-  ['numel_2',['numel',['../classtensor_1_1Tensor.html#a5be2e7388fc556912e1fd7091034f423',1,'tensor::Tensor']]],
-  ['numpy_3',['numpy',['../classtensor_1_1Tensor.html#acbedb30b6a909713b426143ab7eb1fae',1,'tensor::Tensor']]]
+  ['load_0',['load',['../classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html#aeeefb51039c44d764e49dab75022bca9',1,'utils.hostruntime.hostruntime.HostRuntime.load()'],['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTHostRuntime.html#a9435ae303756f99686a31c9c0d348e46',1,'utils.hostruntime.xrtruntime.hostruntime.XRTHostRuntime.load()'],['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html#a23420325e3a3fbb88d84710c77ee6414',1,'utils.hostruntime.xrtruntime.hostruntime.CachedXRTRuntime.load()']]],
+  ['load_5fand_5frun_1',['load_and_run',['../classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html#a893619eae4d6e81362bcde861742eabf',1,'utils::hostruntime::hostruntime::HostRuntime']]]
 ];

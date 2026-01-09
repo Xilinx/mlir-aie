@@ -1,6 +1,5 @@
 var searchData=
 [
-  ['tile_0',['tile',['../classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html#ac4ba26dacbeae15227be94efcc3ddc55',1,'iron::runtime::endpoint::RuntimeEndpoint']]],
-  ['trace_1',['trace',['../classiron_1_1worker_1_1Worker.html#a10a553d64267f4b1337e7050a08226f0',1,'iron::worker::Worker']]],
-  ['trace_5fevents_2',['trace_events',['../classiron_1_1worker_1_1Worker.html#a7de61d33d6e9e3bbc13a091738882a16',1,'iron::worker::Worker']]]
+  ['shape_0',['shape',['../classiron_1_1runtime_1_1data_1_1RuntimeData.html#a87e2206e3b27e05dec5f46a3482ee9d5',1,'iron.runtime.data.RuntimeData.shape'],['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a5f8f57fc262d840a65dd879e92bcc4ff',1,'utils.hostruntime.tensor_class.Tensor.shape']]],
+  ['stack_5fsize_1',['stack_size',['../classiron_1_1worker_1_1Worker.html#aeb350baef4bd70400fe64d2a0943f2a9',1,'iron::worker::Worker']]]
 ];
