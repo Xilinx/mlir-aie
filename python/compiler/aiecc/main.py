@@ -1538,7 +1538,6 @@ class FlowRunner:
     async def gen_sim(self, task, aie_target, file_physical, device_name):
         # For simulation, we need to additionally parse the 'remaining' options to avoid things
         # which conflict with the options below (e.g. -o)
-        print(opts.host_args)
         host_opts = aie.compiler.aiecc.cl_arguments.strip_host_args_for_aiesim(
             opts.host_args
         )
@@ -1672,13 +1671,11 @@ class FlowRunner:
         flows_output = os.path.join(sim_dir, "flows_physical.mlir")
         with Context(), Location.unknown():
             module = Module.parse(await read_file_async(file_physical))
-        processes.append(
-            self.run_passes(
-                "builtin.module(aie.device(aie-find-flows))",
-                module,
-                outputfile=flows_output,
-                description="Finding flows for simulation",
-            )
+        self.run_passes(
+            "builtin.module(aie.device(aie-find-flows))",
+            module,
+            outputfile=flows_output,
+            description="Finding flows for simulation",
         )
 
         processes.append(
