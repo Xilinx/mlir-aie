@@ -145,6 +145,8 @@ def set_tensor_class(cls):
     DEFAULT_TENSOR_CLASS = cls
 
 
+from .hostruntime import set_current_device
+from . import hostruntime
 from .hostruntime.hostruntime import HostRuntime
 from .trace import TraceConfig
 from .npukernel import NPUKernel
@@ -164,4 +166,9 @@ def get_current_device():
     Returns:
         Device | None: The current device if available, else None.
     """
-    return DefaultNPURuntime.device() if DefaultNPURuntime else None
+    if hostruntime._CURRENT_DEVICE:
+        return hostruntime._CURRENT_DEVICE
+    elif DefaultNPURuntime:
+        return DefaultNPURuntime.device()
+    else:
+        return None
