@@ -429,8 +429,10 @@ public:
     if (targetModel.isMemTile(tileCol, tileRow) && (!isMM2S) &&
         (op.getD0ZeroBefore() != 0 || op.getD0ZeroAfter() != 0 ||
          op.getD1ZeroBefore() != 0 || op.getD1ZeroAfter() != 0 ||
-         op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
+         op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0)) {
       op->emitOpError("MemTile supports zero padding only on MM2S direction");
+      return failure();
+    }
 
     // write the buffer descriptor to the array
     NpuWriteBdOp::create(
