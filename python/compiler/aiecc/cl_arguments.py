@@ -227,6 +227,26 @@ def parse_args(args=None):
         help="Show progress visualization",
     )
     parser.add_argument(
+        "--enable-repeater-scripts",
+        dest="enable_repeater",
+        default=True,
+        action="store_true",
+        help="Generate repeater scripts on compilation failure (default: enabled)",
+    )
+    parser.add_argument(
+        "--disable-repeater-scripts",
+        dest="enable_repeater",
+        action="store_false",
+        help="Disable generation of repeater scripts on failure",
+    )
+    parser.add_argument(
+        "--repeater-output-dir",
+        dest="repeater_output_dir",
+        default=None,
+        metavar="DIR",
+        help="Directory for repeater scripts (default: system temp dir)",
+    )
+    parser.add_argument(
         "--aie-generate-npu-insts",
         dest="npu",
         default=False,
