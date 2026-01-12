@@ -258,6 +258,18 @@ public:
   virtual std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
                                                       TileID tile) const = 0;
 
+  /// Get stream switch port index for a given port specification
+  /// Return port index for Stream_Switch_Event_Port_Selection register, or
+  /// nullopt if invalid
+  virtual std::optional<uint32_t>
+  getStreamSwitchPortIndex(int col, int row, WireBundle bundle,
+                           uint32_t channel, bool master) const = 0;
+
+  /// Check if a stream switch port is valid for the given tile
+  /// Return true if the port configuration is valid
+  virtual bool isValidStreamSwitchPort(int col, int row, WireBundle bundle,
+                                       uint32_t channel, bool master) const = 0;
+
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
   virtual uint32_t getNumBDs(int col, int row) const = 0;
@@ -360,6 +372,11 @@ public:
   /// Encode a field value with proper bit shifting.
   /// Return Value shifted to correct bit position
   uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
+
+  /// Resolve stream switch port specification to port index.
+  /// Return Port index for stream switch register, or nullopt if invalid
+  std::optional<uint32_t> resolvePortValue(llvm::StringRef value, TileID tile,
+                                           bool master) const;
 };
 
 class AIE1TargetModel : public AIETargetModel {
@@ -437,6 +454,13 @@ public:
   bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
                              int srcChan, WireBundle dstBundle,
                              int dstChan) const override;
+
+  std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
+                                                   WireBundle bundle,
+                                                   uint32_t channel,
+                                                   bool master) const override;
+  bool isValidStreamSwitchPort(int col, int row, WireBundle bundle,
+                               uint32_t channel, bool master) const override;
 
   uint32_t getColumnShift() const override { return 23; }
   uint32_t getRowShift() const override { return 18; }
@@ -546,6 +570,13 @@ public:
   bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
                              int srcChan, WireBundle dstBundle,
                              int dstChan) const override;
+
+  std::optional<uint32_t> getStreamSwitchPortIndex(int col, int row,
+                                                   WireBundle bundle,
+                                                   uint32_t channel,
+                                                   bool master) const override;
+  bool isValidStreamSwitchPort(int col, int row, WireBundle bundle,
+                               uint32_t channel, bool master) const override;
 
   uint32_t getColumnShift() const override { return 25; }
   uint32_t getRowShift() const override { return 20; }
