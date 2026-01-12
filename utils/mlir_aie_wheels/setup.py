@@ -283,8 +283,16 @@ def parse_requirements(filename):
     with open(filename) as f:
         lines = f.read().splitlines()
         # Remove comments and empty lines
+        # Also remove lines starting with "-" (flags) and eudsl-python-extras
+        # because eudsl requires config settings that cannot be passed via install_requires
+        # in wheel metadata. It must be installed separately or vendored.
         return [
-            line.strip() for line in lines if line.strip() and not line.startswith("#")
+            line.strip()
+            for line in lines
+            if line.strip()
+            and not line.startswith("#")
+            and not line.startswith("-")
+            and "eudsl-python-extras" not in line
         ]
 
 

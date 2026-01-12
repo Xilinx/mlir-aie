@@ -230,7 +230,6 @@ jobs:
 
         pip install --upgrade pip
         pip install -r requirements.txt
-        EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
         pip install -r python/requirements_dev.txt
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
@@ -355,7 +354,6 @@ jobs:
         with:
           sparse-checkout: |
             python/requirements.txt
-            python/requirements_extras.txt
             python/requirements_dev.txt
 
       - uses: actions/download-artifact@v4
@@ -372,7 +370,6 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r python/requirements.txt
-          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
           unzip -o -q dist/mlir_aie\*.whl
 

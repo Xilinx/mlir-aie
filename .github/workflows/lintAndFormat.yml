@@ -42,7 +42,6 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r python/requirements.txt
-          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Get MLIR
@@ -219,7 +218,6 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r python/requirements.txt
-          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Install packages
@@ -256,7 +254,6 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r python/requirements.txt
-          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Build and generate coverage (Release)
