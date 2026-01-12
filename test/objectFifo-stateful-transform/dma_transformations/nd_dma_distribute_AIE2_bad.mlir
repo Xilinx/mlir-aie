@@ -21,18 +21,10 @@ module @ndDMAObjFifoAIE2 {
                                                        <size = 8, stride = 1>]},
                          2 : i32) : !aie.objectfifo<memref<256xi32>>
 
-    aie.objectfifo @of1 (%tile11 dimensionsToStream [<size = 2, stride = 64>,
-                                           <size = 2, stride = 4>,
-                                           <size = 8, stride = 8>,
-                                           <size = 4, stride = 1>],
-                        {%tile22}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
+    aie.objectfifo @of1 (%tile11, {%tile22}, 2 : i32) : !aie.objectfifo<memref<200xi32>>
 
-    aie.objectfifo @of2 (%tile11 dimensionsToStream [<size = 2, stride = 64>,
-                                           <size = 2, stride = 4>,
-                                           <size = 8, stride = 8>,
-                                           <size = 4, stride = 1>],
-                        {%tile23}, 2 : i32) : !aie.objectfifo<memref<128xi32>>
-   // expected-error@+1 {{'aie.objectfifo.link' op currently does not support objectFifos with dimensionsFromStreamPerConsumer for distribute input.}}
-   aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ([] [0, 128])
+    aie.objectfifo @of2 (%tile11, {%tile23}, 2 : i32) : !aie.objectfifo<memref<56xi32>>
+   // expected-error@+1 {{'aie.objectfifo.link' op specified input stride(s) and size(s) result in out of bounds access in output objectfifo buffer, for index 503 in memref of length 56.}}
+   aie.objectfifo.link [ @of0 ] -> [ @of1, @of2 ] ([] [0, 200])
  }
 }

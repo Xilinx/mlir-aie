@@ -233,7 +233,7 @@ static TileElement getParentTileElement(Operation *op) {
 }
 
 
-static int64_t getDimsMaxIdx(std::vector<BDDimLayoutAttr> dims) {
+static int64_t getDimsMaxIdx(ArrayRef<BDDimLayoutAttr> dims) {
   int64_t maxIdx = 0;
   for (BDDimLayoutAttr dim : dims) {
     maxIdx += dim.getStride() * (dim.getSize() - 1);
@@ -662,7 +662,7 @@ LogicalResult ObjectFifoLinkOp::verify() {
           minInputBufferSize = buffer.getNumElements();
       }
       if (minInputBufferSize <= maxIdx) {
-        return emitOpError() << "Specified stride(s) and size(s) result in out "
+        return emitOpError() << "specified output stride(s) and size(s) result in out "
                                 "of bounds access in input objectfifo buffer, for index "
                              << std::to_string(maxIdx) << " in memref of length "
                              << std::to_string(minInputBufferSize) << ".";
@@ -679,21 +679,21 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
-      // int64_t maxIdx = getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
-      // int64_t minOutputBufferSize = -1;
-      // for (auto fifoOut : getOutputObjectFifos()) {
-      //   auto fifoOutType = llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-      //   MemRefType buffer = llvm::cast<MemRefType>(fifoOutType.getElementType());
-      //   if (buffer.getNumElements() <= minOutputBufferSize ||
-      //       minOutputBufferSize < 0)
-      //     minOutputBufferSize = buffer.getNumElements();
-      // }
-      // if (minOutputBufferSize <= maxIdx) {
-      //   return emitOpError() << "Specified stride(s) and size(s) result in out "
-      //                           "of bounds access in output objectfifo buffer, for index "
-      //                        << std::to_string(maxIdx) << " in memref of length "
-      //                        << std::to_string(minOutputBufferSize) << ".";
-      // }
+      int64_t maxIdx = getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
+      int64_t minOutputBufferSize = -1;
+      for (auto fifoOut : getOutputObjectFifos()) {
+        auto fifoOutType = llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
+        MemRefType buffer = llvm::cast<MemRefType>(fifoOutType.getElementType());
+        if (buffer.getNumElements() <= minOutputBufferSize ||
+            minOutputBufferSize < 0)
+          minOutputBufferSize = buffer.getNumElements();
+      }
+      if (minOutputBufferSize <= maxIdx) {
+        return emitOpError() << "specified input stride(s) and size(s) result in out "
+                                "of bounds access in output objectfifo buffer, for index "
+                             << std::to_string(maxIdx) << " in memref of length "
+                             << std::to_string(minOutputBufferSize) << ".";
+      }
     }
 
     std::vector<int> repeat_counts;
