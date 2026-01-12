@@ -653,11 +653,12 @@ LogicalResult ObjectFifoLinkOp::verify() {
     ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
-      int64_t minInputBufferSize = 0;
+      int64_t minInputBufferSize = -1;
       for (auto fifoIn : getInputObjectFifos()) {
         auto fifoInType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
         MemRefType buffer = llvm::cast<MemRefType>(fifoInType.getElementType());
-        if (buffer.getNumElements() <= minInputBufferSize)
+        if (buffer.getNumElements() <= minInputBufferSize ||
+            minInputBufferSize < 0)
           minInputBufferSize = buffer.getNumElements();
       }
       if (minInputBufferSize <= maxIdx) {
