@@ -111,14 +111,18 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Install IRON library by installing the `mlir-aie` wheels:
 
-   For installing the `mlir-aie` wheels, there are 3 options:
-   1. **Latest** For the latest wheels (not necessarily a release):
+   For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take,
+   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. 
+   If you install from something other than the latest wheels, make sure 
+   you use the repo commit -- and installation instructions -- from that point in time.
+
+   1. **Latest:** For the latest wheels (not necessarily a release):
       ```bash
       # Install IRON library and mlir-aie from the latest wheel
       python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
       ```
 
-   1. **Latest Release**Alternatively, you can install the latest released version of `mlir-aie`.
+   1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.
       ```bash
       # Get the latest release version
       latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq -r '.tag_name')
@@ -129,7 +133,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
       git checkout $latest_tag_with_v
       ```
 
-   1. **Any Release** You can install a specific version of `mlir-aie` from the release wheels. To see available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
+   1. **Any Release:** You can install a specific version of `mlir-aie` from the release wheels. To see available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
 
       ```bash
       # Install IRON library and mlir-aie from a specific release,
@@ -137,10 +141,6 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
       python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
       git checkout <version>
       ```
-
-   > Note: It is important to sync the `mlir-aie` wheels version, the github repo commit, and the 
-   > requirements versions. If you install from something other than the latest wheels, make sure 
-   > you use the repo commit -- and installation instructions -- from that point in time.
 
 1. Install the Peano compiler (the `llvm-aie` wheels) and dependencies:
    ```bash
