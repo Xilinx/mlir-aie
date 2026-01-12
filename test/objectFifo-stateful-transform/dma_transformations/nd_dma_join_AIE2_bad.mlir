@@ -24,7 +24,7 @@ module @ndDMAObjFifoAIE2 {
     aie.objectfifo @of2 (%tile11 dimensionsToStream [<size = 8, stride = 1>,
                                            <size = 3, stride = 8>],
                         {%tile10}, 2 : i32) : !aie.objectfifo<memref<24xi32>>
-   // expected-error@+1 {{'aie.objectfifo.link' op currently does not support objectFifos with dimensionsToStream for join output.}}
+   // expected-error@+1 {{'aie.objectfifo.link' op Specified stride(s) and size(s) result in out of bounds access in input objectfifo buffer, for index 23 in memref of length 12.}}
    aie.objectfifo.link [ @of0, @of1 ] -> [ @of2 ] ([0, 12] [])
  }
 }
