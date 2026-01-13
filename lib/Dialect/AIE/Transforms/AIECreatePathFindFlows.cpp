@@ -180,7 +180,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
 
 namespace xilinx::AIE {
 
-void AIEPathfinderPass::runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer) {
+LogicalResult AIEPathfinderPass::runOnFlow(DeviceOp d,
+                                           DynamicTileAnalysis &analyzer) {
   // Apply rewrite rule to switchboxes to add assignments to every 'connect'
   // operation inside
   ConversionTarget target(getContext());
@@ -193,7 +194,8 @@ void AIEPathfinderPass::runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer) {
   RewritePatternSet patterns(&getContext());
   patterns.insert<ConvertFlowsToInterconnect>(d.getContext(), d, analyzer);
   if (failed(applyPartialConversion(d, target, std::move(patterns))))
-    return signalPassFailure();
+    return failure();
+  return success();
 }
 
 template <typename MyOp>
@@ -265,8 +267,9 @@ bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
   return false;
 }
 
-void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
-                                        DynamicTileAnalysis &analyzer) {
+LogicalResult
+AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
+                                   DynamicTileAnalysis &analyzer) {
 
   ConversionTarget target(getContext());
 
@@ -594,6 +597,8 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
             });
 
         amselValue = getNewUniqueAmsel(masterAMSels, tileOp, isCtrlPkt);
+        if (amselValue == INVALID_AMSEL_VALUE)
+          return failure();
       } else {
         // Use existing arbiter to maintain consistency
         amselValue =
@@ -605,7 +610,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
               << targetArbiter
               << " has no free msels, but flow requires this arbiter due to "
                  "existing port assignments";
-          return;
+          return failure();
         }
       }
 
@@ -627,7 +632,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         // check
         tileOp->emitOpError(
             "internal error: arbiter conflict in partial match");
-        return;
+        return failure();
       }
 
       amselValue =
@@ -684,7 +689,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
           llvm::errs() << ", " << amselList[i];
         }
         llvm::errs() << ")\n";
-        return signalPassFailure();
+        return failure();
       }
       assignedArbiter = thisArbiter;
     }
@@ -922,7 +927,7 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
               << ID << ", which is not supposed to pass through this port.";
           rule->emitRemark("Please consider changing all uses of packet id ")
               << ID << " to avoid deadlock.";
-          signalPassFailure();
+          return failure();
         }
       }
 
@@ -1031,7 +1036,9 @@ void AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   RewritePatternSet patterns(&getContext());
 
   if (failed(applyPartialConversion(device, target, std::move(patterns))))
-    signalPassFailure();
+    return failure();
+
+  return success();
 }
 
 void AIEPathfinderPass::runOnOperation() {
@@ -1041,14 +1048,20 @@ void AIEPathfinderPass::runOnOperation() {
 
   DeviceOp d = getOperation();
   DynamicTileAnalysis &analyzer = getAnalysis<DynamicTileAnalysis>();
-  if (failed(analyzer.runAnalysis(d)))
-    return signalPassFailure();
+  if (failed(analyzer.runAnalysis(d))) {
+    signalPassFailure();
+    return;
+  }
   OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
 
-  if (clRouteCircuit)
-    runOnFlow(d, analyzer);
-  if (clRoutePacket)
-    runOnPacketFlow(d, builder, analyzer);
+  if (clRouteCircuit && failed(runOnFlow(d, analyzer))) {
+    signalPassFailure();
+    return;
+  }
+  if (clRoutePacket && failed(runOnPacketFlow(d, builder, analyzer))) {
+    signalPassFailure();
+    return;
+  }
 
   // Populate wires between switchboxes and tiles.
   builder.setInsertionPoint(d.getBody()->getTerminator());

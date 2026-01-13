@@ -22,11 +22,11 @@ def main(opts):
     # ------------------------------------------------------------
 
     # Initialize data buffers and reference for verification
-    ref_buffer = np.arange(1, 64 + 1, dtype=np.int32)
+    ref_buffer = np.arange(1, 4096 + 1, dtype=np.int32)
     in_buffer = iron.tensor(ref_buffer, dtype=np.int32)
     scale_factor = 3
     in_factor = iron.tensor([scale_factor], dtype=np.int32)
-    out = iron.zeros(64, dtype=np.int32)
+    out = iron.zeros(4096, dtype=np.int32)
     ref_buffer = ref_buffer * scale_factor
 
     # ----------------------------------------------------
