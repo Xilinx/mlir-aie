@@ -229,17 +229,36 @@ aie.device(xcve2302) {
 
 // -----
 
-// CHECK: currently does not support objectFifos with dimensionsFromStreamPerConsumer for distribute input.
+// CHECK: specified output stride(s) and size(s) result in out of bounds access in input objectfifo buffer, for index 23 in memref of length 12.
 
 aie.device(xcve2302) {
+   %tile10 = aie.tile(1, 0)
+   %tile11 = aie.tile(1, 1)
+   %tile22 = aie.tile(2, 2)
    %tile23 = aie.tile(2, 3)
-   %tile21 = aie.tile(2, 1)
-   %tile13 = aie.tile(1, 3)
-   %tile33 = aie.tile(3, 3)
 
-   aie.objectfifo @of_in (%tile23, {%tile21 dimensionsFromStream [<size = 1, stride = 1>, <size = 1, stride = 1>]}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
-   aie.objectfifo @of_out1 (%tile21, {%tile13}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
-   aie.objectfifo @of_out2 (%tile21, {%tile33}, 2 : i32) : !aie.objectfifo<memref<8xi32>>
+   aie.objectfifo @of_in1 (%tile22, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>> 
+   aie.objectfifo @of_in2 (%tile23, {%tile11}, 2 : i32) : !aie.objectfifo<memref<12xi32>>
+   aie.objectfifo @of_out (%tile11 dimensionsToStream [<size = 8, stride = 1>,
+                                           <size = 3, stride = 8>],
+                        {%tile10}, 2 : i32) : !aie.objectfifo<memref<24xi32>>
+   aie.objectfifo.link [ @of_in1, @of_in2 ] -> [ @of_out ] ([0, 12] [])
+}
 
-   aie.objectfifo.link [@of_in] -> [@of_out1, @of_out2] ([][0, 8])
+// -----
+
+// CHECK: specified input stride(s) and size(s) result in out of bounds access in output objectfifo buffer, for index 503 in memref of length 56.
+
+aie.device(xcve2302) {
+   %tile10 = aie.tile(1, 0)
+   %tile11 = aie.tile(1, 1)
+   %tile22 = aie.tile(2, 2)
+   %tile23 = aie.tile(2, 3)
+
+   aie.objectfifo @of_in (%tile10, {%tile11 dimensionsFromStream [<size = 32, stride = 16>,
+                                                       <size = 8, stride = 1>]},
+                         2 : i32) : !aie.objectfifo<memref<256xi32>>
+   aie.objectfifo @of_out1 (%tile11, {%tile22}, 2 : i32) : !aie.objectfifo<memref<200xi32>>
+   aie.objectfifo @of_out2 (%tile11, {%tile23}, 2 : i32) : !aie.objectfifo<memref<56xi32>>
+   aie.objectfifo.link [ @of_in ] -> [ @of_out1, @of_out2 ] ([] [0, 200])
 }
