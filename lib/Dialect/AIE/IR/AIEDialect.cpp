@@ -232,7 +232,7 @@ static TileElement getParentTileElement(Operation *op) {
   return llvm::dyn_cast<TileElement>(parent);
 }
 
-
+// Returns the maximum index described by the input dimensions.
 static int64_t getDimsMaxIdx(ArrayRef<BDDimLayoutAttr> dims) {
   int64_t maxIdx = 0;
   for (BDDimLayoutAttr dim : dims) {
@@ -662,12 +662,13 @@ LogicalResult ObjectFifoLinkOp::verify() {
           minInputBufferSize = buffer.getNumElements();
       }
       if (minInputBufferSize <= maxIdx) {
-        return emitOpError() << "specified output stride(s) and size(s) result in out "
-                                "of bounds access in input objectfifo buffer, for index "
-                             << std::to_string(maxIdx) << " in memref of length "
-                             << std::to_string(minInputBufferSize) << ".";
+        return emitOpError()
+               << "specified output stride(s) and size(s) result in out "
+                  "of bounds access in input objectfifo buffer, for index "
+               << std::to_string(maxIdx) << " in memref of length "
+               << std::to_string(minInputBufferSize) << ".";
       }
-    }   
+    }
 
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
@@ -679,20 +680,23 @@ LogicalResult ObjectFifoLinkOp::verify() {
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
     if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
-      int64_t maxIdx = getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
+      int64_t maxIdx =
+          getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
       int64_t minOutputBufferSize = -1;
       for (auto fifoOut : getOutputObjectFifos()) {
         auto fifoOutType = llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-        MemRefType buffer = llvm::cast<MemRefType>(fifoOutType.getElementType());
+        MemRefType buffer =
+            llvm::cast<MemRefType>(fifoOutType.getElementType());
         if (buffer.getNumElements() <= minOutputBufferSize ||
             minOutputBufferSize < 0)
           minOutputBufferSize = buffer.getNumElements();
       }
       if (minOutputBufferSize <= maxIdx) {
-        return emitOpError() << "specified input stride(s) and size(s) result in out "
-                                "of bounds access in output objectfifo buffer, for index "
-                             << std::to_string(maxIdx) << " in memref of length "
-                             << std::to_string(minOutputBufferSize) << ".";
+        return emitOpError()
+               << "specified input stride(s) and size(s) result in out "
+                  "of bounds access in output objectfifo buffer, for index "
+               << std::to_string(maxIdx) << " in memref of length "
+               << std::to_string(minOutputBufferSize) << ".";
       }
     }
 
@@ -1850,16 +1854,14 @@ LogicalResult DMABDOp::verify() {
                            << std::to_string(dims->size()) << " dimensions).";
 
     MemRefType buffer = getBuffer().getType();
-    
     int64_t maxIdx = getDimsMaxIdx(*dims);
-
     if (buffer.getNumElements() <= maxIdx)
       return emitOpError() << "Specified stride(s) and size(s) result in out "
                               "of bounds access in buffer, for index "
                            << std::to_string(maxIdx) << " in memref of length "
                            << std::to_string(buffer.getNumElements()) << ".";
 
-   for (BDDimLayoutAttr dim : *dims) {
+    for (BDDimLayoutAttr dim : *dims) {
       if (0 == dim.getStride())
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
@@ -1872,7 +1874,6 @@ LogicalResult DMABDOp::verify() {
       if (dim.getStride() >= (1UL << 19))
         return emitOpError() << "Stride may not exceed " << (1 << 20);
     }
-
 
     // Since streams read 32b words, there's no way to read eg 16b with stride
     // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
