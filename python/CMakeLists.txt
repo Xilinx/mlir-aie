@@ -40,7 +40,8 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/ml.py
     utils/config.py
     utils/jit.py
-    utils/npukernel.py
+    utils/npucallable.py
+    utils/compilable.py
     utils/hostruntime/__init__.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py

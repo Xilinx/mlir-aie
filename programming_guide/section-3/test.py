@@ -13,7 +13,7 @@ import sys
 import aie.iron as iron
 import aie.utils
 import aie.utils.test as test_utils
-from aie.utils.npukernel import NPUKernel
+from aie.utils.npucallable import NPUCallable
 
 
 def main(opts):
@@ -32,7 +32,7 @@ def main(opts):
     # ----------------------------------------------------
     # Prepare buffers and load compiled artifacts onto the device
     # ----------------------------------------------------
-    npu_kernel = NPUKernel(opts.xclbin, opts.instr)
+    npu_kernel = NPUCallable(opts.xclbin, opts.instr)
     kernel_handle = aie.utils.DefaultNPURuntime.load(npu_kernel)
 
     # ------------------------------------------------------

@@ -149,7 +149,8 @@ from .hostruntime import set_current_device
 from . import hostruntime
 from .hostruntime.hostruntime import HostRuntime
 from .trace import TraceConfig
-from .npukernel import NPUKernel
+from .npucallable import NPUCallable
+from .compilable import Compilable
 
 if has_xrt:
     from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime

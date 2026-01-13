@@ -81,7 +81,7 @@ def test_jit_trace(trace_size):
 
     # Parse trace
     # Get MLIR module from the wrapped function
-    mlir_module = design.__wrapped__(a, c, trace_config=trace_config)
+    mlir_module = design.compilable.function(a, c, trace_config=trace_config)
 
     trace_buffer = trace_config.read_trace()
     trace_events = parse_trace(trace_buffer, str(mlir_module))

@@ -16,7 +16,7 @@ Test/ Host code utilities.
     * Useful if you don't need additional custom args
 """
 import argparse
-from aie.utils import TraceConfig, NPUKernel
+from aie.utils import TraceConfig, NPUCallable
 
 
 # Add default args to standard parser object
@@ -123,7 +123,7 @@ def create_npu_kernel(opts):
             trace_after_last_tensor=getattr(opts, "trace_after_output", False),
             enable_ctrl_pkts=getattr(opts, "enable_ctrl_pkts", False),
         )
-    opts.npu_kernel = NPUKernel(
+    opts.npu_kernel = NPUCallable(
         xclbin_path=opts.xclbin,
         insts_path=opts.instr,
         kernel_name=opts.kernel,

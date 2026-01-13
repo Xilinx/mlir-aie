@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 from .tensor_class import Tensor
 from ..trace import TraceConfig
 from ..trace.utils import create_ctrl_pkt, extract_tile
-from ..npukernel import NPUKernel
+from ..npucallable import NPUCallable
 from . import bfloat16_safe_allclose
 
 
@@ -111,12 +111,12 @@ class HostRuntime(ABC):
                 )
 
     @abstractmethod
-    def load(self, npu_kernel: NPUKernel, **kwargs) -> KernelHandle:
+    def load(self, npu_kernel: NPUCallable, **kwargs) -> KernelHandle:
         """
         Load an NPU kernel into the runtime.
 
         Args:
-            npu_kernel (NPUKernel): The NPU kernel to load.
+            npu_kernel (NPUCallable): The NPU kernel to load.
             **kwargs: Additional arguments for loading.
 
         Returns:
@@ -148,7 +148,7 @@ class HostRuntime(ABC):
 
     def load_and_run(
         self,
-        npu_kernel: NPUKernel,
+        npu_kernel: NPUCallable,
         run_args: list,
         **kwargs,
     ) -> tuple[KernelHandle, KernelResult]:
@@ -156,7 +156,7 @@ class HostRuntime(ABC):
         Load and run an NPU kernel.
 
         Args:
-            npu_kernel (NPUKernel): The NPU kernel to load and run.
+            npu_kernel (NPUCallable): The NPU kernel to load and run.
             run_args (list): Arguments to pass to the kernel.
             **kwargs: Additional arguments passed to load.
 
@@ -418,7 +418,7 @@ class HostRuntime(ABC):
         Run a test for the given NPU kernel.
 
         Args:
-            npu_kernel (NPUKernel): The NPU kernel to test.
+            npu_kernel (NPUCallable): The NPU kernel to test.
             io_args (list[Tensor]): List of input/output tensors.
             ref (dict): Reference data for verification.
             verify (bool, optional): Whether to verify results. Defaults to True.
