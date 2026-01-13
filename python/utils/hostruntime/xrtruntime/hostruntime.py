@@ -78,17 +78,7 @@ class XRTHostRuntime(HostRuntime):
         """
         Initialize the XRTHostRuntime.
         """
-        # Retry logic for device acquisition to handle transient failures
-        max_retries = 5
-        for attempt in range(max_retries):
-            try:
-                self._device = pyxrt.device(0)
-                break
-            except RuntimeError as e:
-                if attempt == max_retries - 1:
-                    raise e
-                time.sleep(1)
-
+        self._device = pyxrt.device(0)
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
         self.npu_str = None
