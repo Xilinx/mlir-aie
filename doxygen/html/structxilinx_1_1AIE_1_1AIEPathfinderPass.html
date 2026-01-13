@@ -98,10 +98,10 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a05a340d8b23347c68cadc5a46c5ae872"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a05e389bef68b9ecec669840cdbe47208" id="r_a05e389bef68b9ecec669840cdbe47208"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a05e389bef68b9ecec669840cdbe47208">runOnOperation</a> () override</td></tr>
 <tr class="separator:a05e389bef68b9ecec669840cdbe47208"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aaed4ee8d6a5b985c8e7763d66ec5e0b9" id="r_aaed4ee8d6a5b985c8e7763d66ec5e0b9"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#aaed4ee8d6a5b985c8e7763d66ec5e0b9">runOnFlow</a> (DeviceOp d, <a class="el" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html">DynamicTileAnalysis</a> &amp;analyzer)</td></tr>
-<tr class="separator:aaed4ee8d6a5b985c8e7763d66ec5e0b9"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af63a42ba8fbd9fe93ced08f68dd8c70d" id="r_af63a42ba8fbd9fe93ced08f68dd8c70d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#af63a42ba8fbd9fe93ced08f68dd8c70d">runOnPacketFlow</a> (DeviceOp d, mlir::OpBuilder &amp;builder, <a class="el" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html">DynamicTileAnalysis</a> &amp;analyzer)</td></tr>
-<tr class="separator:af63a42ba8fbd9fe93ced08f68dd8c70d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5aabc3ea13aaf7203eb6abc0a54d8332" id="r_a5aabc3ea13aaf7203eb6abc0a54d8332"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a5aabc3ea13aaf7203eb6abc0a54d8332">runOnFlow</a> (DeviceOp d, <a class="el" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html">DynamicTileAnalysis</a> &amp;analyzer)</td></tr>
+<tr class="separator:a5aabc3ea13aaf7203eb6abc0a54d8332"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a06c6833becc62260beb104df9ba37b8c" id="r_a06c6833becc62260beb104df9ba37b8c"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#a06c6833becc62260beb104df9ba37b8c">runOnPacketFlow</a> (DeviceOp d, mlir::OpBuilder &amp;builder, <a class="el" href="classxilinx_1_1AIE_1_1DynamicTileAnalysis.html">DynamicTileAnalysis</a> &amp;analyzer)</td></tr>
+<tr class="separator:a06c6833becc62260beb104df9ba37b8c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abd1f755183a9c7f64f84f17511784fcc" id="r_abd1f755183a9c7f64f84f17511784fcc"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1AIEPathfinderPass.html#abd1f755183a9c7f64f84f17511784fcc">findPathToDest</a> (<a class="el" href="namespacexilinx_1_1AIE.html#a5d804ed206d18cfc175e64c9c20295fb">SwitchSettings</a> settings, <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> currTile, WireBundle currDestBundle, int currDestChannel, <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> finalTile, WireBundle finalDestBundle, int finalDestChannel)</td></tr>
 <tr class="separator:abd1f755183a9c7f64f84f17511784fcc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
@@ -216,22 +216,22 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00217">217</a> of file <a class="el" href="AIECreatePathFindFlows_8cpp_source.html">AIECreatePathFindFlows.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00219">219</a> of file <a class="el" href="AIECreatePathFindFlows_8cpp_source.html">AIECreatePathFindFlows.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00217">findPathToDest()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
+<p class="reference">References <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00219">findPathToDest()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00217">findPathToDest()</a>, and <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00268">runOnPacketFlow()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00219">findPathToDest()</a>, and <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00271">runOnPacketFlow()</a>.</p>
 
 </div>
 </div>
-<a id="aaed4ee8d6a5b985c8e7763d66ec5e0b9" name="aaed4ee8d6a5b985c8e7763d66ec5e0b9"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aaed4ee8d6a5b985c8e7763d66ec5e0b9">&#9670;&#160;</a></span>runOnFlow()</h2>
+<a id="a5aabc3ea13aaf7203eb6abc0a54d8332" name="a5aabc3ea13aaf7203eb6abc0a54d8332"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5aabc3ea13aaf7203eb6abc0a54d8332">&#9670;&#160;</a></span>runOnFlow()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">void xilinx::AIE::AIEPathfinderPass::runOnFlow </td>
+          <td class="memname">LogicalResult xilinx::AIE::AIEPathfinderPass::runOnFlow </td>
           <td>(</td>
           <td class="paramtype">DeviceOp&#160;</td>
           <td class="paramname"><em>d</em>, </td>
@@ -277,20 +277,20 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l01037">1037</a> of file <a class="el" href="AIECreatePathFindFlows_8cpp_source.html">AIECreatePathFindFlows.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l01044">1044</a> of file <a class="el" href="AIECreatePathFindFlows_8cpp_source.html">AIECreatePathFindFlows.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00242">xilinx::AIE::DynamicTileAnalysis::coordToPLIO</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00241">xilinx::AIE::DynamicTileAnalysis::coordToShimMux</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00240">xilinx::AIE::DynamicTileAnalysis::coordToSwitchbox</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00239">xilinx::AIE::DynamicTileAnalysis::coordToTile</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00253">xilinx::AIE::DynamicTileAnalysis::getMaxCol()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00254">xilinx::AIE::DynamicTileAnalysis::getMaxRow()</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>, and <a class="el" href="AIEPathFinder_8cpp_source.html#l00025">xilinx::AIE::DynamicTileAnalysis::runAnalysis()</a>.</p>
 
 </div>
 </div>
-<a id="af63a42ba8fbd9fe93ced08f68dd8c70d" name="af63a42ba8fbd9fe93ced08f68dd8c70d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#af63a42ba8fbd9fe93ced08f68dd8c70d">&#9670;&#160;</a></span>runOnPacketFlow()</h2>
+<a id="a06c6833becc62260beb104df9ba37b8c" name="a06c6833becc62260beb104df9ba37b8c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a06c6833becc62260beb104df9ba37b8c">&#9670;&#160;</a></span>runOnPacketFlow()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">void xilinx::AIE::AIEPathfinderPass::runOnPacketFlow </td>
+          <td class="memname">LogicalResult xilinx::AIE::AIEPathfinderPass::runOnPacketFlow </td>
           <td>(</td>
           <td class="paramtype">DeviceOp&#160;</td>
           <td class="paramname"><em>d</em>, </td>
@@ -315,9 +315,9 @@ Public Member Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00268">268</a> of file <a class="el" href="AIECreatePathFindFlows_8cpp_source.html">AIECreatePathFindFlows.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00271">271</a> of file <a class="el" href="AIECreatePathFindFlows_8cpp_source.html">AIECreatePathFindFlows.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00217">findPathToDest()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00236">xilinx::AIE::DynamicTileAnalysis::flowSolutions</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00237">xilinx::AIE::DynamicTileAnalysis::processedFlows</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00039">xilinx::AIE::srcCoords</a>.</p>
+<p class="reference">References <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::col</a>, <a class="el" href="AIECreatePathFindFlows_8cpp_source.html#l00219">findPathToDest()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00236">xilinx::AIE::DynamicTileAnalysis::flowSolutions</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00237">xilinx::AIE::DynamicTileAnalysis::processedFlows</a>, <a class="el" href="AIETargetModel_8h_source.html#l00052">xilinx::AIE::row</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::src</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00039">xilinx::AIE::srcCoords</a>.</p>
 
 </div>
 </div>
@@ -328,7 +328,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jan 13 2026 01:12:35 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jan 13 2026 15:31:50 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
