@@ -308,34 +308,7 @@ def install_eudsl(install_dir):
     with open(req_file) as f:
         content = f.read()
 
-    # Look for eudsl-python-extras line(s)
-    # It might be split across lines with \
-    # We want to capture the full command args
-
-    # Simple parsing: find lines containing eudsl-python-extras and subsequent lines until no \
-    lines = content.splitlines()
-    eudsl_lines = []
-    capturing = False
-    for line in lines:
-        if "eudsl-python-extras" in line:
-            capturing = True
-
-        if capturing:
-            eudsl_lines.append(line.strip().rstrip("\\").strip())
-            if not line.strip().endswith("\\"):
-                capturing = False
-                # Also capture -f line if it follows immediately?
-                # The requirements.txt shows -f on a separate line, not continued with \
-                # But typically -f is a global flag or per-requirement?
-                # In requirements.txt, -f is usually global.
-                # But here it seems associated.
-                # Let's just hardcode or try to parse intelligently.
-
-    # Reconstruct the pip install command arguments
-    # We know what we want: eudsl-python-extras==... --config-settings="..." -f ...
-
-    # Let's extract the version and config settings from the file content
-    # eudsl-python-extras==0.1.0.20251215.1715+3c7ac1b
+    # Extract the version and config settings from the file content
     version_match = re.search(r"eudsl-python-extras==(\S+)", content)
     if not version_match:
         print(
@@ -362,7 +335,12 @@ def install_eudsl(install_dir):
         else "https://llvm.github.io/eudsl"
     )
 
-    print(f"Vendoring eudsl-python-extras=={version} to {install_dir}", file=sys.stderr)
+    # Install eudsl into the same directory structure as mlir-aie.
+    # mlir-aie installs to install_dir/python/aie, and eudsl (with prefix aie)
+    # installs to aie/extras. Thus, we install eudsl to install_dir/python.
+    target_dir = Path(install_dir) / "python"
+
+    print(f"Vendoring eudsl-python-extras=={version} to {target_dir}", file=sys.stderr)
 
     cmd = [
         sys.executable,
@@ -371,23 +349,16 @@ def install_eudsl(install_dir):
         "install",
         f"eudsl-python-extras=={version}",
         "--target",
-        str(install_dir),
+        str(target_dir),
         "--no-deps",
+        "--no-binary",
+        "eudsl-python-extras",
+        "--no-cache-dir",
         "--config-settings",
         config_setting,
         "-f",
         find_links,
-        # We need to ensure we don't upgrade/reinstall if not needed, but target install usually overwrites
     ]
-
-    # If config setting is an env var, we might need to set it in env too?
-    # The requirement says --config-settings="...", which passes it to the build backend.
-    # But if eudsl uses environment variables (as user feedback suggested "set and environment variable"),
-    # we might need to set it in os.environ.
-    # The user said: "we need an equivalent to the "-f" and to set and environment variable"
-    # The requirements.txt uses --config-settings.
-    # Maybe eudsl setup.py checks both?
-    # Let's set the env var too just in case.
 
     env = os.environ.copy()
     if "=" in config_setting:
