@@ -42,7 +42,7 @@ def runtime():
     rt.cleanup()
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def transform(input, output, func):
     """Transform kernel that applies a function to input tensor and stores result in output tensor."""
     if input.shape != output.shape:

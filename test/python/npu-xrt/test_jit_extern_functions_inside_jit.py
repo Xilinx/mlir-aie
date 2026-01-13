@@ -18,7 +18,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
-@jit(is_placed=False)
+@jit
 def transform_with_internal_func_with_options(input, output):
     """Transform kernel that creates ExternalFunction internally with compiler options."""
     if input.shape != output.shape:
@@ -96,7 +96,7 @@ def transform_with_internal_func_with_options(input, output):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-@jit(is_placed=False)
+@jit
 def transform_with_internal_func_from_file(input, output):
     """Transform kernel that creates ExternalFunction internally from a file."""
     if input.shape != output.shape:
@@ -180,7 +180,7 @@ def transform_with_internal_func_from_file(input, output):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-@jit(is_placed=False)
+@jit
 def transform_with_internal_func(input, output):
     """Transform kernel that creates ExternalFunction internally."""
     if input.shape != output.shape:

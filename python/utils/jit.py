@@ -24,43 +24,39 @@ def _unwrap(function):
     return function
 
 
-def compileconfig(function=None, is_placed=True, use_cache=True):
+def compileconfig(function=None, use_cache=True):
     """
     Decorator to create a Compilable object from a function.
 
     Args:
         function (callable, optional): The function to compile.
-        is_placed (bool, optional): Whether the kernel is using explicit or implicit placement. Defaults to True.
         use_cache (bool, optional): Use cached MLIR module if available. Defaults to True.
 
     Returns:
         Compilable: The compilable object.
     """
     if function is None:
-        return functools.partial(
-            compileconfig, is_placed=is_placed, use_cache=use_cache
-        )
+        return functools.partial(compileconfig, use_cache=use_cache)
 
     function = _unwrap(function)
-    return Compilable(function, is_placed=is_placed, use_cache=use_cache)
+    return Compilable(function, use_cache=use_cache)
 
 
-def jit(function=None, is_placed=True, use_cache=True):
+def jit(function=None, use_cache=True):
     """
     Decorator to create a lazy NPUCallable from a function.
     The function will be compiled on the first call using the arguments provided.
 
     Args:
         function (callable, optional): The function to compile.
-        is_placed (bool, optional): Whether the kernel is using explicit or implicit placement. Defaults to True.
         use_cache (bool, optional): Use cached MLIR module if available. Defaults to True.
 
     Returns:
         NPUCallable: The lazy callable.
     """
     if function is None:
-        return functools.partial(jit, is_placed=is_placed, use_cache=use_cache)
+        return functools.partial(jit, use_cache=use_cache)
 
     function = _unwrap(function)
-    compilable = Compilable(function, is_placed=is_placed, use_cache=use_cache)
+    compilable = Compilable(function, use_cache=use_cache)
     return NPUCallable(compilable=compilable)

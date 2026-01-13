@@ -17,7 +17,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron import ExternalFunction
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def my_reduce_min(input_tensor, output_tensor):
 
     num_elements = input_tensor.numel()

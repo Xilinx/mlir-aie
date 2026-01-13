@@ -23,7 +23,7 @@ data_height = 3
 data_width = 16
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def exercise_5b(input0, output):
     # Define tile size
     tile_height = 3

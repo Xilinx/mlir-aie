@@ -17,7 +17,7 @@ from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def vector_vector_add(input0, input1, output):
     if input0.shape != input1.shape:
         raise ValueError(

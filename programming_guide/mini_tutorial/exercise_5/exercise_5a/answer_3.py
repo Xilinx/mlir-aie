@@ -16,7 +16,7 @@ from aie.iron.controlflow import range_
 import aie.iron as iron
 
 
-@iron.jit(is_placed=False)
+@iron.jit
 def exercise_5a(input0, output):
     data_size = input0.numel()
     element_type = input0.dtype

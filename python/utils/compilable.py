@@ -30,17 +30,15 @@ class Compilable:
     Represents a function configuration that can be compiled into an NPUCallable.
     """
 
-    def __init__(self, function, is_placed=True, use_cache=True):
+    def __init__(self, function, use_cache=True):
         """
         Initialize the Compilable object.
 
         Args:
             function (callable): The function to compile.
-            is_placed (bool, optional): Whether the kernel is using explicit or implicit placement. Defaults to True.
             use_cache (bool, optional): Use cached MLIR module if available. Defaults to True.
         """
         self.function = function
-        self.is_placed = is_placed
         self.use_cache = use_cache
 
     def compile(self, *args, **kwargs) -> NPUCallable:
@@ -81,15 +79,15 @@ class Compilable:
                 external_kernels.append(value)
 
         # Execute the function to generate MLIR
-        if self.is_placed:
-            with mlir_mod_ctx() as ctx:
-                self.function(*args, **kwargs)
+        with mlir_mod_ctx() as ctx:
+            ret = self.function(*args, **kwargs)
+            if ret is not None:
+                mlir_module = ret
+            else:
                 assert (
                     ctx.module.operation.verify()
                 ), f"Verification failed for '{self.function.__name__}'"
                 mlir_module = ctx.module
-        else:
-            mlir_module = self.function(*args, **kwargs)
 
         # Compile all ExternalFunction instances that were created during this JIT compilation
         for func in ExternalFunction._instances:

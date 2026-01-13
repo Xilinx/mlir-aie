@@ -20,9 +20,8 @@ from aie.utils.config import cxx_header_path
 # JIT decorator for IRON
 # Decorator to compile an IRON kernel into a binary to run on the NPU.
 # Parameters:
-#     - is_placed (bool): Whether the kernel is using explicit or deferred placement API. Defaults to True.
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
-@iron.jit(is_placed=False)
+@iron.jit
 def matrix_multiplication_single_core(input0, input1, output):
     # Problem size
     # - matrix0 shapes: (M, K)
