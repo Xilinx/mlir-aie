@@ -302,7 +302,7 @@ def parse_requirements(filename):
                 line
                 and not line.startswith("#")
                 and not line.startswith("-")
-                and "eudsl-python-extras" not in line
+                and not re.match(r"^eudsl-python-extras\b", line, re.IGNORECASE)
             ):
                 requirements.append(line)
         return requirements
