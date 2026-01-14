@@ -377,7 +377,7 @@ else ()
   # Vendor eudsl-python-extras into the build directory
   add_custom_command(
     TARGET AIEPythonModules POST_BUILD
-    COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/vendor_eudsl.py
+    COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/mlir_aie_wheels/vendor_eudsl.py
       --requirements ${AIE_SOURCE_DIR}/python/requirements.txt
       --target ${AIE_PYTHON_PACKAGES_DIR}
     COMMENT "Vendoring eudsl-python-extras"

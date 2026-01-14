@@ -16,8 +16,6 @@ from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
 from setuptools.command.install import install
 
-# Add utils directory to path to import vendor_eudsl
-sys.path.append(str(Path(__file__).parent.parent))
 from vendor_eudsl import install_eudsl
 
 
