@@ -1263,7 +1263,7 @@ the specified tile's memory module.
 
 In the following example the objects of @of4 will be allocated on %tile14:
 ```
-  aie.objectfifo @of4 (%tile13, {%tile14}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+  aie.objectfifo @of4 (%tile13, { %tile14 }, 2 : i32) : !aie.objectfifo<memref<256xi32>>
   aie.objectfifo.allocate @of4 (%tile14)
 ```
 

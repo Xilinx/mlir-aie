@@ -4,5 +4,6 @@ var searchData=
   ['kernel_2epy_1',['kernel.py',['../kernel_8py.html',1,'']]],
   ['kernel_5fname_2',['kernel_name',['../classutils_1_1npukernel_1_1NPUKernel.html#a9dc7b76abb1deef11d66a27aaadf9d62',1,'utils::npukernel::NPUKernel']]],
   ['kernelhandle_3',['KernelHandle',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelHandle.html',1,'utils::hostruntime::hostruntime']]],
-  ['kernelresult_4',['KernelResult',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html',1,'utils::hostruntime::hostruntime']]]
+  ['kernelresult_4',['KernelResult',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html',1,'utils::hostruntime::hostruntime']]],
+  ['keys_5',['keys',['../classcircular__cache_1_1CircularCache.html#a5ea074f5c44ec0e5534ceae945685e88',1,'circular_cache::CircularCache']]]
 ];

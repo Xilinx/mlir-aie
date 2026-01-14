@@ -1,12 +1,9 @@
 var searchData=
 [
-  ['utils_0',['utils',['../namespaceutils.html',1,'']]],
-  ['utils_3a_3ahostruntime_1',['hostruntime',['../namespaceutils_1_1hostruntime.html',1,'utils']]],
-  ['utils_3a_3ahostruntime_3a_3ahostruntime_2',['hostruntime',['../namespaceutils_1_1hostruntime_1_1hostruntime.html',1,'utils::hostruntime']]],
-  ['utils_3a_3ahostruntime_3a_3atensor_5fclass_3',['tensor_class',['../namespaceutils_1_1hostruntime_1_1tensor__class.html',1,'utils::hostruntime']]],
-  ['utils_3a_3ahostruntime_3a_3axrtruntime_4',['xrtruntime',['../namespaceutils_1_1hostruntime_1_1xrtruntime.html',1,'utils::hostruntime']]],
-  ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3ahostruntime_5',['hostruntime',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime.html',1,'utils::hostruntime::xrtruntime']]],
-  ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3atensor_6',['tensor',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1tensor.html',1,'utils::hostruntime::xrtruntime']]],
-  ['utils_3a_3ajit_7',['jit',['../namespaceutils_1_1jit.html',1,'utils']]],
-  ['utils_3a_3anpukernel_8',['npukernel',['../namespaceutils_1_1npukernel.html',1,'utils']]]
+  ['taplib_0',['taplib',['../namespacetaplib.html',1,'']]],
+  ['taplib_3a_3atap_1',['tap',['../namespacetaplib_1_1tap.html',1,'taplib']]],
+  ['taplib_3a_3atas_2',['tas',['../namespacetaplib_1_1tas.html',1,'taplib']]],
+  ['taplib_3a_3atensortiler2d_3',['tensortiler2d',['../namespacetaplib_1_1tensortiler2d.html',1,'taplib']]],
+  ['taplib_3a_3autils_4',['utils',['../namespacetaplib_1_1utils.html',1,'taplib']]],
+  ['taplib_3a_3avisualization2d_5',['visualization2d',['../namespacetaplib_1_1visualization2d.html',1,'taplib']]]
 ];

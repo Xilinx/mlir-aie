@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;fffa0b7928f9178b4e64da51f3deae3e47ff8ca4</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;fbb2f52993c57950bdbc8af5a9eb618055d6f2a6</span>
    </div>
   </td>
  </tr>
@@ -79,6 +79,8 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="namespaces" name="namespaces"></a>
 Namespaces</h2></td></tr>
+<tr class="memitem:namespaceutils_1_1compile" id="r_namespaceutils_1_1compile"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile.html">compile</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:namespaceutils_1_1hostruntime" id="r_namespaceutils_1_1hostruntime"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime.html">hostruntime</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:namespaceutils_1_1jit" id="r_namespaceutils_1_1jit"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html">jit</a></td></tr>
@@ -88,6 +90,10 @@ Namespaces</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:acb53d4eefbc892f63cef3714083d6133" id="r_acb53d4eefbc892f63cef3714083d6133"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#acb53d4eefbc892f63cef3714083d6133">_create_function_cache_key</a> (function, args, kwargs)</td></tr>
+<tr class="separator:acb53d4eefbc892f63cef3714083d6133"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a1820c78e07ddd420c7ced11bacdb829a" id="r_a1820c78e07ddd420c7ced11bacdb829a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a1820c78e07ddd420c7ced11bacdb829a">file_lock</a> (lock_file_path, timeout_seconds=60)</td></tr>
+<tr class="separator:a1820c78e07ddd420c7ced11bacdb829a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa3cd9f974aedf5d065d3e75f61daebaa" id="r_aa3cd9f974aedf5d065d3e75f61daebaa"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#aa3cd9f974aedf5d065d3e75f61daebaa">tensor</a> (*args, **kwargs)</td></tr>
 <tr class="separator:aa3cd9f974aedf5d065d3e75f61daebaa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5011be1cb49f9f26d9f451edc4a3397a" id="r_a5011be1cb49f9f26d9f451edc4a3397a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a5011be1cb49f9f26d9f451edc4a3397a">ones</a> (*args, **kwargs)</td></tr>
@@ -119,6 +125,52 @@ Variables</h2></td></tr>
 <tr class="separator:ad76ed33b66638059baecba0ecb55d5bb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
+<a id="acb53d4eefbc892f63cef3714083d6133" name="acb53d4eefbc892f63cef3714083d6133"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acb53d4eefbc892f63cef3714083d6133">&#9670;&#160;</a></span>_create_function_cache_key()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils._create_function_cache_key </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>function</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>args</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>kwargs</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Create a cache key for a function call based on function name and argument types/shapes.
+This allows us to cache compiled kernels at the function level.
+Note that it is not necessary that we cache the tensor shapes since the kernel may be agonstic
+to the shape changes but we are doing here for safety.
+</pre> 
+</div>
+</div>
 <a id="acf2d302f79941de9b4c635dfe98dab56" name="acf2d302f79941de9b4c635dfe98dab56"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#acf2d302f79941de9b4c635dfe98dab56">&#9670;&#160;</a></span>arange()</h2>
 
@@ -152,6 +204,38 @@ Args:
 
 Returns:
     Tensor: The created tensor.
+</pre> 
+</div>
+</div>
+<a id="a1820c78e07ddd420c7ced11bacdb829a" name="a1820c78e07ddd420c7ced11bacdb829a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a1820c78e07ddd420c7ced11bacdb829a">&#9670;&#160;</a></span>file_lock()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.file_lock </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>lock_file_path</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>timeout_seconds</em> = <code>60</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Context manager for file locking using flock to prevent race conditions.
+Args:
+    lock_file_path (str): Path to the lock file
+    timeout_seconds (int): Maximum time to wait for lock acquisition in seconds
 </pre> 
 </div>
 </div>
