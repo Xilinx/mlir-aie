@@ -199,7 +199,7 @@ jobs:
     - name: Copy clone-llvm.sh for wheel build
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
-      run: cp ../../clone-llvm.sh .
+      run: cp ../clone-llvm.sh .
 
     # build
 
