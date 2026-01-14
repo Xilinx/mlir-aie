@@ -130,6 +130,9 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Check Liquid Syntax
+        run: python3 utils/check_liquid_syntax.py
+
       - name: Install black
         run: |
           pip install --upgrade pip
