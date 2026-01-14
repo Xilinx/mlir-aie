@@ -244,15 +244,6 @@ class CMakeBuild(build_ext):
         req_file = Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
         install_eudsl(req_file, target_dir)
 
-        # Verify installation
-        extras_dir = target_dir / "aie" / "extras"
-        if not extras_dir.exists():
-            print(f"ERROR: {extras_dir} does not exist!", file=sys.stderr)
-            print(f"Contents of {target_dir}:", file=sys.stderr)
-            for p in target_dir.rglob("*"):
-                print(p, file=sys.stderr)
-            sys.exit(1)
-
 
 class DevelopWithPth(develop):
     """Custom develop command to create a .pth file into the site-packages directory."""

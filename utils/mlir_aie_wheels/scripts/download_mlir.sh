@@ -9,7 +9,12 @@ if [ -n "$MLIR_AIE_SOURCE_DIR" ]; then
     CLONE_LLVM="$MLIR_AIE_SOURCE_DIR/utils/clone-llvm.sh"
 else
     # Assume we are in utils/mlir_aie_wheels/scripts
-    CLONE_LLVM="$SCRIPT_DIR/../../clone-llvm.sh"
+    # Check if clone-llvm.sh was copied to utils/mlir_aie_wheels (parent of scripts)
+    if [ -f "$SCRIPT_DIR/../clone-llvm.sh" ]; then
+        CLONE_LLVM="$SCRIPT_DIR/../clone-llvm.sh"
+    else
+        CLONE_LLVM="$SCRIPT_DIR/../../clone-llvm.sh"
+    fi
 fi
 
 if [ ! -f "$CLONE_LLVM" ]; then
