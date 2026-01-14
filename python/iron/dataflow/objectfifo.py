@@ -22,7 +22,7 @@ from ...util import single_elem_or_list_to_list
 
 from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint
-from ..device import PlacementTile, AnyMemTile, Tile
+from ..device import Device, PlacementTile, AnyMemTile, Tile
 
 
 class ObjectFifo(Resolvable):
@@ -43,7 +43,7 @@ class ObjectFifo(Resolvable):
         depth: int | None = 2,
         name: str | None = None,
         dims_to_stream: list[Sequence[int]] | None = None,
-        default_dims_from_stream_per_cons: list[Sequence[int]] | None = None,
+        dims_from_stream_per_cons: list[Sequence[int]] | None = None,
         plio: bool = False,
     ):
         """Construct an ObjectFifo.
@@ -53,7 +53,7 @@ class ObjectFifo(Resolvable):
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated.. Defaults to None.
             dims_to_stream (list[Sequence[int]] | None, optional): _description_. Defaults to None.
-            default_dims_from_stream_per_cons (list[Sequence[int]] | None, optional): _description_. Defaults to None.
+            dims_from_stream_per_cons (list[Sequence[int]] | None, optional): _description_. Defaults to None.
             plio (bool, optional): _description_. Defaults to False.
 
         Raises:
@@ -66,7 +66,7 @@ class ObjectFifo(Resolvable):
             )
         self._obj_type = obj_type
         self._dims_to_stream = dims_to_stream
-        self._default_dims_from_stream_per_cons = default_dims_from_stream_per_cons
+        self._dims_from_stream_per_cons = dims_from_stream_per_cons
         self._plio = plio
         if name is None:
             self.name = f"of{ObjectFifo.__get_index()}"
@@ -76,6 +76,7 @@ class ObjectFifo(Resolvable):
         self._prod: ObjectFifoHandle | None = None
         self._cons: list[ObjectFifoHandle] = []
         self._resolving = False
+        self._iter_count: int | None = None
 
     @classmethod
     def __get_index(cls) -> int:
@@ -89,9 +90,9 @@ class ObjectFifo(Resolvable):
         return self._depth
 
     @property
-    def default_dims_from_stream_per_cons(self) -> list[Sequence[int]]:
+    def dims_from_stream_per_cons(self) -> list[Sequence[int]]:
         """The default dimensions from stream per consumer value. This may be overriden by an ObjectFifoHandle of type consumer."""
-        return self._default_dims_from_stream_per_cons
+        return self._dims_from_stream_per_cons
 
     @property
     def dims_to_stream(self) -> list[Sequence[int]]:
@@ -118,6 +119,21 @@ class ObjectFifo(Resolvable):
     def obj_type(self) -> type[np.ndarray]:
         """The tensor type of each buffer belonging to the ObjectFifo"""
         return self._obj_type
+
+    def set_iter_count(self, iter_count: int):
+        """Set iteration count for DMA BD (Buffer Descriptor) chaining on MemTile for the ObjectFifo.
+
+        Args:
+            iter_count (int): Number of forward chain iterations.
+                - Must be in range [1, 256]: Forward chain with specified number of iterations
+
+        Raises:
+            ValueError: If iter_count is outside the valid range [1, 256]
+        """
+        if not iter_count or iter_count < 1 or iter_count > 256:
+            raise ValueError("Iter count must be in [1, 256] range.")
+
+        self._iter_count = iter_count
 
     def __str__(self) -> str:
         prod_endpoint = None
@@ -180,7 +196,7 @@ class ObjectFifo(Resolvable):
                 depth = self._depth
 
         if dims_from_stream is None:
-            dims_from_stream = self._default_dims_from_stream_per_cons
+            dims_from_stream = self._dims_from_stream_per_cons
         self._cons.append(
             ObjectFifoHandle(
                 self, is_prod=False, depth=depth, dims_from_stream=dims_from_stream
@@ -188,7 +204,7 @@ class ObjectFifo(Resolvable):
         )
         return self._cons[-1]
 
-    def tiles(self) -> list[PlacementTile]:
+    def tiles(self, cons_only: bool = False) -> list[PlacementTile]:
         """The list of placement tiles corresponding to the endpoints of all handles of this ObjectFifo
 
         Raises:
@@ -198,11 +214,25 @@ class ObjectFifo(Resolvable):
         Returns:
             list[PlacementTile]: A list of tiles of the endpoints of this ObjectFifo.
         """
-        if self._prod == None:
-            raise ValueError("Cannot return prod.tile.op because prod was not created.")
+        tiles = []
+        if not cons_only:
+            if self._prod == None:
+                raise ValueError(
+                    "Cannot return prod.tile.op because prod was not created."
+                )
+            tiles += [self._prod.endpoint.tile]
         if self._cons == []:
-            raise ValueError("Cannot return cons.tile.op because prod was not created.")
-        return [self._prod.tile] + [cons.tile for cons in self._cons]
+            raise ValueError("Cannot return cons tiles because cons were not created.")
+        tiles += [cons.endpoint.tile for cons in self._cons]
+        return tiles
+
+    def can_used_shared_mem(self, device: Device, cons_only: bool = False) -> bool:
+        """Checks if all endpoints of the object fifo have a legal memory affinity."""
+        tiles = self.tiles(cons_only=cons_only)
+        for t in tiles:
+            if device.is_mem_accessible(t, tiles):
+                return True
+        return False
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:
@@ -254,6 +284,7 @@ class ObjectFifo(Resolvable):
                 con.dims_from_stream if con.dims_from_stream else []
                 for con in self._cons
             ]
+
             self._op = object_fifo(
                 self.name,
                 self._prod_tile_op(),
@@ -263,6 +294,7 @@ class ObjectFifo(Resolvable):
                 dimensionsToStream=self._dims_to_stream,
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
                 plio=self._plio,
+                iter_count=self._iter_count,
             )
 
             if isinstance(self._prod.endpoint, ObjectFifoLink):
@@ -326,7 +358,7 @@ class ObjectFifoHandle(Resolvable):
         if is_prod and dims_from_stream:
             raise ValueError("Can only specify dims_from_stream for cons handles")
         elif not is_prod and not dims_from_stream:
-            dims_from_stream = of.default_dims_from_stream_per_cons
+            dims_from_stream = of.dims_from_stream_per_cons
 
         self._is_prod = is_prod
         self._object_fifo = of
@@ -598,7 +630,7 @@ class ObjectFifoHandle(Resolvable):
                     name=names[i],
                     depth=depths[i],
                     dims_to_stream=dims_to_stream[i],
-                    default_dims_from_stream_per_cons=dims_from_stream[i],
+                    dims_from_stream_per_cons=dims_from_stream[i],
                     plio=plio,
                 )
             )

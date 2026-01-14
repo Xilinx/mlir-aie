@@ -7,8 +7,7 @@
 import argparse
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.localbuffer import LocalBuffer
+from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, Buffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
@@ -121,9 +120,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                 of_offsets,
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-                placement=Tile(
-                    2 * i if n_aie_cols == 8 else i, 1
-                ),
+                placement=Tile(2 * i if n_aie_cols == 8 else i, 1),
             )
         )
 
@@ -161,8 +158,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
         for j in range(n_aie_rows):
             C_l1l2_fifos[j][col] = c_tmp_fifos[j]
 
-    def core_fn(in_a, in_b, out_c, zero, matmul, shuffle):
-        bufferA = LocalBuffer(A_l1_ty)
+    def core_fn(in_a, in_b, out_c, zero, matmul, shuffle, buffer_a):
         loop = range(1)
         if n_tiles_per_core > 1:
             loop = range_(n_tiles_per_core)
@@ -173,8 +169,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
             for _ in range_(K // k):
                 elem_in_a = in_a.acquire(1)
                 elem_in_b = in_b.acquire(1)
-                shuffle(elem_in_a, bufferA, k, m, False)
-                matmul(bufferA, elem_in_b, elem_out)
+                shuffle(elem_in_a, buffer_a, k, m, False)
+                matmul(buffer_a, elem_in_b, elem_out)
                 in_a.release(1)
                 in_b.release(1)
             out_c.release(1)
@@ -183,6 +179,8 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
     for row in range(n_aie_rows):
         for col in range(n_aie_cols):
             tile_col, tile_row = core_tiles[row][col]
+            bufferA = Buffer(A_l1_ty)
+
             workers.append(
                 Worker(
                     core_fn,
@@ -193,6 +191,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                         zero_kernel,
                         matmul_kernel,
                         shuffle_kernel,
+                        bufferA,
                     ],
                     placement=Tile(tile_col, tile_row),
                     stack_size=0xD00,
@@ -259,9 +258,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                                 A,
                                 tap=A_tiles[tile_offset],
                                 task_group=tg,
-                                placement=Tile(
-                                    2 * col if n_aie_cols == 8 else col, 0
-                                ),
+                                placement=Tile(2 * col if n_aie_cols == 8 else col, 0),
                             )
 
                         rt.fill(

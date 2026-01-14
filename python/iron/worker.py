@@ -5,19 +5,18 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-import contextvars
 import sys
 from typing import Callable
 
 from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
 from ..dialects.aiex import set_lock_value, LockAction
-from ..helpers.dialects.ext.scf import _for as range_
+from ..helpers.dialects.scf import _for as range_
 from .device import PlacementTile, AnyComputeTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .kernel import Kernel, ExternalFunction
-from .globalbuffer import GlobalBuffer
+from .buffer import Buffer
 from .resolvable import Resolvable
 
 
@@ -28,9 +27,6 @@ class Worker(ObjectFifoEndpoint):
     """
 
     """This variable is the current core if resolving() within the Worker, or None otherwise."""
-    current_core_placement = contextvars.ContextVar(
-        "current_core_placement", default=None
-    )
 
     def __init__(
         self,
@@ -91,7 +87,7 @@ class Worker(ObjectFifoEndpoint):
             elif isinstance(arg, ObjectFifoHandle):
                 arg.endpoint = self
                 self._fifos.append(arg)
-            elif isinstance(arg, GlobalBuffer):
+            elif isinstance(arg, Buffer):
                 self._buffers.append(arg)
             elif isinstance(arg, ObjectFifo):
                 # This is an easy error to make, so we catch it early
@@ -133,11 +129,11 @@ class Worker(ObjectFifoEndpoint):
         return self._fifos.copy()
 
     @property
-    def buffers(self) -> list[GlobalBuffer]:
-        """Returns a list of GlobalBuffers given to the Worker via fn_args.
+    def buffers(self) -> list[Buffer]:
+        """Returns a list of Buffer given to the Worker via fn_args.
 
         Returns:
-            list[GlobalBuffer]: GlobalBuffers used by the Worker.
+            list[Buffer]: Buffer used by the Worker.
         """
         return self._buffers.copy()
 
@@ -157,18 +153,10 @@ class Worker(ObjectFifoEndpoint):
             l = lock(my_tile)
             barrier._add_worker_lock(l)
 
-        # Set the current_core_placement context variable to the current placement.
-        # If there are objects within a core_fn that that need a placement, they can
-        # query this value, e.g., Worker.current_core_placement.get()
-        self.current_core_placement.set(my_tile)
-
         @core(my_tile, link_with=my_link, stack_size=self.stack_size)
         def core_body():
             for _ in range_(sys.maxsize) if self._while_true else range(1):
                 self.core_fn(*self.fn_args)
-
-        # Once we are done resolving the core, remove the placement context information
-        self.current_core_placement.set(None)
 
 
 class WorkerRuntimeBarrier:

@@ -11,10 +11,11 @@
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
-
+cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
+include(../../common.cmake)
 
 find_program(WSL NAMES powershell.exe)
 
@@ -53,23 +54,23 @@ message("opencv libs: ${OpenCV_LIBS}")
 
 add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
 target_compile_definitions(${currentTarget} PUBLIC
         EDGEDETECT_WIDTH=${EDGEDETECT_WIDTH}
         EDGEDETECT_HEIGHT=${EDGEDETECT_HEIGHT}
-        DISABLE_ABI_CHECK=1
-        )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
 )
+
+if(DEFINED XRT_INC_DIR AND XRT_INC_DIR)
+    target_compile_definitions(${currentTarget} PRIVATE TEST_UTILS_USE_XRT)
+endif()
 
 target_link_directories(${currentTarget} PUBLIC
     ${XRT_LIB_DIR}
@@ -81,3 +82,5 @@ target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil
     ${OpenCV_LIBS}
 )
+
+target_link_test_utils(${currentTarget})

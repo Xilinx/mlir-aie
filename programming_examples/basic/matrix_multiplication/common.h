@@ -55,6 +55,8 @@ void add_default_options(cxxopts::Options &options) {
       "trace_file", "where to store trace output",
       cxxopts::value<std::string>()->default_value("trace.txt"))(
       "b_col_maj", "Is B matrix in colum-major format?",
+      cxxopts::value<int>()->default_value("0"))(
+      "c_col_maj", "Is C matrix in colum-major format?",
       cxxopts::value<int>()->default_value("0"));
 }
 
@@ -109,7 +111,8 @@ std::bfloat16_t get_random<std::bfloat16_t>() {
 
 template <typename Tin, typename Tout, typename Tacc>
 void matmul(int M, int N, int K, const std::vector<Tin> A,
-            const std::vector<Tin> B, std::vector<Tout> &C, int b_col_maj) {
+            const std::vector<Tin> B, std::vector<Tout> &C, int b_col_maj,
+            int c_col_maj) {
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
       Tacc running_sum = 0;
@@ -120,7 +123,11 @@ void matmul(int M, int N, int K, const std::vector<Tin> A,
           running_sum += Tacc(A[row * K + k] * B[k + col * K]);
         }
       }
-      C[row * N + col] = Tout(running_sum);
+      if (!c_col_maj) {
+        C[row * N + col] = Tout(running_sum);
+      } else {
+        C[row + col * M] = Tout(running_sum);
+      }
     }
   }
 }
@@ -347,14 +354,14 @@ void print_progress_bar(std::ostream &os, double progress, int len = 75) {
 template <typename Tin, typename Tout, typename Tacc>
 int verify(int M, int N, int K, std::vector<Tin> A, std::vector<Tin> B,
            std::vector<Tout> C, int verbosity = 0, float abs_tol = 0.5,
-           float rel_tol = 0.05, int b_col_maj = 0) {
+           float rel_tol = 0.05, int b_col_maj = 0, int c_col_maj = 0) {
   int n_errors = 0;
   std::vector<struct error<Tout>> errors;
   Tout max_rel_error = (Tout)0.0f;
   struct error<Tout> max_error;
 
   std::vector<Tout> CRef(M * N);
-  matmul<Tin, Tout, Tacc>(M, N, K, A, B, CRef, b_col_maj);
+  matmul<Tin, Tout, Tacc>(M, N, K, A, B, CRef, b_col_maj, c_col_maj);
 
   for (int row = 0; row < M; row++) {
     for (int col = 0; col < N; col++) {
@@ -394,7 +401,8 @@ template <typename Tin, typename Tout, typename Tacc>
 int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
                       std::vector<Tin> B, std::vector<Tout> C, int n_samples,
                       int verbosity = 0, float abs_tol = 0.5,
-                      float rel_tol = 0.05, int b_col_maj = 0) {
+                      float rel_tol = 0.05, int b_col_maj = 0,
+                      int c_col_maj = 0) {
   std::mt19937 rng;
   auto rows = std::views::iota(0, M);
   auto cols = std::views::iota(0, N);
@@ -420,8 +428,14 @@ int verify_stochastic(int M, int N, int K, std::vector<Tin> A,
       print_progress_bar(std::cerr, progress);
     }
     Tout ref = mul_acc<Tin, Tout, Tacc>(M, N, K, row, col, A, B, b_col_maj);
-    std::optional<struct error<Tout>> error = verify_single(
-        std::cout, row, col, ref, C[row * N + col], abs_tol, rel_tol);
+    Tout observed;
+    if (!c_col_maj) {
+      observed = C[row * N + col];
+    } else {
+      observed = C[row + col * M];
+    }
+    std::optional<struct error<Tout>> error =
+        verify_single(std::cout, row, col, ref, observed, abs_tol, rel_tol);
     if (error.has_value()) {
       if (n_errors < max_printable_errors) {
         errors.push_back(*error);

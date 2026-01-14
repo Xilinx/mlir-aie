@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -120,7 +120,7 @@ In this example, the vectorization strategy was relatively straight forward. Ins
 ## <u>Vectorization Exercises</u>
 1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source file has `vectorized=False`. In the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source code, we now have selected the scalar version of the kernel function. We're also going to build the 32-bit integer version of the design by passing the environment variales `int_bit-width=32` to our `makefile` command, by running  `make int_bit_width=32 trace`. This makefile argument is defined in our makefile to customize datatypes and buffer sizes in our design code (`vector_scalar_mul.py`) and our host code (`test.cpp`). After the trace compilation is complete, open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~12,297 cycles" height=25> 
 
-    You may notice that in our `vector_scalar_mul` example, we call `utils/get_trace_summary.py` to analyze the generated json file and measure the delta between `event 0` and `event 1` automatically, providing the number of kernel invocations, and the first/ min/ avg/ max number of cycles. This is a handy utility for summarizing kernel performance for single core designs.
+    You may notice that in our `vector_scalar_mul` example, we call `python/utils/trace/get_trace_summary.py` to analyze the generated json file and measure the delta between `event 0` and `event 1` automatically, providing the number of kernel invocations, and the first/ min/ avg/ max number of cycles. This is a handy utility for summarizing kernel performance for single core designs.
 
 1. Now let's turn vectorization back on by changing `vectorized=True`. But we're also going to disable any pragma guided optimization first to see its effect. In the [scale.cc](../../../aie_kernels/aie2/scale.cc), comment out the lines before the `for loop` that says `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`. **NOTE** Be sure to edit both the general template and the `int32_t` template specialization as we will be testing that case next. Then rerun the compilation (`make clean; make int_bit_width=32 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now? <img src="../../../mlir_tutorials/images/answer1.jpg" title="~1490 cycles" height=25>
 

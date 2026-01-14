@@ -59,7 +59,6 @@ config.enable_python_tests = lit.util.pythonize_bool("@ENABLE_PYTHON_TESTS@")
 config.python_passes = lit.util.pythonize_bool("@AIE_ENABLE_PYTHON_PASSES@")
 config.xrt_python_bindings = lit.util.pythonize_bool("@AIE_ENABLE_XRT_PYTHON_BINDINGS@")
 config.has_mlir_runtime_libraries = lit.util.pythonize_bool("@HAS_MLIR_RUNTIME_LIBRARIES@")
-config.aie_enable_airbin = lit.util.pythonize_bool("@AIE_ENABLE_AIRBIN@")
 
 # pass on vitis settings
 config.vitis_root = "@VITIS_ROOT@"

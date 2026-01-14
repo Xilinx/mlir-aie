@@ -15,12 +15,15 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerMemcpy.cpp
   AIEDmaToNpu.cpp
   AIEMaterializeBDChains.cpp
+  AIEMaterializeRuntimeSequences.cpp
   AIEAssignRuntimeSequenceBDIDs.cpp
   AIEDMATasksToNPU.cpp
   AIESubstituteShimDMAAllocations.cpp
   AIECtrlPacketToDma.cpp
   AIELowerSetLock.cpp
   AIETransformBfpTypes.cpp
+  AIETxnToControlPacket.cpp
+  AIEExpandLoadPdi.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
@@ -32,6 +35,8 @@ add_mlir_dialect_library(AIEXTransforms
 
   LINK_LIBS PUBLIC
   AIE
+  MLIRAIEToConfiguration
+  AIEXUtils
   MLIRIR
   MLIRPass
   MLIRSupport

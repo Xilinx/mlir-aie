@@ -12,8 +12,6 @@
 
 // CHECK:  module {
 // CHECK:    aie.device(npu1_1col) {
-// CHECK:      memref.global "public" @input_fifo_cons : memref<10xi32>
-// CHECK:      memref.global "public" @input_fifo : memref<10xi32>
 // CHECK:      func.func @passthrough_10_i32(%arg0: memref<10xi32>) {
 // CHECK:        return
 // CHECK:      }
@@ -23,8 +21,6 @@
 // CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32> 
 // CHECK:      %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 1 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
 // CHECK:      %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
-// CHECK:      %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_0_0, 0) {init = 1 : i32, sym_name = "input_fifo_prod_lock_0"}
-// CHECK:      %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_0_0, 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock_0"}
 // CHECK:      aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
 // CHECK:      %buffer_0_2 = aie.buffer(%{{.*}}tile_0_2) : memref<1xi32> 
 // CHECK:      %core_0_2 = aie.core(%{{.*}}tile_0_2) {
@@ -49,7 +45,7 @@
 // CHECK:        }
 // CHECK:        aie.end
 // CHECK:      } {dynamic_objfifo_lowering = true}
-// CHECK:      aie.shim_dma_allocation @input_fifo(MM2S, 0, 0)
+// CHECK:      aie.shim_dma_allocation @input_fifo_shim_alloc(%shim_noc_tile_0_0, MM2S, 0)
 // CHECK:      %mem_0_2 = aie.mem(%{{.*}}tile_0_2) {
 // CHECK:        %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:      ^bb1:  // 2 preds: ^bb0, ^bb1

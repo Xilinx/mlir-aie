@@ -44,11 +44,15 @@ struct DMAStartBdChainForOpPattern : RewritePattern {
       return op.emitOpError("no shim DMA allocation found for symbol");
     }
 
-    const int col = alloc_op.getCol();
-    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);
-    DMAStartBdChainOp new_op = rewriter.create<DMAStartBdChainOp>(
-        op.getLoc(), rewriter.getIndexType(), op.getSymbol(), op.getArgs(),
-        tile.getResult(), alloc_op.getChannelDir(),
+    AIE::TileOp tile = alloc_op.getTileOp();
+    if (!tile) {
+      return op.emitOpError(
+          "shim DMA allocation must reference a valid TileOp");
+    }
+
+    DMAStartBdChainOp new_op = DMAStartBdChainOp::create(
+        rewriter, op.getLoc(), rewriter.getIndexType(), op.getSymbol(),
+        op.getArgs(), tile.getResult(), alloc_op.getChannelDir(),
         (int32_t)alloc_op.getChannelIndex(), op.getIssueToken(),
         op.getRepeatCount());
     rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
@@ -77,9 +81,9 @@ struct DMAInlineBDChainPattern : RewritePattern {
     Region &source_region = chain_def.getBody();
 
     // Create BD op into which the result will be inlined
-    DMAConfigureTaskOp configure_op = rewriter.create<DMAConfigureTaskOp>(
-        start_op.getLoc(), rewriter.getIndexType(), start_op.getTile(),
-        start_op.getDirection(), start_op.getChannel(),
+    DMAConfigureTaskOp configure_op = DMAConfigureTaskOp::create(
+        rewriter, start_op.getLoc(), rewriter.getIndexType(),
+        start_op.getTile(), start_op.getDirection(), start_op.getChannel(),
         start_op.getIssueToken(), start_op.getRepeatCount());
     Region &target_region = configure_op.getBody();
 
@@ -99,8 +103,8 @@ struct DMAInlineBDChainPattern : RewritePattern {
     rewriter.replaceAllUsesWith(start_op.getResult(), configure_op.getResult());
 
     // Add a start BDs instruction
-    rewriter.create<DMAStartTaskOp>(start_op.getLoc(),
-                                    configure_op.getResult());
+    DMAStartTaskOp::create(rewriter, start_op.getLoc(),
+                           configure_op.getResult());
 
     // After fully inlining, remove the original instruction
     rewriter.eraseOp(start_op);

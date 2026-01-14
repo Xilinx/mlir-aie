@@ -25,7 +25,7 @@ if [ "$#" -lt 1 ]; then
 
     mkdir -p my_install
     pushd my_install
-    pip -q download mlir==$VERSION \
+    python3 -m pip -q download mlir==$VERSION \
       -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
     unzip -q -u mlir-*.whl
     popd

@@ -10,11 +10,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "memory_allocator.h"
-#include "xioutils.h"
 #include <assert.h>
 #include <iostream>
 
-int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *_xaie, ext_mem_model_t &handle,
+extern "C" {
+
+void ess_WriteGM(uint64_t addr, const void *data, uint64_t size);
+void ess_ReadGM(uint64_t addr, void *data, uint64_t size);
+}
+
+int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, ext_mem_model_t &handle,
                         int size) {
   int size_bytes = size * sizeof(int);
   handle.virtualAddr = std::malloc(size_bytes);
@@ -31,9 +36,9 @@ int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *_xaie, ext_mem_model_t &handle,
     printf("ExtMemModel: Failed to allocate %d memory.\n", size_bytes);
   }
 
-  _xaie->allocations.push_back(handle);
+  ctx->allocations.push_back(handle);
 
-  std::cout << "ExtMemModel constructor: " << _xaie << " virtual address "
+  std::cout << "ExtMemModel constructor: " << ctx << " virtual address "
             << std::hex << handle.virtualAddr << ", physical address "
             << handle.physicalAddr << ", size " << std::dec << handle.size
             << std::endl;
@@ -41,17 +46,17 @@ int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *_xaie, ext_mem_model_t &handle,
 }
 
 void mlir_aie_sync_mem_cpu(ext_mem_model_t &handle) {
-  aiesim_ReadGM(handle.physicalAddr, handle.virtualAddr, handle.size);
+  ess_ReadGM(handle.physicalAddr, handle.virtualAddr, handle.size);
 }
 
 void mlir_aie_sync_mem_dev(ext_mem_model_t &handle) {
-  aiesim_WriteGM(handle.physicalAddr, handle.virtualAddr, handle.size);
+  ess_WriteGM(handle.physicalAddr, handle.virtualAddr, handle.size);
 }
 
-u64 mlir_aie_get_device_address(aie_libxaie_ctx_t *_xaie, void *VA) {
-  std::cout << "get_device_address: " << _xaie << " VA " << std::hex << VA
+u64 mlir_aie_get_device_address(aie_libxaie_ctx_t *ctx, void *VA) {
+  std::cout << "get_device_address: " << ctx << " VA " << std::hex << VA
             << std::dec << "\n";
-  for (auto i : _xaie->allocations) {
+  for (auto i : ctx->allocations) {
     std::cout << "get_device_address: virtual address " << std::hex
               << i.virtualAddr << ", physical address " << i.physicalAddr
               << ", size " << std::dec << i.size << std::endl;

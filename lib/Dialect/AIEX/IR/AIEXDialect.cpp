@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Operation.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
@@ -452,12 +453,17 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // even if it exceeds the maximum stride/wrap size of any one dimension,
   // and simply do not lower any data layout transformations, since there is
   // no other way to express this at the dma_memcpy_nd interface otherwise.
-  AIE::ShimDMAllocationGetter allocGetter;
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
-  if (auto allocOp = allocGetter.get(dev, getMetadata())) {
-    int col = allocOp->getCol();
+  if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+          dev, getMetadata().getRootReference())) {
+    AIE::TileOp tile = allocOp.getTileOp();
+    if (!tile) {
+      return emitOpError("shim DMA allocation must reference a valid TileOp");
+    }
+    int col = tile.getCol();
+    int row = tile.getRow();
     bool skipTransformationChecks = isLinearTransferWithoutTransformation();
-    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes,
+    if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
                                   inputStrides, hardwareSizes, hardwareStrides,
                                   skipTransformationChecks))) {
       return failure();
@@ -550,73 +556,116 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// RuntimeSequenceOp
+// NpuWrite32Op
 //===----------------------------------------------------------------------===//
 
-ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
-                                           OperationState &result) {
-
-  StringAttr nameAttr;
-  (void)parser.parseOptionalSymbolName(
-      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
-
-  SmallVector<OpAsmParser::Argument> entryArgs;
-
-  // Entry arguments,  e.g. (%addr: memref<1xi32>)
-  ParseResult argParseResult = parser.parseCommaSeparatedList(
-      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
-        OpAsmParser::Argument argument;
-        if (parser.parseArgument(argument, true, true)) {
-          return failure();
-        }
-        entryArgs.push_back(argument);
-        return success();
-      });
-  if (argParseResult) {
-    return argParseResult;
-  }
-
-  // Body
-  auto *body = result.addRegion();
-  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
-  if (bodyParseResult) {
-    return bodyParseResult;
-  }
-
-  return success();
-}
-
-void AIEX::RuntimeSequenceOp::print(OpAsmPrinter &printer) {
-  Region &body = getRegion();
-
-  auto nameAttr = (*this)->getAttrOfType<StringAttr>(
-      mlir::SymbolTable::getSymbolAttrName());
-  if (nameAttr) {
-    printer << ' ';
-    printer.printSymbolName(nameAttr);
-  }
-
-  printer << '(';
-  for (unsigned i = 0, n = body.getNumArguments(); i < n; i++) {
-    if (i > 0) {
-      printer << ", ";
-    }
-    printer.printRegionArgument(body.getArgument(i));
-  }
-  printer << ')';
-
-  printer << ' ';
-  printer.printRegion(body, false, true);
-}
-
-LogicalResult AIEX::RuntimeSequenceOp::verify() {
-  AIE::DeviceOp device = (*this)->getParentOfType<AIE::DeviceOp>();
+template <typename T>
+static std::optional<uint32_t> getAbsoluteAddress(T *op) {
+  AIE::DeviceOp device =
+      op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
-    // this check is redudnant with the HasParent trait, but can't hurt
-    (*this)->emitOpError() << "must be inside AIE device operation.";
-    return failure();
+    op->emitError("Must be inside a device.");
+    return std::nullopt;
   }
-  return success();
+  const AIE::AIETargetModel &tm = device.getTargetModel();
+
+  uint32_t address = 0;
+
+  // If blockwrite references a buffer, the given address is understood to be
+  // relative to the buffer's start address.
+  if (op->getBuffer()) {
+    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*op->getBuffer());
+    if (!buffer) {
+      op->emitError() << "buffer '" << *op->getBuffer()
+                      << "' not found in device";
+      return std::nullopt;
+    }
+
+    if (!buffer.getAddress()) {
+      mlir::InFlightDiagnostic err =
+          op->emitError("referenced buffer must have address assigned");
+      err.attachNote(buffer.getLoc()) << "This buffer must have an address.";
+      return std::nullopt;
+    }
+
+    uint32_t col = buffer.getTileOp().getCol();
+    uint32_t row = buffer.getTileOp().getRow();
+    address = static_cast<uint32_t>(*buffer.getAddress()) +
+              op->getAddress() * sizeof(uint32_t);
+    address = ((col & 0xff) << tm.getColumnShift()) |
+              ((row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
+  } else { // otherwise, the given address is absolute
+    address = op->getAddress();
+    std::optional<uint32_t> col = op->getColumn();
+    std::optional<uint32_t> row = op->getRow();
+    if (col && row) {
+      // If col and row are set, only the lower 20 bits of the address are
+      // used, and col and row dictate the upper bits (ignored)
+      address = ((*col & 0xff) << tm.getColumnShift()) |
+                ((*row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
+    }
+  }
+
+  return address;
+}
+
+std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuMaskWrite32Op
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuBlockWriteOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
+  Value memref = this->getData();
+  DataLayout dataLayout = DataLayout::closest(*this);
+  int64_t width = dataLayout.getTypeSizeInBits(
+      cast<MemRefType>(memref.getType()).getElementType());
+  if (width != 32) {
+    emitWarning("Only 32-bit data type is supported for now");
+    return nullptr;
+  }
+
+  memref::GetGlobalOp getGlobal = memref.getDefiningOp<memref::GetGlobalOp>();
+  if (!getGlobal) {
+    emitError("Only MemRefs from memref.get_global are supported");
+    return nullptr;
+  }
+
+  auto global = dyn_cast_if_present<memref::GlobalOp>(
+      (*this)->getParentOfType<AIE::DeviceOp>().lookupSymbol(
+          getGlobal.getName()));
+  if (!global) {
+    emitError("Global symbol not found");
+    return nullptr;
+  }
+
+  auto initVal = global.getInitialValue();
+  if (!initVal) {
+    emitError("Global symbol has no initial value");
+    return nullptr;
+  }
+
+  auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
+  if (!data) {
+    emitError("Global symbol initial value is not a dense int array");
+    return nullptr;
+  }
+
+  return data;
 }
 
 //===----------------------------------------------------------------------===//
@@ -838,6 +887,126 @@ AIEX::BlockFloatType::verify(function_ref<InFlightDiagnostic()> emitError,
   if (!getBlockFormat(block_type))
     return emitError() << "Invalid block type: " << block_type
                        << ". Known types are: v8bfp16ebs8, v16bfp16ebs16.";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ConfigureOp
+//===----------------------------------------------------------------------===//
+
+AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
+  ModuleOp moduleOp = this->getOperation()->getParentOfType<ModuleOp>();
+  if (!moduleOp) {
+    emitError("aiex.configure must be inside of a module");
+    return nullptr;
+  }
+  Operation *maybeReferencedDevice =
+      SymbolTable::lookupSymbolIn(moduleOp.getOperation(), getSymbolAttr());
+  if (!maybeReferencedDevice) {
+    emitError("No such device: '") << getSymbolAttr() << "'";
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice =
+      llvm::dyn_cast<AIE::DeviceOp>(maybeReferencedDevice);
+  if (!referencedDevice) {
+    emitError("Not a device: '") << getSymbolAttr() << "'";
+    return nullptr;
+  }
+  return referencedDevice;
+}
+
+LogicalResult AIEX::ConfigureOp::verify() {
+  AIE::DeviceOp parentDev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  AIE::DeviceOp referencedDev = getReferencedDeviceOp();
+  if (!referencedDev) {
+    return failure();
+  }
+  if (parentDev.getDevice() != referencedDev.getDevice()) {
+    emitError("Device types do not match: '")
+        << AIE::stringifyAIEDevice(parentDev.getDevice()) << "' vs. '"
+        << AIE::stringifyAIEDevice(referencedDev.getDevice()) << "'";
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RunOp
+//===----------------------------------------------------------------------===//
+
+AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
+  AIEX::ConfigureOp configureOp =
+      getOperation()->getParentOfType<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  return referencedDevice;
+}
+
+AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
+  AIEX::ConfigureOp configureOp =
+      getOperation()->getParentOfType<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  if (!referencedDevice) {
+    return nullptr;
+  }
+
+  Operation *maybeRuntimeSequence =
+      SymbolTable::lookupSymbolIn(referencedDevice, getRuntimeSequenceSymbol());
+
+  if (!maybeRuntimeSequence) {
+    return nullptr;
+  }
+  AIE::RuntimeSequenceOp runtimeSequence =
+      llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeRuntimeSequence);
+  if (!runtimeSequence) {
+    return nullptr;
+  }
+
+  return runtimeSequence;
+}
+
+LogicalResult AIEX::RunOp::verify() {
+  AIE::DeviceOp calleeDevice = getCalleeDeviceOp();
+  if (!calleeDevice) {
+    return emitOpError() << "No such device: '" << getRuntimeSequenceSymbol()
+                         << "'";
+  }
+
+  AIE::RuntimeSequenceOp calleeRuntimeSequence = getCalleeRuntimeSequenceOp();
+  if (!calleeRuntimeSequence) {
+    auto err = emitError() << "No such runtime sequence for device '"
+                           << calleeDevice.getSymName() << "': '"
+                           << getRuntimeSequenceSymbol() << "'";
+    err.attachNote(calleeDevice.getLoc())
+        << "This device does not have a '" << getRuntimeSequenceSymbol()
+        << "' runtime sequence";
+    return err;
+  }
+
+  // Validate argument types match the callee's parameters
+  Block &calleeBody = calleeRuntimeSequence.getBody().front();
+  ValueRange values = getArgs();
+
+  if (calleeBody.getNumArguments() != values.size()) {
+    return emitOpError() << "argument count mismatch";
+  }
+
+  for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
+    BlockArgument arg = calleeBody.getArgument(i);
+    Value val = values[i];
+
+    if (arg.getType() != val.getType()) {
+      return emitOpError() << "argument " << i << " type mismatch: "
+                           << "expected " << arg.getType() << " but got "
+                           << val.getType();
+    }
+  }
 
   return success();
 }

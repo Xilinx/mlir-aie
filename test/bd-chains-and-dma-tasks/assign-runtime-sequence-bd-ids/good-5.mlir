@@ -14,9 +14,9 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aie.shim_dma_allocation @alloc0 (MM2S, 0, 0)
+    aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0)
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>) {
       // Allocate all available BD IDs
       %t1 = aiex.dma_configure_task_for @alloc0 {
         // CHECK:   aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}

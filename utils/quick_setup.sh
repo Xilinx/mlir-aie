@@ -11,18 +11,18 @@
 # Please have the Vitis tools and XRT environment setup before sourcing the 
 # script.
 #
-# source ./utils/quick_setup.sh
+# Usage: source ./utils/quick_setup.sh
 #
 ##===----------------------------------------------------------------------===##
 
 echo "Setting up RyzenAI developement tools..."
-if [[ $WSL_DISTRO_NAME == "" ]]; then
+if [ -z "${WSL_DISTRO_NAME-}" ]; then
   XRTSMI=`which xrt-smi`
   if ! test -f "$XRTSMI"; then 
-    echo "XRT is not installed"
+    echo "xrt-smi not found. Is XRT installed?"
     return 1
   fi
-  NPU=`/opt/xilinx/xrt/bin/xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
+  NPU=`xrt-smi examine | grep -E "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"`
   if echo "$NPU" | grep -qE "NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]"; then
     echo "AMD XDNA NPU found: "
     echo $NPU
@@ -32,6 +32,7 @@ if [[ $WSL_DISTRO_NAME == "" ]]; then
   fi
 else
   echo "Environment is WSL"
+  NPU="${NPU:-$(/mnt/c/Windows/System32/AMD/xrt-smi.exe examine 2>/dev/null | tr -d '\r' | grep -E 'NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]' || true)}"
 fi
 # Check if the current environment is NPU2
 # npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
@@ -51,7 +52,7 @@ else
    return 1
 fi
 
-# if an install is already present, remove it to start from a clean slate
+# If an install is already present, remove it and start from a clean slate
 rm -rf ironenv
 rm -rf my_install
 $my_python -m venv ironenv
@@ -83,15 +84,14 @@ pip install pre-commit
 # This installs the pre-commit hooks defined in .pre-commit-config.yaml
 pre-commit install
 
-HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
 python3 -m pip install -r python/requirements_ml.txt
-
 python3 -m pip install -r python/requirements_notebook.txt
 
 # This creates an ipykernel (for use in notebooks) using the ironenv venv
 python3 -m ipykernel install --user --name ironenv
 
-# right now, mlir-aie install dire is generally captures in the $PYTHONPATH by the setup_env script.
+# Right now, mlir-aie install dir is generally captured in the $PYTHONPATH by the setup_env script.
 # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g. if they are run with
 # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
 # ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is
@@ -99,7 +99,7 @@ python3 -m ipykernel install --user --name ironenv
 venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'`
 echo ${MLIR_AIE_INSTALL_DIR}/python > $venv_site_packages/mlir-aie.pth
 
-# Setup environment and add tools to PATHs
+# Setup environment
 source utils/env_setup.sh
 
 pushd programming_examples

@@ -26,7 +26,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Execute the scripted build process:
 
     > This script will install package dependencies, build the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
-  
+
     ```bash
     bash ./utils/build_drivers.sh
     ```
@@ -36,9 +36,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     ```bash
     sudo reboot
     ```
-    
+
 1. Check that the NPU is working if the device appears with xrt-smi:
-   
+
    ```bash
    source /opt/xilinx/xrt/setup.sh
    xrt-smi examine
@@ -121,8 +121,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # Install basic Python requirements 
    python3 -m pip install -r python/requirements.txt
 
-   # Install MLIR Python Extras 
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   # Install MLIR Python Extras
+   EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
 1. Install Python packages required for development and testing:
@@ -139,7 +139,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    bash ./utils/build-mlir-aie-from-wheels.sh
    ```
 
-1. Setup environment and add tools to PATHs
+1. Setup environment
    ```bash
    source utils/env_setup.sh install
    ```

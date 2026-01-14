@@ -20,7 +20,9 @@ extern "C" {
 #include "xaiengine/xaie_interrupt.h"
 #include "xaiengine/xaie_locks.h"
 #include "xaiengine/xaie_mem.h"
+#include "xaiengine/xaie_perfcnt.h"
 #include "xaiengine/xaie_plif.h"
+#include "xaiengine/xaie_reset.h"
 #include "xaiengine/xaie_ss.h"
 #include "xaiengine/xaie_txn.h"
 #include "xaiengine/xaiegbl.h"
@@ -843,6 +845,137 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElf(uint8_t col, uint8_t row,
   return success();
 }
 
+LogicalResult xilinx::AIE::AIERTControl::resetPartition() {
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_ResetPartition, &aiert->devInst);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetDMA(int col, int row, bool on) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  XAie_DmaDesc dmaTileBd;
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDescInit, &aiert->devInst, &dmaTileBd,
+                              tileLoc);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaDisableBd, &dmaTileBd);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_DmaChannelResetAll, &aiert->devInst, tileLoc,
+                              on ? XAie_DmaChReset::DMA_CHANNEL_UNRESET
+                                 : XAie_DmaChReset::DMA_CHANNEL_RESET);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetCore(int col, int row) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreReset, &aiert->devInst, tileLoc);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetSwitch(int col, int row) {
+  XAie_LocType tileLoc = XAie_TileLoc(col, row);
+
+  // Reset all combinations of input/output routing in the switchbox
+  for (auto endpoint_a : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {
+    for (auto endpoint_b : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {
+      unsigned n_a_connections = targetModel.getNumSourceSwitchboxConnections(
+          col, row, endpoint_a.first);
+      unsigned n_b_connections = targetModel.getNumDestSwitchboxConnections(
+          col, row, endpoint_b.first);
+      for (unsigned a_index = 0; a_index < n_a_connections; a_index++) {
+        for (unsigned b_index = 0; b_index < n_b_connections; b_index++) {
+          if (!targetModel.isLegalTileConnection(col, row, endpoint_a.first,
+                                                 a_index, endpoint_b.first,
+                                                 b_index)) {
+            continue;
+          }
+          TRY_XAIE_API_FATAL_ERROR(XAie_StrmConnCctDisable, &aiert->devInst,
+                                   tileLoc, endpoint_a.second, a_index,
+                                   endpoint_b.second, b_index);
+        }
+      }
+    }
+  }
+
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetCoreUnreset(int col, int row) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_CoreUnreset, &aiert->devInst, tileLoc);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetLock(int col, int row,
+                                                   int lockId) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  // Reset a single lock to value 0
+  XAie_Lock lock;
+  lock.LockId = lockId;
+  lock.LockVal = 0;
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_LockSetValue, &aiert->devInst, tileLoc,
+                              lock);
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetSwitchConnection(
+    int col, int row, WireBundle sourceBundle, int sourceChannel,
+    WireBundle destBundle, int destChannel) {
+  auto tileLoc = XAie_TileLoc(col, row);
+
+  // Helper lambda to map WireBundle to StrmSwPortType
+  auto mapBundle = [](WireBundle bundle) -> StrmSwPortType {
+    switch (bundle) {
+    case WireBundle::Core:
+      return CORE;
+    case WireBundle::DMA:
+      return DMA;
+    case WireBundle::FIFO:
+      return FIFO;
+    case WireBundle::South:
+      return SOUTH;
+    case WireBundle::West:
+      return WEST;
+    case WireBundle::North:
+      return NORTH;
+    case WireBundle::East:
+      return EAST;
+    case WireBundle::Trace:
+      return TRACE;
+    default:
+      return SOUTH;
+    }
+  };
+
+  StrmSwPortType sourcePortType = mapBundle(sourceBundle);
+  StrmSwPortType destPortType = mapBundle(destBundle);
+
+  // Disconnect the specific connection from source to destination
+  TRY_XAIE_API_LOGICAL_RESULT(XAie_StrmConnCctDisable, &aiert->devInst, tileLoc,
+                              sourcePortType, sourceChannel, destPortType,
+                              destChannel);
+
+  return success();
+}
+
+LogicalResult xilinx::AIE::AIERTControl::resetPerfCounters(int col, int row) {
+  auto tileLoc = XAie_TileLoc(col, row);
+  // Reset performance counters in all modules
+  // Try core module counters (if applicable)
+  for (int counterId = 0; counterId < 4; counterId++) {
+    // Ignore errors as not all tiles have all counter types
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_CORE_MOD,
+                                counterId);
+  }
+  // Try mem module counters
+  for (int counterId = 0; counterId < 4; counterId++) {
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_MEM_MOD,
+                                counterId);
+  }
+  // Try PL module counters (for shim tiles)
+  for (int counterId = 0; counterId < 4; counterId++) {
+    (void)XAie_PerfCounterReset(&aiert->devInst, tileLoc, XAIE_PL_MOD,
+                                counterId);
+  }
+  return success();
+}
+
 LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
                                                     const StringRef elfPath,
                                                     bool aieSim) {
@@ -854,17 +987,25 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
       int row = tileOp.rowIndex();
       if (auto coreOp = tileOp.getCoreOp()) {
         std::string fileName;
-        if (auto fileAttr = coreOp.getElfFile())
+        if (auto fileAttr = coreOp.getElfFile()) {
           fileName = fileAttr->str();
-        else
-          fileName = (llvm::Twine("core_") + std::to_string(col) + "_" +
-                      std::to_string(row) + ".elf")
-                         .str();
-        auto ps = std::filesystem::path::preferred_separator;
-        if (failed(addAieElf(
-                col, row,
-                (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str(),
-                aieSim)))
+        } else {
+          coreOp.emitOpError()
+              << "Expected lowered ELF file to be given as attribute "
+                 "`elf_file` for this core. Compile cores first.";
+          return failure();
+        }
+        // Check if fileName is already an absolute path.
+        // If so, use it directly. Otherwise, concatenate with elfPath.
+        std::string fullPath;
+        if (std::filesystem::path(fileName).is_absolute()) {
+          fullPath = fileName;
+        } else {
+          auto ps = std::filesystem::path::preferred_separator;
+          fullPath =
+              (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();
+        }
+        if (failed(addAieElf(col, row, fullPath, aieSim)))
           return failure();
       }
     }

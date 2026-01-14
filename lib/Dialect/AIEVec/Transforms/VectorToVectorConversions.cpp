@@ -22,6 +22,7 @@
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -52,7 +53,7 @@ static TargetBackend decodeTargetBackend(const std::string &backend) {
 
 static AIEArch decodeAIETarget(const std::string &target) {
   if (!target.empty()) {
-    if (target == "aieml" || target == "aie2")
+    if (target == "aieml" || target == "aie2" || target == "aie2p")
       return AIEArch::AIE2;
     if (target != "aie")
       return AIEArch::UNKNOWN;
@@ -159,10 +160,9 @@ struct SplitUnalignedTransferReadPattern
     Value oldInnerMostIdx = adaptor.getIndices().back();
     auto offsetCorrectionMap =
         AffineMap::get(1, 0, getAffineDimExpr(0, readOp.getContext()) - offset);
-    Value newInnerMostIdx = rewriter
-                                .create<affine::AffineApplyOp>(
-                                    readOp.getLoc(), offsetCorrectionMap,
-                                    SmallVector<Value, 1>({oldInnerMostIdx}))
+    Value newInnerMostIdx = affine::AffineApplyOp::create(
+                                rewriter, readOp.getLoc(), offsetCorrectionMap,
+                                SmallVector<Value, 1>({oldInnerMostIdx}))
                                 .getResult();
     SmallVector<Value, 8> alignedIdx;
     alignedIdx.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
@@ -170,8 +170,9 @@ struct SplitUnalignedTransferReadPattern
 
     // Create the aligned transfer read for a vector 2x as long that covers the
     // elements of the unaligned vector.
-    auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        loc, longVecTy, adaptor.getBase(), alignedIdx, adaptor.getPadding());
+    auto newReadOp = vector::TransferReadOp::create(
+        rewriter, loc, longVecTy, adaptor.getBase(), alignedIdx,
+        adaptor.getPadding());
 
     // Create a `vector.extract_strided_slice` to extract the unaligned vector.
     rewriter.replaceOpWithNewOp<vector::ExtractStridedSliceOp>(
@@ -208,13 +209,12 @@ struct ConvertSplatTransferReadToBroadcastPattern
     int64_t offset = 0;
     // If it's a zero-rank memory access
     if (cast<MemRefType>(srcMemRef.getType()).getRank() == 0) {
-      srcMemRef = rewriter
-                      .create<memref::ExpandShapeOp>(
-                          readOp.getLoc(), SmallVector<int64_t, 1>({1}),
-                          srcMemRef, SmallVector<ReassociationIndices, 1>({}))
+      srcMemRef = memref::ExpandShapeOp::create(
+                      rewriter, readOp.getLoc(), SmallVector<int64_t, 1>({1}),
+                      srcMemRef, SmallVector<ReassociationIndices, 1>({}))
                       .getResult();
-      newIdx = rewriter.create<arith::ConstantOp>(readOp.getLoc(),
-                                                  rewriter.getIndexAttr(0L));
+      newIdx = arith::ConstantOp::create(rewriter, readOp.getLoc(),
+                                         rewriter.getIndexAttr(0L));
       indices.push_back(newIdx);
     } else {
       indices.append(adaptor.getIndices().begin(), adaptor.getIndices().end());
@@ -238,18 +238,18 @@ struct ConvertSplatTransferReadToBroadcastPattern
       auto newAddrMap = AffineMap::get(
           1, 0, getAffineDimExpr(0, readOp.getContext()) + numElemsToSkip);
       newIdx =
-          rewriter
-              .create<affine::AffineApplyOp>(readOp.getLoc(), newAddrMap,
-                                             SmallVector<Value, 1>({newIdx}))
+          affine::AffineApplyOp::create(rewriter, readOp.getLoc(), newAddrMap,
+                                        SmallVector<Value, 1>({newIdx}))
               .getResult();
     }
     indices[indices.size() - 1] = newIdx;
-    auto newReadOp = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), readOp.getVector().getType(), srcMemRef, indices,
-        adaptor.getPadding());
-    auto extractOp = rewriter.create<vector::ExtractOp>(
-        readOp.getLoc(), newReadOp.getResult(), ArrayRef<int64_t>{offset});
-    rewriter.replaceOpWithNewOp<vector::SplatOp>(
+    auto newReadOp = vector::TransferReadOp::create(
+        rewriter, readOp.getLoc(), readOp.getVector().getType(), srcMemRef,
+        indices, adaptor.getPadding());
+    auto extractOp = vector::ExtractOp::create(rewriter, readOp.getLoc(),
+                                               newReadOp.getResult(),
+                                               ArrayRef<int64_t>{offset});
+    rewriter.replaceOpWithNewOp<vector::BroadcastOp>(
         readOp, newReadOp.getVector().getType(), extractOp.getResult());
     return success();
   }
@@ -275,7 +275,7 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
       return failure();
 
     // At the moment, we only accept ops we know we can swap with cast.
-    if (!isa<vector::BroadcastOp, vector::ExtractOp, vector::SplatOp,
+    if (!isa<vector::BroadcastOp, vector::ExtractOp,
              vector::ExtractStridedSliceOp>(defOp))
       return failure();
 
@@ -288,21 +288,21 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
       if (operandTy == extOpInTy) {
         Type outTy = extOp.getOut().getType();
         inputs.push_back(
-            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+            arith::ExtSIOp::create(rewriter, extOp.getLoc(), outTy, operand)
                 .getOut());
       } else if (extOpInVecTy && extOpInVecTy.getElementType() == operandTy) {
         // Promote from vector to scalar -> scalar conversion for this operand
         Type outTy =
             cast<VectorType>(extOp.getOut().getType()).getElementType();
         inputs.push_back(
-            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+            arith::ExtSIOp::create(rewriter, extOp.getLoc(), outTy, operand)
                 .getOut());
       } else if (operandVecTy && operandVecTy.getElementType() == extOpInTy) {
         // Promote from scalar to vector -> vector conversion for this operand
         Type outTy =
             VectorType::get(operandVecTy.getShape(), extOp.getOut().getType());
         inputs.push_back(
-            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+            arith::ExtSIOp::create(rewriter, extOp.getLoc(), outTy, operand)
                 .getOut());
       } else if (extOpInVecTy && operandVecTy &&
                  (extOpInVecTy.getElementType() ==
@@ -312,7 +312,7 @@ struct HoistCastOpToDataSourcePattern : public RewritePattern {
             operandVecTy.getShape(),
             cast<VectorType>(extOp.getOut().getType()).getElementType());
         inputs.push_back(
-            rewriter.create<arith::ExtSIOp>(extOp.getLoc(), outTy, operand)
+            arith::ExtSIOp::create(rewriter, extOp.getLoc(), outTy, operand)
                 .getOut());
       } else {
         inputs.push_back(operand);
@@ -358,11 +358,11 @@ struct SwapUnaryOpsPattern : public OpRewritePattern<UnaryOpB> {
     Type newA2BTy = inferTypeB2A(aOp, bOp);
 
     auto newA =
-        rewriter.create<UnaryOpB>(bOp->getLoc(), SmallVector<Type>({newA2BTy}),
-                                  aOp->getOperands(), bOp->getAttrs());
-    auto newB = rewriter.create<UnaryOpA>(
-        bOp->getLoc(), SmallVector<Type>({bOp.getResult().getType()}),
-        newA->getResults(), aOp->getAttrs());
+        UnaryOpB::create(rewriter, bOp->getLoc(), SmallVector<Type>({newA2BTy}),
+                         aOp->getOperands(), bOp->getAttrs());
+    auto newB = UnaryOpA::create(rewriter, bOp->getLoc(),
+                                 SmallVector<Type>({bOp.getResult().getType()}),
+                                 newA->getResults(), aOp->getAttrs());
     rewriter.replaceOp(bOp, newB.getResult());
     return success();
   }
@@ -384,8 +384,8 @@ static SmallVector<Value> collapseInnerMostDimIndices(PatternRewriter &b,
   }
   auto newIndexMap = AffineMap::get(numDims, 0, newIdxExpr);
   Value newInnerMostIdxValue =
-      b.create<affine::AffineApplyOp>(loc, newIndexMap,
-                                      indices.take_back(numDims))
+      affine::AffineApplyOp::create(b, loc, newIndexMap,
+                                    indices.take_back(numDims))
           .getResult();
   SmallVector<Value> newIdxRange;
   for (auto idx : indices.drop_back(numDims))
@@ -410,8 +410,8 @@ static Value collapseInnerMostShapeDims(PatternRewriter &b, Location loc,
       memRefTy.getMemorySpace());
   auto reassocIndices =
       getReassociationIndicesForCollapse(shape, newShape).value();
-  return b
-      .create<memref::CollapseShapeOp>(loc, newMemRefTy, val, reassocIndices)
+  return memref::CollapseShapeOp::create(b, loc, newMemRefTy, val,
+                                         reassocIndices)
       .getResult();
 }
 
@@ -449,8 +449,8 @@ struct FlattenMultDimTransferReadPattern
                                     adaptor.getIndices(), memRefShape, layout);
     auto newSource = collapseInnerMostShapeDims(
         rewriter, readOp.getLoc(), vecShape.size(), adaptor.getBase());
-    auto newVector = rewriter.create<vector::TransferReadOp>(
-        readOp.getLoc(), newVectorTy, newSource, newIndices,
+    auto newVector = vector::TransferReadOp::create(
+        rewriter, readOp.getLoc(), newVectorTy, newSource, newIndices,
         /*padding*/
         arith::getZeroConstant(rewriter, readOp.getLoc(),
                                newVectorTy.getElementType()));
@@ -503,9 +503,8 @@ struct FlattenMultDimTransferWritePattern
                         vectorTy.getElementType());
     AffineMap layout = memRefTy.getLayout().getAffineMap();
     auto newVector =
-        rewriter
-            .create<vector::ShapeCastOp>(writeOp.getLoc(), newVectorTy,
-                                         adaptor.getValueToStore())
+        vector::ShapeCastOp::create(rewriter, writeOp.getLoc(), newVectorTy,
+                                    adaptor.getValueToStore())
             .getResult();
     auto newIndices =
         collapseInnerMostDimIndices(rewriter, writeOp.getLoc(), vecShape.size(),
@@ -584,31 +583,27 @@ struct ExtractTransposeFromContractionOp
     rhsPermutation.push_back(nDim - 1);
     rhsPermutation.push_back(nDim - 2);
     auto transpRhsVecTy = getTransposedVectorType(rhsVecTy);
-    rhsVal = rewriter
-                 .create<vector::TransposeOp>(loc, transpRhsVecTy, rhsVal,
-                                              rhsPermutation)
+    rhsVal = vector::TransposeOp::create(rewriter, loc, transpRhsVecTy, rhsVal,
+                                         rhsPermutation)
                  .getResult();
 
     if (doExtF)
       rhsVal =
-          rewriter
-              .create<arith::ExtFOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+          arith::ExtFOp::create(
+              rewriter, loc,
+              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
               .getOut();
     if (doExtSI)
       rhsVal =
-          rewriter
-              .create<arith::ExtSIOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+          arith::ExtSIOp::create(
+              rewriter, loc,
+              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
               .getOut();
     if (doExtUI)
       rhsVal =
-          rewriter
-              .create<arith::ExtUIOp>(
-                  loc, VectorType::get(transpRhsVecTy.getShape(), rhsElemTy),
-                  rhsVal)
+          arith::ExtUIOp::create(
+              rewriter, loc,
+              VectorType::get(transpRhsVecTy.getShape(), rhsElemTy), rhsVal)
               .getOut();
 
     SmallVector<AffineMap, 4> oldIdxMaps(contractOp.getIndexingMapsArray());
@@ -628,6 +623,131 @@ struct ExtractTransposeFromContractionOp
         contractOp, contractOp.getResult().getType(), adaptor.getLhs(), rhsVal,
         adaptor.getAcc(), newIdxMaps, contractOp.getIteratorTypes());
 
+    return success();
+  }
+};
+
+/// Utility function to check if all provided indices are constant zero values.
+/// @return success() if all indices are constant zeros, failure() otherwise
+static LogicalResult isAllZeroOffsetAccess(mlir::OperandRange indices) {
+  if (!llvm::all_of(indices, [](Value val) {
+        IntegerAttr attr;
+        if (!matchPattern(val, m_Constant(&attr)))
+          return false;
+        return attr.getInt() == 0;
+      })) {
+    return failure();
+  }
+  return success();
+}
+
+/// Utility function to convert OpFoldResult offsets from a SubView operation
+/// into a vector of Values.
+static SmallVector<Value> opFoldResultsToValues(PatternRewriter &rewriter,
+                                                Location loc,
+                                                memref::SubViewOp subViewOp) {
+  OpBuilder::InsertionGuard g(rewriter);
+  rewriter.setInsertionPoint(subViewOp);
+  SmallVector<Value> newIndices;
+  for (OpFoldResult offset : subViewOp.getMixedOffsets()) {
+    Value indexVal;
+    if (auto attr = dyn_cast<Attribute>(offset)) {
+      indexVal = arith::ConstantIndexOp::create(
+          rewriter, loc, cast<IntegerAttr>(attr).getInt());
+    } else {
+      indexVal = cast<Value>(offset);
+    }
+    newIndices.push_back(indexVal);
+  }
+  return newIndices;
+}
+
+/// Pattern to canonicalize trivial vector.transfer_read operations on subviews.
+///
+/// This pattern eliminates unnecessary memref.subview operations when the
+/// transfer_read accesses the subview with all-zero indices. It transforms:
+///
+/// INPUT:
+///   %subview = memref.subview %memref [offset0, offset1, ...]
+///   %result = vector.transfer_read %subview[0, 0, ...]
+///
+/// OUTPUT:
+///   %result = vector.transfer_read %memref[offset0, offset1, ...]
+///
+/// The pattern only matches when:
+/// - The base of transfer_read is defined by a memref.subview operation
+/// - All indices in the transfer_read are constant zeros
+struct CanonicalizeTrivialReadAccessSubviewOpPattern
+    : public OpRewritePattern<vector::TransferReadOp> {
+  using OpRewritePattern<vector::TransferReadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferReadOp readOp,
+                                PatternRewriter &rewriter) const override {
+    // Check if the base memref comes from a subview operation
+    auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
+        readOp.getBase().getDefiningOp());
+    if (!subViewOp)
+      return failure();
+
+    // Verify that all access indices are zero
+    if (failed(isAllZeroOffsetAccess(readOp.getIndices())))
+      return failure();
+
+    // Convert subview offsets to explicit index values
+    SmallVector<Value> newIndices =
+        opFoldResultsToValues(rewriter, readOp.getLoc(), subViewOp);
+
+    // Replace with direct access to the original memref using subview offsets
+    rewriter.replaceOpWithNewOp<vector::TransferReadOp>(
+        readOp, readOp.getType(), subViewOp.getSource(), newIndices,
+        readOp.getPadding(), readOp.getInBoundsValues());
+    return success();
+  }
+};
+
+/// Pattern to canonicalize trivial vector.transfer_write operations on
+/// subviews.
+///
+/// This pattern eliminates unnecessary memref.subview operations when the
+/// transfer_write accesses the subview with all-zero indices. It transforms:
+///
+/// INPUT:
+///   %subview = memref.subview %memref [offset0, offset1, ...]
+///   vector.transfer_write %value, %subview[0, 0, ...]
+///
+/// OUTPUT:
+///   vector.transfer_write %value, %memref[offset0, offset1, ...]
+///
+/// The pattern only matches when:
+/// - The base of transfer_write is defined by a memref.subview operation
+/// - All indices in the transfer_write are constant zeros
+struct CanonicalizeTrivialWriteAccessSubviewOpPattern
+    : public OpRewritePattern<vector::TransferWriteOp> {
+  using OpRewritePattern<vector::TransferWriteOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::TransferWriteOp writeOp,
+                                PatternRewriter &rewriter) const override {
+    // Check if the base memref comes from a subview operation
+    auto subViewOp = dyn_cast_if_present<memref::SubViewOp>(
+        writeOp.getBase().getDefiningOp());
+    if (!subViewOp)
+      return failure();
+
+    // Verify that all access indices are zero
+    if (failed(isAllZeroOffsetAccess(writeOp.getIndices())))
+      return failure();
+
+    // Convert subview offsets to explicit index values
+    SmallVector<Value> newIndices =
+        opFoldResultsToValues(rewriter, writeOp.getLoc(), subViewOp);
+
+    // Create new transfer_write with direct access to original memref
+    vector::TransferWriteOp::create(rewriter, writeOp.getLoc(),
+                                    writeOp.getVector(), subViewOp.getSource(),
+                                    newIndices, writeOp.getInBoundsValues());
+
+    // Remove the original transfer_write operation
+    rewriter.eraseOp(writeOp);
     return success();
   }
 };
@@ -812,8 +932,9 @@ struct CanonicalizeVectorForAIEVecPass
 
   Option<std::string> aieTarget{
       *this, "aie-target",
-      llvm::cl::desc("Select AIE version: \"aie\" or \"aie2\". This will "
-                     "determine the vector size and available operations."),
+      llvm::cl::desc(
+          "Select AIE version: \"aie\", \"aie2\", or \"aie2p\". This will "
+          "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
   Option<std::string> targetBackend{
@@ -856,6 +977,13 @@ struct CanonicalizeVectorForAIEVecPass
     } else {
       populateAIE2CanonicalizeConversionPatterns(patterns, backend);
       configureAIE2CanonicalizeLegalizations(target, backend);
+    }
+
+    {
+      RewritePatternSet patterns(context);
+      patterns.add<CanonicalizeTrivialReadAccessSubviewOpPattern,
+                   CanonicalizeTrivialWriteAccessSubviewOpPattern>(context);
+      (void)applyPatternsGreedily(op, std::move(patterns));
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {

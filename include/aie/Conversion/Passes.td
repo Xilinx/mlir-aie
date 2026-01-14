@@ -37,6 +37,9 @@ def ConvertAIEVecToLLVM : Pass<"convert-aievec-to-llvm", "mlir::ModuleOp"> {
                            "mlir::vector::VectorDialect",
                            "xilinx::xllvm::XLLVMDialect"];
   let options = [
+      Option<"aieTarget", "aie-target", "std::string",
+             /*default=*/"\"aie2\"",
+             "Select AIE version: \\\"aie\\\", \\\"aie2\\\", or \\\"aie2p\\\". This will determine which XLLVM intrinsics to use.">,
       Option<"aie2Fp32Emulation", "aie2-fp32-emulation-strategy", "xilinx::aievec::Aie2Fp32Emulation",
              /*default=*/"xilinx::aievec::Aie2Fp32Emulation::AccuracySafe",
              "Set the AIE2 FP32 emulation strategy. Elementwise multiplication and matrix multiplication intrinsics for FP32 input type are emulated using bfloat16 data-path.",
@@ -72,6 +75,8 @@ def ConvertAIEToTransaction : Pass<"convert-aie-to-transaction",
   let options = [
       Option<"clElfDir", "elf-dir", "std::string", /*default=*/"",
              "Where to find ELF files">,
+      Option<"clDeviceName", "device-name", "std::string", /*default=*/"",
+             "Which device to generate code for; if none specified, process all devices">,
   ];
 }
 
@@ -94,6 +99,8 @@ def ConvertAIEToControlPackets : Pass<"convert-aie-to-control-packets",
   let options = [
       Option<"clElfDir", "elf-dir", "std::string", /*default=*/"",
              "Where to find ELF files">,
+      Option<"clDeviceName", "device-name", "std::string", /*default=*/"",
+             "Which device to generate code for; if none specified, process all devices">,
   ];
 }
 

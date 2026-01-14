@@ -7,10 +7,9 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 
 # REQUIRES: ryzen_ai_npu1, peano
-# XFAIL: *
 #
 # RUN: %python %S/aie2.py npu 0 > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --no-xchesscc --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --no-xchesscc --no-xbridge --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 import numpy as np
@@ -19,7 +18,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 
 def my_vector_add():

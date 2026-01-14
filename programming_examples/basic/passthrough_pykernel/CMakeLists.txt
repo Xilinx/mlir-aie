@@ -10,10 +10,11 @@
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
-
+cmake_minimum_required(VERSION 3.30)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
+include(../../common.cmake)
 
 find_program(WSL NAMES powershell.exe)
 
@@ -39,20 +40,14 @@ endif ()
 project(${ProjectName})
 
 
-add_executable(${currentTarget}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
-    test.cpp
-)
+add_executable(${currentTarget} test.cpp)
 
 target_compile_definitions(${currentTarget} PUBLIC
         PASSTHROUGH_SIZE=${PASSTHROUGH_SIZE}
-        DISABLE_ABI_CHECK=1
-        )
+)
 
 target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib
     ${XRT_INC_DIR}
 )
 
@@ -63,4 +58,6 @@ target_link_directories(${currentTarget} PUBLIC
 target_link_libraries(${currentTarget} PUBLIC
     xrt_coreutil
 )
+
+target_link_test_utils(${currentTarget})
 

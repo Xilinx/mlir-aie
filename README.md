@@ -14,7 +14,7 @@ This project emphasizes fast, open-source toolchains for NPU devices including L
 
 This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for AI Engine-enabled devices, such as [AMD Ryzen™ AI](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html) and [Versal™](https://www.xilinx.com/products/technology/ai-engine.html).  This repository can be used to generate low-level configurations for the AI Engine portion of these devices. AI Engines are organized as a spatial array of tiles, where each tile contains AI Engine cores and/or memories. The spatial array is connected by stream switches that can be configured to route data between AI Engine tiles scheduled by their programmable Data Movement Accelerators (DMAs). This repository contains MLIR representations, with multiple levels of abstraction, to target AI Engine devices. This enables compilers and developers to program AI Engine cores, as well as describe data movements and array connectivity.
 
-The IRON Python API for Ryzen™ AI NPUs is described in the following paper: 
+The IRON Python API for Ryzen™ AI NPUs is described in the following paper:
 
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
@@ -33,7 +33,7 @@ These instructions will guide you through everything required for building and e
 If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+ by installing the Hardware Enablement (HWE) stack:
 
   ```bash
-  sudo apt update 
+  sudo apt update
   sudo apt install --install-recommends linux-generic-hwe-24.04
   sudo reboot
   ```
@@ -55,7 +55,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     bash ./utils/build_drivers.sh
     ```
 
-1. Reboot as directed after the script exits. 
+1. Reboot as directed after the script exits.
 
     ```bash
     sudo reboot
@@ -71,10 +71,12 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    > At the bottom of the output you should see:
    >  ```
    >  Devices present
-   >  BDF             :  Name             
+   >  BDF             :  Name
    > ------------------------------------
    >  [0000:66:00.1]  :  NPU Strix
    >  ```
+
+   IRON requires that `xrt-smi` and associated tools be in your path.
 
 ### Install IRON and MLIR-AIE Prerequisites
 
@@ -107,33 +109,46 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    python3 -m pip install --upgrade pip
    ```
 
-1. Install IRON library, mlir-aie and llvm-aie compilers from whls:
+1. Install IRON library by installing the `mlir-aie` wheels:
 
-   For release v1.0:
+   For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take,
+   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. 
+   If you install from something other than the latest wheels, make sure 
+   you use the repo commit -- and installation instructions -- from that point in time.
+
+   1. **Latest:** For the latest wheels (not necessarily a release):
+      ```bash
+      # Install IRON library and mlir-aie from the latest wheel
+      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
+      ```
+
+   1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.
+      ```bash
+      # Get the latest release version
+      latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq -r '.tag_name')
+      latest_tag="${latest_tag_with_v#v}"
+
+      # Install IRON library and mlir-aie from the latest stable release
+      python3 -m pip install mlir_aie==${latest_tag} -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${latest_tag_with_v}
+      git checkout $latest_tag_with_v
+      ```
+
+   1. **Any Release:** You can install a specific version of `mlir-aie` from the release wheels. To see available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
+
+      ```bash
+      # Install IRON library and mlir-aie from a specific release,
+      # e.g., <verison> in the following command could be replaced with v1.1.3
+      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
+      git checkout <version>
+      ```
+
+1. Install the Peano compiler (the `llvm-aie` wheels) and dependencies:
    ```bash
-   # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/v1.0
-
-   # Install Peano from a llvm-aie wheel
-   python3 -m pip install https://github.com/Xilinx/llvm-aie/releases/download/nightly/llvm_aie-19.0.0.2025041501+b2a279c1-py3-none-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
-   ```
-
-   For daily latest:
-   ```bash
-   # Install IRON library and mlir-aie from a wheel
-   python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-2
-
    # Install Peano from llvm-aie wheel
    python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-   ```
-
-1. Install required Python packages:
-   ```bash
-   # Install basic Python requirements (still needed for release v1.0, but is no longer needed for latest wheels)
-   python3 -m pip install -r python/requirements.txt
 
    # Install MLIR Python Extras
-   HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
+   EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie python3 -m pip install -r python/requirements_extras.txt
    ```
 
 1. (Optional) Install Python packages required for development and testing:
@@ -143,6 +158,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
+   ```
+
+1. Setup environment
+   ```bash
+   source utils/env_setup.sh
    ```
 
 1. (Optional) Install ML Python packages for ml programming examples:
@@ -159,19 +179,15 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # This creates an ipykernel (for use in notebooks) using the ironenv venv
    python3 -m ipykernel install --user --name ironenv
 
+   # Only for Release v1.0 and non wheel-based installs:
    # The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.
-   # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g. if they are run with
+   # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g., if they are run with
    # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
    # ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is
    # available or not.
    MLIR_AIE_INSTALL=`$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie` \
    venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'` \
    echo ${MLIR_AIE_INSTALL}/python > $venv_site_packages/mlir-aie.pth
-   ```
-
-1. Setup environment and add tools to PATHs
-   ```bash
-   source utils/env_setup.sh
    ```
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
@@ -202,7 +218,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ## Optional: Install AIETools
 
-> You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials. 
+> You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials.
 
 1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3 Early Access](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
 
@@ -244,13 +260,15 @@ For your design of interest, for instance from [programming_examples](../program
 ### Update BIOS:
 
 Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
-   ```Advanced → CPU Configuration → IPU``` 
+   ```Advanced → CPU Configuration → IPU```
 
 > **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
 
-# Detailed Getting Started Guides and Documentation: 
+# Detailed Getting Started Guides and Documentation:
 
 [IRON AIE Application Programming Guide](programming_guide)
+
+[Device Descriptions](docs/Devices.md)
 
 [Building mlir-aie tools from source](docs/Building.md)
 

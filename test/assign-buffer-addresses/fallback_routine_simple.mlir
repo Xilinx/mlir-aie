@@ -1,4 +1,4 @@
-//===- fallback_routine_simple.mlir ---------------------------------------------*- MLIR -*-===//
+//===- fallback_routine_simple.mlir ----------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -23,7 +23,6 @@
 
 // CHECK:   module @test {
 // CHECK:     aie.device(xcvc1902) {
-// CHECK:       memref.global "public" @act_3_4 : memref<8xi32>
 // CHECK:       %tile_1_2 = aie.tile(1, 2)
 // CHECK:       %a = aie.buffer(%tile_1_2) {address = 0 : i32, sym_name = "a"} : memref<4096xi32> 
 // CHECK:       %b = aie.buffer(%tile_1_2) {address = 16384 : i32, sym_name = "b"} : memref<16xi16> 

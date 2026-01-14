@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -82,13 +82,13 @@ run_py: build/final_${data_size}.xclbin build/insts_${data_size}.bin
 
 trace: ${targetname}_${data_size}.exe build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} ./$< -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --output trace_passthrough_kernel.json
-	${srcdir}/../../utils/get_trace_summary.py --input trace_passthrough_kernel.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --output trace_passthrough_kernel.json
+	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_passthrough_kernel.json
 
 trace_py: build/final_trace_${data_size}.xclbin build/insts_${data_size}.bin
 	${powershell} python3 ${srcdir}/test.py -x build/final_trace_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE -t ${trace_size} -i1s ${in1_size} -os ${out_size}
-	${srcdir}/../../utils/parse_trace.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --output trace_${targetname}.json
-	${srcdir}/../../utils/get_trace_summary.py --input trace_${targetname}.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie2_trace_lineBased_8b_${data_size}.mlir --output trace_${targetname}.json
+	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt parse*json trace*json

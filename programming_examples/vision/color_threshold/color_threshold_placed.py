@@ -9,10 +9,10 @@ import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.extras.dialects.ext import arith
+from aie.extras.dialects import arith
 from aie.extras.context import mlir_mod_ctx
 from aie.helpers.util import np_ndarray_type_get_shape
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 
 def color_threshold(dev, width, height):
@@ -141,7 +141,7 @@ def color_threshold(dev, width, height):
 
                 elemIn = inOOB_L2L1_1.acquire(ObjectFifoPort.Consume, 1)
                 elemOut = outOOB_L1L2_1.acquire(ObjectFifoPort.Produce, 1)
-            
+
                 thresholdLine(
                     elemIn,
                     elemOut,

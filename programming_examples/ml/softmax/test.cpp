@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,13 +64,14 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
   for (uint32_t i = 0; i < size; i++) {
 
     if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04, 0.001)) {
-      std::cout << "Error in output " << B[i] << " != " << RefVec[i]
-                << std::endl;
-      errors++;
-    } else {
-      if (verbosity > 1)
-        std::cout << "Correct output " << B[i] << " == " << RefVec[i]
+      if (verbosity >= 1) {
+        std::cout << "Error in output " << B[i] << " != " << RefVec[i]
                   << std::endl;
+      }
+      errors++;
+    } else if (verbosity >= 1) {
+      std::cout << "Correct output " << B[i] << " == " << RefVec[i]
+                << std::endl;
     }
   }
   return errors;
@@ -83,7 +84,8 @@ int main(int argc, const char *argv[]) {
   cxxopts::ParseResult vm;
   test_utils::add_default_options(options);
 
-  options.add_options()("npu", "Select NPU", cxxopts::value<int>()->default_value("2"));
+  options.add_options()("npu", "Select NPU",
+                        cxxopts::value<int>()->default_value("2"));
 
   test_utils::parse_options(argc, argv, options, vm);
 
@@ -146,14 +148,14 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    if(dev == 1) {
+    if (dev == 1) {
       // NPU1: Use bfloat16 values in range [4.0, 4.0]
       AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
                                               (std::bfloat16_t)-4.0);
-    } else if(dev == 2) {
+    } else if (dev == 2) {
       // NPU2: Use bfloat16 values in range [-512.0, 512.0]
       AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1024.0,
-                                            (std::bfloat16_t)-512.0);
+                                              (std::bfloat16_t)-512.0);
     }
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));

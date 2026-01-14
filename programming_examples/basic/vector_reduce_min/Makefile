@@ -57,10 +57,10 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --warmup 10 --iters 20
 
 trace:
-	../../utils/parse_trace.py --input trace.txt --mlir build/aie.mlir --output parse_eventIR_vs.json
+	../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie.mlir --output parse_eventIR_vs.json
 
 clean_trace:
 	rm -rf tmpTrace trace.txt

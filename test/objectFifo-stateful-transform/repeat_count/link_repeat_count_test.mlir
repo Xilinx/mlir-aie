@@ -12,21 +12,11 @@
 
 // CHECK: module @memtileRepeat {
 // CHECK:   aie.device(npu1) {
-// CHECK:     memref.global "public" @of3_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of3 : memref<16xi32>
-// CHECK:     memref.global "public" @of2_cons : memref<32xi32>
-// CHECK:     memref.global "public" @of2 : memref<32xi32>
-// CHECK:     memref.global "public" @of1_cons : memref<16xi32>
-// CHECK:     memref.global "public" @of1 : memref<16xi32>
-// CHECK:     memref.global "public" @of0_cons : memref<32xi32>
-// CHECK:     memref.global "public" @of0 : memref<32xi32>
 // CHECK:     %{{.*}}tile_1_0 = aie.tile(1, 0)
 // CHECK:     %{{.*}}tile_1_1 = aie.tile(1, 1)
 // CHECK:     %{{.*}}tile_2_1 = aie.tile(2, 1)
 // CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:     %{{.*}}tile_3_3 = aie.tile(3, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.lock(%{{.*}}tile_1_0, 2) {init = 1 : i32, sym_name = "of3_cons_prod_lock_0"}
-// CHECK:     %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_1_0, 3) {init = 0 : i32, sym_name = "of3_cons_cons_lock_0"}
 // CHECK:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_2_1) {sym_name = "of2_cons_buff_0"} : memref<32xi32> 
 // CHECK:     %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_2_1, 0) {init = 1 : i32, sym_name = "of2_cons_prod_lock_0"}
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_2_1, 1) {init = 0 : i32, sym_name = "of2_cons_cons_lock_0"}
@@ -39,13 +29,11 @@
 // CHECK:     %[[VAL_11:.*]] = aie.buffer(%{{.*}}tile_1_1) {sym_name = "of0_cons_buff_0"} : memref<32xi32> 
 // CHECK:     %[[VAL_12:.*]] = aie.lock(%{{.*}}tile_1_1, 0) {init = 3 : i32, sym_name = "of0_cons_prod_lock_0"}
 // CHECK:     %[[VAL_13:.*]] = aie.lock(%{{.*}}tile_1_1, 1) {init = 0 : i32, sym_name = "of0_cons_cons_lock_0"}
-// CHECK:     %[[VAL_14:.*]] = aie.lock(%{{.*}}tile_1_0, 0) {init = 1 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK:     %[[VAL_15:.*]] = aie.lock(%{{.*}}tile_1_0, 1) {init = 0 : i32, sym_name = "of0_cons_lock_0"}
 // CHECK:     aie.flow(%{{.*}}tile_1_0, DMA : 0, %{{.*}}tile_1_1, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_1_2, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_3_3, DMA : 0, %{{.*}}tile_2_1, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_2_1, DMA : 0, %{{.*}}tile_1_0, DMA : 0)
-// CHECK:     aie.shim_dma_allocation @of0(MM2S, 0, 1)
+// CHECK:     aie.shim_dma_allocation @of0_shim_alloc(%shim_noc_tile_1_0, MM2S, 0)
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%{{.*}}tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -120,7 +108,7 @@
 // CHECK:     ^bb4:  // pred: ^bb2
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @of3(S2MM, 0, 1)
+// CHECK:     aie.shim_dma_allocation @of3_shim_alloc(%shim_noc_tile_1_0, S2MM, 0)
 // CHECK:   }
 // CHECK: }
 

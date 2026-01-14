@@ -1,4 +1,4 @@
-# Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include(AddMLIRPython)
@@ -26,16 +26,40 @@ declare_mlir_python_sources(AIEPythonSources.Util
     util.py
 )
 
+declare_mlir_python_sources(AIEPythonSources.Tools
+  ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    tools/__init__.py
+)
+
 declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
+    utils/__init__.py
     utils/test.py
-    utils/xrt.py
     utils/ml.py
-    utils/trace.py
-    utils/trace_events_enum.py
-    utils/compile.py
     utils/config.py
+    utils/jit.py
+    utils/npukernel.py
+    utils/hostruntime/__init__.py
+    utils/hostruntime/hostruntime.py
+    utils/hostruntime/tensor_class.py
+    utils/hostruntime/xrtruntime/__init__.py
+    utils/hostruntime/xrtruntime/hostruntime.py
+    utils/hostruntime/xrtruntime/tensor.py
+    utils/compile/__init__.py
+    utils/compile/link.py
+    utils/compile/utils.py
+    utils/compile/cache/circular_cache.py
+    utils/compile/cache/utils.py
+    utils/trace/__init__.py
+    utils/trace/config.py
+    utils/trace/events/__init__.py
+    utils/trace/event_ir.py
+    utils/trace/get_trace_summary.py
+    utils/trace/parse.py
+    utils/trace/setup.py
+    utils/trace/utils.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Helpers
@@ -63,6 +87,8 @@ declare_mlir_dialect_python_bindings(
   DIALECT_NAME aie
   GEN_ENUM_BINDINGS_TD_FILE
     "dialects/AIEBinding.td"
+  DEPENDS
+    aie-headers
 )
 
 declare_mlir_dialect_python_bindings(
@@ -72,6 +98,8 @@ declare_mlir_dialect_python_bindings(
   SOURCES
     dialects/aiex.py
   DIALECT_NAME aiex
+  DEPENDS
+    aie-headers
 )
 
 declare_mlir_dialect_python_bindings(
@@ -81,6 +109,8 @@ declare_mlir_dialect_python_bindings(
   SOURCES
     dialects/aievec.py
   DIALECT_NAME aievec
+  DEPENDS
+    aie-headers
 )
 
 configure_file(compiler/aiecc/configure.py.in aie/compiler/aiecc/configure.py)
@@ -93,13 +123,14 @@ install(
   DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/compiler/aiecc
 )
 
-# Note that compiler/ is not globbed but compiler/aiecc/
-# this is so that compiler/aiecc.py does not get distributed
+# Note that compiler/ is not globbed but compiler/aiecc/ and compiler/txn2mlir/
+# this is so that compiler/aiecc.py and compiler/txn2mlir.py do not get distributed
 # through this dir but actually through bin (see all the way at the bottom of this file)
 declare_mlir_python_sources(AIEPythonSources.Compiler
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     compiler/aiecc/*.py
+    compiler/txn2mlir/*.py
 )
 
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
@@ -343,12 +374,86 @@ else ()
       AIEAggregateCAPI
   )
 
+  ################################################################################
+  # Generated trace events enum files and copy to Python package directories
+  ################################################################################
+
+  # Input header files from aie-rt
+  set(AIE_RT_EVENTS_DIR "${AIE_SOURCE_DIR}/third_party/aie-rt/driver/src/events")
+  set(EVENTS_HEADER_FILES
+    "${AIE_RT_EVENTS_DIR}/xaie_events_aie.h"
+    "${AIE_RT_EVENTS_DIR}/xaie_events_aieml.h"
+    "${AIE_RT_EVENTS_DIR}/xaie_events_aie2p.h"
+  )
+
+  # Output directory for generated files in build directory
+  set(GENERATED_EVENTS_DIR "${CMAKE_CURRENT_BINARY_DIR}/regdb")
+
+  # Generated Python enum files in the build directory
+  set(GENERATED_EVENTS_ENUM_FILES
+    "${GENERATED_EVENTS_DIR}/aie.py"
+    "${GENERATED_EVENTS_DIR}/aie2.py"
+    "${GENERATED_EVENTS_DIR}/aie2p.py"
+  )
+
+  # Generated JSON database in the build directory
+  set(GENERATED_EVENTS_JSON_FILENAME "events.json")
+  set(GENERATED_EVENTS_JSON "${GENERATED_EVENTS_DIR}/${GENERATED_EVENTS_JSON_FILENAME}")
+
+  # Add custom command to generate the event enum files
+  add_custom_command(
+    OUTPUT ${GENERATED_EVENTS_ENUM_FILES} ${GENERATED_EVENTS_JSON}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${GENERATED_EVENTS_DIR}
+    COMMAND ${Python3_EXECUTABLE} 
+      ${AIE_SOURCE_DIR}/utils/generate_events_enum.py
+      -i ${EVENTS_HEADER_FILES}
+      -o ${GENERATED_EVENTS_DIR}
+      --json ${GENERATED_EVENTS_JSON_FILENAME}
+      --python-prefix ""
+    DEPENDS 
+      ${AIE_SOURCE_DIR}/utils/generate_events_enum.py
+      ${EVENTS_HEADER_FILES}
+    COMMENT "Generating trace events enum files from aie-rt headers"
+    VERBATIM
+  )
+
+  # Create a custom target for the generated files
+  add_custom_target(GenerateTraceEventsEnum ALL
+    DEPENDS ${GENERATED_EVENTS_ENUM_FILES} ${GENERATED_EVENTS_JSON}
+  )
+
+  # Ensure AIEPythonModules depends on GenerateTraceEventsEnum
+  add_dependencies(AIEPythonModules GenerateTraceEventsEnum)
+
+  # Copy generated event enum files to Python package build directory
+  foreach(_file ${GENERATED_EVENTS_ENUM_FILES})
+    get_filename_component(_filename ${_file} NAME)
+    add_custom_command(
+      TARGET AIEPythonModules POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace/events
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${_file}
+        ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace/events/${_filename}
+      COMMENT "Copying ${_filename} to build Python package"
+    )
+  endforeach()
+
+  # Install generated event enum files
+  install(
+    FILES 
+      ${GENERATED_EVENTS_ENUM_FILES}
+    DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils/trace/events
+    COMPONENT aie-python
+  )
+
+
 endif ()
 
 target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
 
 # Copy the runtime libs into the _mlir_libs directory for convenience.
 set(_runtime_deps
+  mlir_apfloat_wrappers
   mlir_async_runtime
   mlir_c_runner_utils
   mlir_float16_utils
@@ -418,4 +523,3 @@ add_custom_command(
 )
 # during install
 install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py DESTINATION bin)
-

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -237,13 +237,13 @@ These convenience python wrappers perform the `sync` steps under the hood when t
 Just like the C/C++ host code wrapper `setup_and_run_aie` found in [../../../runtime_lib/test_lib/xrt_test_wrapper_.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h), for python, we have a similar wrapper `setup_and_run_aie` in [../../../python/utils/xrt.py](../../../python/utils/xrt.py). This likewise simplifies the `test.py` and can be used as a template for design patterns.
 
 ## <u>3. Parse text file to generate a waveform json file</u>
-Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_trace.py](../../../programming_examples/utils/parse_trace.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
+Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse_trace.py](../../../python/utils/trace/parse.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
 ```Makefile
-	../../../programming_examples/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
+	../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir --output trace_4b.json
 ```
-This leverages the python parse scripts under [programming_examples/utils](../../../programming_examples/utils/). See the [README.md](../../../programming_examples/utils/README.md) to get more details about how to use the python parse scripts.
+This leverages the python parse scripts under [python/utils](../../../python/utils/). See the [README.md](../../../python/utils/README.md) to get more details about how to use the python parse scripts.
 
-In our example [Makefile](./Makefile), we also run [get_trace_summary.py](../../../programming_examples/utils/get_trace_summary.py) to analyze the generated JSON trace file to count the number of invocations of the kernel and the cycle count of those invocations. This depends on the kernel having an `event0` and `event1` function call at the beginning and end of the kernel, which our example does. `event0` and `event1` are functions that generate an internal event and is helpful for us to mark the boundaries of a function call.
+In our example [Makefile](./Makefile), we also run [get_trace_summary.py](../../../python/utils/trace/get_trace_summary.py) to analyze the generated JSON trace file to count the number of invocations of the kernel and the cycle count of those invocations. This depends on the kernel having an `event0` and `event1` function call at the beginning and end of the kernel, which our example does. `event0` and `event1` are functions that generate an internal event and is helpful for us to mark the boundaries of a function call.
 
 ## <u>4. Open json file in a visualization tool like Perfetto</u>
 Open https://ui.perfetto.dev in your browser and then open up the waveform json file generated in step 3. You can navigate the waveform viewer as you would a standard waveform viewer and can even zoom/pan the waveform with the a,s,w,d keyboard keys.
@@ -273,11 +273,11 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     * `INSTR_VECTOR` - Vector instructions like vector MAC or vector load/store. Here, we are running a scalar implementation so there are no vector events.
     * `PORT_RUNNING_0` up to `PORT_RUNNING_7` - You can listen for a variety of events, such as `PORT_RUNNING`, `PORT_IDLE` or `PORT_STALLED` on up to 7 ports. To select which port to listen to, use the `PortEvent` Python class as your event. For example, to listen to master port 1:
         ```
-        from aie.utils.trace import configure_simple_tracing_aie2, PortEvent
-        from aie.utils.trace_events_enum import CoreEvent, MemEvent, PLEvent, MemTileEvent
+        from aie.utils.trace import configure_simple_tracing_aie2
+        from aie.utils.trace.events import PortEvent, CoreEvent, MemEvent, PLEvent, MemTileEvent
         trace_utils.configure_simple_tracing_aie2(
             # ... other arguments as above
-            events=[trace_utils.PortEvent(CoreEvent.PORT_RUNNING_0, 1, master=True)]
+            events=[trace_utils.events.PortEvent(CoreEvent.PORT_RUNNING_0, 1, master=True)]
         )
         ```
     * `PORT_RUNNING_1` - Mapped to Port 1 which is by default configured to the MM2S0 output (DMA from local memory to stream). This is usually the first output.

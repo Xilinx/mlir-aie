@@ -32,13 +32,13 @@ class ObjectFifo(Resolvable):
         depth: int | None = 2,
         name: str | None = None,
         dims_to_stream: list[Sequence[int]] | None = None,
-        default_dims_from_stream_per_cons: list[Sequence[int]] | None = None,
+        dims_from_stream_per_cons: list[Sequence[int]] | None = None,
         plio: bool = False,
     )
 ```
 The Object FIFO functions as an ordered buffer that has a count of `depth` objects; by default it is set to `2` which represents double or ping-pong buffering. All objects in an Object FIFO have to be of the same `obj_type` datatype. The datatype is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `np.ndarray[(16,), np.dtype[np.int32]]`). The `name` input must be unique and can either be given by the user or left empty for the compiler to complete. It is required for subsequent lowering steps in the compiler flow.
 
-As it traverses the AIE array, data can be restructured using the capabilities of Direct Memory Access channels (DMAs). These components are explained in more detail [here](./README.md#advanced-topic-data-movement-accelerators), however as a quick introduction, DMAs exist at every tile in the array and they are responsible for taking data arriving on the AXI stream interconnect and writing it into the tile's local memory, and inversely. DMAs can be given access patterns to express the order in which data should be sent onto the AXI stream by the Object FIFO's producer (using the `dims_to_stream` input) or read from it by each consumer (using the `default_dims_from_stream_per_cons` input). These inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)). The `plio` input can be used when one of the Object FIFO's endpoints is a Shim tile to indicate to the compiler that the communication should be wired through a dedicated `plio` port.
+As it traverses the AIE array, data can be restructured using the capabilities of Direct Memory Access channels (DMAs). These components are explained in more detail [here](./README.md#advanced-topic-data-movement-accelerators), however as a quick introduction, DMAs exist at every tile in the array and they are responsible for taking data arriving on the AXI stream interconnect and writing it into the tile's local memory, and inversely. DMAs can be given access patterns to express the order in which data should be sent onto the AXI stream by the Object FIFO's producer (using the `dims_to_stream` input) or read from it by each consumer (using the `dims_from_stream_per_cons` input). These inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)). The `plio` input can be used when one of the Object FIFO's endpoints is a Shim tile to indicate to the compiler that the communication should be wired through a dedicated `plio` port.
 
 Below is an example of how to initialize an Object FIFO named `in` of datatype `<256xi32>` with depth `3`:
 ```python
@@ -341,7 +341,34 @@ The `plio` input is used to provide information about the data movement configur
 
 The Object FIFO is a synchronized data movement primitive that couples dedicated synchronization resources to its objects to ensure that only one actor at a time can access them, thus preventing data corruption. These synchronization resources cost additional cycles at runtime and it may be desirable to remove them when they aren't required. One example of such a situation is when using Object FIFOs with same producer / consumer as the accesses within a core will execute sequentially. The `disable_synchronization` input of the Object FIFO serves that exact purpose and when it is set to true there will be no synchronization resources coupled to the objects.
 
-### Advanced Topic: Direct Memory Access channels
+### Object FIFO Compiler Flags
+
+The Object FIFO lowering pass presents two compiler flags which are made available through the `aiecc.py` compiler pipeline. These flags enable the user to drive some of the lowering decisions which affect the complexity of the Worker code generated for object accesses, as well as what hardware capabilities will be leveraged for the data movement represented by the Object FIFOs.
+
+These flags are:
+- `dynamic-objFifos`: when enabled, the compiler will generated MLIR `scf.index_switch` operations to keep track of the number of acquired objects versus released ones during the execution of a Worker. This feature is particularly useful when these numbers differ between iterations of a Worker's execution, as it enables dynamic runtime resolution of the number of accessed objects.
+- `packet-sw-objFifos`: when enabled, the compiler will configure the AXI stream data movement using packet switched flows (instead of the default circuit switched flows). This feature is in the early stages of development and currently only supports Object FIFOs between Workers, and between Workers and external memory.
+
+These flags can be combined with calls to `aiecc.py`, or directly to the Object FIFO lowering pass, as follows:
+```
+aiecc.py --packet-sw-objFifos <path to MLIR design file>
+aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos" <path to MLIR design file>
+```
+
+### Advanced Topic: Directed Allocation of Objects
+
+The Object FIFO lowering makes decisions about where memory elements should be allocated in the memories of the AIE array. In some cases, it may be desirable to target specific AIE tiles to be used for these allocations. For these cases, the `allocate()` function can be used as follows:
+
+```python
+A = tile(1, 2)
+B = tile(1, 3)
+of_in = object_fifo("in", A, B, 3, np.ndarray[(256,), np.dtype[np.int32]])
+of_in.allocate(B)
+```
+
+> **NOTE:**  Currently, both producer and consumer of the Object FIFO must have direct shared memory access to the targeted AIE tile.
+
+### Advanced Topic: Direct Memory Access Channels
 
 **The following topic is not required to understand the rest of this guide.**
 

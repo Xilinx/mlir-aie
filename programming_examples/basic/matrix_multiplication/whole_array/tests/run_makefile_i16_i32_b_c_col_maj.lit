@@ -1,0 +1,10 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, peano
+//
+// RUN: mkdir -p test_i16_i32_b_c_col_maj
+// RUN: cd test_i16_i32_b_c_col_maj
+// RUN: make -f %S/../Makefile clean
+// RUN: env dtype_in=i16 dtype_out=i32 b_col_maj=1 c_col_maj=1 make -f %S/../Makefile 
+// RUN: %run_on_npu1% env dtype_in=i16 dtype_out=i32 b_col_maj=1 c_col_maj=1 make -f %S/../Makefile run

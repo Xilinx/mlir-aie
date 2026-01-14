@@ -1,18 +1,18 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Copyright (C) 2025, Advanced Micro Devices, Inc.
-# 
+#
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-aie2_runtime_dir = ${AIEOPT_DIR}/aie_runtime_lib/AIE2
+aie2_runtime_dir = ${MLIR_AIE_DIR}/aie_runtime_lib/AIE2
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = relu
@@ -21,12 +21,12 @@ cols ?= 4
 chans ?= 2
 
 # Input and output sizes in bytes is length * 2
-in1_size = ${length} * 2 
-out_size = ${length} * 2 
+in1_size = ${length} * 2
+out_size = ${length} * 2
 
 ifeq ($(devicename),npu2)
 VPATH :=${srcdir}/../../../aie_kernels/aie2
-else 
+else
 VPATH :=${srcdir}/../../../aie_kernels/aie2
 endif
 
@@ -50,10 +50,10 @@ build/${targetname}.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/${targetname}.mlir build/${targetname}.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host \
 	            --xclbin-name=${@F} \
 				--no-xchesscc --no-xbridge \
-				--aie-generate-npu --npu-insts-name=insts.bin $(<:%=../%)
+				--aie-generate-elf --elf-name=insts.elf $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -63,11 +63,11 @@ ${targetname}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${length}
+	${powershell} ./$< -x build/final.xclbin -i build/insts.elf -k MLIR_AIE -l ${length}
 
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

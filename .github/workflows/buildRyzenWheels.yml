@@ -9,6 +9,9 @@ on:
         type: string
         required: false
         default: ''
+  push:
+    tags:
+      - 'v*.*.*'
   merge_group:
 
   schedule:
@@ -52,6 +55,12 @@ jobs:
           - python_version: "3.10"
             ENABLE_RTTI: OFF
 
+          - python_version: "3.11"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.11"
+            ENABLE_RTTI: OFF
+
           - python_version: "3.12"
             ENABLE_RTTI: ON
 
@@ -62,6 +71,12 @@ jobs:
             ENABLE_RTTI: ON
 
           - python_version: "3.13"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.14"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.14"
             ENABLE_RTTI: OFF
 
     steps:
@@ -85,17 +100,27 @@ jobs:
         with:
           distro: none
           arch: none
-          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.1
+          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.2
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --mac-address 02:42:ac:11:00:02
           env: |
             VITIS: ${{ env.VITIS }}
             XILINXD_LICENSE_FILE: ${{ env.XILINXD_LICENSE_FILE }}
+            AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '""' }}
           run: |
             git config --global --add safe.directory $PWD
             MLIR_VERSION=$(git rev-parse --short HEAD)
             echo "Building mlir-aie version $MLIR_VERSION"
+
+            if ! command -v python${{ matrix.python_version }} &> /dev/null; then
+              echo "Python ${{ matrix.python_version }} not found, installing..."
+              apt-get update
+              apt-get install -y software-properties-common
+              add-apt-repository -y ppa:deadsnakes/ppa
+              apt-get update
+              apt-get install -y python${{ matrix.python_version }} python${{ matrix.python_version }}-venv python${{ matrix.python_version }}-dev
+            fi
 
             python${{ matrix.python_version }} -m venv ${{ github.workspace }}/aie-venv
             source ${{ github.workspace }}/aie-venv/bin/activate
@@ -105,9 +130,10 @@ jobs:
             tar xfz /workspace/vaie.tgz
             popd
 
+            pip install --upgrade pip
             pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
-            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+            EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
             pip install -r python/requirements_dev.txt
 
             export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
@@ -149,7 +175,7 @@ jobs:
 
             popd
 
-            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
+            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_async_runtime.so --exclude libmlir_c_runner_utils.so --exclude libmlir_float16_utils.so --exclude libmlir_runner_utils.so --exclude libmlir_apfloat_wrappers.so
 
       - name: Upload mlir_aie
         uses: actions/upload-artifact@v4
@@ -157,15 +183,17 @@ jobs:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
 
-      - name: Release current commit
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+      - name: Release
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'schedule' ||
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
         uses: ncipollo/release-action@v1.12.0
         with:
           artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: 'latest-wheels-2'
-          name: 'latest-wheels-2'
-          removeArtifacts: false
+          tag: ${{ github.event_name == 'push' && github.ref_name || (matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti') }}
+          name: ${{ github.event_name == 'push' && github.ref_name || (matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-2' || 'latest-wheels-no-rtti') }}
           allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: false
+          replacesArtifacts: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+          makeLatest: ${{ github.event_name == 'push' }}

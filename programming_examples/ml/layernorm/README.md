@@ -10,8 +10,7 @@
 
 # Layer Normalization (LayerNorm) Example
 
-This design implements a `bfloat16`-based Layer Normalization (LayerNorm) operation, a widely used technique in deep learning models, especially in transformer architectures. LayerNorm normalizes the activations of each input across the features (columns) for every row, stabilizing and accelerating the training process by reducing internal covariate shift. This implementation utilizes Welford's pairwise algorithm, a numerically stable, one-pass method for computing mean and variance, making it especially well-suited for lower-precision data types such as `bfloat16`.
-
+This design implements a `bfloat16`-based Layer Normalization (LayerNorm) operation, a widely used technique in deep learning models, especially in transformer architectures. LayerNorm normalizes the activations of each input across the features (columns) for every row, stabilizing and accelerating the training process by reducing internal covariate shift. 
 ## Files
 
 - `layernorm.py` : A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using aiecc.py to produce design binaries (i.e., XCLBIN and inst.bin for the NPU in Ryzen™ AI).
@@ -42,10 +41,12 @@ make run
 
 ## Notes
 
-- The LayerNorm kernel is implemented here, currently supporting only smaller input sizes and a single AIE core.
-- For parallel Welford computation within a core, data is accessed in column-major order so each vector register holds one column’s values, and fully vectorized mean/variance updates for multiple rows.
+- Two LayerNorm kernel implementations are provided: one uses a standard approach, and the other employs Welford's algorithm for improved numerical stability.
+
+- The standard approach is designed for multi-core execution and accesses values row-wise, allowing each core to process different rows in parallel.
+
+- The Welford implementation gains parallelism within a core by accessing data in column-major order across at least 16 rows, so each vector register holds values from one column. This enables fully vectorized mean and variance updates for multiple rows. Currently, this column-major parallelism is implemented only for single-core execution.
 
 ## To-Do
 
-- Extend the LayerNorm implementation to support multi-core execution on the AIE array.
-- Partition the input tensor so that multiple AIE cores can process different blocks of rows or columns in parallel.
+- Extend the Welford-based LayerNorm implementation to support multi-core execution on the AIE array and also to support `bfloat16` datatype.
