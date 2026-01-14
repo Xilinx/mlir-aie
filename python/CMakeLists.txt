@@ -383,6 +383,12 @@ else ()
     COMMENT "Vendoring eudsl-python-extras"
   )
 
+  install(
+    DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/extras"
+    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie"
+    COMPONENT aie-python
+  )
+
   ################################################################################
   # Generated trace events enum files and copy to Python package directories
   ################################################################################
