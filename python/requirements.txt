@@ -3,6 +3,7 @@ dataclasses>=0.6, <=0.8
 numpy>=1.19.5, <2.0 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
 rich
 ml_dtypes
+cloudpickle # required by eudsl when it is vendored instead of installed
 eudsl-python-extras==0.1.0.20251215.1715+3c7ac1b \
   --config-settings="EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie"
 -f https://llvm.github.io/eudsl
