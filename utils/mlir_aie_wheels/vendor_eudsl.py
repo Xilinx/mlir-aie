@@ -69,6 +69,17 @@ def install_eudsl(req_file, target_dir):
     print(f"Running: {' '.join(cmd)}", file=sys.stderr)
     subprocess.run(cmd, check=True, env=env)
 
+    print(f"Listing files in {target_dir}:", file=sys.stderr)
+    for root, dirs, files in os.walk(target_dir):
+        for file in files:
+            print(os.path.join(root, file), file=sys.stderr)
+
+    # Verify util.py exists
+    util_path = os.path.join(target_dir, "aie", "extras", "util.py")
+    if not os.path.exists(util_path):
+        print(f"ERROR: {util_path} not found!", file=sys.stderr)
+        sys.exit(1)
+
 
 def main():
     parser = argparse.ArgumentParser(description="Vendor eudsl-python-extras")
