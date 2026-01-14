@@ -14,7 +14,7 @@ EXTRACT_STATIC         = YES
 #---------------------------------------------------------------------------
 # Build related configuration options
 #---------------------------------------------------------------------------
-INPUT                  = helpers/taplib iron utils/hostruntime utils/__init__.py utils/jit.py utils/npukernel.py
+INPUT                  = helpers/taplib iron utils/hostruntime utils/compile utils/__init__.py utils/jit.py utils/npukernel.py
 FILE_PATTERNS          = *.py
 RECURSIVE              = YES
 
