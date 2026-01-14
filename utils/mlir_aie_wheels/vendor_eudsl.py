@@ -65,6 +65,10 @@ def install_eudsl(req_file, target_dir):
         ]
 
         env = os.environ.copy()
+        # Apply the same setting both via pip's --config-settings flag (see cmd above)
+        # and as an environment variable. Some build backends or tooling may rely on
+        # the environment variable form rather than reading --config-settings, so we
+        # intentionally support both here for compatibility.
         if "=" in config_setting:
             key, val = config_setting.split("=", 1)
             env[key] = val
