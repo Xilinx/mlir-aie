@@ -205,6 +205,14 @@ def parse_args(args=None):
         help="Compile cores independently in separate processes",
     )
     parser.add_argument(
+        "-O",
+        "--opt-level",
+        dest="opt_level",
+        default="2",
+        choices=["0", "1", "2", "3"],
+        help="Optimization level for AIE core compilation (default: 2)",
+    )
+    parser.add_argument(
         "-n",
         dest="execute",
         default=True,
@@ -217,6 +225,26 @@ def parse_args(args=None):
         default=False,
         action="store_true",
         help="Show progress visualization",
+    )
+    parser.add_argument(
+        "--enable-repeater-scripts",
+        dest="enable_repeater",
+        default=True,
+        action="store_true",
+        help="Generate repeater scripts on compilation failure (default: enabled)",
+    )
+    parser.add_argument(
+        "--disable-repeater-scripts",
+        dest="enable_repeater",
+        action="store_false",
+        help="Disable generation of repeater scripts on failure",
+    )
+    parser.add_argument(
+        "--repeater-output-dir",
+        dest="repeater_output_dir",
+        default=None,
+        metavar="DIR",
+        help="Directory for repeater scripts (default: system temp dir)",
     )
     parser.add_argument(
         "--aie-generate-npu-insts",
@@ -379,8 +407,23 @@ def parse_args(args=None):
         default="aie.elf",
         help="Output filename for full ELF (default: aie.elf)",
     )
+    parser.add_argument(
+        "--expand-load-pdis",
+        dest="expand_load_pdis",
+        default=False,
+        action="store_true",
+        help="Expand load_pdi operations into explicit device reset and configuration sequences",
+    )
+    parser.add_argument(
+        "--no-materialize",
+        dest="materialize_runtime_sequence",
+        default=True,
+        action="store_false",
+        help="Do not 'materialize' the runtime sequence (lower aiex.configure and aiex.run operations)",
+    )
 
     opts = parser.parse_args(args)
+
     return opts
 
 

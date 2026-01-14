@@ -67,9 +67,9 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @objFifo_in0(MM2S, 0, 0)
+    aie.shim_dma_allocation @objFifo_in0 (%tile_0_0, MM2S, 0)
 
-    aiex.runtime_sequence @run(%arg1: memref<64x64xi8>, %arg2: memref<64x64xi8>) {
+    aie.runtime_sequence @run(%arg1: memref<64x64xi8>, %arg2: memref<64x64xi8>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c56_i64 = arith.constant 56 : i64
@@ -114,7 +114,7 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @objFifo_out0(S2MM, 0, 0)
+    aie.shim_dma_allocation @objFifo_out0 (%tile_0_0, S2MM, 0)
 
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma(S2MM, 0) [{

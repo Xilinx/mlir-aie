@@ -392,6 +392,25 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`init_values` does not initialize all objects");
   }
 
+  if (getIterCount().has_value()) {
+    int iterCount = getIterCount().value();
+    if (iterCount < 1 || iterCount > 256)
+      return emitError("`iter_count` must be between 1 and 256");
+
+    // Check that either producer or at least one consumer is a MemTile
+    bool hasMemTile = getProducerTileOp().isMemTile();
+    if (!hasMemTile) {
+      for (auto consumerTile : getConsumerTiles()) {
+        if (cast<TileOp>(consumerTile.getDefiningOp()).isMemTile()) {
+          hasMemTile = true;
+          break;
+        }
+      }
+    }
+    if (!hasMemTile)
+      return emitError("`iter_count` is currently only supported on MemTiles");
+  }
+
   return success();
 }
 
@@ -1196,8 +1215,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = builder.create<TileOp>(builder.getUnknownLoc(),
-                                  builder.getIndexType(), col, row);
+    tile = TileOp::create(builder, builder.getUnknownLoc(),
+                          builder.getIndexType(), col, row);
   }
   return tile;
 }
@@ -2322,6 +2341,28 @@ void BDChainOp::print(OpAsmPrinter &printer) {
 // ShimDMAAllocationOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult ShimDMAAllocationOp::verify() {
+  TileOp tileOp = getTileOp();
+  if (!tileOp) {
+    return emitOpError("tile operand must be a TileOp");
+  }
+
+  const auto &targetModel = getTargetModel(*this);
+  int col = tileOp.getCol();
+  int row = tileOp.getRow();
+
+  if (!targetModel.isShimNOCorPLTile(col, row)) {
+    return emitOpError("tile must be a shim tile, but got tile(")
+           << col << ", " << row << ")";
+  }
+
+  return success();
+}
+
+TileOp ShimDMAAllocationOp::getTileOp() {
+  return cast<TileOp>(getTile().getDefiningOp());
+}
+
 ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
                                                       llvm::StringRef symbol) {
   Operation *maybeOp = device.lookupSymbol(symbol);
@@ -2331,6 +2372,160 @@ ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
     }
   }
   return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// RuntimeSequenceOp
+//===----------------------------------------------------------------------===//
+
+ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
+                                     OperationState &result) {
+
+  // Name of this runtime sequence
+  StringAttr nameAttr;
+  (void)parser.parseOptionalSymbolName(
+      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
+
+  SmallVector<OpAsmParser::Argument> entryArgs;
+
+  // Entry arguments,  e.g. (%addr: memref<1xi32>)
+  ParseResult argParseResult = parser.parseCommaSeparatedList(
+      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+        OpAsmParser::Argument argument;
+        if (parser.parseArgument(argument, true, true)) {
+          return failure();
+        }
+        entryArgs.push_back(argument);
+        return success();
+      });
+  if (argParseResult) {
+    return argParseResult;
+  }
+
+  // Body
+  auto *body = result.addRegion();
+  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
+  if (bodyParseResult) {
+    return bodyParseResult;
+  }
+
+  return success();
+}
+
+void RuntimeSequenceOp::print(OpAsmPrinter &printer) {
+  Region &body = getRegion();
+
+  auto nameAttr = (*this)->getAttrOfType<StringAttr>(
+      mlir::SymbolTable::getSymbolAttrName());
+  if (nameAttr &&
+      nameAttr != ::mlir::OpBuilder((*this)->getContext())
+                      .getStringAttr(getDefaultRuntimeSequenceName())) {
+    printer << ' ';
+    printer.printSymbolName(nameAttr);
+  }
+
+  printer << '(';
+  for (unsigned i = 0, n = body.getNumArguments(); i < n; i++) {
+    if (i > 0) {
+      printer << ", ";
+    }
+    printer.printRegionArgument(body.getArgument(i));
+  }
+  printer << ')';
+
+  printer << ' ';
+  printer.printRegion(body, false, true);
+}
+
+LogicalResult RuntimeSequenceOp::verify() {
+  DeviceOp device = (*this)->getParentOfType<DeviceOp>();
+  if (!device) {
+    // this check is redudnant with the HasParent trait, but can't hurt
+    (*this)->emitOpError() << "must be inside AIE device operation.";
+    return failure();
+  }
+  return success();
+}
+
+RuntimeSequenceOp
+RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,
+                                        llvm::StringRef symbol) {
+  RuntimeSequenceOp runtimeSequenceOp;
+  if (!symbol.size()) {
+    runtimeSequenceOp = *deviceOp.getOps<RuntimeSequenceOp>().begin();
+  } else {
+    Operation *maybeRuntimeSequenceOp =
+        mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);
+    if (!maybeRuntimeSequenceOp) {
+      return nullptr;
+    }
+    runtimeSequenceOp =
+        llvm::dyn_cast<RuntimeSequenceOp>(maybeRuntimeSequenceOp);
+  }
+  return runtimeSequenceOp;
+}
+
+RuntimeSequenceOp
+RuntimeSequenceOp::getForSymbolInDeviceOrError(DeviceOp deviceOp,
+                                               llvm::StringRef symbol) {
+  RuntimeSequenceOp runtimeSequenceOp = getForSymbolInDevice(deviceOp, symbol);
+  if (!runtimeSequenceOp) {
+    if (!symbol.empty()) {
+      deviceOp.emitError("No such runtime sequence: ") << symbol;
+    } else {
+      deviceOp.emitError("No runtime sequence in device");
+    }
+  }
+  return runtimeSequenceOp;
+}
+
+LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
+  // Check that all symbol references within the runtime sequence
+  // are either to ShimDMAAllocationOp, DeviceOp or another RuntimeSequenceOp;
+  // these are the only symbols that can be lowered with the NPU passes
+  auto result = (*this)->walk([&](Operation *op) {
+    for (NamedAttribute namedAttr : op->getAttrs()) {
+      Attribute attr = namedAttr.getValue();
+      auto walkResult = attr.walk([&](SymbolRefAttr symbolRef) {
+        Operation *symbolDefOp =
+            SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
+        if (symbolDefOp) {
+          if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
+              !llvm::isa<DeviceOp>(symbolDefOp) &&
+              !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
+              !llvm::isa<BufferOp>(symbolDefOp) &&
+              !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
+            op->emitOpError()
+                << "references symbol '"
+                << symbolRef.getRootReference().getValue()
+                << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
+                   "RuntimeSequenceOp, BufferOp or GlobalOp, but got: "
+                << symbolDefOp->getName().getStringRef();
+            return WalkResult::interrupt();
+          }
+          if (BufferOp bufferOp = llvm::dyn_cast<BufferOp>(symbolDefOp)) {
+            if (!bufferOp.getAddress()) {
+              op->emitOpError()
+                  << "Unallocated buffer; fixed addresses are required before "
+                     "runtime sequence materialization.";
+              return WalkResult::interrupt();
+            }
+          }
+        }
+        return WalkResult::advance();
+      });
+      if (walkResult.wasInterrupted()) {
+        return WalkResult::interrupt();
+      }
+    }
+    return WalkResult::advance();
+  });
+
+  if (result.wasInterrupted()) {
+    return failure();
+  }
+
+  return success();
 }
 
 // Include implementations for custom attributes

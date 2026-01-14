@@ -46,43 +46,60 @@ from aie.passmanager import PassManager
 
 
 def _create_input_with_addresses_pipeline(
-    scheme, dynamic_objFifos, packet_sw_objFifos, ctrl_pkt_overlay, aie_target
+    scheme,
+    dynamic_objFifos,
+    packet_sw_objFifos,
+    ctrl_pkt_overlay,
+    aie_target,
+    opt_level="2",
 ):
     pipeline = Pipeline()
 
     # Only add convert-vector-to-aievec for AIE2 and later targets
     # AIE1 ("aie") does not support target_backend="llvmir"
     if aie_target.lower() in ["aie2", "aieml", "aie2p"]:
+        # Hoist vector transfer pointers before scf-to-cf conversion (O3 and above only)
+        # This runs on the module and walks into aie.core regions
+        if int(opt_level) >= 3:
+            pipeline.add_pass("aie-hoist-vector-transfer-pointers")
         pipeline.add_pass(
             "convert-vector-to-aievec",
-            aie_target=aie_target.lower(),
-            target_backend="llvmir",
+            **{"aie-target": aie_target.lower(), "target-backend": "llvmir"},
         )
+
+    # Build nested device pipeline with conditional passes
+    device_pipeline = (
+        Pipeline()
+        .add_pass("aie-assign-lock-ids")
+        .add_pass("aie-register-objectFifos")
+        .add_pass(
+            "aie-objectFifo-stateful-transform",
+            **{
+                "dynamic-objFifos": dynamic_objFifos,
+                "packet-sw-objFifos": packet_sw_objFifos,
+            },
+        )
+        .add_pass("aie-assign-bd-ids")
+        .add_pass("aie-lower-cascade-flows")
+        .add_pass("aie-lower-broadcast-packet")
+        .add_pass("aie-lower-multicast")
+        .add_pass("aie-assign-tile-controller-ids")
+        .add_pass(
+            "aie-generate-column-control-overlay",
+            **{"route-shim-to-tile-ctrl": ctrl_pkt_overlay},
+        )
+        .add_pass("aie-assign-buffer-addresses", **{"alloc-scheme": scheme})
+        .add_pass("aie-vector-transfer-lowering", **{"max-transfer-rank": 1})
+    )
+
+    # Only add vector-to-pointer-loops for O3 and above
+    if int(opt_level) >= 3:
+        device_pipeline.add_pass("aie-vector-to-pointer-loops")
 
     return (
         pipeline.lower_affine()
         .add_pass("aie-canonicalize-device")
-        .Nested(
-            "aie.device",
-            Pipeline()
-            .add_pass("aie-assign-lock-ids")
-            .add_pass("aie-register-objectFifos")
-            .add_pass(
-                "aie-objectFifo-stateful-transform",
-                dynamic_objFifos=dynamic_objFifos,
-                packet_sw_objFifos=packet_sw_objFifos,
-            )
-            .add_pass("aie-assign-bd-ids")
-            .add_pass("aie-lower-cascade-flows")
-            .add_pass("aie-lower-broadcast-packet")
-            .add_pass("aie-lower-multicast")
-            .add_pass("aie-assign-tile-controller-ids")
-            .add_pass(
-                "aie-generate-column-control-overlay",
-                route_shim_to_tile_ctrl=ctrl_pkt_overlay,
-            )
-            .add_pass("aie-assign-buffer-addresses", alloc_scheme=scheme),
-        )
+        .Nested("aie.device", device_pipeline)
         .convert_scf_to_cf()
     )
 
@@ -93,23 +110,21 @@ LOWER_TO_LLVM_PIPELINE = (
     Pipeline()
     .canonicalize()
     .cse()
-    .convert_ub_to_llvm()
-    .convert_vector_to_llvm()
     .expand_strided_metadata()
     .lower_affine()
-    .convert_math_to_llvm()
-    .convert_index_to_llvm()
     .arith_expand()
-    .convert_arith_to_llvm()
     .finalize_memref_to_llvm()
     .convert_func_to_llvm(use_bare_ptr_memref_call_conv=True)
-    .convert_cf_to_llvm()
+    .convert_to_llvm(dynamic=True)
     .canonicalize()
     .cse()
 )
 
-AIE_LOWER_TO_LLVM = (
-    lambda device_name=None, col=None, row=None, aie_target="aie2": (
+
+def _create_aie_lower_to_llvm_pipeline(
+    device_name=None, col=None, row=None, aie_target="aie2", opt_level="2"
+):
+    pipeline = (
         Pipeline()
         .Nested(
             "aie.device",
@@ -120,22 +135,38 @@ AIE_LOWER_TO_LLVM = (
         )
         .add_pass("aie-standard-lowering", device=device_name, tilecol=col, tilerow=row)
         .add_pass("aiex-standard-lowering")
-        .add_pass("convert-aievec-to-llvm", aie_target=aie_target.lower())
     )
-    + LOWER_TO_LLVM_PIPELINE
-)
+
+    # Only add aievec-split-load-ups-chains for O3 and above
+    if int(opt_level) >= 3:
+        pipeline.add_pass("aievec-split-load-ups-chains")
+
+    pipeline.add_pass("convert-aievec-to-llvm", **{"aie-target": aie_target.lower()})
+
+    return pipeline + LOWER_TO_LLVM_PIPELINE
+
+
+AIE_LOWER_TO_LLVM = _create_aie_lower_to_llvm_pipeline
+
 
 # pipeline to lower and legalize runtime sequence for NPU
-NPU_LOWERING_PIPELINE = Pipeline().Nested(
-    "aie.device",
-    Pipeline()
-    .add_pass("aie-materialize-bd-chains")
-    .add_pass("aie-substitute-shim-dma-allocations")
-    .add_pass("aie-assign-runtime-sequence-bd-ids")
-    .add_pass("aie-dma-tasks-to-npu")
-    .add_pass("aie-dma-to-npu")
-    .add_pass("aie-lower-set-lock"),
-)
+def _create_npu_lowering_pipeline(expand_load_pdis=False):
+    pipeline = Pipeline()
+    if opts.materialize_runtime_sequence:
+        pipeline = pipeline.add_pass("aie-materialize-runtime-sequences")
+    pipeline = pipeline.Nested(
+        "aie.device",
+        Pipeline()
+        .add_pass("aie-materialize-bd-chains")
+        .add_pass("aie-substitute-shim-dma-allocations")
+        .add_pass("aie-assign-runtime-sequence-bd-ids")
+        .add_pass("aie-dma-tasks-to-npu")
+        .add_pass("aie-dma-to-npu")
+        .add_pass("aie-lower-set-lock"),
+    )
+    if expand_load_pdis:
+        pipeline = pipeline.add_pass("aie-expand-load-pdi")
+    return pipeline
 
 
 async def read_file_async(file_path: str) -> str:
@@ -351,11 +382,9 @@ def create_device_id_mapping(devices):
     return device_to_id
 
 
-def assign_load_pdi_ids(mlir_module_str, device_to_id_mapping):
+def assign_load_pdi_ids(module, device_to_id_mapping):
     """Transform symbolic aiex.npu.load_pdi references to numeric IDs"""
-    with Context() as context, Location.unknown():
-        module = Module.parse(mlir_module_str)
-
+    with module.context as context, Location.unknown():
         for runtime_seq in find_ops(
             module.operation,
             lambda o: isinstance(o.operation.opview, aiexdialect.RuntimeSequenceOp),
@@ -377,8 +406,6 @@ def assign_load_pdi_ids(mlir_module_str, device_to_id_mapping):
                     IntegerType.get_signless(32, context=context), pdi_id
                 )
 
-        return str(module)
-
 
 def set_elf_file_for_core(core, path):
     with InsertionPoint.at_block_terminator(
@@ -387,7 +414,7 @@ def set_elf_file_for_core(core, path):
         result = IndexType.get()
         new_core = aiedialect.CoreOp(result, core.tile)
         for attr in core.attributes:
-            new_core.attributes[attr.name] = core.attributes[attr.name]
+            new_core.attributes[attr] = core.attributes[attr]
         new_core.attributes["elf_file"] = StringAttr.get(path)
         new_core_block = new_core.body.blocks.append()
         with InsertionPoint(new_core_block):
@@ -441,39 +468,157 @@ def do_run(command, verbose=False):
     return ret
 
 
-def run_passes(pass_pipeline, mlir_module_str, outputfile=None, verbose=False):
-    if verbose:
-        print("Running:", pass_pipeline)
-    with Context(), Location.unknown():
-        module = Module.parse(mlir_module_str)
-        pm = PassManager.parse(pass_pipeline)
-        try:
-            pm.run(module.operation)
-        except Exception as e:
-            print("Error running pass pipeline: ", pass_pipeline, e)
-            raise e
-        mlir_module_str = str(module)
-        if outputfile:
-            with open(outputfile, "w") as g:
-                g.write(mlir_module_str)
-    return mlir_module_str
+def format_diagnostics_for_script(diagnostics):
+    """Format MLIR diagnostics for inclusion in repeater script."""
+    if not diagnostics:
+        return ""
+
+    diag_lines = "\n".join(diagnostics)
+    return f"""echo "Original MLIR Diagnostics:"
+cat << 'DIAGNOSTICS_EOF'
+{diag_lines}
+DIAGNOSTICS_EOF
+echo ""
+
+"""
 
 
-def run_passes_module(pass_pipeline, mlir_module, outputfile=None, verbose=False):
-    if verbose:
-        print("Running:", pass_pipeline)
-    with mlir_module.context, Location.unknown():
-        pm = PassManager.parse(pass_pipeline)
-        try:
-            pm.run(mlir_module.operation)
-        except Exception as e:
-            print("Error running pass pipeline: ", pass_pipeline, e)
-            raise e
-        if outputfile:
-            mlir_module_str = str(mlir_module)
-            with open(outputfile, "w") as g:
-                g.write(mlir_module_str)
-    return mlir_module
+def generate_repeater_script(
+    mlir_file, pass_pipeline, output_file, timenow, description=None, diagnostics=None
+):
+    """
+    Generate a bash repeater script for reproducing a pass pipeline failure.
+
+    Args:
+        mlir_file: Path to the MLIR file that caused failure
+        pass_pipeline: The pass pipeline string
+        output_file: Where to write the repeater script
+        description: Optional description of what was being compiled
+        diagnostics: List of MLIR diagnostic messages
+    """
+    diag_section = format_diagnostics_for_script(diagnostics)
+
+    script_content = f"""#!/bin/bash
+#
+# AIECC Repeater Script
+# Generated: {timenow.isoformat()}
+#
+# This script reproduces a compilation failure from aiecc.py
+# Description: {description or 'N/A'}
+# Diagnostics: {len(diagnostics) if diagnostics else 0} messages captured
+#
+
+set -e  # Exit on error
+
+echo "=================================================="
+echo "AIECC Failure Reproduction Script"
+echo "=================================================="
+echo ""
+
+{diag_section}MLIR_FILE="{mlir_file}"
+PASS_PIPELINE='{pass_pipeline}'
+
+# Check if input file exists
+if [ ! -f "$MLIR_FILE" ]; then
+    echo "Error: Input MLIR file not found: $MLIR_FILE"
+    exit 1
+fi
+
+# Check if aie-opt is available
+if ! command -v aie-opt &> /dev/null; then
+    echo "Error: aie-opt not found in PATH"
+    echo "Please ensure mlir-aie tools are properly installed and in PATH"
+    exit 1
+fi
+
+echo "Input MLIR: $MLIR_FILE"
+echo "Pass Pipeline: $PASS_PIPELINE"
+echo ""
+echo "Running aie-opt with debug flags..."
+echo ""
+
+# Run with debugging flags
+aie-opt \\
+    --mlir-print-ir-after-all \\
+    --mlir-disable-threading \\
+    --pass-pipeline="${{PASS_PIPELINE}}" \\
+    "$MLIR_FILE"
+
+echo ""
+echo "If the command succeeded, the issue may be non-deterministic."
+echo "Try running this script multiple times."
+"""
+
+    with open(output_file, "w") as f:
+        f.write(script_content)
+
+    # Make script executable
+    os.chmod(output_file, os.stat(output_file).st_mode | stat.S_IEXEC)
+
+
+def handle_pass_failure(
+    pass_pipeline,
+    mlir_ir,
+    description=None,
+    output_dir=None,
+    diagnostics=None,
+):
+    """
+    Handle failure of Python-based PassManager execution.
+    Saves intermediate MLIR and generates repeater script.
+
+    Args:
+        pass_pipeline: The pass pipeline that failed
+        mlir_ir: The MLIR IR before the failed pass
+        description: Human-readable description of what was being compiled
+        output_dir: Directory to save repeater scripts (default: temp dir)
+        diagnostics: List of diagnostic messages from MLIR
+    """
+    import datetime
+
+    # Generate unique filename
+    timenow = datetime.datetime.now()
+    timestamp = timenow.strftime("%Y%m%d_%H%M%S")
+    failure_id = str(uuid.uuid4())[:8]
+
+    # Save MLIR to output directory
+    temp_dir = output_dir or tempfile.gettempdir()
+    mlir_filename = os.path.join(
+        temp_dir, f"aiecc_failure_{timestamp}_{failure_id}.mlir"
+    )
+    repeater_filename = os.path.join(
+        temp_dir, f"aiecc_repeater_{timestamp}_{failure_id}.sh"
+    )
+
+    with open(mlir_filename, "w") as f:
+        f.write(mlir_ir)
+
+    # Generate repeater script
+    generate_repeater_script(
+        mlir_file=mlir_filename,
+        pass_pipeline=pass_pipeline,
+        output_file=repeater_filename,
+        timenow=timenow,
+        description=description,
+        diagnostics=diagnostics,
+    )
+
+    # Print diagnostic message
+    desc_str = f" ({description})" if description else ""
+    print("\n" + "=" * 80, file=sys.stderr)
+    print(f"AIECC COMPILATION FAILED{desc_str}", file=sys.stderr)
+    print("=" * 80, file=sys.stderr)
+    print(f"\nIntermediate MLIR saved to:", file=sys.stderr)
+    print(f"  {mlir_filename}", file=sys.stderr)
+    print(f"\nFor developers, the error can be reproduced with:", file=sys.stderr)
+    print(
+        f"  $ aie-opt --pass-pipeline='{pass_pipeline}' {mlir_filename}",
+        file=sys.stderr,
+    )
+    print(f"\nRepeater script generated:", file=sys.stderr)
+    print(f"  {repeater_filename}", file=sys.stderr)
+    print(f"  $ bash {repeater_filename}", file=sys.stderr)
+    print("=" * 80 + "\n", file=sys.stderr)
 
 
 def corefile(dirname, device, core, ext):
@@ -513,11 +658,15 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
         .replace("captures(none)", "nocapture")
         .replace("getelementptr inbounds nuw", "getelementptr inbounds")
     )
+    # Remove nocreateundeforpoison attribute (not supported by older LLVM in Chess toolchain)
+    llvmir_chesslinked = re.sub(r"\bnocreateundeforpoison\s+", "", llvmir_chesslinked)
     return llvmir_chesslinked
 
 
 def downgrade_ir_for_peano(llvmir):
     llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    # Remove nocreateundeforpoison attribute (not supported by older LLVM in Peano toolchain)
+    llvmir = re.sub(r"\bnocreateundeforpoison\s+", "", llvmir)
     return llvmir
 
 
@@ -550,6 +699,7 @@ class FlowRunner:
         self.peano_clang_path = os.path.join(opts.peano_install_dir, "bin", "clang")
         self.peano_opt_path = os.path.join(opts.peano_install_dir, "bin", "opt")
         self.peano_llc_path = os.path.join(opts.peano_install_dir, "bin", "llc")
+        self.repeater_output_dir = opts.repeater_output_dir or tempfile.gettempdir()
 
     def prepend_tmp(self, x):
         return os.path.join(self.tmpdirname, x)
@@ -567,6 +717,62 @@ class FlowRunner:
             if opts.npu
             else self.prepend_tmp(f"{device_name}_{seq_name}.bin")
         )
+
+    def run_passes(
+        self,
+        pass_pipeline,
+        mlir_module,
+        outputfile=None,
+        description=None,
+    ):
+        """
+        Run a pass pipeline on MLIR module object.
+
+        Args:
+            pass_pipeline: Pipeline string to execute
+            mlir_module: Input MLIR module object
+            outputfile: Optional output file path
+            description: Human-readable description of this pass stage
+        """
+        if self.opts.verbose:
+            print("Running:", pass_pipeline)
+        diags = []
+        mlir_for_error_report = None  # Will be set before pass execution
+
+        def diagnostic_handler(d):
+            severity = str(d.severity).replace("DiagnosticSeverity.", "").lower()
+            diags.append(f"{d.location}: {severity}: {d.message}")
+            for note in d.notes:
+                diags.append(f"{note.location}: note: {note.message}")
+            if severity == "error":
+                # Generate repeater script on error
+                if self.opts.enable_repeater:
+                    handle_pass_failure(
+                        pass_pipeline=pass_pipeline,
+                        mlir_ir=mlir_for_error_report,
+                        description=description,
+                        output_dir=self.repeater_output_dir,
+                        diagnostics=diags,
+                    )
+                for d in diags:
+                    print(d, file=sys.stderr)
+                return False
+            return True
+
+        with mlir_module.context, Location.unknown():
+            mlir_module.context.emit_error_diagnostics = True
+            h = mlir_module.context.attach_diagnostic_handler(diagnostic_handler)
+            mlir_for_error_report = str(mlir_module)  # Save IR before transformation
+            pm = PassManager.parse(pass_pipeline)
+            pm.run(mlir_module.operation)
+            h.detach()
+            for d in diags:
+                print(d)
+            if outputfile:
+                mlir_module_str = str(mlir_module)
+                with open(outputfile, "w") as g:
+                    g.write(mlir_module_str)
+        return mlir_module
 
     async def do_call(self, task_id, command, force=False):
         if self.stopall:
@@ -681,7 +887,14 @@ class FlowRunner:
         # fmt: off
         if opts.unified:
             file_opt_with_addresses = self.prepend_tmp(f"{device_name}_input_opt_with_addresses.mlir")
-            await self.do_call(parent_task_id, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, aie_target=aie_target)}", file_with_addresses, "-o", file_opt_with_addresses])
+            with Context(), Location.unknown():
+                module = Module.parse(await read_file_async(file_with_addresses))
+            self.run_passes(
+                str(AIE_LOWER_TO_LLVM(device_name, aie_target=aie_target, opt_level=opts.opt_level)),
+                module,
+                outputfile=file_opt_with_addresses,
+                description=f"LLVM lowering for unified compilation of {device_name}",
+            )
 
             file_llvmir = self.prepend_tmp(f"{device_name}_input.ll")
             await self.do_call(parent_task_id, ["aie-translate", "--mlir-to-llvmir", file_opt_with_addresses, "-o", file_llvmir])
@@ -693,8 +906,15 @@ class FlowRunner:
             elif opts.compile:
                 file_llvmir_hacked = await self.peanohack(file_llvmir)
                 file_llvmir_opt = self.prepend_tmp(f"{device_name}_input.opt.ll")
-                await self.do_call(parent_task_id, [self.peano_opt_path, "--passes=default<O2>", "-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
-                await self.do_call(parent_task_id, [self.peano_llc_path, file_llvmir_opt, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", unified_file_core_obj])
+                opt_level = opts.opt_level
+                # Disable loop idiom memset for O3 and above.
+                # Rationale: memset is executed as scalar operation, while zeroinitializer will be executed as vector
+                opt_flags = [f"--passes=default<O{opt_level}>"]
+                if int(opt_level) >= 3:
+                    opt_flags.append("-disable-loop-idiom-memset")
+                opt_flags.extend(["-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
+                await self.do_call(parent_task_id, [self.peano_opt_path] + opt_flags)
+                await self.do_call(parent_task_id, [self.peano_llc_path, file_llvmir_opt, f"-O{opt_level}", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", unified_file_core_obj])
         else:
             unified_file_core_obj = None
         # fmt: on
@@ -766,9 +986,15 @@ class FlowRunner:
             # fmt: off
             corecol, corerow, elf_file = core
             if not opts.unified:
-                file_core = corefile(self.tmpdirname, device_name, core, "mlir")
                 file_opt_core = corefile(self.tmpdirname, device_name, core, "opt.mlir")
-                await self.do_call(task, ["aie-opt", f"--pass-pipeline={AIE_LOWER_TO_LLVM(device_name, corecol, corerow, aie_target)}", file_with_addresses, "-o", file_opt_core])
+                with Context(), Location.unknown():
+                    module = Module.parse(await read_file_async(file_with_addresses))
+                self.run_passes(
+                    str(AIE_LOWER_TO_LLVM(device_name, corecol, corerow, opts.opt_level)),
+                    module,
+                    outputfile=file_opt_core,
+                    description=f"LLVM lowering for core ({corecol}, {corerow}) of {device_name}",
+                )
             if self.opts.xbridge:
                 file_core_bcf = corefile(self.tmpdirname, device_name, core, "bcf")
                 await self.do_call(task, ["aie-translate", file_with_addresses, "--aie-generate-bcf", "--aie-device-name", device_name, "--tilecol=%d" % corecol, "--tilerow=%d" % corerow, "-o", file_core_bcf])
@@ -790,21 +1016,30 @@ class FlowRunner:
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "+Wclang,-xir", "-f", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif self.opts.link:
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_core_llvmir_chesslinked, "-o", file_core_obj])
-                        await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                        opt_level = opts.opt_level
+                        await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
                 else:
                     file_core_obj = unified_file_core_obj
                     if opts.link and opts.xbridge:
                         link_with_obj = await extract_input_files(file_core_bcf)
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                     elif opts.link:
-                        await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                        opt_level = opts.opt_level
+                        await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
             elif opts.compile:
                 if not opts.unified:
                     file_core_llvmir_peanohacked = await self.peanohack(file_core_llvmir)
                     file_core_llvmir_stripped = corefile(self.tmpdirname, device_name, core, "stripped.ll")
-                    await self.do_call(task, [self.peano_opt_path, "--passes=default<O2>,strip", "-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])
-                    await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, "-O2", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
+                    opt_level = opts.opt_level
+                    # Disable loop idiom memset for O3 and above.
+                    # Rationale: memset is executed as scalar operation, while zeroinitializer will be executed as vector
+                    opt_flags = [f"--passes=default<O{opt_level}>,strip"]
+                    if int(opt_level) >= 3:
+                        opt_flags.append("-disable-loop-idiom-memset")
+                    opt_flags.extend(["-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])
+                    await self.do_call(task, [self.peano_opt_path] + opt_flags)
+                    await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, f"-O{opt_level}", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
                 else:
                     file_core_obj = unified_file_core_obj
 
@@ -812,7 +1047,8 @@ class FlowRunner:
                     link_with_obj = await extract_input_files(file_core_bcf)
                     await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "-f", file_core_obj, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
                 elif opts.link:
-                    await self.do_call(task, [self.peano_clang_path, "-O2", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
+                    opt_level = opts.opt_level
+                    await self.do_call(task, [self.peano_clang_path, f"-O{opt_level}", "--target=" + aie_peano_target, file_core_obj, *clang_link_args, "-Wl,-T," + file_core_ldscript, "-o", file_core_elf])
 
             self.progress_bar.update(parent_task_id, advance=1)
             self.progress_bar.update(task, advance=0, visible=False)
@@ -859,19 +1095,18 @@ class FlowRunner:
                 input_physical.operation, self.tmpdirname, device_name
             )
 
-    async def process_txn(self, module_str, device_name):
+    async def process_txn(self, module, device_name):
         file_txn = self.prepend_tmp(f"{device_name}_txn.mlir")
-        with Context(), Location.unknown():
-            run_passes(
-                f"builtin.module(aie.device(convert-aie-to-transaction{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
-                module_str,
-                file_txn,
-                self.opts.verbose,
-            )
-            txn_dest = opts.txn_name.format(device_name)
-            if opts.verbose:
-                print(f"copy {file_txn} to {txn_dest}")
-            shutil.copy(file_txn, txn_dest)
+        self.run_passes(
+            f"builtin.module(aie.device(convert-aie-to-transaction{{device-name={device_name} elf-dir={self.tmpdirname}}}))",
+            module,
+            outputfile=file_txn,
+            description=f"Transaction binary generation for {device_name}",
+        )
+        txn_dest = opts.txn_name.format(device_name)
+        if opts.verbose:
+            print(f"copy {file_txn} to {txn_dest}")
+        shutil.copy(file_txn, txn_dest)
         return file_txn
 
     async def aiebu_asm(
@@ -921,6 +1156,10 @@ class FlowRunner:
         for device_op, device_name in devices:
             sequences = generate_runtime_sequences_list(device_op)
 
+            # Skip devices with no runtime sequences (e.g., @empty device)
+            if not sequences:
+                continue
+
             max_arg_count = max(
                 len(seq_op.body.blocks[0].arguments) for seq_op, seq_name in sequences
             )
@@ -936,9 +1175,11 @@ class FlowRunner:
                 "PDIs": [],
             }
 
-            pdi_id = device_to_id_mapping[device_name]
-            pdi_filename = self.pdi_file_name(device_name)
-            kernel_entry["PDIs"].append({"id": pdi_id, "PDI_file": pdi_filename})
+            for other_device_name, other_pdi_id in device_to_id_mapping.items():
+                pdi_filename = self.pdi_file_name(other_device_name)
+                kernel_entry["PDIs"].append(
+                    {"id": other_pdi_id, "PDI_file": pdi_filename}
+                )
 
             for seq_op, seq_name in sequences:
                 insts_filename = self.npu_insts_file_name(device_name, seq_name)
@@ -988,41 +1229,41 @@ class FlowRunner:
         full_elf_path = self.opts.full_elf_name or "aie.elf"
         await self.assemble_full_elf(config_json_path, full_elf_path, parent_task)
 
-    async def process_ctrlpkt(self, module_str, device_op, device_name):
+    async def process_ctrlpkt(self, module, device_op, device_name):
         file_ctrlpkt_mlir = self.prepend_tmp(f"{device_name}_ctrlpkt.mlir")
         file_ctrlpkt_bin = opts.ctrlpkt_name.format(device_name)
         file_ctrlpkt_dma_seq_mlir = self.prepend_tmp(
             f"{device_name}_ctrlpkt_dma_seq.mlir"
         )
-        ctrlpkt_mlir_str = run_passes(
+        ctrlpkt_module = self.run_passes(
             "builtin.module(aie.device(convert-aie-to-transaction{elf-dir="
             + self.tmpdirname
             + "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))",
-            module_str,
-            file_ctrlpkt_mlir,
-            self.opts.verbose,
+            module,
+            outputfile=file_ctrlpkt_mlir,
+            description="Transaction binary to control packet conversion",
         )
 
         # aie-translate --aie-ctrlpkt-to-bin -o ctrlpkt.bin
-        with Context(), Location.unknown():
+        with ctrlpkt_module.context, Location.unknown():
             ctrlpkt_bin = aiedialect.generate_control_packets(
-                Module.parse(ctrlpkt_mlir_str).operation, device_name
+                ctrlpkt_module.operation, device_name
             )
         with open(file_ctrlpkt_bin, "wb") as f:
             f.write(struct.pack("I" * len(ctrlpkt_bin), *ctrlpkt_bin))
 
         # aie-opt --aie-ctrl-packet-to-dma -aie-dma-to-npu
-        ctrl_seq_str = run_passes(
+        ctrl_seq_module = self.run_passes(
             "builtin.module(aie.device(aie-ctrl-packet-to-dma,aie-dma-to-npu))",
-            ctrlpkt_mlir_str,
-            file_ctrlpkt_dma_seq_mlir,
-            self.opts.verbose,
+            ctrlpkt_module,
+            outputfile=file_ctrlpkt_dma_seq_mlir,
+            description="Control packet to DMA sequence conversion",
         )
 
         # aie-translate --aie-npu-to-binary -o npu_insts.bin
-        with Context(), Location.unknown():
+        with ctrl_seq_module.context, Location.unknown():
             insts_bin = aiedialect.translate_npu_to_binary(
-                Module.parse(ctrl_seq_str).operation, device_name, opts.sequence_name
+                ctrl_seq_module.operation, device_name, opts.sequence_name
             )
         with open(opts.insts_name.format(device_name, "seq"), "wb") as f:
             f.write(struct.pack("I" * len(insts_bin), *insts_bin))
@@ -1297,7 +1538,6 @@ class FlowRunner:
     async def gen_sim(self, task, aie_target, file_physical, device_name):
         # For simulation, we need to additionally parse the 'remaining' options to avoid things
         # which conflict with the options below (e.g. -o)
-        print(opts.host_args)
         host_opts = aie.compiler.aiecc.cl_arguments.strip_host_args_for_aiesim(
             opts.host_args
         )
@@ -1427,18 +1667,17 @@ class FlowRunner:
                 ],
             )
         )
-        processes.append(
-            self.do_call(
-                task,
-                [
-                    "aie-opt",
-                    "--aie-find-flows",
-                    file_physical,
-                    "-o",
-                    os.path.join(sim_dir, "flows_physical.mlir"),
-                ],
-            )
+
+        flows_output = os.path.join(sim_dir, "flows_physical.mlir")
+        with Context(), Location.unknown():
+            module = Module.parse(await read_file_async(file_physical))
+        self.run_passes(
+            "builtin.module(aie.device(aie-find-flows))",
+            module,
+            outputfile=flows_output,
+            description="Finding flows for simulation",
         )
+
         processes.append(
             self.do_call(
                 task,
@@ -1564,30 +1803,22 @@ class FlowRunner:
                 sys.exit(1)
             aie_target, aie_peano_target = aie_targets[0], aie_peano_targets[0]
 
-            # Handle full ELF generation configuration
-            if opts.generate_full_elf:
-                device_to_id_mapping = create_device_id_mapping(devices)
-                self.mlir_module_str = assign_load_pdi_ids(
-                    self.mlir_module_str, device_to_id_mapping
-                )
-                transformed_mlir_path = self.prepend_tmp("input_with_pdi_ids.mlir")
-                await write_file_async(self.mlir_module_str, transformed_mlir_path)
-
             pass_pipeline = INPUT_WITH_ADDRESSES_PIPELINE(
                 opts.alloc_scheme,
                 opts.dynamic_objFifos,
                 opts.packet_sw_objFifos,
                 opts.ctrl_pkt_overlay,
                 aie_target,
+                opts.opt_level,
             ).materialize(module=True)
 
             self.progress_bar.update(task1, advance=1, command=pass_pipeline[0:30])
             file_with_addresses = self.prepend_tmp("input_with_addresses.mlir")
-            run_passes(
+            file_with_addresses_module = self.run_passes(
                 pass_pipeline,
-                self.mlir_module_str,
-                file_with_addresses,
-                self.opts.verbose,
+                module,
+                outputfile=file_with_addresses,
+                description="Resource allocation and Object FIFO lowering",
             )
 
             requires_routing = (
@@ -1600,20 +1831,12 @@ class FlowRunner:
             )
             if requires_routing:
                 input_physical = self.prepend_tmp("input_physical.mlir")
-                processes = [
-                    self.do_call(
-                        task1,
-                        [
-                            "aie-opt",
-                            "--aie-create-pathfinder-flows",
-                            file_with_addresses,
-                            "-o",
-                            input_physical,
-                        ],
-                        force=True,
-                    )
-                ]
-                await asyncio.gather(*processes)
+                self.run_passes(
+                    "builtin.module(aie.device(aie-create-pathfinder-flows))",
+                    file_with_addresses_module,
+                    outputfile=input_physical,
+                    description="Running Router",
+                )
             else:
                 input_physical = file_with_addresses
 
@@ -1662,17 +1885,43 @@ class FlowRunner:
                     input_physical_with_elfs_module = Module.parse(
                         await read_file_async(input_physical_with_elfs)
                     )
-                    pass_pipeline = NPU_LOWERING_PIPELINE.materialize(module=True)
+                    npu_pipeline = _create_npu_lowering_pipeline(opts.expand_load_pdis)
+                    pass_pipeline = npu_pipeline.materialize(module=True)
                     npu_insts_file = self.prepend_tmp(f"npu_insts.mlir")
                     self.progress_bar.update(
                         task3, advance=1, command=pass_pipeline[0:30]
                     )
-                    npu_insts_module = run_passes_module(
+                    npu_insts_module = self.run_passes(
                         pass_pipeline,
                         input_physical_with_elfs_module,
                         npu_insts_file,
-                        self.opts.verbose,
+                        description="NPU instruction lowering",
                     )
+
+                    # If expand_load_pdis is enabled, the pass may have created new devices
+                    # (e.g., @empty), so we need to regenerate the device list from the transformed module
+                    if opts.expand_load_pdis:
+                        devices = generate_devices_list(npu_insts_module)
+                        input_physical_with_expanded = self.prepend_tmp(
+                            "input_physical_with_expanded.mlir"
+                        )
+                        await write_file_async(
+                            str(npu_insts_module), input_physical_with_expanded
+                        )
+                        # Update both input_physical and input_physical_with_elfs to point to the file with expanded devices
+                        input_physical = input_physical_with_expanded
+                        input_physical_with_elfs = input_physical_with_expanded
+
+                    if opts.generate_full_elf:
+                        device_to_id_mapping = create_device_id_mapping(devices)
+                        assign_load_pdi_ids(npu_insts_module, device_to_id_mapping)
+                        transformed_mlir_path = self.prepend_tmp(
+                            "npu_insts_with_pdi_ids.mlir"
+                        )
+                        await write_file_async(
+                            str(npu_insts_module), transformed_mlir_path
+                        )
+
                     self.progress_bar.update(task3, advance=1)
 
             # 4.) Generate compilation artifacts for each device
@@ -1775,16 +2024,17 @@ class FlowRunner:
             processes.append(
                 self.process_pdi_gen(device_name, self.pdi_file_name(device_name))
             )
-
+        with Context(), Location.unknown():
+            input_physical_with_elfs_module = Module.parse(input_physical_with_elfs_str)
         if opts.txn and opts.execute:
             input_physical_with_elfs = await self.process_txn(
-                input_physical_with_elfs_str, device_name
+                input_physical_with_elfs_module, device_name
             )
 
         if opts.ctrlpkt and opts.execute:
             processes.append(
                 self.process_ctrlpkt(
-                    input_physical_with_elfs_str, device_op, device_name
+                    input_physical_with_elfs_module, device_op, device_name
                 )
             )
 

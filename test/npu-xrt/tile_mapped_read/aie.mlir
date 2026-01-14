@@ -53,7 +53,7 @@ module {
       aie.end
     } {link_with = "kernel.o"}
 
-    aiex.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
+    aie.runtime_sequence(%in : memref<64xi32>, %out : memref<64xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c64 = arith.constant 64 : i64

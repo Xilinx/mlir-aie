@@ -16,9 +16,11 @@
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Ptr/IR/PtrOps.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/Attributes.h"
@@ -143,10 +145,9 @@ static void declareAIEIntrinsics(AIEArch arch, OpBuilder &builder) {
   auto registerIntrinsics = [&builder](IntrinsicDecls functions) {
     for (auto &i : functions) {
       auto [name, argTypes, retTypes] = i;
-      builder
-          .create<func::FuncOp>(
-              builder.getUnknownLoc(), name,
-              FunctionType::get(builder.getContext(), argTypes, retTypes))
+      func::FuncOp::create(
+          builder, builder.getUnknownLoc(), name,
+          FunctionType::get(builder.getContext(), argTypes, retTypes))
           .setPrivate();
     }
   };
@@ -199,7 +200,7 @@ struct AIEDebugOpToStdLowering : OpConversionPattern<DebugOp> {
              << funcName;
     SmallVector<Value, 1> args;
     args.push_back(op.getArg());
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), func, args);
+    func::CallOp::create(rewriter, rewriter.getUnknownLoc(), func, args);
     rewriter.eraseOp(op);
     return success();
   }
@@ -243,11 +244,11 @@ struct AIEPutStreamToStdLowering : OpConversionPattern<PutStreamOp> {
       args.push_back(op.getStreamValue());
     } else {
       args.push_back(op.getStreamValue());
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+      args.push_back(arith::ConstantOp::create(
+          rewriter, op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(0))); // tlast
     }
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMSFunc, args);
+    func::CallOp::create(rewriter, rewriter.getUnknownLoc(), putMSFunc, args);
     rewriter.eraseOp(op);
     return success();
   }
@@ -288,8 +289,8 @@ struct AIEGetStreamToStdLowering : OpConversionPattern<GetStreamOp> {
     SmallVector<Value, 2> args;
     if (targetModel.getTargetArch() == AIEArch::AIE1)
       args.push_back(op.getChannel());
-    auto getSSCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
-                                                   getSSFunc, args);
+    auto getSSCall = func::CallOp::create(rewriter, rewriter.getUnknownLoc(),
+                                          getSSFunc, args);
     rewriter.replaceOp(op, getSSCall.getResult(0));
     // Capture TLAST in AIEv2?
     return success();
@@ -330,17 +331,17 @@ struct AIEPutCascadeToStdLowering : OpConversionPattern<PutCascadeOp> {
     if (expectedInputType != actualInputType) {
       // Create a bitcast operation to convert from actual input type to
       // expected type
-      cascadeValue = rewriter.create<vector::BitCastOp>(
-          op.getLoc(), expectedInputType, cascadeValue);
+      cascadeValue = vector::BitCastOp::create(rewriter, op.getLoc(),
+                                               expectedInputType, cascadeValue);
     }
 
     args.push_back(cascadeValue);
     if (isa<AIE2TargetModel>(targetModel))
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+      args.push_back(arith::ConstantOp::create(
+          rewriter, op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
 
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), putMCDFunc, args);
+    func::CallOp::create(rewriter, rewriter.getUnknownLoc(), putMCDFunc, args);
     rewriter.eraseOp(op);
     return success();
   }
@@ -372,12 +373,12 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
              << funcName;
     SmallVector<Value, 2> args;
     if (isa<AIE2TargetModel>(targetModel))
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
+      args.push_back(arith::ConstantOp::create(
+          rewriter, op.getLoc(), IntegerType::get(rewriter.getContext(), 32),
           rewriter.getI32IntegerAttr(1))); // enable
 
-    auto getSCDCall = rewriter.create<func::CallOp>(rewriter.getUnknownLoc(),
-                                                    getSCDFunc, args);
+    auto getSCDCall = func::CallOp::create(rewriter, rewriter.getUnknownLoc(),
+                                           getSCDFunc, args);
     Value result = getSCDCall.getResult(0);
 
     // Check if we need a bitcast
@@ -387,8 +388,8 @@ struct AIEGetCascadeToStdLowering : OpConversionPattern<GetCascadeOp> {
     if (expectedType != intrinsicReturnType) {
       // Create a bitcast operation to convert from intrinsic return type to
       // expected type
-      result =
-          rewriter.create<vector::BitCastOp>(op.getLoc(), expectedType, result);
+      result = vector::BitCastOp::create(rewriter, op.getLoc(), expectedType,
+                                         result);
     }
 
     rewriter.replaceOp(op, result);
@@ -439,15 +440,16 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
       if (useLock.acquireGE()) {
         lockValue = -lockValue;
       }
-      args.push_back(rewriter.create<arith::IndexCastOp>(
-          useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-          useLock.getLock()));
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          useLock.getLoc(), IntegerType::get(rewriter.getContext(), 32),
-          rewriter.getI32IntegerAttr(lockValue)));
+      args.push_back(arith::IndexCastOp::create(
+          rewriter, useLock.getLoc(),
+          IntegerType::get(rewriter.getContext(), 32), useLock.getLock()));
+      args.push_back(
+          arith::ConstantOp::create(rewriter, useLock.getLoc(),
+                                    IntegerType::get(rewriter.getContext(), 32),
+                                    rewriter.getI32IntegerAttr(lockValue)));
 
-      rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), useLockFunc,
-                                    args);
+      func::CallOp::create(rewriter, rewriter.getUnknownLoc(), useLockFunc,
+                           args);
     }
     rewriter.eraseOp(useLock);
     return success();
@@ -477,19 +479,19 @@ struct AIEBufferToStandard : OpConversionPattern<BufferOp> {
     // prevent duplication in the data section of the elf/object file)
     if ((tileRow != row && tileRow != -1) || (tileCol != col && tileCol != -1))
       initValue = nullptr;
-    rewriter.create<memref::GlobalOp>(
-        rewriter.getUnknownLoc(), symName, rewriter.getStringAttr("public"),
-        buffer.getType(), initValue, /*constant*/ false,
-        /*alignment*/ nullptr);
+    memref::GlobalOp::create(rewriter, rewriter.getUnknownLoc(), symName,
+                             rewriter.getStringAttr("public"), buffer.getType(),
+                             initValue, /*constant*/ false,
+                             /*alignment*/ nullptr);
 
     for (auto &use : make_early_inc_range(buffer.getResult().getUses())) {
       Operation *user = use.getOwner();
       rewriter.setInsertionPoint(user);
-      auto allocated = rewriter.create<memref::GetGlobalOp>(
-          rewriter.getUnknownLoc(), t, symName);
+      auto allocated = memref::GetGlobalOp::create(
+          rewriter, rewriter.getUnknownLoc(), t, symName);
       // Assume that buffers are aligned so they can be vectorized.
-      rewriter.create<memref::AssumeAlignmentOp>(rewriter.getUnknownLoc(),
-                                                 allocated, 32);
+      memref::AssumeAlignmentOp::create(rewriter, rewriter.getUnknownLoc(),
+                                        allocated, 32);
 
       use.set(allocated.getResult());
     }
@@ -533,9 +535,9 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
 
     std::string coreName("core_" + std::to_string(col) + "_" +
                          std::to_string(row));
-    auto coreFunc = rewriter.create<func::FuncOp>(
-        rewriter.getUnknownLoc(), coreName,
-        FunctionType::get(rewriter.getContext(), {}, {}));
+    auto coreFunc =
+        func::FuncOp::create(rewriter, rewriter.getUnknownLoc(), coreName,
+                             FunctionType::get(rewriter.getContext(), {}, {}));
 
     rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
@@ -545,8 +547,8 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
       rewriter.setInsertionPointAfter(childOp);
 
       if (isa<EndOp>(childOp)) {
-        rewriter.create<func::ReturnOp>(rewriter.getUnknownLoc(),
-                                        ValueRange({}));
+        func::ReturnOp::create(rewriter, rewriter.getUnknownLoc(),
+                               ValueRange({}));
         rewriter.eraseOp(childOp);
       }
     });
@@ -588,14 +590,14 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
       break;
     case AIEArch::AIE2:
       funcName = "llvm.aie2.event";
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          op.getLoc(), rewriter.getI32Type(),
+      args.push_back(arith::ConstantOp::create(
+          rewriter, op.getLoc(), rewriter.getI32Type(),
           rewriter.getI32IntegerAttr(op.getVal())));
       break;
     case AIEArch::AIE2p:
       funcName = "llvm.aie2p.event";
-      args.push_back(rewriter.create<arith::ConstantOp>(
-          op.getLoc(), rewriter.getI32Type(),
+      args.push_back(arith::ConstantOp::create(
+          rewriter, op.getLoc(), rewriter.getI32Type(),
           rewriter.getI32IntegerAttr(op.getVal())));
       break;
     default:
@@ -605,7 +607,7 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
     if (!eventFunc)
       return op.emitOpError("Could not find the intrinsic function ")
              << funcName;
-    rewriter.create<func::CallOp>(rewriter.getUnknownLoc(), eventFunc, args);
+    func::CallOp::create(rewriter, rewriter.getUnknownLoc(), eventFunc, args);
     rewriter.eraseOp(op);
     return success();
   }
@@ -622,6 +624,11 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
       return signalPassFailure();
     }
     const auto &targetModel = deviceOp.getTargetModel();
+
+    // Copy data layout attribute from DeviceOp to ModuleOp if present
+    if (auto dlAttr = deviceOp->getAttr(DLTIDialect::kDataLayoutAttrName)) {
+      m->setAttr(DLTIDialect::kDataLayoutAttrName, dlAttr);
+    }
 
     // Ensure that we don't have an incorrect target triple.  This may override
     // some bogus target triple in the original mlir.
@@ -649,7 +656,8 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
     target.addLegalDialect<ub::UBDialect>();
     target.addLegalDialect<math::MathDialect>();
     target.addLegalDialect<index::IndexDialect>();
-    target.addLegalOp<func::FuncOp, ModuleOp>();
+    target.addLegalDialect<ptr::PtrDialect>();
+    target.addLegalOp<func::FuncOp, ModuleOp, UnrealizedConversionCastOp>();
 
     RewritePatternSet patterns(&getContext());
     patterns.add<AIEPutStreamToStdLowering, AIEGetStreamToStdLowering,

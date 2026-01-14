@@ -454,31 +454,30 @@ emitTransactionOps(OpBuilder &builder,
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      builder.create<AIEX::NpuWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
-                                         nullptr, nullptr, nullptr);
+      AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                 nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
-      auto memref = builder.create<memref::GetGlobalOp>(loc, payload.getType(),
-                                                        payload.getName());
-      builder.create<AIEX::NpuBlockWriteOp>(
-          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), memref.getResult(),
-          nullptr, nullptr, nullptr);
+      auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
+                                                payload.getName());
+      AIEX::NpuBlockWriteOp::create(
+          builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff),
+          memref.getResult(), nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      builder.create<AIEX::NpuMaskWrite32Op>(loc, op.cmd.RegOff, op.cmd.Value,
-                                             op.cmd.Mask, nullptr, nullptr,
-                                             nullptr);
+      AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
+                                     op.cmd.Mask, nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT) {
       if (!op.sync) {
         llvm::errs() << "Missing sync payload while emitting transaction\n";
         return failure();
       }
       const TransactionBinaryOperation::SyncPayload &sync = *op.sync;
-      builder.create<AIEX::NpuSyncOp>(
-          loc, builder.getI32IntegerAttr(sync.column),
-          builder.getI32IntegerAttr(sync.row),
-          builder.getI32IntegerAttr(sync.direction),
-          builder.getI32IntegerAttr(sync.channel),
-          builder.getI32IntegerAttr(sync.columnCount),
-          builder.getI32IntegerAttr(sync.rowCount));
+      AIEX::NpuSyncOp::create(builder, loc,
+                              builder.getI32IntegerAttr(sync.column),
+                              builder.getI32IntegerAttr(sync.row),
+                              builder.getI32IntegerAttr(sync.direction),
+                              builder.getI32IntegerAttr(sync.channel),
+                              builder.getI32IntegerAttr(sync.columnCount),
+                              builder.getI32IntegerAttr(sync.rowCount));
     } else if (op.cmd.Opcode == 0x8 /* XAie_TxnOpcode::XAIE_IO_LOAD_PDI */) {
       if (!op.loadPdi) {
         llvm::errs() << "Missing load_pdi payload while emitting transaction\n";
@@ -496,8 +495,8 @@ emitTransactionOps(OpBuilder &builder,
       IntegerAttr addressAttr =
           IntegerAttr::get(ui64Ty, llvm::APInt(64, payloadInfo.address));
 
-      builder.create<AIEX::NpuLoadPdiOp>(loc, nullptr, idAttr, sizeAttr,
-                                         addressAttr);
+      AIEX::NpuLoadPdiOp::create(builder, loc, nullptr, idAttr, sizeAttr,
+                                 addressAttr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH) {
       if (!op.addressPatch) {
         llvm::errs()
@@ -506,15 +505,15 @@ emitTransactionOps(OpBuilder &builder,
       }
       const TransactionBinaryOperation::AddressPatchPayload &patch =
           *op.addressPatch;
-      builder.create<AIEX::NpuAddressPatchOp>(
-          loc, builder.getUI32IntegerAttr(patch.addr),
-          builder.getI32IntegerAttr(patch.argIdx),
-          builder.getI32IntegerAttr(patch.argPlus));
+      AIEX::NpuAddressPatchOp::create(builder, loc,
+                                      builder.getUI32IntegerAttr(patch.addr),
+                                      builder.getI32IntegerAttr(patch.argIdx),
+                                      builder.getI32IntegerAttr(patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
           IntegerType::get(builder.getContext(), 8, IntegerType::Unsigned);
       auto levelAttr = IntegerAttr::get(ui8Ty, llvm::APInt(8, op.cmd.Value));
-      builder.create<AIEX::NpuPreemptOp>(loc, levelAttr);
+      AIEX::NpuPreemptOp::create(builder, loc, levelAttr);
     } else {
       llvm::errs() << "Unhandled txn opcode: " << op.cmd.Opcode << "\n";
       return failure();
@@ -537,8 +536,8 @@ emitControlPacketOps(OpBuilder &builder,
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      builder.create<AIEX::NpuControlPacketOp>(
-          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
+      AIEX::NpuControlPacketOp::create(
+          builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
           DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
@@ -560,8 +559,8 @@ emitControlPacketOps(OpBuilder &builder,
         SmallVector<int32_t> splitData =
             SmallVector<int32_t>(blockWriteDataValues.begin() + i,
                                  blockWriteDataValues.begin() + last);
-        builder.create<AIEX::NpuControlPacketOp>(
-            loc, builder.getUI32IntegerAttr(currAddr), nullptr,
+        AIEX::NpuControlPacketOp::create(
+            builder, loc, builder.getUI32IntegerAttr(currAddr), nullptr,
             /*opcode*/ builder.getI32IntegerAttr(0),
             /*stream_id*/ builder.getI32IntegerAttr(0),
             DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(splitData)));
@@ -569,8 +568,8 @@ emitControlPacketOps(OpBuilder &builder,
       }
 
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      builder.create<AIEX::NpuControlPacketOp>(
-          loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
+      AIEX::NpuControlPacketOp::create(
+          builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff), nullptr,
           /*opcode*/ builder.getI32IntegerAttr(0),
           /*stream_id*/ builder.getI32IntegerAttr(0),
           DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>(op.cmd.Value)));
@@ -624,70 +623,54 @@ LogicalResult orConsecutiveWritesOnSameAddr(Block *body) {
   return success();
 }
 
-// an enum to represent the output type of the transaction binary
-enum OutputType {
-  Transaction,
-  ControlPacket,
-};
-
+// Take transaction operations and insert them at the _current_ insertion point
+// of the supplied builder.
 static LogicalResult convertTransactionOpsToMLIR(
-    OpBuilder builder, AIE::DeviceOp device, OutputType outputType,
+    OpBuilder builder, AIE::AIEToConfigurationOutputType outputType,
     std::vector<TransactionBinaryOperation> &operations) {
 
   auto loc = builder.getUnknownLoc();
 
-  // for each blockwrite in the binary, create a GlobalOp with the data
+  // for each blockwrite in the binary, create a GlobalOp with the data at the
+  // device level
   std::vector<memref::GlobalOp> global_data;
-  for (auto &op : operations) {
-    if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
-      global_data.push_back(nullptr);
-      continue;
+  {
+    DeviceOp device =
+        llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
+    if (!device) {
+      device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
     }
-    uint32_t size = op.cmd.Size / 4;
-    const uint32_t *d = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
-    std::vector<uint32_t> data32(d, d + size);
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(device.getBody());
+    for (auto &op : operations) {
+      if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
+        global_data.push_back(nullptr);
+        continue;
+      }
+      uint32_t size = op.cmd.Size / 4;
+      const uint32_t *d = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
+      std::vector<uint32_t> data32(d, d + size);
 
-    int id = 0;
-    std::string name = "blockwrite_data";
-    while (device.lookupSymbol(name))
-      name = "blockwrite_data_" + std::to_string(id++);
+      int id = 0;
+      std::string name = "config_blockwrite_data";
+      while (device.lookupSymbol(name))
+        name = "config_blockwrite_data_" + std::to_string(id++);
 
-    MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
-    TensorType tensorType = RankedTensorType::get({size}, builder.getI32Type());
-    auto global = builder.create<memref::GlobalOp>(
-        loc, name, builder.getStringAttr("private"), memrefType,
-        DenseElementsAttr::get<uint32_t>(tensorType, data32), true, nullptr);
-    global_data.push_back(global);
-  }
-
-  // search for aiex.configure ops in runtime sequences by walking the device
-  // and collect them in a vector. If there are none, create a new runtime
-  // sequence. Otherwise assume the insertion point is the first aiex.configure
-  // op.
-  SmallVector<AIEX::ConfigureOp> configureOps;
-  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
-
-  if (configureOps.empty()) {
-
-    // create aiex.runtime_sequence
-    int id = 0;
-    std::string seq_name = "configure";
-    while (device.lookupSymbol(seq_name))
-      seq_name = "configure" + std::to_string(id++);
-    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-    auto seq = builder.create<AIEX::RuntimeSequenceOp>(loc, seq_sym_name);
-    seq.getBody().push_back(new Block);
-
-    builder.setInsertionPointToStart(&seq.getBody().front());
-  } else {
-    builder.setInsertionPoint(configureOps.front());
+      MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
+      TensorType tensorType =
+          RankedTensorType::get({size}, builder.getI32Type());
+      auto global = memref::GlobalOp::create(
+          builder, loc, name, builder.getStringAttr("private"), memrefType,
+          DenseElementsAttr::get<uint32_t>(tensorType, data32), true, nullptr);
+      global_data.push_back(global);
+    }
   }
 
   // create the txn ops
-  if (outputType == OutputType::Transaction) {
+  if (outputType == AIE::AIEToConfigurationOutputType::Transaction) {
     if (failed(emitTransactionOps(builder, operations, global_data)))
       return failure();
-  } else if (outputType == OutputType::ControlPacket) {
+  } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
     if (failed(emitControlPacketOps(builder, operations, global_data)))
       return failure();
     // resolve mask writes; control packet doesn't natively support mask write.
@@ -697,13 +680,6 @@ static LogicalResult convertTransactionOpsToMLIR(
     llvm_unreachable("bad output type");
   }
 
-  if (!configureOps.empty()) {
-    // splice the body into the current insertion point
-    builder.getBlock()->getOperations().splice(
-        builder.getInsertionPoint(),
-        configureOps.front().getBody().front().getOperations());
-    configureOps.front().erase();
-  }
   return success();
 }
 
@@ -734,24 +710,23 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   // create aie.device
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
                                  AIEDevice::npu1_3col, AIEDevice::npu1};
-  auto device = builder.create<DeviceOp>(loc, devices[columns - 1],
-                                         StringAttr::get(builder.getContext()));
+  auto device = DeviceOp::create(builder, loc, devices[columns - 1],
+                                 StringAttr::get(builder.getContext()));
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
   builder.setInsertionPointToStart(device.getBody());
 
   // convert the parsed ops to MLIR
-  if (failed(convertTransactionOpsToMLIR(builder, device,
-                                         OutputType::Transaction, operations)))
+  if (failed(convertTransactionOpsToMLIR(
+          builder, AIE::AIEToConfigurationOutputType::Transaction, operations)))
     return std::nullopt;
 
   return module;
 }
 
-static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
-                                               StringRef clElfDir,
-                                               OutputType outputType) {
-
+LogicalResult xilinx::AIE::generateAndInsertConfigOps(
+    OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
+    AIE::AIEToConfigurationOutputType outputType) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -765,10 +740,10 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
   if (failed(ctl.setIOBackend(aieSim, xaieDebug)))
     return failure();
 
-  // start collecting transations
+  // start collecting transactions
   ctl.startTransaction();
 
-  bool generateElfs = clElfDir.size() > 0;
+  bool generateElfs = true;
   if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
                                   true, true)))
     return failure();
@@ -783,19 +758,60 @@ static LogicalResult convertAIEToConfiguration(AIE::DeviceOp device,
     return failure();
   }
 
+  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations))) {
+    return failure();
+  }
+
+  return success();
+}
+
+static LogicalResult
+convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
+                          AIE::AIEToConfigurationOutputType outputType) {
+
   OpBuilder builder(device.getBodyRegion());
+  // search for aiex.configure ops in runtime sequences by walking the device
+  // and collect them in a vector. If there are none, create a new runtime
+  // sequence. Otherwise assume the insertion point is the first
+  // aiex.configure op.
+  auto loc = builder.getUnknownLoc();
+  SmallVector<AIEX::ConfigureOp> configureOps;
+  device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
+
+  if (configureOps.empty()) {
+    // create aiex.runtime_sequence
+    int id = 0;
+    std::string seq_name = "configure";
+    while (device.lookupSymbol(seq_name))
+      seq_name = "configure" + std::to_string(id++);
+    StringAttr seq_sym_name = builder.getStringAttr(seq_name);
+    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
+    seq.getBody().push_back(new Block);
+    builder.setInsertionPointToStart(&seq.getBody().front());
+  } else {
+    builder.setInsertionPoint(configureOps.front());
+  }
 
   // convert the parsed ops to MLIR
-  if (failed(
-          convertTransactionOpsToMLIR(builder, device, outputType, operations)))
+  if (failed(generateAndInsertConfigOps(builder, device, clElfDir, outputType)))
     return failure();
+
+  // If we chose the first aiex.configure as insertion point, erase it
+  // and inline its child operations.
+  if (!configureOps.empty()) {
+    // splice the body into the current insertion point
+    builder.getBlock()->getOperations().splice(
+        builder.getInsertionPoint(),
+        configureOps.front().getBody().front().getOperations());
+    configureOps.front().erase();
+  }
 
   return success();
 }
 
 namespace {
 
-template <typename BaseClass, OutputType MyOutputType>
+template <typename BaseClass, AIE::AIEToConfigurationOutputType MyOutputType>
 struct ConvertAIEToConfigurationPass : BaseClass {
   std::string &ref_clElfDir;
   std::string &ref_clDeviceName;
@@ -823,21 +839,23 @@ struct ConvertAIEToConfigurationPass : BaseClass {
 struct ConvertAIEToTransactionPass
     : ConvertAIEToConfigurationPass<
           ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
-          OutputType::Transaction> {
+          AIE::AIEToConfigurationOutputType::Transaction> {
   ConvertAIEToTransactionPass()
       : ConvertAIEToConfigurationPass<
             ConvertAIEToTransactionBase<ConvertAIEToTransactionPass>,
-            OutputType::Transaction>(clElfDir, clDeviceName) {}
+            AIE::AIEToConfigurationOutputType::Transaction>(clElfDir,
+                                                            clDeviceName) {}
 };
 
 struct ConvertAIEToControlPacketsPass
     : ConvertAIEToConfigurationPass<
           ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
-          OutputType::ControlPacket> {
+          AIE::AIEToConfigurationOutputType::ControlPacket> {
   ConvertAIEToControlPacketsPass()
       : ConvertAIEToConfigurationPass<
             ConvertAIEToControlPacketsBase<ConvertAIEToControlPacketsPass>,
-            OutputType::ControlPacket>(clElfDir, clDeviceName) {}
+            AIE::AIEToConfigurationOutputType::ControlPacket>(clElfDir,
+                                                              clDeviceName) {}
 };
 
 } // end anonymous namespace

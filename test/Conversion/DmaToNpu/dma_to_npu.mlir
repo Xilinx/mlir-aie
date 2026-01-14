@@ -20,12 +20,13 @@
 // CHECK-SAME: arg_idx = 1 : i32
 module  {
   aie.device(npu1) {
-    aiex.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+    aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 16][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @fromMem, id = 0 : i64 } : memref<16xi32>
     }
-    aie.shim_dma_allocation @fromMem (MM2S, 0, 0)
-    aie.shim_dma_allocation @toMem (S2MM, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @fromMem (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }
 
@@ -45,11 +46,12 @@ module  {
 // CHECK-SAME: row_num = 1 : i32
 module  {
   aie.device(npu1) {
-    aiex.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+    aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { issue_token = true, metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_wait {symbol = @toMem}
     }
-    aie.shim_dma_allocation @toMem (S2MM, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }
 
@@ -70,11 +72,12 @@ module  {
 // CHECK-SAME: row_num = 1 : i32
 module  {
   aie.device(npu1) {
-    aiex.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
+    aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { issue_token = true, metadata = @toMem, id = 1 : i64 } : memref<16xi32>
       aiex.npu.dma_wait {symbol = @toMem}
     }
-    aie.shim_dma_allocation @toMem (MM2S, 1, 1)
+    %tile_1_0 = aie.tile(1, 0)
+    aie.shim_dma_allocation @toMem (%tile_1_0, MM2S, 1)
   }
 }
 
@@ -86,7 +89,7 @@ module {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0,2)
     %data = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "data"} : memref<128xi32>
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
       aiex.npu.write32 {buffer = @data, address = 100 : ui32, value = 1234 : ui32}
     }
   }
@@ -101,7 +104,7 @@ module {
     memref.global "private" constant @data : memref<4xi32> = dense<[4, 3, 2, 1]>
     %tile02 = aie.tile(0,2)
     %buf = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "buf"} : memref<128xi32>
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
       %0 = memref.get_global @data : memref<4xi32>
       aiex.npu.blockwrite(%0) {buffer = @buf, address = 100 : ui32, value = 1234 : ui32} : memref<4xi32>
    }
@@ -116,7 +119,7 @@ module {
   aie.device(npu1_1col) {
     %tile03 = aie.tile(0,3)
     %s = aie.buffer(%tile03) {address = 1024 : i32, sym_name = "stuff"} : memref<128xi32>
-    aiex.runtime_sequence() {
+    aie.runtime_sequence() {
       aiex.npu.maskwrite32 {buffer = @stuff, address = 200 : ui32, value = 321 : ui32, mask = 0xffff : ui32}
     }
   }
@@ -133,9 +136,10 @@ module {
 // CHECK: aiex.npu.write32
 module {
   aie.device(npu1_1col) {
-    aiex.runtime_sequence(%arg0: memref<16xi32>) {
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1], packet = <pkt_id = 2, pkt_type = 3>) { metadata = @toMem, id = 1 : i64 } : memref<16xi32>
     }
-    aie.shim_dma_allocation @toMem (S2MM, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }

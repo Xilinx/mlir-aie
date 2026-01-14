@@ -42,10 +42,14 @@ struct DMAConfigureTaskForOpPattern
       return op.emitOpError("no shim DMA allocation found for symbol");
     }
 
-    const int col = alloc_op.getCol();
-    AIE::TileOp tile = AIE::TileOp::getOrCreate(rewriter, device, col, 0);
-    DMAConfigureTaskOp new_op = rewriter.create<DMAConfigureTaskOp>(
-        op.getLoc(), rewriter.getIndexType(), tile.getResult(),
+    AIE::TileOp tile = alloc_op.getTileOp();
+    if (!tile) {
+      return op.emitOpError(
+          "shim DMA allocation must reference a valid TileOp");
+    }
+
+    DMAConfigureTaskOp new_op = DMAConfigureTaskOp::create(
+        rewriter, op.getLoc(), rewriter.getIndexType(), tile.getResult(),
         alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
         op.getIssueToken(), op.getRepeatCount(),
         alloc_op.getPacket().value_or(nullptr));

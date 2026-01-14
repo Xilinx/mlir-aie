@@ -14,12 +14,12 @@ module {
     %in_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "in_cons_cons_lock"}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
-    aie.shim_dma_allocation @in(MM2S, 0, 0)
+    aie.shim_dma_allocation @in (%tile_0_0, MM2S, 0)
     memref.global "private" constant @blockwrite_data_0 : memref<8xi32> = dense<[4096, 0, 0, 0, -2147483648, 0, 0, 33554432]>
     memref.global "private" constant @blockwrite_data_1 : memref<8xi32> = dense<[4096, 0, 0, 0, -2147483648, 0, 0, 33554432]>
     memref.global "private" constant @blockwrite_data_2 : memref<8xi32> = dense<[4096, 524288, 0, 0, 0, 0, 0, 2168586048]>
     memref.global "private" constant @blockwrite_data_3 : memref<8xi32> = dense<[4096, 1572864, 0, 0, 0, 0, 0, 2168586049]>
-    aiex.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
+    aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<4096xi32>, %arg2: memref<4096xi32>) {
       %0 = memref.get_global @blockwrite_data_0 : memref<8xi32>
       aiex.npu.blockwrite(%0) {address = 118784 : ui32} : memref<8xi32>
       aiex.npu.address_patch {addr = 118788 : ui32, arg_idx = 2 : i32, arg_plus = 0 : i32}

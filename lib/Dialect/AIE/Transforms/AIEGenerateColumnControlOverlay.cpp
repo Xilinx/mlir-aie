@@ -249,16 +249,17 @@ struct AIEGenerateColumnControlOverlayPass
                                        mlir::BoolAttr ctrl_pkt_flow = nullptr) {
     OpBuilder::InsertionGuard guard(builder);
 
-    AIE::PacketFlowOp pktFlow = builder.create<AIE::PacketFlowOp>(
-        builder.getUnknownLoc(), flowID++, keep_pkt_header, ctrl_pkt_flow);
+    AIE::PacketFlowOp pktFlow =
+        AIE::PacketFlowOp::create(builder, builder.getUnknownLoc(), flowID++,
+                                  keep_pkt_header, ctrl_pkt_flow);
     Region &r_pktFlow = pktFlow.getPorts();
     Block *b_pktFlow = builder.createBlock(&r_pktFlow);
     builder.setInsertionPointToStart(b_pktFlow);
-    builder.create<AIE::PacketSourceOp>(builder.getUnknownLoc(), source,
-                                        sourceBundle, sourceChannel);
-    builder.create<AIE::PacketDestOp>(builder.getUnknownLoc(), dest, destBundle,
-                                      destChannel);
-    builder.create<AIE::EndOp>(builder.getUnknownLoc());
+    AIE::PacketSourceOp::create(builder, builder.getUnknownLoc(), source,
+                                sourceBundle, sourceChannel);
+    AIE::PacketDestOp::create(builder, builder.getUnknownLoc(), dest,
+                              destBundle, destChannel);
+    AIE::EndOp::create(builder, builder.getUnknownLoc());
     return pktFlow;
   }
 
@@ -324,11 +325,13 @@ struct AIEGenerateColumnControlOverlayPass
         ctrlPktFlowID = tileIDMap[{tOp.colIndex(), tOp.rowIndex()}];
       // Check shim channel availability
       if (!llvm::is_contained(availableShimChans,
-                              rowToShimChanMap[tOp.rowIndex()]))
+                              rowToShimChanMap[tOp.rowIndex()])) {
         device->emitOpError(
             "failed to generate column control overlay from shim dma to tile "
             "ctrl ports, because some shim mm2s dma channels were reserved "
             "from routing control packets.");
+        return signalPassFailure();
+      }
 
       auto keep_pkt_header = builder.getBoolAttr(true);
       auto ctrl_pkt_flow = builder.getBoolAttr(true);
@@ -361,9 +364,9 @@ struct AIEGenerateColumnControlOverlayPass
       if (device.lookupSymbol(dma_name))
         continue;
 
-      builder.create<AIE::ShimDMAAllocationOp>(
-          builder.getUnknownLoc(), StringRef(dma_name), dir,
-          rowToShimChanMap[tOp.rowIndex()], shimTile.colIndex(), false,
+      AIE::ShimDMAAllocationOp::create(
+          builder, builder.getUnknownLoc(), StringRef(dma_name),
+          shimTile.getResult(), dir, rowToShimChanMap[tOp.rowIndex()], false,
           nullptr);
     }
   }

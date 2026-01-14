@@ -31,8 +31,7 @@ void populateAIEVecToLLVMConversionPatterns(
     Aie2Fp32Emulation aie2Fp32EmulationOption, llvm::StringRef aieTarget);
 
 void populateAIEVecToLLVMCommonConversionPatterns(
-    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
-    Aie2Fp32Emulation aie2Fp32EmulationOption);
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns);
 
 void populateAIEVecToLLVMAIE2ConversionPatterns(
     mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns);

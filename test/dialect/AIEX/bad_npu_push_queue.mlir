@@ -13,7 +13,7 @@
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
+    aie.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
       // expected-error@+1 {{BD ID exceeds the maximum ID.}}
       aiex.npu.push_queue (0, 0, MM2S:0) {issue_token = false, repeat_count = 3 : i32, bd_id = 28 : i32 }
     }
@@ -24,7 +24,7 @@ module {
 
 module {
   aie.device(npu1) {
-    aiex.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
+    aie.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
       // expected-error@+1 {{Repeat count exceeds the [0:255] range.}}
       aiex.npu.push_queue (0, 0, MM2S:0) {issue_token = false, repeat_count = 384 : i32, bd_id = 8 : i32 }
     }

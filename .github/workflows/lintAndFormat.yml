@@ -40,8 +40,9 @@ jobs:
 
       - name: Install Python packages
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Get MLIR
@@ -130,8 +131,13 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Check Liquid Syntax
+        run: python3 utils/check_liquid_syntax.py
+
       - name: Install black
-        run: pip install black[jupyter]
+        run: |
+          pip install --upgrade pip
+          pip install black[jupyter]
 
       - name: Run git-clang-format
         id: git-clang-format
@@ -191,6 +197,17 @@ jobs:
       pull-requests: write
 
     steps:
+
+      - name: Free disk space
+        uses: descriptinc/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: false
+
       - name: Get the project repository
         uses: actions/checkout@v4
         with:
@@ -203,8 +220,9 @@ jobs:
 
       - name: Install Python and other packages
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Install packages
@@ -239,8 +257,9 @@ jobs:
       - name: Install our python reqs
         if: steps.changed-files.outputs.changed-files != ''
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Build and generate coverage (Release)
@@ -304,4 +323,3 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
-

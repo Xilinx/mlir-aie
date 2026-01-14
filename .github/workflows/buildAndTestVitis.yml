@@ -61,7 +61,7 @@ jobs:
       matrix:
         runner_type: [ ubuntu-vitis ]
     env:
-      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,8 +84,9 @@ jobs:
           source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
           pip install -r python/requirements_dev.txt
@@ -124,9 +125,13 @@ jobs:
             $CMAKE_ARGS
 
           # Create runner-specific cache directory
-          mkdir -p $IRON_CACHE_HOME
+          rm -rf $NPU_CACHE_HOME
+          mkdir $NPU_CACHE_HOME
 
           ninja install
           ninja check-aie
           popd
 
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        run: rm -rf $NPU_CACHE_HOME
