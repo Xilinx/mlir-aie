@@ -3,6 +3,8 @@ import sys
 import re
 import subprocess
 import argparse
+import tempfile
+import shutil
 from pathlib import Path
 
 
@@ -43,31 +45,35 @@ def install_eudsl(req_file, target_dir):
 
     print(f"Vendoring eudsl-python-extras=={version} to {target_dir}", file=sys.stderr)
 
-    cmd = [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        f"eudsl-python-extras=={version}",
-        "--target",
-        str(target_dir),
-        "--no-deps",
-        "--no-binary",
-        "eudsl-python-extras",
-        "--no-cache-dir",
-        "--config-settings",
-        config_setting,
-        "-f",
-        find_links,
-    ]
+    with tempfile.TemporaryDirectory() as temp_dir:
+        cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            f"eudsl-python-extras=={version}",
+            "--target",
+            temp_dir,
+            "--no-deps",
+            "--no-binary",
+            "eudsl-python-extras",
+            "--no-cache-dir",
+            "--config-settings",
+            config_setting,
+            "-f",
+            find_links,
+        ]
 
-    env = os.environ.copy()
-    if "=" in config_setting:
-        key, val = config_setting.split("=", 1)
-        env[key] = val
+        env = os.environ.copy()
+        if "=" in config_setting:
+            key, val = config_setting.split("=", 1)
+            env[key] = val
 
-    print(f"Running: {' '.join(cmd)}", file=sys.stderr)
-    subprocess.run(cmd, check=True, env=env)
+        print(f"Running: {' '.join(cmd)}", file=sys.stderr)
+        subprocess.run(cmd, check=True, env=env)
+
+        print(f"Copying files from {temp_dir} to {target_dir}", file=sys.stderr)
+        shutil.copytree(temp_dir, target_dir, dirs_exist_ok=True)
 
     print(f"Listing files in {target_dir}:", file=sys.stderr)
     for root, dirs, files in os.walk(target_dir):
