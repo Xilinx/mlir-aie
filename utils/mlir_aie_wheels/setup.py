@@ -16,6 +16,7 @@ from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
 from setuptools.command.install import install
 
+sys.path.append(os.path.dirname(__file__))
 from vendor_eudsl import install_eudsl
 
 
