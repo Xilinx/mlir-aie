@@ -283,7 +283,7 @@ class AIEAddressDecoder:
 
     def format_result(self, result: Dict, include_delimiters: bool = False) -> str:
         """Format decoded result for display
-        
+
         Args:
             result: Decoded address information
             include_delimiters: If True, include '=' and '-' separator lines
@@ -292,25 +292,29 @@ class AIEAddressDecoder:
             return "Unable to decode address"
 
         lines = []
-        
+
         if include_delimiters:
             lines.append("=" * 70)
-        
-        lines.extend([
-            f"Address: {result['address']}",
-        ])
-        
+
+        lines.extend(
+            [
+                f"Address: {result['address']}",
+            ]
+        )
+
         if include_delimiters:
             lines.append("-" * 70)
-        
-        lines.extend([
-            f"Column:      {result['col']}",
-            f"Row:         {result['row']}",
-            f"Tile Type:   {result['tile_type']}",
-            f"Module:      {result['module']}",
-            f"Register:    {result['register']}",
-            f"Offset:      {result['offset']}",
-        ])
+
+        lines.extend(
+            [
+                f"Column:      {result['col']}",
+                f"Row:         {result['row']}",
+                f"Tile Type:   {result['tile_type']}",
+                f"Module:      {result['module']}",
+                f"Register:    {result['register']}",
+                f"Offset:      {result['offset']}",
+            ]
+        )
 
         if "width" in result:
             lines.append(f"Width:       {result['width']} bits")
