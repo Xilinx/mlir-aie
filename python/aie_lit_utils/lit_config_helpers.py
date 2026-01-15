@@ -241,8 +241,9 @@ class LitConfigHelper:
             # Pattern matches both old and new xrt-smi output formats:
             # Old: "|[0000:41:00.1]  ||RyzenAI-npu1  |"
             # New: "|[0000:41:00.1]  |NPU Phoenix  |"
+            # New with spaces: "|[0000:c6:00.1]  |NPU Strix Halo  |"
             pattern = re.compile(
-                r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU (\w+))\W*\|"
+                r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU ([\w ]+?))\s*\|"
             )
 
             for line in output:
