@@ -7,9 +7,6 @@
 cmake_minimum_required(VERSION 3.30)
 project("test lib for ${AIE_RUNTIME_TARGET}")
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 # test_lib library
 add_library(test_lib STATIC test_library.cpp)
 set(TEST_LIB_PUBLIC_HEADERS
@@ -19,9 +16,7 @@ set(TEST_LIB_PUBLIC_HEADERS
     cxxopts.hpp
 )
 set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "${TEST_LIB_PUBLIC_HEADERS}")
-if(NOT MSVC)
-  target_compile_options(test_lib PRIVATE -fPIC)
-endif()
+target_compile_options(test_lib PRIVATE -fPIC)
 
 target_include_directories(test_lib PRIVATE
     ${LibXAIE_INC_DIR}
@@ -53,9 +48,7 @@ set(BUILD_TEST_UTILS NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 if (${BUILD_TEST_UTILS})
   add_library(test_utils STATIC test_utils.cpp)
   set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;xrt_test_wrapper.h;cxxopts.hpp")
-  if(NOT MSVC)
-    target_compile_options(test_utils PRIVATE -fPIC)
-  endif()
+  target_compile_options(test_utils PRIVATE -fPIC)
 
   if (${XRT_FOUND})
     target_compile_options(test_utils PRIVATE -DTEST_UTILS_USE_XRT)
@@ -105,7 +98,6 @@ install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/$
 #
 
 # ion memory allocator library
-if(NOT WIN32)
 add_library(memory_allocator_ion STATIC memory_allocator_ion.cpp)
 set(ION_PUBLIC_HEADERS
     memory_allocator.h
@@ -130,8 +122,6 @@ install(TARGETS memory_allocator_ion
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
 
-endif()
-
 # HSA memory allocator library
 if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
   add_library(memory_allocator_hsa STATIC memory_allocator_hsa.cpp)
@@ -154,9 +144,7 @@ endif()
 
 # simulation memory allocator library
 add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
-if(NOT MSVC)
-  target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
-endif()
+target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
 target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
 target_include_directories(memory_allocator_sim_aie PRIVATE ${LibXAIE_INC_DIR})
 
