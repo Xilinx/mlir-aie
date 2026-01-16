@@ -1871,8 +1871,8 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     The join pattern is the exact inverse of the distribute one and uses the src_offsets input array instead.
 
     In the cases of the join and distribute patterns, the link has some special restrictions on `toStream` and `fromStream` dimensions:
-    - join: the `toStream` dimensions of the output `objectFifo` cannot access an index beyond the length of the minimum buffer size in the input `objectFifos`.
-    - distribute: the `fromStream` dimensions of the input `objectFifo` cannot access an index beyond the length of the minimum buffer size in the output `objectFifos`.
+    - join: the `toStream` dimensions of the output `objectFifo` cannot access an index beyond the length of the minimum transfer length in the src_offsets.
+    - distribute: the `fromStream` dimensions of the input `objectFifo` cannot access an index beyond the length of the minimum transfer length in dst_offsets.
   }];
 
   let arguments = (

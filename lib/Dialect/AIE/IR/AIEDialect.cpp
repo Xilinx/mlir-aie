@@ -654,18 +654,15 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!fifoOut.getDimensionsToStream().empty()) {
       int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
       int64_t minInputBufferSize = -1;
-      for (auto fifoIn : getInputObjectFifos()) {
-        auto fifoInType = llvm::cast<AIEObjectFifoType>(fifoIn.getElemType());
-        MemRefType buffer = llvm::cast<MemRefType>(fifoInType.getElementType());
-        if (buffer.getNumElements() <= minInputBufferSize ||
-            minInputBufferSize < 0)
-          minInputBufferSize = buffer.getNumElements();
+      for (auto lenIn : getJoinTransferLengths()) {
+        if (lenIn <= minInputBufferSize || minInputBufferSize < 0)
+          minInputBufferSize = lenIn;
       }
       if (minInputBufferSize <= maxIdx) {
         return emitOpError()
                << "specified output stride(s) and size(s) result in out "
-                  "of bounds access in input objectfifo buffer, for index "
-               << std::to_string(maxIdx) << " in memref of length "
+                  "of bounds access in join input, for index "
+               << std::to_string(maxIdx) << " in transfer of length "
                << std::to_string(minInputBufferSize) << ".";
       }
     }
@@ -683,19 +680,15 @@ LogicalResult ObjectFifoLinkOp::verify() {
       int64_t maxIdx =
           getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
       int64_t minOutputBufferSize = -1;
-      for (auto fifoOut : getOutputObjectFifos()) {
-        auto fifoOutType = llvm::cast<AIEObjectFifoType>(fifoOut.getElemType());
-        MemRefType buffer =
-            llvm::cast<MemRefType>(fifoOutType.getElementType());
-        if (buffer.getNumElements() <= minOutputBufferSize ||
-            minOutputBufferSize < 0)
-          minOutputBufferSize = buffer.getNumElements();
+      for (auto lenOut : getDistributeTransferLengths()) {
+        if (lenOut <= minOutputBufferSize || minOutputBufferSize < 0)
+          minOutputBufferSize = lenOut;
       }
       if (minOutputBufferSize <= maxIdx) {
         return emitOpError()
                << "specified input stride(s) and size(s) result in out "
-                  "of bounds access in output objectfifo buffer, for index "
-               << std::to_string(maxIdx) << " in memref of length "
+                  "of bounds access in distribute output, for index "
+               << std::to_string(maxIdx) << " in transfer of length "
                << std::to_string(minOutputBufferSize) << ".";
       }
     }

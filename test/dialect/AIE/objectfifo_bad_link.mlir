@@ -229,7 +229,7 @@ aie.device(xcve2302) {
 
 // -----
 
-// CHECK: specified output stride(s) and size(s) result in out of bounds access in input objectfifo buffer, for index 23 in memref of length 12.
+// CHECK: specified output stride(s) and size(s) result in out of bounds access in join input, for index 23 in transfer of length 12.
 
 aie.device(xcve2302) {
    %tile10 = aie.tile(1, 0)
@@ -247,7 +247,7 @@ aie.device(xcve2302) {
 
 // -----
 
-// CHECK: specified input stride(s) and size(s) result in out of bounds access in output objectfifo buffer, for index 503 in memref of length 56.
+// CHECK: specified input stride(s) and size(s) result in out of bounds access in distribute output, for index 503 in transfer of length 56.
 
 aie.device(xcve2302) {
    %tile10 = aie.tile(1, 0)
