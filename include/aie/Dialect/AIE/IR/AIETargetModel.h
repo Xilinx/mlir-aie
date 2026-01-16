@@ -18,6 +18,7 @@
 
 #include <iostream>
 #include <memory>
+#include <mutex>
 
 namespace xilinx::AIE {
 

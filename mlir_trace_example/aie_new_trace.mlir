@@ -156,7 +156,7 @@ module {
     // ========================================================================
 
     // Runtime sequence with trace configuration
-    aiex.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<1xi32>, %arg2: memref<4096xi32>) {
+    aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<1xi32>, %arg2: memref<4096xi32>) {
 
       // ========================================================================
       // TRACE INITIALIZATION (NEW API)
