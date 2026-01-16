@@ -515,18 +515,24 @@ public:
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     const AIE::AIETargetModel &tm = dev.getTargetModel();
 
+    int col = op.getColumn();
+    int row = op.getRow();
+
     int num_words = 0;
-    if (isa<AIE::AIE2TargetModel>(tm))
-      num_words = 8;
-    else
+    if (isa<AIE::AIE2TargetModel>(tm)) {
+      // Tile DMAs have 6 words, MemTile and Shim have 8 words
+      if (tm.isShimNOCTile(col, row) || tm.isMemTile(col, row))
+        num_words = 8;
+      else
+        num_words = 6;
+    } else {
       llvm_unreachable(
           "Unsupported AIETargetModel in WriteBdToBlockWritePattern");
+    }
 
     std::vector<uint32_t> words(num_words, 0);
 
     uint32_t bd_id = op.getBdId();
-    int col = op.getColumn();
-    int row = op.getRow();
     uint64_t bd_addr = tm.getDmaBdAddress(col, row, bd_id);
     if (tm.isShimNOCTile(col, row)) {
       // DMA_BDX_0

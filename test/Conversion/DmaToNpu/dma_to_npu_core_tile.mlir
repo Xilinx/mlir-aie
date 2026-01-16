@@ -12,8 +12,8 @@
 
 // Verify WriteBdOp packing for a core tile
 // CHECK-LABEL: module
-// CHECK: memref.global "private" constant @blockwrite_data_0 : memref<8xi32> = dense<[4768581, 1430061056, 9093684, 266847009, 22249971, 1465218380, 0, 0]>
-// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 2216128 : ui32} : memref<8xi32>
+// CHECK: memref.global "private" constant @blockwrite_data_0 : memref<6xi32> = dense<[1180485, 1430061056, 9093684, 266847009, 22249971, 1465218380]>
+// CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 2216128 : ui32} : memref<6xi32>
 module {
   aie.device(npu1_1col) {
     aie.runtime_sequence() {
