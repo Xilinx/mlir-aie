@@ -286,7 +286,7 @@ class AIEAddressDecoder:
 
         Args:
             result: Decoded address information
-            include_delimiters: If True, include '=' and '-' separator lines
+            include_delimiters: If True, include `=` and `-` separator lines
         """
         if not result:
             return "Unable to decode address"
