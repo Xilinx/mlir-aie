@@ -98,6 +98,7 @@ install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/$
 #
 
 # ion memory allocator library
+if(NOT WIN32)
 add_library(memory_allocator_ion STATIC memory_allocator_ion.cpp)
 set(ION_PUBLIC_HEADERS
     memory_allocator.h
@@ -121,6 +122,8 @@ install(TARGETS memory_allocator_ion
     ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
 )
+
+endif()
 
 # HSA memory allocator library
 if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
