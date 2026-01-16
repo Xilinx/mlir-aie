@@ -627,10 +627,52 @@ public:
       words[7] |= (op.getLockAcqVal() & 0x7f) << 8;
       words[7] |= op.getLockAcqId() & 0xff;
     } else {
-      // TODO: DMA BD configuration for Compute Tiles
-      op->emitError("Run-time DMA configuration is supported only for "
-                    "ShimTiles and MemTiles currently.");
-      return failure();
+
+      // DMA_BDX_0
+      // Base_Address [27:14], Buffer_Length [13:0]
+      words[0] = ((op.getBufferOffset() / 4) & 0x3fff) << 14;
+      words[0] |= op.getBufferLength() & 0x3fff;
+
+      // DMA_BDX_1
+      // Enable_Compression [31], Enable_Packet [30], Out_Of_Order_BD_ID
+      // [29:24], Packet_ID [23:19], Packet_Type [18:16]
+      words[1] = 0; // Enable_Compression
+      words[1] |= (op.getEnablePacket() & 0x1) << 30;
+      words[1] |= (op.getOutOfOrderId() & 0x3f) << 24;
+      words[1] |= (op.getPacketId() & 0x1f) << 19;
+      words[1] |= (op.getPacketType() & 0x7) << 16;
+
+      // DMA_BDX_2
+      // D1_Stepsize [25:13], D0_Stepsize [12:0]
+      words[2] = (op.getD1Stride() & 0x1fff) << 13;
+      words[2] |= op.getD0Stride() & 0x1fff;
+
+      // DMA_BDX_3
+      // D1_Wrap [28:21], D0_Wrap [20:13], D2_Stepsize [12:0]
+      words[3] = (op.getD1Size() & 0xff) << 21;
+      words[3] |= (op.getD0Size() & 0xff) << 13;
+      words[3] |= op.getD2Stride() & 0x1fff;
+
+      // DMA_BDX_4
+      // Iteration_Current [24:19], Iteration_Wrap [18:13], Iteration_Stepsize
+      // [12:0]
+      words[4] = (op.getIterationCurrent() & 0x3f) << 19;
+      words[4] |= (op.getIterationSize() & 0x3f) << 13;
+      words[4] |= op.getIterationStride() & 0x1fff;
+
+      // DMA_BDX_5
+      // TLAST_Suppress [31], Next_BD [30:27], Use_Next_BD [26], Valid_BD [25],
+      // Lock_Rel_Value [24:18], Lock_Rel_ID [16:13], Lock_Acq_Enable [12],
+      // Lock_Acq_Value [11:5], Lock_Acq_ID [3:0]
+      words[5] = 0; // TLAST_Suppress
+      words[5] |= (op.getNextBd() & 0xf) << 27;
+      words[5] |= (op.getUseNextBd() & 0x1) << 26;
+      words[5] |= (op.getValidBd() & 0x1) << 25;
+      words[5] |= (op.getLockRelVal() & 0x7f) << 18;
+      words[5] |= (op.getLockRelId() & 0xf) << 13;
+      words[5] |= (op.getLockAcqEnable() & 0x1) << 12;
+      words[5] |= (op.getLockAcqVal() & 0x7f) << 5;
+      words[5] |= op.getLockAcqId() & 0xf;
     }
 
     memref::GlobalOp global = nullptr;
