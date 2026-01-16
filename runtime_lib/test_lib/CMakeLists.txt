@@ -7,6 +7,9 @@
 cmake_minimum_required(VERSION 3.30)
 project("test lib for ${AIE_RUNTIME_TARGET}")
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # test_lib library
 add_library(test_lib STATIC test_library.cpp)
 set(TEST_LIB_PUBLIC_HEADERS
@@ -16,7 +19,9 @@ set(TEST_LIB_PUBLIC_HEADERS
     cxxopts.hpp
 )
 set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "${TEST_LIB_PUBLIC_HEADERS}")
-target_compile_options(test_lib PRIVATE -fPIC)
+if(NOT MSVC)
+  target_compile_options(test_lib PRIVATE -fPIC)
+endif()
 
 target_include_directories(test_lib PRIVATE
     ${LibXAIE_INC_DIR}
@@ -48,7 +53,9 @@ set(BUILD_TEST_UTILS NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 if (${BUILD_TEST_UTILS})
   add_library(test_utils STATIC test_utils.cpp)
   set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;xrt_test_wrapper.h;cxxopts.hpp")
-  target_compile_options(test_utils PRIVATE -fPIC)
+  if(NOT MSVC)
+    target_compile_options(test_utils PRIVATE -fPIC)
+  endif()
 
   if (${XRT_FOUND})
     target_compile_options(test_utils PRIVATE -DTEST_UTILS_USE_XRT)
@@ -147,7 +154,9 @@ endif()
 
 # simulation memory allocator library
 add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
-target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
+if(NOT MSVC)
+  target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
+endif()
 target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
 target_include_directories(memory_allocator_sim_aie PRIVATE ${LibXAIE_INC_DIR})
 
