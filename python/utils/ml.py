@@ -4,7 +4,16 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+"""
+ML related utilties
+
+* class `CSVLogger`
+* `load_class_label`
+* `unpickle`
+* `fuse_single_conv_bn_pair`
+* class `DataShaper`
+"""
 import csv
 import json
 import math

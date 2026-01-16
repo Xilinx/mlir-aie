@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import argparse
 import sys
@@ -15,8 +15,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.iron.controlflow import range_
 
 import aie.utils.trace as trace_utils
-from aie.utils.trace import PortEvent
-from aie.utils.trace_events_enum import CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+from aie.utils.trace.events import PortEvent, CoreEvent, MemEvent
 
 
 def my_vector_scalar_mul(dev, in1_size, in2_size, out_size, int_bit_width, trace_size):

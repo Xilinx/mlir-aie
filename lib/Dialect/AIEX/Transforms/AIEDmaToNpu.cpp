@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include <algorithm>
@@ -284,7 +285,7 @@ public:
       return failure();
     }
 
-    // arg_idx
+    // arg_idx and offset for block arguments
     AIE::RuntimeSequenceOp seq_op =
         op->getParentOfType<AIE::RuntimeSequenceOp>();
     if (!seq_op) {
@@ -292,16 +293,34 @@ public:
                       "time of lowering.");
       return failure();
     }
+
+    mlir::Value rootMemref = memref;
+    int64_t subviewOffset = 0;
+
+    // Trace through memref.subview and memref.reinterpret_cast chain, if any,
+    // to find root block argument
+    auto traceResult = traceSubviewToBlockArgument(memref);
+    if (!traceResult) {
+      return op->emitOpError(
+          "memref must be a block argument or subview/cast/reinterpret_cast of "
+          "a block argument with static offsets, sizes, and strides");
+    }
+    rootMemref = traceResult->rootArg;
+    subviewOffset = traceResult->offsetInBytes;
+
+    // Find the argument index of the root memref
     Block &entryBB = seq_op.getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
-      if (entryBB.getArgument(i) == memref) {
+      if (entryBB.getArgument(i) == rootMemref) {
         arg_idx = i;
         break;
       }
     }
     if (arg_idx < 0)
       return failure();
+
+    offset += subviewOffset;
 
     // bd_id
     bd_id = IntegerAttr::get(i32ty, op.getId());
@@ -410,8 +429,10 @@ public:
     if (targetModel.isMemTile(tileCol, tileRow) && (!isMM2S) &&
         (op.getD0ZeroBefore() != 0 || op.getD0ZeroAfter() != 0 ||
          op.getD1ZeroBefore() != 0 || op.getD1ZeroAfter() != 0 ||
-         op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
+         op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0)) {
       op->emitOpError("MemTile supports zero padding only on MM2S direction");
+      return failure();
+    }
 
     // write the buffer descriptor to the array
     NpuWriteBdOp::create(
