@@ -10,3 +10,4 @@ matplotlib
 psutil
 pytest
 pyyaml
+cloudpickle # required by eudsl when it is vendored instead of installed
