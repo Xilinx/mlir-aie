@@ -626,12 +626,6 @@ def corefile(dirname, device, core, ext):
     return os.path.join(dirname, f"{device}_core_{col}_{row}.{ext}")
 
 
-def aie_target_defines(aie_target):
-    if aie_target == "AIE2":
-        return ["-D__AIEARCH__=20"]
-    return ["-D__AIEARCH__=10"]
-
-
 def downgrade_ir_for_chess(llvmir_chesslinked):
     llvmir_chesslinked = (
         llvmir_chesslinked.replace("memory(none)", "readnone")
@@ -1527,8 +1521,6 @@ class FlowRunner:
                 cmd += ["-I%s" % hsa_include_path]
                 cmd += ["-Wl,-rpath,%s" % hsa_lib_path]
 
-            cmd += aie_target_defines(aie_target)
-
             if len(opts.host_args) > 0:
                 await self.do_call(task, cmd + opts.host_args)
 
@@ -1689,7 +1681,6 @@ class FlowRunner:
                     "-o",
                     os.path.join(sim_ps_dir, "ps.so"),
                     sim_genwrapper,
-                    *aie_target_defines(aie_target),
                     *host_opts,
                     *sim_cc_args,
                     *sim_link_args,
