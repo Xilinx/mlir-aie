@@ -35,8 +35,8 @@ module {
     // CHECK: aie.trace.config @my_trace_config(%[[TILE]]) packet_type = core {
 
     // Runtime sequence with trace invocation
-    aiex.runtime_sequence @seq(%arg0: memref<32xi32>) {
-      // CHECK: aiex.runtime_sequence
+    aie.runtime_sequence @seq(%arg0: memref<32xi32>) {
+      // CHECK: aie.runtime_sequence
       aie.trace.start_config @my_trace
 
       // After Pass 2 (AIEXInlineTraceConfig): generates npu.write32 with col/row
