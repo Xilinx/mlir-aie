@@ -78,8 +78,8 @@ run_py: build/final.xclbin build/insts.bin
 # Run with trace enabled
 trace: ${targetname}.exe build/final.xclbin build/insts.bin 
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../python/utils/parse_trace.py --input trace.txt --mlir ${srcdir}/aie_trace.mlir --output trace_mlir.json
-	${srcdir}/../python/utils/get_trace_summary.py --input trace_mlir.json
+	${srcdir}/../python/utils/trace/parse.py --input trace.txt --mlir ${srcdir}/aie_trace.mlir --output trace_mlir.json
+	${srcdir}/../python/utils/trace/get_trace_summary.py --input trace_mlir.json
 	@echo ""
 	@echo "Generating trace visualization..."
 	python3 ${srcdir}/visualize_trace.py -i trace_mlir.json -o trace_timeline.png
@@ -89,8 +89,8 @@ trace: ${targetname}.exe build/final.xclbin build/insts.bin
 run_new_trace: ${targetname}.exe build/final_new.xclbin build/insts_new.bin
 	@echo "Running with NEW declarative trace syntax..."
 	${powershell} ./$< -x build/final_new.xclbin -i build/insts_new.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../python/utils/parse_trace.py --input trace.txt --mlir build/aie_new_trace.mlir.prj/input_physical_with_elfs.mlir --output trace_new.json
-	${srcdir}/../python/utils/get_trace_summary.py --input trace_new.json
+	${srcdir}/../python/utils/trace/parse.py --input trace.txt --mlir build/aie_new_trace.mlir.prj/input_physical_with_elfs.mlir --output trace_new.json
+	${srcdir}/../python/utils/trace/get_trace_summary.py --input trace_new.json
 
 	@echo ""
 	@echo "Generating trace visualization..."
@@ -101,8 +101,8 @@ run_new_trace: ${targetname}.exe build/final_new.xclbin build/insts_new.bin
 run_new_trace_py: build/final_new.xclbin build/insts_new.bin
 	@echo "Running Python test with NEW declarative trace syntax..."
 	python3 ${srcdir}/test.py --xclbin build/final_new.xclbin --instr build/insts_new.bin --kernel MLIR_AIE --verbosity 1 --trace-sz ${trace_size} --trace-file trace.txt
-	${srcdir}/../python/utils/parse_trace.py --input trace.txt --mlir build/aie_new_trace.mlir.prj/input_physical_with_elfs.mlir --output trace_new.json
-	${srcdir}/../python/utils/get_trace_summary.py --input trace_new.json
+	${srcdir}/../python/utils/trace/parse.py --input trace.txt --mlir build/aie_new_trace.mlir.prj/input_physical_with_elfs.mlir --output trace_new.json
+	${srcdir}/../python/utils/trace/get_trace_summary.py --input trace_new.json
 	@echo ""
 	@echo "Generating trace visualization..."
 	python3 ${srcdir}/visualize_trace.py -i trace_new.json -o trace_new_timeline.png -t "New Declarative Trace (Python)"

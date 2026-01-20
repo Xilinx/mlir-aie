@@ -36,8 +36,8 @@ std::unique_ptr<RegisterDatabase> RegisterDatabase::loadAIE2() {
   // Get paths relative to source directory
   // In a real build, these would be found via CMake-configured paths
   // FIXME: update paths to look in the installed location
-  const char *registerPath = "/work/acdc/aie/utils/aie_registers_aie2.json";
-  const char *eventPath = "/work/acdc/aie/utils/events_database.json";
+  const char *registerPath = "/work/acdc/aie_events_proposal/lib/Dialect/AIE/Util/aie_registers_aie2.json";
+  const char *eventPath = "/work/acdc/build/aie_events_proposal/lib/regdb/events_database.json";
 
   if (!db->loadFromJSON(registerPath, eventPath)) {
     return nullptr;
@@ -168,19 +168,19 @@ bool RegisterDatabase::loadFromJSON(StringRef registerPath,
     return false;
   }
 
-  // Parse event database for aieml (AIE2)
+  // Parse event database for AIE2
   auto *eventRoot = eventJSON->getAsObject();
   if (!eventRoot)
     return false;
 
-  // Use "aieml" for AIE2 architecture
-  auto *aieml = eventRoot->getObject("aieml");
-  if (!aieml) {
-    llvm::errs() << "Failed to find 'aieml' architecture in event database\n";
+  // Use "aie2" for AIE2 architecture
+  auto *aie2 = eventRoot->getObject("aie2");
+  if (!aie2) {
+    llvm::errs() << "Failed to find 'aie2' architecture in event database\n";
     return false;
   }
 
-  auto *eventModules = aieml->getObject("modules");
+  auto *eventModules = aie2->getObject("modules");
   if (!eventModules)
     return false;
 

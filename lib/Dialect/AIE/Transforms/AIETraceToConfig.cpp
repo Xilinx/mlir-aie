@@ -406,8 +406,14 @@ struct AIETraceRegPackWritesPass
 
     // Process each trace config
     device.walk([&](TraceConfigOp configOp) {
-      // Determine module based on tile type
+      // Determine module based on tile type and packet type
       auto tile = cast<TileOp>(configOp.getTile().getDefiningOp());
+      
+      // Get packet type to determine if this is memory or core trace
+      bool isMem = false;
+      if (auto packetType = configOp.getPacketType()) {
+        isMem = (*packetType == TracePacketType::Mem);
+      }
 
       // Phase 1: Convert field+value to mask+shifted_value
       SmallVector<TraceRegOp> regsToConvert;
@@ -450,7 +456,7 @@ struct AIETraceRegPackWritesPass
           if (auto strAttr = dyn_cast<StringAttr>(valAttr)) {
             std::string eventName = strAttr.getValue().str();
             std::optional<uint32_t> eventNum =
-                targetModel.lookupEvent(eventName, tileID, false);
+                targetModel.lookupEvent(eventName, tileID, isMem);
             if (!eventNum) {
               regOp.emitError("Unknown event: ") << eventName;
               return signalPassFailure();
