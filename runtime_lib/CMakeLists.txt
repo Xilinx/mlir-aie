@@ -90,8 +90,9 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   endif()
 
   # test_lib
-  # Currently won't build with Peano-only, might need to revisit for Windows
-  if (DEFINED VITIS_ROOT OR DEFINED LibXAIE_${target}_DIR) 
+  # Build test_lib when we have Vitis, LibXAIE, or Peano-only (with limited functionality)
+  # On Peano-only builds: test_utils will work, but memory allocators and AIE simulator are excluded
+  if (DEFINED VITIS_ROOT OR DEFINED LibXAIE_${target}_DIR OR DEFINED PEANO_INSTALL_DIR) 
     message(STATUS "setting up test_lib for ${target}")
     ExternalProject_Add(test_lib_${target}
       PREFIX ${CMAKE_CURRENT_BINARY_DIR}/test_libTmp/${target}
@@ -108,6 +109,7 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DXRT_ROOT=${XRT_ROOT}
           -Dhsa-runtime64_DIR=${hsa-runtime64_DIR}
           -Dhsakmt_DIR=${hsakmt_DIR}
+          -DVITIS_ROOT=${VITIS_ROOT}
       DEPENDS ${testLibDependsOnXaiengine}
       BUILD_ALWAYS true
       STEP_TARGETS clean build install test
