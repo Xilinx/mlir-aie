@@ -31,6 +31,16 @@ std::string getModuleForTile(const AIETargetModel &model, TileID tile,
   return isMem ? std::string("memory") : std::string("core");
 }
 
+// Get module name for event lookups (events database uses different names)
+std::string getModuleForTileEvents(const AIETargetModel &model, TileID tile,
+                                   bool isMem) {
+  if (model.isShimNOCorPLTile(tile.col, tile.row))
+    return "pl";  // Events database uses "pl" for shim tiles
+  if (model.isMemTile(tile.col, tile.row))
+    return "mem_tile";  // Events database uses "mem_tile" instead of "memory_tile"
+  return isMem ? std::string("memory") : std::string("core");
+}
+
 } // namespace
 
 AIETargetModel::~AIETargetModel() = default;
@@ -62,7 +72,7 @@ std::optional<uint32_t> AIETargetModel::lookupEvent(llvm::StringRef name,
   const auto *db = getRegisterDatabase();
   if (!db)
     return std::nullopt;
-  return db->lookupEvent(name, getModuleForTile(*this, tile, isMem));
+  return db->lookupEvent(name, getModuleForTileEvents(*this, tile, isMem));
 }
 
 uint32_t AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
