@@ -575,190 +575,238 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00515" name="l00515"></a><span class="lineno">  515</span>    AIE::DeviceOp dev = op-&gt;getParentOfType&lt;AIE::DeviceOp&gt;();</div>
 <div class="line"><a id="l00516" name="l00516"></a><span class="lineno">  516</span>    <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIE::AIETargetModel</a> &amp;tm = dev.getTargetModel();</div>
 <div class="line"><a id="l00517" name="l00517"></a><span class="lineno">  517</span> </div>
-<div class="line"><a id="l00518" name="l00518"></a><span class="lineno">  518</span>    <span class="keywordtype">int</span> num_words = 0;</div>
-<div class="line"><a id="l00519" name="l00519"></a><span class="lineno">  519</span>    <span class="keywordflow">if</span> (isa&lt;AIE::AIE2TargetModel&gt;(tm))</div>
-<div class="line"><a id="l00520" name="l00520"></a><span class="lineno">  520</span>      num_words = 8;</div>
-<div class="line"><a id="l00521" name="l00521"></a><span class="lineno">  521</span>    <span class="keywordflow">else</span></div>
-<div class="line"><a id="l00522" name="l00522"></a><span class="lineno">  522</span>      llvm_unreachable(</div>
-<div class="line"><a id="l00523" name="l00523"></a><span class="lineno">  523</span>          <span class="stringliteral">&quot;Unsupported AIETargetModel in WriteBdToBlockWritePattern&quot;</span>);</div>
-<div class="line"><a id="l00524" name="l00524"></a><span class="lineno">  524</span> </div>
-<div class="line"><a id="l00525" name="l00525"></a><span class="lineno">  525</span>    std::vector&lt;uint32_t&gt; words(num_words, 0);</div>
-<div class="line"><a id="l00526" name="l00526"></a><span class="lineno">  526</span> </div>
-<div class="line"><a id="l00527" name="l00527"></a><span class="lineno">  527</span>    uint32_t bd_id = op.getBdId();</div>
-<div class="line"><a id="l00528" name="l00528"></a><span class="lineno">  528</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = op.getColumn();</div>
-<div class="line"><a id="l00529" name="l00529"></a><span class="lineno">  529</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = op.getRow();</div>
-<div class="line"><a id="l00530" name="l00530"></a><span class="lineno">  530</span>    uint64_t bd_addr = tm.getDmaBdAddress(col, row, bd_id);</div>
-<div class="line"><a id="l00531" name="l00531"></a><span class="lineno">  531</span>    <span class="keywordflow">if</span> (tm.isShimNOCTile(col, row)) {</div>
-<div class="line"><a id="l00532" name="l00532"></a><span class="lineno">  532</span>      <span class="comment">// DMA_BDX_0</span></div>
-<div class="line"><a id="l00533" name="l00533"></a><span class="lineno">  533</span>      words[0] = op.getBufferLength();</div>
+<div class="line"><a id="l00518" name="l00518"></a><span class="lineno">  518</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = op.getColumn();</div>
+<div class="line"><a id="l00519" name="l00519"></a><span class="lineno">  519</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = op.getRow();</div>
+<div class="line"><a id="l00520" name="l00520"></a><span class="lineno">  520</span> </div>
+<div class="line"><a id="l00521" name="l00521"></a><span class="lineno">  521</span>    <span class="keywordtype">int</span> num_words = 0;</div>
+<div class="line"><a id="l00522" name="l00522"></a><span class="lineno">  522</span>    <span class="keywordflow">if</span> (isa&lt;AIE::AIE2TargetModel&gt;(tm)) {</div>
+<div class="line"><a id="l00523" name="l00523"></a><span class="lineno">  523</span>      <span class="comment">// Tile DMAs have 6 words, MemTile and Shim have 8 words</span></div>
+<div class="line"><a id="l00524" name="l00524"></a><span class="lineno">  524</span>      <span class="keywordflow">if</span> (tm.isShimNOCTile(col, row) || tm.isMemTile(col, row))</div>
+<div class="line"><a id="l00525" name="l00525"></a><span class="lineno">  525</span>        num_words = 8;</div>
+<div class="line"><a id="l00526" name="l00526"></a><span class="lineno">  526</span>      <span class="keywordflow">else</span></div>
+<div class="line"><a id="l00527" name="l00527"></a><span class="lineno">  527</span>        num_words = 6;</div>
+<div class="line"><a id="l00528" name="l00528"></a><span class="lineno">  528</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00529" name="l00529"></a><span class="lineno">  529</span>      llvm_unreachable(</div>
+<div class="line"><a id="l00530" name="l00530"></a><span class="lineno">  530</span>          <span class="stringliteral">&quot;Unsupported AIETargetModel in WriteBdToBlockWritePattern&quot;</span>);</div>
+<div class="line"><a id="l00531" name="l00531"></a><span class="lineno">  531</span>    }</div>
+<div class="line"><a id="l00532" name="l00532"></a><span class="lineno">  532</span> </div>
+<div class="line"><a id="l00533" name="l00533"></a><span class="lineno">  533</span>    std::vector&lt;uint32_t&gt; words(num_words, 0);</div>
 <div class="line"><a id="l00534" name="l00534"></a><span class="lineno">  534</span> </div>
-<div class="line"><a id="l00535" name="l00535"></a><span class="lineno">  535</span>      <span class="comment">// DMA_BDX_1</span></div>
-<div class="line"><a id="l00536" name="l00536"></a><span class="lineno">  536</span>      words[1] = op.getBufferOffset();</div>
-<div class="line"><a id="l00537" name="l00537"></a><span class="lineno">  537</span> </div>
-<div class="line"><a id="l00538" name="l00538"></a><span class="lineno">  538</span>      <span class="comment">// DMA_BDX_2</span></div>
-<div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span>      <span class="comment">// En Packet , OoO BD ID , Packet ID , Packet Type</span></div>
-<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span>      words[2] |= (op.getEnablePacket() &amp; 0x1) &lt;&lt; 30;</div>
-<div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span>      words[2] |= (op.getOutOfOrderId() &amp; 0x3f) &lt;&lt; 24;</div>
-<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>      words[2] |= (op.getPacketId() &amp; 0x1f) &lt;&lt; 19;</div>
-<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span>      words[2] |= (op.getPacketType() &amp; 0x7) &lt;&lt; 16;</div>
-<div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span> </div>
-<div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>      <span class="comment">// DMA_BDX_3</span></div>
-<div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span>      <span class="comment">// TODO: Secure Access</span></div>
-<div class="line"><a id="l00547" name="l00547"></a><span class="lineno">  547</span>      words[3] |= (op.getD0Size() &amp; 0x3ff) &lt;&lt; 20;</div>
-<div class="line"><a id="l00548" name="l00548"></a><span class="lineno">  548</span>      words[3] |= op.getD0Stride() &amp; 0xfffff;</div>
-<div class="line"><a id="l00549" name="l00549"></a><span class="lineno">  549</span> </div>
-<div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span>      <span class="comment">// DMA_BDX_4</span></div>
-<div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>      words[4] = (<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a653948201c0c106147067eb0b01ba2bf">getShimBurstLengthEncoding</a>(tm, op.getBurstLength()) &amp; 0x3)</div>
-<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>                 &lt;&lt; 30;</div>
-<div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span>      words[4] |= (op.getD1Size() &amp; 0x3ff) &lt;&lt; 20;</div>
-<div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span>      words[4] |= op.getD1Stride() &amp; 0xfffff;</div>
+<div class="line"><a id="l00535" name="l00535"></a><span class="lineno">  535</span>    uint32_t bd_id = op.getBdId();</div>
+<div class="line"><a id="l00536" name="l00536"></a><span class="lineno">  536</span>    uint64_t bd_addr = tm.getDmaBdAddress(col, row, bd_id);</div>
+<div class="line"><a id="l00537" name="l00537"></a><span class="lineno">  537</span>    <span class="keywordflow">if</span> (tm.isShimNOCTile(col, row)) {</div>
+<div class="line"><a id="l00538" name="l00538"></a><span class="lineno">  538</span>      <span class="comment">// DMA_BDX_0</span></div>
+<div class="line"><a id="l00539" name="l00539"></a><span class="lineno">  539</span>      words[0] = op.getBufferLength();</div>
+<div class="line"><a id="l00540" name="l00540"></a><span class="lineno">  540</span> </div>
+<div class="line"><a id="l00541" name="l00541"></a><span class="lineno">  541</span>      <span class="comment">// DMA_BDX_1</span></div>
+<div class="line"><a id="l00542" name="l00542"></a><span class="lineno">  542</span>      words[1] = op.getBufferOffset();</div>
+<div class="line"><a id="l00543" name="l00543"></a><span class="lineno">  543</span> </div>
+<div class="line"><a id="l00544" name="l00544"></a><span class="lineno">  544</span>      <span class="comment">// DMA_BDX_2</span></div>
+<div class="line"><a id="l00545" name="l00545"></a><span class="lineno">  545</span>      <span class="comment">// En Packet , OoO BD ID , Packet ID , Packet Type</span></div>
+<div class="line"><a id="l00546" name="l00546"></a><span class="lineno">  546</span>      words[2] |= (op.getEnablePacket() &amp; 0x1) &lt;&lt; 30;</div>
+<div class="line"><a id="l00547" name="l00547"></a><span class="lineno">  547</span>      words[2] |= (op.getOutOfOrderId() &amp; 0x3f) &lt;&lt; 24;</div>
+<div class="line"><a id="l00548" name="l00548"></a><span class="lineno">  548</span>      words[2] |= (op.getPacketId() &amp; 0x1f) &lt;&lt; 19;</div>
+<div class="line"><a id="l00549" name="l00549"></a><span class="lineno">  549</span>      words[2] |= (op.getPacketType() &amp; 0x7) &lt;&lt; 16;</div>
+<div class="line"><a id="l00550" name="l00550"></a><span class="lineno">  550</span> </div>
+<div class="line"><a id="l00551" name="l00551"></a><span class="lineno">  551</span>      <span class="comment">// DMA_BDX_3</span></div>
+<div class="line"><a id="l00552" name="l00552"></a><span class="lineno">  552</span>      <span class="comment">// TODO: Secure Access</span></div>
+<div class="line"><a id="l00553" name="l00553"></a><span class="lineno">  553</span>      words[3] |= (op.getD0Size() &amp; 0x3ff) &lt;&lt; 20;</div>
+<div class="line"><a id="l00554" name="l00554"></a><span class="lineno">  554</span>      words[3] |= op.getD0Stride() &amp; 0xfffff;</div>
 <div class="line"><a id="l00555" name="l00555"></a><span class="lineno">  555</span> </div>
-<div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span>      <span class="comment">// DMA_BDX_5</span></div>
-<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>      <span class="comment">// TODO: SIMID, AXQoS</span></div>
-<div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>      words[5] |= (2 &amp; 0xf) &lt;&lt; 24; <span class="comment">// AXCache = 2 to enable upsizing in NoC</span></div>
-<div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>      words[5] |= op.getD2Stride() &amp; 0xfffff;</div>
-<div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span> </div>
-<div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span>      <span class="comment">// DMA_BDX_6</span></div>
-<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>      words[6] |= (op.getIterationCurrent() &amp; 0x3f) &lt;&lt; 26;</div>
-<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span>      words[6] |= (op.getIterationSize() &amp; 0x3f) &lt;&lt; 20;</div>
-<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>      words[6] |= op.getIterationStride() &amp; 0xfffff;</div>
-<div class="line"><a id="l00565" name="l00565"></a><span class="lineno">  565</span> </div>
-<div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span>      <span class="comment">// DMA_BDX_7</span></div>
-<div class="line"><a id="l00567" name="l00567"></a><span class="lineno">  567</span>      <span class="comment">// TODO: TLAST Suppress</span></div>
-<div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span>      words[7] |= (op.getNextBd() &amp; 0xf) &lt;&lt; 27;</div>
-<div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span>      words[7] |= (op.getUseNextBd() &amp; 0x1) &lt;&lt; 26;</div>
-<div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>      words[7] |= (op.getValidBd() &amp; 0x1) &lt;&lt; 25;</div>
-<div class="line"><a id="l00571" name="l00571"></a><span class="lineno">  571</span>      words[7] |= (op.getLockRelVal() &amp; 0x7f) &lt;&lt; 18;</div>
-<div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span>      words[7] |= (op.getLockRelId() &amp; 0xf) &lt;&lt; 13;</div>
-<div class="line"><a id="l00573" name="l00573"></a><span class="lineno">  573</span>      words[7] |= (op.getLockAcqEnable() &amp; 0x1) &lt;&lt; 12;</div>
-<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span>      words[7] |= (op.getLockAcqVal() &amp; 0x7f) &lt;&lt; 5;</div>
-<div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span>      words[7] |= op.getLockAcqId() &amp; 0xf;</div>
-<div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span>      <span class="keywordflow">if</span> (op.getD0ZeroBefore() || op.getD1ZeroBefore() ||</div>
-<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>          op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() ||</div>
-<div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>          op.getD2ZeroAfter()) {</div>
-<div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span>        op-&gt;emitError(<span class="stringliteral">&quot;Zero padding is only available on MemTile&quot;</span>);</div>
-<div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>      }</div>
-<div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (tm.isMemTile(op.getColumn(), op.getRow())) {</div>
-<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span> </div>
-<div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span>      <span class="comment">// DMA_BDX_0</span></div>
-<div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span>      words[0] |= (op.getEnablePacket() &amp; 0x1) &lt;&lt; 31;</div>
-<div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>      words[0] |= (op.getPacketType() &amp; 0x7) &lt;&lt; 28;</div>
-<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>      words[0] |= (op.getPacketId() &amp; 0x1f) &lt;&lt; 23;</div>
-<div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>      words[0] |= (op.getOutOfOrderId() &amp; 0x3f) &lt;&lt; 17;</div>
-<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span>      words[0] |= op.getBufferLength() &amp; 0x1ffff;</div>
-<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span> </div>
-<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>      <span class="comment">// DMA_BDX_1</span></div>
-<div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>      words[1] |= (op.getD0ZeroBefore() &amp; 0x3F) &lt;&lt; 26;</div>
-<div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>      words[1] |= (op.getNextBd() &amp; 0x3f) &lt;&lt; 20;</div>
-<div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>      words[1] |= (op.getUseNextBd() &amp; 0x1) &lt;&lt; 19;</div>
-<div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>      words[1] |= op.getBufferOffset() &amp; 0x7ffff;</div>
+<div class="line"><a id="l00556" name="l00556"></a><span class="lineno">  556</span>      <span class="comment">// DMA_BDX_4</span></div>
+<div class="line"><a id="l00557" name="l00557"></a><span class="lineno">  557</span>      words[4] = (<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a653948201c0c106147067eb0b01ba2bf">getShimBurstLengthEncoding</a>(tm, op.getBurstLength()) &amp; 0x3)</div>
+<div class="line"><a id="l00558" name="l00558"></a><span class="lineno">  558</span>                 &lt;&lt; 30;</div>
+<div class="line"><a id="l00559" name="l00559"></a><span class="lineno">  559</span>      words[4] |= (op.getD1Size() &amp; 0x3ff) &lt;&lt; 20;</div>
+<div class="line"><a id="l00560" name="l00560"></a><span class="lineno">  560</span>      words[4] |= op.getD1Stride() &amp; 0xfffff;</div>
+<div class="line"><a id="l00561" name="l00561"></a><span class="lineno">  561</span> </div>
+<div class="line"><a id="l00562" name="l00562"></a><span class="lineno">  562</span>      <span class="comment">// DMA_BDX_5</span></div>
+<div class="line"><a id="l00563" name="l00563"></a><span class="lineno">  563</span>      <span class="comment">// TODO: SIMID, AXQoS</span></div>
+<div class="line"><a id="l00564" name="l00564"></a><span class="lineno">  564</span>      words[5] |= (2 &amp; 0xf) &lt;&lt; 24; <span class="comment">// AXCache = 2 to enable upsizing in NoC</span></div>
+<div class="line"><a id="l00565" name="l00565"></a><span class="lineno">  565</span>      words[5] |= op.getD2Stride() &amp; 0xfffff;</div>
+<div class="line"><a id="l00566" name="l00566"></a><span class="lineno">  566</span> </div>
+<div class="line"><a id="l00567" name="l00567"></a><span class="lineno">  567</span>      <span class="comment">// DMA_BDX_6</span></div>
+<div class="line"><a id="l00568" name="l00568"></a><span class="lineno">  568</span>      words[6] |= (op.getIterationCurrent() &amp; 0x3f) &lt;&lt; 26;</div>
+<div class="line"><a id="l00569" name="l00569"></a><span class="lineno">  569</span>      words[6] |= (op.getIterationSize() &amp; 0x3f) &lt;&lt; 20;</div>
+<div class="line"><a id="l00570" name="l00570"></a><span class="lineno">  570</span>      words[6] |= op.getIterationStride() &amp; 0xfffff;</div>
+<div class="line"><a id="l00571" name="l00571"></a><span class="lineno">  571</span> </div>
+<div class="line"><a id="l00572" name="l00572"></a><span class="lineno">  572</span>      <span class="comment">// DMA_BDX_7</span></div>
+<div class="line"><a id="l00573" name="l00573"></a><span class="lineno">  573</span>      <span class="comment">// TODO: TLAST Suppress</span></div>
+<div class="line"><a id="l00574" name="l00574"></a><span class="lineno">  574</span>      words[7] |= (op.getNextBd() &amp; 0xf) &lt;&lt; 27;</div>
+<div class="line"><a id="l00575" name="l00575"></a><span class="lineno">  575</span>      words[7] |= (op.getUseNextBd() &amp; 0x1) &lt;&lt; 26;</div>
+<div class="line"><a id="l00576" name="l00576"></a><span class="lineno">  576</span>      words[7] |= (op.getValidBd() &amp; 0x1) &lt;&lt; 25;</div>
+<div class="line"><a id="l00577" name="l00577"></a><span class="lineno">  577</span>      words[7] |= (op.getLockRelVal() &amp; 0x7f) &lt;&lt; 18;</div>
+<div class="line"><a id="l00578" name="l00578"></a><span class="lineno">  578</span>      words[7] |= (op.getLockRelId() &amp; 0xf) &lt;&lt; 13;</div>
+<div class="line"><a id="l00579" name="l00579"></a><span class="lineno">  579</span>      words[7] |= (op.getLockAcqEnable() &amp; 0x1) &lt;&lt; 12;</div>
+<div class="line"><a id="l00580" name="l00580"></a><span class="lineno">  580</span>      words[7] |= (op.getLockAcqVal() &amp; 0x7f) &lt;&lt; 5;</div>
+<div class="line"><a id="l00581" name="l00581"></a><span class="lineno">  581</span>      words[7] |= op.getLockAcqId() &amp; 0xf;</div>
+<div class="line"><a id="l00582" name="l00582"></a><span class="lineno">  582</span>      <span class="keywordflow">if</span> (op.getD0ZeroBefore() || op.getD1ZeroBefore() ||</div>
+<div class="line"><a id="l00583" name="l00583"></a><span class="lineno">  583</span>          op.getD2ZeroBefore() || op.getD0ZeroAfter() || op.getD1ZeroAfter() ||</div>
+<div class="line"><a id="l00584" name="l00584"></a><span class="lineno">  584</span>          op.getD2ZeroAfter()) {</div>
+<div class="line"><a id="l00585" name="l00585"></a><span class="lineno">  585</span>        op-&gt;emitError(<span class="stringliteral">&quot;Zero padding is only available on MemTile&quot;</span>);</div>
+<div class="line"><a id="l00586" name="l00586"></a><span class="lineno">  586</span>      }</div>
+<div class="line"><a id="l00587" name="l00587"></a><span class="lineno">  587</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (tm.isMemTile(op.getColumn(), op.getRow())) {</div>
+<div class="line"><a id="l00588" name="l00588"></a><span class="lineno">  588</span> </div>
+<div class="line"><a id="l00589" name="l00589"></a><span class="lineno">  589</span>      <span class="comment">// DMA_BDX_0</span></div>
+<div class="line"><a id="l00590" name="l00590"></a><span class="lineno">  590</span>      words[0] |= (op.getEnablePacket() &amp; 0x1) &lt;&lt; 31;</div>
+<div class="line"><a id="l00591" name="l00591"></a><span class="lineno">  591</span>      words[0] |= (op.getPacketType() &amp; 0x7) &lt;&lt; 28;</div>
+<div class="line"><a id="l00592" name="l00592"></a><span class="lineno">  592</span>      words[0] |= (op.getPacketId() &amp; 0x1f) &lt;&lt; 23;</div>
+<div class="line"><a id="l00593" name="l00593"></a><span class="lineno">  593</span>      words[0] |= (op.getOutOfOrderId() &amp; 0x3f) &lt;&lt; 17;</div>
+<div class="line"><a id="l00594" name="l00594"></a><span class="lineno">  594</span>      words[0] |= op.getBufferLength() &amp; 0x1ffff;</div>
 <div class="line"><a id="l00595" name="l00595"></a><span class="lineno">  595</span> </div>
-<div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>      <span class="comment">// DMA_BDX_2</span></div>
-<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>      words[2] |= (op.getD0Size() &amp; 0x3ff) &lt;&lt; 17;</div>
-<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>      words[2] |= op.getD0Stride() &amp; 0x1ffff;</div>
-<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span> </div>
-<div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>      <span class="comment">// DMA_BDX_3</span></div>
-<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span>      <span class="comment">// TODO: Secure Access</span></div>
-<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>      words[3] |= (op.getD1ZeroBefore() &amp; 0x1F) &lt;&lt; 27;</div>
-<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>      words[3] |= (op.getD1Size() &amp; 0x3ff) &lt;&lt; 17;</div>
-<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>      words[3] |= op.getD1Stride() &amp; 0x1ffff;</div>
+<div class="line"><a id="l00596" name="l00596"></a><span class="lineno">  596</span>      <span class="comment">// DMA_BDX_1</span></div>
+<div class="line"><a id="l00597" name="l00597"></a><span class="lineno">  597</span>      words[1] |= (op.getD0ZeroBefore() &amp; 0x3F) &lt;&lt; 26;</div>
+<div class="line"><a id="l00598" name="l00598"></a><span class="lineno">  598</span>      words[1] |= (op.getNextBd() &amp; 0x3f) &lt;&lt; 20;</div>
+<div class="line"><a id="l00599" name="l00599"></a><span class="lineno">  599</span>      words[1] |= (op.getUseNextBd() &amp; 0x1) &lt;&lt; 19;</div>
+<div class="line"><a id="l00600" name="l00600"></a><span class="lineno">  600</span>      words[1] |= op.getBufferOffset() &amp; 0x7ffff;</div>
+<div class="line"><a id="l00601" name="l00601"></a><span class="lineno">  601</span> </div>
+<div class="line"><a id="l00602" name="l00602"></a><span class="lineno">  602</span>      <span class="comment">// DMA_BDX_2</span></div>
+<div class="line"><a id="l00603" name="l00603"></a><span class="lineno">  603</span>      words[2] |= (op.getD0Size() &amp; 0x3ff) &lt;&lt; 17;</div>
+<div class="line"><a id="l00604" name="l00604"></a><span class="lineno">  604</span>      words[2] |= op.getD0Stride() &amp; 0x1ffff;</div>
 <div class="line"><a id="l00605" name="l00605"></a><span class="lineno">  605</span> </div>
-<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>      <span class="comment">// DMA_BDX_4</span></div>
-<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>      <span class="comment">// TODO: D2Size</span></div>
-<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>      words[4] |= (op.getD2ZeroBefore() &amp; 0xF) &lt;&lt; 27;</div>
-<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>      words[4] |= op.getD2Stride() &amp; 0x1ffff;</div>
-<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span> </div>
-<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span>      <span class="comment">// DMA_BDX_5</span></div>
-<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>      <span class="comment">// ToDO: D3Stride</span></div>
-<div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>      words[5] |= (op.getD2ZeroAfter() &amp; 0xF) &lt;&lt; 28;</div>
-<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>      words[5] |= (op.getD1ZeroAfter() &amp; 0x1F) &lt;&lt; 23;</div>
-<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>      words[5] |= (op.getD0ZeroAfter() &amp; 0x3F) &lt;&lt; 17;</div>
+<div class="line"><a id="l00606" name="l00606"></a><span class="lineno">  606</span>      <span class="comment">// DMA_BDX_3</span></div>
+<div class="line"><a id="l00607" name="l00607"></a><span class="lineno">  607</span>      <span class="comment">// TODO: Secure Access</span></div>
+<div class="line"><a id="l00608" name="l00608"></a><span class="lineno">  608</span>      words[3] |= (op.getD1ZeroBefore() &amp; 0x1F) &lt;&lt; 27;</div>
+<div class="line"><a id="l00609" name="l00609"></a><span class="lineno">  609</span>      words[3] |= (op.getD1Size() &amp; 0x3ff) &lt;&lt; 17;</div>
+<div class="line"><a id="l00610" name="l00610"></a><span class="lineno">  610</span>      words[3] |= op.getD1Stride() &amp; 0x1ffff;</div>
+<div class="line"><a id="l00611" name="l00611"></a><span class="lineno">  611</span> </div>
+<div class="line"><a id="l00612" name="l00612"></a><span class="lineno">  612</span>      <span class="comment">// DMA_BDX_4</span></div>
+<div class="line"><a id="l00613" name="l00613"></a><span class="lineno">  613</span>      <span class="comment">// TODO: D2Size</span></div>
+<div class="line"><a id="l00614" name="l00614"></a><span class="lineno">  614</span>      words[4] |= (op.getD2ZeroBefore() &amp; 0xF) &lt;&lt; 27;</div>
+<div class="line"><a id="l00615" name="l00615"></a><span class="lineno">  615</span>      words[4] |= op.getD2Stride() &amp; 0x1ffff;</div>
 <div class="line"><a id="l00616" name="l00616"></a><span class="lineno">  616</span> </div>
-<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>      <span class="comment">// DMA_BDX_6</span></div>
-<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span>      words[6] |= (op.getIterationCurrent() &amp; 0x3f) &lt;&lt; 23;</div>
-<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span>      words[6] |= (op.getIterationSize() &amp; 0x3f) &lt;&lt; 17;</div>
-<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>      words[6] |= op.getIterationStride() &amp; 0x1ffff;</div>
-<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span> </div>
-<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span>      <span class="comment">// DMA_BDX_7</span></div>
-<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>      words[7] |= (op.getValidBd() &amp; 0x1) &lt;&lt; 31;</div>
-<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>      words[7] |= (op.getLockRelVal() &amp; 0x7f) &lt;&lt; 24;</div>
-<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>      words[7] |= (op.getLockRelId() &amp; 0xff) &lt;&lt; 16;</div>
-<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>      words[7] |= (op.getLockAcqEnable() &amp; 0x1) &lt;&lt; 15;</div>
-<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>      words[7] |= (op.getLockAcqVal() &amp; 0x7f) &lt;&lt; 8;</div>
-<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>      words[7] |= op.getLockAcqId() &amp; 0xff;</div>
-<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>      <span class="comment">// TODO: DMA BD configuration for Compute Tiles</span></div>
-<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>      op-&gt;emitError(<span class="stringliteral">&quot;Run-time DMA configuration is supported only for &quot;</span></div>
-<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span>                    <span class="stringliteral">&quot;ShimTiles and MemTiles currently.&quot;</span>);</div>
-<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>      <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>    }</div>
-<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span> </div>
-<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>    memref::GlobalOp global = <span class="keyword">nullptr</span>;</div>
-<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>    {</div>
-<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>      OpBuilder::InsertionGuard guard(rewriter);</div>
-<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>      rewriter.setInsertionPoint(op-&gt;getParentOfType&lt;AIE::RuntimeSequenceOp&gt;());</div>
-<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>      global = <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">getOrCreateDataMemref</a>(rewriter, dev, op.getLoc(), words);</div>
-<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>    }</div>
-<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>    <span class="keyword">auto</span> memref = memref::GetGlobalOp::create(</div>
-<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>        rewriter, op.getLoc(), global.getType(), global.getName());</div>
-<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span> </div>
-<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>    (void)rewriter.replaceOpWithNewOp&lt;NpuBlockWriteOp&gt;(</div>
-<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>        op, rewriter.getUI32IntegerAttr(bd_addr), memref.getResult(), <span class="keyword">nullptr</span>,</div>
-<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>        <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
-<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>  }</div>
-<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>};</div>
-<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span> </div>
-<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span><span class="keyword">struct </span>AIEDmaToNpuPass : AIEDmaToNpuBase&lt;AIEDmaToNpuPass&gt; {</div>
-<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span> </div>
-<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>  <span class="keywordtype">void</span> getDependentDialects(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span>    registry.insert&lt;memref::MemRefDialect&gt;();</div>
-<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>  }</div>
-<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span> </div>
-<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span> </div>
-<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span>    AIE::DeviceOp device = getOperation();</div>
+<div class="line"><a id="l00617" name="l00617"></a><span class="lineno">  617</span>      <span class="comment">// DMA_BDX_5</span></div>
+<div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span>      <span class="comment">// ToDO: D3Stride</span></div>
+<div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span>      words[5] |= (op.getD2ZeroAfter() &amp; 0xF) &lt;&lt; 28;</div>
+<div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>      words[5] |= (op.getD1ZeroAfter() &amp; 0x1F) &lt;&lt; 23;</div>
+<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>      words[5] |= (op.getD0ZeroAfter() &amp; 0x3F) &lt;&lt; 17;</div>
+<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span> </div>
+<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>      <span class="comment">// DMA_BDX_6</span></div>
+<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>      words[6] |= (op.getIterationCurrent() &amp; 0x3f) &lt;&lt; 23;</div>
+<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>      words[6] |= (op.getIterationSize() &amp; 0x3f) &lt;&lt; 17;</div>
+<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>      words[6] |= op.getIterationStride() &amp; 0x1ffff;</div>
+<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span> </div>
+<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>      <span class="comment">// DMA_BDX_7</span></div>
+<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>      words[7] |= (op.getValidBd() &amp; 0x1) &lt;&lt; 31;</div>
+<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>      words[7] |= (op.getLockRelVal() &amp; 0x7f) &lt;&lt; 24;</div>
+<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>      words[7] |= (op.getLockRelId() &amp; 0xff) &lt;&lt; 16;</div>
+<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span>      words[7] |= (op.getLockAcqEnable() &amp; 0x1) &lt;&lt; 15;</div>
+<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>      words[7] |= (op.getLockAcqVal() &amp; 0x7f) &lt;&lt; 8;</div>
+<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>      words[7] |= op.getLockAcqId() &amp; 0xff;</div>
+<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span> </div>
+<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>      <span class="comment">// DMA_BDX_0</span></div>
+<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>      <span class="comment">// Base_Address [27:14], Buffer_Length [13:0]</span></div>
+<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>      words[0] = ((op.getBufferOffset() / 4) &amp; 0x3fff) &lt;&lt; 14;</div>
+<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>      words[0] |= op.getBufferLength() &amp; 0x3fff;</div>
+<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span> </div>
+<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>      <span class="comment">// DMA_BDX_1</span></div>
+<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>      <span class="comment">// Enable_Compression [31], Enable_Packet [30], Out_Of_Order_BD_ID</span></div>
+<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>      <span class="comment">// [29:24], Packet_ID [23:19], Packet_Type [18:16]</span></div>
+<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>      words[1] = 0; <span class="comment">// Enable_Compression</span></div>
+<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>      words[1] |= (op.getEnablePacket() &amp; 0x1) &lt;&lt; 30;</div>
+<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>      words[1] |= (op.getOutOfOrderId() &amp; 0x3f) &lt;&lt; 24;</div>
+<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>      words[1] |= (op.getPacketId() &amp; 0x1f) &lt;&lt; 19;</div>
+<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>      words[1] |= (op.getPacketType() &amp; 0x7) &lt;&lt; 16;</div>
+<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span> </div>
+<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>      <span class="comment">// DMA_BDX_2</span></div>
+<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>      <span class="comment">// D1_Stepsize [25:13], D0_Stepsize [12:0]</span></div>
+<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>      words[2] = (op.getD1Stride() &amp; 0x1fff) &lt;&lt; 13;</div>
+<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>      words[2] |= op.getD0Stride() &amp; 0x1fff;</div>
+<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span> </div>
+<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>      <span class="comment">// DMA_BDX_3</span></div>
+<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span>      <span class="comment">// D1_Wrap [28:21], D0_Wrap [20:13], D2_Stepsize [12:0]</span></div>
+<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>      words[3] = (op.getD1Size() &amp; 0xff) &lt;&lt; 21;</div>
+<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>      words[3] |= (op.getD0Size() &amp; 0xff) &lt;&lt; 13;</div>
+<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span>      words[3] |= op.getD2Stride() &amp; 0x1fff;</div>
 <div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span> </div>
-<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>    ConversionTarget target(getContext());</div>
-<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>    target.addLegalDialect&lt;AIEXDialect&gt;();</div>
-<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span>    target.addLegalDialect&lt;memref::MemRefDialect&gt;();</div>
-<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span>    target.addLegalOp&lt;AIE::BufferOp&gt;();</div>
-<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span>    target.addLegalOp&lt;AIE::ShimDMAAllocationOp&gt;();</div>
-<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>    target.addLegalOp&lt;AIE::TileOp&gt;();</div>
+<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>      <span class="comment">// DMA_BDX_4</span></div>
+<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>      <span class="comment">// Iteration_Current [24:19], Iteration_Wrap [18:13], Iteration_Stepsize</span></div>
+<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span>      <span class="comment">// [12:0]</span></div>
+<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span>      words[4] = (op.getIterationCurrent() &amp; 0x3f) &lt;&lt; 19;</div>
+<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span>      words[4] |= (op.getIterationSize() &amp; 0x3f) &lt;&lt; 13;</div>
+<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>      words[4] |= op.getIterationStride() &amp; 0x1fff;</div>
 <div class="line"><a id="l00668" name="l00668"></a><span class="lineno">  668</span> </div>
-<div class="line"><a id="l00669" name="l00669"></a><span class="lineno">  669</span>    target.addIllegalOp&lt;NpuDmaMemcpyNdOp&gt;();</div>
-<div class="line"><a id="l00670" name="l00670"></a><span class="lineno">  670</span>    target.addIllegalOp&lt;NpuDmaWaitOp&gt;();</div>
-<div class="line"><a id="l00671" name="l00671"></a><span class="lineno">  671</span>    target.addIllegalOp&lt;NpuPushQueueOp&gt;();</div>
-<div class="line"><a id="l00672" name="l00672"></a><span class="lineno">  672</span>    target.addIllegalOp&lt;NpuWriteRTPOp&gt;();</div>
-<div class="line"><a id="l00673" name="l00673"></a><span class="lineno">  673</span>    target.addIllegalOp&lt;NpuWriteBdOp&gt;();</div>
-<div class="line"><a id="l00674" name="l00674"></a><span class="lineno">  674</span>    target.addDynamicallyLegalOp&lt;NpuWrite32Op&gt;(</div>
-<div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span>        [&amp;](NpuWrite32Op op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
-<div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span>    target.addDynamicallyLegalOp&lt;NpuBlockWriteOp&gt;(</div>
-<div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span>        [&amp;](NpuBlockWriteOp op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
-<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span>    target.addDynamicallyLegalOp&lt;NpuMaskWrite32Op&gt;(</div>
-<div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span>        [&amp;](NpuMaskWrite32Op op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
-<div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span> </div>
-<div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span>    RewritePatternSet patterns(&amp;getContext());</div>
-<div class="line"><a id="l00682" name="l00682"></a><span class="lineno">  682</span>    patterns.insert&lt;BlockWriteSymToAddr&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00683" name="l00683"></a><span class="lineno">  683</span>    patterns.insert&lt;DmaToNpuPattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00684" name="l00684"></a><span class="lineno">  684</span>    patterns.insert&lt;DmaWaitToSyncPattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00685" name="l00685"></a><span class="lineno">  685</span>    patterns.insert&lt;MaskWrite32SymToAddr&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00686" name="l00686"></a><span class="lineno">  686</span>    patterns.insert&lt;PushQueuetoWrite32Pattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00687" name="l00687"></a><span class="lineno">  687</span>    patterns.insert&lt;RtpToWrite32Pattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00688" name="l00688"></a><span class="lineno">  688</span>    patterns.insert&lt;Write32SymToAddr&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00689" name="l00689"></a><span class="lineno">  689</span>    patterns.insert&lt;WriteBdToBlockWritePattern&gt;(&amp;getContext());</div>
-<div class="line"><a id="l00690" name="l00690"></a><span class="lineno">  690</span> </div>
-<div class="line"><a id="l00691" name="l00691"></a><span class="lineno">  691</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
-<div class="line"><a id="l00692" name="l00692"></a><span class="lineno">  692</span>      signalPassFailure();</div>
-<div class="line"><a id="l00693" name="l00693"></a><span class="lineno">  693</span>  }</div>
-<div class="line"><a id="l00694" name="l00694"></a><span class="lineno">  694</span>};</div>
-<div class="line"><a id="l00695" name="l00695"></a><span class="lineno">  695</span> </div>
-<div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span>} <span class="comment">// namespace</span></div>
-<div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span> </div>
-<div class="foldopen" id="foldopen00698" data-start="{" data-end="}">
-<div class="line"><a id="l00698" name="l00698"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">  698</a></span>std::unique_ptr&lt;OperationPass&lt;AIE::DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">AIEX::createAIEDmaToNpuPass</a>() {</div>
-<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEDmaToNpuPass&gt;();</div>
-<div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span>}</div>
+<div class="line"><a id="l00669" name="l00669"></a><span class="lineno">  669</span>      <span class="comment">// DMA_BDX_5</span></div>
+<div class="line"><a id="l00670" name="l00670"></a><span class="lineno">  670</span>      <span class="comment">// TLAST_Suppress [31], Next_BD [30:27], Use_Next_BD [26], Valid_BD [25],</span></div>
+<div class="line"><a id="l00671" name="l00671"></a><span class="lineno">  671</span>      <span class="comment">// Lock_Rel_Value [24:18], Lock_Rel_ID [16:13], Lock_Acq_Enable [12],</span></div>
+<div class="line"><a id="l00672" name="l00672"></a><span class="lineno">  672</span>      <span class="comment">// Lock_Acq_Value [11:5], Lock_Acq_ID [3:0]</span></div>
+<div class="line"><a id="l00673" name="l00673"></a><span class="lineno">  673</span>      words[5] = 0; <span class="comment">// TLAST_Suppress</span></div>
+<div class="line"><a id="l00674" name="l00674"></a><span class="lineno">  674</span>      words[5] |= (op.getNextBd() &amp; 0xf) &lt;&lt; 27;</div>
+<div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span>      words[5] |= (op.getUseNextBd() &amp; 0x1) &lt;&lt; 26;</div>
+<div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span>      words[5] |= (op.getValidBd() &amp; 0x1) &lt;&lt; 25;</div>
+<div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span>      words[5] |= (op.getLockRelVal() &amp; 0x7f) &lt;&lt; 18;</div>
+<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span>      words[5] |= (op.getLockRelId() &amp; 0xf) &lt;&lt; 13;</div>
+<div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span>      words[5] |= (op.getLockAcqEnable() &amp; 0x1) &lt;&lt; 12;</div>
+<div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span>      words[5] |= (op.getLockAcqVal() &amp; 0x7f) &lt;&lt; 5;</div>
+<div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span>      words[5] |= op.getLockAcqId() &amp; 0xf;</div>
+<div class="line"><a id="l00682" name="l00682"></a><span class="lineno">  682</span>    }</div>
+<div class="line"><a id="l00683" name="l00683"></a><span class="lineno">  683</span> </div>
+<div class="line"><a id="l00684" name="l00684"></a><span class="lineno">  684</span>    memref::GlobalOp global = <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l00685" name="l00685"></a><span class="lineno">  685</span>    {</div>
+<div class="line"><a id="l00686" name="l00686"></a><span class="lineno">  686</span>      OpBuilder::InsertionGuard guard(rewriter);</div>
+<div class="line"><a id="l00687" name="l00687"></a><span class="lineno">  687</span>      rewriter.setInsertionPoint(op-&gt;getParentOfType&lt;AIE::RuntimeSequenceOp&gt;());</div>
+<div class="line"><a id="l00688" name="l00688"></a><span class="lineno">  688</span>      global = <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">getOrCreateDataMemref</a>(rewriter, dev, op.getLoc(), words);</div>
+<div class="line"><a id="l00689" name="l00689"></a><span class="lineno">  689</span>    }</div>
+<div class="line"><a id="l00690" name="l00690"></a><span class="lineno">  690</span>    <span class="keyword">auto</span> memref = memref::GetGlobalOp::create(</div>
+<div class="line"><a id="l00691" name="l00691"></a><span class="lineno">  691</span>        rewriter, op.getLoc(), global.getType(), global.getName());</div>
+<div class="line"><a id="l00692" name="l00692"></a><span class="lineno">  692</span> </div>
+<div class="line"><a id="l00693" name="l00693"></a><span class="lineno">  693</span>    (void)rewriter.replaceOpWithNewOp&lt;NpuBlockWriteOp&gt;(</div>
+<div class="line"><a id="l00694" name="l00694"></a><span class="lineno">  694</span>        op, rewriter.getUI32IntegerAttr(bd_addr), memref.getResult(), <span class="keyword">nullptr</span>,</div>
+<div class="line"><a id="l00695" name="l00695"></a><span class="lineno">  695</span>        <span class="keyword">nullptr</span>, <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span>  }</div>
+<div class="line"><a id="l00698" name="l00698"></a><span class="lineno">  698</span>};</div>
+<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span> </div>
+<div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span><span class="keyword">struct </span>AIEDmaToNpuPass : AIEDmaToNpuBase&lt;AIEDmaToNpuPass&gt; {</div>
+<div class="line"><a id="l00701" name="l00701"></a><span class="lineno">  701</span> </div>
+<div class="line"><a id="l00702" name="l00702"></a><span class="lineno">  702</span>  <span class="keywordtype">void</span> getDependentDialects(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l00703" name="l00703"></a><span class="lineno">  703</span>    registry.insert&lt;memref::MemRefDialect&gt;();</div>
+<div class="line"><a id="l00704" name="l00704"></a><span class="lineno">  704</span>  }</div>
+<div class="line"><a id="l00705" name="l00705"></a><span class="lineno">  705</span> </div>
+<div class="line"><a id="l00706" name="l00706"></a><span class="lineno">  706</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00707" name="l00707"></a><span class="lineno">  707</span> </div>
+<div class="line"><a id="l00708" name="l00708"></a><span class="lineno">  708</span>    AIE::DeviceOp device = getOperation();</div>
+<div class="line"><a id="l00709" name="l00709"></a><span class="lineno">  709</span> </div>
+<div class="line"><a id="l00710" name="l00710"></a><span class="lineno">  710</span>    ConversionTarget target(getContext());</div>
+<div class="line"><a id="l00711" name="l00711"></a><span class="lineno">  711</span>    target.addLegalDialect&lt;AIEXDialect&gt;();</div>
+<div class="line"><a id="l00712" name="l00712"></a><span class="lineno">  712</span>    target.addLegalDialect&lt;memref::MemRefDialect&gt;();</div>
+<div class="line"><a id="l00713" name="l00713"></a><span class="lineno">  713</span>    target.addLegalOp&lt;AIE::BufferOp&gt;();</div>
+<div class="line"><a id="l00714" name="l00714"></a><span class="lineno">  714</span>    target.addLegalOp&lt;AIE::ShimDMAAllocationOp&gt;();</div>
+<div class="line"><a id="l00715" name="l00715"></a><span class="lineno">  715</span>    target.addLegalOp&lt;AIE::TileOp&gt;();</div>
+<div class="line"><a id="l00716" name="l00716"></a><span class="lineno">  716</span> </div>
+<div class="line"><a id="l00717" name="l00717"></a><span class="lineno">  717</span>    target.addIllegalOp&lt;NpuDmaMemcpyNdOp&gt;();</div>
+<div class="line"><a id="l00718" name="l00718"></a><span class="lineno">  718</span>    target.addIllegalOp&lt;NpuDmaWaitOp&gt;();</div>
+<div class="line"><a id="l00719" name="l00719"></a><span class="lineno">  719</span>    target.addIllegalOp&lt;NpuPushQueueOp&gt;();</div>
+<div class="line"><a id="l00720" name="l00720"></a><span class="lineno">  720</span>    target.addIllegalOp&lt;NpuWriteRTPOp&gt;();</div>
+<div class="line"><a id="l00721" name="l00721"></a><span class="lineno">  721</span>    target.addIllegalOp&lt;NpuWriteBdOp&gt;();</div>
+<div class="line"><a id="l00722" name="l00722"></a><span class="lineno">  722</span>    target.addDynamicallyLegalOp&lt;NpuWrite32Op&gt;(</div>
+<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>        [&amp;](NpuWrite32Op op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
+<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>    target.addDynamicallyLegalOp&lt;NpuBlockWriteOp&gt;(</div>
+<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span>        [&amp;](NpuBlockWriteOp op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
+<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>    target.addDynamicallyLegalOp&lt;NpuMaskWrite32Op&gt;(</div>
+<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>        [&amp;](NpuMaskWrite32Op op) { <span class="keywordflow">return</span> !op.getBuffer(); });</div>
+<div class="line"><a id="l00728" name="l00728"></a><span class="lineno">  728</span> </div>
+<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>    RewritePatternSet patterns(&amp;getContext());</div>
+<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>    patterns.insert&lt;BlockWriteSymToAddr&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>    patterns.insert&lt;DmaToNpuPattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span>    patterns.insert&lt;DmaWaitToSyncPattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span>    patterns.insert&lt;MaskWrite32SymToAddr&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span>    patterns.insert&lt;PushQueuetoWrite32Pattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span>    patterns.insert&lt;RtpToWrite32Pattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span>    patterns.insert&lt;Write32SymToAddr&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span>    patterns.insert&lt;WriteBdToBlockWritePattern&gt;(&amp;getContext());</div>
+<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span> </div>
+<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>    <span class="keywordflow">if</span> (failed(applyPartialConversion(device, target, std::move(patterns))))</div>
+<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>      signalPassFailure();</div>
+<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>  }</div>
+<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>};</div>
+<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span> </div>
+<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>} <span class="comment">// namespace</span></div>
+<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span> </div>
+<div class="foldopen" id="foldopen00746" data-start="{" data-end="}">
+<div class="line"><a id="l00746" name="l00746"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">  746</a></span>std::unique_ptr&lt;OperationPass&lt;AIE::DeviceOp&gt;&gt; <a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">AIEX::createAIEDmaToNpuPass</a>() {</div>
+<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEDmaToNpuPass&gt;();</div>
+<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetModel_8h_html"><div class="ttname"><a href="AIETargetModel_8h.html">AIETargetModel.h</a></div></div>
@@ -769,7 +817,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html">xilinx::AIE::AIETargetModel</a></div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00055">AIETargetModel.h:55</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a3370ff7ebeeefcfaeeadee0834dbee51"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">xilinx::AIEX::createAIEDmaToNpuPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEDmaToNpuPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEDmaToNpu_8cpp_source.html#l00698">AIEDmaToNpu.cpp:698</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a3370ff7ebeeefcfaeeadee0834dbee51"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">xilinx::AIEX::createAIEDmaToNpuPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt; createAIEDmaToNpuPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEDmaToNpu_8cpp_source.html#l00746">AIEDmaToNpu.cpp:746</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html_a3b2e98a3f17d246b71b572b061a36d66"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a3b2e98a3f17d246b71b572b061a36d66">xilinx::AIEX::traceSubviewToBlockArgument</a></div><div class="ttdeci">std::optional&lt; SubviewTraceResult &gt; traceSubviewToBlockArgument(Value value)</div><div class="ttdef"><b>Definition</b> <a href="AIEUtils_8cpp_source.html#l00019">AIEUtils.cpp:19</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html_aa8da22224cb11f459ecc40327807bb57"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#aa8da22224cb11f459ecc40327807bb57">xilinx::AIEX::getHardwareStridesWraps</a></div><div class="ttdeci">void getHardwareStridesWraps(const AIE::AIETargetModel &amp;targetModel, mlir::Operation *op, mlir::BaseMemRefType referencedBufType, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;sizes, llvm::SmallVector&lt; int64_t, 4 &gt; &amp;strides)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00088">AIEXDialect.cpp:88</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html_acd8bb70bd4615d3c251a2ab8176e4973"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#acd8bb70bd4615d3c251a2ab8176e4973">xilinx::AIEX::verifyStridesWraps</a></div><div class="ttdeci">mlir::LogicalResult verifyStridesWraps(mlir::Operation *forOp, mlir::BaseMemRefType referencedBufType, int tileCol, int tileRow, llvm::SmallVector&lt; int64_t, 4 &gt; inputSizes, llvm::SmallVector&lt; int64_t, 4 &gt; inputStrides, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareSizes, llvm::SmallVector&lt; int64_t, 4 &gt; hardwareStrides, bool skipTransformationChecks=false)</div><div class="ttdef"><b>Definition</b> <a href="AIEXDialect_8cpp_source.html#l00172">AIEXDialect.cpp:172</a></div></div>
@@ -782,7 +830,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Jan 16 2026 01:30:13 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jan 20 2026 18:16:56 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
