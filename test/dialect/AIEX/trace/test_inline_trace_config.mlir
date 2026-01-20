@@ -26,8 +26,8 @@ module {
     // CHECK: aie.trace.config @test_trace_config
 
     // Runtime sequence with trace configuration
-    aiex.runtime_sequence @seq(%arg0: memref<32xi32>) {
-      // CHECK: aiex.runtime_sequence
+    aie.runtime_sequence @seq(%arg0: memref<32xi32>) {
+      // CHECK: aie.runtime_sequence
       aie.trace.start_config @test_trace
 
       // After inlining with aiex-inline-trace-config, npu.write32 is generated

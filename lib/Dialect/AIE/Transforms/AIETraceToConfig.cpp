@@ -34,6 +34,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
       // Create config symbol name
       std::string configName = (trace.getSymName().str() + "_config");
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
+      TileID tileID = {tile.getCol(), tile.getRow()};
 
       // Find packet type (if any)
       TracePacketType packetType = TracePacketType::Core; // default
@@ -77,13 +78,13 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           if (auto enumValA = comboOp.getEventA().getEnumValue()) {
             eventANum = static_cast<uint32_t>(*enumValA);
           } else {
-            eventANum = targetModel.lookupEvent(eventAName, tile, isMem);
+            eventANum = targetModel.lookupEvent(eventAName, tileID, isMem);
           }
 
           if (auto enumValB = comboOp.getEventB().getEnumValue()) {
             eventBNum = static_cast<uint32_t>(*enumValB);
           } else {
-            eventBNum = targetModel.lookupEvent(eventBName, tile, isMem);
+            eventBNum = targetModel.lookupEvent(eventBName, tileID, isMem);
           }
 
           if (!eventANum) {
@@ -151,7 +152,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           if (auto enumVal = edgeOp.getEvent().getEnumValue()) {
             eventNum = static_cast<uint32_t>(*enumVal);
           } else {
-            eventNum = targetModel.lookupEvent(eventName, tile, isMem);
+            eventNum = targetModel.lookupEvent(eventName, tileID, isMem);
           }
 
           if (!eventNum) {
@@ -217,7 +218,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             if (auto enumVal = eventAttr->getEnumValue()) {
               eventNum = static_cast<uint32_t>(*enumVal);
             } else {
-              eventNum = targetModel.lookupEvent(eventName, tile, isMem);
+              eventNum = targetModel.lookupEvent(eventName, tileID, isMem);
             }
 
             if (eventNum) {
@@ -247,7 +248,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             if (auto enumVal = eventAttr->getEnumValue()) {
               eventNum = static_cast<uint32_t>(*enumVal);
             } else {
-              eventNum = targetModel.lookupEvent(eventName, tile, isMem);
+              eventNum = targetModel.lookupEvent(eventName, tileID, isMem);
             }
 
             if (eventNum) {
@@ -351,7 +352,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
         if (auto enumVal = events[i].getEvent().getEnumValue()) {
           eventNum = static_cast<uint32_t>(*enumVal);
         } else {
-          eventNum = targetModel.lookupEvent(eventName, tile, isMem);
+          eventNum = targetModel.lookupEvent(eventName, tileID, isMem);
         }
 
         if (!eventNum) {
@@ -423,8 +424,9 @@ struct AIETraceRegPackWritesPass
 
       for (auto regOp : regsToConvert) {
         // Look up register and field information
+        TileID tileID = {tile.getCol(), tile.getRow()};
         const RegisterInfo *regInfo =
-            targetModel.lookupRegister(regOp.getRegName(), tile);
+            targetModel.lookupRegister(regOp.getRegName(), tileID);
 
         if (!regInfo) {
           regOp.emitError("Register not found in database: ")
@@ -448,7 +450,7 @@ struct AIETraceRegPackWritesPass
           if (auto strAttr = dyn_cast<StringAttr>(valAttr)) {
             std::string eventName = strAttr.getValue().str();
             std::optional<uint32_t> eventNum =
-                targetModel.lookupEvent(eventName, tile, false);
+                targetModel.lookupEvent(eventName, tileID, false);
             if (!eventNum) {
               regOp.emitError("Unknown event: ") << eventName;
               return signalPassFailure();
@@ -494,7 +496,7 @@ struct AIETraceRegPackWritesPass
 
             // Resolve port value
             auto portIndex =
-                targetModel.resolvePortValue(valueStr, tile, master);
+                targetModel.resolvePortValue(valueStr, tileID, master);
             if (!portIndex) {
               regOp.emitError("Failed to resolve port value: ") << valueStr;
               return signalPassFailure();

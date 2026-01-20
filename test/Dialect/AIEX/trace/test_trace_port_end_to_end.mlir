@@ -13,13 +13,13 @@ module {
       aie.trace.stop broadcast=14
     }
     
-    aiex.runtime_sequence @seq(%arg0: memref<32xi32>) {
+    aie.runtime_sequence @seq(%arg0: memref<32xi32>) {
       aie.trace.start_config @port_trace
     }
   }
 }
 
-// CHECK: aiex.runtime_sequence @seq
+// CHECK: aie.runtime_sequence @seq
 // CHECK: aiex.npu.write32 {address = 213200
 // CHECK: aiex.npu.write32 {address = 213204
 // CHECK: aiex.npu.write32 {address = 261888

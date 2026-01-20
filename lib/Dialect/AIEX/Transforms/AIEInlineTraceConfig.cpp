@@ -59,6 +59,7 @@ struct AIEInlineTraceConfigPass
 
       int col = tileOp.getCol();
       int row = tileOp.getRow();
+      TileID tileID = {col, row};
 
       // Determine if we're accessing memory module from packet type
       bool isMem = false;
@@ -82,7 +83,7 @@ struct AIEInlineTraceConfigPass
         // Look up register to get offset
         auto regName = regOp.getRegName().str();
         const RegisterInfo *regInfo =
-            targetModel.lookupRegister(regName, tileOp, isMem);
+            targetModel.lookupRegister(regName, tileID, isMem);
         if (!regInfo) {
           regOp.emitError("Register '") << regName << "' not found for tile ("
                                         << col << ", " << row << ")";

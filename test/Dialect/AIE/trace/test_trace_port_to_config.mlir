@@ -14,7 +14,7 @@ module {
       aie.trace.stop broadcast=14
     }
     
-    aiex.runtime_sequence @seq(%arg0: memref<32xi32>) {
+    aie.runtime_sequence @seq(%arg0: memref<32xi32>) {
       aie.trace.start_config @port_trace
     }
   }
