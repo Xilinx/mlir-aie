@@ -70,6 +70,9 @@ def _create_input_with_addresses_pipeline(
     # Build nested device pipeline with conditional passes
     device_pipeline = (
         Pipeline()
+        .add_pass("aie-trace-to-config")
+        .add_pass("aie-trace-pack-reg-writes")
+        .add_pass("aiex-inline-trace-config")
         .add_pass("aie-assign-lock-ids")
         .add_pass("aie-register-objectFifos")
         .add_pass(
@@ -2137,6 +2140,12 @@ def run(mlir_module, args=None):
 
 def main():
     global opts
+
+    # Set MLIR_AIE_INSTALL_DIR if not already set
+    if "MLIR_AIE_INSTALL_DIR" not in os.environ:
+        install_dir = aie.compiler.aiecc.configure.install_path()
+        os.environ["MLIR_AIE_INSTALL_DIR"] = install_dir
+
     opts = aie.compiler.aiecc.cl_arguments.parse_args()
 
     if opts.version:

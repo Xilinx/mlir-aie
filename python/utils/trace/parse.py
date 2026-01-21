@@ -4,6 +4,7 @@ import json
 import argparse
 import sys
 import re
+from collections import defaultdict
 
 from aie.extras.util import find_ops
 from aie.ir import Context, Module, Location
@@ -28,6 +29,14 @@ from aie.utils.trace.events import (
 
 import aie.dialects.aie as aiedialect
 import aie.dialects.aiex as aiexdialect
+
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
@@ -714,7 +723,464 @@ def align_column_start_index(events, commands):
 # ------------------------------------------------------------------------------
 
 
-def parse_trace(trace_buffer, mlir_module_str, colshift=None, debug=False):
+def create_timeline_from_commands(
+    commands, pid_events, output_file="trace_timeline.png", title="Trace Timeline"
+):
+    """
+    Create a timeline visualization directly from parsed commands.
+
+    This is more efficient than create_timeline_from_events() as it works directly
+    with the command representation without converting to Trace Event Format first.
+
+    Args:
+        commands: list of command dictionaries (output from convert_to_commands)
+                  Format: list(idx=trace_type, value=dict(key=row,col, value=list of commands))
+        pid_events: parsed event configuration (output from parse_mlir_trace_events)
+                    Format: list(idx=trace_type, value=dict(key=row,col, value=list of event codes))
+        output_file: path to save the PNG file (default: "trace_timeline.png")
+        title: title for the timeline chart (default: "Trace Timeline")
+
+    Returns:
+        bool: True if visualization was created successfully, False otherwise
+    """
+    if not MATPLOTLIB_AVAILABLE:
+        print("WARNING: matplotlib not available, skipping timeline visualization")
+        return False
+
+    # Build timeline data from commands
+    all_intervals = []
+    process_info = {}  # pid -> (trace_type, location)
+    thread_info = {}  # (pid, tid) -> event_name
+
+    pid = 0
+    for trace_type in range(len(commands)):
+        for loc, command_list in commands[trace_type].items():
+            # Setup process and thread metadata
+            process_info[pid] = (trace_type, loc)
+
+            # Get event names for this location
+            if loc in pid_events[trace_type]:
+                for event_idx in range(min(8, len(pid_events[trace_type][loc]))):
+                    event_code = pid_events[trace_type][loc][event_idx]
+                    event_name = lookup_event_name_by_type(trace_type, event_code)
+                    thread_info[(pid, event_idx)] = event_name
+
+            # Parse commands to build intervals
+            timer = 0
+            active_events = {}
+            for i in range(8):
+                active_events[i] = None  # None means inactive, value is start time
+
+            cycles = 0
+            multiple_list = []
+
+            for cmd in command_list:
+                cmd_type = cmd["type"]
+
+                if "Single" in cmd_type:
+                    event = cmd["event"]
+                    cycles = int(cmd["cycles"])
+                    timer += 1
+
+                    # End active events
+                    multiple_list = [event]
+                    for k in active_events.keys():
+                        if cycles > 0 or (cycles == 0 and k not in multiple_list):
+                            if active_events[k] is not None:
+                                # Create interval
+                                all_intervals.append(
+                                    {
+                                        "pid": pid,
+                                        "tid": k,
+                                        "name": thread_info.get((pid, k), f"Event_{k}"),
+                                        "start": active_events[k],
+                                        "end": timer,
+                                        "duration": timer - active_events[k],
+                                    }
+                                )
+                                active_events[k] = None
+
+                    timer += cycles
+
+                    # Start new event
+                    if active_events[event] is None:
+                        active_events[event] = timer
+
+                elif "Multiple" in cmd_type:
+                    cycles = int(cmd["cycles"])
+                    timer += 1
+
+                    # Find all events in this multiple
+                    multiple_list = []
+                    for key in cmd.keys():
+                        if "event" in key:
+                            multiple_list.append(cmd[key])
+
+                    # End events not in multiple list
+                    for k in active_events.keys():
+                        if cycles > 0 or (cycles == 0 and k not in multiple_list):
+                            if active_events[k] is not None:
+                                all_intervals.append(
+                                    {
+                                        "pid": pid,
+                                        "tid": k,
+                                        "name": thread_info.get((pid, k), f"Event_{k}"),
+                                        "start": active_events[k],
+                                        "end": timer,
+                                        "duration": timer - active_events[k],
+                                    }
+                                )
+                                active_events[k] = None
+
+                    timer += cycles
+
+                    # Start all events in multiple list
+                    for event in multiple_list:
+                        if active_events[event] is None:
+                            active_events[event] = timer
+
+                elif "Repeat" in cmd_type:
+                    # Handle repeat commands
+                    if cycles == 0:
+                        timer += int(cmd["repeats"])
+                    else:
+                        for _ in range(int(cmd["repeats"])):
+                            timer += 1
+                            for k in active_events.keys():
+                                if cycles > 0 or (
+                                    cycles == 0 and k not in multiple_list
+                                ):
+                                    if active_events[k] is not None:
+                                        all_intervals.append(
+                                            {
+                                                "pid": pid,
+                                                "tid": k,
+                                                "name": thread_info.get(
+                                                    (pid, k), f"Event_{k}"
+                                                ),
+                                                "start": active_events[k],
+                                                "end": timer,
+                                                "duration": timer - active_events[k],
+                                            }
+                                        )
+                                        active_events[k] = None
+
+                            timer += cycles
+
+                            # Restart events
+                            if len(multiple_list) > 1:
+                                for event in multiple_list:
+                                    if active_events[event] is None:
+                                        active_events[event] = timer
+                            elif len(multiple_list) == 1:
+                                event = multiple_list[0]
+                                if active_events[event] is None:
+                                    active_events[event] = timer
+
+            pid += 1
+
+    if not all_intervals:
+        print("No trace intervals found in commands!")
+        return False
+
+    # Create visualization using same logic as create_timeline_from_events
+    lanes = {}
+    lane_idx = 0
+    for pid_val in sorted(set(i["pid"] for i in all_intervals)):
+        for tid in sorted(set(i["tid"] for i in all_intervals if i["pid"] == pid_val)):
+            lanes[(pid_val, tid)] = lane_idx
+            lane_idx += 1
+
+    fig, ax = plt.subplots(figsize=(20, max(8, min(lane_idx * 0.5, 20))))
+
+    min_time = min(i["start"] for i in all_intervals)
+    max_time = max(i["end"] for i in all_intervals)
+    time_range = max_time - min_time
+
+    ax.set_xlim(min_time - time_range * 0.02, max_time + time_range * 0.02)
+
+    event_colors = {}
+    color_palette = plt.cm.tab20.colors
+    color_idx = 0
+
+    for interval in all_intervals:
+        lane = lanes[(interval["pid"], interval["tid"])]
+        event_name = interval["name"]
+
+        if event_name not in event_colors:
+            event_colors[event_name] = color_palette[color_idx % len(color_palette)]
+            color_idx += 1
+
+        color = event_colors[event_name]
+
+        rect = mpatches.Rectangle(
+            (interval["start"], lane - 0.4),
+            interval["duration"],
+            0.8,
+            facecolor=color,
+            edgecolor="black",
+            linewidth=0.5,
+            alpha=0.7,
+        )
+        ax.add_patch(rect)
+
+        label_threshold = time_range / 100
+        if interval["duration"] > label_threshold:
+            ax.text(
+                interval["start"] + interval["duration"] / 2,
+                lane,
+                event_name.replace("INSTR_", "").replace("DMA_", "").replace("_", " "),
+                ha="center",
+                va="center",
+                fontsize=7,
+                weight="bold",
+                clip_on=True,
+            )
+
+    ax.set_ylim(-0.5, lane_idx - 0.5)
+    ax.set_yticks(range(lane_idx))
+
+    # Create lane labels with trace type and location
+    lane_labels = []
+    for (pid_val, tid), lane in sorted(lanes.items(), key=lambda x: x[1]):
+        if pid_val in process_info:
+            trace_type, loc = process_info[pid_val]
+            type_names = ["Core", "Mem", "Shim", "MemTile"]
+            type_name = (
+                type_names[trace_type]
+                if trace_type < len(type_names)
+                else f"Type{trace_type}"
+            )
+            thread_name = thread_info.get((pid_val, tid), f"Event_{tid}")
+            lane_labels.append(f"{type_name} {loc}\n{thread_name}")
+        else:
+            lane_labels.append(f"PID {pid_val}\nTID {tid}")
+
+    ax.set_yticklabels(lane_labels, fontsize=8)
+    ax.set_xlabel("Time (cycles)", fontsize=10)
+    ax.set_title(title, fontsize=12, weight="bold")
+    ax.grid(True, axis="x", alpha=0.3)
+
+    event_counts = defaultdict(int)
+    for interval in all_intervals:
+        event_counts[interval["name"]] += 1
+
+    top_events = sorted(event_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+    legend_patches = [
+        mpatches.Patch(color=event_colors[name], label=f"{name} ({count})")
+        for name, count in top_events
+        if name in event_colors
+    ]
+
+    if legend_patches:
+        ax.legend(
+            handles=legend_patches,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1),
+            fontsize=8,
+            framealpha=0.9,
+        )
+
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=150, bbox_inches="tight")
+    print(f"Trace visualization saved to: {output_file}")
+
+    print(f"\\nTrace Statistics:")
+    print(f"  Total intervals: {len(all_intervals)}")
+    print(f"  Total lanes: {lane_idx}")
+    print(f"  Time range: {min_time} - {max_time} cycles")
+    print(f"  Duration: {time_range} cycles")
+
+    print("\\nTop Events:")
+    for name, count in top_events[:10]:
+        print(f"  {name}: {count}")
+
+    plt.close()
+    return True
+
+
+def create_timeline_from_events(
+    events, output_file="trace_timeline.png", title="Trace Timeline"
+):
+    """
+    Create a timeline visualization of trace events.
+
+    Args:
+        events: list of trace events in Trace Event Format
+        output_file: path to save the PNG file (default: "trace_timeline.png")
+        title: title for the timeline chart (default: "Trace Timeline")
+
+    Returns:
+        bool: True if visualization was created successfully, False otherwise
+    """
+    if not MATPLOTLIB_AVAILABLE:
+        print("WARNING: matplotlib not available, skipping timeline visualization")
+        return False
+
+    # Extract metadata and organize events
+    processes = {}
+    threads = {}
+    event_list = []
+
+    for entry in events:
+        if entry["ph"] == "M":  # Metadata
+            if entry["name"] == "process_name":
+                processes[entry["pid"]] = entry["args"]["name"]
+            elif entry["name"] == "thread_name":
+                threads[(entry["pid"], entry["tid"])] = entry["args"]["name"]
+        elif entry["ph"] in ["B", "E"]:  # Begin or End events
+            event_list.append(entry)
+
+    # Group events into intervals (B -> E pairs)
+    active_events = {}
+    intervals = []
+
+    for event in event_list:
+        key = (event["pid"], event["tid"], event["name"])
+
+        if event["ph"] == "B":  # Begin
+            active_events[key] = event["ts"]
+        elif event["ph"] == "E":  # End
+            if key in active_events:
+                start_ts = active_events[key]
+                end_ts = event["ts"]
+                intervals.append(
+                    {
+                        "pid": event["pid"],
+                        "tid": event["tid"],
+                        "name": event["name"],
+                        "start": start_ts,
+                        "end": end_ts,
+                        "duration": end_ts - start_ts,
+                    }
+                )
+                del active_events[key]
+
+    if not intervals:
+        print("No trace intervals found!")
+        return False
+
+    # Create unique lanes for each (pid, tid) combination
+    lanes = {}
+    lane_idx = 0
+    for pid in sorted(set(i["pid"] for i in intervals)):
+        for tid in sorted(set(i["tid"] for i in intervals if i["pid"] == pid)):
+            lanes[(pid, tid)] = lane_idx
+            lane_idx += 1
+
+    # Create figure
+    fig, ax = plt.subplots(figsize=(20, max(8, min(lane_idx * 0.5, 20))))
+
+    # Calculate time range
+    min_time = min(i["start"] for i in intervals)
+    max_time = max(i["end"] for i in intervals)
+    time_range = max_time - min_time
+
+    ax.set_xlim(min_time - time_range * 0.02, max_time + time_range * 0.02)
+
+    # Color map for different event types
+    event_colors = {}
+    color_palette = plt.cm.tab20.colors
+    color_idx = 0
+
+    # Plot intervals
+    for interval in intervals:
+        lane = lanes[(interval["pid"], interval["tid"])]
+        event_name = interval["name"]
+
+        # Assign color to event type
+        if event_name not in event_colors:
+            event_colors[event_name] = color_palette[color_idx % len(color_palette)]
+            color_idx += 1
+
+        color = event_colors[event_name]
+
+        # Draw rectangle for the interval
+        rect = mpatches.Rectangle(
+            (interval["start"], lane - 0.4),
+            interval["duration"],
+            0.8,
+            facecolor=color,
+            edgecolor="black",
+            linewidth=0.5,
+            alpha=0.7,
+        )
+        ax.add_patch(rect)
+
+        # Add text label if duration is large enough
+        label_threshold = time_range / 100
+        if interval["duration"] > label_threshold:
+            ax.text(
+                interval["start"] + interval["duration"] / 2,
+                lane,
+                event_name.replace("INSTR_", "").replace("DMA_", "").replace("_", " "),
+                ha="center",
+                va="center",
+                fontsize=7,
+                weight="bold",
+                clip_on=True,
+            )
+
+    # Set up axes
+    ax.set_ylim(-0.5, lane_idx - 0.5)
+    ax.set_yticks(range(lane_idx))
+
+    # Create lane labels
+    lane_labels = []
+    for (pid, tid), lane in sorted(lanes.items(), key=lambda x: x[1]):
+        proc_name = processes.get(pid, f"Process {pid}")
+        thread_name = threads.get((pid, tid), f"Thread {tid}")
+        lane_labels.append(f"{proc_name}\n{thread_name}")
+
+    ax.set_yticklabels(lane_labels, fontsize=8)
+    ax.set_xlabel("Time (cycles)", fontsize=10)
+    ax.set_title(title, fontsize=12, weight="bold")
+    ax.grid(True, axis="x", alpha=0.3)
+
+    # Add legend for event types
+    event_counts = defaultdict(int)
+    for interval in intervals:
+        event_counts[interval["name"]] += 1
+
+    top_events = sorted(event_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+    legend_patches = [
+        mpatches.Patch(color=event_colors[name], label=f"{name} ({count})")
+        for name, count in top_events
+        if name in event_colors
+    ]
+
+    if legend_patches:
+        ax.legend(
+            handles=legend_patches,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1),
+            fontsize=8,
+            framealpha=0.9,
+        )
+
+    # Adjust layout and save
+    plt.tight_layout()
+    plt.savefig(output_file, dpi=150, bbox_inches="tight")
+    print(f"Trace visualization saved to: {output_file}")
+
+    # Print statistics
+    print(f"\nTrace Statistics:")
+    print(f"  Total intervals: {len(intervals)}")
+    print(f"  Total lanes: {lane_idx}")
+    print(f"  Time range: {min_time} - {max_time} cycles")
+    print(f"  Duration: {time_range} cycles")
+
+    print("\nTop Events:")
+    for name, count in top_events[:10]:
+        print(f"  {name}: {count}")
+
+    plt.close()
+    return True
+
+
+def parse_trace(
+    trace_buffer, mlir_module_str, colshift=None, debug=False, generate_timeline=None
+):
     """
     Parse AIE trace buffer and return trace events as list in Trace Event Format
 
@@ -723,6 +1189,8 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None, debug=False):
         mlir_module_str: string containing MLIR module with trace configuration
         colshift: optional column shift adjustment (int or None for auto-align)
         debug: enable debug output (default: False)
+        generate_timeline: optional path to generate timeline PNG (default: None)
+                          If provided, creates visualization directly from commands
 
     Returns:
         list: trace events in Trace Event Format
@@ -757,6 +1225,15 @@ def parse_trace(trace_buffer, mlir_module_str, colshift=None, debug=False):
     # Auto-align column indices if colshift not provided
     if colshift is None:
         pid_events = align_column_start_index(pid_events, commands)
+
+    # Optional: Generate timeline directly from commands (more efficient)
+    if generate_timeline:
+        create_timeline_from_commands(
+            commands,
+            pid_events,
+            output_file=generate_timeline,
+            title="AIE Trace Timeline",
+        )
 
     # Initialize trace events list
     trace_events = []

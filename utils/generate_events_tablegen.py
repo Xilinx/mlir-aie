@@ -60,7 +60,7 @@ ARCH_CONFIGS = {
         "name": "aie",
         "display_name": "AIE",
         "prefix": "XAIE_EVENTS_",
-        "suffix": "",  # No suffix for AIE1
+        "suffix": "AIE",
     },
     "xaie_events_aieml.h": {
         "name": "aieml",
