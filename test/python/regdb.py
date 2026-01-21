@@ -22,7 +22,6 @@ import sys
 # Try to import from installed package, or use a workaround message
 from aie.utils.regdb import AIEAddressDecoder, MLIRModuleAnnotator
 
-
 # =============================================================================
 # Test AIEAddressDecoder - Address Parsing
 # =============================================================================
