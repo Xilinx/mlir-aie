@@ -7,6 +7,9 @@ on:
       - test-ryzen-ai
   pull_request:
   merge_group:
+  schedule:
+    # Runs at midnight (00:00) every day
+    - cron: '0 0 * * *'
 
   # Allows you to run this workflow manually from the Actions tab by
   # selecting CI and then "Run workflow" menu on the right branch
