@@ -298,7 +298,7 @@ class AIEAddressDecoder:
 
         lines.extend(
             [
-                f"Address: {result['address']}",
+                f"Address:     {result['address']}",
             ]
         )
 
