@@ -155,7 +155,8 @@ public:
       // set the task-complete-token controller ID field in the dma control
       // register
       AIE::TileOp shimTile = AIE::TileOp::getOrCreate(
-          rewriter, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(), 0);
+          rewriter, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(),
+          op.getRow());
       if (shimTile->hasAttr("controller_id")) {
         AIE::PacketInfoAttr controller_id_attr =
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
@@ -514,17 +515,16 @@ public:
 
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     const AIE::AIETargetModel &tm = dev.getTargetModel();
-
     int col = op.getColumn();
     int row = op.getRow();
 
     int num_words = 0;
     if (isa<AIE::AIE2TargetModel>(tm)) {
       // Tile DMAs have 6 words, MemTile and Shim have 8 words
-      if (tm.isShimNOCTile(col, row) || tm.isMemTile(col, row))
-        num_words = 8;
-      else
+      if (tm.isCoreTile(col, row))
         num_words = 6;
+      else
+        num_words = 8;
     } else {
       llvm_unreachable(
           "Unsupported AIETargetModel in WriteBdToBlockWritePattern");
@@ -633,7 +633,7 @@ public:
       words[7] |= (op.getLockAcqVal() & 0x7f) << 8;
       words[7] |= op.getLockAcqId() & 0xff;
     } else {
-
+      // AIE2 Tile DMA - 6 words
       // DMA_BDX_0
       // Base_Address [27:14], Buffer_Length [13:0]
       words[0] = ((op.getBufferOffset() / 4) & 0x3fff) << 14;
