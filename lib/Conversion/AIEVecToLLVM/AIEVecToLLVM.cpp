@@ -4130,7 +4130,8 @@ class MatMulOpAIE2pConversion
           accIntTy.getWidth() == 32 && lhsLanes == 64 && rhsLanes == 64 &&
           accLanes == 64) {
         // Uses I512.I512.ACC2048 (64 lanes of i8 -> 64 lanes of i32)
-        return {DecodedMatMulOp::Kind::I8_8x8x8_I512_ACC2048, lhs, rhs, acc, 8};
+        return {DecodedMatMulOp::Kind::I8_8x8x8_I512_ACC2048, lhs, rhs, acc,
+                776};
       }
 
       // Check for <8x2xi16> x <2x8xi16> + <8x8xi32>
