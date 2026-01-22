@@ -104,6 +104,7 @@ set(AIE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
+find_package(Peano COMPONENTS ${AIE_VITIS_COMPONENTS})
 find_package(XRT)
 find_package(hsa-runtime64)
 
@@ -178,10 +179,10 @@ cmake_dependent_option(AIECC_HOST_COMPILE
   "Set aiecc to host compile." ON "NOT HOST_COMPILER STREQUAL NONE" OFF)
 
 cmake_dependent_option(AIECC_COMPILE_WITH_XCHESSCC
-  "Set aiecc to compile with chess." ON "AIECC_COMPILE;AIE_COMPILER STREQUAL XCHESSCC" OFF)
+  "Set aiecc to compile with chess." ON "AIECC_COMPILE;AIE_COMPILER STREQUAL XCHESSCC;AIETools_FOUND" OFF)
 
 cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
-  "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC" OFF)
+  "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC;AIETools_FOUND" OFF)
 
 # If we need runtime libs, then statically link them.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
