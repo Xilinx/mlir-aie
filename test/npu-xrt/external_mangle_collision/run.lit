@@ -1,5 +1,15 @@
 // RUN: clang++ -c %S/kernel1.cc -o kernel1.o
 // RUN: clang++ -c %S/kernel2.cc -o kernel2.o
-// RUN: %python aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 // RUN: clang++ %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+
+// Test 1: link_symbol defined for each kernel (aie.mlir)
+// RUN: %python aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 // RUN: %run_on_npu1% ./test.exe -x aie.xclbin -i insts.bin
+
+// Test 2: link_with on AIE.core (aie_core_link.mlir)
+// RUN: %python aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie_core_link.xclbin --npu-insts-name=insts_core_link.bin %S/aie_core_link.mlir
+// RUN: %run_on_npu1% ./test.exe -x aie_core_link.xclbin -i insts_core_link.bin
+
+// Test 3: Mixed (aie_mixed.mlir)
+// RUN: %python aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie_mixed.xclbin --npu-insts-name=insts_mixed.bin %S/aie_mixed.mlir
+// RUN: %run_on_npu1% ./test.exe -x aie_mixed.xclbin -i insts_mixed.bin
