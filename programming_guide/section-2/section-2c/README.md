@@ -62,8 +62,8 @@ for(int i = 0; i < size_2; i++)
 ```
 
 It is important to note that data layout transformations are interpreted differently depending on whether data is pushed onto or read from the AXI stream:
-- when data is pushed to the AXI stream from local memory, the tile DMA can directly access the data following the desired access pattern.
-- when data is read from the AXI stream, the tile DMA writes the data into local memory according to the desired access pattern, however, it does not have control over the order in which the data arrives.
+- when data are pushed to the AXI stream, the layout describes from where in memory the DMA reads the elements to push to the stream (where to ``get items from'');
+- when data are read from the AXI stream, the data layout describes where in memory the DMA writes the elements that are arriving over the stream in-sequence (where to ``put arriving items'').
 
 As a practical example, here is an access pattern that corresponds to alternating between even and odd elements every 8 elements in a 128 element buffer/stream:
 ```mlir
@@ -101,7 +101,7 @@ class object_fifo:
 
 Our compiler directly lowers Object FIFOs that make use of the aforementioned data layout transformations to `AIE_DMABDOp`. You can use the `dimensionsToStream` input to describe in which order the `producerTile`'s DMA should push the objects onto the stream. Similarly, the `dimensionsFromStreamPerConsumer` input describes to the DMAs of each individual tile in the `consumerTiles` in what layout to retrieve the objects from the stream.
 
-> **NOTE:**  Data layout transformations in the Object FIFO are applied at object granularity.
+> **NOTE:**  Data layout transformations are applied to individual ObjectFIFO objects and cannot act across object boundaries.
 
 As an example, the Object FIFO in the code below contains objects with datatype `<4x8xi8>`. Using the `dimensionsToStream` input it performs a data layout transformation on the producer tile side that pushes elements from memory onto the stream as follows: For every even length-8 row, select the first three even-indexed elements.
 ```python
