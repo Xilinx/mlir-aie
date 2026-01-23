@@ -963,6 +963,11 @@ class FlowRunner:
 
         for func in funcs:
             link_name = func.attributes["link_name"].value
+            if "link_with" not in func.attributes:
+                print(
+                    f"Warning: Function '{func.sym_name.value}' has 'link_name' but no 'link_with' attribute. Skipping symbol renaming."
+                )
+                continue
             link_with = func.attributes["link_with"].value
             sym_name = func.sym_name.value
 
