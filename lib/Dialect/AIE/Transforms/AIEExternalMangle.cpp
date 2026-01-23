@@ -112,8 +112,8 @@ struct AIEExternalManglePass
 
             // Create a new function declaration
             OpBuilder builder(module.getBodyRegion());
-            auto newFunc = builder.create<func::FuncOp>(func.getLoc(), newName,
-                                                        func.getFunctionType());
+            auto newFunc = func::FuncOp::create(builder, func.getLoc(), newName,
+                                                func.getFunctionType());
             newFunc.setPrivate();
             if (auto linkName = func->getAttr("link_name"))
               newFunc->setAttr("link_name", linkName);
@@ -165,7 +165,11 @@ struct AIEExternalManglePass
         auto newFunc = mangleFunction(func, objectFileName);
         if (newFunc != func) {
           // If newFunc is a different op, replace uses and erase original.
-          func.replaceAllUsesWith(newFunc);
+          if (failed(SymbolTable::replaceAllSymbolUses(
+                  func, newFunc.getNameAttr(), module))) {
+            func.emitError("failed to replace symbol uses");
+            return;
+          }
           func.erase();
         }
       }
