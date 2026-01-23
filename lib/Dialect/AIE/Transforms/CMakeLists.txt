@@ -25,6 +25,7 @@ add_mlir_dialect_library(
   AIEObjectFifoRegisterProcess.cpp
   AIELowerCascadeFlows.cpp
   AIEGenerateColumnControlOverlay.cpp
+  AIEExternalMangle.cpp
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
 
@@ -43,4 +44,6 @@ add_mlir_dialect_library(
   MLIRPass
   MLIRSupport
   MLIRTransformUtils
-  MLIRFuncDialect)
+  MLIRFuncDialect
+  LLVMObject
+  LLVMDemangle)

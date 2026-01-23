@@ -346,4 +346,17 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
   ];
 }
 
+def AIEExternalMangle : Pass<"aie-external-mangle", "mlir::ModuleOp"> {
+  let summary = "Mangle external function names";
+  let description = [{
+    This pass mangles the names of external functions to match the C++ ABI.
+    It looks for the `link_with` attribute on `func.func` operations, reads the
+    specified object file, and renames the function to the matching mangled symbol.
+  }];
+  let constructor = "xilinx::AIE::createAIEExternalManglePass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+  ];
+}
+
 #endif

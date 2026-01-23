@@ -32,6 +32,7 @@ import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
 from aie.dialects import aie as aiedialect
 from aie.dialects import aiex as aiexdialect
+from aie.dialects import func as funcdialect
 from aie.ir import (
     Context,
     Location,
@@ -98,6 +99,7 @@ def _create_input_with_addresses_pipeline(
 
     return (
         pipeline.lower_affine()
+        .add_pass("aie-external-mangle")
         .add_pass("aie-canonicalize-device")
         .Nested("aie.device", device_pipeline)
         .convert_scf_to_cf()
@@ -436,8 +438,7 @@ def emit_design_bif(
             f"file={root_path}/{device_name}_aie_cdo_enable.bin" if enable_cores else ""
         )
         files = f"{cdo_elfs_file} {cdo_init_file} {cdo_enable_file}"
-    return dedent(
-        f"""\
+    return dedent(f"""\
         all:
         {{
           id_code = 0x14ca8093
@@ -448,8 +449,7 @@ def emit_design_bif(
             {{ type=cdo {files} }}
           }}
         }}
-        """
-    )
+        """)
 
 
 # Extract included files from the given Chess linker script.
@@ -952,6 +952,43 @@ class FlowRunner:
                 pass
 
         return elf_paths
+
+    async def handle_mangled_collisions(self, module):
+        # Find all func.func ops with link_name attribute
+        funcs = find_ops(
+            module.operation,
+            lambda o: isinstance(o.operation.opview, funcdialect.FuncOp)
+            and "link_name" in o.attributes,
+        )
+
+        for func in funcs:
+            link_name = func.attributes["link_name"].value
+            link_with = func.attributes["link_with"].value
+            sym_name = func.sym_name.value
+
+            # If sym_name is different from link_name, we need to rename the symbol in the object file
+            if sym_name != link_name:
+                # Create a new object file name
+                new_obj_file = self.prepend_tmp(f"{sym_name}.o")
+
+                # Run llvm-objcopy to rename the symbol
+                cmd = [
+                    "llvm-objcopy",
+                    "--redefine-sym",
+                    f"{link_name}={sym_name}",
+                    link_with,
+                    new_obj_file,
+                ]
+
+                if self.opts.verbose:
+                    print(
+                        f"Renaming symbol {link_name} to {sym_name} in {link_with} -> {new_obj_file}"
+                    )
+
+                await self.do_call(None, cmd)
+
+                # Update link_with attribute
+                func.attributes["link_with"] = StringAttr.get(new_obj_file)
 
     async def process_core(
         self,
@@ -1711,8 +1748,7 @@ class FlowRunner:
         )
 
         sim_script = self.prepend_tmp("aiesim.sh")
-        sim_script_template = dedent(
-            """\
+        sim_script_template = dedent("""\
             #!/bin/sh
             prj_name=$(basename $(dirname $(realpath $0)))
             root=$(dirname $(dirname $(realpath $0)))
@@ -1722,8 +1758,7 @@ class FlowRunner:
             fi
             cd $root
             aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
-            """
-        )
+            """)
         with open(sim_script, "wt") as sim_script_file:
             sim_script_file.write(sim_script_template)
         stats = os.stat(sim_script)
@@ -1820,6 +1855,11 @@ class FlowRunner:
                 outputfile=file_with_addresses,
                 description="Resource allocation and Object FIFO lowering",
             )
+
+            await self.handle_mangled_collisions(file_with_addresses_module)
+            # Update the file with addresses after handling collisions (renaming object files)
+            with open(file_with_addresses, "w") as f:
+                f.write(str(file_with_addresses_module))
 
             requires_routing = (
                 opts.xcl
