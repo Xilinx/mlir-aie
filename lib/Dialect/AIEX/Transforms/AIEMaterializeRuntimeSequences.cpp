@@ -258,6 +258,7 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
                                 clonedSSAInsertionPoint.getBlock(),
                                 clonedSSAInsertionPoint.getPoint());
           rewriter.setInsertionPointAfter(existingTile);
+          clonedSSAInsertionPoint = rewriter.saveInsertionPoint();
         }
         argMap.map(referencedValue, existingTile.getResult());
       } else {
@@ -267,6 +268,55 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
         argMap.map(referencedValue, clonedTile->getResult(0));
         clonedSSAInsertionPoint = rewriter.saveInsertionPoint();
       }
+
+    } else if(auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
+
+      // First ensure the tile referenced by the lock is available
+      Value lockTile = lockOp.getTile();
+      if (!argMap.contains(lockTile)) {
+        Operation *lockTileDefOp = lockTile.getDefiningOp();
+        if (auto lockTileOp = llvm::dyn_cast<AIE::TileOp>(lockTileDefOp)) {
+          int col = lockTileOp.getCol();
+          int row = lockTileOp.getRow();
+
+          // Check if a tile with matching col/row already exists in the caller device
+          AIE::TileOp existingTile = nullptr;
+          for (AIE::TileOp tile : callerDevice.getOps<AIE::TileOp>()) {
+            if (tile.getCol() == col && tile.getRow() == row) {
+              existingTile = tile;
+              break;
+            }
+          }
+
+          if (existingTile) {
+            // Use the existing tile - ensure it's before our insertion point
+            if (!existingTile->isBeforeInBlock(&*rewriter.getInsertionPoint())) {
+              rewriter.restoreInsertionPoint(clonedSSAInsertionPoint);
+              rewriter.moveOpBefore(existingTile,
+                                    clonedSSAInsertionPoint.getBlock(),
+                                    clonedSSAInsertionPoint.getPoint());
+              rewriter.setInsertionPointAfter(existingTile);
+              clonedSSAInsertionPoint = rewriter.saveInsertionPoint();
+            }
+            argMap.map(lockTile, existingTile.getResult());
+          } else {
+            // Clone the tile operation into the caller device
+            rewriter.restoreInsertionPoint(clonedSSAInsertionPoint);
+            Operation *clonedTile = rewriter.clone(*lockTileOp);
+            argMap.map(lockTile, clonedTile->getResult(0));
+            clonedSSAInsertionPoint = rewriter.saveInsertionPoint();
+          }
+        } else {
+          return errorReportOp->emitError()
+                 << "Lock references a tile that is not defined by aie.tile operation";
+        }
+      }
+
+      // Now clone the lock operation into the caller device
+      rewriter.restoreInsertionPoint(clonedSSAInsertionPoint);
+      Operation *clonedLock = rewriter.clone(*lockOp, argMap);
+      argMap.map(referencedValue, clonedLock->getResult(0));
+      clonedSSAInsertionPoint = rewriter.saveInsertionPoint();
 
     } else {
       return errorReportOp->emitError()
@@ -319,15 +369,19 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         collectReferencedSSAValues(symbolDefOp, argMap, symbolReferencedValues);
 
         // Copy SSA values referenced by the symbol definition
+        // This updates clonedDefOpsInsertionPoint to be after the copied SSA values
         if (failed(copyReferencedSSAValues(rewriter, symbolReferencedValues,
                                            callerDevice, argMap,
                                            clonedDefOpsInsertionPoint, op))) {
           return std::make_pair(newSymbolRef, WalkResult::interrupt());
         }
 
+        // Insert the cloned symbol at the device level, after its SSA dependencies
+        rewriter.restoreInsertionPoint(clonedDefOpsInsertionPoint);
         Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
         clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(),
                                    StringAttr::get(ctx, uniqueName));
+        clonedDefOpsInsertionPoint = rewriter.saveInsertionPoint();
       } else {
         newSymbolRef = previouslyInlinedSymbolMap[oldSymbolRef];
       }
