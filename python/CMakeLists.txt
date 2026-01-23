@@ -374,6 +374,21 @@ else ()
       AIEAggregateCAPI
   )
 
+  # Vendor eudsl-python-extras into the build directory
+  add_custom_command(
+    TARGET AIEPythonModules POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/mlir_aie_wheels/vendor_eudsl.py
+      --requirements ${AIE_SOURCE_DIR}/python/requirements.txt
+      --target ${AIE_PYTHON_PACKAGES_DIR}
+    COMMENT "Vendoring eudsl-python-extras"
+  )
+
+  install(
+    DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/extras"
+    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie"
+    COMPONENT aie-python
+  )
+
   ################################################################################
   # Generated trace events enum files and copy to Python package directories
   ################################################################################
