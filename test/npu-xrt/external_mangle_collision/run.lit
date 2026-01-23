@@ -1,0 +1,5 @@
+// RUN: clang++ -c %S/kernel1.cc -o kernel1.o
+// RUN: clang++ -c %S/kernel2.cc -o kernel2.o
+// RUN: %python aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+// RUN: clang++ %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+// RUN: %run_on_npu1% ./test.exe -x aie.xclbin -i insts.bin
