@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2025, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include(AddMLIRPython)
@@ -35,16 +35,31 @@ declare_mlir_python_sources(AIEPythonSources.Tools
 declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
+    utils/__init__.py
     utils/test.py
-    utils/xrt.py
     utils/ml.py
-    utils/trace.py
     utils/config.py
-    utils/parse_trace.py
-    utils/parse_eventIR.py
-    utils/get_trace_summary.py
-    utils/trace_utils.py
-    utils/trace_events/__init__.py
+    utils/jit.py
+    utils/npukernel.py
+    utils/hostruntime/__init__.py
+    utils/hostruntime/hostruntime.py
+    utils/hostruntime/tensor_class.py
+    utils/hostruntime/xrtruntime/__init__.py
+    utils/hostruntime/xrtruntime/hostruntime.py
+    utils/hostruntime/xrtruntime/tensor.py
+    utils/compile/__init__.py
+    utils/compile/link.py
+    utils/compile/utils.py
+    utils/compile/cache/circular_cache.py
+    utils/compile/cache/utils.py
+    utils/trace/__init__.py
+    utils/trace/config.py
+    utils/trace/events/__init__.py
+    utils/trace/event_ir.py
+    utils/trace/get_trace_summary.py
+    utils/trace/parse.py
+    utils/trace/setup.py
+    utils/trace/utils.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Helpers
@@ -415,10 +430,10 @@ else ()
     get_filename_component(_filename ${_file} NAME)
     add_custom_command(
       TARGET AIEPythonModules POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace_events
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace/events
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${_file}
-        ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace_events/${_filename}
+        ${AIE_PYTHON_PACKAGES_DIR}/aie/utils/trace/events/${_filename}
       COMMENT "Copying ${_filename} to build Python package"
     )
   endforeach()
@@ -427,7 +442,7 @@ else ()
   install(
     FILES 
       ${GENERATED_EVENTS_ENUM_FILES}
-    DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils/trace_events
+    DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils/trace/events
     COMPONENT aie-python
   )
 
