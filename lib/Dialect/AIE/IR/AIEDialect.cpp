@@ -1809,8 +1809,8 @@ LogicalResult DMABDOp::verify() {
     // Skip dimension-related checks for unranked memrefs
     auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
     if (!buffer)
-      return emitOpError()
-             << "dimensions attribute cannot be used with unranked memref buffer type.";
+      return emitOpError() << "dimensions attribute cannot be used with "
+                              "unranked memref buffer type.";
     int64_t maxIdx = 0;
     for (BDDimLayoutAttr dim : *dims) {
       maxIdx += dim.getStride() * (dim.getSize() - 1);
