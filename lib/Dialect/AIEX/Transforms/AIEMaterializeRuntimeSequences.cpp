@@ -322,7 +322,9 @@ static LogicalResult inlineReferencedSymbolDefinitions(
     IRMapping argMap,
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
     AIE::DeviceOp callerDevice,
-    mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint) {
+    mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint,
+    llvm::SetVector<SymbolRefAttr> &allSymbolNames
+  ) {
   MLIRContext *ctx = op->getContext();
   for (NamedAttribute namedAttr : op->getAttrs()) {
     Attribute attr = namedAttr.getValue();
@@ -332,12 +334,12 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         llvm::StringRef oldName = oldSymbolRef.getRootReference().getValue();
         std::string uniqueName = oldName.str();
         unsigned uniquingCounter = 0;
-        while (SymbolTable::lookupNearestSymbolFrom(
-            op, StringAttr::get(ctx, uniqueName))) {
+        while (allSymbolNames.count(SymbolRefAttr::get(ctx, uniqueName))) {
           uniqueName = oldName.str() + "_" + std::to_string(uniquingCounter);
           uniquingCounter++;
         }
         newSymbolRef = SymbolRefAttr::get(ctx, uniqueName);
+        allSymbolNames.insert(newSymbolRef);
         previouslyInlinedSymbolMap[oldSymbolRef] = newSymbolRef;
 
         // Add the new symbol definition
@@ -384,7 +386,8 @@ static LogicalResult inlineRunOp(
   PatternRewriter &rewriter,
   llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
   mlir::OpBuilder::InsertPoint &ssaDefInsertPoint,
-  mlir::OpBuilder::InsertPoint &symbolDefInsertPoint
+  mlir::OpBuilder::InsertPoint &symbolDefInsertPoint,
+  llvm::SetVector<SymbolRefAttr> &allSymbolNames
 ) {
     AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
     AIE::RuntimeSequenceOp calleeRuntimeSequence =
@@ -452,7 +455,7 @@ static LogicalResult inlineRunOp(
       if (failed(inlineReferencedSymbolDefinitions(
               rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap,
               previouslyInlinedSymbolMap, callerDevice,
-              symbolDefInsertPoint))) {
+              symbolDefInsertPoint, allSymbolNames))) {
         return failure();
       }
     }
@@ -513,13 +516,19 @@ struct AIEMaterializeRuntimeSequencesPass
           &deviceBodyFirstBlock, deviceBodyFirstBlock.begin());
       mlir::OpBuilder::InsertPoint symbolDefInsertPoint(
           &deviceBodyFirstBlock, mlir::Block::iterator(firstRuntimeSequenceOp));
+      llvm::SetVector<SymbolRefAttr> allSymbolNames = {};
+      for (Operation &op : deviceBodyFirstBlock) {
+        if (auto symbolName = op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+          allSymbolNames.insert(SymbolRefAttr::get(symbolName));
+        }
+      }
       deviceOp.getOperation()->walk([&](RunOp runOp) {
         PatternRewriter rewriter(runOp->getContext());
         rewriter.setInsertionPoint(runOp);
         llvm::DenseMap<SymbolRefAttr, SymbolRefAttr>
             previouslyInlinedSymbolMap;
         if (failed(inlineRunOp(runOp, rewriter, previouslyInlinedSymbolMap,
-                               ssaDefInsertPoint, symbolDefInsertPoint))) {
+                               ssaDefInsertPoint, symbolDefInsertPoint, allSymbolNames))) {
           runOp.emitError() << "Failed to inline aiex.run operation";
           signalPassFailure();
         }

@@ -46,7 +46,8 @@ generateAndInsertConfigOps(mlir::OpBuilder &builder,
                            xilinx::AIE::DeviceOp device,
                            llvm::StringRef clElfDir = "",
                            AIEToConfigurationOutputType outputType =
-                               AIEToConfigurationOutputType::Transaction);
+                               AIEToConfigurationOutputType::Transaction,
+                           std::string blockwrite_prefix = "config_blockwrite_data_");
 
 // --------------------------------------------------------------------------
 // Device reset
