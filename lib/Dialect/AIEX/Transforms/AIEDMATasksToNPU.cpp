@@ -241,7 +241,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                   std::optional<xilinx::AIE::PacketInfoAttr> packet) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
-    MemRefType buffer_type = bd_op.getBuffer().getType();
+    auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
     uint32_t addr_granularity = target_model.getAddressGenGranularity();
 
     uint32_t bd_id = bd_op.getBdId().value();

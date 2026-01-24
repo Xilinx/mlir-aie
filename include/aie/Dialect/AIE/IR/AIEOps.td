@@ -925,7 +925,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   }];
 
   let arguments = (
-    ins AnyMemRef:$buffer,
+    ins AnyRankedOrUnrankedMemRef:$buffer,
         // in multiples of element width (not bytes)
         DefaultValuedAttr<AIEI32Attr, "0">:$offset,
         // in multiples of element width (not bytes)
@@ -947,13 +947,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     BufferOp getBufferOp();
     int32_t getBufferElementTypeWidthInBytes() {
       mlir::DataLayout dataLayout = mlir::DataLayout::closest(*this);
-      return dataLayout.getTypeSize(getBuffer().getType().getElementType());
+      auto bufferType = llvm::cast<mlir::BaseMemRefType>(getBuffer().getType());
+      return dataLayout.getTypeSize(bufferType.getElementType());
     }
     uint32_t getLenInBytes() {
       if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
-      else
-        return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();
+      auto memrefType = llvm::dyn_cast<mlir::MemRefType>(getBuffer().getType());
+      if (!memrefType)
+        return 0; // Unranked memref without explicit len
+      return memrefType.getNumElements() * getBufferElementTypeWidthInBytes();
     }
     int32_t getOffsetInBytes() { return getOffset() * getBufferElementTypeWidthInBytes(); }
   }];
