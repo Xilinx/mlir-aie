@@ -27,7 +27,6 @@ struct AIEExternalManglePass
     : public AIEExternalMangleBase<AIEExternalManglePass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    SymbolTable symbolTable(module);
 
     // Helper to mangle a function based on an object file
     auto mangleFunction = [&](func::FuncOp func,
@@ -82,12 +81,14 @@ struct AIEExternalManglePass
             return func;
           }
 
+          SymbolTable parentSymbolTable(func->getParentOp());
+
           // Found a match! Check if we need to rename/clone.
           std::string newName = mangledName.str();
           int suffix = 0;
-          while (symbolTable.lookup(newName)) {
+          while (parentSymbolTable.lookup(newName)) {
             // If the existing symbol is the function itself, we are good.
-            auto existingOp = symbolTable.lookup(newName);
+            auto existingOp = parentSymbolTable.lookup(newName);
             if (existingOp == func)
               break;
 
@@ -106,12 +107,12 @@ struct AIEExternalManglePass
 
           if (newName != functionName) {
             // If 'func' already has the correct name and link_with, return it.
-            if (auto existingOp = symbolTable.lookup(newName)) {
+            if (auto existingOp = parentSymbolTable.lookup(newName)) {
               return cast<func::FuncOp>(existingOp);
             }
 
             // Create a new function declaration
-            OpBuilder builder(module.getBodyRegion());
+            OpBuilder builder(func);
             auto newFunc = func::FuncOp::create(builder, func.getLoc(), newName,
                                                 func.getFunctionType());
             newFunc.setPrivate();
@@ -128,7 +129,9 @@ struct AIEExternalManglePass
                                StringAttr::get(func.getContext(), mangledName));
             }
 
-            symbolTable.insert(newFunc);
+            // Insert the new function in the same symbol table as the original
+            // function.
+            parentSymbolTable.insert(newFunc, func->getIterator());
             return newFunc;
           }
           return func;
@@ -146,7 +149,8 @@ struct AIEExternalManglePass
         StringRef objectFileName = linkWithAttr.getValue();
 
         core.walk([&](func::CallOp call) {
-          auto callee = symbolTable.lookup<func::FuncOp>(call.getCallee());
+          auto callee = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+              call, call.getCalleeAttr());
           if (callee && callee.isExternal()) {
             // Mangle/Clone the callee for this core
             auto newCallee = mangleFunction(callee, objectFileName);
@@ -166,10 +170,11 @@ struct AIEExternalManglePass
         if (newFunc != func) {
           // If newFunc is a different op, replace uses and erase original.
           if (failed(SymbolTable::replaceAllSymbolUses(
-                  func, newFunc.getNameAttr(), module))) {
+                  func, newFunc.getNameAttr(), func->getParentOp()))) {
             func.emitError("failed to replace symbol uses");
             return;
           }
+
           func.erase();
         }
       }

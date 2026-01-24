@@ -1,8 +1,8 @@
 module {
-  func.func private @kernel_add(memref<8xi32>, i32) attributes { link_with="kernel1.o", link_symbol="kernel(int*, int)" }
-  func.func private @kernel_sub(memref<8xi32>, i32) attributes { link_with="kernel2.o", link_symbol="kernel(int*, int)" }
-
   aie.device(npu1_1col) {
+    func.func private @kernel_add(memref<8xi32>, i32) attributes { link_with="kernel1.o", link_symbol="kernel(int*, int)" }
+    func.func private @kernel_sub(memref<8xi32>, i32) attributes { link_with="kernel2.o", link_symbol="kernel(int*, int)" }
+
     %t00 = aie.tile(0, 0)
     %t01 = aie.tile(0, 1)
     %t02 = aie.tile(0, 2)
