@@ -547,7 +547,7 @@ is 0). All counts are expressed in multiples of the element width.
 
 | Operand | Description |
 | :-----: | ----------- |
-| `buffer` | memref of any type values |
+| `buffer` | ranked or unranked memref of any type values |
 
 
 
