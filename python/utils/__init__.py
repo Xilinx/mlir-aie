@@ -154,9 +154,21 @@ from .npukernel import NPUKernel
 if has_xrt:
     from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
 
-    DefaultNPURuntime = CachedXRTRuntime()
-else:
-    DefaultNPURuntime = None
+
+_DefaultNPURuntime = None
+
+
+def _get_default_npu_runtime():
+    global _DefaultNPURuntime
+    if _DefaultNPURuntime is None and has_xrt:
+        _DefaultNPURuntime = CachedXRTRuntime()
+    return _DefaultNPURuntime
+
+
+def __getattr__(name):
+    if name == "DefaultNPURuntime":
+        return _get_default_npu_runtime()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def get_current_device():
@@ -168,7 +180,9 @@ def get_current_device():
     """
     if hostruntime._CURRENT_DEVICE:
         return hostruntime._CURRENT_DEVICE
-    elif DefaultNPURuntime:
-        return DefaultNPURuntime.device()
+
+    runtime = _get_default_npu_runtime()
+    if runtime:
+        return runtime.device()
     else:
         return None
