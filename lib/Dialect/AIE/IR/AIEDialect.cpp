@@ -1810,9 +1810,16 @@ LogicalResult DMABDOp::verify() {
     return success();
   }
 
-  if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
-    return emitOpError(
-        "BDs only support BufferOp or ExternalBufferOp operands.");
+  // Check if buffer is an unranked memref (e.g., from function argument)
+  bool isUnrankedMemRef = llvm::isa<UnrankedMemRefType>(getBuffer().getType());
+
+  // For unranked memrefs, we can't verify as strictly since we don't know
+  // the buffer's defining op or its full type at compile time
+  if (!isUnrankedMemRef) {
+    if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
+      return emitOpError(
+          "BDs only support BufferOp or ExternalBufferOp operands.");
+  }
 
   if (getLenInBytes() % 4)
     return emitOpError("transfer length must be multiple of 4 (i.e., represent "
@@ -1820,7 +1827,7 @@ LogicalResult DMABDOp::verify() {
 
   TileID parentTileId = getParentTileElement(getOperation()).getTileID();
 
-  if (getOperation()->getParentOfType<MemOp>() &&
+  if (!isUnrankedMemRef && getOperation()->getParentOfType<MemOp>() &&
       (getBufferOp().getTileOp().colIndex() != parentTileId.col ||
        getBufferOp().getTileOp().rowIndex() != parentTileId.row))
     return emitOpError(
@@ -1846,7 +1853,10 @@ LogicalResult DMABDOp::verify() {
                               " tile (got "
                            << std::to_string(dims->size()) << " dimensions).";
 
-    MemRefType buffer = getBuffer().getType();
+    auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
+    if (!buffer)
+      return emitOpError() << "dimensions attribute cannot be used with "
+                              "unranked memref buffer type.";
     int64_t maxIdx = getDimsMaxIdx(*dims);
     if (buffer.getNumElements() <= maxIdx)
       return emitOpError() << "Specified stride(s) and size(s) result in out "
@@ -1909,8 +1919,9 @@ LogicalResult DMABDOp::verify() {
       return emitOpError() << "Inner-most padding-after count must result in"
                            << " padding in 32-bit words.";
   }
-  if (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
-      targetModel.isCoreTile(parentTileId.col, parentTileId.row)) {
+  if (!isUnrankedMemRef &&
+      (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
+       targetModel.isCoreTile(parentTileId.col, parentTileId.row))) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
       int offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
