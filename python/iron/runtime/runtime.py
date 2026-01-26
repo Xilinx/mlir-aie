@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
 from collections import defaultdict
@@ -313,7 +313,7 @@ class Runtime(Resolvable):
                     # tiles_to_trace=[ tiles_to_trace[0] ],
                     tiles_to_trace=tiles_to_trace,
                     shim=trace_shim_tile,
-                    trace_size=self._trace_size,
+                    trace_size=self._trace_size // 4,
                     trace_offset=(
                         self._trace_offset if self._trace_offset is not None else 0
                     ),

@@ -7,3 +7,6 @@
 
 add_mlir_dialect(AIEX aiex)
 add_mlir_doc(AIEX AIEXDialect ./ -gen-dialect-doc -dialect=aiex)
+
+# AIEX.td pulls in AIEAttrs.td which includes generated event enums
+add_dependencies(MLIRAIEXIncGen GenerateAIEEventsTD)

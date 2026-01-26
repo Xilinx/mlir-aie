@@ -1,3 +1,4 @@
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 from collections import defaultdict
 import numpy as np
 from typing import Sequence, get_args, get_origin
@@ -191,7 +192,9 @@ def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]
     shape = get_args(ndarray_type)[0]
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
     for elem in shape:
-        assert isinstance(elem, int), "np.ndarray shape must be a tuple of integers"
+        assert isinstance(
+            elem, (int, np.integer)
+        ), "np.ndarray shape must be a tuple of Python or numpy integer types"
     return shape
 
 
