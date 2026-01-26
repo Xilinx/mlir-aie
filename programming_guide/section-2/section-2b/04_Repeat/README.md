@@ -10,25 +10,35 @@
 
 # <ins>Object FIFO Repeat Pattern</ins>
 
-The closer-to-metal Object FIFO provides users with a way to specify that data from the producer should be repeated. This feature is available using the following syntax:
+At the closer-to-metal API level, the Object FIFO provides users with two ways to specify how data from the producer should be repeated. 
+
+Both repeat features are achieved using the Direct Memory Access (DMA) unit of the Object FIFO's producer tile. In particular, data movement for each DMA channel is described as a chain of buffer descriptors, where each buffer descriptor (BD) indicates what data should be pushed to the AXI stream. The data movement generated for Object FIFOs follows a cyclic pattern of First In First Out where each object in the Object FIFO is moved by one BD in a BD chain.
+
+The first repeat features enables users to repeat the entire BD chain using the following syntax:
 ```python
 of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
-of0.set_repeat_count(2) # the data in each object is sent to the consumer C twice
+of0.set_iter_count(2)
 ```
+The code snippet above results in the repetition of each object in the Object FIFO following the pattern `buff_ping - buff_pong - buff_ping - buff_pong`. This is shown in the figure below with the red arrow representing the repeat value of the entire BD chain:
+<img src="./../../../assets/RepeatSharedTile_2.png" height="300">
 
-This repetition is achieved using the Direct Memory Access (DMA) of the Object FIFO's producer tile. In particular, the DMA buffer descriptors rely on synchronization logic to ensure data is handled at the correct time, to avoid data corruption. To program the repeat pattern the synchronization logic associated to the buffer descriptors of the producer tile is generated in such a way as to send additional copies of the data. These data copies do not lead to additional memory being allocated as they are made at the DMA level, as is showcased by the red arrow in the figure below:
-
+Users may also repeat each individual BD in the chain. This feature is available using the following syntax:
+```python
+of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
+of0.set_repeat_count(2)
+```
+The specified repeat value is applied to all BDs. It is currently not possible to set different repeat values per BD.
+The code snippet above results in the repetition of each object in the Object FIFO following the pattern `buff_ping - buff_ping - buff_pong - buff_pong`. This is shown in the figure below with the red arrows representing the repeat values of each BD in the chain:
 <img src="./../../../assets/RepeatSharedTile.png" height="300">
+
+> **NOTE:**  The two repeat features can be combined.
+
+> **NOTE:**  No additional memory is allocated when repeating. Instead, DMAs are programmed to push existing data buffers multiple times.
 
 For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-data-movement-accelerators) and [Section 2g](../../section-2g/).
 
-As the repeat pattern relies on synchronization logic, the Object FIFO lowering will use available information to modify the values of Object FIFO ```acquire``` and ```release``` operations to ensure that enough tokens are produced by the compute tile to allow the DMA to repeat and that these tokens are accounted for by the first ```acquire``` operation post DMA repetition. Doing this adjustement for Object FIFOs of depth larger than 1 is non-trivial and currently not supported.
-
-One particularity of this feature is the repeat pattern for Object FIFOs with a size greater than 1. The data movement generated for Object FIFOs follows a cyclic pattern of First In First Out and when this is paired with a repeat it results in the repetition of the entire cyclic pattern instead of the repetition of each individual object. This is shown in the figure below with the red arrow representing the repeat value:
-
-<img src="./../../../assets/RepeatSharedTile_2.png" height="300">
-
-Specifically, the pattern we would see for the figure above is: `buff_ping - buff_pong - buff_ping - buff_pong`, where the data in each buffer remains the same in each instance.
+TODO: explain the particular case of the compute tile (iter_count is not available on compute tiles?)
+As the repeat pattern relies on synchronization logic, the Object FIFO lowering will use available information to modify the values of Object FIFO ```acquire``` and ```release``` operations to ensure that enough tokens are produced by the producer tile to allow the DMA to repeat and that these tokens are accounted for by the first ```acquire``` operation post DMA repetition. Doing this adjustement for Object FIFOs of depth larger than 1 is non-trivial and currently not supported.
 
 ### Link & Repeat
 
