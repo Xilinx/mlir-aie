@@ -35,8 +35,7 @@ using namespace xilinx::AIE;
 namespace {
 
 // Helper to transform a single load_pdi operation
-static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp,
-                                      ModuleOp moduleOp,
+static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
                                       unsigned index) {
   static unsigned long i = 0;
   OpBuilder builder(loadPdiOp);
@@ -84,9 +83,10 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp,
                        loadPdiOp.getAddressAttr());
 
   // Generate and insert configuration operations
-  if (failed(xilinx::AIE::generateAndInsertConfigOps(builder, referencedDevice,
-                                                     "", AIEToConfigurationOutputType::Transaction,
-                                                     "loadpdi_" + std::to_string(i)))) {
+  if (failed(xilinx::AIE::generateAndInsertConfigOps(
+          builder, referencedDevice, "",
+          AIEToConfigurationOutputType::Transaction,
+          "loadpdi_" + std::to_string(i)))) {
     loadPdiOp.emitError("Failed to generate configuration operations");
     return failure();
   }

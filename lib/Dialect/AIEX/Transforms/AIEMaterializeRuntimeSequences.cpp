@@ -201,7 +201,7 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
                         AIE::DeviceOp callerDevice, IRMapping &argMap,
                         mlir::OpBuilder::InsertPoint &clonedSSAInsertPoint,
                         Operation *errorReportOp) {
-  
+
   llvm::SetVector<Value> referencedValuesToVisit = referencedValues;
   std::vector<Operation *> referencedOpsToClone = {};
   while (!referencedValuesToVisit.empty()) {
@@ -211,7 +211,8 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
       return errorReportOp->emitError()
              << "Referenced value is not defined by an operation";
     }
-    if (std::find(referencedOpsToClone.begin(), referencedOpsToClone.end(), definingOp) != referencedOpsToClone.end()) {
+    if (std::find(referencedOpsToClone.begin(), referencedOpsToClone.end(),
+                  definingOp) != referencedOpsToClone.end()) {
       continue;
     }
 
@@ -220,7 +221,7 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
     } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
       // First ensure the tile referenced by the lock is available
       Value lockTile = lockOp.getTile();
-      if(lockTile) {
+      if (lockTile) {
         referencedValuesToVisit.insert(lockTile);
       }
       referencedOpsToClone.push_back(definingOp);
@@ -231,13 +232,14 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
              << ". Currently only aie.tile operations are supported.";
     }
   }
-  
-  for(Operation *definingOp : referencedOpsToClone) {
+
+  for (Operation *definingOp : referencedOpsToClone) {
     if (auto tileOp = llvm::dyn_cast<AIE::TileOp>(definingOp)) {
       int col = tileOp.getCol();
       int row = tileOp.getRow();
 
-      // Check if a tile with matching col/row already exists in the caller device
+      // Check if a tile with matching col/row already exists in the caller
+      // device
       rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
       mlir::Operation *clonedTile = nullptr;
 
@@ -285,16 +287,15 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
         clonedTile = rewriter.clone(*tileOp);
         clonedSSAInsertPoint = rewriter.saveInsertionPoint();
       }
-      
+
       argMap.map(definingOp->getResult(0), clonedTile->getResult(0));
       rewriter.replaceOpUsesWithIf(
-        definingOp, clonedTile->getResult(0),
-        [&](OpOperand &operand) {
-          return operand.getOwner()->getParentOfType<AIE::DeviceOp>() == callerDevice;
-        }
-      );
-    
-    } else if(auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
+          definingOp, clonedTile->getResult(0), [&](OpOperand &operand) {
+            return operand.getOwner()->getParentOfType<AIE::DeviceOp>() ==
+                   callerDevice;
+          });
+
+    } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
       // Now clone the lock operation into the caller device
 
       rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
@@ -323,8 +324,7 @@ static LogicalResult inlineReferencedSymbolDefinitions(
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
     AIE::DeviceOp callerDevice,
     mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint,
-    llvm::SetVector<SymbolRefAttr> &allSymbolNames
-  ) {
+    llvm::SetVector<SymbolRefAttr> &allSymbolNames) {
   MLIRContext *ctx = op->getContext();
   for (NamedAttribute namedAttr : op->getAttrs()) {
     Attribute attr = namedAttr.getValue();
@@ -354,14 +354,16 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         collectReferencedSSAValues(symbolDefOp, argMap, symbolReferencedValues);
 
         // Copy SSA values referenced by the symbol definition
-        // This updates clonedDefOpsInsertionPoint to be after the copied SSA values
+        // This updates clonedDefOpsInsertionPoint to be after the copied SSA
+        // values
         if (failed(copyReferencedSSAValues(rewriter, symbolReferencedValues,
                                            callerDevice, argMap,
                                            clonedDefOpsInsertionPoint, op))) {
           return std::make_pair(newSymbolRef, WalkResult::interrupt());
         }
 
-        // Insert the cloned symbol at the device level, after its SSA dependencies
+        // Insert the cloned symbol at the device level, after its SSA
+        // dependencies
         rewriter.restoreInsertionPoint(clonedDefOpsInsertionPoint);
         Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
         clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(),
@@ -382,89 +384,87 @@ static LogicalResult inlineReferencedSymbolDefinitions(
 }
 
 static LogicalResult inlineRunOp(
-  RunOp runOp, 
-  PatternRewriter &rewriter,
-  llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
-  mlir::OpBuilder::InsertPoint &ssaDefInsertPoint,
-  mlir::OpBuilder::InsertPoint &symbolDefInsertPoint,
-  llvm::SetVector<SymbolRefAttr> &allSymbolNames
-) {
-    AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
-    AIE::RuntimeSequenceOp calleeRuntimeSequence =
-        runOp.getCalleeRuntimeSequenceOp();
-    if (!calleeDevice || !calleeRuntimeSequence) {
-      return failure();
-    }
-
-    // rewrite logic
-
-    // Get caller and callee bodies. The callee body will be inlined into the
-    // caller body at the point of the RunOp.
-    Region &calleeBody = calleeRuntimeSequence.getBody();
-    AIE::DeviceOp callerDevice = runOp.getOperation()->getParentOfType<AIE::DeviceOp>();
-    if (!callerDevice) {
-      runOp.emitError() << "needs to be in a DeviceOp";
-      return failure();
-    }
-
-    // The argMap maps callee arguments to caller SSA values.
-    IRMapping argMap;
-    ValueRange values = runOp.getArgs();
-    for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
-      BlockArgument arg = calleeBody.getArgument(i);
-      Value val = values[i];
-      argMap.map(arg, val);
-    }
-
-    // The callee body may reference SSA values and symbols that are defined
-    // in the callee device (outside the callee runtime sequence). We will
-    // inline a supported set of these and error otherwise.
-
-    // Collect SSA values referenced in the callee not defined by the callee and
-    // not in the argMap.
-    llvm::SetVector<Value> referencedValues;
-    for (Operation &op : calleeBody.getOps()) {
-      collectReferencedSSAValues(&op, argMap, referencedValues);
-    }
-    llvm::SetVector<Value> filteredValues;
-    for (Value val : referencedValues) {
-      if (val.getParentRegion() != &calleeBody) {
-        filteredValues.insert(val);
-      }
-    }
-    referencedValues = std::move(filteredValues);
-
-    // Copy the operations that define these SSA values into the caller device
-    if (failed(copyReferencedSSAValues(rewriter, referencedValues, callerDevice,
-                                       argMap, ssaDefInsertPoint,
-                                       runOp))) {
-      return failure();
-    }
-
-    // Now, also inline symbol definitions referenced in the callee body;
-    // this may pull in additional SSA values referenced by the symbol
-    // definitions.
-    rewriter.setInsertionPoint(runOp);
-    mlir::OpBuilder::InsertPoint clonedOpInsertionPoint =
-        rewriter.saveInsertionPoint();
-    for (Operation &op : calleeBody.getOps()) {
-      rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
-      Operation *clonedOp = rewriter.clone(op, argMap);
-      clonedOpInsertionPoint = rewriter.saveInsertionPoint();
-
-      if (failed(inlineReferencedSymbolDefinitions(
-              rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap,
-              previouslyInlinedSymbolMap, callerDevice,
-              symbolDefInsertPoint, allSymbolNames))) {
-        return failure();
-      }
-    }
-
-    // The aiex.run op has been inlined; erase it.
-    rewriter.eraseOp(runOp);
-
-    return success();
+    RunOp runOp, PatternRewriter &rewriter,
+    llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
+    mlir::OpBuilder::InsertPoint &ssaDefInsertPoint,
+    mlir::OpBuilder::InsertPoint &symbolDefInsertPoint,
+    llvm::SetVector<SymbolRefAttr> &allSymbolNames) {
+  AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
+  AIE::RuntimeSequenceOp calleeRuntimeSequence =
+      runOp.getCalleeRuntimeSequenceOp();
+  if (!calleeDevice || !calleeRuntimeSequence) {
+    return failure();
   }
+
+  // rewrite logic
+
+  // Get caller and callee bodies. The callee body will be inlined into the
+  // caller body at the point of the RunOp.
+  Region &calleeBody = calleeRuntimeSequence.getBody();
+  AIE::DeviceOp callerDevice =
+      runOp.getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (!callerDevice) {
+    runOp.emitError() << "needs to be in a DeviceOp";
+    return failure();
+  }
+
+  // The argMap maps callee arguments to caller SSA values.
+  IRMapping argMap;
+  ValueRange values = runOp.getArgs();
+  for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
+    BlockArgument arg = calleeBody.getArgument(i);
+    Value val = values[i];
+    argMap.map(arg, val);
+  }
+
+  // The callee body may reference SSA values and symbols that are defined
+  // in the callee device (outside the callee runtime sequence). We will
+  // inline a supported set of these and error otherwise.
+
+  // Collect SSA values referenced in the callee not defined by the callee and
+  // not in the argMap.
+  llvm::SetVector<Value> referencedValues;
+  for (Operation &op : calleeBody.getOps()) {
+    collectReferencedSSAValues(&op, argMap, referencedValues);
+  }
+  llvm::SetVector<Value> filteredValues;
+  for (Value val : referencedValues) {
+    if (val.getParentRegion() != &calleeBody) {
+      filteredValues.insert(val);
+    }
+  }
+  referencedValues = std::move(filteredValues);
+
+  // Copy the operations that define these SSA values into the caller device
+  if (failed(copyReferencedSSAValues(rewriter, referencedValues, callerDevice,
+                                     argMap, ssaDefInsertPoint, runOp))) {
+    return failure();
+  }
+
+  // Now, also inline symbol definitions referenced in the callee body;
+  // this may pull in additional SSA values referenced by the symbol
+  // definitions.
+  rewriter.setInsertionPoint(runOp);
+  mlir::OpBuilder::InsertPoint clonedOpInsertionPoint =
+      rewriter.saveInsertionPoint();
+  for (Operation &op : calleeBody.getOps()) {
+    rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
+    Operation *clonedOp = rewriter.clone(op, argMap);
+    clonedOpInsertionPoint = rewriter.saveInsertionPoint();
+
+    if (failed(inlineReferencedSymbolDefinitions(
+            rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap,
+            previouslyInlinedSymbolMap, callerDevice, symbolDefInsertPoint,
+            allSymbolNames))) {
+      return failure();
+    }
+  }
+
+  // The aiex.run op has been inlined; erase it.
+  rewriter.eraseOp(runOp);
+
+  return success();
+}
 
 struct AIEMaterializeRuntimeSequencesPass
     : AIEMaterializeRuntimeSequencesBase<AIEMaterializeRuntimeSequencesPass> {
@@ -504,8 +504,7 @@ struct AIEMaterializeRuntimeSequencesPass
       // sequences (leaves); once their callers inline them, the callers can
       // be inlined as well, and so on
       mlir::Block &deviceBodyFirstBlock = deviceOp.getBodyRegion().front();
-      auto runtimeSequenceOps =
-          deviceOp.getOps<AIE::RuntimeSequenceOp>();
+      auto runtimeSequenceOps = deviceOp.getOps<AIE::RuntimeSequenceOp>();
       if (runtimeSequenceOps.begin() == runtimeSequenceOps.end()) {
         // No runtime sequences to materialize
         continue;
@@ -518,17 +517,18 @@ struct AIEMaterializeRuntimeSequencesPass
           &deviceBodyFirstBlock, mlir::Block::iterator(firstRuntimeSequenceOp));
       llvm::SetVector<SymbolRefAttr> allSymbolNames = {};
       for (Operation &op : deviceBodyFirstBlock) {
-        if (auto symbolName = op.getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())) {
+        if (auto symbolName = op.getAttrOfType<StringAttr>(
+                SymbolTable::getSymbolAttrName())) {
           allSymbolNames.insert(SymbolRefAttr::get(symbolName));
         }
       }
       deviceOp.getOperation()->walk([&](RunOp runOp) {
         PatternRewriter rewriter(runOp->getContext());
         rewriter.setInsertionPoint(runOp);
-        llvm::DenseMap<SymbolRefAttr, SymbolRefAttr>
-            previouslyInlinedSymbolMap;
+        llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> previouslyInlinedSymbolMap;
         if (failed(inlineRunOp(runOp, rewriter, previouslyInlinedSymbolMap,
-                               ssaDefInsertPoint, symbolDefInsertPoint, allSymbolNames))) {
+                               ssaDefInsertPoint, symbolDefInsertPoint,
+                               allSymbolNames))) {
           runOp.emitError() << "Failed to inline aiex.run operation";
           signalPassFailure();
         }
