@@ -246,10 +246,20 @@ class AIEAddressDecoder:
         register_info = None
         register_offset = None
 
-        # AIE-ML format: nested modules
-        modules_to_search = (
-            [module_name] if module_name else self.database.get("modules", {}).keys()
-        )
+        # Determine which modules to search based on tile type (if no module specified)
+        if module_name:
+            modules_to_search = [module_name]
+        else:
+            # Determine tile type and prioritize appropriate modules
+            if target_model.is_mem_tile(col, row):
+                # Memory tile: only search memory_tile module
+                modules_to_search = ["memory_tile"]
+            elif target_model.is_core_tile(col, row):
+                # Core tile: search core and memory modules (core first)
+                modules_to_search = ["core", "memory"]
+            else:
+                # Shim tile: search shim module
+                modules_to_search = ["shim"]
 
         for mod_name in modules_to_search:
             module_data = self.database["modules"].get(mod_name, {})
@@ -281,12 +291,18 @@ class AIEAddressDecoder:
 
         return address
 
-    def format_result(self, result: Dict, include_delimiters: bool = False) -> str:
+    def format_result(
+        self,
+        result: Dict,
+        include_delimiters: bool = False,
+        show_bit_fields: bool = False,
+    ) -> str:
         """Format decoded result for display
 
         Args:
             result: Decoded address information
             include_delimiters: If True, include `=` and `-` separator lines
+            show_bit_fields: If True, include bit field definitions
         """
         if not result:
             return "Unable to decode address"
@@ -328,6 +344,26 @@ class AIEAddressDecoder:
 
         if "description" in result and result["description"]:
             lines.append(f"Description: {result['description']}")
+
+        if show_bit_fields and "bit_fields" in result and result["bit_fields"]:
+            if include_delimiters:
+                lines.append("-" * 70)
+            lines.append("Bit Fields:")
+            for field in result["bit_fields"]:
+                field_name = field.get("name", "")
+                bits = field.get("bits", "")
+                field_type = field.get("type", "")
+                field_reset = field.get("reset", "")
+                field_desc = field.get("description", "")
+
+                field_line = f"  [{bits}] {field_name}"
+                if field_type:
+                    field_line += f" ({field_type})"
+                if field_reset:
+                    field_line += f" reset={field_reset}"
+                lines.append(field_line)
+                if field_desc:
+                    lines.append(f"      {field_desc}")
 
         if include_delimiters:
             lines.append("=" * 70)
@@ -564,7 +600,7 @@ class MLIRModuleAnnotator:
             full_address = (
                 (col << target_model.get_column_shift())
                 | (row << target_model.get_row_shift())
-            ) + address
+            ) + (address & 0xFFFFF)
         else:
             # Address already contains col/row encoded
             full_address = address
@@ -722,8 +758,14 @@ Examples:
   # Decode an address
   %(prog)s 0x32000
   
+  # Decode an address and show bit field definitions
+  %(prog)s 0x32000 --show-bit-fields
+  
   # Reverse lookup: find address for a register
   %(prog)s --col 0 --row 2 --register Core_Control
+  
+  # Reverse lookup with bit fields
+  %(prog)s --col 0 --row 2 --register Core_Control -b
 
   # Annotate MLIR file and write to output
   %(prog)s -a input.mlir -o output.mlir
@@ -766,6 +808,12 @@ Examples:
         action="store_true",
         help="Modify MLIR file in place (use with -a)",
     )
+    parser.add_argument(
+        "--show-bit-fields",
+        "-b",
+        action="store_true",
+        help="Show bit field definitions when decoding addresses",
+    )
 
     args = parser.parse_args()
 
@@ -802,7 +850,13 @@ Examples:
             # Decode the address to get full information
             result = decoder.parse_address(address)
             # Format without delimiters
-            print(decoder.format_result(result, include_delimiters=False))
+            print(
+                decoder.format_result(
+                    result,
+                    include_delimiters=False,
+                    show_bit_fields=args.show_bit_fields,
+                )
+            )
         else:
             print(f"Error: Could not find register '{args.register}'")
             if args.module:
@@ -814,7 +868,7 @@ Examples:
         try:
             address = parse_address_arg(args.address)
             result = decoder.parse_address(address)
-            print(decoder.format_result(result))
+            print(decoder.format_result(result, show_bit_fields=args.show_bit_fields))
         except ValueError:
             print(f"Error: Invalid address format: {args.address}")
             return 1
