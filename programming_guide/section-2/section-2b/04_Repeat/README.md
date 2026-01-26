@@ -12,7 +12,7 @@
 
 At the closer-to-metal API level, the Object FIFO provides users with two ways to specify how data from the producer should be repeated. 
 
-Both repeat features are achieved using the Direct Memory Access (DMA) unit of the Object FIFO's producer tile. In particular, data movement for each DMA channel is described as a chain of buffer descriptors, where each buffer descriptor (BD) indicates what data should be pushed to the AXI stream. The data movement generated for Object FIFOs follows a cyclic pattern of First In First Out where each object in the Object FIFO is moved by one BD in a BD chain.
+Both repeat features are achieved using the Direct Memory Access (DMA) unit of the Object FIFO's producer tile. In particular, data movement for each DMA channel is described as a chain of buffer descriptors, where each buffer descriptor (BD) indicates what data should be pushed to the AXI stream. The data movement generated for Object FIFOs follows a cyclic pattern of First In First Out where each object in the Object FIFO is moved by one BD in a chain.
 
 The first repeat features enables users to repeat the entire BD chain using the following syntax:
 ```python
@@ -20,7 +20,10 @@ of0 = object_fifo("objfifo0", A, B, 2, np.ndarray[(256,), np.dtype[np.int32]])
 of0.set_iter_count(2)
 ```
 The code snippet above results in the repetition of each object in the Object FIFO following the pattern `buff_ping - buff_pong - buff_ping - buff_pong`. This is shown in the figure below with the red arrow representing the repeat value of the entire BD chain:
-<img src="./../../../assets/RepeatSharedTile_2.png" height="300">
+
+<img src="./../../../assets/RepeatSharedTile.png" height="300">
+
+> **NOTE:**  Repeating BD chains is only available on Mem tiles.
 
 Users may also repeat each individual BD in the chain. This feature is available using the following syntax:
 ```python
@@ -29,16 +32,16 @@ of0.set_repeat_count(2)
 ```
 The specified repeat value is applied to all BDs. It is currently not possible to set different repeat values per BD.
 The code snippet above results in the repetition of each object in the Object FIFO following the pattern `buff_ping - buff_ping - buff_pong - buff_pong`. This is shown in the figure below with the red arrows representing the repeat values of each BD in the chain:
-<img src="./../../../assets/RepeatSharedTile.png" height="300">
+
+<img src="./../../../assets/RepeatSharedTile_2.png" height="300">
+
+The `repeat_count` feature may also be used with a Compute tile producer. As synchronization logic is leveraged for object accesses between a Compute tile core and its DMA, the Object FIFO lowering will use available information to modify the values of Object FIFO ```acquire``` and ```release``` operations based on the repeat value. This is to ensure that enough tokens are produced by the compute core to allow the DMA to repeat and that these tokens are accounted for by the first ```acquire``` operation post DMA repetition. Doing this adjustement for Object FIFOs of depth larger than 1 is non-trivial and currently not supported.
 
 > **NOTE:**  The two repeat features can be combined.
 
 > **NOTE:**  No additional memory is allocated when repeating. Instead, DMAs are programmed to push existing data buffers multiple times.
 
 For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-data-movement-accelerators) and [Section 2g](../../section-2g/).
-
-TODO: explain the particular case of the compute tile (iter_count is not available on compute tiles?)
-As the repeat pattern relies on synchronization logic, the Object FIFO lowering will use available information to modify the values of Object FIFO ```acquire``` and ```release``` operations to ensure that enough tokens are produced by the producer tile to allow the DMA to repeat and that these tokens are accounted for by the first ```acquire``` operation post DMA repetition. Doing this adjustement for Object FIFOs of depth larger than 1 is non-trivial and currently not supported.
 
 ### Link & Repeat
 
