@@ -73,9 +73,9 @@ struct AIEPathfinderPass : AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
   AIEPathfinderPass() = default;
 
   void runOnOperation() override;
-  void runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
-  void runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder,
-                       DynamicTileAnalysis &analyzer);
+  mlir::LogicalResult runOnFlow(DeviceOp d, DynamicTileAnalysis &analyzer);
+  mlir::LogicalResult runOnPacketFlow(DeviceOp d, mlir::OpBuilder &builder,
+                                      DynamicTileAnalysis &analyzer);
 
   typedef std::pair<TileID, Port> PhysPort;
 

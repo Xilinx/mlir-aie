@@ -40,8 +40,8 @@ jobs:
 
       - name: Install Python packages
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Get MLIR
@@ -130,8 +130,13 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Check Liquid Syntax
+        run: python3 utils/check_liquid_syntax.py
+
       - name: Install black
-        run: pip install black[jupyter]
+        run: |
+          pip install --upgrade pip
+          pip install black[jupyter]
 
       - name: Run git-clang-format
         id: git-clang-format
@@ -214,8 +219,8 @@ jobs:
 
       - name: Install Python and other packages
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Install packages
@@ -250,8 +255,8 @@ jobs:
       - name: Install our python reqs
         if: steps.changed-files.outputs.changed-files != ''
         run: |
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
 
       - name: Build and generate coverage (Release)
@@ -315,4 +320,3 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
-

@@ -1718,22 +1718,28 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to verify that an objectfifo is present in at most one
   /// ObjectFifoLinkOp.
-  void verifyObjectFifoLinks(DeviceOp &device) {
+  LogicalResult verifyObjectFifoLinks(DeviceOp &device) {
     DenseSet<ObjectFifoCreateOp> objectfifoset;
+    bool hasError = false;
     for (ObjectFifoLinkOp link : device.getOps<ObjectFifoLinkOp>()) {
       for (ObjectFifoCreateOp inOf : link.getInputObjectFifos()) {
-        if (objectfifoset.count(inOf))
+        if (objectfifoset.count(inOf)) {
           inOf.emitOpError("objectfifo cannot be in more than one "
                            "ObjectFifoLinkOp");
+          hasError = true;
+        }
         objectfifoset.insert(inOf);
       }
       for (ObjectFifoCreateOp outOf : link.getOutputObjectFifos()) {
-        if (objectfifoset.count(outOf))
+        if (objectfifoset.count(outOf)) {
           outOf.emitOpError("objectfifo cannot be in more than one "
                             "ObjectFifoLinkOp");
+          hasError = true;
+        }
         objectfifoset.insert(outOf);
       }
     }
+    return hasError ? failure() : success();
   }
 
   /// Account for already used packet IDs and return next available ID.
@@ -1799,7 +1805,8 @@ struct AIEObjectFifoStatefulTransformPass
     std::set<TileOp>
         objectFifoTiles; // track cores to check for loops during unrolling
 
-    verifyObjectFifoLinks(device);
+    if (failed(verifyObjectFifoLinks(device)))
+      return signalPassFailure();
 
     //===------------------------------------------------------------------===//
     // Split objectFifos into a consumer end and producer end if needed
@@ -1987,14 +1994,18 @@ struct AIEObjectFifoStatefulTransformPass
         }
       } else {
         producerChanIndex = fifo_dma_channel_index[producer];
-        if (producerChanIndex == -1)
+        if (producerChanIndex == -1) {
           producer.getProducerTileOp().emitOpError(
               "number of output DMA channel exceeded!");
+          return signalPassFailure();
+        }
         producerChan = {DMAChannelDir::MM2S, producerChanIndex};
         std::optional<PacketInfoAttr> bdPacket = {};
         if (clPacketSwObjectFifos) {
-          if (packetID > 31)
+          if (packetID > 31) {
             device.emitOpError("max number of packet IDs reached");
+            return signalPassFailure();
+          }
           bdPacket = {AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0,
                                                /*pkt_id*/ packetID)};
           packetID++;
@@ -2041,9 +2052,11 @@ struct AIEObjectFifoStatefulTransformPass
           }
         } else {
           consumerChanIndex = fifo_dma_channel_index[consumer];
-          if (consumerChanIndex == -1)
+          if (consumerChanIndex == -1) {
             consumer.getProducerTileOp().emitOpError(
                 "number of input DMA channel exceeded!");
+            return signalPassFailure();
+          }
           consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
           BDDimLayoutArrayAttr consumerDims =
               consumer.getDimensionsFromStreamPerConsumer()[0];
