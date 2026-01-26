@@ -11,6 +11,11 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Targets/AIETargets.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/SymbolTable.h"
+
+#include <set>
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -177,8 +182,23 @@ SECTIONS
       output << "  .bss : { *(.bss*) } > data\n";
       output << "}\n";
       if (auto coreOp = tile.getCoreOp()) {
+        std::set<std::string> linkedFiles;
         if (auto fileAttr = coreOp.getLinkWith())
-          output << "INPUT(" << fileAttr.value().str() << ")\n";
+          linkedFiles.insert(fileAttr.value().str());
+
+        coreOp.walk([&](func::CallOp call) {
+          auto callee = call.getCallee();
+          if (auto func = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+                  call, StringAttr::get(call.getContext(), callee))) {
+            if (auto linkWith = func.getOperation()->getAttrOfType<StringAttr>(
+                    "link_with")) {
+              linkedFiles.insert(linkWith.getValue().str());
+            }
+          }
+        });
+
+        for (const auto &file : linkedFiles)
+          output << "INPUT(" << file << ")\n";
 
         output << "PROVIDE(main = core_" << tile.getCol() << "_"
                << tile.getRow() << ");\n";
