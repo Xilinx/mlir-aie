@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;5bf23a66401b4d8c5fbb71726d94b2b61d6a02c3</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;077a814a69176bf3fd905729b959a83902360e36</span>
    </div>
   </td>
  </tr>
@@ -263,9 +263,9 @@ user has a Placeable endpoint.
 Args:
     obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
     depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
-    name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated.. Defaults to None.
-    dims_to_stream (list[Sequence[int]] | None, optional): _description_. Defaults to None.
-    dims_from_stream_per_cons (list[Sequence[int]] | None, optional): _description_. Defaults to None.
+    name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
+    dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
+    dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
     plio (bool, optional): _description_. Defaults to False.
 
 Raises:
