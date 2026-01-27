@@ -19,7 +19,9 @@ from aie.utils.ml import DataShaper
 import time
 import os
 import numpy as np
-from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime
+from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 import aie.utils.test as test_utils
 import torch.utils.data as data_utils
 from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
@@ -485,19 +487,9 @@ def main(opts):
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
+    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    kernel_handle = DefaultNPURuntime.load(npu_kernel)
 
-    app = setup_aie(
-        xclbin_path,
-        insts_path,
-        shape_in_act,
-        dtype_in,
-        shape_total_wts,
-        dtype_wts,
-        shape_out,
-        dtype_out_aie,
-        enable_trace=enable_trace,
-        trace_size=trace_size,
-    )
 
     class QuantMobilenet(nn.Module):
         def __init__(
@@ -2656,12 +2648,33 @@ def main(opts):
     # print("{}+{}+{}".format(bn6_wts1.shape, bn6_wts2.shape, bn6_wts3.shape))
     print(shape_total_wts)
     print(total_wts.shape)
+
+    # ------------------------------------------------------
+    # Setup buffers run loop
+    # ------------------------------------------------------
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(total_wts, dtype=dtype_wts)
+    out = iron.zeros(shape_out, dtype=dtype_out_aie)
+    buffers = [in1, in2, out]
+
+    trace_config = None
+    if enable_trace:
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_file=trace_file,
+            trace_after_last_tensor=False,
+            enable_ctrl_pkts=False,
+            last_tensor_shape=out.shape,
+            last_tensor_dtype=out.dtype,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
+
     # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
     for i in range(num_iter):
         start = time.time_ns()
-        aie_output = execute(app, ifm_mem_fmt, total_wts)
+        DefaultNPURuntime.run(kernel_handle, buffers)
         stop = time.time_ns()
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time
@@ -2669,6 +2682,7 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
+    aie_output = out.numpy() #.astype(dtype_out)
     temp_out = aie_output.reshape(shape_out)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
     ofm_mem_fmt = temp_out.reshape(shape_out_final)
@@ -2702,11 +2716,11 @@ def main(opts):
     print("golden shape: ", golden.shape)
     print("Output shape: ", ofm_mem_fmt_out.shape)
 
-    # print("Mismatch indices and corresponding values:")
-    # for idx, (golden_value, ofm_value) in zip(
-    #     zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)
-    # ):
-    #     print(f"Index: {idx}, Golden value: {golden_value}, OFM value: {ofm_value}, diff: {golden_value.astype(int)-ofm_value.astype(int)}")
+    print("Mismatch indices and corresponding values:")
+    for idx, (golden_value, ofm_value) in zip(
+        zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)
+    ):
+        print(f"Index: {idx}, Golden value: {golden_value}, OFM value: {ofm_value}, diff: {golden_value.astype(int)-ofm_value.astype(int)}")
 
     if enable_trace:
         # trace_buffer = full_output[3920:]

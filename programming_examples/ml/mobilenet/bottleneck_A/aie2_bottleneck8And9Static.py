@@ -13,9 +13,9 @@ from aie.dialects.scf import *
 from aie.extras.context import mlir_mod_ctx
 
 # from aie.dialects.memref import *
-from aie.extras.dialects.ext import *
-from aie.extras.dialects.ext.memref import view as memref_view
-from aie.extras.dialects.ext import memref
+from aie.extras.dialects import *
+from aie.extras.dialects.memref import view as memref_view
+from aie.extras.dialects import memref
 
 import aie.utils.trace as trace_utils
 
