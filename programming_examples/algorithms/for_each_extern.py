@@ -51,8 +51,7 @@ def main():
                             output[i] = input[i] + 1;
                         }
                     }
-                }"""
-            )
+                }""")
         add_one = CoreFunction(
             f"add_one",
             source_file=tmp_file_name,
