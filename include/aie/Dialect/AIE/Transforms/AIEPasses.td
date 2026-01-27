@@ -346,4 +346,12 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
   ];
 }
 
+def AIESequentialPlacer : Pass<"aie-sequential-placer", "DeviceOp"> {
+  let summary = "Perform a sequential placement of the tiles";
+  let description = [{
+    This pass performs a sequential placement of the tiles in the design.
+  }];
+  let constructor = "xilinx::AIE::createAIESequentialPlacerPass()";
+}
+
 #endif
