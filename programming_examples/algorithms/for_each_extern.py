@@ -45,8 +45,7 @@ def main():
         tmp_file_name = tmp_file.name + ".cc"
         print(f"tmp_file_name: {tmp_file_name}")
         with open(tmp_file_name, "w") as f:
-            f.write(
-                """extern "C" {
+            f.write("""extern "C" {
                     void add_one(int* input, int* output, int tile_size) {
                         for (int i = 0; i < tile_size; i++) {
                             output[i] = input[i] + 1;
