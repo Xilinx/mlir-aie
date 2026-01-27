@@ -4,12 +4,14 @@
 """
 XRT-based implementation of the HostRuntime
 """
+
 import atexit
 import logging
 from collections import OrderedDict
 import os
 import time
 import weakref
+import gc
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
@@ -87,7 +89,7 @@ class XRTHostRuntime(HostRuntime):
             except RuntimeError as e:
                 if attempt == max_retries - 1:
                     raise e
-                time.sleep(1)
+                gc.collect()  # Make sure contexts are garbage collected.
 
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
@@ -353,6 +355,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict()
         while self._insts_cache:
             self._evict_insts()
+        gc.collect()  # Make sure contexts are garbage collected.
 
     def _cleanup_entry(self, entry):
         context = entry["context"]
@@ -490,6 +493,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                             and retries < max_retries
                         ):
                             self._evict()
+                            gc.collect()  # Make sure contexts are garbage collected.
                             retries += 1
                         else:
                             raise e
