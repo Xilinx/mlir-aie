@@ -10,6 +10,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+#include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
+#include "llvm/Support/ErrorHandling.h"
 #include <cstdint>
 #include <utility>
 
@@ -17,7 +19,59 @@ using namespace llvm;
 
 namespace xilinx {
 namespace AIE {
+
+namespace {
+
+std::string getModuleForTile(const AIETargetModel &model, TileID tile,
+                             bool isMem) {
+  if (model.isShimNOCorPLTile(tile.col, tile.row))
+    return "shim";
+  if (model.isMemTile(tile.col, tile.row))
+    return "memory_tile";
+  return isMem ? std::string("memory") : std::string("core");
+}
+
+} // namespace
+
 AIETargetModel::~AIETargetModel() = default;
+
+// Base class implementations for register database
+
+std::unique_ptr<RegisterDatabase> AIETargetModel::loadRegisterDatabase() const {
+  // Default: no register database available
+  return nullptr;
+}
+
+const RegisterDatabase *AIETargetModel::getRegisterDatabase() const {
+  std::call_once(regDBInitFlag, [this]() { regDB = loadRegisterDatabase(); });
+  return regDB.get();
+}
+
+const RegisterInfo *AIETargetModel::lookupRegister(llvm::StringRef name,
+                                                   TileID tile,
+                                                   bool isMem) const {
+  const auto *db = getRegisterDatabase();
+  if (!db)
+    return nullptr;
+  return db->lookupRegister(name, getModuleForTile(*this, tile, isMem));
+}
+
+std::optional<uint32_t> AIETargetModel::lookupEvent(llvm::StringRef name,
+                                                    TileID tile,
+                                                    bool isMem) const {
+  const auto *db = getRegisterDatabase();
+  if (!db)
+    return std::nullopt;
+  return db->lookupEvent(name, getModuleForTile(*this, tile, isMem));
+}
+
+uint32_t AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
+                                          uint32_t value) const {
+  const auto *db = getRegisterDatabase();
+  if (!db)
+    return 0;
+  return db->encodeFieldValue(field, value);
+}
 
 ///
 /// AIE1 TargetModel
@@ -349,6 +403,11 @@ AIE1TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
 ///
 /// AIE2 TargetModel
 ///
+
+std::unique_ptr<RegisterDatabase>
+AIE2TargetModel::loadRegisterDatabase() const {
+  return RegisterDatabase::loadAIE2();
+}
 
 AIEArch AIE2TargetModel::getTargetArch() const { return AIEArch::AIE2; }
 
