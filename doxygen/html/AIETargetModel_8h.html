@@ -60,8 +60,11 @@ $(function() {
 </div><!--header-->
 <div class="contents">
 <div class="textblock"><code>#include &quot;<a class="el" href="AIEEnums_8h_source.html">aie/Dialect/AIE/IR/AIEEnums.h</a>&quot;</code><br />
+<code>#include &quot;<a class="el" href="AIERegisterDatabase_8h_source.html">aie/Dialect/AIE/Util/AIERegisterDatabase.h</a>&quot;</code><br />
 <code>#include &quot;llvm/ADT/DenseSet.h&quot;</code><br />
 <code>#include &lt;iostream&gt;</code><br />
+<code>#include &lt;memory&gt;</code><br />
+<code>#include &lt;mutex&gt;</code><br />
 </div><div class="textblock"><div id="dynsection-0" onclick="return toggleVisibility(this)" class="dynheader closed" style="cursor:pointer;">
   <img id="dynsection-0-trigger" src="closed.png" alt="+"/> Include dependency graph for AIETargetModel.h:</div>
 <div id="dynsection-0-summary" class="dynsummary" style="display:block;">
@@ -69,19 +72,38 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="AIETargetModel_8h__incl.png" border="0" usemap="#ainclude_2aie_2Dialect_2AIE_2IR_2AIETargetModel_8h" alt=""/></div>
 <map name="ainclude_2aie_2Dialect_2AIE_2IR_2AIETargetModel_8h" id="ainclude_2aie_2Dialect_2AIE_2IR_2AIETargetModel_8h">
-<area shape="rect" title=" " alt="" coords="335,5,516,45"/>
-<area shape="rect" href="AIEEnums_8h.html" title=" " alt="" coords="186,93,321,133"/>
-<area shape="poly" title=" " alt="" coords="389,48,304,90,302,85,386,43"/>
-<area shape="rect" title=" " alt="" coords="345,101,505,126"/>
-<area shape="poly" title=" " alt="" coords="428,46,428,87,423,87,423,46"/>
-<area shape="rect" title=" " alt="" coords="529,101,609,126"/>
-<area shape="poly" title=" " alt="" coords="458,43,540,91,537,96,456,48"/>
+<area shape="rect" title=" " alt="" coords="1179,5,1360,45"/>
+<area shape="rect" href="AIEEnums_8h.html" title=" " alt="" coords="263,93,398,133"/>
+<area shape="poly" title=" " alt="" coords="1179,38,412,107,412,102,1178,32"/>
+<area shape="rect" href="AIERegisterDatabase_8h.html" title=" " alt="" coords="998,93,1173,133"/>
+<area shape="poly" title=" " alt="" coords="1230,48,1139,90,1137,85,1228,43"/>
+<area shape="rect" title=" " alt="" coords="1317,189,1395,214"/>
+<area shape="poly" title=" " alt="" coords="1257,47,1245,66,1236,88,1232,111,1238,132,1250,144,1269,156,1317,181,1315,186,1266,161,1246,148,1234,135,1227,111,1231,86,1241,63,1252,44"/>
+<area shape="rect" title=" " alt="" coords="1248,101,1408,126"/>
+<area shape="poly" title=" " alt="" coords="1285,44,1314,87,1310,90,1280,47"/>
+<area shape="rect" title=" " alt="" coords="1432,101,1512,126"/>
+<area shape="poly" title=" " alt="" coords="1315,43,1433,93,1431,98,1313,48"/>
+<area shape="rect" title=" " alt="" coords="1536,101,1600,126"/>
+<area shape="poly" title=" " alt="" coords="1354,43,1437,64,1525,91,1531,93,1529,98,1523,96,1436,69,1353,48"/>
 <area shape="rect" title=" " alt="" coords="5,189,165,214"/>
-<area shape="poly" title=" " alt="" coords="218,136,121,185,119,180,215,131"/>
+<area shape="poly" title=" " alt="" coords="278,136,132,187,130,182,276,131"/>
 <area shape="rect" title=" " alt="" coords="190,189,317,214"/>
-<area shape="poly" title=" " alt="" coords="256,134,256,175,251,175,251,134"/>
+<area shape="poly" title=" " alt="" coords="315,135,275,180,271,176,312,132"/>
 <area shape="rect" title=" " alt="" coords="341,181,475,221"/>
-<area shape="poly" title=" " alt="" coords="289,131,363,172,361,177,286,136"/>
+<area shape="poly" title=" " alt="" coords="350,132,384,169,380,173,346,135"/>
+<area shape="rect" title=" " alt="" coords="499,189,663,214"/>
+<area shape="poly" title=" " alt="" coords="998,131,676,184,651,189,650,183,676,179,997,125"/>
+<area shape="rect" title=" " alt="" coords="688,189,845,214"/>
+<area shape="poly" title=" " alt="" coords="1016,136,823,188,821,183,1015,131"/>
+<area shape="rect" title=" " alt="" coords="870,189,1023,214"/>
+<area shape="poly" title=" " alt="" coords="1056,136,978,184,976,179,1054,131"/>
+<area shape="poly" title=" " alt="" coords="1151,131,1306,179,1314,181,1312,187,1305,184,1150,136"/>
+<area shape="rect" title=" " alt="" coords="1048,189,1123,214"/>
+<area shape="poly" title=" " alt="" coords="1088,134,1088,175,1083,175,1083,134"/>
+<area shape="rect" title=" " alt="" coords="1147,189,1205,214"/>
+<area shape="poly" title=" " alt="" coords="1107,132,1155,177,1152,181,1104,136"/>
+<area shape="rect" title=" " alt="" coords="1230,189,1293,214"/>
+<area shape="poly" title=" " alt="" coords="1125,131,1227,180,1225,185,1123,136"/>
 </map>
 </div>
 </div><div class="textblock"><div id="dynsection-1" onclick="return toggleVisibility(this)" class="dynheader closed" style="cursor:pointer;">
@@ -318,7 +340,7 @@ Variables</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Jan 26 2026 09:13:48 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jan 27 2026 18:48:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

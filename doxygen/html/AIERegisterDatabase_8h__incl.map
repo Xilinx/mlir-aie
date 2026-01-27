@@ -1,0 +1,17 @@
+<map id="include/aie/Dialect/AIE/Util/AIERegisterDatabase.h" name="include/aie/Dialect/AIE/Util/AIERegisterDatabase.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="479,5,706,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,93,169,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="480,47,175,94,174,89,479,42"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="194,93,351,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="517,48,333,93,332,87,515,43"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="376,93,529,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="560,48,487,89,484,84,558,43"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="554,93,631,119"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="595,46,595,79,590,79,590,46"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="655,93,730,119"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="619,43,668,82,665,87,615,48"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="754,93,813,119"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="639,43,744,86,742,91,637,48"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="837,93,900,119"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="660,43,825,90,823,95,658,48"/>
+</map>
