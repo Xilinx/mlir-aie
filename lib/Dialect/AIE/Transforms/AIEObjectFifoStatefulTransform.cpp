@@ -73,6 +73,7 @@ public:
 //===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
   DenseMap<std::tuple<Value, DMAChannelDir, int>, int> channelsPerTile;
+  DenseMap<std::tuple<Value, DMAChannelDir, int>, int> aieStreamsPerTile;
 
 public:
   DMAChannelAnalysis(DeviceOp &device) {
@@ -103,6 +104,14 @@ public:
                            op.getChannelIndex()}] = 1;
         }
       }
+    }
+    for (auto flowOp : device.getOps<FlowOp>()) {
+      if (flowOp.getSourceBundle() == WireBundle::Core)
+        aieStreamsPerTile[{flowOp.getSource(), DMAChannelDir::MM2S,
+                           flowOp.getSourceChannel()}] = 1;
+      if (flowOp.getDestBundle() == WireBundle::Core)
+        aieStreamsPerTile[{flowOp.getDest(), DMAChannelDir::S2MM,
+                           flowOp.getDestChannel()}] = 1;
     }
   }
 
@@ -135,6 +144,20 @@ public:
       }
     }
     return -1;
+  }
+
+  /// Given a tile and DMAChannel, adds entry to aieStreamsPerTile or
+  /// throws an error if the stream is already used.
+  void checkAIEStreamIndex(TileOp tileOp, DMAChannel chan) {
+    if (aieStreamsPerTile.find({tileOp.getResult(), chan.direction,
+                                chan.channel}) == aieStreamsPerTile.end()) {
+      aieStreamsPerTile[{tileOp.getResult(), chan.direction, chan.channel}] = 1;
+    } else {
+      if (chan.direction == DMAChannelDir::MM2S)
+        tileOp.emitOpError("number of output Core channels exceeded!");
+      else
+        tileOp.emitOpError("number of input Core channels exceeded!");
+    }
   }
 };
 
@@ -234,6 +257,9 @@ struct AIEObjectFifoStatefulTransformPass
       return true;
 
     if (createOp.getRepeatCount().has_value())
+      return true;
+
+    if (createOp.getAieStream())
       return true;
 
     if (createOp.getConsumerTiles().size() == 1 &&
@@ -543,6 +569,9 @@ struct AIEObjectFifoStatefulTransformPass
   void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
                                 ObjectFifoCreateOp op, int share_direction) {
     if (!op.size())
+      return;
+
+    if (op.getAieStream())
       return;
 
     std::vector<BufferOp> buffers;
@@ -1845,6 +1874,20 @@ struct AIEObjectFifoStatefulTransformPass
               builder.getI32IntegerAttr(*bdChainIterCount));
         }
         replaceSplitFifo(createOp, consumerFifo, consumerTileOp);
+        if (createOp.getAieStream()) {
+          int streamEnd = createOp.getAieStream().value();
+          if (streamEnd > 0) {
+            consumerFifo->setAttr("aie_stream",
+                                  builder.getI32IntegerAttr(streamEnd));
+            consumerFifo->setAttr(
+                "aie_stream_port",
+                builder.getI32IntegerAttr(createOp.getAieStreamPort().value()));
+          }
+          if (streamEnd == 1) {
+            createOp->removeAttr("aie_stream");
+            createOp->removeAttr("aie_stream_port");
+          }
+        }
 
         // identify external buffers that were registered to the consumer fifo
         if (consumerTile.getDefiningOp<TileOp>().isShimTile())
@@ -1938,59 +1981,107 @@ struct AIEObjectFifoStatefulTransformPass
 
     int packetID = getStartPacketID(device);
     for (auto &[producer, consumers] : splitFifos) {
-      int producerChanIndex = fifo_dma_channel_index[producer];
-      if (producerChanIndex == -1) {
-        producer.getProducerTileOp().emitOpError(
-            "number of output DMA channel exceeded!");
-        return signalPassFailure();
-      }
-      DMAChannel producerChan = {DMAChannelDir::MM2S, producerChanIndex};
-      std::optional<PacketInfoAttr> bdPacket = {};
-      if (clPacketSwObjectFifos) {
-        if (packetID > 31) {
-          device.emitOpError("max number of packet IDs reached");
+      int producerChanIndex = -1;
+      DMAChannel producerChan;
+      PacketFlowOp packetflow;
+      if (producer.getAieStream()) {
+        int prodStreamEnd = producer.getAieStream().value();
+        if (prodStreamEnd == 0 || prodStreamEnd == 2) {
+          producerChanIndex = producer.getAieStreamPort().value();
+          producerChan = {DMAChannelDir::MM2S, producerChanIndex};
+          dmaAnalysis.checkAIEStreamIndex(producer.getProducerTileOp(),
+                                          producerChan);
+        }
+      } else {
+        producerChanIndex = fifo_dma_channel_index[producer];
+        if (producerChanIndex == -1) {
+          producer.getProducerTileOp().emitOpError(
+              "number of output DMA channel exceeded!");
           return signalPassFailure();
         }
-        bdPacket = {
-            AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0, /*pkt_id*/ packetID)};
-        packetID++;
-      }
-      createDMA(device, builder, producer, producerChan.direction,
-                producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
-                producer.getPadDimensionsAttr(), bdPacket);
-      // generate objectFifo allocation info
-      builder.setInsertionPoint(device.getBody()->getTerminator());
+        producerChan = {DMAChannelDir::MM2S, producerChanIndex};
+        std::optional<PacketInfoAttr> bdPacket = {};
+        if (clPacketSwObjectFifos) {
+          if (packetID > 31) {
+            device.emitOpError("max number of packet IDs reached");
+            return signalPassFailure();
+          }
+          bdPacket = {AIE::PacketInfoAttr::get(ctx, /*pkt_type*/ 0,
+                                               /*pkt_id*/ packetID)};
+          packetID++;
+        }
+        createDMA(device, builder, producer, producerChan.direction,
+                  producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
+                  producer.getPadDimensionsAttr(), bdPacket);
 
-      if (producer.getProducerTileOp().isShimTile())
-        createObjectFifoAllocationInfo(
-            builder, ctx, producer, producer.getProducerTileOp(),
-            producerChan.direction, producerChan.channel, producer.getPlio(),
-            bdPacket);
+        // generate objectFifo allocation info
+        builder.setInsertionPoint(device.getBody()->getTerminator());
+        if (producer.getProducerTileOp().isShimTile())
+          createObjectFifoAllocationInfo(
+              builder, ctx, producer, producer.getProducerTileOp(),
+              producerChan.direction, producerChan.channel, producer.getPlio(),
+              bdPacket);
 
-      PacketFlowOp packetflow;
-      if (clPacketSwObjectFifos) {
-        // create packet flow
-        builder.setInsertionPointAfter(producer);
-        packetflow = PacketFlowOp::create(
-            builder, builder.getUnknownLoc(),
-            builder.getIntegerAttr(builder.getI8Type(), bdPacket->getPktId()),
-            nullptr, nullptr);
-        {
-          OpBuilder::InsertionGuard g(builder);
-          builder.setInsertionPointToStart(
-              &packetflow.getRegion().emplaceBlock());
-          EndOp::create(builder, builder.getUnknownLoc());
+        if (clPacketSwObjectFifos) {
+          // create packet flow
+          builder.setInsertionPointAfter(producer);
+          packetflow = builder.create<PacketFlowOp>(
+              builder.getUnknownLoc(),
+              builder.getIntegerAttr(builder.getI8Type(), bdPacket->getPktId()),
+              nullptr, nullptr);
+          {
+            OpBuilder::InsertionGuard g(builder);
+            builder.setInsertionPointToStart(
+                &packetflow.getRegion().emplaceBlock());
+            builder.create<EndOp>(builder.getUnknownLoc());
+          }
         }
       }
 
       for (auto consumer : consumers) {
-        int consumerChanIndex = fifo_dma_channel_index[consumer];
-        if (consumerChanIndex == -1) {
-          consumer.getProducerTileOp().emitOpError(
-              "number of input DMA channel exceeded!");
-          return signalPassFailure();
+        // if not aie stream, create consumer tile DMA
+        int consumerChanIndex = -1;
+        DMAChannel consumerChan;
+        if (consumer.getAieStream()) {
+          int consStreamEnd = consumer.getAieStream().value();
+          if (consStreamEnd == 1 || consStreamEnd == 2) {
+            consumerChanIndex = consumer.getAieStreamPort().value();
+            consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
+            dmaAnalysis.checkAIEStreamIndex(consumer.getProducerTileOp(),
+                                            consumerChan);
+          }
+        } else {
+          consumerChanIndex = fifo_dma_channel_index[consumer];
+          if (consumerChanIndex == -1) {
+            consumer.getProducerTileOp().emitOpError(
+                "number of input DMA channel exceeded!");
+            return signalPassFailure();
+          }
+          consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
+          BDDimLayoutArrayAttr consumerDims =
+              consumer.getDimensionsFromStreamPerConsumer()[0];
+          createDMA(device, builder, consumer, consumerChan.direction,
+                    consumerChan.channel, 1, consumerDims, nullptr, {});
+
+          // generate objectFifo allocation info
+          builder.setInsertionPoint(device.getBody()->getTerminator());
+          if (!consumer.getAieStream()) {
+            // generate objectFifo allocation info
+            builder.setInsertionPoint(device.getBody()->getTerminator());
+            if (consumer.getProducerTileOp().isShimTile())
+              createObjectFifoAllocationInfo(
+                  builder, ctx, producer, consumer.getProducerTileOp(),
+                  consumerChan.direction, consumerChan.channel,
+                  producer.getPlio(), {});
+          }
+
+          if (clPacketSwObjectFifos) {
+            builder.setInsertionPointToStart(&packetflow.getPorts().front());
+            builder.create<PacketDestOp>(builder.getUnknownLoc(),
+                                         consumer.getProducerTile(),
+                                         WireBundle::DMA, consumerChan.channel);
+          }
         }
-        DMAChannel consumerChan = {DMAChannelDir::S2MM, consumerChanIndex};
 
         // If we have PLIO then figure out the direction and make that a PLIO
         if (producer.getPlio()) {
@@ -2003,26 +2094,17 @@ struct AIEObjectFifoStatefulTransformPass
         } else {
           producerWireType = WireBundle::DMA;
           consumerWireType = WireBundle::DMA;
+          if (producer.getAieStream()) {
+            int prodStreamEnd = producer.getAieStream().value();
+            if (prodStreamEnd == 0 || prodStreamEnd == 2)
+              producerWireType = WireBundle::Core;
+          }
+          if (consumer.getAieStream()) {
+            int consumerStreamEnd = consumer.getAieStream().value();
+            if (consumerStreamEnd == 1 || consumerStreamEnd == 2)
+              consumerWireType = WireBundle::Core;
+          }
         }
-        if (clPacketSwObjectFifos) {
-          builder.setInsertionPointToStart(&packetflow.getPorts().front());
-          PacketDestOp::create(builder, builder.getUnknownLoc(),
-                               consumer.getProducerTile(), WireBundle::DMA,
-                               consumerChan.channel);
-        }
-
-        BDDimLayoutArrayAttr consumerDims =
-            consumer.getDimensionsFromStreamPerConsumer()[0];
-        createDMA(device, builder, consumer, consumerChan.direction,
-                  consumerChan.channel, 1, consumerDims, nullptr, {});
-        // generate objectFifo allocation info
-        builder.setInsertionPoint(device.getBody()->getTerminator());
-
-        if (consumer.getProducerTileOp().isShimTile())
-          createObjectFifoAllocationInfo(
-              builder, ctx, producer, consumer.getProducerTileOp(),
-              consumerChan.direction, consumerChan.channel, producer.getPlio(),
-              {});
 
         if (!clPacketSwObjectFifos) {
           // create flow
@@ -2111,6 +2193,14 @@ struct AIEObjectFifoStatefulTransformPass
           }
         }
 
+        if (op.getAieStream().has_value()) {
+          int streamEnd = op.getAieStream().value();
+          if (streamEnd == 2 || streamEnd == portNum)
+            releaseOp->emitOpError("cannot release from objectfifo stream "
+                                   "port");
+          return WalkResult::interrupt();
+        }
+
         // update index of next element to release for this objectFifo
         updateAndReturnIndex(relPerFifo, {op, portNum});
 
@@ -2152,6 +2242,14 @@ struct AIEObjectFifoStatefulTransformPass
             return WalkResult::interrupt();
             ;
           }
+        }
+
+        if (op.getAieStream().has_value()) {
+          int streamEnd = op.getAieStream().value();
+          if (streamEnd == 2 || streamEnd == portNum)
+            acquireOp->emitOpError("cannot acquire from objectfifo stream "
+                                   "port");
+          return WalkResult::interrupt();
         }
 
         // index of next element to acquire for this objectFifo

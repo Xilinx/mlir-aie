@@ -400,6 +400,48 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`repeat_count` unavailable for shim tiles");
   }
 
+  if (getAieStreamPort().has_value()) {
+    if (!getAieStream().has_value())
+      return emitError("`aie_stream` must be defined");
+  }
+
+  if (getAieStream().has_value()) {
+    if (getConsumerTiles().size() > 1)
+      return emitError("`aie_stream` can only be used in 1-to-1 object FIFOs");
+
+    if (!getAieStreamPort().has_value())
+      return emitError("`aie_stream_port` must be defined");
+
+    if (getAieStream().value() == 0 || getAieStream().value() == 2) {
+      if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
+        return emitError(
+            "`aie_stream` is not available for shim and mem tiles");
+
+      if (getRepeatCount().has_value())
+        return emitError("`repeat_count` unavailable on stream end");
+
+      if (getInitValues().has_value())
+        return emitError("`init_values` unavailable on stream end");
+
+      if (getIterCount().has_value())
+        return emitError("`iter_count` unavailable on stream end");
+
+      if (!getDimensionsToStream().empty())
+        return emitError("`dimensionsToStream` data layout transformations are "
+                         "unavailable on stream end");
+    }
+
+    if (getAieStream().value() == 1 || getAieStream().value() == 2)
+      if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile() ||
+          getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
+        return emitError(
+            "`aie_stream` is not available for shim and mem tiles");
+
+    if (!getDimensionsFromStreamPerConsumer()[0].empty())
+      return emitError("`dimensionsFromStreamPerConsumer` data layout "
+                       "transformations are unavailable on stream end");
+  }
+
   if (getInitValues().has_value()) {
     if (getProducerTileOp().isShimTile())
       return emitError("`init_values` unavailable for shim tiles");
@@ -602,6 +644,9 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (!objFifo.getDimensionsToStream().empty())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set dimensions attribute");
+  if (objFifo.getAieStream().has_value())
+    return emitError("cannot allocate a shared memory module to objectfifo "
+                     "using stream port");
   return success();
 }
 
