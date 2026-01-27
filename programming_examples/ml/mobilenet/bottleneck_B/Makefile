@@ -86,4 +86,4 @@ clean:
 	rm -rf build __pycache__
 
 run_py: build/final.xclbin ${srcdir}/${mlirFileName}.py
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test_bottleneckB.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE

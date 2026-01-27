@@ -47,6 +47,11 @@ In this mapping, each bottleneck block is distributed across five AI cores. This
 
 ### Building the Project
 
+Prerequisites:
+```
+pip3 install torch brevitas tdqm torchvision
+```
+
 To compile and run the chained design:
 ```
 make run_py_mobilenet
