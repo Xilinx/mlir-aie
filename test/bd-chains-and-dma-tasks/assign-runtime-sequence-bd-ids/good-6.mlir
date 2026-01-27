@@ -14,7 +14,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aie.shim_dma_allocation @alloc0 (MM2S, 0, 0, <pkt_type = 0, pkt_id = 2>)
+    aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0, <pkt_type = 0, pkt_id = 2>)
 
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%{{.*}}tile_0_0, MM2S, 0, <pkt_type = 0, pkt_id = 2>)

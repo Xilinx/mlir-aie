@@ -25,3 +25,6 @@ else
 	powershell =
 	getwslpath = echo
 endif
+
+CC ?= gcc-13
+CXX ?= g++-13

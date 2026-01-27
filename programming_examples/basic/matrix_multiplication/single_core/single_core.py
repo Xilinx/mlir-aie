@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 AMD Inc.
+# (c) Copyright 2025-2026 AMD Inc.
 import argparse
 import numpy as np
 import sys
@@ -12,8 +12,7 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
-from aie.utils.trace import PortEvent
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
 
 
@@ -280,28 +279,28 @@ def my_matmul(
                         trace_size=trace_size,
                         coretile_events=[
                             # captures input A (PORT_RUNNING_0, at port number 1, master for inputs)
-                            trace_utils.PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_0,
+                            trace_utils.events.PortEvent(
+                                trace_utils.events.CoreEvent.PORT_RUNNING_0,
                                 port_number=1,
                                 master=True,
                             ),
                             # captures input B (PORT_RUNNING_1, at port number 2, master for inputs)
-                            trace_utils.PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_1,
+                            trace_utils.events.PortEvent(
+                                trace_utils.events.CoreEvent.PORT_RUNNING_1,
                                 port_number=2,
                                 master=True,
                             ),
                             # captures output C (PORT_RUNNING_2, at port number 1, slave for outputs)
-                            trace_utils.PortEvent(
-                                trace_utils.CoreEvent.PORT_RUNNING_2,
+                            trace_utils.events.PortEvent(
+                                trace_utils.events.CoreEvent.PORT_RUNNING_2,
                                 port_number=1,
                                 master=False,
                             ),
-                            trace_utils.CoreEvent.INSTR_EVENT_0,
-                            trace_utils.CoreEvent.INSTR_EVENT_1,
-                            trace_utils.CoreEvent.MEMORY_STALL,
-                            trace_utils.CoreEvent.LOCK_STALL,
-                            trace_utils.CoreEvent.INSTR_VECTOR,
+                            trace_utils.events.CoreEvent.INSTR_EVENT_0,
+                            trace_utils.events.CoreEvent.INSTR_EVENT_1,
+                            trace_utils.events.CoreEvent.MEMORY_STALL,
+                            trace_utils.events.CoreEvent.LOCK_STALL,
+                            trace_utils.events.CoreEvent.INSTR_VECTOR,
                         ],
                     )
 

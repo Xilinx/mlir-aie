@@ -8,6 +8,9 @@
 add_mlir_dialect(AIEVecOps aievec)
 add_mlir_doc(AIEVecOps AIEVecDialect ./ -gen-dialect-doc -dialect=aievec)
 
+# AIEVecOps.td pulls in AIEAttrs.td which relies on generated event enums
+add_dependencies(MLIRAIEVecOpsIncGen GenerateAIEEventsTD)
+
 # Add AIEVec attributes
 set(LLVM_TARGET_DEFINITIONS AIEVecAttributes.td)
 mlir_tablegen(AIEVecEnums.h.inc -gen-enum-decls)

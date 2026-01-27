@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" --split-input-file 2>&1 | FileCheck %s
+// RUN: not aie-opt %s -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" 2>&1 | FileCheck %s
 
 // CHECK: error: 'aie.device' op failed to generate column control overlay from shim dma to tile ctrl ports, because some shim mm2s dma channels were reserved from routing control packets.
 

@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -69,8 +69,8 @@ run: ${targetname}.exe build/final.xclbin
 
 trace: ${targetname}.exe build/final_trace.xclbin
 	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../python/utils/parse_trace.py --input trace.txt --mlir build/aie_trace.mlir --output trace_eltwise_add.json
-	${srcdir}/../../../python/utils/get_trace_summary.py --input trace_eltwise_add.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir --output trace_eltwise_add.json
+	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_eltwise_add.json
 
 clean:
 	rm -rf build _build ${targetname}.exe

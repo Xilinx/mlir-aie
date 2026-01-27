@@ -6,11 +6,11 @@
 import inspect
 
 from aie.extras import types as T
-from aie.extras.dialects.ext import arith
+from aie.extras.dialects import arith
 from aie.extras.runtime.passes import Pipeline as p, run_pipeline
 
-from aie.helpers.dialects.ext.func import func
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.func import func
+from aie.iron.controlflow import range_
 
 from aie.dialects import affine, aievec, tosa, vector
 from aie.dialects.aie import translate_aie_vec_to_cpp
@@ -272,7 +272,7 @@ def test_i8xi8_add_elem(module):
         .cse()
         .convert_linalg_to_affine_loops()
         .Func(p().affine_super_vectorize(virtual_vector_size=64))
-        .add_pass("convert-vector-to-aievec", aie_target="aie2")
+        .add_pass("convert-vector-to-aievec", **{"aie-target": "aie2"})
         .lower_affine()
     )
 

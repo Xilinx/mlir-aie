@@ -325,11 +325,13 @@ struct AIEGenerateColumnControlOverlayPass
         ctrlPktFlowID = tileIDMap[{tOp.colIndex(), tOp.rowIndex()}];
       // Check shim channel availability
       if (!llvm::is_contained(availableShimChans,
-                              rowToShimChanMap[tOp.rowIndex()]))
+                              rowToShimChanMap[tOp.rowIndex()])) {
         device->emitOpError(
             "failed to generate column control overlay from shim dma to tile "
             "ctrl ports, because some shim mm2s dma channels were reserved "
             "from routing control packets.");
+        return signalPassFailure();
+      }
 
       auto keep_pkt_header = builder.getBoolAttr(true);
       auto ctrl_pkt_flow = builder.getBoolAttr(true);
@@ -362,10 +364,10 @@ struct AIEGenerateColumnControlOverlayPass
       if (device.lookupSymbol(dma_name))
         continue;
 
-      AIE::ShimDMAAllocationOp::create(builder, builder.getUnknownLoc(),
-                                       StringRef(dma_name), dir,
-                                       rowToShimChanMap[tOp.rowIndex()],
-                                       shimTile.colIndex(), false, nullptr);
+      AIE::ShimDMAAllocationOp::create(
+          builder, builder.getUnknownLoc(), StringRef(dma_name),
+          shimTile.getResult(), dir, rowToShimChanMap[tOp.rowIndex()], false,
+          nullptr);
     }
   }
 

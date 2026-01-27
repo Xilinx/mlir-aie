@@ -403,11 +403,6 @@ def VectorBroadcast16BF512IntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[32], [BF16]>>]>,
     Arguments<(ins BF16:$src)>;
 
-def VectorBroadcastfloatI512IntrOp :
-    AIEVec2_IntrOp<"vbroadcastfloat.I512",
-        [TypeIs<"res", VectorOfLengthAndType<[16], [F32]>>]>,
-    Arguments<(ins F32:$src)>;
-
 // ----- EXT ----- 
 
 def ExtI256I512IntrOp :

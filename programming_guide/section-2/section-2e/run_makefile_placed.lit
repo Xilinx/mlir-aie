@@ -3,6 +3,7 @@
  //
  // REQUIRES: ryzen_ai, peano 
  //
+ // RUN: mkdir -p test_run_makefile_placed
+ // RUN: cd test_run_makefile_placed
  // RUN: make -f %S/Makefile clean
  // RUN: make -f %S/Makefile placed
- 

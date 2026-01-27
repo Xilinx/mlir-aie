@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include <algorithm>
@@ -211,9 +212,16 @@ public:
       return op->emitOpError("couldn't find shim_dma_allocation op.");
     }
 
+    AIE::TileOp shimTile = infoOp.getTileOp();
+    if (!shimTile) {
+      return op->emitOpError(
+          "shim_dma_allocation op must reference a valid TileOp.");
+    }
+
     auto channelDir = infoOp.getChannelDir();
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int col = infoOp.getCol();
+    int tileCol = shimTile.getCol();
+    int tileRow = shimTile.getRow();
 
     // initialize fields to zero
     auto column = zero;
@@ -265,19 +273,19 @@ public:
     int64_t offset = op.getOffsetInBytes();
 
     // column
-    column = IntegerAttr::get(i32ty, col);
+    column = IntegerAttr::get(i32ty, tileCol);
 
     // row
-    row = IntegerAttr::get(i32ty, 0);
+    row = IntegerAttr::get(i32ty, tileRow);
 
     bool skipTransformationChecks = op.isLinearTransferWithoutTransformation();
-    if (failed(verifyStridesWraps(op, bufferType, col, 0, inputSizes,
+    if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
                                   inputStrides, sizes, strides,
                                   skipTransformationChecks))) {
       return failure();
     }
 
-    // arg_idx
+    // arg_idx and offset for block arguments
     AIE::RuntimeSequenceOp seq_op =
         op->getParentOfType<AIE::RuntimeSequenceOp>();
     if (!seq_op) {
@@ -285,16 +293,34 @@ public:
                       "time of lowering.");
       return failure();
     }
+
+    mlir::Value rootMemref = memref;
+    int64_t subviewOffset = 0;
+
+    // Trace through memref.subview and memref.reinterpret_cast chain, if any,
+    // to find root block argument
+    auto traceResult = traceSubviewToBlockArgument(memref);
+    if (!traceResult) {
+      return op->emitOpError(
+          "memref must be a block argument or subview/cast/reinterpret_cast of "
+          "a block argument with static offsets, sizes, and strides");
+    }
+    rootMemref = traceResult->rootArg;
+    subviewOffset = traceResult->offsetInBytes;
+
+    // Find the argument index of the root memref
     Block &entryBB = seq_op.getBody().front();
     int arg_idx = -1;
     for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
-      if (entryBB.getArgument(i) == memref) {
+      if (entryBB.getArgument(i) == rootMemref) {
         arg_idx = i;
         break;
       }
     }
     if (arg_idx < 0)
       return failure();
+
+    offset += subviewOffset;
 
     // bd_id
     bd_id = IntegerAttr::get(i32ty, op.getId());
@@ -334,7 +360,7 @@ public:
       d2_stride = IntegerAttr::get(i32ty, strides[2]);
 
       // d2_size
-      if (targetModel.isMemTile(col, 0)) // Need to be any row
+      if (targetModel.isMemTile(tileCol, 0)) // Need to be any row
         d2_size = IntegerAttr::get(i32ty, sizes[2]);
       else
         d2_size = IntegerAttr::get(i32ty, 0);
@@ -400,11 +426,13 @@ public:
     if (!isMM2S)
       issue_token = BoolAttr::get(ctx, true);
 
-    if (targetModel.isMemTile(col, 0) && (!isMM2S) &&
+    if (targetModel.isMemTile(tileCol, tileRow) && (!isMM2S) &&
         (op.getD0ZeroBefore() != 0 || op.getD0ZeroAfter() != 0 ||
          op.getD1ZeroBefore() != 0 || op.getD1ZeroAfter() != 0 ||
-         op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0))
+         op.getD2ZeroBefore() != 0 || op.getD2ZeroAfter() != 0)) {
       op->emitOpError("MemTile supports zero padding only on MM2S direction");
+      return failure();
+    }
 
     // write the buffer descriptor to the array
     NpuWriteBdOp::create(
@@ -418,8 +446,8 @@ public:
 
     // compute the location of the address to patch in the bd and emit patch
     // instruction to perform the patch.
-    uint64_t addr = targetModel.getDmaBdAddress(col, 0, op.getId()) +
-                    targetModel.getDmaBdAddressOffset(col, 0);
+    uint64_t addr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
+                    targetModel.getDmaBdAddressOffset(tileCol, tileRow);
     NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, offset);
 
     // push the patched bd onto the dma task queue
@@ -456,10 +484,16 @@ public:
       return op->emitError("couldn't find shim_dma_allocation op");
     }
 
+    AIE::TileOp shimTile = shimDmaAllocOp.getTileOp();
+    if (!shimTile) {
+      return op->emitError(
+          "shim_dma_allocation op must reference a valid TileOp");
+    }
+
     // Create with `column_num == 1` and `row_num == 1` to check for a single
-    // column and row. Row is always 0 for shim tiles.
+    // column and row.
     (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(
-        op, shimDmaAllocOp.getCol(), /* row */ 0,
+        op, shimTile.getCol(), shimTile.getRow(),
         static_cast<uint32_t>(shimDmaAllocOp.getChannelDir()),
         shimDmaAllocOp.getChannelIndex(), 1, 1);
 
@@ -481,18 +515,24 @@ public:
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     const AIE::AIETargetModel &tm = dev.getTargetModel();
 
+    int col = op.getColumn();
+    int row = op.getRow();
+
     int num_words = 0;
-    if (isa<AIE::AIE2TargetModel>(tm))
-      num_words = 8;
-    else
+    if (isa<AIE::AIE2TargetModel>(tm)) {
+      // Tile DMAs have 6 words, MemTile and Shim have 8 words
+      if (tm.isShimNOCTile(col, row) || tm.isMemTile(col, row))
+        num_words = 8;
+      else
+        num_words = 6;
+    } else {
       llvm_unreachable(
           "Unsupported AIETargetModel in WriteBdToBlockWritePattern");
+    }
 
     std::vector<uint32_t> words(num_words, 0);
 
     uint32_t bd_id = op.getBdId();
-    int col = op.getColumn();
-    int row = op.getRow();
     uint64_t bd_addr = tm.getDmaBdAddress(col, row, bd_id);
     if (tm.isShimNOCTile(col, row)) {
       // DMA_BDX_0
@@ -593,10 +633,52 @@ public:
       words[7] |= (op.getLockAcqVal() & 0x7f) << 8;
       words[7] |= op.getLockAcqId() & 0xff;
     } else {
-      // TODO: DMA BD configuration for Compute Tiles
-      op->emitError("Run-time DMA configuration is supported only for "
-                    "ShimTiles and MemTiles currently.");
-      return failure();
+
+      // DMA_BDX_0
+      // Base_Address [27:14], Buffer_Length [13:0]
+      words[0] = ((op.getBufferOffset() / 4) & 0x3fff) << 14;
+      words[0] |= op.getBufferLength() & 0x3fff;
+
+      // DMA_BDX_1
+      // Enable_Compression [31], Enable_Packet [30], Out_Of_Order_BD_ID
+      // [29:24], Packet_ID [23:19], Packet_Type [18:16]
+      words[1] = 0; // Enable_Compression
+      words[1] |= (op.getEnablePacket() & 0x1) << 30;
+      words[1] |= (op.getOutOfOrderId() & 0x3f) << 24;
+      words[1] |= (op.getPacketId() & 0x1f) << 19;
+      words[1] |= (op.getPacketType() & 0x7) << 16;
+
+      // DMA_BDX_2
+      // D1_Stepsize [25:13], D0_Stepsize [12:0]
+      words[2] = (op.getD1Stride() & 0x1fff) << 13;
+      words[2] |= op.getD0Stride() & 0x1fff;
+
+      // DMA_BDX_3
+      // D1_Wrap [28:21], D0_Wrap [20:13], D2_Stepsize [12:0]
+      words[3] = (op.getD1Size() & 0xff) << 21;
+      words[3] |= (op.getD0Size() & 0xff) << 13;
+      words[3] |= op.getD2Stride() & 0x1fff;
+
+      // DMA_BDX_4
+      // Iteration_Current [24:19], Iteration_Wrap [18:13], Iteration_Stepsize
+      // [12:0]
+      words[4] = (op.getIterationCurrent() & 0x3f) << 19;
+      words[4] |= (op.getIterationSize() & 0x3f) << 13;
+      words[4] |= op.getIterationStride() & 0x1fff;
+
+      // DMA_BDX_5
+      // TLAST_Suppress [31], Next_BD [30:27], Use_Next_BD [26], Valid_BD [25],
+      // Lock_Rel_Value [24:18], Lock_Rel_ID [16:13], Lock_Acq_Enable [12],
+      // Lock_Acq_Value [11:5], Lock_Acq_ID [3:0]
+      words[5] = 0; // TLAST_Suppress
+      words[5] |= (op.getNextBd() & 0xf) << 27;
+      words[5] |= (op.getUseNextBd() & 0x1) << 26;
+      words[5] |= (op.getValidBd() & 0x1) << 25;
+      words[5] |= (op.getLockRelVal() & 0x7f) << 18;
+      words[5] |= (op.getLockRelId() & 0xf) << 13;
+      words[5] |= (op.getLockAcqEnable() & 0x1) << 12;
+      words[5] |= (op.getLockAcqVal() & 0x7f) << 5;
+      words[5] |= op.getLockAcqId() & 0xf;
     }
 
     memref::GlobalOp global = nullptr;

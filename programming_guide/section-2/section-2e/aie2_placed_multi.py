@@ -11,9 +11,9 @@ from aie.dialects.aie import *  # primary mlir-aie dialect definitions
 from aie.extras.context import mlir_mod_ctx  # mlir ctx wrapper
 
 from aie.dialects.aiex import *  # extended mlir-aie dialect definitions
-from aie.helpers.dialects.ext.scf import (
-    _for as range_,
-)  # scf (structured control flow) dialect
+
+# scf (structured control flow) dialect
+from aie.helpers.dialects.scf import _for as range_
 
 n_cores = 3
 buffer_depth = 2

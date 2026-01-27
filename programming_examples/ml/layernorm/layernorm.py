@@ -12,7 +12,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from ml_dtypes import bfloat16
 
 

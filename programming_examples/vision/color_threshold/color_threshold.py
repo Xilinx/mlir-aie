@@ -19,7 +19,7 @@ from aie.iron import (
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 
-from aie.extras.dialects.ext import arith
+from aie.extras.dialects import arith
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.dialects.aie import T
 

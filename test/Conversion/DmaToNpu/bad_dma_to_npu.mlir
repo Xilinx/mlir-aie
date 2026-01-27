@@ -21,7 +21,8 @@ module @shimDmaMemcpy{
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][4, 4, 64, 64][0, 64, 256, 1]) {id = 0 : i64, metadata = @toMem} : memref<1xbf16>
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     }
-    aie.shim_dma_allocation @toMem (S2MM, 0, 0)
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }
 

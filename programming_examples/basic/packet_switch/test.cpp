@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -113,10 +113,13 @@ int main(int argc, const char *argv[]) {
       ref = srcVecA[i] + 2; // ref for the second input packet
     }
     if (*(bufOut + i) != ref) {
-      if (errors < 10) {
+      if (errors < 100) {
         std::cout << "Error in output " << i << "; Input: " << srcVecA[i]
                   << "; Output: " << *(bufOut + i) << " != reference:" << ref
                   << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
       }
       errors++;
     }

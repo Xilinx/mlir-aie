@@ -16,7 +16,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
 
 

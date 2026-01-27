@@ -56,7 +56,7 @@ struct AIELowerCascadeFlowsPass
         // TODO: remove when this pass supports routing
         cascadeFlow.emitOpError(
             "source tile must be to the North or West of the destination tile");
-        return;
+        return signalPassFailure();
       }
     }
 

@@ -456,9 +456,14 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
           dev, getMetadata().getRootReference())) {
-    int col = allocOp.getCol();
+    AIE::TileOp tile = allocOp.getTileOp();
+    if (!tile) {
+      return emitOpError("shim DMA allocation must reference a valid TileOp");
+    }
+    int col = tile.getCol();
+    int row = tile.getRow();
     bool skipTransformationChecks = isLinearTransferWithoutTransformation();
-    if (failed(verifyStridesWraps(*this, buffer, col, 0, inputSizes,
+    if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
                                   inputStrides, hardwareSizes, hardwareStrides,
                                   skipTransformationChecks))) {
       return failure();
@@ -955,19 +960,11 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
       SymbolTable::lookupSymbolIn(referencedDevice, getRuntimeSequenceSymbol());
 
   if (!maybeRuntimeSequence) {
-    auto err = emitError() << "No such runtime sequence for device '"
-                           << referencedDevice.getSymName() << "': '"
-                           << getRuntimeSequenceSymbol() << "'";
-    err.attachNote(referencedDevice.getLoc())
-        << "This device does not have a '" << getRuntimeSequenceSymbol()
-        << "' runtime sequence";
     return nullptr;
   }
   AIE::RuntimeSequenceOp runtimeSequence =
       llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeRuntimeSequence);
   if (!runtimeSequence) {
-    emitError() << "Not a runtime sequence: '" << getRuntimeSequenceSymbol()
-                << "'";
     return nullptr;
   }
 
@@ -975,8 +972,41 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
 }
 
 LogicalResult AIEX::RunOp::verify() {
-  if (getCalleeDeviceOp() && getCalleeRuntimeSequenceOp()) {
-    return success();
+  AIE::DeviceOp calleeDevice = getCalleeDeviceOp();
+  if (!calleeDevice) {
+    return emitOpError() << "No such device: '" << getRuntimeSequenceSymbol()
+                         << "'";
   }
-  return failure();
+
+  AIE::RuntimeSequenceOp calleeRuntimeSequence = getCalleeRuntimeSequenceOp();
+  if (!calleeRuntimeSequence) {
+    auto err = emitError() << "No such runtime sequence for device '"
+                           << calleeDevice.getSymName() << "': '"
+                           << getRuntimeSequenceSymbol() << "'";
+    err.attachNote(calleeDevice.getLoc())
+        << "This device does not have a '" << getRuntimeSequenceSymbol()
+        << "' runtime sequence";
+    return err;
+  }
+
+  // Validate argument types match the callee's parameters
+  Block &calleeBody = calleeRuntimeSequence.getBody().front();
+  ValueRange values = getArgs();
+
+  if (calleeBody.getNumArguments() != values.size()) {
+    return emitOpError() << "argument count mismatch";
+  }
+
+  for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
+    BlockArgument arg = calleeBody.getArgument(i);
+    Value val = values[i];
+
+    if (arg.getType() != val.getType()) {
+      return emitOpError() << "argument " << i << " type mismatch: "
+                           << "expected " << arg.getType() << " but got "
+                           << val.getType();
+    }
+  }
+
+  return success();
 }

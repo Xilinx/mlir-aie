@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,13 +64,14 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
   for (uint32_t i = 0; i < size; i++) {
 
     if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04, 0.001)) {
-      std::cout << "Error in output " << B[i] << " != " << RefVec[i]
-                << std::endl;
-      errors++;
-    } else {
-      if (verbosity > 1)
-        std::cout << "Correct output " << B[i] << " == " << RefVec[i]
+      if (verbosity >= 1) {
+        std::cout << "Error in output " << B[i] << " != " << RefVec[i]
                   << std::endl;
+      }
+      errors++;
+    } else if (verbosity >= 1) {
+      std::cout << "Correct output " << B[i] << " == " << RefVec[i]
+                << std::endl;
     }
   }
   return errors;

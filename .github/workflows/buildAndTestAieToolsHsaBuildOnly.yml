@@ -109,8 +109,8 @@ jobs:
             apt install python3.10-venv
             python -m venv aie-venv
             source aie-venv/bin/activate
+            pip install --upgrade pip
             pip install -r python/requirements.txt
-            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
             pip install -r python/requirements_notebook.txt
             pip install -r python/requirements_dev.txt
 
@@ -163,4 +163,3 @@ jobs:
             export LIT_OPTS="-sv --timeout 600 -j1 --filter-out Targets/AIEGenerateCDODirect"
             ninja check-aie
             ninja check-reference-designs
-

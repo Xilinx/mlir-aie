@@ -4,10 +4,19 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+"""
+Test/ Host code utilities.
 
+* `create_default_argparser`
+    * This creates a ArgumentParser with the following args: --xclbin, --kernel, --instr, -v, --verify, --iters, --warmup, --trace_sz, --trace_file
+    * It returns the ArgumentParser which allows you to add more arguments
+* `parse_args`
+    * Calls create_default_argparser and returns the parsed results
+    * Useful if you don't need additional custom args
+"""
 import argparse
-import pyxrt as xrt
+from aie.utils import TraceConfig, NPUKernel
 
 
 # Add default args to standard parser object
@@ -56,76 +65,75 @@ def create_default_argparser():
     )
     p.add_argument(
         "-t",
-        "--trace_sz",
+        "--trace-sz",
         dest="trace_size",
         default=0,
         type=int,
         help="trace size in bytes",
     )
     p.add_argument(
-        "--trace_file",
+        "--trace-file",
         dest="trace_file",
         default="trace.txt",
         help="where to store trace output",
     )
     p.add_argument(
         "-i1s",
-        "--in1_size",
+        "--in1-size",
         dest="in1_size",
         default=0,
         help="Input 1 buffer size in bytes",
     )
     p.add_argument(
         "-i2s",
-        "--in2_size",
+        "--in2-size",
         dest="in2_size",
         default=0,
         help="Input 2 buffer size in bytes",
     )
     p.add_argument(
         "-os",
-        "--out_size",
+        "--out-size",
         dest="out_size",
         default=0,
         help="Output buffer size in bytes",
     )
+    p.add_argument(
+        "--trace-after-output",
+        dest="trace_after_output",
+        action="store_true",
+        help="Trace after output",
+    )
+    p.add_argument(
+        "--enable-ctrl-pkts",
+        dest="enable_ctrl_pkts",
+        action="store_true",
+        help="Enable control packets",
+    )
     return p
+
+
+def create_npu_kernel(opts):
+    trace_config = None
+    trace_size = getattr(opts, "trace_size", 0)
+    if trace_size > 0:
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_file=getattr(opts, "trace_file", "trace.txt"),
+            trace_after_last_tensor=getattr(opts, "trace_after_output", False),
+            enable_ctrl_pkts=getattr(opts, "enable_ctrl_pkts", False),
+        )
+    opts.npu_kernel = NPUKernel(
+        xclbin_path=opts.xclbin,
+        insts_path=opts.instr,
+        kernel_name=opts.kernel,
+        trace_config=trace_config,
+    )
+    return opts
 
 
 # options
 def parse_args(args):
     p = create_default_argparser()
-    return p.parse_args(args)
-
-
-#
-# Create new device and kernel based on xclbin
-#
-# If you want to setup XRT buffers as well, look at xrt.py/setup_aie
-# to setup your environment
-#
-def init_xrt_load_kernel(opts):
-    # Get a device handle
-    device = xrt.device(0)
-
-    # Load the xclbin
-    xclbin = xrt.xclbin(opts.xclbin)
-
-    # Load the kernel
-    kernels = xclbin.get_kernels()
-    try:
-        xkernel = [k for k in kernels if opts.kernel in k.get_name()][0]
-    except:
-        print(f"Kernel '{opts.kernel}' not found in '{opts.xclbin}'")
-        exit(-1)
-
-    # Register xclbin
-    device.register_xclbin(xclbin)
-
-    # Get a hardware context
-    context = xrt.hw_context(device, xclbin.get_uuid())
-
-    # get a kernel handle
-    kernel = xrt.kernel(context, xkernel.get_name())
-
-    return (device, kernel)
+    opts = p.parse_args(args)
+    return create_npu_kernel(opts)

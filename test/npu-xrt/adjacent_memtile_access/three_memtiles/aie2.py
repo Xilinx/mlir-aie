@@ -18,7 +18,7 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.dialects import memref
 
 
@@ -111,8 +111,8 @@ def my_vector_add():
         flow(ComputeTile2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 0)
 
         # AIE-array data movement
-        shim_dma_allocation("in1", DMAChannelDir.MM2S, 0, 0)
-        shim_dma_allocation("out", DMAChannelDir.S2MM, 0, 0)
+        shim_dma_allocation("in1", ShimTile, DMAChannelDir.MM2S, 0)
+        shim_dma_allocation("out", ShimTile, DMAChannelDir.S2MM, 0)
 
         @memtile_dma(MemTile2)
         def m(block):

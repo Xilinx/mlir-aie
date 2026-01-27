@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -93,7 +93,7 @@ make run
 | **Performance** | Baseline execution time | Microseconds overhead from JIT runtime |
 | **Flexibility** | Fixed at compile time | Runtime parameterization |
 | **Use Case** | Explicit XCLBIN management | Dynamic compilation |
-| **Binary Output** | Generates XCLBIN/inst.bin | Cached binaries in `IRON_CACHE_HOME` (defaults to `~/.iron/`) |
+| **Binary Output** | Generates XCLBIN/inst.bin | Cached binaries in `NPU_CACHE_HOME` (defaults to `~/.npu/`) |
 
 **When to use each approach:**
 - **Use JIT** for rapid prototyping, experimentation, runtime flexibility, and when you don't need control over XCLBINs

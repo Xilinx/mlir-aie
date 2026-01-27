@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -157,8 +157,13 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
     uint32_t ref = i + 2;
     if (*(bufOut_0 + i) != ref) {
-      std::cout << "Error in output " << *(bufOut_0 + i) << " != " << ref
-                << std::endl;
+      if (errors < 100) {
+        std::cout << "Error in output " << *(bufOut_0 + i) << " != " << ref
+                  << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
+      }
       errors++;
     } else {
       std::cout << "Correct output " << *(bufOut_0 + i) << " == " << ref
@@ -170,8 +175,13 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
     uint32_t ref = i + 3;
     if (*(bufOut_1 + i) != ref) {
-      std::cout << "Error in output " << *(bufOut_1 + i) << " != " << ref
-                << std::endl;
+      if (errors < 100) {
+        std::cout << "Error in output " << *(bufOut_1 + i) << " != " << ref
+                  << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
+      }
       errors++;
     } else {
       std::cout << "Correct output " << *(bufOut_1 + i) << " == " << ref

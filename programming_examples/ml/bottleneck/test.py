@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 
 import torch
 import torch.nn as nn
@@ -13,8 +13,10 @@ from aie.utils.ml import DataShaper
 import time
 import os
 import numpy as np
-from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
 import aie.utils.test as test_utils
+import aie.iron as iron
+from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
+from pathlib import Path
 
 torch.use_deterministic_algorithms(True)
 torch.manual_seed(0)
@@ -79,18 +81,8 @@ def main(opts):
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-    app = setup_aie(
-        xclbin_path,
-        insts_path,
-        shape_in_act,
-        dtype_in,
-        shape_total_wts,
-        dtype_wts,
-        shape_out,
-        dtype_out,
-        enable_trace=enable_trace,
-        trace_size=trace_size,
-    )
+    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    kernel_handle = DefaultNPURuntime.load(npu_kernel)
 
     # ------------------------------------------------------
     # Define your golden reference
@@ -157,21 +149,40 @@ def main(opts):
     total_wts.tofile(log_folder + "/weights_mem_fmt_final.txt", sep=",", format="%d")
 
     # ------------------------------------------------------
+    # Setup buffers
+    # ------------------------------------------------------
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(total_wts, dtype=dtype_wts)
+    out_size = np.prod(shape_out) * dtype_out.itemsize
+    out = iron.zeros(out_size, dtype=dtype_out)
+
+    buffers = [in1, in2, out]
+
+    trace_config = None
+    if enable_trace:
+        trace_config = TraceConfig(
+            trace_size=trace_size,
+            trace_file=trace_file,
+            trace_after_last_tensor=False,
+            enable_ctrl_pkts=False,
+            last_tensor_shape=out.shape,
+            last_tensor_dtype=out.dtype,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
+
+    # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
     for i in range(num_iter):
-        start = time.time_ns()
-        aie_output = execute(app, ifm_mem_fmt, total_wts) * inp_scale4
-        stop = time.time_ns()
+        ret = DefaultNPURuntime.run(kernel_handle, buffers)
 
-        if enable_trace:
-            aie_output, trace = extract_trace(
-                aie_output, shape_out, dtype_out, trace_size
-            )
-            write_out_trace(trace, trace_file)
+        if trace_config:
+            trace_buffer, _ = HostRuntime.extract_trace_from_args(buffers, trace_config)
+            trace_buffer = trace_buffer.view(np.uint32)
+            trace_config.write_trace(trace_buffer)
 
-        npu_time = stop - start
-        npu_time_total = npu_time_total + npu_time
+        aie_output = out.numpy() * inp_scale4
+        npu_time_total = npu_time_total + ret.npu_time
 
     # ------------------------------------------------------
     # Reorder output data-layout

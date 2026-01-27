@@ -4,11 +4,12 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-import aie.utils.xrt as xrt_utils
 import aie.utils.test as test_utils
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime
 
 
 def main(opts):
@@ -41,29 +42,30 @@ def main(opts):
     scale_factor = 3
 
     # Initialize data
-    in1_data = np.arange(1, in1_volume + 1, dtype=in1_dtype)
-    in2_data = np.array([scale_factor], dtype=in2_dtype)
-    out_data = np.zeros([out_volume], dtype=out_dtype)
+    ref = np.arange(1, in1_volume + 1, dtype=in1_dtype)
+    in1 = iron.tensor(ref, dtype=in1_dtype)
+
+    in2 = iron.tensor([scale_factor], dtype=in2_dtype)
+    out = iron.zeros([out_volume], dtype=out_dtype)
 
     # Define reference data
-    ref = np.arange(1, in1_volume + 1, dtype=out_dtype) * scale_factor
+    ref = ref * scale_factor
 
     # --------------------------------------------------------------------------
 
     print("Running...\n")
-    res = xrt_utils.setup_and_run_aie(
-        in1_dtype,
-        in2_dtype,
-        out_dtype,
-        in1_data,
-        in2_data,
-        out_data,
-        in1_volume,
-        in2_volume,
-        out_volume,
-        ref,
-        opts,
+    npu_opts = test_utils.create_npu_kernel(opts)
+    res = DefaultNPURuntime.run_test(
+        npu_opts.npu_kernel,
+        [in1, in2, out],
+        {2: ref},
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     )
+    if not res:
+        print("PASS!")
+    else:
+        print("Failed.")
     sys.exit(res)
 
 

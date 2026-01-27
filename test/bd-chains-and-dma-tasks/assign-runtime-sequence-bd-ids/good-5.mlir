@@ -14,7 +14,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aie.shim_dma_allocation @alloc0 (MM2S, 0, 0)
+    aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0)
 
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // Allocate all available BD IDs

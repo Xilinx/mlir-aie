@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021 Xilinx Inc.
+# (c) Copyright 2021-2026 Xilinx Inc.
 
 import os
 import sys
@@ -154,6 +154,9 @@ if config.enable_board_tests:
 
 # Concurrency tests control their own parallelism, so run them serially
 lit_config.parallelism_groups["concurrency"] = 1
+
+# NPU XRT tests should run serially to avoid resource contention
+lit_config.parallelism_groups["npu-xrt"] = 1
 
 if config.python_passes:
     config.available_features.add("python_passes")
