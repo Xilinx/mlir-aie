@@ -1242,4 +1242,7 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
   }];
 }
 
+// Include CERT operations
+include "aie/Dialect/AIEX/IR/CERTOps.td"
+
 #endif // AIEX_OPS
