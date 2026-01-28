@@ -761,7 +761,8 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     return failure();
   }
 
-  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations, blockwrite_prefix))) {
+  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
+                                         blockwrite_prefix))) {
     return failure();
   }
 
