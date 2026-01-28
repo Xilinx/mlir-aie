@@ -219,7 +219,6 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
     if (auto tileOp = llvm::dyn_cast<AIE::TileOp>(definingOp)) {
       referencedOpsToClone.insert(referencedOpsToClone.begin(), definingOp);
     } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
-      // First ensure the tile referenced by the lock is available
       Value lockTile = lockOp.getTile();
       if (lockTile) {
         referencedValuesToVisit.insert(lockTile);
@@ -229,7 +228,8 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
       return errorReportOp->emitError()
              << "Referenced SSA value defined by unsupported operation type: "
              << definingOp->getName().getStringRef()
-             << ". Currently only aie.tile operations are supported.";
+             << ". Currently only aie.tile and aie.lock operations are "
+                "supported.";
     }
   }
 
@@ -238,8 +238,6 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
       int col = tileOp.getCol();
       int row = tileOp.getRow();
 
-      // Check if a tile with matching col/row already exists in the caller
-      // device
       rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
       mlir::Operation *clonedTile = nullptr;
 
@@ -296,8 +294,6 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
           });
 
     } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
-      // Now clone the lock operation into the caller device
-
       rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
       Operation *clonedLock = rewriter.clone(*lockOp, argMap);
       argMap.map(definingOp->getResult(0), clonedLock->getResult(0));
