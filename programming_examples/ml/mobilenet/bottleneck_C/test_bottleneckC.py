@@ -13,7 +13,9 @@ from aie.utils.ml import DataShaper
 import time
 import os
 import numpy as np
-from aie.utils.xrt import setup_aie, extract_trace, write_out_trace, execute
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime
+from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 import aie.utils.test as test_utils
 from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
 from brevitas.quant.fixed_point import (
@@ -174,21 +176,11 @@ def main(opts):
     # ------------------------------------------------------
     # Get device, load the xclbin & kernel and register them
     # ------------------------------------------------------
-    app = setup_aie(
-        xclbin_path,
-        insts_path,
-        shape_in_act,
-        dtype_in,
-        shape_total_wts,
-        dtype_wts,
-        shape_out,
-        dtype_out,
-        enable_trace=enable_trace,
-        trace_size=opts.trace_size,
-    )
+    npu_kernel = NPUKernel(xclbin_path, insts_path)
+    kernel_handle = DefaultNPURuntime.load(npu_kernel)
+
     print("orig shape_out: ", shape_out)
     print("orig shape_size: ", size_out)
-    print("in0 (act) size: ", app.buffers[3].shape)
     print("in1 (wts) size: ", app.buffers[4].shape)
     print("shape_out size (+trace): ", app.buffers[5].shape)
 
@@ -579,13 +571,35 @@ def main(opts):
         log_folder + "/after_weights_mem_fmt_final.txt", sep=",", format="%d"
     )
     print(total_wts.shape)
+
+    # ------------------------------------------------------
+    # Setup buffers run loop
+    # ------------------------------------------------------
+    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
+    in2 = iron.tensor(total_wts, dtype=dtype_wts)
+    out = iron.zeros(size_out, dtype=dtype_out)
+    buffers = [in1, in2, out]
+
+    trace_config = None
+    if enable_trace:
+        trace_config = TraceConfig(
+            trace_size=opts.trace_size,
+            trace_file=trace_file,
+            trace_after_last_tensor=True,
+            enable_ctrl_pkts=False,
+            last_tensor_shape=out.shape,
+            last_tensor_dtype=out.dtype,
+        )
+        HostRuntime.prepare_args_for_trace(buffers, trace_config)
+
     # ------------------------------------------------------
     # Main run loop
     # ------------------------------------------------------
     for i in range(num_iter):
         start = time.time_ns()
         # aie_output = execute(app, ifm_mem_fmt, total_wts)
-        full_output = execute(app, ifm_mem_fmt, total_wts)
+        DefaultNPURuntime.run(kernel_handle, buffers)
+        full_output = out.numpy()
         stop = time.time_ns()
         npu_time = stop - start
         npu_time_total = npu_time_total + npu_time
