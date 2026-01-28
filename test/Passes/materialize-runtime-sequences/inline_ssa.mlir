@@ -43,7 +43,7 @@ module {
     %lock_0_2 = aie.lock(%tile_0_2)
 
     aie.runtime_sequence (%arg0: memref<64xi32>) {
-      // Thse are the 
+      // These are the operations that reference other SSA values in the device, which will require hoisting those SSA values into the calling device.
       aiex.npu.rtp_write(@rtp_0_0, 0, -1168197103)
       aiex.set_lock(%lock_0_2, 1)
     }
