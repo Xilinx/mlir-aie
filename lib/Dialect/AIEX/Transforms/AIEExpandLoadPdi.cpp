@@ -35,8 +35,9 @@ using namespace xilinx::AIE;
 namespace {
 
 // Helper to transform a single load_pdi operation
-static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp,
-                                      ModuleOp moduleOp) {
+static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
+                                      unsigned index) {
+  static unsigned long i = 0;
   OpBuilder builder(loadPdiOp);
 
   // Only process load_pdi ops that reference a device
@@ -52,27 +53,24 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp,
     return failure();
   }
 
-  AIE::DeviceOp emptyDevice;
   // Create a unique empty device for this reset to avoid PDI address caching
   OpBuilder::InsertionGuard guard(builder);
   builder.setInsertionPointToStart(moduleOp.getBody());
 
   // Find a unique name for the empty device
-  std::string emptyName;
-  int emptyIndex = 0;
-  do {
-    emptyName = "empty_" + std::to_string(emptyIndex++);
-  } while (moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName));
+  std::string emptyName = "empty_" + std::to_string(index % 2);
 
-  auto deviceType = referencedDevice.getDevice();
-  auto loc = builder.getUnknownLoc();
-  emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
-                                      builder.getStringAttr(emptyName));
-  emptyDevice.getRegion().emplaceBlock();
-
-  Block *deviceBlock = &emptyDevice.getRegion().front();
-  builder.setInsertionPointToEnd(deviceBlock);
-  AIE::EndOp::create(builder, loc);
+  AIE::DeviceOp emptyDevice = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName);
+  if (!emptyDevice) {
+    auto deviceType = referencedDevice.getDevice();
+    auto loc = builder.getUnknownLoc();
+    emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,
+                                        builder.getStringAttr(emptyName));
+    emptyDevice.getRegion().emplaceBlock();
+    Block *deviceBlock = &emptyDevice.getRegion().front();
+    builder.setInsertionPointToEnd(deviceBlock);
+    AIE::EndOp::create(builder, loc);
+  }
 
   builder.setInsertionPoint(loadPdiOp);
 
@@ -85,14 +83,18 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp,
                        loadPdiOp.getAddressAttr());
 
   // Generate and insert configuration operations
-  if (failed(xilinx::AIE::generateAndInsertConfigOps(builder, referencedDevice,
-                                                     ""))) {
+  if (failed(xilinx::AIE::generateAndInsertConfigOps(
+          builder, referencedDevice, "",
+          AIEToConfigurationOutputType::Transaction,
+          "loadpdi_" + std::to_string(i)))) {
     loadPdiOp.emitError("Failed to generate configuration operations");
     return failure();
   }
 
   // Erase the original load_pdi operation
   loadPdiOp.erase();
+
+  i++;
 
   return success();
 }
@@ -117,11 +119,13 @@ struct AIEExpandLoadPdiPass
         [&](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });
 
     // Transform load_pdi ops
+    unsigned idx = 0;
     for (auto loadPdiOp : loadPdiOps) {
-      if (failed(transformLoadPdi(loadPdiOp, module))) {
+      if (failed(transformLoadPdi(loadPdiOp, module, idx))) {
         signalPassFailure();
         return;
       }
+      idx++;
     }
   }
 };
