@@ -61,6 +61,10 @@ for(int i = 0; i < size_2; i++)
             //                                   + k * stride_0]
 ```
 
+It is important to note that data layout transformations are interpreted differently depending on whether data is pushed onto or read from the AXI stream:
+- when data are pushed to the AXI stream, the layout describes from where in memory the DMA reads the elements to push to the stream (where to ``get items from'');
+- when data are read from the AXI stream, the data layout describes where in memory the DMA writes the elements that are arriving over the stream in-sequence (where to ``put arriving items'').
+
 As a practical example, here is an access pattern that corresponds to alternating between even and odd elements every 8 elements in a 128 element buffer/stream:
 ```mlir
 aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
@@ -97,6 +101,8 @@ class object_fifo:
 
 Our compiler directly lowers Object FIFOs that make use of the aforementioned data layout transformations to `AIE_DMABDOp`. You can use the `dimensionsToStream` input to describe in which order the `producerTile`'s DMA should push the objects onto the stream. Similarly, the `dimensionsFromStreamPerConsumer` input describes to the DMAs of each individual tile in the `consumerTiles` in what layout to retrieve the objects from the stream.
 
+> **NOTE:**  Data layout transformations are applied to individual ObjectFIFO objects and cannot act across object boundaries.
+
 As an example, the Object FIFO in the code below contains objects with datatype `<4x8xi8>`. Using the `dimensionsToStream` input it performs a data layout transformation on the producer tile side that pushes elements from memory onto the stream as follows: For every even length-8 row, select the first three even-indexed elements.
 ```python
 A = tile(1, 1)
@@ -128,7 +134,11 @@ and further represented as in the image below:
 
 <img height="300" src="./../../assets/DataLayoutTransformation.svg">
 
+Please see the [`to_stream_transformations`](./to_stream_transformations/) and [`from_stream_transformations`](./from_stream_transformations/) designs for end-to-end IRON examples of each pattern.
+
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
+
+When using the implicit copy feature of the Object FIFO for a join or distribute data movement pattern, data layout transformations are not supported on the output of a join pattern or on the input of a distribute one. The reasoning behind this decision is largely due to the complexity of the DMA program that is required to achieve a data layout transformation across the larger data tensor while ensuring race-free execution of the DMA buffer descriptor logic. Users may however program the DMA buffer descriptors themselves for specific designs; this is further detailed in [this](https://github.com/Xilinx/mlir-aie/discussions/2748) discussion.
 
 ### Data Layout Transformations with the Runtime Sequence
 

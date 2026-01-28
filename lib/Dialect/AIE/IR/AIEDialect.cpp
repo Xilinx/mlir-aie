@@ -232,6 +232,15 @@ static TileElement getParentTileElement(Operation *op) {
   return llvm::dyn_cast<TileElement>(parent);
 }
 
+// Returns the maximum index described by the input dimensions.
+static int64_t getDimsMaxIdx(ArrayRef<BDDimLayoutAttr> dims) {
+  int64_t maxIdx = 0;
+  for (BDDimLayoutAttr dim : dims) {
+    maxIdx += dim.getStride() * (dim.getSize() - 1);
+  }
+  return maxIdx;
+}
+
 namespace {
 
 struct UsesAreAccessible {
@@ -371,10 +380,19 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
+  // data layout transformations on shim tiles are handled by runtime operations
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
     return emitError(
         "`dimensionsToStream` data layout transformations are not supported "
         "on shim tile producers");
+  }
+  for (auto consTile : getConsumerTiles()) {
+    if (cast<TileOp>(consTile.getDefiningOp()).isShimTile() &&
+        !getDimensionsFromStream(consTile).empty()) {
+      return emitError(
+          "`dimensionsFromStreamPerConsumer` data layout transformations are "
+          "not supported on shim tile consumers");
+    }
   }
 
   if (getRepeatCount().has_value()) {
@@ -416,6 +434,18 @@ LogicalResult ObjectFifoCreateOp::verify() {
 
 TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
+}
+
+BDDimLayoutArrayAttr
+ObjectFifoCreateOp::getDimensionsFromStream(Value consumerTile) {
+  int dimsIndex = 0;
+  for (auto cons : getConsumerTiles()) {
+    if (cons == consumerTile)
+      break;
+    else
+      dimsIndex++;
+  }
+  return getDimensionsFromStreamPerConsumer()[dimsIndex];
 }
 
 ParseResult xilinx::AIE::parseObjectFifoProducerTile(
@@ -620,6 +650,23 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
+    ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
+    if (!fifoOut.getDimensionsToStream().empty()) {
+      int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
+      int64_t minInputBufferSize = -1;
+      for (auto lenIn : getJoinTransferLengths()) {
+        if (lenIn <= minInputBufferSize || minInputBufferSize < 0)
+          minInputBufferSize = lenIn;
+      }
+      if (minInputBufferSize <= maxIdx) {
+        return emitOpError()
+               << "specified output stride(s) and size(s) result in out "
+                  "of bounds access in join input, for index "
+               << std::to_string(maxIdx) << " in transfer of length "
+               << std::to_string(minInputBufferSize) << ".";
+      }
+    }
+
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
       return emitOpError("number of provided dst offsets must be equal "
@@ -629,30 +676,30 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitOpError("src offsets should be empty for distribute");
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    if (!fifoIn.getDimensionsToStream().empty()) {
-      return emitOpError("currently does not support objectFifos with "
-                         "dimensionsToStream.");
-    }
-    for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
-      if (!dims.empty())
-        return emitOpError("currently does not support objectFifos with "
-                           "dimensionsFromStreamPerConsumer.");
-    }
-
-    for (auto fifoOut : getOutputObjectFifos()) {
-      for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
-        if (!dims.empty())
-          return emitOpError("currently does not support objectFifos with "
-                             "dimensionsFromStreamPerConsumer.");
+    if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
+      int64_t maxIdx =
+          getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
+      int64_t minOutputBufferSize = -1;
+      for (auto lenOut : getDistributeTransferLengths()) {
+        if (lenOut <= minOutputBufferSize || minOutputBufferSize < 0)
+          minOutputBufferSize = lenOut;
+      }
+      if (minOutputBufferSize <= maxIdx) {
+        return emitOpError()
+               << "specified input stride(s) and size(s) result in out "
+                  "of bounds access in distribute output, for index "
+               << std::to_string(maxIdx) << " in transfer of length "
+               << std::to_string(minOutputBufferSize) << ".";
       }
     }
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getRepeatCount().has_value())
+      if (fifoOut.getRepeatCount().has_value()) {
         repeat_counts.push_back(fifoOut.getRepeatCount().value());
-      else
+      } else {
         repeat_counts.push_back(0);
+      }
     }
     for (auto repeat : repeat_counts)
       if (repeat_counts[0] != repeat)
@@ -1763,9 +1810,16 @@ LogicalResult DMABDOp::verify() {
     return success();
   }
 
-  if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
-    return emitOpError(
-        "BDs only support BufferOp or ExternalBufferOp operands.");
+  // Check if buffer is an unranked memref (e.g., from function argument)
+  bool isUnrankedMemRef = llvm::isa<UnrankedMemRefType>(getBuffer().getType());
+
+  // For unranked memrefs, we can't verify as strictly since we don't know
+  // the buffer's defining op or its full type at compile time
+  if (!isUnrankedMemRef) {
+    if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
+      return emitOpError(
+          "BDs only support BufferOp or ExternalBufferOp operands.");
+  }
 
   if (getLenInBytes() % 4)
     return emitOpError("transfer length must be multiple of 4 (i.e., represent "
@@ -1773,7 +1827,7 @@ LogicalResult DMABDOp::verify() {
 
   TileID parentTileId = getParentTileElement(getOperation()).getTileID();
 
-  if (getOperation()->getParentOfType<MemOp>() &&
+  if (!isUnrankedMemRef && getOperation()->getParentOfType<MemOp>() &&
       (getBufferOp().getTileOp().colIndex() != parentTileId.col ||
        getBufferOp().getTileOp().rowIndex() != parentTileId.row))
     return emitOpError(
@@ -1799,10 +1853,18 @@ LogicalResult DMABDOp::verify() {
                               " tile (got "
                            << std::to_string(dims->size()) << " dimensions).";
 
-    MemRefType buffer = getBuffer().getType();
-    int64_t maxIdx = 0;
+    auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
+    if (!buffer)
+      return emitOpError() << "dimensions attribute cannot be used with "
+                              "unranked memref buffer type.";
+    int64_t maxIdx = getDimsMaxIdx(*dims);
+    if (buffer.getNumElements() <= maxIdx)
+      return emitOpError() << "Specified stride(s) and size(s) result in out "
+                              "of bounds access in buffer, for index "
+                           << std::to_string(maxIdx) << " in memref of length "
+                           << std::to_string(buffer.getNumElements()) << ".";
+
     for (BDDimLayoutAttr dim : *dims) {
-      maxIdx += dim.getStride() * (dim.getSize() - 1);
       if (0 == dim.getStride())
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
@@ -1815,12 +1877,6 @@ LogicalResult DMABDOp::verify() {
       if (dim.getStride() >= (1UL << 19))
         return emitOpError() << "Stride may not exceed " << (1 << 20);
     }
-
-    if (buffer.getNumElements() <= maxIdx)
-      return emitOpError() << "Specified stride(s) and size(s) result in out "
-                              "of bounds access in buffer, for index "
-                           << std::to_string(maxIdx) << " in memref of length "
-                           << std::to_string(buffer.getNumElements()) << ".";
 
     // Since streams read 32b words, there's no way to read eg 16b with stride
     // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
@@ -1863,8 +1919,9 @@ LogicalResult DMABDOp::verify() {
       return emitOpError() << "Inner-most padding-after count must result in"
                            << " padding in 32-bit words.";
   }
-  if (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
-      targetModel.isCoreTile(parentTileId.col, parentTileId.row)) {
+  if (!isUnrankedMemRef &&
+      (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
+       targetModel.isCoreTile(parentTileId.col, parentTileId.row))) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
       int offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)

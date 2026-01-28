@@ -925,7 +925,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   }];
 
   let arguments = (
-    ins AnyMemRef:$buffer,
+    ins AnyRankedOrUnrankedMemRef:$buffer,
         // in multiples of element width (not bytes)
         DefaultValuedAttr<AIEI32Attr, "0">:$offset,
         // in multiples of element width (not bytes)
@@ -947,13 +947,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     BufferOp getBufferOp();
     int32_t getBufferElementTypeWidthInBytes() {
       mlir::DataLayout dataLayout = mlir::DataLayout::closest(*this);
-      return dataLayout.getTypeSize(getBuffer().getType().getElementType());
+      auto bufferType = llvm::cast<mlir::BaseMemRefType>(getBuffer().getType());
+      return dataLayout.getTypeSize(bufferType.getElementType());
     }
     uint32_t getLenInBytes() {
       if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
-      else
-        return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();
+      auto memrefType = llvm::dyn_cast<mlir::MemRefType>(getBuffer().getType());
+      if (!memrefType)
+        return 0; // Unranked memref without explicit len
+      return memrefType.getNumElements() * getBufferElementTypeWidthInBytes();
     }
     int32_t getOffsetInBytes() { return getOffset() * getBufferElementTypeWidthInBytes(); }
   }];
@@ -1791,6 +1794,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
       return getOperation()->getAttrOfType<mlir::StringAttr>(
           mlir::SymbolTable::getSymbolAttrName());
     }
+
+    AIE::BDDimLayoutArrayAttr getDimensionsFromStream(mlir::Value consumerTile);
   }];
 
   let builders = [
@@ -1867,6 +1872,10 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the OjbectFifoLinkOp. In this case,
     parts will be taken out of the input `objectFifo`'s buffers based on dst_offsets input array.
     The join pattern is the exact inverse of the distribute one and uses the src_offsets input array instead.
+
+    In the cases of the join and distribute patterns, the link has some special restrictions on `toStream` and `fromStream` dimensions:
+    - join: the `toStream` dimensions of the output `objectFifo` cannot access an index beyond the length of the minimum transfer length in the src_offsets.
+    - distribute: the `fromStream` dimensions of the input `objectFifo` cannot access an index beyond the length of the minimum transfer length in dst_offsets.
   }];
 
   let arguments = (
