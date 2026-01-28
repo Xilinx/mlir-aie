@@ -713,7 +713,7 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   std::vector<AIEDevice> devices{AIEDevice::npu1_1col, AIEDevice::npu1_2col,
                                  AIEDevice::npu1_3col, AIEDevice::npu1};
   auto device = DeviceOp::create(builder, loc, devices[columns - 1],
-                                 StringAttr::get(builder.getContext()));
+                                 DeviceOp::getDefaultDeviceName());
   device.getRegion().emplaceBlock();
   DeviceOp::ensureTerminator(device.getBodyRegion(), builder, loc);
   builder.setInsertionPointToStart(device.getBody());
@@ -761,7 +761,7 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     return failure();
   }
 
-  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations))) {
+  if (failed(convertTransactionOpsToMLIR(builder, outputType, operations, blockwrite_prefix))) {
     return failure();
   }
 
