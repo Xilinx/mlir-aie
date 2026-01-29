@@ -15,7 +15,7 @@ import os
 
 
 from aie.iron.algorithms import for_each
-from aie.iron import CoreFunction
+from aie.iron import ExternalFunction
 
 
 def main():
@@ -52,7 +52,7 @@ def main():
                         }
                     }
                 }""")
-        add_one = CoreFunction(
+        add_one = ExternalFunction(
             f"add_one",
             source_file=tmp_file_name,
             arg_types=[

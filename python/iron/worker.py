@@ -15,7 +15,7 @@ from ..helpers.dialects.scf import _for as range_
 from .device import PlacementTile, AnyComputeTile, Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
-from .kernel import Kernel, ExternalFunction, CoreFunction
+from .kernel import Kernel, ExternalFunction
 from .buffer import Buffer
 from .resolvable import Resolvable
 
@@ -82,9 +82,7 @@ class Worker(ObjectFifoEndpoint):
 
         # Check arguments to the core. Some information is saved for resolution.
         for arg in self.fn_args:
-            if isinstance(arg, (Kernel, ExternalFunction)) or isinstance(
-                arg, (Kernel, CoreFunction)
-            ):
+            if isinstance(arg, (Kernel, ExternalFunction)):
                 bin_names.add(arg.bin_name)
             elif isinstance(arg, ObjectFifoHandle):
                 arg.endpoint = self

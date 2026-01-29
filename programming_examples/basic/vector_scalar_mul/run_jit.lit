@@ -1,0 +1,7 @@
+// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano 
+//
+// RUN: %run_on_npu1% python3 %S/vector_scalar_mul_jit.py
+// RUN: %run_on_npu2% python3 %S/vector_scalar_mul_jit.py
