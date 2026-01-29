@@ -53,7 +53,7 @@ def transform(input, output, func):
             elem_in = of_in.acquire(1)
             elem_out = of_out.acquire(1)
 
-            if isinstance(func_to_apply, iron.CoreFunction):
+            if isinstance(func_to_apply, iron.ExternalFunction):
                 func_to_apply(elem_in, elem_out, n)
             else:
                 elem_out[i] = func_to_apply(elem_in[i])
@@ -193,7 +193,7 @@ def transform_parallel(input, output, func):
             elem_in = of_in.acquire(1)
             elem_out = of_out.acquire(1)
 
-            if isinstance(func_to_apply, iron.CoreFunction):
+            if isinstance(func_to_apply, iron.ExternalFunction):
                 func_to_apply(elem_in, elem_out, n)
             else:
                 elem_out[i] = func_to_apply(elem_in[i])
