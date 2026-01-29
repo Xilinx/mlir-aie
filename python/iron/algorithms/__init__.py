@@ -7,5 +7,4 @@
 # (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 from .for_each import for_each
-from .transform import transform
-from .transform import transform_binary
+from .transform import transform, transform_binary, transform_parallel, transform_parallel_binary

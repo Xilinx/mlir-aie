@@ -56,7 +56,8 @@ def transform(input, output, func):
             if isinstance(func_to_apply, iron.ExternalFunction):
                 func_to_apply(elem_in, elem_out, n)
             else:
-                elem_out[i] = func_to_apply(elem_in[i])
+                for j in range_(n):
+                    elem_out[j] = func_to_apply(elem_in[j])
             of_in.release(1)
             of_out.release(1)
 
@@ -196,7 +197,8 @@ def transform_parallel(input, output, func):
             if isinstance(func_to_apply, iron.ExternalFunction):
                 func_to_apply(elem_in, elem_out, n)
             else:
-                elem_out[i] = func_to_apply(elem_in[i])
+                for j in range_(n):
+                    elem_out[j] = func_to_apply(elem_in[j])
             of_in.release(1)
             of_out.release(1)
 
@@ -219,11 +221,12 @@ def transform_parallel(input, output, func):
     # The pattern chops the data in equal chunks
     # and moves them in parallel across the columns
     # and channels.
+    per_worker_elements = num_elements // (num_columns * num_channels)
     taps = [
         TensorAccessPattern(
             (1, num_elements),
-            n * i * num_channels + n * j,
-            [1, 1, 1, n],
+            per_worker_elements * (i * num_channels + j),
+            [1, 1, 1, per_worker_elements],
             [0, 0, 0, 1],
         )
         for i in range(num_columns)
@@ -234,14 +237,19 @@ def transform_parallel(input, output, func):
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty) as (A, B):
         rt.start(*my_workers)
+
         # Fill the input objectFIFOs with data
+        tg_in = rt.task_group()
         for i in range(num_columns):
             for j in range(num_channels):
                 rt.fill(
                     of_ins[i * num_channels + j].prod(),
                     A,
                     taps[i * num_channels + j],
+                    task_group=tg_in,
                 )
+        rt.finish_task_group(tg_in)
+
         # Drain the output objectFIFOs with data
         tg_out = rt.task_group()  # Initialize a group for parallel drain tasks
         for i in range(num_columns):
@@ -349,18 +357,24 @@ def transform_parallel_binary(first, second, output, binary_op):
     rt = Runtime()
     with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
         rt.start(*my_workers)
+
         # Fill the input objectFIFOs with data
+        tg_in = rt.task_group()
         for i in range(num_columns):
             rt.fill(
                 of_in1s[i].prod(),
                 A,
-                taps[ij],
+                taps[i],
+                task_group=tg_in,
             )
             rt.fill(
                 of_in2s[i].prod(),
                 B,
                 taps[i],
+                task_group=tg_in,
             )
+        rt.finish_task_group(tg_in)
+
         # Drain the output objectFIFOs with data
         tg_out = rt.task_group()
         for i in range(num_columns):
