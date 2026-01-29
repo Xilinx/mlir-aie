@@ -12,7 +12,12 @@
 
 import aie.iron as iron
 from aie.iron import ExternalFunction
-from aie.iron.algorithms import transform, transform_parallel, transform_binary, transform_parallel_binary
+from aie.iron.algorithms import (
+    transform,
+    transform_parallel,
+    transform_binary,
+    transform_parallel_binary,
+)
 import pytest
 import numpy as np
 
@@ -21,6 +26,7 @@ TILE_SIZE = 16
 # =============================================================================
 # transform tests
 # =============================================================================
+
 
 def test_transform_add():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
