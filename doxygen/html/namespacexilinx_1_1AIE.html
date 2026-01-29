@@ -186,8 +186,8 @@ Functions</h2></td></tr>
 <tr class="separator:ad259321f48e6e3625635cb7f5fd3b33d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac985a8aecd5dfdfb4647526eba308b53" id="r_ac985a8aecd5dfdfb4647526eba308b53"><td class="memItemLeft" align="right" valign="top">std::optional&lt; mlir::ModuleOp &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#ac985a8aecd5dfdfb4647526eba308b53">convertTransactionBinaryToMLIR</a> (mlir::MLIRContext *ctx, std::vector&lt; uint8_t &gt; &amp;binary)</td></tr>
 <tr class="separator:ac985a8aecd5dfdfb4647526eba308b53"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa5f472d6a84d09bf2de98f469bb68ff1" id="r_aa5f472d6a84d09bf2de98f469bb68ff1"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#aa5f472d6a84d09bf2de98f469bb68ff1">generateAndInsertConfigOps</a> (mlir::OpBuilder &amp;builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir=&quot;&quot;, <a class="el" href="namespacexilinx_1_1AIE.html#a762491ef43de808b51459248afef7262">AIEToConfigurationOutputType</a> outputType=<a class="el" href="namespacexilinx_1_1AIE.html#a762491ef43de808b51459248afef7262a1eaa1f09fd1fd0f1e6843adb6ce8a387">AIEToConfigurationOutputType::Transaction</a>)</td></tr>
-<tr class="separator:aa5f472d6a84d09bf2de98f469bb68ff1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ab8dfe585ff4ca77822fdb7fde2caccad" id="r_ab8dfe585ff4ca77822fdb7fde2caccad"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#ab8dfe585ff4ca77822fdb7fde2caccad">generateAndInsertConfigOps</a> (mlir::OpBuilder &amp;builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir=&quot;&quot;, <a class="el" href="namespacexilinx_1_1AIE.html#a762491ef43de808b51459248afef7262">AIEToConfigurationOutputType</a> outputType=<a class="el" href="namespacexilinx_1_1AIE.html#a762491ef43de808b51459248afef7262a1eaa1f09fd1fd0f1e6843adb6ce8a387">AIEToConfigurationOutputType::Transaction</a>, std::string blockwrite_prefix=&quot;config_blockwrite_data_&quot;)</td></tr>
+<tr class="separator:ab8dfe585ff4ca77822fdb7fde2caccad"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a018a3eead56f94e73553c29b82330121" id="r_a018a3eead56f94e73553c29b82330121"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a018a3eead56f94e73553c29b82330121">hasFlag</a> (<a class="el" href="namespacexilinx_1_1AIE.html#a1e5717a803c6f177a33c4d5e4da2704e">ResetTileType</a> value, <a class="el" href="namespacexilinx_1_1AIE.html#a1e5717a803c6f177a33c4d5e4da2704e">ResetTileType</a> flag)</td></tr>
 <tr class="separator:a018a3eead56f94e73553c29b82330121"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a06b1cddd85baf6668987835546679750" id="r_a06b1cddd85baf6668987835546679750"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a06b1cddd85baf6668987835546679750">generateAndInsertResetOps</a> (mlir::OpBuilder &amp;builder, xilinx::AIE::DeviceOp device, <a class="el" href="structxilinx_1_1AIE_1_1ResetConfig.html">ResetConfig</a> dmaConfig, <a class="el" href="structxilinx_1_1AIE_1_1ResetConfig.html">ResetConfig</a> switchConfig, <a class="el" href="structxilinx_1_1AIE_1_1ResetConfig.html">ResetConfig</a> lockConfig, <a class="el" href="structxilinx_1_1AIE_1_1ResetConfig.html">ResetConfig</a> coreConfig, xilinx::AIE::DeviceOp previousDevice)</td></tr>
@@ -1588,7 +1588,7 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEToConfiguration_8cpp_source.html#l00691">691</a> of file <a class="el" href="AIEToConfiguration_8cpp_source.html">AIEToConfiguration.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEToConfiguration_8cpp_source.html#l00693">693</a> of file <a class="el" href="AIEToConfiguration_8cpp_source.html">AIEToConfiguration.cpp</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00089">aieTranslateBinaryToTxn()</a>.</p>
 
@@ -1968,7 +1968,7 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEToConfiguration_8cpp_source.html#l00869">869</a> of file <a class="el" href="AIEToConfiguration_8cpp_source.html">AIEToConfiguration.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEToConfiguration_8cpp_source.html#l00873">873</a> of file <a class="el" href="AIEToConfiguration_8cpp_source.html">AIEToConfiguration.cpp</a>.</p>
 
 </div>
 </div>
@@ -1987,12 +1987,12 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEToConfiguration_8cpp_source.html#l00864">864</a> of file <a class="el" href="AIEToConfiguration_8cpp_source.html">AIEToConfiguration.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEToConfiguration_8cpp_source.html#l00868">868</a> of file <a class="el" href="AIEToConfiguration_8cpp_source.html">AIEToConfiguration.cpp</a>.</p>
 
 </div>
 </div>
-<a id="aa5f472d6a84d09bf2de98f469bb68ff1" name="aa5f472d6a84d09bf2de98f469bb68ff1"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aa5f472d6a84d09bf2de98f469bb68ff1">&#9670;&#160;</a></span>generateAndInsertConfigOps()</h2>
+<a id="ab8dfe585ff4ca77822fdb7fde2caccad" name="ab8dfe585ff4ca77822fdb7fde2caccad"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ab8dfe585ff4ca77822fdb7fde2caccad">&#9670;&#160;</a></span>generateAndInsertConfigOps()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -2019,7 +2019,13 @@ Variables</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype"><a class="el" href="namespacexilinx_1_1AIE.html#a762491ef43de808b51459248afef7262">AIEToConfigurationOutputType</a>&#160;</td>
-          <td class="paramname"><em>outputType</em> = <code><a class="el" href="namespacexilinx_1_1AIE.html#a762491ef43de808b51459248afef7262a1eaa1f09fd1fd0f1e6843adb6ce8a387">AIEToConfigurationOutputType::Transaction</a></code>&#160;</td>
+          <td class="paramname"><em>outputType</em> = <code><a class="el" href="namespacexilinx_1_1AIE.html#a762491ef43de808b51459248afef7262a1eaa1f09fd1fd0f1e6843adb6ce8a387">AIEToConfigurationOutputType::Transaction</a></code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">std::string&#160;</td>
+          <td class="paramname"><em>blockwrite_prefix</em> = <code>&quot;config_blockwrite_data_&quot;</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -4446,7 +4452,7 @@ Variables</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jan 27 2026 18:48:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jan 29 2026 00:11:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

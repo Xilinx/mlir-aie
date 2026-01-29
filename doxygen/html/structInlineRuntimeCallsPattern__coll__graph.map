@@ -1,5 +1,9 @@
 <map id="InlineRuntimeCallsPattern" name="InlineRuntimeCallsPattern">
-<area shape="rect" id="Node000001" title=" " alt="" coords="5,79,196,104"/>
-<area shape="rect" id="Node000002" href="$classRewritePattern.html" title=" " alt="" coords="41,5,160,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="103,44,103,79,98,79,98,44"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="107,108,297,133"/>
+<area shape="rect" id="Node000002" href="$classRewritePattern.html" title=" " alt="" coords="5,5,124,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="93,37,188,106,185,110,90,41"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="149,5,255,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="205,45,205,108,199,108,199,45"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="280,5,503,31"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="383,44,370,67,350,86,324,101,296,110,294,105,322,96,347,82,366,63,379,42"/>
 </map>

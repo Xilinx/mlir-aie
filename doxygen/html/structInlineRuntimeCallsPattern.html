@@ -48,6 +48,7 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="structInlineRuntimeCallsPattern-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">InlineRuntimeCallsPattern Struct Reference</div></div>
 </div><!--header-->
@@ -71,25 +72,38 @@ $(function() {
 <div id="dynsection-1-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="structInlineRuntimeCallsPattern__coll__graph.png" border="0" usemap="#aInlineRuntimeCallsPattern_coll__map" alt="Collaboration graph"/></div>
 <map name="aInlineRuntimeCallsPattern_coll__map" id="aInlineRuntimeCallsPattern_coll__map">
-<area shape="rect" title=" " alt="" coords="5,79,196,104"/>
-<area shape="rect" href="classRewritePattern.html" title=" " alt="" coords="41,5,160,31"/>
-<area shape="poly" title=" " alt="" coords="103,44,103,79,98,79,98,44"/>
+<area shape="rect" title=" " alt="" coords="107,108,297,133"/>
+<area shape="rect" href="classRewritePattern.html" title=" " alt="" coords="5,5,124,31"/>
+<area shape="poly" title=" " alt="" coords="93,37,188,106,185,110,90,41"/>
+<area shape="rect" title=" " alt="" coords="149,5,255,31"/>
+<area shape="poly" title=" " alt="" coords="205,45,205,108,199,108,199,45"/>
+<area shape="rect" title=" " alt="" coords="280,5,503,31"/>
+<area shape="poly" title=" " alt="" coords="383,44,370,67,350,86,324,101,296,110,294,105,322,96,347,82,366,63,379,42"/>
 </map>
 <center><span class="legend">[<a href="graph_legend.html">legend</a>]</span></center></div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a92497ddd2132585b42ff6c41d8c4e0b0" id="r_a92497ddd2132585b42ff6c41d8c4e0b0"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structInlineRuntimeCallsPattern.html#a92497ddd2132585b42ff6c41d8c4e0b0">InlineRuntimeCallsPattern</a> (MLIRContext *ctx)</td></tr>
-<tr class="separator:a92497ddd2132585b42ff6c41d8c4e0b0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2ccfb10c26940eca94f68fc19d08e9fb" id="r_a2ccfb10c26940eca94f68fc19d08e9fb"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structInlineRuntimeCallsPattern.html#a2ccfb10c26940eca94f68fc19d08e9fb">InlineRuntimeCallsPattern</a> (MLIRContext *ctx, mlir::OpBuilder::InsertPoint &amp;<a class="el" href="structInlineRuntimeCallsPattern.html#a13bfd1e82f5c85f70b7cdec0a69970fd">ssaDefInsertPoint</a>, mlir::OpBuilder::InsertPoint &amp;<a class="el" href="structInlineRuntimeCallsPattern.html#a7eeda5fbfe76540993e39c99c00ff546">symbolDefInsertPoint</a>, llvm::SetVector&lt; SymbolRefAttr &gt; &amp;<a class="el" href="structInlineRuntimeCallsPattern.html#ae3e2479daed12b8e03d34089ce22d67a">allSymbolNames</a>)</td></tr>
+<tr class="separator:a2ccfb10c26940eca94f68fc19d08e9fb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0d4ee351275439be8a73ebfe48db3f89" id="r_a0d4ee351275439be8a73ebfe48db3f89"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structInlineRuntimeCallsPattern.html#a0d4ee351275439be8a73ebfe48db3f89">matchAndRewrite</a> (Operation *op, PatternRewriter &amp;rewriter) const override</td></tr>
 <tr class="separator:a0d4ee351275439be8a73ebfe48db3f89"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
+Public Attributes</h2></td></tr>
+<tr class="memitem:a13bfd1e82f5c85f70b7cdec0a69970fd" id="r_a13bfd1e82f5c85f70b7cdec0a69970fd"><td class="memItemLeft" align="right" valign="top">mlir::OpBuilder::InsertPoint &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structInlineRuntimeCallsPattern.html#a13bfd1e82f5c85f70b7cdec0a69970fd">ssaDefInsertPoint</a></td></tr>
+<tr class="separator:a13bfd1e82f5c85f70b7cdec0a69970fd"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7eeda5fbfe76540993e39c99c00ff546" id="r_a7eeda5fbfe76540993e39c99c00ff546"><td class="memItemLeft" align="right" valign="top">mlir::OpBuilder::InsertPoint &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structInlineRuntimeCallsPattern.html#a7eeda5fbfe76540993e39c99c00ff546">symbolDefInsertPoint</a></td></tr>
+<tr class="separator:a7eeda5fbfe76540993e39c99c00ff546"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae3e2479daed12b8e03d34089ce22d67a" id="r_ae3e2479daed12b8e03d34089ce22d67a"><td class="memItemLeft" align="right" valign="top">llvm::SetVector&lt; SymbolRefAttr &gt; &amp;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structInlineRuntimeCallsPattern.html#ae3e2479daed12b8e03d34089ce22d67a">allSymbolNames</a></td></tr>
+<tr class="separator:ae3e2479daed12b8e03d34089ce22d67a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00345">345</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00381">381</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a92497ddd2132585b42ff6c41d8c4e0b0" name="a92497ddd2132585b42ff6c41d8c4e0b0"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a92497ddd2132585b42ff6c41d8c4e0b0">&#9670;&#160;</a></span>InlineRuntimeCallsPattern()</h2>
+<a id="a2ccfb10c26940eca94f68fc19d08e9fb" name="a2ccfb10c26940eca94f68fc19d08e9fb"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2ccfb10c26940eca94f68fc19d08e9fb">&#9670;&#160;</a></span>InlineRuntimeCallsPattern()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -101,8 +115,30 @@ Public Member Functions</h2></td></tr>
           <td class="memname">InlineRuntimeCallsPattern::InlineRuntimeCallsPattern </td>
           <td>(</td>
           <td class="paramtype">MLIRContext *&#160;</td>
-          <td class="paramname"><em>ctx</em></td><td>)</td>
+          <td class="paramname"><em>ctx</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">mlir::OpBuilder::InsertPoint &amp;&#160;</td>
+          <td class="paramname"><em>ssaDefInsertPoint</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">mlir::OpBuilder::InsertPoint &amp;&#160;</td>
+          <td class="paramname"><em>symbolDefInsertPoint</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">llvm::SetVector&lt; SymbolRefAttr &gt; &amp;&#160;</td>
+          <td class="paramname"><em>allSymbolNames</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
         </tr>
       </table>
   </td>
@@ -112,7 +148,7 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00347">347</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00387">387</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
 
 </div>
 </div>
@@ -151,7 +187,64 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00350">350</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00396">396</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+
+<p class="reference">References <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00385">allSymbolNames</a>, <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00383">ssaDefInsertPoint</a>, and <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00384">symbolDefInsertPoint</a>.</p>
+
+</div>
+</div>
+<h2 class="groupheader">Member Data Documentation</h2>
+<a id="ae3e2479daed12b8e03d34089ce22d67a" name="ae3e2479daed12b8e03d34089ce22d67a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae3e2479daed12b8e03d34089ce22d67a">&#9670;&#160;</a></span>allSymbolNames</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">llvm::SetVector&lt;SymbolRefAttr&gt;&amp; InlineRuntimeCallsPattern::allSymbolNames</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00385">385</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00396">matchAndRewrite()</a>.</p>
+
+</div>
+</div>
+<a id="a13bfd1e82f5c85f70b7cdec0a69970fd" name="a13bfd1e82f5c85f70b7cdec0a69970fd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a13bfd1e82f5c85f70b7cdec0a69970fd">&#9670;&#160;</a></span>ssaDefInsertPoint</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">mlir::OpBuilder::InsertPoint&amp; InlineRuntimeCallsPattern::ssaDefInsertPoint</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00383">383</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00396">matchAndRewrite()</a>.</p>
+
+</div>
+</div>
+<a id="a7eeda5fbfe76540993e39c99c00ff546" name="a7eeda5fbfe76540993e39c99c00ff546"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a7eeda5fbfe76540993e39c99c00ff546">&#9670;&#160;</a></span>symbolDefInsertPoint</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">mlir::OpBuilder::InsertPoint&amp; InlineRuntimeCallsPattern::symbolDefInsertPoint</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00384">384</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+
+<p class="reference">Referenced by <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00396">matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -161,7 +254,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jan 27 2026 18:48:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jan 29 2026 00:11:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

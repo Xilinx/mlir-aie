@@ -95,58 +95,58 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span><span class="keyword">namespace </span>{</div>
 <div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
 <div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span><span class="comment">// Helper to transform a single load_pdi operation</span></div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="keyword">static</span> LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp,</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>                                      ModuleOp moduleOp) {</div>
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>  OpBuilder builder(loadPdiOp);</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span> </div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>  <span class="comment">// Only process load_pdi ops that reference a device</span></div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>  <span class="keyword">auto</span> deviceRefAttr = loadPdiOp.getDeviceRefAttr();</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>  <span class="keywordflow">if</span> (!deviceRefAttr) {</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>    <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>  }</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span> </div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>  <span class="keyword">auto</span> referencedDevice = moduleOp.lookupSymbol&lt;AIE::DeviceOp&gt;(deviceRefAttr);</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  <span class="keywordflow">if</span> (!referencedDevice) {</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>    loadPdiOp.emitError(<span class="stringliteral">&quot;Referenced symbol &#39;&quot;</span>)</div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>        &lt;&lt; deviceRefAttr.getValue() &lt;&lt; <span class="stringliteral">&quot;&#39; is not a device&quot;</span>;</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>    <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>  }</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span> </div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>  AIE::DeviceOp emptyDevice;</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="keyword">static</span> LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>                                      <span class="keywordtype">unsigned</span> index) {</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>  <span class="keyword">static</span> <span class="keywordtype">unsigned</span> <span class="keywordtype">long</span> i = 0;</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>  OpBuilder builder(loadPdiOp);</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>  <span class="comment">// Only process load_pdi ops that reference a device</span></div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>  <span class="keyword">auto</span> deviceRefAttr = loadPdiOp.getDeviceRefAttr();</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>  <span class="keywordflow">if</span> (!deviceRefAttr) {</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>  }</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span> </div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  <span class="keyword">auto</span> referencedDevice = moduleOp.lookupSymbol&lt;AIE::DeviceOp&gt;(deviceRefAttr);</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>  <span class="keywordflow">if</span> (!referencedDevice) {</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    loadPdiOp.emitError(<span class="stringliteral">&quot;Referenced symbol &#39;&quot;</span>)</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>        &lt;&lt; deviceRefAttr.getValue() &lt;&lt; <span class="stringliteral">&quot;&#39; is not a device&quot;</span>;</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>  }</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span> </div>
 <div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>  <span class="comment">// Create a unique empty device for this reset to avoid PDI address caching</span></div>
 <div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>  OpBuilder::InsertionGuard guard(builder);</div>
 <div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>  builder.setInsertionPointToStart(moduleOp.getBody());</div>
 <div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span> </div>
 <div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>  <span class="comment">// Find a unique name for the empty device</span></div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>  std::string emptyName;</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>  <span class="keywordtype">int</span> emptyIndex = 0;</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>  <span class="keywordflow">do</span> {</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>    emptyName = <span class="stringliteral">&quot;empty_&quot;</span> + std::to_string(emptyIndex++);</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>  } <span class="keywordflow">while</span> (moduleOp.lookupSymbol&lt;AIE::DeviceOp&gt;(emptyName));</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span> </div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>  <span class="keyword">auto</span> deviceType = referencedDevice.getDevice();</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>  <span class="keyword">auto</span> loc = builder.getUnknownLoc();</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>  emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>                                      builder.getStringAttr(emptyName));</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>  emptyDevice.getRegion().emplaceBlock();</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span> </div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>  Block *deviceBlock = &amp;emptyDevice.getRegion().front();</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>  builder.setInsertionPointToEnd(deviceBlock);</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>  AIE::EndOp::create(builder, loc);</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>  std::string emptyName = <span class="stringliteral">&quot;empty_&quot;</span> + std::to_string(index % 2);</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span> </div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>  AIE::DeviceOp emptyDevice = moduleOp.lookupSymbol&lt;AIE::DeviceOp&gt;(emptyName);</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>  <span class="keywordflow">if</span> (!emptyDevice) {</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    <span class="keyword">auto</span> deviceType = referencedDevice.getDevice();</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    <span class="keyword">auto</span> loc = builder.getUnknownLoc();</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    emptyDevice = AIE::DeviceOp::create(builder, loc, deviceType,</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>                                        builder.getStringAttr(emptyName));</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    emptyDevice.getRegion().emplaceBlock();</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>    Block *deviceBlock = &amp;emptyDevice.getRegion().front();</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>    builder.setInsertionPointToEnd(deviceBlock);</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    AIE::EndOp::create(builder, loc);</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>  }</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>  builder.setInsertionPoint(loadPdiOp);</div>
 <div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span> </div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>  builder.setInsertionPoint(loadPdiOp);</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span> </div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>  <span class="comment">// Create new empty load_pdi operation; this triggers a device reset.</span></div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>  <span class="comment">// This is needed even for the first device configuration; without it, the</span></div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>  <span class="comment">// first iteration of the design would run, but subsequent ones might not.</span></div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>  NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(),</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>                       FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>                       loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),</div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>                       loadPdiOp.getAddressAttr());</div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span> </div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>  <span class="comment">// Generate and insert configuration operations</span></div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#aa5f472d6a84d09bf2de98f469bb68ff1">xilinx::AIE::generateAndInsertConfigOps</a>(builder, referencedDevice,</div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>                                                     <span class="stringliteral">&quot;&quot;</span>))) {</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>  <span class="comment">// Create new empty load_pdi operation; this triggers a device reset.</span></div>
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>  <span class="comment">// This is needed even for the first device configuration; without it, the</span></div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>  <span class="comment">// first iteration of the design would run, but subsequent ones might not.</span></div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>  NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(),</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>                       FlatSymbolRefAttr::get(emptyDevice.getSymNameAttr()),</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>                       loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>                       loadPdiOp.getAddressAttr());</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span> </div>
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>  <span class="comment">// Generate and insert configuration operations</span></div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#ab8dfe585ff4ca77822fdb7fde2caccad">xilinx::AIE::generateAndInsertConfigOps</a>(</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>          builder, referencedDevice, <span class="stringliteral">&quot;&quot;</span>,</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>          AIEToConfigurationOutputType::Transaction,</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>          <span class="stringliteral">&quot;loadpdi_&quot;</span> + std::to_string(i)))) {</div>
 <div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>    loadPdiOp.emitError(<span class="stringliteral">&quot;Failed to generate configuration operations&quot;</span>);</div>
 <div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    <span class="keywordflow">return</span> failure();</div>
 <div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>  }</div>
@@ -154,45 +154,49 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>  <span class="comment">// Erase the original load_pdi operation</span></div>
 <div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>  loadPdiOp.erase();</div>
 <div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span> </div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>}</div>
-<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span> </div>
-<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span><span class="keyword">struct </span>AIEExpandLoadPdiPass</div>
-<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>    : <span class="keyword">public</span> AIEExpandLoadPdiBase&lt;AIEExpandLoadPdiPass&gt; {</div>
-<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>  <span class="keywordtype">void</span> getDependentDialects(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
-<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>    registry</div>
-<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>        .insert&lt;memref::MemRefDialect, AIE::AIEDialect, AIEX::AIEXDialect&gt;();</div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>  }</div>
-<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span> </div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
-<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>    <span class="keyword">auto</span> <span class="keyword">module</span> = getOperation();</div>
-<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span> </div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>    <span class="comment">// Collect all load_pdi operations in program order;</span></div>
-<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>    <span class="comment">// need to collect once, then transform all collected ops;</span></div>
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>    <span class="comment">// since the transform inserts a new empty load_pdi, we can&#39;t transform as</span></div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>    <span class="comment">// we walk or it&#39;d infinitely recurse.</span></div>
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>    SmallVector&lt;NpuLoadPdiOp&gt; loadPdiOps;</div>
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span> </div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>    <span class="keyword">module</span>.walk(</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>        [&amp;](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span> </div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>    <span class="comment">// Transform load_pdi ops</span></div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> loadPdiOp : loadPdiOps) {</div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>      <span class="keywordflow">if</span> (failed(transformLoadPdi(loadPdiOp, module))) {</div>
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>        signalPassFailure();</div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>        <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>      }</div>
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>    }</div>
-<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>  }</div>
-<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>};</div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span> </div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>} <span class="comment">// namespace</span></div>
-<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span> </div>
-<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>std::unique_ptr&lt;mlir::OperationPass&lt;mlir::ModuleOp&gt;&gt;</div>
-<div class="foldopen" id="foldopen00132" data-start="{" data-end="}">
-<div class="line"><a id="l00132" name="l00132"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a7221cf1fcee889bbee476412cb727dda">  132</a></span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a7221cf1fcee889bbee476412cb727dda">xilinx::AIEX::createAIEExpandLoadPdiPass</a>() {</div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEExpandLoadPdiPass&gt;();</div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>}</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>  i++;</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span> </div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>}</div>
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span> </div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span><span class="keyword">struct </span>AIEExpandLoadPdiPass</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>    : <span class="keyword">public</span> AIEExpandLoadPdiBase&lt;AIEExpandLoadPdiPass&gt; {</div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>  <span class="keywordtype">void</span> getDependentDialects(DialectRegistry &amp;registry)<span class="keyword"> const override </span>{</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    registry</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>        .insert&lt;memref::MemRefDialect, AIE::AIEDialect, AIEX::AIEXDialect&gt;();</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>  }</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span> </div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>  <span class="keywordtype">void</span> runOnOperation()<span class="keyword"> override </span>{</div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>    <span class="keyword">auto</span> <span class="keyword">module</span> = getOperation();</div>
+<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span> </div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>    <span class="comment">// Collect all load_pdi operations in program order;</span></div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>    <span class="comment">// need to collect once, then transform all collected ops;</span></div>
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>    <span class="comment">// since the transform inserts a new empty load_pdi, we can&#39;t transform as</span></div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>    <span class="comment">// we walk or it&#39;d infinitely recurse.</span></div>
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>    SmallVector&lt;NpuLoadPdiOp&gt; loadPdiOps;</div>
+<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span> </div>
+<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>    <span class="keyword">module</span>.walk(</div>
+<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>        [&amp;](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });</div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span> </div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    <span class="comment">// Transform load_pdi ops</span></div>
+<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>    <span class="keywordtype">unsigned</span> idx = 0;</div>
+<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> loadPdiOp : loadPdiOps) {</div>
+<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>      <span class="keywordflow">if</span> (failed(transformLoadPdi(loadPdiOp, module, idx))) {</div>
+<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>        signalPassFailure();</div>
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>        <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>      }</div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>      idx++;</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    }</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>  }</div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>};</div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span> </div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>} <span class="comment">// namespace</span></div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span> </div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>std::unique_ptr&lt;mlir::OperationPass&lt;mlir::ModuleOp&gt;&gt;</div>
+<div class="foldopen" id="foldopen00136" data-start="{" data-end="}">
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIEX.html#a7221cf1fcee889bbee476412cb727dda">  136</a></span><a class="code hl_function" href="namespacexilinx_1_1AIEX.html#a7221cf1fcee889bbee476412cb727dda">xilinx::AIEX::createAIEExpandLoadPdiPass</a>() {</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>  <span class="keywordflow">return</span> std::make_unique&lt;AIEExpandLoadPdiPass&gt;();</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>}</div>
 </div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEToConfiguration_8h_html"><div class="ttname"><a href="AIEToConfiguration_8h.html">AIEToConfiguration.h</a></div></div>
@@ -200,14 +204,14 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aAIEXPasses_8h_html"><div class="ttname"><a href="AIEXPasses_8h.html">AIEXPasses.h</a></div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIEX_html"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html">xilinx::AIEX</a></div><div class="ttdef"><b>Definition</b> <a href="AIETokenAnalysis_8h_source.html#l00028">AIETokenAnalysis.h:28</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a7221cf1fcee889bbee476412cb727dda"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a7221cf1fcee889bbee476412cb727dda">xilinx::AIEX::createAIEExpandLoadPdiPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt; createAIEExpandLoadPdiPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEExpandLoadPdi_8cpp_source.html#l00132">AIEExpandLoadPdi.cpp:132</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIEX_html_a7221cf1fcee889bbee476412cb727dda"><div class="ttname"><a href="namespacexilinx_1_1AIEX.html#a7221cf1fcee889bbee476412cb727dda">xilinx::AIEX::createAIEExpandLoadPdiPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt; createAIEExpandLoadPdiPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEExpandLoadPdi_8cpp_source.html#l00136">AIEExpandLoadPdi.cpp:136</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_aa5f472d6a84d09bf2de98f469bb68ff1"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#aa5f472d6a84d09bf2de98f469bb68ff1">xilinx::AIE::generateAndInsertConfigOps</a></div><div class="ttdeci">mlir::LogicalResult generateAndInsertConfigOps(mlir::OpBuilder &amp;builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir=&quot;&quot;, AIEToConfigurationOutputType outputType=AIEToConfigurationOutputType::Transaction)</div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_ab8dfe585ff4ca77822fdb7fde2caccad"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ab8dfe585ff4ca77822fdb7fde2caccad">xilinx::AIE::generateAndInsertConfigOps</a></div><div class="ttdeci">mlir::LogicalResult generateAndInsertConfigOps(mlir::OpBuilder &amp;builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir=&quot;&quot;, AIEToConfigurationOutputType outputType=AIEToConfigurationOutputType::Transaction, std::string blockwrite_prefix=&quot;config_blockwrite_data_&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jan 27 2026 18:48:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Jan 29 2026 00:11:29 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
