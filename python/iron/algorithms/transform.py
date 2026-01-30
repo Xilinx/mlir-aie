@@ -343,11 +343,12 @@ def transform_parallel_binary(first, second, output, binary_op):
     # The pattern chops the data in equal chunks
     # and moves them in parallel across the columns
     # and channels.
+    per_worker_elements = num_elements // num_columns
     taps = [
         TensorAccessPattern(
             (1, num_elements),
-            n * i,
-            [1, 1, 1, n],
+            per_worker_elements * i,
+            [1, 1, 1, per_worker_elements],
             [0, 0, 0, 1],
         )
         for i in range(num_columns)
