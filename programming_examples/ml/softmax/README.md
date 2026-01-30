@@ -73,6 +73,11 @@ To compile the design on whole array:
 env use_whole_array=1 make
 ```
 
+To compile the design on whole array with custom columns and cores per column:
+```shell
+env use_whole_array=1 whole_array_cols=2 whole_array_rows=2 make
+```
+
 To run the design:
 ```shell
 make run

@@ -14,7 +14,7 @@ include ${srcdir}/../../makefile-common
 
 aie2_runtime_dir = ${MLIR_AIE_DIR}/aie_runtime_lib/AIE2
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+devicename ?= npu2
 
 ifeq ($(devicename),npu2)
 VPATH :=${srcdir}/../../../aie_kernels/aie2p
@@ -25,9 +25,18 @@ endif
 targetname = softmax
 trace_size = 8192
 
+# Run parameters
+n_iterations ?= 20
+n_warmup ?= 10
+
+whole_array_cols ?= 1
+whole_array_rows ?= 4
+
 aie_py_src=${targetname}.py
+aie_py_args=--size ${size}
 use_placed?=0
 use_whole_array?=0
+size?=262144
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
@@ -35,6 +44,7 @@ endif
 
 ifeq (${use_whole_array}, 1)
 aie_py_src=${targetname}_whole_array_placed.py
+aie_py_args=--n_col ${whole_array_cols} --n_cores_per_col ${whole_array_rows} --size ${size}
 endif
 
 all: build/final.xclbin build/insts.bin
@@ -68,11 +78,11 @@ endif
 
 build/aie.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} > $@
+	python3 $< ${devicename} ${aie_py_args} > $@
 
 build/aie_trace.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${devicename} ${trace_size} > $@
+	python3 $< ${devicename} --trace_size ${trace_size} ${aie_py_args} > $@
 
 
 build/final.xclbin: build/aie.mlir build/kernels.a
@@ -100,10 +110,10 @@ endif
 
 ifeq ($(devicename),npu)
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --npu 1
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --npu 1 --iters ${n_iterations} --warmup ${n_warmup} --size ${size}
 else ifeq ($(devicename),npu2)
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --npu 2
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE --npu 2 --iters ${n_iterations} --warmup ${n_warmup} --size ${size}
 endif
 
 profile: ${targetname}.exe build/final.xclbin

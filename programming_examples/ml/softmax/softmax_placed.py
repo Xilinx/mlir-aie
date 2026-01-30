@@ -7,6 +7,7 @@
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
+import argparse
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
@@ -17,10 +18,10 @@ from aie.helpers.util import np_ndarray_type_get_shape
 import aie.utils.trace as trace_utils
 
 
-def vector_softmax(dev, trace_size):
+def vector_softmax(dev, trace_size, N):
 
     word_size_in = 2
-    N = 262144  # *1024
+    # N = 262144  # *1024
     N_in_bytes = N * word_size_in
 
     # Tile sizes
@@ -134,22 +135,54 @@ def vector_softmax(dev, trace_size):
             trace_utils.gen_trace_done_aie2(cores[0])
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
+def main():
+    parser = argparse.ArgumentParser(prog="softmax_placed")
+    parser.add_argument(
+        "device_name",
+        choices=["npu", "npu2"],
+        default="npu",
+        help="Device name (npu or npu2)",
+    )
+    parser.add_argument(
+        "trace_size_pos",
+        nargs="?",
+        type=int,
+        default=0,
+        help="Trace size (optional positional, default: 0)",
+    )
+    parser.add_argument(
+        "--trace_size",
+        dest="trace_size_flag",
+        type=int,
+        default=0,
+        help="Trace size (optional flag, default: 0)",
+    )
+    parser.add_argument(
+        "--size",
+        type=int,
+        default=262144,
+        help="Size of the input vector (default: 262144)",
+    )
+
+    args = parser.parse_args()
+
+    trace_size = args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
+
+    if args.device_name == "npu":
         dev = AIEDevice.npu1_1col
-    elif device_name == "npu2":
+    elif args.device_name == "npu2":
         dev = AIEDevice.npu2_1col
     else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
-except ValueError:
-    print("Argument is not an integer")
+        raise ValueError(f"[ERROR] Device name {args.device_name} is unknown")
 
-with mlir_mod_ctx() as ctx:
-    vector_softmax(dev, trace_size)
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+    with mlir_mod_ctx() as ctx:
+        vector_softmax(dev, trace_size, args.size)
+        res = ctx.module.operation.verify()
+        if res == True:
+            print(ctx.module)
+        else:
+            print(res)
+
+
+if __name__ == "__main__":
+    main()

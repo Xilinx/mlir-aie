@@ -86,6 +86,8 @@ int main(int argc, const char *argv[]) {
 
   options.add_options()("npu", "Select NPU",
                         cxxopts::value<int>()->default_value("2"));
+  options.add_options()("s,size", "Input/Output volume size",
+                        cxxopts::value<int>()->default_value("262144"));
 
   test_utils::parse_options(argc, argv, options, vm);
 
@@ -95,9 +97,10 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
   int dev = vm["npu"].as<int>();
+  int size_arg = vm["size"].as<int>();
 
   int TILE_SIZE = 1024;
-  int INOUT0_VOLUME = 262144;        // Input
+  int INOUT0_VOLUME = size_arg;      // Input
   int INOUT1_VOLUME = INOUT0_VOLUME; // Output
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
@@ -176,6 +179,7 @@ int main(int argc, const char *argv[]) {
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
+  std::vector<float> npu_times;  // Store all iteration times
 
   int errors = 0;
 
@@ -236,6 +240,7 @@ int main(int argc, const char *argv[]) {
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
             .count();
 
+    npu_times.push_back(npu_time);  // Store this iteration's time
     npu_time_total += npu_time;
     npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
     npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
@@ -244,6 +249,12 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Print verification and timing results
   // ------------------------------------------------------
+
+  // Print individual iteration times
+  std::cout << std::endl << "NPU times for each iteration:" << std::endl;
+  for (int i = 0; i < npu_times.size(); i++) {
+    std::cout << "  Iteration " << (i + 1) << ": " << npu_times[i] << " us" << std::endl;
+  }
 
   // TODO - Mac count to guide gflops
   float macs = 0;

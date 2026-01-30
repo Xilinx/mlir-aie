@@ -7,6 +7,7 @@
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
+import argparse
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
@@ -17,18 +18,16 @@ from aie.helpers.util import np_ndarray_type_get_shape
 import aie.utils.trace as trace_utils
 
 
-def vector_softmax(dev, trace_size):
+def vector_softmax(dev, trace_size, n_col, n_cores_per_col, N):
 
     word_size_in = 2
-    N = 262144  # *1024
+    # N = 262144  # *1024
     N_in_bytes = N * word_size_in
 
     # Tile sizes
     n = 1024
     N_div_n = N // n
 
-    n_cores_per_col = 1
-    n_col = 1
     n_cores = n_col * n_cores_per_col
     N_per_shimtile = N // n_col
     N_per_memtile = n * n_cores_per_col
@@ -140,7 +139,7 @@ def vector_softmax(dev, trace_size):
 
         # Split the input FIFOs for each column into groups corresponding to the cores
         # in that column and link them to the memory tile FIFOs.
-        inA_fifos_split = [[], [], [], []]
+        inA_fifos_split = [[] for _ in range(n_col)]
         for i in range(n_col):
             inA_fifos_split[i] = inA_fifos[
                 i * n_cores_per_col : (i + 1) * n_cores_per_col
@@ -152,7 +151,7 @@ def vector_softmax(dev, trace_size):
 
         # Split the output FIFOs for each column into groups corresponding to the cores
         # in that column and link them to the memory tile FIFOs.
-        outC_fifos_split = [[], [], [], []]
+        outC_fifos_split = [[] for _ in range(n_col)]
         for i in range(n_col):
             outC_fifos_split[i] = outC_fifos[
                 i * n_cores_per_col : (i + 1) * n_cores_per_col
@@ -228,22 +227,67 @@ def vector_softmax(dev, trace_size):
             trace_utils.gen_trace_done_aie2(cores[0])
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
+def main():
+    parser = argparse.ArgumentParser(prog="softmax_whole_array_placed")
+    parser.add_argument(
+        "device_name",
+        choices=["npu", "npu2"],
+        default="npu",
+        help="Device name (npu or npu2)",
+    )
+    parser.add_argument(
+        "trace_size_pos",
+        nargs="?",
+        type=int,
+        default=0,
+        help="Trace size (optional positional, default: 0)",
+    )
+    parser.add_argument(
+        "--trace_size",
+        dest="trace_size_flag",
+        type=int,
+        default=0,
+        help="Trace size (optional flag, default: 0)",
+    )
+    parser.add_argument(
+        "--n_col",
+        type=int,
+        default=4,
+        help="Number of columns (default: 4)",
+    )
+    parser.add_argument(
+        "--n_cores_per_col",
+        type=int,
+        default=4,
+        help="Number of cores per column (default: 4)",
+    )
+    parser.add_argument(
+        "--size",
+        type=int,
+        default=262144,
+        help="Size of the input vector (default: 262144)",
+    )
+
+    args = parser.parse_args()
+
+    trace_size = args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
+
+    if args.device_name == "npu":
         dev = AIEDevice.npu1
-    elif device_name == "npu2":
+    elif args.device_name == "npu2":
         dev = AIEDevice.npu2_4col
     else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
-except ValueError:
-    print("Argument is not an integer")
+        # This should be caught by argparse choices, but just in case
+        raise ValueError(f"[ERROR] Device name {args.device_name} is unknown")
 
-with mlir_mod_ctx() as ctx:
-    vector_softmax(dev, trace_size)
-    res = ctx.module.operation.verify()
-    if res == True:
-        print(ctx.module)
-    else:
-        print(res)
+    with mlir_mod_ctx() as ctx:
+        vector_softmax(dev, trace_size, args.n_col, args.n_cores_per_col, args.size)
+        res = ctx.module.operation.verify()
+        if res == True:
+            print(ctx.module)
+        else:
+            print(res)
+
+
+if __name__ == "__main__":
+    main()
