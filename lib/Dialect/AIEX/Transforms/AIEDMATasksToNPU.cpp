@@ -225,6 +225,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
             "address.");
       }
       buf_addr = *buffer.getAddress();
+      buf_addr += bd_op.getOffsetInBytes();
       if (target_model.isCoreTile(col, row)) {
         NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
                                  (buf_addr / 4) << 14, 0x0fffc000, nullptr,

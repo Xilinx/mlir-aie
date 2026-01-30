@@ -125,8 +125,38 @@ int main(int argc, const char *argv[]) {
 
   int errors = 0;
 
-  for (uint32_t i = 0; i < N; i++) {
-    uint32_t ref = (i + 1);
+  for (uint32_t i = 0; i < N / 4; i++) {
+    uint32_t ref = i + 1 + 2048;
+    if (*(bufOut + i) != ref) {
+      errors++;
+      if (verbosity >= 1) {
+        std::cout << "Error at index " << i << ": expected " << ref << ", got "
+                  << *(bufOut + i) << std::endl;
+      }
+    }
+  }
+  for (uint32_t i = N / 4; i < N / 2; i++) {
+    uint32_t ref = (i - (N / 4)) + 1;
+    if (*(bufOut + i) != ref) {
+      errors++;
+      if (verbosity >= 1) {
+        std::cout << "Error at index " << i << ": expected " << ref << ", got "
+                  << *(bufOut + i) << std::endl;
+      }
+    }
+  }
+  for (uint32_t i = N / 2; i < 3 * N / 4; i++) {
+    uint32_t ref = (i - (N / 2)) + 1 + 3072;
+    if (*(bufOut + i) != ref) {
+      errors++;
+      if (verbosity >= 1) {
+        std::cout << "Error at index " << i << ": expected " << ref << ", got "
+                  << *(bufOut + i) << std::endl;
+      }
+    }
+  }
+  for (uint32_t i = 3 * N / 4; i < N; i++) {
+    uint32_t ref = (i - (3 * N / 4)) + 1 + 1024;
     if (*(bufOut + i) != ref) {
       errors++;
       if (verbosity >= 1) {
