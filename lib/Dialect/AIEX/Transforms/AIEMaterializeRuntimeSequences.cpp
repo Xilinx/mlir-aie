@@ -295,13 +295,22 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
 
     } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
       rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
-      rewriter.clone(*lockOp, argMap);
+      Operation *clonedLock = rewriter.clone(*lockOp, argMap);
       clonedSSAInsertPoint = rewriter.saveInsertionPoint();
+
+      // Map old lock result to new lock result
+      argMap.map(definingOp->getResult(0), clonedLock->getResult(0));
+      rewriter.replaceOpUsesWithIf(
+          definingOp, clonedLock->getResult(0), [&](OpOperand &operand) {
+            return operand.getOwner()->getParentOfType<AIE::DeviceOp>() ==
+                   callerDevice;
+          });
     } else {
       return errorReportOp->emitError()
              << "Referenced SSA value defined by unsupported operation type: "
              << definingOp->getName().getStringRef()
-             << ". Currently only aie.tile operations are supported.";
+             << ". Currently only aie.tile and aie.lock operations are "
+                "supported.";
     }
   }
 
