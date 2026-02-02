@@ -52,8 +52,8 @@ module @test_core_tile_with_locks {
 // CHECK: aiex.npu.writebd
 // CHECK-SAME: lock_acq_enable = 1
 // CHECK-SAME: next_bd = 0
-// CHECK-SAME: use_next_bd = 1
 // CHECK-SAME: row = 2
+// CHECK-SAME: use_next_bd = 1
 // CHECK-NOT: aiex.npu.write32
 module @test_core_tile_looping_with_locks {
   aie.device(npu1) {
