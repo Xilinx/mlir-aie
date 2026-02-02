@@ -228,9 +228,9 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   words[0] = (numRows << 24) | (devGen << 16) | (minor << 8) | major;
   words[1] = (numMemTileRows << 8) | numCols;
 
-  AIEX::RuntimeSequenceOp seq =
-      AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
-                                                           sequenceName);
+  AIE::RuntimeSequenceOp seq =
+      AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                          sequenceName);
   if (!seq) {
     return failure();
   }
@@ -283,9 +283,9 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     return failure();
   }
   OpBuilder builder = OpBuilder::atBlockBegin(deviceOp.getBody());
-  AIEX::RuntimeSequenceOp seq =
-      AIEX::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
-                                                           sequenceName);
+  AIE::RuntimeSequenceOp seq =
+      AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                          sequenceName);
   if (!seq) {
     return failure();
   }
@@ -320,9 +320,11 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     int row = packetOp.getRowFromAddr();
     auto destTile = TileOp::getOrCreate(builder, deviceOp, col, row);
     auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-    if (!info)
-      return destTile->emitError("Expected controller_id attribute");
-    uint32_t hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+    uint32_t hdr = 0;
+    if (info)
+      hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+    else
+      destTile->emitWarning("Expected controller_id attribute");
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // control packet header

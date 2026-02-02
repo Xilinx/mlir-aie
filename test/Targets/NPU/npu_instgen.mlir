@@ -12,7 +12,7 @@
 module {
   aie.device(npu1) {
     memref.global "private" constant @write_data : memref<8xi32> = dense<[100, 101, 102, 103, 104 ,105, 106, 107]>
-    aiex.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
+    aie.runtime_sequence(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
 
       // TXN header 0.1
       // CHECK: 06030100

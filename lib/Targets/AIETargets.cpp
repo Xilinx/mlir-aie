@@ -23,6 +23,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/Dialect/Ptr/IR/PtrOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -93,6 +94,7 @@ static void registerDialects(DialectRegistry &registry) {
   registry.insert<LLVM::LLVMDialect>();
   registry.insert<emitc::EmitCDialect>();
   registry.insert<index::IndexDialect>();
+  registry.insert<ptr::PtrDialect>();
 }
 
 // Output the buffer map for the given buffer operations, with the given offset.
@@ -127,19 +129,6 @@ void registerAIETranslations() {
   static llvm::cl::opt<int> tileRow(
       "tilerow", llvm::cl::desc("row coordinate of core to translate"),
       llvm::cl::init(0));
-
-#ifdef AIE_ENABLE_AIRBIN
-  static llvm::cl::opt<std::string> outputFilename(
-      "airbin-output-filepath",
-      llvm::cl::desc("Output airbin file path (including filename)"),
-      llvm::cl::value_desc("airbin-output-filepath"),
-      llvm::cl::init("airbin.elf"));
-
-  static llvm::cl::opt<std::string> coreFilesDir(
-      "airbin-aux-core-dir-path",
-      llvm::cl::desc("Auxiliary core elf files dir path"),
-      llvm::cl::value_desc("airbin-aux-core-dir-path"), llvm::cl::init("."));
-#endif
 
   static llvm::cl::opt<std::string> workDirPath(
       "work-dir-path", llvm::cl::Optional,
@@ -247,7 +236,13 @@ void registerAIETranslations() {
           shimJSON["channelDir"] = attrToJSON(channelDir);
           auto channelIndex = shimDMAMeta.getChannelIndexAttr();
           shimJSON["channelIndex"] = attrToJSON(channelIndex);
-          auto col = shimDMAMeta.getColAttr();
+          AIE::TileOp tile = shimDMAMeta.getTileOp();
+          if (!tile) {
+            shimDMAMeta.emitError(
+                "shim DMA allocation must reference a valid TileOp");
+            return failure();
+          }
+          auto col = tile.getColAttr();
           shimJSON["col"] = attrToJSON(col);
           moduleJSON[shimDMAMeta.getSymName()] =
               llvm::json::Value(std::move(shimJSON));
@@ -315,15 +310,6 @@ void registerAIETranslations() {
         registry.insert<xilinx::ADF::ADFDialect>();
         registerDialects(registry);
       });
-#ifdef AIE_ENABLE_AIRBIN
-  TranslateFromMLIRRegistration registrationAirbin(
-      "aie-generate-airbin", "Generate configuration binary blob",
-      [](ModuleOp module, raw_ostream &) {
-        return AIETranslateToAirbin(module, outputFilename, coreFilesDir,
-                                    deviceName);
-      },
-      registerDialects);
-#endif
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie", "Generate libxaie configuration",
       [](ModuleOp module, raw_ostream &output) {

@@ -7,22 +7,14 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from ..extras.context import mlir_mod_ctx  # type: ignore
-from ..helpers.dialects.ext.func import FuncBase
-from ..dialects.aie import device, tile
+from ..helpers.dialects.func import FuncBase
+from ..dialects.aie import device
 
 from .device import Device
 from .runtime import Runtime
 from .placers import Placer
 from .resolvable import Resolvable
-
-# import aie.utils.trace as trace_utils
 from ..utils import trace as trace_utils
-
-import contextvars
-
-CurrentDeviceOp = contextvars.ContextVar("CurrentDeviceOp", default=None)
-
-CurrentModule = contextvars.ContextVar("CurrentModule", default=None)
 
 
 class Program:
@@ -54,8 +46,6 @@ class Program:
             module (Module): The module containing the MLIR context information.
         """
         with mlir_mod_ctx() as ctx:
-            CurrentModule.set(ctx.module)
-
             # Create a fresh device instance of the same type to avoid stale MLIR operations
             # This preserves the device configuration while ensuring clean state
             device_type = type(self._device)
@@ -128,9 +118,6 @@ class Program:
 
                 # In/Out Sequence
                 self._rt.resolve()
-
-            device_op = device_body
-            CurrentDeviceOp.set(device_op)
 
             self._print_verify(ctx)
             return ctx.module

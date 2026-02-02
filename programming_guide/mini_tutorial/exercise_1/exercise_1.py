@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo, LocalBuffer
+from aie.iron import Program, Runtime, Worker, ObjectFifo, Buffer
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
@@ -25,20 +25,21 @@ def exercise_1(output):
     # Dataflow with ObjectFifos
     of_out = ObjectFifo(data_ty, name="out")
 
+    buffer = Buffer(
+        data_ty,
+        name="buff",
+        initial_value=np.array(range(data_size), dtype=element_type),
+    )
+
     # Task for the core to perform
-    def core_fn(of_out):
-        buff = LocalBuffer(
-            data_ty,
-            name="buff",
-            initial_value=np.array(range(data_size), dtype=element_type),
-        )
+    def core_fn(of_out, buff):
         elem_out = of_out.acquire(1)
         for i in range_(data_size):
             elem_out[i] = buff[i]
         of_out.release(1)
 
     # Create a worker to perform the task
-    my_worker = Worker(core_fn, [of_out.prod()])
+    my_worker = Worker(core_fn, [of_out.prod(), buffer])
 
     # To/from AIE-array runtime data movement
     rt = Runtime()

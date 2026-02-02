@@ -114,6 +114,7 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
     ]
 
     # Runtime operations to move data to/from the AIE-array
+    # START EXERCISE: Modify the code below to use task groups
     rt = Runtime()
     with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
         # Start the workers if not bypass
@@ -136,6 +137,7 @@ def my_memcpy(dev, size, num_columns, num_channels, bypass):
                     taps[i * num_channels + j],
                     wait=True,  # wait for the transfer to complete and data to be available
                 )
+    # END EXERCISE
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return Program(dev, rt).resolve_program(SequentialPlacer())

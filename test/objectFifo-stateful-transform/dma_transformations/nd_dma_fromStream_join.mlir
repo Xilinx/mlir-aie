@@ -12,12 +12,6 @@
 
 // CHECK: module @ndDMAObjFifoAIE2 {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @of2_cons : memref<256xi32>
-// CHECK:     memref.global "public" @of2 : memref<256xi32>
-// CHECK:     memref.global "public" @of1_cons : memref<128xi32>
-// CHECK:     memref.global "public" @of1 : memref<128xi32>
-// CHECK:     memref.global "public" @of0_cons : memref<128xi32>
-// CHECK:     memref.global "public" @of0 : memref<128xi32>
 // CHECK:     %{{.*}}tile_1_1 = aie.tile(1, 1)
 // CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:     %{{.*}}tile_2_3 = aie.tile(2, 3)

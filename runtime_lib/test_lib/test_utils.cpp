@@ -14,6 +14,11 @@
 #include <cassert>
 #include <filesystem>
 
+#ifdef TEST_UTILS_USE_XRT
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_kernel.h"
+#endif
+
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
@@ -118,6 +123,8 @@ std::vector<uint32_t> test_utils::load_instr_binary(std::string instr_path) {
   return instr_v;
 }
 
+#ifdef TEST_UTILS_USE_XRT
+
 // --------------------------------------------------------------------------
 // XRT
 // --------------------------------------------------------------------------
@@ -166,6 +173,8 @@ void test_utils::init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
 
   return;
 }
+
+#endif // TEST_UTILS_USE_XRT
 
 // --------------------------------------------------------------------------
 // Matrix / Float / Math

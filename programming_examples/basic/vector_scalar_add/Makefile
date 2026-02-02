@@ -30,9 +30,9 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-elf --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
+		--xclbin-name=${@F} --elf-name=insts.elf ${<F}
 		
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -46,7 +46,7 @@ else
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} ./$< -x build/final.xclbin -i build/insts.elf -k MLIR_AIE
 
 clean:
 	rm -rf build _build ${targetname}.exe

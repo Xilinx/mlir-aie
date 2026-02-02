@@ -1,8 +1,7 @@
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 from collections import defaultdict
 import numpy as np
-import sys
-from typing import Sequence, get_args, get_origin, TypeVar
-
+from typing import Sequence, get_args, get_origin
 from aie._mlir_libs import _aie as CustomTypes
 
 from ..extras import types as T
@@ -193,7 +192,9 @@ def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]
     shape = get_args(ndarray_type)[0]
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
     for elem in shape:
-        assert isinstance(elem, int), "np.ndarray shape must be a tuple of integers"
+        assert isinstance(
+            elem, (int, np.integer)
+        ), "np.ndarray shape must be a tuple of Python or numpy integer types"
     return shape
 
 

@@ -12,9 +12,11 @@
 #include <iterator>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -184,18 +186,34 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint64_t register_addr =
         target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id) +
         target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
-    if (mlir::BlockArgument buf_arg =
-            llvm::dyn_cast<mlir::BlockArgument>(buf)) {
+
+    // A buffer descriptor can refer to a statically allocated aie.buffer, or to
+    // a DDR buffer which will be passed as a runtime argument (block
+    // argument). Try to find the root block argument, either directly or
+    // through subviews/casts.
+    mlir::BlockArgument buf_arg = nullptr;
+    int64_t offset = 0;
+
+    if (auto directArg = llvm::dyn_cast<mlir::BlockArgument>(buf)) {
+      buf_arg = directArg;
+      offset = 0;
+    } else if (auto traceResult = traceSubviewToBlockArgument(buf)) {
+      buf_arg = traceResult->rootArg;
+      offset = traceResult->offsetInBytes;
+    }
+
+    if (buf_arg) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow())) {
         return bd_op->emitOpError("DDR memory (runtime input arguments) can "
                                   "only be referred to on shim tiles.");
       }
+
       unsigned arg_idx = buf_arg.getArgNumber();
-      int64_t offset = bd_op.getOffsetInBytes();
-      builder.create<NpuAddressPatchOp>(bd_op.getLoc(),
-                                        /*addr*/ register_addr,
-                                        /*arg_idx*/ arg_idx,
-                                        /*arg_plus*/ offset);
+      offset += bd_op.getOffsetInBytes();
+      NpuAddressPatchOp::create(builder, bd_op.getLoc(),
+                                /*addr*/ register_addr,
+                                /*arg_idx*/ arg_idx,
+                                /*arg_plus*/ offset);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -206,12 +224,13 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
             "address.");
       }
       buf_addr = *buffer.getAddress();
-      builder.create<NpuWrite32Op>(bd_op.getLoc(), register_addr, buf_addr,
-                                   nullptr, nullptr, nullptr);
+      NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
+                           nullptr, nullptr, nullptr);
     } else {
-      return bd_op->emitOpError("Buffer argument must be either a constant "
-                                "aie.buffer or a runtime "
-                                "sequence input argument.");
+      return bd_op->emitOpError(
+          "Buffer argument must be a constant aie.buffer, a runtime sequence "
+          "input argument, or a (chain of) subview(s) or cast(s) of a block "
+          "argument with constant offsets and strides equal to one.");
     }
     return success();
   }
@@ -222,7 +241,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                   std::optional<xilinx::AIE::PacketInfoAttr> packet) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
-    MemRefType buffer_type = bd_op.getBuffer().getType();
+    auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
     uint32_t addr_granularity = target_model.getAddressGenGranularity();
 
     uint32_t bd_id = bd_op.getBdId().value();
@@ -404,8 +423,9 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       packet_id = info.getPktId();
     }
 
-    builder.create<NpuWriteBdOp>(
-        bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity, offset,
+    NpuWriteBdOp::create(
+        builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
+        offset,
         /*enable_packet=*/enable_packet,
         /*out_of_order_id=*/out_of_order_id,
         /*packet_id=*/packet_id,
@@ -458,7 +478,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                                   // verifyBdInBlock() call
         bd_op.setNextBdId(next_dma_bd_op.getBdId().value());
         OpBuilder builder(next_bd_op);
-        builder.create<AIE::EndOp>(next_bd_op.getLoc());
+        AIE::EndOp::create(builder, next_bd_op.getLoc());
         next_bd_op.erase();
       }
     }

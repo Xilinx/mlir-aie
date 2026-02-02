@@ -11,8 +11,6 @@
 // RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
 
 // CHECK:           aie.device(xcvc1902) {
-// CHECK:             memref.global "public" @ext_of_cons : memref<16xi32>
-// CHECK:             memref.global "public" @ext_of : memref<16xi32>
 // CHECK:             %{{.*}}tile_7_2 = aie.tile(7, 2)
 // CHECK:             %{{.*}}tile_7_0 = aie.tile(7, 0)
 // CHECK:             %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_7_2) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32> 
@@ -22,7 +20,7 @@
 // CHECK:             %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_7_2, 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
 // CHECK:             %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_7_2, 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}
 // CHECK:             aie.flow(%{{.*}}tile_7_0, DMA : 0, %{{.*}}tile_7_2, DMA : 0)
-// CHECK:             aie.shim_dma_allocation @ext_of(MM2S, 0, 7)
+// CHECK:             aie.shim_dma_allocation @ext_of_shim_alloc(%shim_noc_tile_7_0, MM2S, 0)
 // CHECK:             %mem_7_2 = aie.mem(%{{.*}}tile_7_2) {
 // CHECK:               %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:             ^bb1:  // 2 preds: ^bb0, ^bb3

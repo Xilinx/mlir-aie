@@ -101,14 +101,14 @@ def parse_args(args=None):
         dest="compile",
         default=not aie_disable_compile,
         action="store_true",
-        help="Enable compiling of AIE code",
+        help="Enable compiling of AIE code for each core in the array",
     )
     parser.add_argument(
         "--no-compile",
         dest="compile",
         default=not aie_disable_compile,
         action="store_false",
-        help="Disable compiling of AIE code",
+        help="Disable compiling of AIE code for each core in the array",
     )
     parser.add_argument(
         "--host-target",
@@ -171,14 +171,6 @@ def parse_args(args=None):
         help="Use packet switched flows when lowering object fifos",
     )
     parser.add_argument(
-        "--aie-generate-airbin",
-        dest="airbin",
-        default=False,
-        action="store_const",
-        const=True,
-        help="Generate airbin configuration (default is off)",
-    )
-    parser.add_argument(
         "host_args",
         action="store",
         help="arguments for host compiler",
@@ -213,6 +205,14 @@ def parse_args(args=None):
         help="Compile cores independently in separate processes",
     )
     parser.add_argument(
+        "-O",
+        "--opt-level",
+        dest="opt_level",
+        default="2",
+        choices=["0", "1", "2", "3"],
+        help="Optimization level for AIE core compilation (default: 2)",
+    )
+    parser.add_argument(
         "-n",
         dest="execute",
         default=True,
@@ -225,6 +225,26 @@ def parse_args(args=None):
         default=False,
         action="store_true",
         help="Show progress visualization",
+    )
+    parser.add_argument(
+        "--enable-repeater-scripts",
+        dest="enable_repeater",
+        default=True,
+        action="store_true",
+        help="Generate repeater scripts on compilation failure (default: enabled)",
+    )
+    parser.add_argument(
+        "--disable-repeater-scripts",
+        dest="enable_repeater",
+        action="store_false",
+        help="Disable generation of repeater scripts on failure",
+    )
+    parser.add_argument(
+        "--repeater-output-dir",
+        dest="repeater_output_dir",
+        default=None,
+        metavar="DIR",
+        help="Directory for repeater scripts (default: system temp dir)",
     )
     parser.add_argument(
         "--aie-generate-npu-insts",
@@ -374,8 +394,36 @@ def parse_args(args=None):
         default="",
         help="Symbol name of the runtime sequence to compile. If none supplied, all runtime sequences in the selected device(s) are compiled.",
     )
+    parser.add_argument(
+        "--generate-full-elf",
+        dest="generate_full_elf",
+        default=False,
+        action="store_true",
+        help="Generate complete full ELF using aiebu-asm",
+    )
+    parser.add_argument(
+        "--full-elf-name",
+        dest="full_elf_name",
+        default="aie.elf",
+        help="Output filename for full ELF (default: aie.elf)",
+    )
+    parser.add_argument(
+        "--expand-load-pdis",
+        dest="expand_load_pdis",
+        default=False,
+        action="store_true",
+        help="Expand load_pdi operations into explicit device reset and configuration sequences",
+    )
+    parser.add_argument(
+        "--no-materialize",
+        dest="materialize_runtime_sequence",
+        default=True,
+        action="store_false",
+        help="Do not 'materialize' the runtime sequence (lower aiex.configure and aiex.run operations)",
+    )
 
     opts = parser.parse_args(args)
+
     return opts
 
 

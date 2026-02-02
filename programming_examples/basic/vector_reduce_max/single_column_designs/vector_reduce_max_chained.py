@@ -15,7 +15,7 @@ from aie.iron import (
     Program,
     Runtime,
     Worker,
-    LocalBuffer,
+    Buffer,
     str_to_dtype,
 )
 from aie.iron.placers import SequentialPlacer
@@ -84,16 +84,26 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         else np.array([np.iinfo(dtype).min], dtype=dtype)
     )
 
+    nextC_buffers = []
+    tmp_buffers = []
+    for i in range(n_cores):
+        nextC_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
+                initial_value=min_val,
+            )
+        )
+        tmp_buffers.append(
+            Buffer(
+                type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
+                initial_value=min_val,
+            )
+        )
+
     # Define a task to run
-    def start_core_body(of_in, of_out, reduce_max_vector, compute_max):
-        nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
-        tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
+    def start_core_body(
+        of_in, of_out, reduce_max_vector, compute_max, nextC_buffer, tmp_buffer
+    ):
         elem_out = of_out.acquire(1)
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
@@ -103,16 +113,9 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
         elem_out[0] = nextC_buffer[0]
         of_out.release(1)
 
-    def core_body(of_in, of_out, in0, reduce_max_vector, compute_max):
-        nextC_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
-        tmp_buffer = LocalBuffer(
-            type=np.ndarray[(out_tensor_size,), np.dtype[dtype]],
-            initial_value=min_val,
-        )
-
+    def core_body(
+        of_in, of_out, in0, reduce_max_vector, compute_max, nextC_buffer, tmp_buffer
+    ):
         for _ in range_(num_iter):
             elem_in = of_in.acquire(1)
             reduce_max_vector(elem_in, tmp_buffer, elems_per_core)
@@ -138,6 +141,8 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                         out_fifos[i + 1].cons(),
                         reduce_max_vector,
                         compute_max,
+                        nextC_buffers[i],
+                        tmp_buffers[i],
                     ],
                     trace=enable_trace,
                 )
@@ -151,6 +156,8 @@ def my_reduce_max(dev, in1_size, out_size, dtype_str, trace_size):
                         out_fifos[i].prod(),
                         reduce_max_vector,
                         compute_max,
+                        nextC_buffers[i],
+                        tmp_buffers[i],
                     ],
                     trace=enable_trace,
                 )

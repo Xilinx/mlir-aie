@@ -21,9 +21,9 @@
 
 -----
 
-IRON proposes a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch Workers, fill and drain Object FIFOs with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
+IRON provides a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch one or more `Worker`s and fill and drain Object FIFOs with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
 
-To create a Runtime sequence users can write:
+To create a `Runtime` `sequence` users can write:
 ```python
 # To/from AIE-array runtime data movement
 rt = Runtime()
@@ -34,22 +34,22 @@ The arguments to this function describe buffers that will be available on the ho
 
 #### **Runtime Tasks**
 
-Runtime tasks are performed during runtime and they may be synchronous or asynchronous. Tasks can be added to the runtime sequence during the creation of the IRON design, and they can also be queued during runtime.
+`Runtime` tasks are performed during runtime and they may be synchronous or asynchronous. Tasks can be added to the `Runtime`'s `sequence` during the creation of the IRON design, and they can also be queued during runtime.
 
-The `start()` operation is used to start one or multiple Workers that were declared in the IRON design. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+The `start()` operation is used to start one or multiple `Worker`s that were declared in the IRON design. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
 ```python
 def start(self, *args: Worker)
 ```
-If more than one Worker is given as input, they will be started in order.
+If more than one `Worker` is given as input, they will be started in order.
 
-The code snippet below shows how one `my_worker` Worker is started:
+The code snippet below shows how one `Worker`, `my_worker`, is started:
 ```python
 rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
     rt.start(my_worker)
 ```
 
-To start multiple Workers with a single use of this operation users can write:
+To start multiple `Worker`s with a single use of this operation users can write:
 ```python
 workers = []
 # create and append Workers to the "workers" array
@@ -101,23 +101,23 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, c_out):
     rt.drain(of_out.cons(), c_out, wait=True)
 ```
 
-#### **Inline Operations into a Runtime Sequence**
+#### **Inline Operations into a `Runtime`'s `Sequence`**
 
-In some cases it may be desirable to insert a Python function that generates arbitrary MLIR operations into the runtime sequence. One such example is when users want to set runtime parameters, which will be loaded into the local memory modules of the Workers at runtime.
+In some cases it may be desirable to insert a Python function that generates arbitrary MLIR operations into the `Runtime`'s `sequence`. One such example is when users want to set runtime parameters, which will be loaded into the local memory modules of the Workers at runtime.
 
-To inline operations into the runtime sequence, users can use the `inline_ops()` operation. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+To inline operations into a `Runtime`'s `sequence`, users can use the `inline_ops()` operation. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
 ```python
 def inline_ops(self, inline_func: Callable, inline_args: list)
 ```
 The `inline_func` is the function to execute within an MLIR context and the `inline_args` are state the function needs to execute.
 
-In the following code snippet, an array of `GlobalBuffers` is created where each of the buffers will hold a runtime parameter of type `16xi32`. A [`GlobalBuffer`](../../../python/iron/globalbuffer.py) is a memory region declared at the top-level of the IRON design that is available both to the Workers and to the runtime for operations. When `use_write_rtp` is set, runtime parameter specific operations will be generated within the runtime sequence at lower-levels of compiler abstraction.
+In the following code snippet, an array of `Buffer`s are created where each of the buffers will hold a runtime parameter of type `16xi32`. A [`Buffer`](../../../python/iron/buffer.py) is a memory region declared at the top-level of the IRON design that is available both to the `Worker`s and to the runtime for operations. When `use_write_rtp` is set, runtime parameter specific operations will be generated within the `Runtime`'s `sequence` at lower-levels of compiler abstraction.
 ```python
 # Runtime parameters
 rtps = []
 for i in range(4):
     rtps.append(
-        GlobalBuffer(
+        Buffer(
             np.ndarray[(16,), np.dtype[np.int32]],
             name=f"rtp{i}",
             use_write_rtp=True,
@@ -144,7 +144,7 @@ class WorkerRuntimeBarrier:
     def __init__(self, initial_value: int = 0)
 ```
 
-These barriers allow individual workers to synchronize with the runtime sequence:
+These barriers allow individual workers to synchronize with the `Runtime`'s `sequence` at runtime:
 ```python
 workerBarriers = []
 for i in range(4):
@@ -170,19 +170,26 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 ```
 Currently, a `WorkerRuntimeBarrier` may take any value between 0 and 63. This is due to the fact that these barriers leverage the lock mechansim of the architecture under-the-hood.
 
-> **NOTE:**  Similar to the `GlobalBuffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.
+> **NOTE:**  Similar to the `Buffer` it is possible to create a single barrier and pass it as input to multiple workers. At lower stages of compiler abstraction this will result in a different lock being employed for each worker.
 
 #### **Runtime Task Groups**
 
-It may be desirable to reconfigure the runtime sequence and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited.
+It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited.
 
 To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroup`s which can be created using the `task_group()` function as defined in [runtime.py](../../../python/iron/runtime/runtime.py).
 
-`RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The `finish_task_group()` operation is used to mark the end of a task group, i.e., after this operation all of the tasks in the group will be waited on for completion after which they will be freed at the same time and the runtime sequence will be reconfigured by the next task group.
+`RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The `finish_task_group()` operation is used to mark the end of a task group. This call waits for tasks in the group annotated with `wait=True` to complete, and then frees _all_ resources used by the task.
+If a `RuntimeTask` group is not explicitly defined for DMA tasks defined in a `Runtime`'s `sequence`, then a single default task group is used.
 
-> **NOTE:**  Because of their ability to wait on runtime tasks until completion and free all the resources at the same time, task groups are well-placed to handle the asynchronous nature of runtime data movement tasks.
+> **NOTE:**  A call to  `finish_task_group()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
+> 
+> To avoid race conditions, any unawaited tasks in the group should form a dependency of an awaited task.
+> It is only safe to remove a `wait=True` if you can reason that another, awaited task in the same group can only complete if the awaited task also completed.
+> For example, you may choose to set `wait=False` on an input fill if you can guarantee that a later (awaited) output drain depends on the input and completes only if the input fill completed as well.
+>
+> If you suspect a race condition, the safest (but possibly slower) solution is to annotated _all_ tasks (including inputs) with `wait=True`.
 
-The runtime sequence in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
+The `Runtime` `sequence` in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
 ```python
 rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):

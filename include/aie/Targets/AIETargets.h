@@ -66,14 +66,6 @@ mlir::LogicalResult AIETranslateToCDODirect(
     bool bigEndian = false, bool emitUnified = false, bool cdoDebug = false,
     bool aieSim = false, bool xaieDebug = false, bool enableCores = true);
 
-#ifdef AIE_ENABLE_AIRBIN
-mlir::LogicalResult AIETranslateToAirbin(mlir::ModuleOp module,
-                                         const std::string &outputFilename,
-                                         const std::string &coreFilesDir,
-                                         llvm::StringRef deviceName,
-                                         bool testAirBin = false);
-#endif
-
 mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
                                              llvm::raw_ostream &output,
                                              llvm::StringRef deviceName);

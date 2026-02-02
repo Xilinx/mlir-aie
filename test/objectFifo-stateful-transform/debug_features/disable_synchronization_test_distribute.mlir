@@ -12,12 +12,6 @@
 
 // CHECK: module @disable_sync {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     memref.global "public" @link3_cons : memref<36xi32>
-// CHECK:     memref.global "public" @link3 : memref<36xi32>
-// CHECK:     memref.global "public" @link2_cons : memref<20xi32>
-// CHECK:     memref.global "public" @link2 : memref<20xi32>
-// CHECK:     memref.global "public" @link1_cons : memref<4x4xi32>
-// CHECK:     memref.global "public" @link1 : memref<4x4xi32>
 // CHECK:     %{{.*}}tile_2_0 = aie.tile(2, 0)
 // CHECK:     %{{.*}}tile_2_1 = aie.tile(2, 1)
 // CHECK:     %{{.*}}tile_2_2 = aie.tile(2, 2)
@@ -73,7 +67,7 @@
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       aie.end
 // CHECK:     }
-// CHECK:     aie.shim_dma_allocation @link3(S2MM, 0, 2)
+// CHECK:     aie.shim_dma_allocation @link3_shim_alloc(%shim_noc_tile_2_0, S2MM, 0)
 // CHECK:   }
 // CHECK: }
 
