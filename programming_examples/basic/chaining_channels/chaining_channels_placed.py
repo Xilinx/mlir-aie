@@ -11,8 +11,14 @@ import sys
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.helpers.dialects.scf import _for as range_
 import aie.utils.trace as trace_utils
+from aie.utils.trace.events import (
+    MemTileEvent,
+    ShimTileEvent,
+    MemTilePortEvent,
+    ShimTilePortEvent,
+)
 
 N = 1024  # 1kB buffer (256 int32 elements = 1024 bytes)
 dev = AIEDevice.npu2_1col
@@ -41,7 +47,7 @@ def my_chaining_channels():
             # Convert N from bytes to int32 elements
             n_elements = N // 4
             vector_ty = np.ndarray[(n_elements,), np.dtype[np.int32]]
-            
+
             # Read buffer is 4x larger (4KB)
             n_elements_read = (N * 4) // 4
             vector_ty_read = np.ndarray[(n_elements_read,), np.dtype[np.int32]]
@@ -56,23 +62,25 @@ def my_chaining_channels():
                 tile=MemTile,
                 datatype=vector_ty,
                 name="memtile_buff",
-                initial_value=np.arange(1, n_elements + 1, dtype=np.int32)
+                initial_value=np.arange(1, n_elements + 1, dtype=np.int32),
             )
             # Lock ID 0 is located at address 0xC0000 on NPU2
             memtile_lock = lock(MemTile, lock_id=0, init=0, sym_name="memtile_lock")
 
             # ComputeTile buffer and locks for read data
             compute_buff = buffer(
-                tile=ComputeTile2,
-                datatype=vector_ty_read,
-                name="compute_buff"
+                tile=ComputeTile2, datatype=vector_ty_read, name="compute_buff"
             )
-            compute_prod_lock = lock(ComputeTile2, lock_id=0, init=1, sym_name="compute_prod_lock")
-            compute_cons_lock = lock(ComputeTile2, lock_id=1, init=0, sym_name="compute_cons_lock")
+            compute_prod_lock = lock(
+                ComputeTile2, lock_id=0, init=1, sym_name="compute_prod_lock"
+            )
+            compute_cons_lock = lock(
+                ComputeTile2, lock_id=1, init=0, sym_name="compute_cons_lock"
+            )
 
             # Flow from MemTile to ShimTile for write path
             flow(MemTile, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 0)
-            
+
             # Flow from ShimTile to ComputeTile for read path
             flow(ShimTile, WireBundle.DMA, 0, ComputeTile2, WireBundle.DMA, 0)
 
@@ -123,30 +131,38 @@ def my_chaining_channels():
                         shim=ShimTile,
                         trace_size=trace_size,
                         memtile_events=[
-                            trace_utils.MemTileEvent.LOCK_SEL0_ACQ_GE,
-                            trace_utils.MemTilePortEvent(trace_utils.MemTileEvent.PORT_RUNNING_0, 10, True),  # master(0)
-                            trace_utils.MemTilePortEvent(trace_utils.MemTileEvent.PORT_TLAST_0, 10, True),  # master(0)
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_START_TASK,
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
-                            trace_utils.MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
+                            MemTileEvent.LOCK_SEL0_ACQ_GE,
+                            MemTilePortEvent(
+                                MemTileEvent.PORT_RUNNING_0, 10, True
+                            ),  # master(0)
+                            MemTilePortEvent(
+                                MemTileEvent.PORT_TLAST_0, 10, True
+                            ),  # master(0)
+                            MemTileEvent.DMA_MM2S_SEL0_STREAM_BACKPRESSURE,
+                            MemTileEvent.DMA_MM2S_SEL0_STALLED_LOCK,
+                            MemTileEvent.DMA_MM2S_SEL0_START_TASK,
+                            MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
+                            MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
                         ],
                         shimtile_events=[
-                            trace_utils.ShimTileEvent.DMA_S2MM_0_START_TASK,
-                            trace_utils.ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
-                            trace_utils.ShimTileEvent.DMA_MM2S_0_START_TASK,
-                            trace_utils.ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
-                            trace_utils.ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
-                            trace_utils.ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
-                            trace_utils.ShimTilePortEvent(trace_utils.ShimTileEvent.PORT_RUNNING_0, 4, True),  # master(2)
-                            trace_utils.ShimTilePortEvent(trace_utils.ShimTileEvent.PORT_RUNNING_1, 5, False), # slave(3)
-                        ]
+                            ShimTileEvent.DMA_S2MM_0_START_TASK,
+                            ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+                            ShimTileEvent.DMA_MM2S_0_START_TASK,
+                            ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+                            ShimTileEvent.DMA_MM2S_0_STALLED_LOCK,
+                            ShimTileEvent.DMA_MM2S_0_MEMORY_STARVATION,
+                            ShimTilePortEvent(
+                                ShimTileEvent.PORT_RUNNING_0, 4, True
+                            ),  # master(2)
+                            ShimTilePortEvent(
+                                ShimTileEvent.PORT_RUNNING_1, 5, False
+                            ),  # slave(3)
+                        ],
                     )
 
                 # Release MemTile lock to trigger DMA
                 npu_write32(column=col, row=1, address=0xC0000, value=1)
-                
+
                 # Write BD for S2MM channel 0 (MemTile -> DDR, buffer A)
                 npu_writebd(
                     bd_id=0,
@@ -183,7 +199,7 @@ def my_chaining_channels():
                     valid_bd=1,
                 )
                 npu_address_patch(addr=0x1D004, arg_idx=0, arg_plus=0)
-                
+
                 # Write BD for MM2S channel 0 (DDR -> ComputeTile, buffer B)
                 npu_writebd(
                     bd_id=1,
@@ -220,16 +236,34 @@ def my_chaining_channels():
                     valid_bd=1,
                 )
                 npu_address_patch(addr=0x1D024, arg_idx=1, arg_plus=0)
-                
+
                 # Push BD 0 to S2MM channel 0 queue
-                npu_push_queue(column=col, row=0, direction=0, channel=0, bd_id=0, issue_token=False, repeat_count=0)
+                npu_push_queue(
+                    column=col,
+                    row=0,
+                    direction=0,
+                    channel=0,
+                    bd_id=0,
+                    issue_token=False,
+                    repeat_count=0,
+                )
                 # Wait for S2MM channel 0
                 # npu_sync(column=col, row=0, direction=0, channel=0, column_num=1, row_num=1)
-                
+
                 # Push BD 1 to MM2S channel 0 queue
-                npu_push_queue(column=col, row=0, direction=1, channel=0, bd_id=1, issue_token=True, repeat_count=0)
+                npu_push_queue(
+                    column=col,
+                    row=0,
+                    direction=1,
+                    channel=0,
+                    bd_id=1,
+                    issue_token=True,
+                    repeat_count=0,
+                )
                 # Wait for MM2S channel 0
-                npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
+                npu_sync(
+                    column=col, row=0, direction=1, channel=0, column_num=1, row_num=1
+                )
 
                 if enable_trace:
                     trace_utils.gen_trace_done_aie2(ShimTile)
