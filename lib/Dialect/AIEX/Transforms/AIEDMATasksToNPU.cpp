@@ -127,13 +127,14 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   LogicalResult verifyOptionalLocksInBlock(Block &block) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
-    // Exactly 0 or 2 lock ops
     int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-    if (n_lock_ops > 0) {
-      // TODO: Not yet implemented
+    // Allow exactly 0 or 2 lock ops (acquire and release)
+    if (n_lock_ops != 0 && n_lock_ops != 2) {
       AIE::UseLockOp lock_op = *lock_ops.begin();
-      lock_op.emitOpError("Lowering for lock operations in NPU runtime "
-                          "configuration is not yet implemented.");
+      lock_op.emitOpError(
+          "BD blocks must have either 0 or 2 lock operations (acquire and "
+          "release). Found ")
+          << n_lock_ops << " lock operations.";
       return failure();
     }
     return success();
@@ -172,10 +173,30 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     return bd_op;
   }
 
+  // Returns pair of (acquire_lock_op, release_lock_op) if present
   std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
   getOptionalLockOpsForBlock(Block &block) {
-    // auto lock_ops = block.getOps<AIE::UseLockOp>();
-    return std::nullopt; // Not yet implemented
+    auto lock_ops = block.getOps<AIE::UseLockOp>();
+    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
+    if (n_lock_ops != 2) {
+      return std::nullopt;
+    }
+
+    AIE::UseLockOp acquire_op = nullptr;
+    AIE::UseLockOp release_op = nullptr;
+
+    for (auto lock_op : lock_ops) {
+      if (lock_op.acquire() || lock_op.acquireGE()) {
+        acquire_op = lock_op;
+      } else if (lock_op.release()) {
+        release_op = lock_op;
+      }
+    }
+
+    if (acquire_op && release_op) {
+      return std::make_pair(acquire_op, release_op);
+    }
+    return std::nullopt;
   }
 
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
@@ -216,16 +237,21 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                                 /*arg_plus*/ offset);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
-      uint64_t buf_addr;
       if (!buffer.getAddress().has_value()) {
         return bd_op->emitOpError(
             "Cannot lower buffer without associated address. Run pass "
             "--aie-assign-buffer-addresses first or manually assign an "
             "address.");
       }
-      buf_addr = *buffer.getAddress();
-      NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
-                           nullptr, nullptr, nullptr);
+      uint64_t buf_addr = *buffer.getAddress();
+      // For memtile buffers, we need to write the buffer address to the BD's
+      // address register. For core tile buffers, the address is encoded
+      // differently and NpuWriteBdOp handles it - no separate write32 needed.
+      if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
+        NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
+                             nullptr, nullptr, nullptr);
+      }
+      // For core tiles, no NpuWrite32Op needed
     } else {
       return bd_op->emitOpError(
           "Buffer argument must be a constant aie.buffer, a runtime sequence "
@@ -423,6 +449,33 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       packet_id = info.getPktId();
     }
 
+    // Extract lock information if present
+    int32_t lock_rel_val = 0;
+    int32_t lock_rel_id = 0;
+    int32_t lock_acq_enable = 0;
+    int32_t lock_acq_val = 0;
+    int32_t lock_acq_id = 0;
+
+    auto lock_ops = getOptionalLockOpsForBlock(block);
+    if (lock_ops) {
+      auto [acquire_op, release_op] = *lock_ops;
+
+      // Get lock IDs from the lock operations
+      AIE::LockOp acq_lock = acquire_op.getLockOp();
+      AIE::LockOp rel_lock = release_op.getLockOp();
+
+      if (acq_lock.getLockID().has_value()) {
+        lock_acq_id = acq_lock.getLockID().value();
+        lock_acq_val = acquire_op.getLockValue();
+        lock_acq_enable = 1;
+      }
+
+      if (rel_lock.getLockID().has_value()) {
+        lock_rel_id = rel_lock.getLockID().value();
+        lock_rel_val = release_op.getLockValue();
+      }
+    }
+
     NpuWriteBdOp::create(
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
         offset,
@@ -430,20 +483,19 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /*out_of_order_id=*/out_of_order_id,
         /*packet_id=*/packet_id,
         /*packet_type=*/packet_type,
-        /* TODO: Strides/Wraps */
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
         /*iteration_current=*/0, /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
-        /* TODO: Next BD */
         /*next_bd=*/next_bd_id,
         /*row=*/tile.getRow(),
         /*use_next_bd=*/use_next_bd,
         /*valid_bd=*/1,
-        /* TODO: Locks */
-        /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0,
-        /*lock_acq_val=*/0, /*lock_ackq_id=*/0, /*d0_zero_before=*/padBefore[0],
+        /*lock_rel_val=*/lock_rel_val, /*lock_rel_id=*/lock_rel_id,
+        /*lock_acq_enable=*/lock_acq_enable,
+        /*lock_acq_val=*/lock_acq_val, /*lock_acq_id=*/lock_acq_id,
+        /*d0_zero_before=*/padBefore[0],
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
         /*d2_zero_after=*/padAfter[2],
