@@ -297,9 +297,6 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
       rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
       Operation *clonedLock = rewriter.clone(*lockOp, argMap);
       clonedSSAInsertPoint = rewriter.saveInsertionPoint();
-
-      // Map old lock result to new lock result
-      argMap.map(definingOp->getResult(0), clonedLock->getResult(0));
       rewriter.replaceOpUsesWithIf(
           definingOp, clonedLock->getResult(0), [&](OpOperand &operand) {
             return operand.getOwner()->getParentOfType<AIE::DeviceOp>() ==
