@@ -37,7 +37,8 @@ def main():
     input = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input)
 
-    transform(input, output, lambda a: a + 1)
+    # JIT compile the algorithm
+    iron.jit(is_placed=False)(transform)(input, output, lambda a: a + 1)
 
     # Check the correctness of the result
     e = np.equal(input.numpy() + 1, output.numpy())
