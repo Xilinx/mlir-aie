@@ -79,7 +79,7 @@ int main(int argc, const char *argv[]) {
   }
 
   int N_int32 = N / 4; // Convert bytes to int32 elements (1KB = 256 int32)
-  int N_read = N * 4; // Read buffer is 4KB
+  int N_read = N * 4;  // Read buffer is 4KB
 
   // Start the XRT test code
   // Get a device handle
