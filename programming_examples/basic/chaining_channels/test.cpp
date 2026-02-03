@@ -35,7 +35,8 @@ int main(int argc, const char *argv[]) {
                                      "the verbosity of the output",
                                      cxxopts::value<int>()->default_value("0"))(
       "instr,i",
-      "path of file containing userspace instructions to be sent to the command processor",
+      "path of file containing userspace instructions to be sent to the "
+      "command processor",
       cxxopts::value<std::string>())(
       "length,l", "the length of the transfer in bytes",
       cxxopts::value<int>()->default_value("1024"))(
