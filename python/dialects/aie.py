@@ -424,7 +424,7 @@ class object_fifo(ObjectFifoCreateOp):
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
-            dimensionsFromStreamPerConsumer = []
+            dimensionsFromStreamPerConsumer = [[] for _ in range(len(consumerTiles))]
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))

@@ -183,9 +183,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint32_t bd_id = bd_op.getBdId().value();
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
-    uint64_t register_addr =
-        target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id) +
-        target_model.getDmaBdAddressOffset(tile.getCol(), tile.getRow());
+    auto col = tile.getCol();
+    auto row = tile.getRow();
+    uint64_t register_addr = target_model.getDmaBdAddress(col, row, bd_id) +
+                             target_model.getDmaBdAddressOffset(col, row);
 
     // A buffer descriptor can refer to a statically allocated aie.buffer, or to
     // a DDR buffer which will be passed as a runtime argument (block
@@ -224,8 +225,19 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
             "address.");
       }
       buf_addr = *buffer.getAddress();
-      NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
-                           nullptr, nullptr, nullptr);
+      buf_addr += bd_op.getOffsetInBytes();
+      if (target_model.isCoreTile(col, row)) {
+        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
+                                 (buf_addr / 4) << 14, 0x0fffc000, nullptr,
+                                 nullptr, nullptr);
+      } else if (target_model.isMemTile(col, row)) {
+        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
+                                 buf_addr / 4, 0x0007FFFF, nullptr, nullptr,
+                                 nullptr);
+      } else {
+        NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
+                             nullptr, nullptr, nullptr);
+      }
     } else {
       return bd_op->emitOpError(
           "Buffer argument must be a constant aie.buffer, a runtime sequence "
@@ -241,7 +253,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                   std::optional<xilinx::AIE::PacketInfoAttr> packet) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
-    MemRefType buffer_type = bd_op.getBuffer().getType();
+    auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
     uint32_t addr_granularity = target_model.getAddressGenGranularity();
 
     uint32_t bd_id = bd_op.getBdId().value();

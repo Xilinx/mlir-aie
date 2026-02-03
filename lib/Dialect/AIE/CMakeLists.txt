@@ -5,5 +5,6 @@
 #
 # (c) Copyright 2022 Xilinx Inc.
 
+add_subdirectory(Util)
 add_subdirectory(IR)
 add_subdirectory(Transforms)

@@ -41,12 +41,12 @@ convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 
 // Generate transaction binary and insert configuration operations at the
 // current insertion point
-mlir::LogicalResult
-generateAndInsertConfigOps(mlir::OpBuilder &builder,
-                           xilinx::AIE::DeviceOp device,
-                           llvm::StringRef clElfDir = "",
-                           AIEToConfigurationOutputType outputType =
-                               AIEToConfigurationOutputType::Transaction);
+mlir::LogicalResult generateAndInsertConfigOps(
+    mlir::OpBuilder &builder, xilinx::AIE::DeviceOp device,
+    llvm::StringRef clElfDir = "",
+    AIEToConfigurationOutputType outputType =
+        AIEToConfigurationOutputType::Transaction,
+    std::string blockwrite_prefix = "config_blockwrite_data_");
 
 // --------------------------------------------------------------------------
 // Device reset

@@ -36,11 +36,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     utils/__init__.py
-    utils/test.py
-    utils/ml.py
     utils/config.py
+    utils/test.py
     utils/jit.py
+    utils/ml.py
     utils/npukernel.py
+    utils/regdb.py
     utils/hostruntime/__init__.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py
@@ -374,6 +375,21 @@ else ()
       AIEAggregateCAPI
   )
 
+  # Vendor eudsl-python-extras into the build directory
+  add_custom_command(
+    TARGET AIEPythonModules POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/mlir_aie_wheels/vendor_eudsl.py
+      --requirements ${AIE_SOURCE_DIR}/python/requirements.txt
+      --target ${AIE_PYTHON_PACKAGES_DIR}
+    COMMENT "Vendoring eudsl-python-extras"
+  )
+
+  install(
+    DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/extras"
+    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie"
+    COMPONENT aie-python
+  )
+
   ################################################################################
   # Generated trace events enum files and copy to Python package directories
   ################################################################################
@@ -387,7 +403,7 @@ else ()
   )
 
   # Output directory for generated files in build directory
-  set(GENERATED_EVENTS_DIR "${CMAKE_CURRENT_BINARY_DIR}/regdb")
+  set(GENERATED_EVENTS_DIR "${CMAKE_BINARY_DIR}/lib/regdb")
 
   # Generated Python enum files in the build directory
   set(GENERATED_EVENTS_ENUM_FILES
@@ -397,7 +413,7 @@ else ()
   )
 
   # Generated JSON database in the build directory
-  set(GENERATED_EVENTS_JSON_FILENAME "events.json")
+  set(GENERATED_EVENTS_JSON_FILENAME "events_database.json")
   set(GENERATED_EVENTS_JSON "${GENERATED_EVENTS_DIR}/${GENERATED_EVENTS_JSON_FILENAME}")
 
   # Add custom command to generate the event enum files
@@ -415,6 +431,14 @@ else ()
       ${EVENTS_HEADER_FILES}
     COMMENT "Generating trace events enum files from aie-rt headers"
     VERBATIM
+  )
+
+  # Install the generated json to the lib dir
+  install(
+    FILES 
+      ${GENERATED_EVENTS_JSON}
+    DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/regdb
+    COMPONENT aie-python
   )
 
   # Create a custom target for the generated files

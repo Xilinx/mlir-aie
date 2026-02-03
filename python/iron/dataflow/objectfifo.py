@@ -51,9 +51,9 @@ class ObjectFifo(Resolvable):
         Args:
             obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
-            name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated.. Defaults to None.
-            dims_to_stream (list[Sequence[int]] | None, optional): _description_. Defaults to None.
-            dims_from_stream_per_cons (list[Sequence[int]] | None, optional): _description_. Defaults to None.
+            name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
+            dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
+            dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
             plio (bool, optional): _description_. Defaults to False.
 
         Raises:
