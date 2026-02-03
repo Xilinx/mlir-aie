@@ -129,7 +129,6 @@ int main(int argc, const char *argv[]) {
                       kernel.group_id(3)); // 1KB write buffer
   auto bo_B = xrt::bo(device, N_read, XRT_BO_FLAGS_HOST_ONLY,
                       kernel.group_id(4)); // 4KB read buffer
-  
   // Placeholder buffers
   auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
   auto bo_tmp2 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
