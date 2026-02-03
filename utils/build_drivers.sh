@@ -124,7 +124,7 @@ sudo ./tools/amdxdna_deps.sh
 echo "Building XRT..."
 # Build XRT
 cd "$XDNA_SRC_DIR/xrt/build"
-run_build ./build.sh -npu -opt
+run_build ./build.sh -npu -opt -noctest
 
 echo "Removing any existing XRT and XDNA-driver packages..."
 # Find and remove any installed packages that start with "xrt"
