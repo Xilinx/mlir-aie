@@ -132,7 +132,6 @@ int main(int argc, const char *argv[]) {
   // Placeholder buffers
   auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
   auto bo_tmp2 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
-  
   // Trace buffer (8KB if enabled, 1 byte otherwise)
   constexpr int trace_size = 16384;
   int actual_trace_size = enable_trace ? trace_size : 1;
