@@ -16,8 +16,19 @@ from aie.iron.controlflow import range_
 import aie.iron as iron
 
 
-@iron.jit(is_placed=False)
-def transform(input, output, func):
+def transform(input, output, func, *extra_func_args):
+    """
+    Apply a function to transform input to output.
+
+    Note:
+        For ExternalFunctions, the signature must be
+        arg_types=[input, output, [extra_args...], tile_size]
+        `tile_size` is automatically provided by the algorithm.
+
+    Example:
+        scale = ExternalFunction("scale", arg_types=[tile_ty, tile_ty, scalar_ty, np.int32], ...)
+        transform(input, output, scale, factor)
+    """
     if input.shape != output.shape:
         raise ValueError(
             f"Input shapes are not the equal ({input.shape} != {output.shape})."
@@ -34,6 +45,27 @@ def transform(input, output, func):
         raise ValueError(
             f"Input data types are not the same ({input.dtype} != {output.dtype})."
         )
+
+    # Validate ExternalFunction signature
+    if isinstance(func, iron.ExternalFunction):
+        arg_types = func.arg_types()
+        # Check if last arg is np.int32 (tile_size convention)
+        if arg_types[-1] != np.int32:
+            raise ValueError(
+                f"ExternalFunction '{func._name}' last argument must be np.int32 (tile_size), "
+                f"but got {arg_types[-1]}. "
+                f"For functions without tile_size, create a custom Worker instead."
+            )
+        # Validate that extra_func_args count matches expected
+        # Expected: 2 (in, out) + len(extra_func_args) + 1 (tile_size) = len(arg_types)
+        expected_extra_args = len(arg_types) - 3  # subtract in, out, tile_size
+        if len(extra_func_args) != expected_extra_args:
+            raise ValueError(
+                f"ExternalFunction '{func._name}' expects {expected_extra_args} extra argument(s) "
+                f"(between input/output and tile_size), but {len(extra_func_args)} were provided. "
+                f"Did you forget to pass additional arguments to transform()? "
+                f"Usage: transform(input, output, func, *extra_args)"
+            )
 
     dtype = input.dtype
 
@@ -54,8 +86,11 @@ def transform(input, output, func):
             elem_out = of_out.acquire(1)
 
             if isinstance(func_to_apply, iron.ExternalFunction):
-                func_to_apply(elem_in, elem_out, n)
+                func_to_apply(elem_in, elem_out, *extra_func_args, n)
             else:
+                # Lambdas and other non-ExternalFunction callables are treated as
+                # scalar operations. Without this explicit loop, only the
+                # first element of each tile would be processed.
                 for j in range_(n):
                     elem_out[j] = func_to_apply(elem_in[j])
             of_in.release(1)
@@ -75,9 +110,8 @@ def transform(input, output, func):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-@iron.jit(is_placed=False)
 def transform_binary(first, second, output, binary_op):
-
+    """Apply a binary function to pairs of elements between two input tensors."""
     if first.shape != second.shape:
         raise ValueError(
             f"Input shapes are not the equal ({first.shape} != {second.shape})."
@@ -141,11 +175,18 @@ def transform_binary(first, second, output, binary_op):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-@iron.jit(is_placed=False)
-def transform_parallel(input, output, func):
+def transform_parallel(input, output, func, *extra_func_args):
     """
-    AIE-array parallel transform function.
-    This function applies a given function to each element of the input array in parallel.
+    Parallel transform across multiple AIE tiles.
+
+    Note:
+        For ExternalFunctions, the signature must be
+        arg_types=[input, output, [extra_args...], tile_size]
+        `tile_size` is automatically provided by the algorithm.
+
+    Example:
+        scale = ExternalFunction("scale", arg_types=[tile_ty, tile_ty, scalar_ty, np.int32], ...)
+        transform(input, output, scale, factor)
     """
     if input.shape != output.shape:
         raise ValueError(
@@ -168,6 +209,27 @@ def transform_parallel(input, output, func):
         raise ValueError(
             f"Input data types are not the same ({input.dtype} != {output.dtype})."
         )
+
+    # Validate ExternalFunction signature
+    if isinstance(func, iron.ExternalFunction):
+        arg_types = func.arg_types()
+        # Check if last arg is np.int32 (tile_size convention)
+        if arg_types[-1] != np.int32:
+            raise ValueError(
+                f"ExternalFunction '{func._name}' last argument must be np.int32 (tile_size), "
+                f"but got {arg_types[-1]}. "
+                f"For functions without tile_size, create a custom Worker instead."
+            )
+        # Validate that extra_func_args count matches expected
+        # Expected: 2 (in, out) + len(extra_func_args) + 1 (tile_size) = len(arg_types)
+        expected_extra_args = len(arg_types) - 3  # subtract in, out, tile_size
+        if len(extra_func_args) != expected_extra_args:
+            raise ValueError(
+                f"ExternalFunction '{func._name}' expects {expected_extra_args} extra argument(s) "
+                f"(between input/output and tile_size), but {len(extra_func_args)} were provided. "
+                f"Did you forget to pass additional arguments to transform_parallel()? "
+                f"Usage: transform_parallel(input, output, func, *extra_args)"
+            )
 
     dtype = input.dtype
 
@@ -195,9 +257,12 @@ def transform_parallel(input, output, func):
             elem_out = of_out.acquire(1)
 
             if isinstance(func_to_apply, iron.ExternalFunction):
-                func_to_apply(elem_in, elem_out, n)
+                func_to_apply(elem_in, elem_out, *extra_func_args, per_tile_elements)
             else:
-                for j in range_(n):
+                # Lambdas and other non-ExternalFunction callables are treated as
+                # scalar operations. Without this explicit loop, only the
+                # first element of each tile would be processed.
+                for j in range_(per_tile_elements):
                     elem_out[j] = func_to_apply(elem_in[j])
             of_in.release(1)
             of_out.release(1)
@@ -267,12 +332,8 @@ def transform_parallel(input, output, func):
     return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
 
 
-@iron.jit(is_placed=False)
 def transform_parallel_binary(first, second, output, binary_op):
-    """
-    AIE-array parallel binary transform function.
-    This function applies a given binary operation to each element of the input arrays in parallel.
-    """
+    """Parallel binary operation across multiple AIE tiles."""
     if first.shape != second.shape:
         raise ValueError(
             f"Input shapes are not the equal ({first.shape} != {second.shape})."

@@ -8,13 +8,10 @@
 import numpy as np
 import os
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
-from aie.iron.controlflow import range_
 import aie.iron as iron
+from aie.iron.algorithms import transform
 
 
-@iron.jit(is_placed=False)
 def vector_scalar_mul(input, factor, output, dummy_input0, trace):
 
     in1_dtype = input.dtype
@@ -60,42 +57,9 @@ def vector_scalar_mul(input, factor, output, dummy_input0, trace):
         include_dirs=[kernels_path],
     )
 
-    # AIE-array data movement with object fifos
-    of_in = ObjectFifo(tile_ty, name="in")
-    of_factor = ObjectFifo(scalar_ty, name="infactor")
-    of_out = ObjectFifo(tile_ty, name="out")
-
-    # Define a task for a compute tile to run
-    def core_body(of_in, of_factor, of_out, scale_fn):
-        elem_factor = of_factor.acquire(1)
-
-        # Number of sub-vector "tile" iterations
-        for _ in range_(num_sub_vectors):
-            elem_in = of_in.acquire(1)
-            elem_out = of_out.acquire(1)
-            scale_fn(elem_in, elem_out, elem_factor, tile_size)
-            of_in.release(1)
-            of_out.release(1)
-        of_factor.release(1)
-
-    # Create a worker to run the task on a compute tile
-    worker = Worker(
-        core_body,
-        fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale],
-        trace=enable_trace,
-    )
-
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (A, F, C):
-        rt.enable_trace(trace.numel() * np.dtype(trace.dtype).itemsize)
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.fill(of_factor.prod(), F)
-        rt.drain(of_out.cons(), C, wait=True)
-
-    # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    # Pass scale kernel to the transform algorithm
+    # 'factor' is passed as an extra argument; tile_size is auto-provided
+    iron.jit(is_placed=False)(transform)(input, output, scale, factor)
 
 
 def main():

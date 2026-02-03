@@ -10,7 +10,7 @@
 
 # Vector Scalar Multiplication:
 
-This IRON design flow example, called "Vector Scalar Multiplication", demonstrates a simple AIE implementation for vectorized vector scalar multiply on a vector of integers. In this design, a single AIE core performs the vector scalar multiply operation on a vector with a default length `4096`. The kernel is configured to work on `1024` element-sized subvectors, and is invoked multiple times to complete the full scaling. The example consists of two primary design files: `vector_scalar_mul.py` and `scale.cc`, and a testbench `test.cpp` or `test.py`.
+This IRON design flow example, called "Vector Scalar Multiplication", demonstrates a simple AIE implementation for vectorized vector scalar multiply on a vector of integers. In this design, a single AIE core performs the vector scalar multiply operation on a vector with a default length `4096`. The kernel is configured to work on `1024` element-sized subvectors, and is invoked multiple times to complete the full scaling. The example consists of two primary design files: `vector_scalar_mul.py` and `scale.cc`, and a testbench `test.cpp` or `test.py`. `vector_scalar_mul_jit.py` demonstrates implementing the design using the pre-built algorithms library in combination with IRON JIT. 
 
 ## Source Files Overview
 
@@ -19,6 +19,8 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 1. `vector_scalar_mul_placed.py`: An alternative version of the design in `vector_scalar_mul.py`, that is expressed in a lower-level version of IRON.
 
 1. `scale.cc`: A C++ implementation of scalar and vectorized vector scalar multiply operations for AIE cores. Found [here](../../../aie_kernels/aie2/scale.cc).
+
+1. `vector_scalar_mul_jit.py`: A JIT version that passes `scale.cc` to the transform algorithm. Note that the JIT compilation allows combining the host code with AIE design into one file.
 
 1. `test.cpp`: This C++ code is a testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
 
@@ -97,4 +99,11 @@ To run the design:
 
 ```shell
 make run
+```
+
+## JIT Approach Usage
+To run the JIT version:
+
+```shell
+python vector_scalar_mul_jit.py
 ```

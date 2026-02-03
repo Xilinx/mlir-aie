@@ -1,4 +1,4 @@
-# transform_binary.py -*- Python -*-
+# transform_parallel_binary.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -11,7 +11,8 @@ import sys
 import numpy as np
 import aie.iron as iron
 
-from aie.iron.algorithms import for_each
+
+from aie.iron.algorithms import transform_parallel_binary
 
 
 def main():
@@ -32,23 +33,26 @@ def main():
     dtype = np.int32
     # Construct two input random tensors and an output zeroed tensor
     # The three tensor are in memory accessible to the NPU
-    tensor = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
-    initial_tensor = tensor.numpy().copy()
+    input0 = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
+    input1 = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
+    output = iron.zeros_like(input0)
 
     # JIT compile the algorithm
-    iron.jit(is_placed=False)(for_each)(tensor, lambda a: a + 1)
+    iron.jit(is_placed=False)(transform_parallel_binary)(input0, input1, output, lambda a, b: a + b)
 
     # Check the correctness of the result
-    e = np.equal(initial_tensor + 1, tensor.numpy())
+    e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
     errors = np.size(e) - np.count_nonzero(e)
 
     # Optionally, print the results
     if args.verbose:
         print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
         print("-" * 34)
-        count = tensor.numel()
-        for idx, (a) in enumerate(zip(tensor[:count])):
-            print(f"{idx:2}: {a:4}")
+        count = input0.numel()
+        for idx, (a, b, c) in enumerate(
+            zip(input0[:count], input1[:count], output[:count])
+        ):
+            print(f"{idx:2}: {a:4} + {b:4} = {c:4}")
 
     # If the result is correct, exit with a success code.
     # Otherwise, exit with a failure code

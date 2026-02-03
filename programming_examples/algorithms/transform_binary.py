@@ -37,7 +37,10 @@ def main():
     input1 = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input0)
 
-    transform_binary(input0, input1, output, lambda a, b: a + b)
+    # JIT compile the algorithm
+    iron.jit(is_placed=False)(transform_binary)(
+        input0, input1, output, lambda a, b: a + b
+    )
 
     # Check the correctness of the result
     e = np.equal(input0.numpy() + input1.numpy(), output.numpy())
