@@ -314,8 +314,8 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
 
     // Skip entry/end block
     if (bdOps.empty())
-      continue; 
-    
+      continue;
+
     // Check BD count limit
     if (bdNum >= bdMax) {
       return (op->emitOpError("has more than ") << bdMax << " blocks")
@@ -323,7 +323,7 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
           .append("no space for this BD");
     }
     bdNum++;
-    
+
     // Check exactly 1 DMABDOp per BD block
     if (bdOps.size() != 1) {
       return (op->emitOpError("BD block must have exactly one DMABDOp, found ")
@@ -331,9 +331,10 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
           .attachNote(block.front().getLoc())
           .append("in this BD block");
     }
-    
+
     // Check exactly 2 UseLockOps per BD block (1 acquire, 1 release)
-    auto useLockOps = llvm::to_vector_of<UseLockOp>(block.template getOps<UseLockOp>());
+    auto useLockOps =
+        llvm::to_vector_of<UseLockOp>(block.template getOps<UseLockOp>());
     int acquireCount = 0;
     int releaseCount = 0;
     for (auto useLock : useLockOps) {
@@ -344,13 +345,15 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
     }
 
     if (acquireCount != 1) {
-      return (op->emitOpError("BD block must have exactly one acquire UseLockOp, found ")
+      return (op->emitOpError(
+                  "BD block must have exactly one acquire UseLockOp, found ")
               << acquireCount)
           .attachNote(block.front().getLoc())
           .append("in this BD block");
     }
     if (releaseCount != 1) {
-      return (op->emitOpError("BD block must have exactly one release UseLockOp, found ")
+      return (op->emitOpError(
+                  "BD block must have exactly one release UseLockOp, found ")
               << releaseCount)
           .attachNote(block.front().getLoc())
           .append("in this BD block");
