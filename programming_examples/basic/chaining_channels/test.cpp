@@ -170,7 +170,8 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_A, bo_B, bo_tmp1, bo_tmp2, bo_trace);
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_A, bo_B, bo_tmp1,
+                    bo_tmp2, bo_trace);
   run.wait();
 
   bo_A.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
