@@ -156,7 +156,6 @@ int main(int argc, const char *argv[]) {
   for (int i = 0; i < N_read / 4; i++) {
     bufB[i] = i;
   }
-  
   // Initialize trace buffer if enabled
   if (enable_trace) {
     char *bufTrace = bo_trace.map<char *>();
