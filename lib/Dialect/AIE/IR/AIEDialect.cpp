@@ -332,7 +332,7 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
           .append("in this BD block");
     }
 
-    // Check exactly 2 UseLockOps per BD block (1 acquire, 1 release)
+    // Check at most 2 UseLockOps per BD block (1 acquire, 1 release)
     auto useLockOps =
         llvm::to_vector_of<UseLockOp>(block.template getOps<UseLockOp>());
     int acquireCount = 0;
@@ -344,16 +344,16 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
         releaseCount++;
     }
 
-    if (acquireCount != 1) {
+    if (acquireCount > 1) {
       return (op->emitOpError(
-                  "BD block must have exactly one acquire UseLockOp, found ")
+                  "BD block must have at most one acquire UseLockOp, found ")
               << acquireCount)
           .attachNote(block.front().getLoc())
           .append("in this BD block");
     }
-    if (releaseCount != 1) {
+    if (releaseCount > 1) {
       return (op->emitOpError(
-                  "BD block must have exactly one release UseLockOp, found ")
+                  "BD block must have at most one release UseLockOp, found ")
               << releaseCount)
           .attachNote(block.front().getLoc())
           .append("in this BD block");

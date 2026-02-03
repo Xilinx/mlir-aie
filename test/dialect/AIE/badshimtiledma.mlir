@@ -31,17 +31,14 @@ module @test {
       ^dma2:
         %dma3 = aie.dma_start("S2MM", 2, ^bd2, ^end)
       ^bd0:
-        aie.use_lock(%lock_e, Acquire, 1)
         aie.dma_bd(%buf_e : memref<256xi32>, 1, 256)
         aie.use_lock(%lock_e, Release, 1)
         aie.next_bd ^bd0
       ^bd1:
-        aie.use_lock(%lock_l, Acquire, 1)
         aie.dma_bd(%buf_l : memref<256xi32>, 1, 256)
         aie.use_lock(%lock_l, Release, 1)
         aie.next_bd ^bd1
       ^bd2:
-        aie.use_lock(%lock_n, Acquire, 1)
         aie.dma_bd(%buf_n : memref<256xi32>, 1, 256)
         aie.use_lock(%lock_n, Release, 1)
         aie.next_bd ^bd2
@@ -59,7 +56,7 @@ module @test {
     %buff = aie.external_buffer : memref<16xi32>
     %lock = aie.lock(%t1, 0)
     %lock_test = aie.lock(%t1, 1)
-    // expected-error@+1 {{'aie.shim_dma' op BD block must have exactly one acquire UseLockOp, found 2}}
+    // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one acquire UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
@@ -84,7 +81,7 @@ module @test {
     %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
     %prod_lock_test = aie.lock(%t1, 1) {init = 2 : i32}
     %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
-    // expected-error@+1 {{'aie.shim_dma' op BD block must have exactly one acquire UseLockOp, found 2}}
+    // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one acquire UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
@@ -109,7 +106,7 @@ module @test {
     %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
     %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
     %cons_lock_test = aie.lock(%t1, 1) {init = 0 : i32}
-    // expected-error@+1 {{'aie.shim_dma' op BD block must have exactly one release UseLockOp, found 2}}
+    // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one release UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
@@ -134,7 +131,7 @@ module @test {
     %buff2 = aie.external_buffer : memref<16xi32>
     %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
     %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
-    // expected-error@+1 {{'aie.shim_dma' op BD block must have exactly one DMABDOp, found 2}}
+    // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one DMABDOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:

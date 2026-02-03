@@ -29,7 +29,7 @@ module @test {
     %buff = aie.buffer(%t1) : memref<16xi32>
     %lock = aie.lock(%t1, 0)
     %lock_test = aie.lock(%t1, 1)
-    // expected-error@+1 {{'aie.memtile_dma' op BD block must have exactly one acquire UseLockOp, found 2}}
+    // expected-error@+1 {{'aie.memtile_dma' op BD block must have at most one acquire UseLockOp, found 2}}
     %mem13 = aie.memtile_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
@@ -54,7 +54,7 @@ module @test {
     %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
     %prod_lock_test = aie.lock(%t1, 1) {init = 2 : i32}
     %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
-    // expected-error@+1 {{'aie.memtile_dma' op BD block must have exactly one acquire UseLockOp, found 2}}
+    // expected-error@+1 {{'aie.memtile_dma' op BD block must have at most one acquire UseLockOp, found 2}}
     %mem13 = aie.memtile_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
@@ -79,7 +79,7 @@ module @test {
     %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
     %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
     %cons_lock_test = aie.lock(%t1, 1) {init = 0 : i32}
-    // expected-error@+1 {{'aie.memtile_dma' op BD block must have exactly one release UseLockOp, found 2}}
+    // expected-error@+1 {{'aie.memtile_dma' op BD block must have at most one release UseLockOp, found 2}}
     %mem13 = aie.memtile_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
@@ -104,7 +104,7 @@ module @test {
     %buff2 = aie.buffer(%t1) : memref<16xi32>
     %prod_lock = aie.lock(%t1, 0) {init = 2 : i32}
     %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
-    // expected-error@+1 {{'aie.memtile_dma' op BD block must have exactly one DMABDOp, found 2}}
+    // expected-error@+1 {{'aie.memtile_dma' op BD block must have at most one DMABDOp, found 2}}
     %mem13 = aie.memtile_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
