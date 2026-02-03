@@ -86,4 +86,3 @@ void bitwiseANDTile(int32_t *in1, int32_t *in2, int32_t *out,
 
 #endif
 } // extern "C"
-
