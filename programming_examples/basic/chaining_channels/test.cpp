@@ -196,7 +196,6 @@ int main(int argc, const char *argv[]) {
       errors++;
     }
   }
-  
   // Write trace data to file if enabled
   if (enable_trace) {
     char *bufTrace = bo_trace.map<char *>();
