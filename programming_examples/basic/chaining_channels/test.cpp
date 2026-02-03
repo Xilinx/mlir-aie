@@ -208,7 +208,6 @@ int main(int argc, const char *argv[]) {
       }
     }
     trace_file.close();
-    
     if (verbosity >= 1)
       std::cout << "Trace data written to trace.txt" << std::endl;
   }
