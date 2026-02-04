@@ -95,6 +95,8 @@ jobs:
           body: |
             Updates LLVM version based on `triton-shared` or `torch-mlir`.
             
+            Reason: ${{ steps.update.outputs.bump_reason }}
+            
             Triggered by: ${{ github.event_name }}
           branch: update-llvm-version
           base: main
