@@ -905,20 +905,15 @@ class FlowRunner:
                 await self.do_call(parent_task_id, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-c", "-d", "+Wclang,-xir", "-f", file_llvmir_hacked, "-o", unified_file_core_obj])
             elif opts.compile:
                 file_llvmir_hacked = await self.peanohack(file_llvmir)
-                file_llvmir_opt = self.prepend_tmp(f"{device_name}_input.opt.ll")
                 opt_level = opts.opt_level
+                # Use peano clang to compile LLVM IR to object file
+                # Peano clang already disables vectorization by default (see https://github.com/Xilinx/llvm-aie/blob/959dc1ccddd745478a0b2a703d99e181437145c5/clang/lib/Driver/ToolChains/AIE.cpp#L150)
+                clang_flags = [f"-O{opt_level}", "--target=" + aie_peano_target, "-c", file_llvmir_hacked, "-o", unified_file_core_obj]
                 # Disable loop idiom memset for O3 and above.
                 # Rationale: memset is executed as scalar operation, while zeroinitializer will be executed as vector
-                opt_flags = [f"--passes=default<O{opt_level}>"]
                 if int(opt_level) >= 3:
-                    opt_flags.append("-disable-loop-idiom-memset")
-                # Following flags are to disable vectorization passes which Peano turns off by default, but we need to explicitly disable here since we're using opt directly.
-                opt_flags.append("-fno-use-init-array")
-                opt_flags.append({"-mllvm","-vectorize-loops=false"})
-                opt_flags.append({"-mllvm","-vectorize-slp=false"})
-                opt_flags.extend(["-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
-                await self.do_call(parent_task_id, [self.peano_opt_path] + opt_flags)
-                await self.do_call(parent_task_id, [self.peano_llc_path, file_llvmir_opt, f"-O{opt_level}", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", unified_file_core_obj])
+                    clang_flags.extend(["-mllvm", "-disable-loop-idiom-memset"])
+                await self.do_call(parent_task_id, [self.peano_clang_path] + clang_flags)
         else:
             unified_file_core_obj = None
         # fmt: on
@@ -1034,20 +1029,15 @@ class FlowRunner:
             elif opts.compile:
                 if not opts.unified:
                     file_core_llvmir_peanohacked = await self.peanohack(file_core_llvmir)
-                    file_core_llvmir_stripped = corefile(self.tmpdirname, device_name, core, "stripped.ll")
                     opt_level = opts.opt_level
+                    # Use peano clang to compile LLVM IR to object file
+                    # Peano clang already disables vectorization by default (see https://github.com/Xilinx/llvm-aie/blob/959dc1ccddd745478a0b2a703d99e181437145c5/clang/lib/Driver/ToolChains/AIE.cpp#L150)
+                    clang_flags = [f"-O{opt_level}", "--target=" + aie_peano_target, "-c", file_core_llvmir_peanohacked, "-o", file_core_obj]
                     # Disable loop idiom memset for O3 and above.
                     # Rationale: memset is executed as scalar operation, while zeroinitializer will be executed as vector
-                    opt_flags = [f"--passes=default<O{opt_level}>,strip"]
                     if int(opt_level) >= 3:
-                        opt_flags.append("-disable-loop-idiom-memset")
-                    # Following flags are to disable vectorization passes which Peano turns off by default, but we need to explicitly disable here since we're using opt directly.
-                    opt_flags.append("-fno-use-init-array")
-                    opt_flags.append({"-mllvm","-vectorize-loops=false"})
-                    opt_flags.append({"-mllvm","-vectorize-slp=false"})
-                    opt_flags.extend(["-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])
-                    await self.do_call(task, [self.peano_opt_path] + opt_flags)
-                    await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, f"-O{opt_level}", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
+                        clang_flags.extend(["-mllvm", "-disable-loop-idiom-memset"])
+                    await self.do_call(task, [self.peano_clang_path] + clang_flags)
                 else:
                     file_core_obj = unified_file_core_obj
 
