@@ -1187,6 +1187,8 @@ Interfaces: `Symbol`
 <tr><td><code>plio</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>disable_synchronization</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 1</td></tr>
+<tr><td><code>aie_stream</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0 whose maximum value is 2</td></tr>
+<tr><td><code>aie_stream_port</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1</td></tr>
 <tr><td><code>initValues</code></td><td>::mlir::ArrayAttr</td><td>array of ElementsAttr</td></tr>
 <tr><td><code>padDimensions</code></td><td>::xilinx::AIE::BDPadLayoutArrayAttr</td><td></td></tr>
 <tr><td><code>iter_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
