@@ -912,6 +912,10 @@ class FlowRunner:
                 opt_flags = [f"--passes=default<O{opt_level}>"]
                 if int(opt_level) >= 3:
                     opt_flags.append("-disable-loop-idiom-memset")
+                # Following flags are to disable vectorization passes which Peano turns off by default, but we need to explicitly disable here since we're using opt directly.
+                opt_flags.append("-fno-use-init-array")
+                opt_flags.append({"-mllvm","-vectorize-loops=false"})
+                opt_flags.append({"-mllvm","-vectorize-slp=false"})
                 opt_flags.extend(["-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
                 await self.do_call(parent_task_id, [self.peano_opt_path] + opt_flags)
                 await self.do_call(parent_task_id, [self.peano_llc_path, file_llvmir_opt, f"-O{opt_level}", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", unified_file_core_obj])
@@ -1037,6 +1041,10 @@ class FlowRunner:
                     opt_flags = [f"--passes=default<O{opt_level}>,strip"]
                     if int(opt_level) >= 3:
                         opt_flags.append("-disable-loop-idiom-memset")
+                    # Following flags are to disable vectorization passes which Peano turns off by default, but we need to explicitly disable here since we're using opt directly.
+                    opt_flags.append("-fno-use-init-array")
+                    opt_flags.append({"-mllvm","-vectorize-loops=false"})
+                    opt_flags.append({"-mllvm","-vectorize-slp=false"})
                     opt_flags.extend(["-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])
                     await self.do_call(task, [self.peano_opt_path] + opt_flags)
                     await self.do_call(task, [self.peano_llc_path, file_core_llvmir_stripped, f"-O{opt_level}", "--march=" + aie_target.lower(), "--function-sections", "--filetype=obj", "-o", file_core_obj])
