@@ -19,8 +19,6 @@
 
 module {
 
-    // CHECK: aie.device(npu2_1col) @empty_2 {
-    // CHECK: }
     // CHECK: aie.device(npu2_1col) @empty_1 {
     // CHECK: }
     // CHECK: aie.device(npu2_1col) @empty_0 {
@@ -58,7 +56,7 @@ module {
             // CHECK: aiex.npu.write32 {address = 2355200 : ui32, value = 2147483663 : ui32}
             // CHECK: aiex.npu.write32 {address = 2355516 : ui32, value = 2147483648 : ui32}
             aiex.npu.load_pdi { device_ref = @my_switchbox_device_2 }
-            // CHECK: aiex.npu.load_pdi {device_ref = @empty_2}
+            // CHECK: aiex.npu.load_pdi {device_ref = @empty_0}
             // CHECK: aiex.npu.write32 {address = 2355204 : ui32, value = 2147483653 : ui32}
             // CHECK: aiex.npu.write32 {address = 2355476 : ui32, value = 2147483648 : ui32}
             aiex.npu.load_pdi { device_ref = @my_switchbox_device_3 }

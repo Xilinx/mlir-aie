@@ -199,19 +199,47 @@ static LogicalResult
 copyReferencedSSAValues(PatternRewriter &rewriter,
                         const llvm::SetVector<Value> &referencedValues,
                         AIE::DeviceOp callerDevice, IRMapping &argMap,
-                        mlir::OpBuilder::InsertPoint &clonedSSAInsertionPoint,
+                        mlir::OpBuilder::InsertPoint &clonedSSAInsertPoint,
                         Operation *errorReportOp) {
 
-  for (Value referencedValue : referencedValues) {
+  llvm::SetVector<Value> referencedValuesToVisit = referencedValues;
+  std::vector<Operation *> referencedOpsToClone = {};
+  while (!referencedValuesToVisit.empty()) {
+    Value referencedValue = referencedValuesToVisit.pop_back_val();
     Operation *definingOp = referencedValue.getDefiningOp();
     if (!definingOp) {
       return errorReportOp->emitError()
              << "Referenced value is not defined by an operation";
     }
+    if (std::find(referencedOpsToClone.begin(), referencedOpsToClone.end(),
+                  definingOp) != referencedOpsToClone.end()) {
+      continue;
+    }
 
+    if (auto tileOp = llvm::dyn_cast<AIE::TileOp>(definingOp)) {
+      referencedOpsToClone.insert(referencedOpsToClone.begin(), definingOp);
+    } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
+      Value lockTile = lockOp.getTile();
+      if (lockTile) {
+        referencedValuesToVisit.insert(lockTile);
+      }
+      referencedOpsToClone.push_back(definingOp);
+    } else {
+      return errorReportOp->emitError()
+             << "Referenced SSA value defined by unsupported operation type: "
+             << definingOp->getName().getStringRef()
+             << ". Currently only aie.tile and aie.lock operations are "
+                "supported.";
+    }
+  }
+
+  for (Operation *definingOp : referencedOpsToClone) {
     if (auto tileOp = llvm::dyn_cast<AIE::TileOp>(definingOp)) {
       int col = tileOp.getCol();
       int row = tileOp.getRow();
+
+      rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
+      mlir::Operation *clonedTile = nullptr;
 
       // Check if a tile with matching col/row already exists in the caller
       // device
@@ -224,6 +252,7 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
       }
 
       if (existingTile) {
+        clonedTile = existingTile.getOperation();
         // Verify that all attributes match
         if (tileOp->getAttrDictionary() != existingTile->getAttrDictionary()) {
           // Filter out result type attributes and symbol attributes for
@@ -250,29 +279,35 @@ copyReferencedSSAValues(PatternRewriter &rewriter,
                       "attributes";
           }
         }
-
-        // Use the existing tile
-        rewriter.restoreInsertionPoint(clonedSSAInsertionPoint);
-        if (!existingTile->isBeforeInBlock(&*rewriter.getInsertionPoint())) {
-          rewriter.moveOpBefore(existingTile,
-                                clonedSSAInsertionPoint.getBlock(),
-                                clonedSSAInsertionPoint.getPoint());
-          rewriter.setInsertionPointAfter(existingTile);
-        }
-        argMap.map(referencedValue, existingTile.getResult());
       } else {
         // Clone the tile operation into the caller device
-        rewriter.restoreInsertionPoint(clonedSSAInsertionPoint);
-        Operation *clonedTile = rewriter.clone(*tileOp);
-        argMap.map(referencedValue, clonedTile->getResult(0));
-        clonedSSAInsertionPoint = rewriter.saveInsertionPoint();
+        rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
+        clonedTile = rewriter.clone(*tileOp);
+        clonedSSAInsertPoint = rewriter.saveInsertionPoint();
       }
 
+      argMap.map(definingOp->getResult(0), clonedTile->getResult(0));
+      rewriter.replaceOpUsesWithIf(
+          definingOp, clonedTile->getResult(0), [&](OpOperand &operand) {
+            return operand.getOwner()->getParentOfType<AIE::DeviceOp>() ==
+                   callerDevice;
+          });
+
+    } else if (auto lockOp = llvm::dyn_cast<AIE::LockOp>(definingOp)) {
+      rewriter.restoreInsertionPoint(clonedSSAInsertPoint);
+      Operation *clonedLock = rewriter.clone(*lockOp, argMap);
+      clonedSSAInsertPoint = rewriter.saveInsertionPoint();
+      rewriter.replaceOpUsesWithIf(
+          definingOp, clonedLock->getResult(0), [&](OpOperand &operand) {
+            return operand.getOwner()->getParentOfType<AIE::DeviceOp>() ==
+                   callerDevice;
+          });
     } else {
       return errorReportOp->emitError()
              << "Referenced SSA value defined by unsupported operation type: "
              << definingOp->getName().getStringRef()
-             << ". Currently only aie.tile operations are supported.";
+             << ". Currently only aie.tile and aie.lock operations are "
+                "supported.";
     }
   }
 
@@ -289,7 +324,8 @@ static LogicalResult inlineReferencedSymbolDefinitions(
     IRMapping argMap,
     llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> &previouslyInlinedSymbolMap,
     AIE::DeviceOp callerDevice,
-    mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint) {
+    mlir::OpBuilder::InsertPoint &clonedDefOpsInsertionPoint,
+    llvm::SetVector<SymbolRefAttr> &allSymbolNames) {
   MLIRContext *ctx = op->getContext();
   for (NamedAttribute namedAttr : op->getAttrs()) {
     Attribute attr = namedAttr.getValue();
@@ -299,12 +335,12 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         llvm::StringRef oldName = oldSymbolRef.getRootReference().getValue();
         std::string uniqueName = oldName.str();
         unsigned uniquingCounter = 0;
-        while (SymbolTable::lookupNearestSymbolFrom(
-            op, StringAttr::get(ctx, uniqueName))) {
+        while (allSymbolNames.count(SymbolRefAttr::get(ctx, uniqueName))) {
           uniqueName = oldName.str() + "_" + std::to_string(uniquingCounter);
           uniquingCounter++;
         }
         newSymbolRef = SymbolRefAttr::get(ctx, uniqueName);
+        allSymbolNames.insert(newSymbolRef);
         previouslyInlinedSymbolMap[oldSymbolRef] = newSymbolRef;
 
         // Add the new symbol definition
@@ -319,15 +355,21 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         collectReferencedSSAValues(symbolDefOp, argMap, symbolReferencedValues);
 
         // Copy SSA values referenced by the symbol definition
+        // This updates clonedDefOpsInsertionPoint to be after the copied SSA
+        // values
         if (failed(copyReferencedSSAValues(rewriter, symbolReferencedValues,
                                            callerDevice, argMap,
                                            clonedDefOpsInsertionPoint, op))) {
           return std::make_pair(newSymbolRef, WalkResult::interrupt());
         }
 
+        // Insert the cloned symbol at the device level, after its SSA
+        // dependencies
+        rewriter.restoreInsertionPoint(clonedDefOpsInsertionPoint);
         Operation *clonedSymbolDefOp = rewriter.clone(*symbolDefOp, argMap);
         clonedSymbolDefOp->setAttr(SymbolTable::getSymbolAttrName(),
                                    StringAttr::get(ctx, uniqueName));
+        clonedDefOpsInsertionPoint = rewriter.saveInsertionPoint();
       } else {
         newSymbolRef = previouslyInlinedSymbolMap[oldSymbolRef];
       }
@@ -344,23 +386,32 @@ static LogicalResult inlineReferencedSymbolDefinitions(
 
 struct InlineRuntimeCallsPattern : RewritePattern {
 
-  InlineRuntimeCallsPattern(MLIRContext *ctx)
-      : RewritePattern(RunOp::getOperationName(), PatternBenefit(1), ctx) {}
+  mlir::OpBuilder::InsertPoint &ssaDefInsertPoint;
+  mlir::OpBuilder::InsertPoint &symbolDefInsertPoint;
+  llvm::SetVector<SymbolRefAttr> &allSymbolNames;
+
+  InlineRuntimeCallsPattern(MLIRContext *ctx,
+                            mlir::OpBuilder::InsertPoint &ssaDefInsertPoint,
+                            mlir::OpBuilder::InsertPoint &symbolDefInsertPoint,
+                            llvm::SetVector<SymbolRefAttr> &allSymbolNames)
+      : RewritePattern(RunOp::getOperationName(), PatternBenefit(1), ctx),
+        ssaDefInsertPoint(ssaDefInsertPoint),
+        symbolDefInsertPoint(symbolDefInsertPoint),
+        allSymbolNames(allSymbolNames) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // matching logic
+    llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> previouslyInlinedSymbolMap;
+
     RunOp runOp = llvm::dyn_cast<RunOp>(op);
     if (!runOp) {
       return failure();
     }
+
     AIE::DeviceOp calleeDevice = runOp.getCalleeDeviceOp();
     AIE::RuntimeSequenceOp calleeRuntimeSequence =
         runOp.getCalleeRuntimeSequenceOp();
     if (!calleeDevice || !calleeRuntimeSequence) {
-      return failure();
-    }
-    if (!calleeRuntimeSequence.getOps<RunOp>().empty()) {
       return failure();
     }
 
@@ -369,12 +420,12 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     // Get caller and callee bodies. The callee body will be inlined into the
     // caller body at the point of the RunOp.
     Region &calleeBody = calleeRuntimeSequence.getBody();
-    AIE::DeviceOp callerDevice = op->getParentOfType<AIE::DeviceOp>();
+    AIE::DeviceOp callerDevice =
+        runOp.getOperation()->getParentOfType<AIE::DeviceOp>();
     if (!callerDevice) {
       runOp.emitError() << "needs to be in a DeviceOp";
       return failure();
     }
-    Region &callerDeviceBody = callerDevice.getBodyRegion();
 
     // The argMap maps callee arguments to caller SSA values.
     IRMapping argMap;
@@ -404,12 +455,8 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     referencedValues = std::move(filteredValues);
 
     // Copy the operations that define these SSA values into the caller device
-    mlir::Block &callerDeviceBodyFirstBlock = callerDeviceBody.front();
-    mlir::OpBuilder::InsertPoint clonedDefOpsInsertPoint(
-        &callerDeviceBodyFirstBlock, callerDeviceBodyFirstBlock.begin());
     if (failed(copyReferencedSSAValues(rewriter, referencedValues, callerDevice,
-                                       argMap, clonedDefOpsInsertPoint,
-                                       runOp))) {
+                                       argMap, ssaDefInsertPoint, runOp))) {
       return failure();
     }
 
@@ -419,7 +466,6 @@ struct InlineRuntimeCallsPattern : RewritePattern {
     rewriter.setInsertionPoint(runOp);
     mlir::OpBuilder::InsertPoint clonedOpInsertionPoint =
         rewriter.saveInsertionPoint();
-    llvm::DenseMap<SymbolRefAttr, SymbolRefAttr> previouslyInlinedSymbolMap;
     for (Operation &op : calleeBody.getOps()) {
       rewriter.restoreInsertionPoint(clonedOpInsertionPoint);
       Operation *clonedOp = rewriter.clone(op, argMap);
@@ -427,8 +473,8 @@ struct InlineRuntimeCallsPattern : RewritePattern {
 
       if (failed(inlineReferencedSymbolDefinitions(
               rewriter, clonedOp, calleeRuntimeSequence.getOperation(), argMap,
-              previouslyInlinedSymbolMap, callerDevice,
-              clonedDefOpsInsertPoint))) {
+              previouslyInlinedSymbolMap, callerDevice, symbolDefInsertPoint,
+              allSymbolNames))) {
         return failure();
       }
     }
@@ -477,25 +523,43 @@ struct AIEMaterializeRuntimeSequencesPass
       // this will start with runtime sequences that do not call other runtime
       // sequences (leaves); once their callers inline them, the callers can
       // be inlined as well, and so on
+      mlir::Block &deviceBodyFirstBlock = deviceOp.getBodyRegion().front();
+      auto runtimeSequenceOps = deviceOp.getOps<AIE::RuntimeSequenceOp>();
+      if (runtimeSequenceOps.begin() == runtimeSequenceOps.end()) {
+        // No runtime sequences to materialize
+        continue;
+      }
+      AIE::RuntimeSequenceOp firstRuntimeSequenceOp =
+          *runtimeSequenceOps.begin();
+      mlir::OpBuilder::InsertPoint ssaDefInsertPoint(
+          &deviceBodyFirstBlock, deviceBodyFirstBlock.begin());
+      mlir::OpBuilder::InsertPoint symbolDefInsertPoint(
+          &deviceBodyFirstBlock, mlir::Block::iterator(firstRuntimeSequenceOp));
+      llvm::SetVector<SymbolRefAttr> allSymbolNames = {};
+      for (Operation &op : deviceBodyFirstBlock) {
+        if (auto symbolName = op.getAttrOfType<StringAttr>(
+                SymbolTable::getSymbolAttrName())) {
+          allSymbolNames.insert(SymbolRefAttr::get(symbolName));
+        }
+      }
+
       MLIRContext *ctx = &getContext();
       GreedyRewriteConfig rewriter_config = GreedyRewriteConfig();
       rewriter_config.setRegionSimplificationLevel(
           GreedySimplifyRegionLevel::Disabled);
 
       RewritePatternSet patterns_0(ctx);
-      patterns_0.insert<InlineRuntimeCallsPattern>(ctx);
+      patterns_0.insert<InlineRuntimeCallsPattern>(
+          ctx, ssaDefInsertPoint, symbolDefInsertPoint, allSymbolNames);
       if (failed(applyPatternsGreedily(deviceOp, std::move(patterns_0),
                                        rewriter_config))) {
         return signalPassFailure();
       }
 
       // Insert LoadPDI ops for each aiex.configure op
-      for (AIE::RuntimeSequenceOp runtimeSequenceOp :
-           deviceOp.getOps<AIE::RuntimeSequenceOp>()) {
-        RewritePatternSet patterns_1(ctx);
-        patterns_1.insert<InsertLoadPdiForConfigurePattern>(ctx);
-        walkAndApplyPatterns(runtimeSequenceOp, std::move(patterns_1));
-      }
+      RewritePatternSet patterns_1(ctx);
+      patterns_1.insert<InsertLoadPdiForConfigurePattern>(ctx);
+      walkAndApplyPatterns(deviceOp, std::move(patterns_1));
 
       // Flatten the IR: hoist all operations inside aiex.configure to be direct
       // children of the runtime sequence, preserving order

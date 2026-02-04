@@ -424,7 +424,7 @@ class object_fifo(ObjectFifoCreateOp):
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
-            dimensionsFromStreamPerConsumer = []
+            dimensionsFromStreamPerConsumer = [[] for _ in range(len(consumerTiles))]
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
@@ -470,12 +470,23 @@ class object_fifo(ObjectFifoCreateOp):
     def release(self, port, num_elem):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
+    def register_external_buffers(self, tile, external_buffers):
+        return objectfifo_register_external_buffers(
+            self.sym_name.value, tile, external_buffers
+        )
+
     def allocate(self, tile):
         return objectfifo_allocate(self.sym_name.value, tile)
 
     def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["repeat_count"] = int_num
+
+    def set_aie_stream(self, stream_end, stream_port):
+        int_stream_end = IntegerAttr.get(T.i32(), stream_end)
+        int_stream_port = IntegerAttr.get(T.i32(), stream_port)
+        self.attributes["aie_stream"] = int_stream_end
+        self.attributes["aie_stream_port"] = int_stream_port
 
 
 # Create an aie objectFifo_link between input and output objectFifos.

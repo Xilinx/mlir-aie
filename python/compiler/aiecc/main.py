@@ -2137,6 +2137,12 @@ def run(mlir_module, args=None):
 
 def main():
     global opts
+
+    # Set MLIR_AIE_INSTALL_DIR if not already set
+    if "MLIR_AIE_INSTALL_DIR" not in os.environ:
+        install_dir = aie.compiler.aiecc.configure.install_path()
+        os.environ["MLIR_AIE_INSTALL_DIR"] = install_dir
+
     opts = aie.compiler.aiecc.cl_arguments.parse_args()
 
     if opts.version:
