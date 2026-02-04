@@ -1,0 +1,102 @@
+name: Update LLVM Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      llvm_hash:
+        description: 'Specific LLVM hash to use'
+        required: false
+        type: string
+  schedule:
+    # Run every other Monday at 6:00 UTC (approx biweekly)
+    # Note: GitHub Actions cron doesn't support "every 2 weeks" directly.
+    # Running weekly is usually fine, or 1st and 15th.
+    # Using 1st and 15th of every month.
+    - cron: '0 6 1,15 * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-llvm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run update script
+        id: update
+        run: |
+          if [ -n "${{ inputs.llvm_hash }}" ]; then
+            python3 utils/update_llvm_version.py --llvm-hash "${{ inputs.llvm_hash }}"
+          else
+            python3 utils/update_llvm_version.py
+          fi
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet; then
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected."
+          else
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected."
+          fi
+
+      - name: Select Assignee
+        if: steps.check_changes.outputs.changes == 'true'
+        id: assignee
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f utils/llvm-update-rotation.txt ]; then
+            users=($(cat utils/llvm-update-rotation.txt))
+            count=${#users[@]}
+            if [ $count -gt 0 ]; then
+              # Find the last assignee
+              last_assignee=$(gh pr list --state all --search "Update LLVM version in:title" --limit 1 --json assignees --jq '.[0].assignees[0].login')
+              echo "Last assignee: $last_assignee"
+              
+              next_index=0
+              if [ -n "$last_assignee" ]; then
+                for i in "${!users[@]}"; do
+                  if [[ "${users[$i]}" == "$last_assignee" ]]; then
+                    next_index=$(( (i + 1) % count ))
+                    break
+                  fi
+                done
+              fi
+              
+              assignee=${users[$next_index]}
+              echo "Selected assignee: $assignee"
+              echo "assignee=$assignee" >> $GITHUB_OUTPUT
+            else
+              echo "No users found in rotation file."
+              echo "assignee=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Rotation file not found."
+            echo "assignee=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.check_changes.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Update LLVM version"
+          title: "Update LLVM version"
+          body: |
+            Updates LLVM version based on `triton-shared` or `torch-mlir`.
+            
+            Triggered by: ${{ github.event_name }}
+          branch: update-llvm-version
+          base: main
+          assignees: ${{ steps.assignee.outputs.assignee }}
+          delete-branch: true
