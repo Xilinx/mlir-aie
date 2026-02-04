@@ -467,10 +467,9 @@ __attribute__((noinline)) void group2_softmax(int16_t *__restrict px_in,
 #define BA_C3b (BA_BUF1 + 1024)
 #define BA_SM0b (BA_C3b + 8192)
 
-void group2(
-    int16_t *__restrict xin,
-    int16_t *__restrict magika_2_a, int16_t *__restrict magika_2_b,
-    int16_t *__restrict magika_2_c, int16_t *__restrict magika_2_d) {
+void group2(int16_t *__restrict xin, int16_t *__restrict magika_2_a,
+            int16_t *__restrict magika_2_b, int16_t *__restrict magika_2_c,
+            int16_t *__restrict magika_2_d) {
 
   //----------------------------------------
   // copy data in xin0 and xin1 to BUF1
