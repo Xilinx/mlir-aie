@@ -2449,9 +2449,11 @@ struct ConvertDivFToAIEVecInvOpPattern : OpConversionPattern<arith::DivFOp> {
 
     // Check if LHS is constant 1.0
     auto constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
-    if (!constOp ||
-        cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
-            1.0f)
+    if (!constOp)
+      return failure();
+
+    auto floatAttr = dyn_cast<FloatAttr>(constOp.getValue());
+    if (!floatAttr || !floatAttr.getValue().isExactlyValue(1.0))
       return failure();
 
     // Replace divf with aievec.inv
