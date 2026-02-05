@@ -129,6 +129,19 @@ struct InsertLoadPdiForConfigurePattern : RewritePattern {
     } else {
       configureBlock = &configureOp.getBody().front();
     }
+
+    // Check if the block already starts with a load_pdi for this device.
+    // If so, don't add another one.
+    if (!configureBlock->empty()) {
+      if (auto existingLoadPdi =
+              llvm::dyn_cast<AIEX::NpuLoadPdiOp>(&configureBlock->front())) {
+        if (existingLoadPdi.getDeviceRef() ==
+            referencedDevice.getSymNameAttr()) {
+          return failure();
+        }
+      }
+    }
+
     rewriter.setInsertionPointToStart(configureBlock);
     AIEX::NpuLoadPdiOp::create(
         rewriter, configureOp.getLoc(),
@@ -344,10 +357,24 @@ static LogicalResult inlineReferencedSymbolDefinitions(
         previouslyInlinedSymbolMap[oldSymbolRef] = newSymbolRef;
 
         // Add the new symbol definition
+        // First try to look up from the lookupFrom operation (e.g., within the
+        // callee device). If not found, try looking up from the module level
+        // (for cross-device references).
         Operation *symbolDefOp =
             SymbolTable::lookupNearestSymbolFrom(lookupFrom, oldSymbolRef);
         if (!symbolDefOp) {
+          if (ModuleOp moduleOp = lookupFrom->getParentOfType<ModuleOp>()) {
+            symbolDefOp = SymbolTable::lookupSymbolIn(moduleOp, oldSymbolRef);
+          }
+        }
+        if (!symbolDefOp) {
           return std::make_pair(newSymbolRef, WalkResult::interrupt());
+        }
+
+        // If the symbol is a device, don't clone it - keep the original
+        // reference. Device ops must stay at module level.
+        if (llvm::isa<AIE::DeviceOp>(symbolDefOp)) {
+          return std::make_pair(oldSymbolRef, WalkResult::advance());
         }
 
         // Collect SSA values referenced by the symbol definition operation
