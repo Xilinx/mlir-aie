@@ -626,6 +626,13 @@ def InvsqrtAIE2pIntrOp :
         [Pure, TypeIs<"res", F32>]>,
     Arguments<(ins F32:$src)>;
 
+// ----- INV (Reciprocal) -----
+
+def InvAIE2pIntrOp :
+    AIEVec2p_IntrOp<"inv",
+        [Pure, TypeIs<"res", F32>]>,
+    Arguments<(ins F32:$src)>;
+
 // ----- SHIFT -----
 
 def VectorShiftI512I512IntrOp :

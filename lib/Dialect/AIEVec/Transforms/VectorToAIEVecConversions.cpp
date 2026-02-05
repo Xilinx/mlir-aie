@@ -2372,7 +2372,7 @@ struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
   }
 };
 
-// Lower the inverse of a float to a function call
+// Lower the inverse of a float to a function call (CPP backend)
 // Convert the pattern-
 //  %cst = arith.constant 1.000000e+00 : f32
 //  %0 = arith.divf %cst, %arg1 : f32
@@ -2422,6 +2422,41 @@ struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
         truncOp, TypeRange{truncOp.getResult().getType()}, callOp.getResults());
     rewriter.eraseOp(divOp);
 
+    return success();
+  }
+};
+
+// Lower the inverse of a scalar float to aievec.inv (LLVMIR backend for AIE2P)
+// Convert the pattern-
+//  %cst = arith.constant 1.000000e+00 : f32
+//  %0 = arith.divf %cst, %arg1 : f32
+// to -
+//  %0 = aievec.inv %arg1 : f32
+struct ConvertDivFToAIEVecInvOpPattern : OpConversionPattern<arith::DivFOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getLhs().getType();
+    // Only match scalar f32 operations
+    if (isa<VectorType>(srcType) || !isa<FloatType>(srcType))
+      return failure();
+
+    auto fType = cast<FloatType>(srcType);
+    if (fType.getWidth() != 32)
+      return failure();
+
+    // Check if LHS is constant 1.0
+    auto constOp = dyn_cast<arith::ConstantOp>(divOp.getLhs().getDefiningOp());
+    if (!constOp ||
+        cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
+            1.0f)
+      return failure();
+
+    // Replace divf with aievec.inv
+    rewriter.replaceOpWithNewOp<aievec::InvOp>(divOp, srcType,
+                                               adaptor.getRhs());
     return success();
   }
 };
@@ -3508,6 +3543,7 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
         ComputeExpOpByLUTPattern,
+        ComputeInvOpByLUTPattern,
         ComputeRsqrtOpPattern,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
@@ -3521,7 +3557,6 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   }
   patterns.add<
-      ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpAIE2Pattern,
       ComputeErfOpPattern,
@@ -3629,10 +3664,11 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
   patterns.add<LowerVectorReductionAddBfloat16OpAIE2P>(patterns.getContext());
-  // For AIE2P with LLVMIR backend, use aievec.exp
+  // For AIE2P with LLVMIR backend, use aievec.exp and aievec.inv
   // math.rsqrt is kept legal and will be lowered in AIEVecToLLVM pass
   if (backend == TargetBackend::LLVMIR) {
-    patterns.add<ConvertMathExpToAIEVecExpOpPattern>(patterns.getContext());
+    patterns.add<ConvertMathExpToAIEVecExpOpPattern,
+                 ConvertDivFToAIEVecInvOpPattern>(patterns.getContext());
   }
 }
 
@@ -4064,6 +4100,39 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
       if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp))
         return true;
 
+      return false;
+    });
+
+    // AIE2P-specific legalization for divf 1.0/x pattern with LLVMIR backend
+    // Scalar f32 divf with constant 1.0 numerator is illegal (uses aievec.inv)
+    target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
+      // Check if vector type first (already handled by common legalization)
+      if (isa<VectorType>(divfOp.getLhs().getType()))
+        return true;
+
+      Type scalarType = divfOp.getLhs().getType();
+      if (!isa<FloatType>(scalarType))
+        return true;
+
+      auto fType = cast<FloatType>(scalarType);
+      if (fType.getWidth() != 32)
+        return true;
+
+      // Check if LHS is defined by an operation (not a block argument)
+      auto *defOp = divfOp.getLhs().getDefiningOp();
+      if (!defOp)
+        return true;
+
+      // Check if LHS is constant 1.0
+      auto constOp = dyn_cast<arith::ConstantOp>(defOp);
+      if (!constOp)
+        return true;
+
+      if (cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
+          1.0f)
+        return true;
+
+      // Pattern matches: scalar f32 divf with 1.0 numerator - mark illegal
       return false;
     });
   }

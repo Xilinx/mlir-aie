@@ -4598,6 +4598,34 @@ class ShuffleOpConversion
   }
 };
 
+// Convert aievec.inv to xllvm.intr.aie2p.inv intrinsic for AIE2P
+// Computes the reciprocal of a scalar f32 value
+class InvOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::InvOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::InvOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::InvOp invOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = invOp.getLoc();
+    auto operandType = adaptor.getSource().getType();
+
+    // Only handle scalar f32 inverse
+    if (!operandType.isF32()) {
+      return invOp.emitWarning()
+             << "aievec.inv conversion only supports scalar f32.\n";
+    }
+
+    // Call xllvm.intr.aie2p.inv intrinsic
+    auto invResult = xllvm::InvAIE2pIntrOp::create(
+        rewriter, loc, rewriter.getF32Type(), adaptor.getSource());
+
+    rewriter.replaceOp(invOp, invResult);
+    return success();
+  }
+};
+
 // Convert aievec.exp to xllvm.exp2 intrinsic for AIE2P
 // Uses the identity: exp(x) = exp2(x * log2(e))
 // Supports both lane-16 and lane-32 bf16 vectors
@@ -4941,6 +4969,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ExtractElemOpAIE2pConversion>(converter);
   patterns.add<ConcatOpAIE2pConversion>(converter);
   patterns.add<ExpOpAIE2pConversion>(converter);
+  patterns.add<InvOpAIE2pConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
   patterns.add<RsqrtOpAIE2pConversion>(converter);
   patterns.add<FdivOpAIE2pConversion>(converter);
