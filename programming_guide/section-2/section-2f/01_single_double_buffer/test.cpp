@@ -57,8 +57,8 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, 1 * sizeof(DATATYPE), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(4));
+  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(DATATYPE),
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_outC = xrt::bo(device, OUT_SIZE * sizeof(DATATYPE),
                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 

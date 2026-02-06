@@ -12,11 +12,11 @@ from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp
-from ..helpers.dialects.ext.func import call
-from ..extras.dialects.ext.arith import Scalar, constant
-from ..extras.dialects.ext._shaped_value import ShapedValue
-from ..extras.dialects.ext.memref import (
-    MemRef,
+from ..helpers.dialects.func import call
+from ..extras.dialects.arith import ScalarValue, constant
+from ..extras.dialects._shaped_value import ShapedValue
+from ..extras.dialects.memref import (
+    MemRefValue,
     store as memref_store,
     load as memref_load,
 )
@@ -318,7 +318,7 @@ class buffer(BufferOp):
     def owner(self):
         return self.result.owner
 
-    def __getitem__(self, idx: tuple | Scalar) -> "MemRef":
+    def __getitem__(self, idx: tuple | ScalarValue) -> MemRefValue:
         loc = get_user_code_loc()
 
         if not self.has_rank():
@@ -328,7 +328,7 @@ class buffer(BufferOp):
             return self
         elif isinstance(idx, tuple) and all(i == slice(None) for i in idx):
             return self
-        elif isinstance(idx, Scalar):
+        elif isinstance(idx, ScalarValue):
             idx = (idx,)
         elif idx is None:
             raise ValueError("Operation not supported for buffer")
@@ -338,7 +338,7 @@ class buffer(BufferOp):
             if isinstance(d, int):
                 idx[i] = constant(d, index=True, loc=loc)
 
-        if all(isinstance(d, Scalar) for d in idx) and len(idx) == len(self.shape):
+        if all(isinstance(d, ScalarValue) for d in idx) and len(idx) == len(self.shape):
             return memref_load(self, idx, loc=loc)
         else:
             raise ValueError("Buffer slicing not supported, only indexing supported")
@@ -359,16 +359,16 @@ class buffer(BufferOp):
                     "Buffer slicing not supported, only indexing supported"
                 )
         else:
-            idx = list((idx,) if isinstance(idx, (Scalar, int, Value)) else idx)
+            idx = list((idx,) if isinstance(idx, (ScalarValue, int, Value)) else idx)
             for i, d in enumerate(idx):
                 if isinstance(d, int):
                     idx[i] = constant(d, index=True, loc=loc)
 
-            if all(isinstance(d, (Scalar)) for d in idx) and len(idx) == len(
+            if all(isinstance(d, (ScalarValue)) for d in idx) and len(idx) == len(
                 self.shape
             ):
-                if not isinstance(source, Scalar):
-                    source = Scalar(source, dtype=self.dtype)
+                if not isinstance(source, ScalarValue):
+                    source = ScalarValue(source, dtype=self.dtype)
                 memref_store(source, self, idx, loc=loc)
             else:
                 raise ValueError(
@@ -379,7 +379,7 @@ class buffer(BufferOp):
 # Create an aie external buffer of (shape x datatype).
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the ExternalBufferOp and instead pretends to be a MemRef
-class external_buffer(MemRef):
+class external_buffer(MemRefValue):
     def __init__(self):
         raise ValueError("Should never be called")
 
@@ -424,7 +424,7 @@ class object_fifo(ObjectFifoCreateOp):
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
-            dimensionsFromStreamPerConsumer = []
+            dimensionsFromStreamPerConsumer = [[] for _ in range(len(consumerTiles))]
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
@@ -470,12 +470,23 @@ class object_fifo(ObjectFifoCreateOp):
     def release(self, port, num_elem):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
+    def register_external_buffers(self, tile, external_buffers):
+        return objectfifo_register_external_buffers(
+            self.sym_name.value, tile, external_buffers
+        )
+
     def allocate(self, tile):
         return objectfifo_allocate(self.sym_name.value, tile)
 
     def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["repeat_count"] = int_num
+
+    def set_aie_stream(self, stream_end, stream_port):
+        int_stream_end = IntegerAttr.get(T.i32(), stream_end)
+        int_stream_port = IntegerAttr.get(T.i32(), stream_port)
+        self.attributes["aie_stream"] = int_stream_end
+        self.attributes["aie_stream_port"] = int_stream_port
 
 
 # Create an aie objectFifo_link between input and output objectFifos.

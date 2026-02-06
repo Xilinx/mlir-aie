@@ -11,10 +11,13 @@ from textwrap import dedent
 from typing import Union
 
 from importlib_metadata import files
-from setuptools import Extension, setup
+from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
 from setuptools.command.develop import develop
 from setuptools.command.install import install
+
+sys.path.append(os.path.dirname(__file__))
+from vendor_eudsl import install_eudsl
 
 
 def check_env(build, default=0):
@@ -153,10 +156,14 @@ class CMakeBuild(build_ext):
             xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
             cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
 
-        if platform.system() == "Windows":
+        if shutil.which("ccache"):
             cmake_args += [
                 "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
                 "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
+            ]
+
+        if platform.system() == "Windows":
+            cmake_args += [
                 "-DCMAKE_C_COMPILER=cl",
                 "-DCMAKE_CXX_COMPILER=cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
@@ -231,6 +238,12 @@ class CMakeBuild(build_ext):
             check=True,
         )
 
+        # Vendor eudsl-python-extras
+        # Install eudsl to install_dir/python so it merges with mlir-aie's package structure (aie/extras).
+        target_dir = Path(install_dir) / "python"
+        req_file = Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
+        install_eudsl(req_file, target_dir)
+
 
 class DevelopWithPth(develop):
     """Custom develop command to create a .pth file into the site-packages directory."""
@@ -279,9 +292,20 @@ def parse_requirements(filename):
     with open(filename) as f:
         lines = f.read().splitlines()
         # Remove comments and empty lines
-        return [
-            line.strip() for line in lines if line.strip() and not line.startswith("#")
-        ]
+        # Also remove lines starting with "-" (flags) and eudsl-python-extras
+        # because eudsl requires config settings that cannot be passed via install_requires
+        # in wheel metadata. It must be installed separately or vendored.
+        requirements = []
+        for line in lines:
+            line = line.strip()
+            if (
+                line
+                and not line.startswith("#")
+                and not line.startswith("-")
+                and not re.match(r"^eudsl-python-extras\b", line, re.IGNORECASE)
+            ):
+                requirements.append(line)
+        return requirements
 
 
 setup(
@@ -297,6 +321,7 @@ setup(
         "install": InstallWithPth,
     },
     zip_safe=False,
+    packages=find_packages(exclude=["wheelhouse", "python_bindings", "mlir-aie"]),
     python_requires=">=3.10",
     install_requires=parse_requirements(
         Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"

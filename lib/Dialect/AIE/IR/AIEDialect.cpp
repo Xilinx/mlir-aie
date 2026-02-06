@@ -232,6 +232,15 @@ static TileElement getParentTileElement(Operation *op) {
   return llvm::dyn_cast<TileElement>(parent);
 }
 
+// Returns the maximum index described by the input dimensions.
+static int64_t getDimsMaxIdx(ArrayRef<BDDimLayoutAttr> dims) {
+  int64_t maxIdx = 0;
+  for (BDDimLayoutAttr dim : dims) {
+    maxIdx += dim.getStride() * (dim.getSize() - 1);
+  }
+  return maxIdx;
+}
+
 namespace {
 
 struct UsesAreAccessible {
@@ -310,14 +319,53 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
-    if (!block.template getOps<DMABDOp>().empty()) {
-      if (bdNum >= bdMax) {
-        auto bd = *block.template getOps<DMABDOp>().begin();
-        return (op->emitOpError("has more than ") << bdMax << " blocks")
-            .attachNote(bd.getLoc())
-            .append("no space for this bd: ");
-      }
-      bdNum++;
+    auto bdOps = llvm::to_vector_of<DMABDOp>(block.template getOps<DMABDOp>());
+
+    // Skip entry/end block
+    if (bdOps.empty())
+      continue;
+
+    // Check BD count limit
+    if (bdNum >= bdMax) {
+      return (op->emitOpError("has more than ") << bdMax << " blocks")
+          .attachNote(bdOps.front().getLoc())
+          .append("no space for this BD");
+    }
+    bdNum++;
+
+    // Check exactly 1 DMABDOp per BD block
+    if (bdOps.size() != 1) {
+      return (op->emitOpError("BD block must have exactly one DMABDOp, found ")
+              << bdOps.size())
+          .attachNote(block.front().getLoc())
+          .append("in this BD block");
+    }
+
+    // Check at most 2 UseLockOps per BD block (1 acquire, 1 release)
+    auto useLockOps =
+        llvm::to_vector_of<UseLockOp>(block.template getOps<UseLockOp>());
+    int acquireCount = 0;
+    int releaseCount = 0;
+    for (auto useLock : useLockOps) {
+      if (useLock.acquire() || useLock.acquireGE())
+        acquireCount++;
+      else if (useLock.release())
+        releaseCount++;
+    }
+
+    if (acquireCount > 1) {
+      return (op->emitOpError(
+                  "BD block must have at most one acquire UseLockOp, found ")
+              << acquireCount)
+          .attachNote(block.front().getLoc())
+          .append("in this BD block");
+    }
+    if (releaseCount > 1) {
+      return (op->emitOpError(
+                  "BD block must have at most one release UseLockOp, found ")
+              << releaseCount)
+          .attachNote(block.front().getLoc())
+          .append("in this BD block");
     }
   }
   return success();
@@ -371,15 +419,66 @@ LogicalResult ObjectFifoCreateOp::verify() {
                          "and for each consumer.");
   }
 
+  // data layout transformations on shim tiles are handled by runtime operations
   if (getProducerTileOp().isShimTile() && !getDimensionsToStream().empty()) {
     return emitError(
         "`dimensionsToStream` data layout transformations are not supported "
         "on shim tile producers");
   }
+  for (auto consTile : getConsumerTiles()) {
+    if (cast<TileOp>(consTile.getDefiningOp()).isShimTile() &&
+        !getDimensionsFromStream(consTile).empty()) {
+      return emitError(
+          "`dimensionsFromStreamPerConsumer` data layout transformations are "
+          "not supported on shim tile consumers");
+    }
+  }
 
   if (getRepeatCount().has_value()) {
     if (getProducerTileOp().isShimTile())
       return emitError("`repeat_count` unavailable for shim tiles");
+  }
+
+  if (getAieStreamPort().has_value()) {
+    if (!getAieStream().has_value())
+      return emitError("`aie_stream` must be defined");
+  }
+
+  if (getAieStream().has_value()) {
+    if (getConsumerTiles().size() > 1)
+      return emitError("`aie_stream` can only be used in 1-to-1 object FIFOs");
+
+    if (!getAieStreamPort().has_value())
+      return emitError("`aie_stream_port` must be defined");
+
+    if (getAieStream().value() == 0 || getAieStream().value() == 2) {
+      if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
+        return emitError(
+            "`aie_stream` is not available for shim and mem tiles");
+
+      if (getRepeatCount().has_value())
+        return emitError("`repeat_count` unavailable on stream end");
+
+      if (getInitValues().has_value())
+        return emitError("`init_values` unavailable on stream end");
+
+      if (getIterCount().has_value())
+        return emitError("`iter_count` unavailable on stream end");
+
+      if (!getDimensionsToStream().empty())
+        return emitError("`dimensionsToStream` data layout transformations are "
+                         "unavailable on stream end");
+    }
+
+    if (getAieStream().value() == 1 || getAieStream().value() == 2)
+      if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile() ||
+          getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
+        return emitError(
+            "`aie_stream` is not available for shim and mem tiles");
+
+    if (!getDimensionsFromStreamPerConsumer()[0].empty())
+      return emitError("`dimensionsFromStreamPerConsumer` data layout "
+                       "transformations are unavailable on stream end");
   }
 
   if (getInitValues().has_value()) {
@@ -416,6 +515,18 @@ LogicalResult ObjectFifoCreateOp::verify() {
 
 TileOp ObjectFifoCreateOp::getProducerTileOp() {
   return cast<TileOp>(getProducerTile().getDefiningOp());
+}
+
+BDDimLayoutArrayAttr
+ObjectFifoCreateOp::getDimensionsFromStream(Value consumerTile) {
+  int dimsIndex = 0;
+  for (auto cons : getConsumerTiles()) {
+    if (cons == consumerTile)
+      break;
+    else
+      dimsIndex++;
+  }
+  return getDimensionsFromStreamPerConsumer()[dimsIndex];
 }
 
 ParseResult xilinx::AIE::parseObjectFifoProducerTile(
@@ -572,6 +683,9 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (!objFifo.getDimensionsToStream().empty())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set dimensions attribute");
+  if (objFifo.getAieStream().has_value())
+    return emitError("cannot allocate a shared memory module to objectfifo "
+                     "using stream port");
   return success();
 }
 
@@ -620,6 +734,23 @@ LogicalResult ObjectFifoLinkOp::verify() {
     if (!getDstOffsets().empty())
       return emitOpError("dst offsets should be empty for join");
 
+    ObjectFifoCreateOp fifoOut = getOutputObjectFifos()[0];
+    if (!fifoOut.getDimensionsToStream().empty()) {
+      int64_t maxIdx = getDimsMaxIdx(fifoOut.getDimensionsToStream());
+      int64_t minInputBufferSize = -1;
+      for (auto lenIn : getJoinTransferLengths()) {
+        if (lenIn <= minInputBufferSize || minInputBufferSize < 0)
+          minInputBufferSize = lenIn;
+      }
+      if (minInputBufferSize <= maxIdx) {
+        return emitOpError()
+               << "specified output stride(s) and size(s) result in out "
+                  "of bounds access in join input, for index "
+               << std::to_string(maxIdx) << " in transfer of length "
+               << std::to_string(minInputBufferSize) << ".";
+      }
+    }
+
   } else if (isDistribute()) {
     if (getFifoOuts().size() != getDstOffsets().size())
       return emitOpError("number of provided dst offsets must be equal "
@@ -629,30 +760,30 @@ LogicalResult ObjectFifoLinkOp::verify() {
       return emitOpError("src offsets should be empty for distribute");
 
     ObjectFifoCreateOp fifoIn = getInputObjectFifos()[0];
-    if (!fifoIn.getDimensionsToStream().empty()) {
-      return emitOpError("currently does not support objectFifos with "
-                         "dimensionsToStream.");
-    }
-    for (auto dims : fifoIn.getDimensionsFromStreamPerConsumer()) {
-      if (!dims.empty())
-        return emitOpError("currently does not support objectFifos with "
-                           "dimensionsFromStreamPerConsumer.");
-    }
-
-    for (auto fifoOut : getOutputObjectFifos()) {
-      for (auto dims : fifoOut.getDimensionsFromStreamPerConsumer()) {
-        if (!dims.empty())
-          return emitOpError("currently does not support objectFifos with "
-                             "dimensionsFromStreamPerConsumer.");
+    if (!fifoIn.getDimensionsFromStream(sharedTile.value()).empty()) {
+      int64_t maxIdx =
+          getDimsMaxIdx(fifoIn.getDimensionsFromStream(sharedTile.value()));
+      int64_t minOutputBufferSize = -1;
+      for (auto lenOut : getDistributeTransferLengths()) {
+        if (lenOut <= minOutputBufferSize || minOutputBufferSize < 0)
+          minOutputBufferSize = lenOut;
+      }
+      if (minOutputBufferSize <= maxIdx) {
+        return emitOpError()
+               << "specified input stride(s) and size(s) result in out "
+                  "of bounds access in distribute output, for index "
+               << std::to_string(maxIdx) << " in transfer of length "
+               << std::to_string(minOutputBufferSize) << ".";
       }
     }
 
     std::vector<int> repeat_counts;
     for (auto fifoOut : getOutputObjectFifos()) {
-      if (fifoOut.getRepeatCount().has_value())
+      if (fifoOut.getRepeatCount().has_value()) {
         repeat_counts.push_back(fifoOut.getRepeatCount().value());
-      else
+      } else {
         repeat_counts.push_back(0);
+      }
     }
     for (auto repeat : repeat_counts)
       if (repeat_counts[0] != repeat)
@@ -1763,9 +1894,16 @@ LogicalResult DMABDOp::verify() {
     return success();
   }
 
-  if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
-    return emitOpError(
-        "BDs only support BufferOp or ExternalBufferOp operands.");
+  // Check if buffer is an unranked memref (e.g., from function argument)
+  bool isUnrankedMemRef = llvm::isa<UnrankedMemRefType>(getBuffer().getType());
+
+  // For unranked memrefs, we can't verify as strictly since we don't know
+  // the buffer's defining op or its full type at compile time
+  if (!isUnrankedMemRef) {
+    if (!isa<BufferOp, ExternalBufferOp>(getBuffer().getDefiningOp()))
+      return emitOpError(
+          "BDs only support BufferOp or ExternalBufferOp operands.");
+  }
 
   if (getLenInBytes() % 4)
     return emitOpError("transfer length must be multiple of 4 (i.e., represent "
@@ -1773,7 +1911,7 @@ LogicalResult DMABDOp::verify() {
 
   TileID parentTileId = getParentTileElement(getOperation()).getTileID();
 
-  if (getOperation()->getParentOfType<MemOp>() &&
+  if (!isUnrankedMemRef && getOperation()->getParentOfType<MemOp>() &&
       (getBufferOp().getTileOp().colIndex() != parentTileId.col ||
        getBufferOp().getTileOp().rowIndex() != parentTileId.row))
     return emitOpError(
@@ -1799,10 +1937,18 @@ LogicalResult DMABDOp::verify() {
                               " tile (got "
                            << std::to_string(dims->size()) << " dimensions).";
 
-    MemRefType buffer = getBuffer().getType();
-    int64_t maxIdx = 0;
+    auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
+    if (!buffer)
+      return emitOpError() << "dimensions attribute cannot be used with "
+                              "unranked memref buffer type.";
+    int64_t maxIdx = getDimsMaxIdx(*dims);
+    if (buffer.getNumElements() <= maxIdx)
+      return emitOpError() << "Specified stride(s) and size(s) result in out "
+                              "of bounds access in buffer, for index "
+                           << std::to_string(maxIdx) << " in memref of length "
+                           << std::to_string(buffer.getNumElements()) << ".";
+
     for (BDDimLayoutAttr dim : *dims) {
-      maxIdx += dim.getStride() * (dim.getSize() - 1);
       if (0 == dim.getStride())
         return emitOpError()
                << "Invalid step size; must be a positive integer.";
@@ -1815,12 +1961,6 @@ LogicalResult DMABDOp::verify() {
       if (dim.getStride() >= (1UL << 19))
         return emitOpError() << "Stride may not exceed " << (1 << 20);
     }
-
-    if (buffer.getNumElements() <= maxIdx)
-      return emitOpError() << "Specified stride(s) and size(s) result in out "
-                              "of bounds access in buffer, for index "
-                           << std::to_string(maxIdx) << " in memref of length "
-                           << std::to_string(buffer.getNumElements()) << ".";
 
     // Since streams read 32b words, there's no way to read eg 16b with stride
     // of 2 (ie lower halfs of each 32b). So force it to be 1 (and then in
@@ -1863,8 +2003,9 @@ LogicalResult DMABDOp::verify() {
       return emitOpError() << "Inner-most padding-after count must result in"
                            << " padding in 32-bit words.";
   }
-  if (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
-      targetModel.isCoreTile(parentTileId.col, parentTileId.row)) {
+  if (!isUnrankedMemRef &&
+      (targetModel.isMemTile(parentTileId.col, parentTileId.row) ||
+       targetModel.isCoreTile(parentTileId.col, parentTileId.row))) {
     if (auto baseAddr = getBufferOp().getAddress(); baseAddr.has_value()) {
       int offsetInBytes = *baseAddr + getOffsetInBytes();
       if (offsetInBytes % 4)
@@ -2477,6 +2618,55 @@ RuntimeSequenceOp::getForSymbolInDeviceOrError(DeviceOp deviceOp,
     }
   }
   return runtimeSequenceOp;
+}
+
+LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
+  // Check that all symbol references within the runtime sequence
+  // are either to ShimDMAAllocationOp, DeviceOp or another RuntimeSequenceOp;
+  // these are the only symbols that can be lowered with the NPU passes
+  auto result = (*this)->walk([&](Operation *op) {
+    for (NamedAttribute namedAttr : op->getAttrs()) {
+      Attribute attr = namedAttr.getValue();
+      auto walkResult = attr.walk([&](SymbolRefAttr symbolRef) {
+        Operation *symbolDefOp =
+            SymbolTable::lookupNearestSymbolFrom(*this, symbolRef);
+        if (symbolDefOp) {
+          if (!llvm::isa<ShimDMAAllocationOp>(symbolDefOp) &&
+              !llvm::isa<DeviceOp>(symbolDefOp) &&
+              !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
+              !llvm::isa<BufferOp>(symbolDefOp) &&
+              !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
+            op->emitOpError()
+                << "references symbol '"
+                << symbolRef.getRootReference().getValue()
+                << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
+                   "RuntimeSequenceOp, BufferOp or GlobalOp, but got: "
+                << symbolDefOp->getName().getStringRef();
+            return WalkResult::interrupt();
+          }
+          if (BufferOp bufferOp = llvm::dyn_cast<BufferOp>(symbolDefOp)) {
+            if (!bufferOp.getAddress()) {
+              op->emitOpError()
+                  << "Unallocated buffer; fixed addresses are required before "
+                     "runtime sequence materialization.";
+              return WalkResult::interrupt();
+            }
+          }
+        }
+        return WalkResult::advance();
+      });
+      if (walkResult.wasInterrupted()) {
+        return WalkResult::interrupt();
+      }
+    }
+    return WalkResult::advance();
+  });
+
+  if (result.wasInterrupted()) {
+    return failure();
+  }
+
+  return success();
 }
 
 // Include implementations for custom attributes

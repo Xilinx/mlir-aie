@@ -4,7 +4,7 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
-from aie.helpers.dialects.ext.func import func
+from aie.helpers.dialects.func import func
 
 # RUN: %python %s | FileCheck %s
 

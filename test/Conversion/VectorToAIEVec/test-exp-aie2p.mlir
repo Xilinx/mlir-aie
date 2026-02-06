@@ -18,3 +18,12 @@ func.func @test_exp_aie2p(%a: vector<16xbf16>) -> vector<16xbf16> {
     // CHECK: return %[[EXP]] : vector<16xbf16>
     return %0 : vector<16xbf16>
 }
+
+// CHECK-LABEL: func @test_exp_v32bf16_aie2p
+// CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<32xbf16>
+func.func @test_exp_v32bf16_aie2p(%a: vector<32xbf16>) -> vector<32xbf16> {
+    // CHECK: %[[EXP:.*]] = aievec.exp %[[A]] : vector<32xbf16>
+    %0 = math.exp %a : vector<32xbf16>
+    // CHECK: return %[[EXP]] : vector<32xbf16>
+    return %0 : vector<32xbf16>
+}

@@ -960,19 +960,11 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
       SymbolTable::lookupSymbolIn(referencedDevice, getRuntimeSequenceSymbol());
 
   if (!maybeRuntimeSequence) {
-    auto err = emitError() << "No such runtime sequence for device '"
-                           << referencedDevice.getSymName() << "': '"
-                           << getRuntimeSequenceSymbol() << "'";
-    err.attachNote(referencedDevice.getLoc())
-        << "This device does not have a '" << getRuntimeSequenceSymbol()
-        << "' runtime sequence";
     return nullptr;
   }
   AIE::RuntimeSequenceOp runtimeSequence =
       llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeRuntimeSequence);
   if (!runtimeSequence) {
-    emitError() << "Not a runtime sequence: '" << getRuntimeSequenceSymbol()
-                << "'";
     return nullptr;
   }
 
@@ -980,8 +972,70 @@ AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
 }
 
 LogicalResult AIEX::RunOp::verify() {
-  if (getCalleeDeviceOp() && getCalleeRuntimeSequenceOp()) {
+  AIE::DeviceOp calleeDevice = getCalleeDeviceOp();
+  if (!calleeDevice) {
+    return emitOpError() << "No such device: '" << getRuntimeSequenceSymbol()
+                         << "'";
+  }
+
+  AIE::RuntimeSequenceOp calleeRuntimeSequence = getCalleeRuntimeSequenceOp();
+  if (!calleeRuntimeSequence) {
+    auto err = emitError() << "No such runtime sequence for device '"
+                           << calleeDevice.getSymName() << "': '"
+                           << getRuntimeSequenceSymbol() << "'";
+    err.attachNote(calleeDevice.getLoc())
+        << "This device does not have a '" << getRuntimeSequenceSymbol()
+        << "' runtime sequence";
+    return err;
+  }
+
+  // Validate argument types match the callee's parameters
+  Block &calleeBody = calleeRuntimeSequence.getBody().front();
+  ValueRange values = getArgs();
+
+  if (calleeBody.getNumArguments() != values.size()) {
+    return emitOpError() << "argument count mismatch";
+  }
+
+  for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
+    BlockArgument arg = calleeBody.getArgument(i);
+    Value val = values[i];
+
+    if (arg.getType() != val.getType()) {
+      return emitOpError() << "argument " << i << " type mismatch: "
+                           << "expected " << arg.getType() << " but got "
+                           << val.getType();
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuLoadPdiOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,
+                                               PatternRewriter &rewriter) {
+  // Check for back-to-back identical load_pdi ops and remove duplicates
+  Operation *nextOp = op->getNextNode();
+  if (!nextOp)
+    return failure();
+
+  // Check if next op is also a NpuLoadPdiOp
+  auto nextLoadPdi = dyn_cast<AIEX::NpuLoadPdiOp>(nextOp);
+  if (!nextLoadPdi)
+    return failure();
+
+  // Check if they are identical (all attributes match)
+  if (op.getDeviceRefAttr() == nextLoadPdi.getDeviceRefAttr() &&
+      op.getId() == nextLoadPdi.getId() &&
+      op.getSize() == nextLoadPdi.getSize() &&
+      op.getAddress() == nextLoadPdi.getAddress()) {
+    // Erase the first one, keeping the second
+    rewriter.eraseOp(op);
     return success();
   }
+
   return failure();
 }

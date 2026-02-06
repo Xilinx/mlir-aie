@@ -925,7 +925,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   }];
 
   let arguments = (
-    ins AnyMemRef:$buffer,
+    ins AnyRankedOrUnrankedMemRef:$buffer,
         // in multiples of element width (not bytes)
         DefaultValuedAttr<AIEI32Attr, "0">:$offset,
         // in multiples of element width (not bytes)
@@ -947,13 +947,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     BufferOp getBufferOp();
     int32_t getBufferElementTypeWidthInBytes() {
       mlir::DataLayout dataLayout = mlir::DataLayout::closest(*this);
-      return dataLayout.getTypeSize(getBuffer().getType().getElementType());
+      auto bufferType = llvm::cast<mlir::BaseMemRefType>(getBuffer().getType());
+      return dataLayout.getTypeSize(bufferType.getElementType());
     }
     uint32_t getLenInBytes() {
       if (std::optional<uint32_t> len = getLen(); len.has_value())
         return len.value() * getBufferElementTypeWidthInBytes();
-      else
-        return getBuffer().getType().getNumElements() * getBufferElementTypeWidthInBytes();
+      auto memrefType = llvm::dyn_cast<mlir::MemRefType>(getBuffer().getType());
+      if (!memrefType)
+        return 0; // Unranked memref without explicit len
+      return memrefType.getNumElements() * getBufferElementTypeWidthInBytes();
     }
     int32_t getOffsetInBytes() { return getOffset() * getBufferElementTypeWidthInBytes(); }
   }];
@@ -1649,7 +1652,6 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
     TileOp getTileOp();
     static ::xilinx::AIE::ShimDMAAllocationOp getForSymbol(::xilinx::AIE::DeviceOp device, ::llvm::StringRef symbol);
   }];
-
 }
 
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
@@ -1755,6 +1757,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
         // repeat_count==1 means "do it once"
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        // aie_stream==0 means enable aie stream port on producer tile
+        // aie_stream==1 means enable aie stream port on consumer tile
+        // aie_stream==2 means enable aie stream ports on producer and consumer tiles
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<2>]>>:$aie_stream,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
         OptionalAttr<AIEI32Attr>:$iter_count
@@ -1791,6 +1798,8 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
       return getOperation()->getAttrOfType<mlir::StringAttr>(
           mlir::SymbolTable::getSymbolAttrName());
     }
+
+    AIE::BDDimLayoutArrayAttr getDimensionsFromStream(mlir::Value consumerTile);
   }];
 
   let builders = [
@@ -1821,7 +1830,7 @@ def AIE_ObjectFifoAllocateOp: AIE_Op<"objectfifo.allocate", [HasParent<"DeviceOp
 
     In the following example the objects of @of4 will be allocated on %tile14:
     ```
-      aie.objectfifo @of4 (%tile13, {%tile14}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+      aie.objectfifo @of4 (%tile13, { %tile14 }, 2 : i32) : !aie.objectfifo<memref<256xi32>>
       aie.objectfifo.allocate @of4 (%tile14)
     ```
   }];
@@ -1867,6 +1876,10 @@ def AIE_ObjectFifoLinkOp: AIE_Op<"objectfifo.link", [HasParent<"DeviceOp">]> {
     To achieve a distribute pattern from the link tile, there should be multiple output `objectFifos` in the OjbectFifoLinkOp. In this case,
     parts will be taken out of the input `objectFifo`'s buffers based on dst_offsets input array.
     The join pattern is the exact inverse of the distribute one and uses the src_offsets input array instead.
+
+    In the cases of the join and distribute patterns, the link has some special restrictions on `toStream` and `fromStream` dimensions:
+    - join: the `toStream` dimensions of the output `objectFifo` cannot access an index beyond the length of the minimum transfer length in the src_offsets.
+    - distribute: the `fromStream` dimensions of the input `objectFifo` cannot access an index beyond the length of the minimum transfer length in dst_offsets.
   }];
 
   let arguments = (
@@ -2160,6 +2173,7 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
     static llvm::StringRef getDefaultRuntimeSequenceName() { return "sequence"; }
     static RuntimeSequenceOp getForSymbolInDevice(DeviceOp module, llvm::StringRef symbol);
     static RuntimeSequenceOp getForSymbolInDeviceOrError(DeviceOp module, llvm::StringRef symbol);
+    llvm::LogicalResult verifyBeforeMaterialization();
   }];
   let extraClassDefinition = [{
   }];

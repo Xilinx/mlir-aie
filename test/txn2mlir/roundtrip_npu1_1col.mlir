@@ -12,7 +12,7 @@
 // RUN: %python txn2mlir.py -f ./roundtrip_npu1_1col_cfg.bin | FileCheck %s
 
 // CHECK: aie.device(npu1_1col)
-// CHECK: memref.global "private" constant @blockwrite_data : memref<2xi32> = dense<[4195328, 0]>
+// CHECK: memref.global "private" constant @config_blockwrite_data_0 : memref<2xi32> = dense<[4195328, 0]>
 // CHECK: aiex.npu.maskwrite32 {address = 2301952 : ui32, mask = 2 : ui32, value = 2 : ui32}
 // CHECK: aiex.npu.write32 {address = 2224128 : ui32, value = 2 : ui32}
 // CHECK: aiex.npu.blockwrite(%0) {address = 2215936 : ui32} : memref<2xi32>

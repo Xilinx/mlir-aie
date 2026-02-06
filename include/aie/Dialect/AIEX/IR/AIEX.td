@@ -534,8 +534,7 @@ def AIE_SelectOp: AIEX_Op<"select", []>, Results<(outs Index)> {
 def AIE_ConfigureOp: AIEX_Op<"configure", [
   HasParent<"AIE::RuntimeSequenceOp">,
   NoTerminator
-]>,
-  Results<(outs Index:$result)>
+]>
  {
   let summary = "Set up a configuration (program memories, stream switches, etc.) on the NPU device.";
   let arguments = (
@@ -1015,6 +1014,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
 
     If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
   }];
+  let hasCanonicalizeMethod = 1;
 }
 
 def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {

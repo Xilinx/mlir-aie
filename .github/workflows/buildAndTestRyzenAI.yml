@@ -64,7 +64,7 @@ jobs:
       matrix:
         runner_type: [ amd7940hs, amdhx370 ]
     env:
-      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
@@ -87,8 +87,8 @@ jobs:
           source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
+          pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_notebook.txt
           pip install -r python/requirements_ml.txt
           pip install -r python/requirements_dev.txt
@@ -132,18 +132,21 @@ jobs:
             $CMAKE_ARGS
 
           # Create runner-specific cache directory
-          rm -rf $IRON_CACHE_HOME
-          mkdir $IRON_CACHE_HOME
+          rm -rf $NPU_CACHE_HOME
+          mkdir $NPU_CACHE_HOME
+
+          # Set number of contexts to maintain in cache per process
+          export XRT_CONTEXT_CACHE_SIZE=2
 
           ninja install
           ninja check-aie
           ninja check-aie-concurrency
           popd
 
-      - name: Cleanup IRON_CACHE_HOME
+      - name: Cleanup NPU_CACHE_HOME
         if: always()
         run: |
-          rm -rf $IRON_CACHE_HOME
+          rm -rf $NPU_CACHE_HOME
           rm -rf $PIP_CACHE_DIR
 
   build-quick-setup:
@@ -154,7 +157,7 @@ jobs:
       matrix:
         runner_type: [ amd7940hs, amdhx370 ]
     env:
-      IRON_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
@@ -179,6 +182,7 @@ jobs:
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
+          pip install --upgrade pip
           pip install -r python/requirements_dev.txt
 
           ./utils/build-mlir-aie-from-wheels.sh
@@ -201,17 +205,20 @@ jobs:
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
 
+          # Set number of contexts to maintain in cache per process
+          export XRT_CONTEXT_CACHE_SIZE=2
+
           # Create runner-specific cache directory
-          rm -rf $IRON_CACHE_HOME
-          mkdir $IRON_CACHE_HOME
+          rm -rf $NPU_CACHE_HOME
+          mkdir $NPU_CACHE_HOME
 
           ninja install
           ninja check-reference-designs
           ninja check-programming-guide
           popd
 
-      - name: Cleanup IRON_CACHE_HOME
+      - name: Cleanup NPU_CACHE_HOME
         if: always()
         run: |
-          rm -rf $IRON_CACHE_HOME
+          rm -rf $NPU_CACHE_HOME
           rm -rf $PIP_CACHE_DIR

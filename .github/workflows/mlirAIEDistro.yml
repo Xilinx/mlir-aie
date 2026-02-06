@@ -196,6 +196,11 @@ jobs:
         git submodule update
         popd
 
+    - name: Copy clone-llvm.sh for wheel build
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: cp ../clone-llvm.sh .
+
     # build
 
     - name: build distro wheels
@@ -210,6 +215,7 @@ jobs:
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+        CIBW_CONTAINER_ENGINE_ARGS="-v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:/host${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}" \
         AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
@@ -227,8 +233,8 @@ jobs:
 
         export PIP_NO_BUILD_ISOLATION=false
 
+        pip install --upgrade pip
         pip install -r requirements.txt
-        HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
         pip install -r python/requirements_dev.txt
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
@@ -261,6 +267,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
+        python -m pip install --upgrade pip
         pip install pkginfo
         WHL=$(ls wheelhouse/mlir_aie*whl)
         echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
@@ -352,7 +359,6 @@ jobs:
         with:
           sparse-checkout: |
             python/requirements.txt
-            python/requirements_extras.txt
             python/requirements_dev.txt
 
       - uses: actions/download-artifact@v4
@@ -367,16 +373,12 @@ jobs:
       - name: test
         shell: bash
         run: |
+          python -m pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
           pip install -r python/requirements_dev.txt
           unzip -o -q dist/mlir_aie\*.whl
 
-          if [ x"${{ matrix.ENABLE_RTTI }}" == x"ON" ]; then
-            export PYTHONPATH=mlir_aie/python
-          else
-            export PYTHONPATH=mlir_aie_no_rtti/python
-          fi
+          export PYTHONPATH=mlir_aie/python
 
           python -c 'import aie.ir'
           python -c 'import aie.extras'
