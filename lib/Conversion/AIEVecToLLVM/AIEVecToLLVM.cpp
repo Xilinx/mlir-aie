@@ -4598,6 +4598,58 @@ class ShuffleOpConversion
   }
 };
 
+// Convert aievec.inv to xllvm.intr.aie2p.inv intrinsic for AIE2P
+// Scalar f32: direct conversion to xllvm.intr.aie2p.inv
+// Vector f32: unroll into scalar xllvm.intr.aie2p.inv operations
+class InvOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::InvOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::InvOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::InvOp invOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = invOp.getLoc();
+    auto operandType = adaptor.getSource().getType();
+
+    // Handle scalar f32 inverse
+    if (operandType.isF32()) {
+      auto invResult = xllvm::InvAIE2pIntrOp::create(
+          rewriter, loc, rewriter.getF32Type(), adaptor.getSource());
+      rewriter.replaceOp(invOp, invResult);
+      return success();
+    }
+
+    // Handle vector<N x f32> inverse
+    auto vecType = dyn_cast<VectorType>(operandType);
+    if (!vecType || !vecType.getElementType().isF32())
+      return failure();
+
+    // Unroll vector inverse into scalar operations
+    int numElements = getVectorLaneSize(vecType);
+    Value result = LLVM::PoisonOp::create(rewriter, loc, vecType);
+
+    for (int i = 0; i < numElements; ++i) {
+      // Extract element i
+      auto indexCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI64Type(), rewriter.getI64IntegerAttr(i));
+      auto extractedElem = LLVM::ExtractElementOp::create(
+          rewriter, loc, adaptor.getSource(), indexCst);
+
+      // Call xllvm.intr.aie2p.inv on the scalar
+      auto invResult = xllvm::InvAIE2pIntrOp::create(
+          rewriter, loc, rewriter.getF32Type(), extractedElem);
+
+      // Insert result back into vector
+      result = LLVM::InsertElementOp::create(rewriter, loc, vecType, result,
+                                             invResult, indexCst);
+    }
+
+    rewriter.replaceOp(invOp, result);
+    return success();
+  }
+};
+
 // Convert aievec.exp to xllvm.exp2 intrinsic for AIE2P
 // Uses the identity: exp(x) = exp2(x * log2(e))
 // Supports both lane-16 and lane-32 bf16 vectors
@@ -4941,6 +4993,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ExtractElemOpAIE2pConversion>(converter);
   patterns.add<ConcatOpAIE2pConversion>(converter);
   patterns.add<ExpOpAIE2pConversion>(converter);
+  patterns.add<InvOpAIE2pConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
   patterns.add<RsqrtOpAIE2pConversion>(converter);
   patterns.add<FdivOpAIE2pConversion>(converter);
