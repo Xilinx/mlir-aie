@@ -1,0 +1,16 @@
+// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu1, peano, torch
+//
+// RUN: mkdir -p test_placed
+// RUN: cd test_placed
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu1% make -f %S/Makefile run_py
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu1% make -f %S/Makefile trace_py
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu1% make -f %S/Makefile targetname=group2 run_py
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu1% make -f %S/Makefile targetname=group2 trace_py
+  
