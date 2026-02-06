@@ -665,6 +665,7 @@ def downgrade_ir_for_chess(llvmir_chesslinked):
 
 def downgrade_ir_for_peano(llvmir):
     llvmir = llvmir.replace("getelementptr inbounds nuw", "getelementptr inbounds")
+    llvmir = llvmir.replace("captures(none)", "nocapture")
     # Remove nocreateundeforpoison attribute (not supported by older LLVM in Peano toolchain)
     llvmir = re.sub(r"\bnocreateundeforpoison\s+", "", llvmir)
     return llvmir
