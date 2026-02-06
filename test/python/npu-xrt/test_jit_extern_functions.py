@@ -749,6 +749,58 @@ def test_mismatched_tile_sizes(input_tile_size, output_tile_size):
         transform(input_tensor, output_tensor, mismatched_func)
 
 
+def test_external_function_wrong_args_count():
+    """Test error handling for wrong argument count"""
+    add_one = ExternalFunction(
+        "add_one",
+        source_string="""extern "C" {
+            void add_one(int* input, int* output, int tile_size) {
+                for (int i = 0; i < tile_size; i++) {
+                    output[i] = input[i] + 1;
+                }
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input)
+
+    with pytest.raises(ValueError, match="expects 3 argument"):
+        # Only passing 2 args when 3 are expected
+        add_one(input, output)
+
+
+def test_external_function_wrong_arg_type():
+    """Test error handling for wrong argument type"""
+    add_one = ExternalFunction(
+        "add_one",
+        source_string="""extern "C" {
+            void add_one(int* input, int* output, int tile_size) {
+                for (int i = 0; i < tile_size; i++) {
+                    output[i] = input[i] + 1;
+                }
+            }
+        }""",
+        arg_types=[
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.ndarray[(16,), np.dtype[np.int32]],
+            np.int32,
+        ],
+    )
+
+    input = iron.randint(0, 100, (16,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input)
+
+    with pytest.raises(ValueError, match="expected scalar"):
+        # Passing a string where np.int32 is expected
+        add_one(input, output, "not_a_number")
+
+
 @pytest.mark.parametrize(
     "invalid_include",
     [
