@@ -130,18 +130,6 @@ struct InsertLoadPdiForConfigurePattern : RewritePattern {
       configureBlock = &configureOp.getBody().front();
     }
 
-    // Check if the block already starts with a load_pdi for this device.
-    // If so, don't add another one.
-    if (!configureBlock->empty()) {
-      if (auto existingLoadPdi =
-              llvm::dyn_cast<AIEX::NpuLoadPdiOp>(&configureBlock->front())) {
-        if (existingLoadPdi.getDeviceRef() ==
-            referencedDevice.getSymNameAttr()) {
-          return failure();
-        }
-      }
-    }
-
     rewriter.setInsertionPointToStart(configureBlock);
     AIEX::NpuLoadPdiOp::create(
         rewriter, configureOp.getLoc(),
@@ -587,6 +575,15 @@ struct AIEMaterializeRuntimeSequencesPass
       RewritePatternSet patterns_1(ctx);
       patterns_1.insert<InsertLoadPdiForConfigurePattern>(ctx);
       walkAndApplyPatterns(deviceOp, std::move(patterns_1));
+
+      // Canonicalize to remove duplicate back-to-back load_pdi ops
+      RewritePatternSet canonicalize_patterns(ctx);
+      AIEX::NpuLoadPdiOp::getCanonicalizationPatterns(canonicalize_patterns,
+                                                      ctx);
+      if (failed(applyPatternsGreedily(
+              deviceOp, std::move(canonicalize_patterns), rewriter_config))) {
+        return signalPassFailure();
+      }
 
       // Flatten the IR: hoist all operations inside aiex.configure to be direct
       // children of the runtime sequence, preserving order
