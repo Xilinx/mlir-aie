@@ -6,3 +6,7 @@
 # (c) Copyright 2021 Xilinx Inc.
 
 add_aie_runtime_libs(AIE2)
+
+if(AIETools_AIE2_FOUND OR Peano_AIE2_FOUND)
+    compile_aie_runtime_libs(AIE2)
+endif()

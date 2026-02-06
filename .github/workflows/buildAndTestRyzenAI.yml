@@ -213,6 +213,172 @@ jobs:
           ninja check-reference-designs
           ninja check-programming-guide
           popd
+          
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        run: |
+          rm -rf $NPU_CACHE_HOME
+          rm -rf $PIP_CACHE_DIR
+          
+  build-tests-no-chess:
+    name: Run Tests on Ryzen AI No Chess
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ amd7940hs, amdhx370 ]
+    env:
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "true"
+
+      # Launch an ssh session via a proxy server if there is a need
+      # for debug. This seems to live for 35 min max
+      # https://github.com/mxschmitt/action-tmate
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        # To run this, launch it manually on the default branch and
+        # click on "launch_tmate_terminal_for_debug"
+        if: github.event_name == 'workflow_dispatch'
+                && inputs.launch_tmate_terminal_for_debug
+
+      - name: Run commands
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          pip cache purge
+          source /opt/xilinx/xrt/setup.sh
+          python -m venv aie-venv
+          source aie-venv/bin/activate
+          pip install --upgrade pip
+          pip install -r python/requirements.txt
+          pip install -r python/requirements_notebook.txt
+          pip install -r python/requirements_ml.txt
+          pip install -r python/requirements_dev.txt
+
+          # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code
+          pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+          export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+          
+          sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
+            $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
+
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+          pip -q download mlir==$VERSION \
+            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          unzip -q mlir-*.whl
+          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+          # That means wheels have file with time stamps in the future which makes ninja loop
+          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+          find mlir -exec touch -a -m -t 201108231405.14 {} \;
+
+          mkdir build
+          pushd build
+
+          # -j here to reduce the number of parallel chess jobs.
+          # -j4 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j4 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
+
+          cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPython3_EXECUTABLE=$(which python) \
+            -DLLVM_EXTERNAL_LIT=$(which lit) \
+            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
+            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
+            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
+            $CMAKE_ARGS
+
+          # Create runner-specific cache directory
+          rm -rf $NPU_CACHE_HOME
+          mkdir -p $NPU_CACHE_HOME
+
+          # Set number of contexts to maintain in cache per process
+          export XRT_CONTEXT_CACHE_SIZE=3
+
+          ninja install
+          ninja check-aie
+          ninja check-aie-concurrency
+          popd
+          
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        run: |
+          rm -rf $NPU_CACHE_HOME
+          rm -rf $PIP_CACHE_DIR
+
+  build-quick-setup-no-chess:
+    name: Run Examples on Ryzen AI No Chess
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ amd7940hs, amdhx370 ]
+    env:
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "true"
+
+      # Launch an ssh session via a proxy server if there is a need
+      # for debug. This seems to live for 35 min max
+      # https://github.com/mxschmitt/action-tmate
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        # To run this, launch it manually on the default branch and
+        # click on "launch_tmate_terminal_for_debug"
+        if: github.event_name == 'workflow_dispatch'
+                && inputs.launch_tmate_terminal_for_debug
+
+      - name: Run commands
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          pip cache purge
+          source /opt/xilinx/xrt/setup.sh
+          source utils/quick_setup.sh
+          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
+          cd ..
+          pip install --upgrade pip
+          pip install -r python/requirements_dev.txt
+
+          ./utils/build-mlir-aie-from-wheels.sh
+
+          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
+          # That means wheels have file with time stamps in the future which makes ninja loop
+          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
+          pushd my_install
+          find mlir -exec touch -a -m -t 201108231405.14 {} \;
+          popd
+
+          # build is created by the build-mlir-aie-from-wheels.sh script
+          pushd build
+
+          # -j here to reduce the number of parallel chess jobs.
+          # -j4 for 32GB RAM, -j12 for 64GB RAM
+          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+            LIT_OPTS="-j4 $LIT_OPTS"
+          else
+            LIT_OPTS="-j12 $LIT_OPTS"
+          fi
+
+          # Set number of contexts to maintain in cache per process
+          export XRT_CONTEXT_CACHE_SIZE=3
+
+          # Create runner-specific cache directory
+          rm -rf $NPU_CACHE_HOME
+          mkdir $NPU_CACHE_HOME
+
+          ninja install
+          ninja check-reference-designs
+          ninja check-programming-guide
+          popd
 
       - name: Cleanup NPU_CACHE_HOME
         if: always()
