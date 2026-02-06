@@ -2372,7 +2372,7 @@ struct ComputeExpOpByLUTPattern : OpConversionPattern<math::ExpOp> {
   }
 };
 
-// Lower the inverse of a float to a function call
+// Lower the inverse of a float to a function call (CPP backend)
 // Convert the pattern-
 //  %cst = arith.constant 1.000000e+00 : f32
 //  %0 = arith.divf %cst, %arg1 : f32
@@ -2423,6 +2423,77 @@ struct ComputeInvOpByLUTPattern : OpConversionPattern<arith::DivFOp> {
     rewriter.eraseOp(divOp);
 
     return success();
+  }
+};
+
+// Lower the inverse of a float to aievec.inv (LLVMIR backend for AIE2P)
+// Supports both scalar f32 and vector<Nxf32> types.
+// Convert the pattern-
+//  %cst = arith.constant 1.000000e+00 : f32
+//  %0 = arith.divf %cst, %arg1 : f32
+// to -
+//  %0 = aievec.inv %arg1 : f32
+// Also supports:
+//  %cst = arith.constant dense<1.0> : vector<16xf32>
+//  %0 = arith.divf %cst, %arg1 : vector<16xf32>
+// to -
+//  %0 = aievec.inv %arg1 : vector<16xf32>
+struct ConvertDivFToAIEVecInvOpPattern : OpConversionPattern<arith::DivFOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type srcType = adaptor.getLhs().getType();
+
+    // Check if LHS is defined by an operation
+    auto *defOp = divOp.getLhs().getDefiningOp();
+    if (!defOp)
+      return failure();
+
+    auto constOp = dyn_cast<arith::ConstantOp>(defOp);
+    if (!constOp)
+      return failure();
+
+    // Handle scalar f32 case
+    if (auto fType = dyn_cast<FloatType>(srcType)) {
+      if (fType.getWidth() != 32)
+        return failure();
+
+      auto floatAttr = dyn_cast<FloatAttr>(constOp.getValue());
+      if (!floatAttr || !floatAttr.getValue().isExactlyValue(1.0))
+        return failure();
+
+      rewriter.replaceOpWithNewOp<aievec::InvOp>(divOp, srcType,
+                                                 adaptor.getRhs());
+      return success();
+    }
+
+    // Handle vector f32 case
+    if (auto vecType = dyn_cast<VectorType>(srcType)) {
+      auto elemType = vecType.getElementType();
+      if (!elemType.isF32())
+        return failure();
+
+      // Check for supported vector sizes (16 or 32 lanes)
+      unsigned laneSize = getVectorLaneSize(vecType);
+      if (laneSize != 16 && laneSize != 32)
+        return failure();
+
+      // Check if it's a splat of 1.0
+      auto denseAttr = dyn_cast<DenseFPElementsAttr>(constOp.getValue());
+      if (!denseAttr || !denseAttr.isSplat())
+        return failure();
+
+      if (!denseAttr.getSplatValue<APFloat>().isExactlyValue(1.0))
+        return failure();
+
+      rewriter.replaceOpWithNewOp<aievec::InvOp>(divOp, vecType,
+                                                 adaptor.getRhs());
+      return success();
+    }
+
+    return failure();
   }
 };
 
@@ -3508,6 +3579,7 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext(), 128, 1024, 256, 1024);
     patterns.add<
         ComputeExpOpByLUTPattern,
+        ComputeInvOpByLUTPattern,
         ComputeRsqrtOpPattern,
         LowerVectorAddFOpToAIEVecAddElemOp,
         LowerVectorSubFOpToAIEVecSubElemOp,
@@ -3521,7 +3593,6 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       >(patterns.getContext());
   }
   patterns.add<
-      ComputeInvOpByLUTPattern,
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpAIE2Pattern,
       ComputeErfOpPattern,
@@ -3629,10 +3700,11 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
   // AIE2p-specific broadcast pattern that handles 256-bit directly
   patterns.add<ConvertSplatToAIEBroadcastAIE2p>(patterns.getContext());
   patterns.add<LowerVectorReductionAddBfloat16OpAIE2P>(patterns.getContext());
-  // For AIE2P with LLVMIR backend, use aievec.exp
+  // For AIE2P with LLVMIR backend, use aievec.exp and aievec.inv
   // math.rsqrt is kept legal and will be lowered in AIEVecToLLVM pass
   if (backend == TargetBackend::LLVMIR) {
-    patterns.add<ConvertMathExpToAIEVecExpOpPattern>(patterns.getContext());
+    patterns.add<ConvertMathExpToAIEVecExpOpPattern,
+                 ConvertDivFToAIEVecInvOpPattern>(patterns.getContext());
   }
 }
 
@@ -4065,6 +4137,41 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
         return true;
 
       return false;
+    });
+
+    // AIE2P-specific legalization for divf 1.0/x pattern with LLVMIR backend
+    // Scalar f32 or vector<Nxf32> divf with constant 1.0 LHS is illegal
+    target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
+      Type srcType = divfOp.getLhs().getType();
+
+      // Check if LHS is defined by a constant operation
+      auto constOp =
+          dyn_cast_or_null<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
+      if (!constOp)
+        return true;
+
+      // Scalar f32 case - check for exactly 1.0
+      if (srcType.isF32()) {
+        auto floatAttr = dyn_cast<FloatAttr>(constOp.getValue());
+        if (floatAttr && floatAttr.getValue().isExactlyValue(1.0))
+          return false; // illegal - will be converted to aievec.inv
+        return true;
+      }
+
+      // Vector f32 case - check for splat of exactly 1.0
+      if (auto vecType = dyn_cast<VectorType>(srcType)) {
+        if (vecType.getElementType().isF32()) {
+          unsigned laneSize = getVectorLaneSize(vecType);
+          if (laneSize == 16 || laneSize == 32) {
+            auto denseAttr = dyn_cast<DenseFPElementsAttr>(constOp.getValue());
+            if (denseAttr && denseAttr.isSplat() &&
+                denseAttr.getSplatValue<APFloat>().isExactlyValue(1.0))
+              return false; // illegal - will be converted to aievec.inv
+          }
+        }
+      }
+
+      return true;
     });
   }
   // For CPP backend, exp remains legal (uses LUT pattern from common patterns)
