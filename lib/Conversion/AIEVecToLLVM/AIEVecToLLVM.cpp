@@ -4599,7 +4599,8 @@ class ShuffleOpConversion
 };
 
 // Convert aievec.inv to xllvm.intr.aie2p.inv intrinsic for AIE2P
-// Computes the reciprocal of a scalar f32 value
+// Scalar f32: direct conversion to xllvm.intr.aie2p.inv
+// Vector f32: unroll into scalar xllvm.intr.aie2p.inv operations
 class InvOpAIE2pConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::InvOp> {
 public:
@@ -4611,17 +4612,40 @@ public:
     auto loc = invOp.getLoc();
     auto operandType = adaptor.getSource().getType();
 
-    // Only handle scalar f32 inverse
-    if (!operandType.isF32()) {
-      return invOp.emitWarning()
-             << "aievec.inv conversion only supports scalar f32.\n";
+    // Handle scalar f32 inverse
+    if (operandType.isF32()) {
+      auto invResult = xllvm::InvAIE2pIntrOp::create(
+          rewriter, loc, rewriter.getF32Type(), adaptor.getSource());
+      rewriter.replaceOp(invOp, invResult);
+      return success();
     }
 
-    // Call xllvm.intr.aie2p.inv intrinsic
-    auto invResult = xllvm::InvAIE2pIntrOp::create(
-        rewriter, loc, rewriter.getF32Type(), adaptor.getSource());
+    // Handle vector<N x f32> inverse
+    auto vecType = dyn_cast<VectorType>(operandType);
+    if (!vecType || !vecType.getElementType().isF32())
+      return failure();
 
-    rewriter.replaceOp(invOp, invResult);
+    // Unroll vector inverse into scalar operations
+    int numElements = getVectorLaneSize(vecType);
+    Value result = LLVM::PoisonOp::create(rewriter, loc, vecType);
+
+    for (int i = 0; i < numElements; ++i) {
+      // Extract element i
+      auto indexCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI64Type(), rewriter.getI64IntegerAttr(i));
+      auto extractedElem = LLVM::ExtractElementOp::create(
+          rewriter, loc, adaptor.getSource(), indexCst);
+
+      // Call xllvm.intr.aie2p.inv on the scalar
+      auto invResult = xllvm::InvAIE2pIntrOp::create(
+          rewriter, loc, rewriter.getF32Type(), extractedElem);
+
+      // Insert result back into vector
+      result = LLVM::InsertElementOp::create(rewriter, loc, vecType, result,
+                                             invResult, indexCst);
+    }
+
+    rewriter.replaceOp(invOp, result);
     return success();
   }
 };
