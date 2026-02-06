@@ -1074,6 +1074,35 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l01010" name="l01010"></a><span class="lineno"> 1010</span> </div>
 <div class="line"><a id="l01011" name="l01011"></a><span class="lineno"> 1011</span>  <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l01012" name="l01012"></a><span class="lineno"> 1012</span>}</div>
+<div class="line"><a id="l01013" name="l01013"></a><span class="lineno"> 1013</span> </div>
+<div class="line"><a id="l01014" name="l01014"></a><span class="lineno"> 1014</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l01015" name="l01015"></a><span class="lineno"> 1015</span><span class="comment">// NpuLoadPdiOp</span></div>
+<div class="line"><a id="l01016" name="l01016"></a><span class="lineno"> 1016</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span> </div>
+<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,</div>
+<div class="line"><a id="l01019" name="l01019"></a><span class="lineno"> 1019</span>                                               PatternRewriter &amp;rewriter) {</div>
+<div class="line"><a id="l01020" name="l01020"></a><span class="lineno"> 1020</span>  <span class="comment">// Check for back-to-back identical load_pdi ops and remove duplicates</span></div>
+<div class="line"><a id="l01021" name="l01021"></a><span class="lineno"> 1021</span>  Operation *nextOp = op-&gt;getNextNode();</div>
+<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"> 1022</span>  <span class="keywordflow">if</span> (!nextOp)</div>
+<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l01024" name="l01024"></a><span class="lineno"> 1024</span> </div>
+<div class="line"><a id="l01025" name="l01025"></a><span class="lineno"> 1025</span>  <span class="comment">// Check if next op is also a NpuLoadPdiOp</span></div>
+<div class="line"><a id="l01026" name="l01026"></a><span class="lineno"> 1026</span>  <span class="keyword">auto</span> nextLoadPdi = dyn_cast&lt;AIEX::NpuLoadPdiOp&gt;(nextOp);</div>
+<div class="line"><a id="l01027" name="l01027"></a><span class="lineno"> 1027</span>  <span class="keywordflow">if</span> (!nextLoadPdi)</div>
+<div class="line"><a id="l01028" name="l01028"></a><span class="lineno"> 1028</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l01029" name="l01029"></a><span class="lineno"> 1029</span> </div>
+<div class="line"><a id="l01030" name="l01030"></a><span class="lineno"> 1030</span>  <span class="comment">// Check if they are identical (all attributes match)</span></div>
+<div class="line"><a id="l01031" name="l01031"></a><span class="lineno"> 1031</span>  <span class="keywordflow">if</span> (op.getDeviceRefAttr() == nextLoadPdi.getDeviceRefAttr() &amp;&amp;</div>
+<div class="line"><a id="l01032" name="l01032"></a><span class="lineno"> 1032</span>      op.getId() == nextLoadPdi.getId() &amp;&amp;</div>
+<div class="line"><a id="l01033" name="l01033"></a><span class="lineno"> 1033</span>      op.getSize() == nextLoadPdi.getSize() &amp;&amp;</div>
+<div class="line"><a id="l01034" name="l01034"></a><span class="lineno"> 1034</span>      op.getAddress() == nextLoadPdi.getAddress()) {</div>
+<div class="line"><a id="l01035" name="l01035"></a><span class="lineno"> 1035</span>    <span class="comment">// Erase the first one, keeping the second</span></div>
+<div class="line"><a id="l01036" name="l01036"></a><span class="lineno"> 1036</span>    rewriter.eraseOp(op);</div>
+<div class="line"><a id="l01037" name="l01037"></a><span class="lineno"> 1037</span>    <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l01038" name="l01038"></a><span class="lineno"> 1038</span>  }</div>
+<div class="line"><a id="l01039" name="l01039"></a><span class="lineno"> 1039</span> </div>
+<div class="line"><a id="l01040" name="l01040"></a><span class="lineno"> 1040</span>  <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l01041" name="l01041"></a><span class="lineno"> 1041</span>}</div>
 <div class="ttc" id="aAIEXDialect_8h_html"><div class="ttname"><a href="AIEXDialect_8h.html">AIEXDialect.h</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html">xilinx::AIE::AIETargetModel</a></div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00058">AIETargetModel.h:58</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_a23aafee7ea4a623e8df922cdc3d4e8a7"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#a23aafee7ea4a623e8df922cdc3d4e8a7">xilinx::AIE::AIETargetModel::getTargetArch</a></div><div class="ttdeci">virtual AIEArch getTargetArch() const =0</div><div class="ttdoc">Return the target architecture.</div></div>
@@ -1098,7 +1127,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Feb 6 2026 21:27:46 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Fri Feb 6 2026 22:45:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
