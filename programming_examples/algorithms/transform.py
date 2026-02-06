@@ -4,13 +4,11 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2025 Advanced Micro Devices, Inc. or its affiliates
-
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 import argparse
 import sys
 import numpy as np
 import aie.iron as iron
-
 
 from aie.iron.algorithms import transform
 
@@ -38,7 +36,7 @@ def main():
     output = iron.zeros_like(input)
 
     # JIT compile the algorithm
-    iron.jit(is_placed=False)(transform)(input, output, lambda a: a + 1)
+    iron.jit(is_placed=False)(transform)(lambda a: a + 1, input, output)
 
     # Check the correctness of the result
     e = np.equal(input.numpy() + 1, output.numpy())

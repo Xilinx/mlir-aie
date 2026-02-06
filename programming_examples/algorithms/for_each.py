@@ -4,8 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2025 Advanced Micro Devices, Inc. or its affiliates
-
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 import argparse
 import sys
 import numpy as np
@@ -36,7 +35,7 @@ def main():
     initial_tensor = tensor.numpy().copy()
 
     # JIT compile the algorithm
-    iron.jit(is_placed=False)(for_each)(tensor, lambda a: a + 1)
+    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, tensor)
 
     # Check the correctness of the result
     e = np.equal(initial_tensor + 1, tensor.numpy())

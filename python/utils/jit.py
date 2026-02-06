@@ -56,7 +56,10 @@ def jit(function=None, is_placed=True, use_cache=True):
         cache_key = _create_function_cache_key(function, args, kwargs)
         if cache_key in _compiled_kernels:
             cached_kernel = _compiled_kernels[cache_key]
-            return cached_kernel(*args, **kwargs)
+            # Filter out non-tensor arguments (ExternalFunction, scalars)
+            # Only tensor args should be passed to the kernel
+            tensor_args = _filter_tensor_args(args)
+            return cached_kernel(*tensor_args, **kwargs)
 
         # Clear any instances from previous runs to make sure if the user provided any broken code we don't try to recompile it
         ExternalFunction._instances.clear()
@@ -150,9 +153,39 @@ def jit(function=None, is_placed=True, use_cache=True):
             kernel_name="MLIR_AIE",
             trace_config=trace_config,
         )
-        _compiled_kernels[cache_key](*args)
+
+        # Filter out non-tensor arguments (ExternalFunction, scalars) before calling kernel
+        # Only tensor args should be passed to the kernel
+        tensor_args = _filter_tensor_args(args)
+        _compiled_kernels[cache_key](*tensor_args)
 
     return decorator
+
+
+def _filter_tensor_args(args):
+    """
+    Filter out non-tensor arguments from args. Required for algorithms because
+    they pass ExternalFunction and scalar values in their signature that should
+    not be interpreted as runtime sequence arguments.
+
+    Removes:
+    - ExternalFunction instances
+    - Scalar values (int, float, np.integer, np.floating), embedded as MLIR constants
+    """
+    import numpy as np
+    from aie.iron.kernel import ExternalFunction
+
+    tensor_args = []
+    for arg in args:
+        # Skip ExternalFunction
+        if isinstance(arg, ExternalFunction):
+            continue
+        # Skip scalar types (MLIR constants)
+        if isinstance(arg, (int, float, np.integer, np.floating)):
+            continue
+        tensor_args.append(arg)
+
+    return tensor_args
 
 
 def hash_module(module, external_kernels=None, target_arch=None):

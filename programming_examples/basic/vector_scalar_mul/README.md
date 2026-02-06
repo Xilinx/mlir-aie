@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -20,7 +20,7 @@ This IRON design flow example, called "Vector Scalar Multiplication", demonstrat
 
 1. `scale.cc`: A C++ implementation of scalar and vectorized vector scalar multiply operations for AIE cores. Found [here](../../../aie_kernels/aie2/scale.cc).
 
-1. `vector_scalar_mul_jit.py`: A JIT version that passes `scale.cc` to the transform algorithm. Note that the JIT compilation allows combining the host code with AIE design into one file.
+1. `vector_scalar_mul_jit.py`: A JIT version that passes `scale.cc` to the transform algorithm. JIT compilation allows combining the host code with AIE design into one file.
 
 1. `test.cpp`: This C++ code is a testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
 
