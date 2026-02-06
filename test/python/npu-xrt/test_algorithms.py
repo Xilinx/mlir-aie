@@ -1,4 +1,4 @@
-# transform.py -*- Python -*-
+# test_algorithms.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -20,8 +20,8 @@ from aie.iron.algorithms import (
     transform_parallel,
     transform_binary,
     transform_parallel_binary,
+    for_each,
 )
-
 
 TILE_SIZE = 16
 
@@ -253,3 +253,70 @@ def test_transform_parallel_binary_different_num_elements(num_elements):
         lambda a, b: a + b, first, second, output
     )
     assert np.allclose(first.numpy() + second.numpy(), output.numpy())
+
+
+# =============================================================================
+# for_each tests
+# =============================================================================
+
+
+def test_for_each_add():
+    """Test for_each algorithm with simple add_one operation."""
+    data = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    original = data.numpy().copy()
+    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, data)
+    assert np.allclose(original + 1, data.numpy())
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.int32])
+def test_for_each_different_datatypes(dtype):
+    """Test for_each algorithm on different datatypes."""
+    if np.issubdtype(dtype, np.floating):
+        data = iron.rand(1024, dtype=dtype, device="npu")
+    else:
+        data = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
+    original = data.numpy().copy()
+    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, data)
+    assert np.allclose(original + 1, data.numpy())
+
+
+@pytest.mark.parametrize(
+    "dtype,c_type",
+    [
+        (np.int32, "int"),
+        (np.float32, "float"),
+    ],
+)
+def test_for_each_different_datatypes_extern(dtype, c_type):
+    """Test for_each algorithm with ExternalFunction on different datatypes."""
+    add_one = ExternalFunction(
+        "add_one",
+        source_string=f"""extern "C" {{
+            void add_one({c_type}* input, {c_type}* output, int tile_size) {{
+                for (int i = 0; i < tile_size; i++) {{
+                    output[i] = input[i] + 1.0f;
+                }}
+            }}
+        }}""",
+        arg_types=[
+            np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
+            np.ndarray[(TILE_SIZE,), np.dtype[dtype]],
+            np.int32,
+        ],
+    )
+    if np.issubdtype(dtype, np.floating):
+        data = iron.rand(1024, dtype=dtype, device="npu")
+    else:
+        data = iron.randint(0, 100, (1024,), dtype=dtype, device="npu")
+    original = data.numpy().copy()
+    iron.jit(is_placed=False)(for_each)(add_one, data, TILE_SIZE)
+    assert np.allclose(original + 1, data.numpy())
+
+
+@pytest.mark.parametrize("num_elements", [512, 1024, 2048])
+def test_for_each_different_num_elements(num_elements):
+    """Test for_each algorithm with different input sizes."""
+    data = iron.randint(0, 100, (num_elements,), dtype=np.int32, device="npu")
+    original = data.numpy().copy()
+    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, data)
+    assert np.allclose(original + 1, data.numpy())
