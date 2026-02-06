@@ -511,6 +511,42 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `aievec.inv` (::xilinx::aievec::InvOp)
+
+_AIE inverse_
+
+Syntax:
+
+```
+operation ::= `aievec.inv` $source attr-dict `:` type($result)
+```
+
+AMD-specific intrinsic that computes the inverse (1/x) of a scalar f32
+or a vector of f32 elements.
+For AIE2P, scalar f32 is lowered to the inv intrinsic, and vector f32
+is unrolled into scalar inv intrinsic calls.
+`$result = inv(`$source`) = 1.0 / $source`.
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | 32-bit float or vector of 32-bit float values of length 16/32 |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | 32-bit float or vector of 32-bit float values of length 16/32 |
+
+
+
 ### `aievec.legacyshuffle` (::xilinx::aievec::LegacyShuffleOp)
 
 _AIE2 shuffle_
