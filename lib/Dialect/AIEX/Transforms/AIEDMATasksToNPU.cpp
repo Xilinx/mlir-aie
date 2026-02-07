@@ -483,6 +483,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       if (acq_lock.getLockID().has_value()) {
         lock_acq_id = acq_lock.getLockID().value() + lock_base_offset;
         lock_acq_val = acquire_op.getLockValue();
+        // For AcquireGreaterEqual, negate the value to signal the hardware
+        // to use >= comparison instead of == comparison.
+        if (acquire_op.acquireGE())
+          lock_acq_val = -lock_acq_val;
         lock_acq_enable = 1;
       }
 
