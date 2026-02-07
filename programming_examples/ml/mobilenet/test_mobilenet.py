@@ -490,7 +490,6 @@ def main(opts):
     npu_kernel = NPUKernel(xclbin_path, insts_path)
     kernel_handle = DefaultNPURuntime.load(npu_kernel)
 
-
     class QuantMobilenet(nn.Module):
         def __init__(
             self,
@@ -2682,7 +2681,7 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    aie_output = out.numpy() #.astype(dtype_out)
+    aie_output = out.numpy()  # .astype(dtype_out)
     temp_out = aie_output.reshape(shape_out)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
     ofm_mem_fmt = temp_out.reshape(shape_out_final)
@@ -2720,7 +2719,9 @@ def main(opts):
     for idx, (golden_value, ofm_value) in zip(
         zip(*mismatch_indices), zip(mismatch_values_golden, mismatch_values_ofm)
     ):
-        print(f"Index: {idx}, Golden value: {golden_value}, OFM value: {ofm_value}, diff: {golden_value.astype(int)-ofm_value.astype(int)}")
+        print(
+            f"Index: {idx}, Golden value: {golden_value}, OFM value: {ofm_value}, diff: {golden_value.astype(int)-ofm_value.astype(int)}"
+        )
 
     if enable_trace:
         # trace_buffer = full_output[3920:]

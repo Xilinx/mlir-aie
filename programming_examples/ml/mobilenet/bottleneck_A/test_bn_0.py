@@ -326,7 +326,7 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder output data-layout
     # ------------------------------------------------------
-    aie_output = out.numpy() #.astype(dtype_out)
+    aie_output = out.numpy()  # .astype(dtype_out)
     temp_out = aie_output.reshape(shape_out)
     temp_out = ds.reorder_mat(temp_out, "CDYX", "YCXD")
     ofm_mem_fmt = temp_out.reshape(shape_out_final)
