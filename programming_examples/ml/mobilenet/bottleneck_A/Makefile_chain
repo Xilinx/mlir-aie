@@ -103,7 +103,8 @@ OBJ = build/bn0_combined_conv2dk3dwstride1_conv2dk1skipui8.a \
 		build/bn6_combined_con2dk1fusedrelu_conv2dk3dwstride2_conv2dk1.a \
 		build/bn7_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
 		build/bn8_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1.a \
-		build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a
+		build/bn9_combined_con2dk1fusedrelu_conv2dk3dwstride1_conv2dk1skip.a \
+		build/combined_bn_4_5.a build/combined_bn_8_9.a
 
 trace_size = 32768
 # DUMMY = _dummy

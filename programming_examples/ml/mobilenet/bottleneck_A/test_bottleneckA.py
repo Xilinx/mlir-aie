@@ -356,8 +356,8 @@ def main(opts):
 
     print("orig shape_out: ", shape_out)
     print("orig shape_size: ", size_out)
-    print("in1 (wts) size: ", app.buffers[4].shape)
-    print("shape_out size (+trace): ", app.buffers[5].shape)
+    # print("in1 (wts) size: ", app.buffers[4].shape)
+    # print("shape_out size (+trace): ", app.buffers[5].shape)
 
     class QuantBottleneckA(nn.Module):
         def __init__(

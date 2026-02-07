@@ -179,11 +179,6 @@ def main(opts):
     npu_kernel = NPUKernel(xclbin_path, insts_path)
     kernel_handle = DefaultNPURuntime.load(npu_kernel)
 
-    print("orig shape_out: ", shape_out)
-    print("orig shape_size: ", size_out)
-    print("in1 (wts) size: ", app.buffers[4].shape)
-    print("shape_out size (+trace): ", app.buffers[5].shape)
-
     class QuantBottleneck(nn.Module):
         def __init__(
             self,
@@ -579,6 +574,11 @@ def main(opts):
     in2 = iron.tensor(total_wts, dtype=dtype_wts)
     out = iron.zeros(size_out, dtype=dtype_out)
     buffers = [in1, in2, out]
+
+    print("orig shape_out: ", shape_out)
+    print("orig shape_size: ", size_out)
+    print("in1 size: ", ifm_mem_fmt.shape)
+    print("in2 size: ", total_wts.shape)
 
     trace_config = None
     if enable_trace:

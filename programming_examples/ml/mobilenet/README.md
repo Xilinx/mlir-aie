@@ -49,7 +49,7 @@ In this mapping, each bottleneck block is distributed across five AI cores. This
 
 Prerequisites:
 ```
-pip3 install torch brevitas tdqm torchvision
+pip3 install torch brevitas tdqm torchvision onnx
 ```
 
 To compile and run the chained design:
