@@ -127,13 +127,14 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   LogicalResult verifyOptionalLocksInBlock(Block &block) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
-    // Exactly 0 or 2 lock ops
     int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-    if (n_lock_ops > 0) {
-      // TODO: Not yet implemented
+    // Allow exactly 0 or 2 lock ops (acquire and release)
+    if (n_lock_ops != 0 && n_lock_ops != 2) {
       AIE::UseLockOp lock_op = *lock_ops.begin();
-      lock_op.emitOpError("Lowering for lock operations in NPU runtime "
-                          "configuration is not yet implemented.");
+      lock_op.emitOpError(
+          "BD blocks must have either 0 or 2 lock operations (acquire and "
+          "release). Found ")
+          << n_lock_ops << " lock operations.";
       return failure();
     }
     return success();
@@ -172,10 +173,30 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     return bd_op;
   }
 
+  // Returns pair of (acquire_lock_op, release_lock_op) if present
   std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
   getOptionalLockOpsForBlock(Block &block) {
-    // auto lock_ops = block.getOps<AIE::UseLockOp>();
-    return std::nullopt; // Not yet implemented
+    auto lock_ops = block.getOps<AIE::UseLockOp>();
+    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
+    if (n_lock_ops != 2) {
+      return std::nullopt;
+    }
+
+    AIE::UseLockOp acquire_op = nullptr;
+    AIE::UseLockOp release_op = nullptr;
+
+    for (auto lock_op : lock_ops) {
+      if (lock_op.acquire() || lock_op.acquireGE()) {
+        acquire_op = lock_op;
+      } else if (lock_op.release()) {
+        release_op = lock_op;
+      }
+    }
+
+    if (acquire_op && release_op) {
+      return std::make_pair(acquire_op, release_op);
+    }
+    return std::nullopt;
   }
 
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
@@ -435,6 +456,49 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       packet_id = info.getPktId();
     }
 
+    // Extract lock information if present
+    int32_t lock_rel_val = 0;
+    int32_t lock_rel_id = 0;
+    int32_t lock_acq_enable = 0;
+    int32_t lock_acq_val = 0;
+    int32_t lock_acq_id = 0;
+
+    auto lock_ops = getOptionalLockOpsForBlock(block);
+    if (lock_ops) {
+      auto [acquire_op, release_op] = *lock_ops;
+
+      // Get lock IDs from the lock operations
+      AIE::LockOp acq_lock = acquire_op.getLockOp();
+      AIE::LockOp rel_lock = release_op.getLockOp();
+
+      if (acq_lock.getLockID().has_value()) {
+        lock_acq_id = acq_lock.getLockID().value();
+        lock_acq_val = acquire_op.getLockValue();
+        // For AcquireGreaterEqual, negate the value to signal the hardware
+        // to use >= comparison instead of == comparison.
+        if (acquire_op.acquireGE())
+          lock_acq_val = -lock_acq_val;
+        lock_acq_enable = 1;
+      }
+
+      if (rel_lock.getLockID().has_value()) {
+        lock_rel_id = rel_lock.getLockID().value();
+        lock_rel_val = release_op.getLockValue();
+      }
+
+      // For memtile, add lock offset using getLockLocalBaseIndex.
+      // This matches AIERT.cpp implementation.
+      if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
+        auto lockOffset = target_model.getLockLocalBaseIndex(
+            tile.getCol(), tile.getRow(), acq_lock.colIndex(),
+            acq_lock.rowIndex());
+        if (lockOffset && acq_lock.getLockID().has_value())
+          lock_acq_id += lockOffset.value();
+        if (lockOffset && rel_lock.getLockID().has_value())
+          lock_rel_id += lockOffset.value();
+      }
+    }
+
     NpuWriteBdOp::create(
         builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
         offset,
@@ -442,20 +506,19 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
         /*out_of_order_id=*/out_of_order_id,
         /*packet_id=*/packet_id,
         /*packet_type=*/packet_type,
-        /* TODO: Strides/Wraps */
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
         /*iteration_current=*/0, /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
-        /* TODO: Next BD */
         /*next_bd=*/next_bd_id,
         /*row=*/tile.getRow(),
         /*use_next_bd=*/use_next_bd,
         /*valid_bd=*/1,
-        /* TODO: Locks */
-        /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0,
-        /*lock_acq_val=*/0, /*lock_ackq_id=*/0, /*d0_zero_before=*/padBefore[0],
+        /*lock_rel_val=*/lock_rel_val, /*lock_rel_id=*/lock_rel_id,
+        /*lock_acq_enable=*/lock_acq_enable,
+        /*lock_acq_val=*/lock_acq_val, /*lock_acq_id=*/lock_acq_id,
+        /*d0_zero_before=*/padBefore[0],
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
         /*d2_zero_after=*/padAfter[2],
