@@ -471,17 +471,8 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       AIE::LockOp acq_lock = acquire_op.getLockOp();
       AIE::LockOp rel_lock = release_op.getLockOp();
 
-      // For memtile internal locks, we need to add the lock base offset.
-      // In memtile, internal locks are accessed at base index = getNumLocks()
-      // (typically 64), so logical lock ID 0 becomes physical lock ID 64.
-      uint32_t lock_base_offset = 0;
-      if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
-        lock_base_offset =
-            target_model.getNumLocks(tile.getCol(), tile.getRow());
-      }
-
       if (acq_lock.getLockID().has_value()) {
-        lock_acq_id = acq_lock.getLockID().value() + lock_base_offset;
+        lock_acq_id = acq_lock.getLockID().value();
         lock_acq_val = acquire_op.getLockValue();
         // For AcquireGreaterEqual, negate the value to signal the hardware
         // to use >= comparison instead of == comparison.
@@ -491,8 +482,20 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       }
 
       if (rel_lock.getLockID().has_value()) {
-        lock_rel_id = rel_lock.getLockID().value() + lock_base_offset;
+        lock_rel_id = rel_lock.getLockID().value();
         lock_rel_val = release_op.getLockValue();
+      }
+
+      // For memtile, add lock offset using getLockLocalBaseIndex.
+      // This matches AIERT.cpp implementation.
+      if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
+        auto lockOffset = target_model.getLockLocalBaseIndex(
+            tile.getCol(), tile.getRow(), acq_lock.colIndex(),
+            acq_lock.rowIndex());
+        if (lockOffset && acq_lock.getLockID().has_value())
+          lock_acq_id += lockOffset.value();
+        if (lockOffset && rel_lock.getLockID().has_value())
+          lock_rel_id += lockOffset.value();
       }
     }
 
