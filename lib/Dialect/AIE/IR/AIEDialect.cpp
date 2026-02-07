@@ -319,14 +319,53 @@ LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
-    if (!block.template getOps<DMABDOp>().empty()) {
-      if (bdNum >= bdMax) {
-        auto bd = *block.template getOps<DMABDOp>().begin();
-        return (op->emitOpError("has more than ") << bdMax << " blocks")
-            .attachNote(bd.getLoc())
-            .append("no space for this bd: ");
-      }
-      bdNum++;
+    auto bdOps = llvm::to_vector_of<DMABDOp>(block.template getOps<DMABDOp>());
+
+    // Skip entry/end block
+    if (bdOps.empty())
+      continue;
+
+    // Check BD count limit
+    if (bdNum >= bdMax) {
+      return (op->emitOpError("has more than ") << bdMax << " blocks")
+          .attachNote(bdOps.front().getLoc())
+          .append("no space for this BD");
+    }
+    bdNum++;
+
+    // Check exactly 1 DMABDOp per BD block
+    if (bdOps.size() != 1) {
+      return (op->emitOpError("BD block must have exactly one DMABDOp, found ")
+              << bdOps.size())
+          .attachNote(block.front().getLoc())
+          .append("in this BD block");
+    }
+
+    // Check at most 2 UseLockOps per BD block (1 acquire, 1 release)
+    auto useLockOps =
+        llvm::to_vector_of<UseLockOp>(block.template getOps<UseLockOp>());
+    int acquireCount = 0;
+    int releaseCount = 0;
+    for (auto useLock : useLockOps) {
+      if (useLock.acquire() || useLock.acquireGE())
+        acquireCount++;
+      else if (useLock.release())
+        releaseCount++;
+    }
+
+    if (acquireCount > 1) {
+      return (op->emitOpError(
+                  "BD block must have at most one acquire UseLockOp, found ")
+              << acquireCount)
+          .attachNote(block.front().getLoc())
+          .append("in this BD block");
+    }
+    if (releaseCount > 1) {
+      return (op->emitOpError(
+                  "BD block must have at most one release UseLockOp, found ")
+              << releaseCount)
+          .attachNote(block.front().getLoc())
+          .append("in this BD block");
     }
   }
   return success();
@@ -398,6 +437,48 @@ LogicalResult ObjectFifoCreateOp::verify() {
   if (getRepeatCount().has_value()) {
     if (getProducerTileOp().isShimTile())
       return emitError("`repeat_count` unavailable for shim tiles");
+  }
+
+  if (getAieStreamPort().has_value()) {
+    if (!getAieStream().has_value())
+      return emitError("`aie_stream` must be defined");
+  }
+
+  if (getAieStream().has_value()) {
+    if (getConsumerTiles().size() > 1)
+      return emitError("`aie_stream` can only be used in 1-to-1 object FIFOs");
+
+    if (!getAieStreamPort().has_value())
+      return emitError("`aie_stream_port` must be defined");
+
+    if (getAieStream().value() == 0 || getAieStream().value() == 2) {
+      if (getProducerTileOp().isShimTile() || getProducerTileOp().isMemTile())
+        return emitError(
+            "`aie_stream` is not available for shim and mem tiles");
+
+      if (getRepeatCount().has_value())
+        return emitError("`repeat_count` unavailable on stream end");
+
+      if (getInitValues().has_value())
+        return emitError("`init_values` unavailable on stream end");
+
+      if (getIterCount().has_value())
+        return emitError("`iter_count` unavailable on stream end");
+
+      if (!getDimensionsToStream().empty())
+        return emitError("`dimensionsToStream` data layout transformations are "
+                         "unavailable on stream end");
+    }
+
+    if (getAieStream().value() == 1 || getAieStream().value() == 2)
+      if (getConsumerTiles()[0].getDefiningOp<TileOp>().isShimTile() ||
+          getConsumerTiles()[0].getDefiningOp<TileOp>().isMemTile())
+        return emitError(
+            "`aie_stream` is not available for shim and mem tiles");
+
+    if (!getDimensionsFromStreamPerConsumer()[0].empty())
+      return emitError("`dimensionsFromStreamPerConsumer` data layout "
+                       "transformations are unavailable on stream end");
   }
 
   if (getInitValues().has_value()) {
@@ -602,6 +683,9 @@ LogicalResult ObjectFifoAllocateOp::verify() {
   if (!objFifo.getDimensionsToStream().empty())
     return emitError("cannot allocate a shared memory module to objectfifo "
                      "with set dimensions attribute");
+  if (objFifo.getAieStream().has_value())
+    return emitError("cannot allocate a shared memory module to objectfifo "
+                     "using stream port");
   return success();
 }
 

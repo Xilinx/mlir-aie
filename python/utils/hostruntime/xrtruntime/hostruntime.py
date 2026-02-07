@@ -4,12 +4,16 @@
 """
 XRT-based implementation of the HostRuntime
 """
+
 import atexit
 import logging
 from collections import OrderedDict
 import os
 import time
 import weakref
+import gc
+import sys
+import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
@@ -85,9 +89,44 @@ class XRTHostRuntime(HostRuntime):
                 self._device = pyxrt.device(0)
                 break
             except RuntimeError as e:
+                print(
+                    f"XRTHostRuntime: Failed to acquire device (attempt {attempt+1}/{max_retries}): {e}",
+                    file=sys.stderr,
+                )
+
+                # Debugging info
+                try:
+                    if os.path.exists("/dev/accel/accel0"):
+                        print("/dev/accel/accel0 exists", file=sys.stderr)
+                        # Stat it
+                        st = os.stat("/dev/accel/accel0")
+                        print(f"Stat: {st}", file=sys.stderr)
+                    else:
+                        print("/dev/accel/accel0 does not exist", file=sys.stderr)
+
+                    # Try running xrt-smi examine
+                    # We need to find xrt-smi. It might be in PATH or /opt/xilinx/xrt/bin
+                    xrt_bin = (
+                        os.environ.get("XILINX_XRT", "/opt/xilinx/xrt") + "/bin/xrt-smi"
+                    )
+                    if os.path.exists(xrt_bin):
+                        print(f"Running {xrt_bin} examine", file=sys.stderr)
+                        result = subprocess.run(
+                            [xrt_bin, "examine"],
+                            timeout=5,
+                            capture_output=True,
+                            text=True,
+                        )
+                        print(f"xrt-smi stdout:\n{result.stdout}", file=sys.stderr)
+                        print(f"xrt-smi stderr:\n{result.stderr}", file=sys.stderr)
+                except Exception as debug_e:
+                    print(f"Failed to run debug checks: {debug_e}", file=sys.stderr)
+
                 if attempt == max_retries - 1:
                     raise e
-                time.sleep(1)
+
+                gc.collect()  # Make sure contexts are garbage collected.
+                time.sleep(1.0 * (attempt + 1))  # Exponential backoff
 
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
@@ -353,6 +392,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict()
         while self._insts_cache:
             self._evict_insts()
+        gc.collect()  # Make sure contexts are garbage collected.
 
     def _cleanup_entry(self, entry):
         context = entry["context"]
@@ -490,6 +530,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                             and retries < max_retries
                         ):
                             self._evict()
+                            gc.collect()  # Make sure contexts are garbage collected.
                             retries += 1
                         else:
                             raise e
