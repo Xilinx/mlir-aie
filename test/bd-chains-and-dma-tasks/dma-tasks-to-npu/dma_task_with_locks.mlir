@@ -210,7 +210,7 @@ module @test_memtile_without_locks {
 // CHECK: aiex.npu.writebd
 // CHECK-SAME: lock_acq_enable = 1
 // CHECK-SAME: lock_acq_id = 64
-// CHECK-SAME: lock_acq_val = 2
+// CHECK-SAME: lock_acq_val = -2
 // CHECK-SAME: lock_rel_id = 65
 // CHECK-SAME: lock_rel_val = 1
 // CHECK-SAME: row = 1
