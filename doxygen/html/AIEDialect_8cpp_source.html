@@ -2473,303 +2473,314 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l02377" name="l02377"></a><span class="lineno"> 2377</span>  <span class="keywordflow">if</span> (<a class="code hl_struct" href="structHasSomeParent.html">HasSomeParent&lt;CoreOp, func::FuncOp&gt;::verifyTrait</a>(*this).succeeded()) {</div>
 <div class="line"><a id="l02378" name="l02378"></a><span class="lineno"> 2378</span>    <span class="keywordflow">return</span> success();</div>
 <div class="line"><a id="l02379" name="l02379"></a><span class="lineno"> 2379</span>  }</div>
-<div class="line"><a id="l02380" name="l02380"></a><span class="lineno"> 2380</span>  <span class="keywordflow">return</span> (*this)-&gt;emitOpError()</div>
-<div class="line"><a id="l02381" name="l02381"></a><span class="lineno"> 2381</span>         &lt;&lt; <span class="stringliteral">&quot;expects some parent op to be one of &quot;</span></div>
-<div class="line"><a id="l02382" name="l02382"></a><span class="lineno"> 2382</span>         &lt;&lt; <span class="stringliteral">&quot;AIE::device, AIE::core, func::func, AIE::mem, or AIE::shimDMA&quot;</span>;</div>
-<div class="line"><a id="l02383" name="l02383"></a><span class="lineno"> 2383</span>}</div>
-<div class="line"><a id="l02384" name="l02384"></a><span class="lineno"> 2384</span> </div>
-<div class="line"><a id="l02385" name="l02385"></a><span class="lineno"> 2385</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEEnums.cpp.inc&quot;</span></div>
-<div class="line"><a id="l02386" name="l02386"></a><span class="lineno"> 2386</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEInterfaces.cpp.inc&quot;</span></div>
-<div class="line"><a id="l02387" name="l02387"></a><span class="lineno"> 2387</span> </div>
-<div class="line"><a id="l02388" name="l02388"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a52c883a38e577b8b12282ff70c95a16d"> 2388</a></span><span class="preprocessor">#define GET_OP_CLASSES</span></div>
-<div class="line"><a id="l02389" name="l02389"></a><span class="lineno"> 2389</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEOps.cpp.inc&quot;</span></div>
-<div class="line"><a id="l02390" name="l02390"></a><span class="lineno"> 2390</span> </div>
-<div class="line"><a id="l02391" name="l02391"></a><span class="lineno"> 2391</span><span class="keywordtype">size_t</span> SwitchboxOp::getNumSourceConnections(WireBundle bundle) {</div>
-<div class="line"><a id="l02392" name="l02392"></a><span class="lineno"> 2392</span>  <span class="keyword">auto</span> tile = getTileOp();</div>
-<div class="line"><a id="l02393" name="l02393"></a><span class="lineno"> 2393</span>  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(*<span class="keyword">this</span>);</div>
-<div class="line"><a id="l02394" name="l02394"></a><span class="lineno"> 2394</span>  <span class="keywordflow">return</span> targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">getNumSourceSwitchboxConnections</a>(tile.getCol(),</div>
-<div class="line"><a id="l02395" name="l02395"></a><span class="lineno"> 2395</span>                                                      tile.getRow(), bundle);</div>
-<div class="line"><a id="l02396" name="l02396"></a><span class="lineno"> 2396</span>}</div>
-<div class="line"><a id="l02397" name="l02397"></a><span class="lineno"> 2397</span> </div>
-<div class="line"><a id="l02398" name="l02398"></a><span class="lineno"> 2398</span><span class="keywordtype">size_t</span> SwitchboxOp::getNumDestConnections(WireBundle bundle) {</div>
-<div class="line"><a id="l02399" name="l02399"></a><span class="lineno"> 2399</span>  <span class="keyword">auto</span> tile = getTileOp();</div>
-<div class="line"><a id="l02400" name="l02400"></a><span class="lineno"> 2400</span>  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(*<span class="keyword">this</span>);</div>
-<div class="line"><a id="l02401" name="l02401"></a><span class="lineno"> 2401</span>  <span class="keywordflow">return</span> targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">getNumDestSwitchboxConnections</a>(tile.getCol(),</div>
-<div class="line"><a id="l02402" name="l02402"></a><span class="lineno"> 2402</span>                                                    tile.getRow(), bundle);</div>
-<div class="line"><a id="l02403" name="l02403"></a><span class="lineno"> 2403</span>}</div>
-<div class="line"><a id="l02404" name="l02404"></a><span class="lineno"> 2404</span> </div>
-<div class="foldopen" id="foldopen02405" data-start="{" data-end="}">
-<div class="line"><a id="l02405" name="l02405"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937"> 2405</a></span>WireBundle <a class="code hl_function" href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937">xilinx::AIE::getConnectingBundle</a>(WireBundle dir) {</div>
-<div class="line"><a id="l02406" name="l02406"></a><span class="lineno"> 2406</span>  <span class="keywordflow">switch</span> (dir) {</div>
-<div class="line"><a id="l02407" name="l02407"></a><span class="lineno"> 2407</span>  <span class="keywordflow">case</span> WireBundle::North:</div>
-<div class="line"><a id="l02408" name="l02408"></a><span class="lineno"> 2408</span>    <span class="keywordflow">return</span> WireBundle::South;</div>
-<div class="line"><a id="l02409" name="l02409"></a><span class="lineno"> 2409</span>  <span class="keywordflow">case</span> WireBundle::South:</div>
-<div class="line"><a id="l02410" name="l02410"></a><span class="lineno"> 2410</span>    <span class="keywordflow">return</span> WireBundle::North;</div>
-<div class="line"><a id="l02411" name="l02411"></a><span class="lineno"> 2411</span>  <span class="keywordflow">case</span> WireBundle::East:</div>
-<div class="line"><a id="l02412" name="l02412"></a><span class="lineno"> 2412</span>    <span class="keywordflow">return</span> WireBundle::West;</div>
-<div class="line"><a id="l02413" name="l02413"></a><span class="lineno"> 2413</span>  <span class="keywordflow">case</span> WireBundle::West:</div>
-<div class="line"><a id="l02414" name="l02414"></a><span class="lineno"> 2414</span>    <span class="keywordflow">return</span> WireBundle::East;</div>
-<div class="line"><a id="l02415" name="l02415"></a><span class="lineno"> 2415</span>  <span class="keywordflow">default</span>:</div>
-<div class="line"><a id="l02416" name="l02416"></a><span class="lineno"> 2416</span>    <span class="keywordflow">return</span> dir;</div>
-<div class="line"><a id="l02417" name="l02417"></a><span class="lineno"> 2417</span>  }</div>
-<div class="line"><a id="l02418" name="l02418"></a><span class="lineno"> 2418</span>}</div>
+<div class="line"><a id="l02380" name="l02380"></a><span class="lineno"> 2380</span>  <span class="comment">// Or it can be in a DMAConfigureTaskOp (for runtime DMA configuration)</span></div>
+<div class="line"><a id="l02381" name="l02381"></a><span class="lineno"> 2381</span>  <span class="comment">// Check by operation name to avoid circular dependency with AIEX dialect</span></div>
+<div class="line"><a id="l02382" name="l02382"></a><span class="lineno"> 2382</span>  {</div>
+<div class="line"><a id="l02383" name="l02383"></a><span class="lineno"> 2383</span>    Operation *operation = (*this)-&gt;getParentOp();</div>
+<div class="line"><a id="l02384" name="l02384"></a><span class="lineno"> 2384</span>    <span class="keywordflow">while</span> (operation) {</div>
+<div class="line"><a id="l02385" name="l02385"></a><span class="lineno"> 2385</span>      <span class="keywordflow">if</span> (operation-&gt;getName().getStringRef() == <span class="stringliteral">&quot;aiex.dma_configure_task&quot;</span>)</div>
+<div class="line"><a id="l02386" name="l02386"></a><span class="lineno"> 2386</span>        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02387" name="l02387"></a><span class="lineno"> 2387</span>      operation = operation-&gt;getParentOp();</div>
+<div class="line"><a id="l02388" name="l02388"></a><span class="lineno"> 2388</span>    }</div>
+<div class="line"><a id="l02389" name="l02389"></a><span class="lineno"> 2389</span>  }</div>
+<div class="line"><a id="l02390" name="l02390"></a><span class="lineno"> 2390</span>  <span class="keywordflow">return</span> (*this)-&gt;emitOpError()</div>
+<div class="line"><a id="l02391" name="l02391"></a><span class="lineno"> 2391</span>         &lt;&lt; <span class="stringliteral">&quot;expects some parent op to be one of &quot;</span></div>
+<div class="line"><a id="l02392" name="l02392"></a><span class="lineno"> 2392</span>         &lt;&lt; <span class="stringliteral">&quot;AIE::device, AIE::core, func::func, AIE::mem, AIE::shimDMA, or &quot;</span></div>
+<div class="line"><a id="l02393" name="l02393"></a><span class="lineno"> 2393</span>            <span class="stringliteral">&quot;AIEX::dma_configure_task&quot;</span>;</div>
+<div class="line"><a id="l02394" name="l02394"></a><span class="lineno"> 2394</span>}</div>
+<div class="line"><a id="l02395" name="l02395"></a><span class="lineno"> 2395</span> </div>
+<div class="line"><a id="l02396" name="l02396"></a><span class="lineno"> 2396</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEEnums.cpp.inc&quot;</span></div>
+<div class="line"><a id="l02397" name="l02397"></a><span class="lineno"> 2397</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEInterfaces.cpp.inc&quot;</span></div>
+<div class="line"><a id="l02398" name="l02398"></a><span class="lineno"> 2398</span> </div>
+<div class="line"><a id="l02399" name="l02399"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a52c883a38e577b8b12282ff70c95a16d"> 2399</a></span><span class="preprocessor">#define GET_OP_CLASSES</span></div>
+<div class="line"><a id="l02400" name="l02400"></a><span class="lineno"> 2400</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEOps.cpp.inc&quot;</span></div>
+<div class="line"><a id="l02401" name="l02401"></a><span class="lineno"> 2401</span> </div>
+<div class="line"><a id="l02402" name="l02402"></a><span class="lineno"> 2402</span><span class="keywordtype">size_t</span> SwitchboxOp::getNumSourceConnections(WireBundle bundle) {</div>
+<div class="line"><a id="l02403" name="l02403"></a><span class="lineno"> 2403</span>  <span class="keyword">auto</span> tile = getTileOp();</div>
+<div class="line"><a id="l02404" name="l02404"></a><span class="lineno"> 2404</span>  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(*<span class="keyword">this</span>);</div>
+<div class="line"><a id="l02405" name="l02405"></a><span class="lineno"> 2405</span>  <span class="keywordflow">return</span> targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#affc6f2185d3b1f39ddaaf4149f2a7780">getNumSourceSwitchboxConnections</a>(tile.getCol(),</div>
+<div class="line"><a id="l02406" name="l02406"></a><span class="lineno"> 2406</span>                                                      tile.getRow(), bundle);</div>
+<div class="line"><a id="l02407" name="l02407"></a><span class="lineno"> 2407</span>}</div>
+<div class="line"><a id="l02408" name="l02408"></a><span class="lineno"> 2408</span> </div>
+<div class="line"><a id="l02409" name="l02409"></a><span class="lineno"> 2409</span><span class="keywordtype">size_t</span> SwitchboxOp::getNumDestConnections(WireBundle bundle) {</div>
+<div class="line"><a id="l02410" name="l02410"></a><span class="lineno"> 2410</span>  <span class="keyword">auto</span> tile = getTileOp();</div>
+<div class="line"><a id="l02411" name="l02411"></a><span class="lineno"> 2411</span>  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(*<span class="keyword">this</span>);</div>
+<div class="line"><a id="l02412" name="l02412"></a><span class="lineno"> 2412</span>  <span class="keywordflow">return</span> targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#ae9b5e251a1594ae9781bd10d6625b79a">getNumDestSwitchboxConnections</a>(tile.getCol(),</div>
+<div class="line"><a id="l02413" name="l02413"></a><span class="lineno"> 2413</span>                                                    tile.getRow(), bundle);</div>
+<div class="line"><a id="l02414" name="l02414"></a><span class="lineno"> 2414</span>}</div>
+<div class="line"><a id="l02415" name="l02415"></a><span class="lineno"> 2415</span> </div>
+<div class="foldopen" id="foldopen02416" data-start="{" data-end="}">
+<div class="line"><a id="l02416" name="l02416"></a><span class="lineno"><a class="line" href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937"> 2416</a></span>WireBundle <a class="code hl_function" href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937">xilinx::AIE::getConnectingBundle</a>(WireBundle dir) {</div>
+<div class="line"><a id="l02417" name="l02417"></a><span class="lineno"> 2417</span>  <span class="keywordflow">switch</span> (dir) {</div>
+<div class="line"><a id="l02418" name="l02418"></a><span class="lineno"> 2418</span>  <span class="keywordflow">case</span> WireBundle::North:</div>
+<div class="line"><a id="l02419" name="l02419"></a><span class="lineno"> 2419</span>    <span class="keywordflow">return</span> WireBundle::South;</div>
+<div class="line"><a id="l02420" name="l02420"></a><span class="lineno"> 2420</span>  <span class="keywordflow">case</span> WireBundle::South:</div>
+<div class="line"><a id="l02421" name="l02421"></a><span class="lineno"> 2421</span>    <span class="keywordflow">return</span> WireBundle::North;</div>
+<div class="line"><a id="l02422" name="l02422"></a><span class="lineno"> 2422</span>  <span class="keywordflow">case</span> WireBundle::East:</div>
+<div class="line"><a id="l02423" name="l02423"></a><span class="lineno"> 2423</span>    <span class="keywordflow">return</span> WireBundle::West;</div>
+<div class="line"><a id="l02424" name="l02424"></a><span class="lineno"> 2424</span>  <span class="keywordflow">case</span> WireBundle::West:</div>
+<div class="line"><a id="l02425" name="l02425"></a><span class="lineno"> 2425</span>    <span class="keywordflow">return</span> WireBundle::East;</div>
+<div class="line"><a id="l02426" name="l02426"></a><span class="lineno"> 2426</span>  <span class="keywordflow">default</span>:</div>
+<div class="line"><a id="l02427" name="l02427"></a><span class="lineno"> 2427</span>    <span class="keywordflow">return</span> dir;</div>
+<div class="line"><a id="l02428" name="l02428"></a><span class="lineno"> 2428</span>  }</div>
+<div class="line"><a id="l02429" name="l02429"></a><span class="lineno"> 2429</span>}</div>
 </div>
-<div class="line"><a id="l02419" name="l02419"></a><span class="lineno"> 2419</span> </div>
-<div class="line"><a id="l02420" name="l02420"></a><span class="lineno"> 2420</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l02421" name="l02421"></a><span class="lineno"> 2421</span><span class="comment">// BDChainOp</span></div>
-<div class="line"><a id="l02422" name="l02422"></a><span class="lineno"> 2422</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l02423" name="l02423"></a><span class="lineno"> 2423</span> </div>
-<div class="line"><a id="l02424" name="l02424"></a><span class="lineno"> 2424</span>ParseResult BDChainOp::parse(OpAsmParser &amp;parser, OperationState &amp;result) {</div>
-<div class="line"><a id="l02425" name="l02425"></a><span class="lineno"> 2425</span>  SmallVector&lt;OpAsmParser::Argument&gt; entryArgs;</div>
-<div class="line"><a id="l02426" name="l02426"></a><span class="lineno"> 2426</span> </div>
-<div class="line"><a id="l02427" name="l02427"></a><span class="lineno"> 2427</span>  <span class="comment">// Symbol name, e.g. @my_chain</span></div>
-<div class="line"><a id="l02428" name="l02428"></a><span class="lineno"> 2428</span>  StringAttr symNameAttr;</div>
-<div class="line"><a id="l02429" name="l02429"></a><span class="lineno"> 2429</span>  <span class="keywordflow">if</span> (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),</div>
-<div class="line"><a id="l02430" name="l02430"></a><span class="lineno"> 2430</span>                             result.attributes)) {</div>
-<div class="line"><a id="l02431" name="l02431"></a><span class="lineno"> 2431</span>    <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l02432" name="l02432"></a><span class="lineno"> 2432</span>  }</div>
-<div class="line"><a id="l02433" name="l02433"></a><span class="lineno"> 2433</span> </div>
-<div class="line"><a id="l02434" name="l02434"></a><span class="lineno"> 2434</span>  <span class="comment">// Entry arguments (placeholders), e.g. (%addr: memref&lt;1xi32&gt;)</span></div>
-<div class="line"><a id="l02435" name="l02435"></a><span class="lineno"> 2435</span>  ParseResult argParseResult = parser.parseCommaSeparatedList(</div>
-<div class="line"><a id="l02436" name="l02436"></a><span class="lineno"> 2436</span>      OpAsmParser::Delimiter::Paren, [&amp;]() -&gt; ParseResult {</div>
-<div class="line"><a id="l02437" name="l02437"></a><span class="lineno"> 2437</span>        OpAsmParser::Argument argument;</div>
-<div class="line"><a id="l02438" name="l02438"></a><span class="lineno"> 2438</span>        <span class="keywordflow">if</span> (parser.parseArgument(argument, <span class="keyword">true</span>, <span class="keyword">true</span>)) {</div>
-<div class="line"><a id="l02439" name="l02439"></a><span class="lineno"> 2439</span>          return failure();</div>
-<div class="line"><a id="l02440" name="l02440"></a><span class="lineno"> 2440</span>        }</div>
-<div class="line"><a id="l02441" name="l02441"></a><span class="lineno"> 2441</span>        entryArgs.push_back(argument);</div>
-<div class="line"><a id="l02442" name="l02442"></a><span class="lineno"> 2442</span>        <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l02443" name="l02443"></a><span class="lineno"> 2443</span>      });</div>
-<div class="line"><a id="l02444" name="l02444"></a><span class="lineno"> 2444</span>  <span class="keywordflow">if</span> (argParseResult) {</div>
-<div class="line"><a id="l02445" name="l02445"></a><span class="lineno"> 2445</span>    <span class="keywordflow">return</span> argParseResult;</div>
-<div class="line"><a id="l02446" name="l02446"></a><span class="lineno"> 2446</span>  }</div>
-<div class="line"><a id="l02447" name="l02447"></a><span class="lineno"> 2447</span> </div>
-<div class="line"><a id="l02448" name="l02448"></a><span class="lineno"> 2448</span>  <span class="comment">// BD Chain Body</span></div>
-<div class="line"><a id="l02449" name="l02449"></a><span class="lineno"> 2449</span>  <span class="keyword">auto</span> *body = result.addRegion();</div>
-<div class="line"><a id="l02450" name="l02450"></a><span class="lineno"> 2450</span>  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, <span class="keyword">false</span>);</div>
-<div class="line"><a id="l02451" name="l02451"></a><span class="lineno"> 2451</span>  <span class="keywordflow">if</span> (bodyParseResult) {</div>
-<div class="line"><a id="l02452" name="l02452"></a><span class="lineno"> 2452</span>    <span class="keywordflow">return</span> bodyParseResult;</div>
-<div class="line"><a id="l02453" name="l02453"></a><span class="lineno"> 2453</span>  }</div>
-<div class="line"><a id="l02454" name="l02454"></a><span class="lineno"> 2454</span> </div>
-<div class="line"><a id="l02455" name="l02455"></a><span class="lineno"> 2455</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l02456" name="l02456"></a><span class="lineno"> 2456</span>}</div>
-<div class="line"><a id="l02457" name="l02457"></a><span class="lineno"> 2457</span> </div>
-<div class="line"><a id="l02458" name="l02458"></a><span class="lineno"> 2458</span><span class="keywordtype">void</span> BDChainOp::print(OpAsmPrinter &amp;printer) {</div>
-<div class="line"><a id="l02459" name="l02459"></a><span class="lineno"> 2459</span>  <span class="keyword">auto</span> taskName =</div>
-<div class="line"><a id="l02460" name="l02460"></a><span class="lineno"> 2460</span>      (*this)</div>
-<div class="line"><a id="l02461" name="l02461"></a><span class="lineno"> 2461</span>          -&gt;getAttrOfType&lt;StringAttr&gt;(SymbolTable::getSymbolAttrName())</div>
-<div class="line"><a id="l02462" name="l02462"></a><span class="lineno"> 2462</span>          .getValue();</div>
-<div class="line"><a id="l02463" name="l02463"></a><span class="lineno"> 2463</span>  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
-<div class="line"><a id="l02464" name="l02464"></a><span class="lineno"> 2464</span>  printer.printSymbolName(taskName);</div>
+<div class="line"><a id="l02430" name="l02430"></a><span class="lineno"> 2430</span> </div>
+<div class="line"><a id="l02431" name="l02431"></a><span class="lineno"> 2431</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l02432" name="l02432"></a><span class="lineno"> 2432</span><span class="comment">// BDChainOp</span></div>
+<div class="line"><a id="l02433" name="l02433"></a><span class="lineno"> 2433</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l02434" name="l02434"></a><span class="lineno"> 2434</span> </div>
+<div class="line"><a id="l02435" name="l02435"></a><span class="lineno"> 2435</span>ParseResult BDChainOp::parse(OpAsmParser &amp;parser, OperationState &amp;result) {</div>
+<div class="line"><a id="l02436" name="l02436"></a><span class="lineno"> 2436</span>  SmallVector&lt;OpAsmParser::Argument&gt; entryArgs;</div>
+<div class="line"><a id="l02437" name="l02437"></a><span class="lineno"> 2437</span> </div>
+<div class="line"><a id="l02438" name="l02438"></a><span class="lineno"> 2438</span>  <span class="comment">// Symbol name, e.g. @my_chain</span></div>
+<div class="line"><a id="l02439" name="l02439"></a><span class="lineno"> 2439</span>  StringAttr symNameAttr;</div>
+<div class="line"><a id="l02440" name="l02440"></a><span class="lineno"> 2440</span>  <span class="keywordflow">if</span> (parser.parseSymbolName(symNameAttr, SymbolTable::getSymbolAttrName(),</div>
+<div class="line"><a id="l02441" name="l02441"></a><span class="lineno"> 2441</span>                             result.attributes)) {</div>
+<div class="line"><a id="l02442" name="l02442"></a><span class="lineno"> 2442</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l02443" name="l02443"></a><span class="lineno"> 2443</span>  }</div>
+<div class="line"><a id="l02444" name="l02444"></a><span class="lineno"> 2444</span> </div>
+<div class="line"><a id="l02445" name="l02445"></a><span class="lineno"> 2445</span>  <span class="comment">// Entry arguments (placeholders), e.g. (%addr: memref&lt;1xi32&gt;)</span></div>
+<div class="line"><a id="l02446" name="l02446"></a><span class="lineno"> 2446</span>  ParseResult argParseResult = parser.parseCommaSeparatedList(</div>
+<div class="line"><a id="l02447" name="l02447"></a><span class="lineno"> 2447</span>      OpAsmParser::Delimiter::Paren, [&amp;]() -&gt; ParseResult {</div>
+<div class="line"><a id="l02448" name="l02448"></a><span class="lineno"> 2448</span>        OpAsmParser::Argument argument;</div>
+<div class="line"><a id="l02449" name="l02449"></a><span class="lineno"> 2449</span>        <span class="keywordflow">if</span> (parser.parseArgument(argument, <span class="keyword">true</span>, <span class="keyword">true</span>)) {</div>
+<div class="line"><a id="l02450" name="l02450"></a><span class="lineno"> 2450</span>          return failure();</div>
+<div class="line"><a id="l02451" name="l02451"></a><span class="lineno"> 2451</span>        }</div>
+<div class="line"><a id="l02452" name="l02452"></a><span class="lineno"> 2452</span>        entryArgs.push_back(argument);</div>
+<div class="line"><a id="l02453" name="l02453"></a><span class="lineno"> 2453</span>        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02454" name="l02454"></a><span class="lineno"> 2454</span>      });</div>
+<div class="line"><a id="l02455" name="l02455"></a><span class="lineno"> 2455</span>  <span class="keywordflow">if</span> (argParseResult) {</div>
+<div class="line"><a id="l02456" name="l02456"></a><span class="lineno"> 2456</span>    <span class="keywordflow">return</span> argParseResult;</div>
+<div class="line"><a id="l02457" name="l02457"></a><span class="lineno"> 2457</span>  }</div>
+<div class="line"><a id="l02458" name="l02458"></a><span class="lineno"> 2458</span> </div>
+<div class="line"><a id="l02459" name="l02459"></a><span class="lineno"> 2459</span>  <span class="comment">// BD Chain Body</span></div>
+<div class="line"><a id="l02460" name="l02460"></a><span class="lineno"> 2460</span>  <span class="keyword">auto</span> *body = result.addRegion();</div>
+<div class="line"><a id="l02461" name="l02461"></a><span class="lineno"> 2461</span>  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, <span class="keyword">false</span>);</div>
+<div class="line"><a id="l02462" name="l02462"></a><span class="lineno"> 2462</span>  <span class="keywordflow">if</span> (bodyParseResult) {</div>
+<div class="line"><a id="l02463" name="l02463"></a><span class="lineno"> 2463</span>    <span class="keywordflow">return</span> bodyParseResult;</div>
+<div class="line"><a id="l02464" name="l02464"></a><span class="lineno"> 2464</span>  }</div>
 <div class="line"><a id="l02465" name="l02465"></a><span class="lineno"> 2465</span> </div>
-<div class="line"><a id="l02466" name="l02466"></a><span class="lineno"> 2466</span>  Region &amp;body = getRegion();</div>
-<div class="line"><a id="l02467" name="l02467"></a><span class="lineno"> 2467</span>  <span class="keyword">auto</span> argsIter = body.getArguments();</div>
-<div class="line"><a id="l02468" name="l02468"></a><span class="lineno"> 2468</span>  printer &lt;&lt; <span class="charliteral">&#39;(&#39;</span>;</div>
-<div class="line"><a id="l02469" name="l02469"></a><span class="lineno"> 2469</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> it = argsIter.begin(); it != argsIter.end(); ++it) {</div>
-<div class="line"><a id="l02470" name="l02470"></a><span class="lineno"> 2470</span>    <span class="keywordflow">if</span> (it != argsIter.begin()) {</div>
-<div class="line"><a id="l02471" name="l02471"></a><span class="lineno"> 2471</span>      printer &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
-<div class="line"><a id="l02472" name="l02472"></a><span class="lineno"> 2472</span>    }</div>
-<div class="line"><a id="l02473" name="l02473"></a><span class="lineno"> 2473</span>    printer.printRegionArgument(*it);</div>
-<div class="line"><a id="l02474" name="l02474"></a><span class="lineno"> 2474</span>  }</div>
-<div class="line"><a id="l02475" name="l02475"></a><span class="lineno"> 2475</span>  printer &lt;&lt; <span class="charliteral">&#39;)&#39;</span>;</div>
+<div class="line"><a id="l02466" name="l02466"></a><span class="lineno"> 2466</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02467" name="l02467"></a><span class="lineno"> 2467</span>}</div>
+<div class="line"><a id="l02468" name="l02468"></a><span class="lineno"> 2468</span> </div>
+<div class="line"><a id="l02469" name="l02469"></a><span class="lineno"> 2469</span><span class="keywordtype">void</span> BDChainOp::print(OpAsmPrinter &amp;printer) {</div>
+<div class="line"><a id="l02470" name="l02470"></a><span class="lineno"> 2470</span>  <span class="keyword">auto</span> taskName =</div>
+<div class="line"><a id="l02471" name="l02471"></a><span class="lineno"> 2471</span>      (*this)</div>
+<div class="line"><a id="l02472" name="l02472"></a><span class="lineno"> 2472</span>          -&gt;getAttrOfType&lt;StringAttr&gt;(SymbolTable::getSymbolAttrName())</div>
+<div class="line"><a id="l02473" name="l02473"></a><span class="lineno"> 2473</span>          .getValue();</div>
+<div class="line"><a id="l02474" name="l02474"></a><span class="lineno"> 2474</span>  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
+<div class="line"><a id="l02475" name="l02475"></a><span class="lineno"> 2475</span>  printer.printSymbolName(taskName);</div>
 <div class="line"><a id="l02476" name="l02476"></a><span class="lineno"> 2476</span> </div>
-<div class="line"><a id="l02477" name="l02477"></a><span class="lineno"> 2477</span>  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
-<div class="line"><a id="l02478" name="l02478"></a><span class="lineno"> 2478</span>  printer.printRegion(body, <span class="keyword">false</span>, <span class="keyword">true</span>);</div>
-<div class="line"><a id="l02479" name="l02479"></a><span class="lineno"> 2479</span>}</div>
-<div class="line"><a id="l02480" name="l02480"></a><span class="lineno"> 2480</span> </div>
-<div class="line"><a id="l02481" name="l02481"></a><span class="lineno"> 2481</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l02482" name="l02482"></a><span class="lineno"> 2482</span><span class="comment">// ShimDMAAllocationOp</span></div>
-<div class="line"><a id="l02483" name="l02483"></a><span class="lineno"> 2483</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l02484" name="l02484"></a><span class="lineno"> 2484</span> </div>
-<div class="line"><a id="l02485" name="l02485"></a><span class="lineno"> 2485</span>LogicalResult ShimDMAAllocationOp::verify() {</div>
-<div class="line"><a id="l02486" name="l02486"></a><span class="lineno"> 2486</span>  TileOp tileOp = getTileOp();</div>
-<div class="line"><a id="l02487" name="l02487"></a><span class="lineno"> 2487</span>  <span class="keywordflow">if</span> (!tileOp) {</div>
-<div class="line"><a id="l02488" name="l02488"></a><span class="lineno"> 2488</span>    <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;tile operand must be a TileOp&quot;</span>);</div>
-<div class="line"><a id="l02489" name="l02489"></a><span class="lineno"> 2489</span>  }</div>
-<div class="line"><a id="l02490" name="l02490"></a><span class="lineno"> 2490</span> </div>
-<div class="line"><a id="l02491" name="l02491"></a><span class="lineno"> 2491</span>  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(*<span class="keyword">this</span>);</div>
-<div class="line"><a id="l02492" name="l02492"></a><span class="lineno"> 2492</span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.getCol();</div>
-<div class="line"><a id="l02493" name="l02493"></a><span class="lineno"> 2493</span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.getRow();</div>
-<div class="line"><a id="l02494" name="l02494"></a><span class="lineno"> 2494</span> </div>
-<div class="line"><a id="l02495" name="l02495"></a><span class="lineno"> 2495</span>  <span class="keywordflow">if</span> (!targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a972d27d64945987b74b4ec51fc831db6">isShimNOCorPLTile</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)) {</div>
-<div class="line"><a id="l02496" name="l02496"></a><span class="lineno"> 2496</span>    <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;tile must be a shim tile, but got tile(&quot;</span>)</div>
-<div class="line"><a id="l02497" name="l02497"></a><span class="lineno"> 2497</span>           &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;)&quot;</span>;</div>
-<div class="line"><a id="l02498" name="l02498"></a><span class="lineno"> 2498</span>  }</div>
-<div class="line"><a id="l02499" name="l02499"></a><span class="lineno"> 2499</span> </div>
-<div class="line"><a id="l02500" name="l02500"></a><span class="lineno"> 2500</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l02501" name="l02501"></a><span class="lineno"> 2501</span>}</div>
-<div class="line"><a id="l02502" name="l02502"></a><span class="lineno"> 2502</span> </div>
-<div class="line"><a id="l02503" name="l02503"></a><span class="lineno"> 2503</span>TileOp ShimDMAAllocationOp::getTileOp() {</div>
-<div class="line"><a id="l02504" name="l02504"></a><span class="lineno"> 2504</span>  <span class="keywordflow">return</span> cast&lt;TileOp&gt;(getTile().getDefiningOp());</div>
-<div class="line"><a id="l02505" name="l02505"></a><span class="lineno"> 2505</span>}</div>
-<div class="line"><a id="l02506" name="l02506"></a><span class="lineno"> 2506</span> </div>
-<div class="line"><a id="l02507" name="l02507"></a><span class="lineno"> 2507</span>ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,</div>
-<div class="line"><a id="l02508" name="l02508"></a><span class="lineno"> 2508</span>                                                      llvm::StringRef symbol) {</div>
-<div class="line"><a id="l02509" name="l02509"></a><span class="lineno"> 2509</span>  Operation *maybeOp = device.lookupSymbol(symbol);</div>
-<div class="line"><a id="l02510" name="l02510"></a><span class="lineno"> 2510</span>  <span class="keywordflow">if</span> (maybeOp) {</div>
-<div class="line"><a id="l02511" name="l02511"></a><span class="lineno"> 2511</span>    <span class="keywordflow">if</span> (ShimDMAAllocationOp op = dyn_cast&lt;ShimDMAAllocationOp&gt;(maybeOp)) {</div>
-<div class="line"><a id="l02512" name="l02512"></a><span class="lineno"> 2512</span>      <span class="keywordflow">return</span> op;</div>
-<div class="line"><a id="l02513" name="l02513"></a><span class="lineno"> 2513</span>    }</div>
-<div class="line"><a id="l02514" name="l02514"></a><span class="lineno"> 2514</span>  }</div>
-<div class="line"><a id="l02515" name="l02515"></a><span class="lineno"> 2515</span>  <span class="keywordflow">return</span> <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l02477" name="l02477"></a><span class="lineno"> 2477</span>  Region &amp;body = getRegion();</div>
+<div class="line"><a id="l02478" name="l02478"></a><span class="lineno"> 2478</span>  <span class="keyword">auto</span> argsIter = body.getArguments();</div>
+<div class="line"><a id="l02479" name="l02479"></a><span class="lineno"> 2479</span>  printer &lt;&lt; <span class="charliteral">&#39;(&#39;</span>;</div>
+<div class="line"><a id="l02480" name="l02480"></a><span class="lineno"> 2480</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> it = argsIter.begin(); it != argsIter.end(); ++it) {</div>
+<div class="line"><a id="l02481" name="l02481"></a><span class="lineno"> 2481</span>    <span class="keywordflow">if</span> (it != argsIter.begin()) {</div>
+<div class="line"><a id="l02482" name="l02482"></a><span class="lineno"> 2482</span>      printer &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
+<div class="line"><a id="l02483" name="l02483"></a><span class="lineno"> 2483</span>    }</div>
+<div class="line"><a id="l02484" name="l02484"></a><span class="lineno"> 2484</span>    printer.printRegionArgument(*it);</div>
+<div class="line"><a id="l02485" name="l02485"></a><span class="lineno"> 2485</span>  }</div>
+<div class="line"><a id="l02486" name="l02486"></a><span class="lineno"> 2486</span>  printer &lt;&lt; <span class="charliteral">&#39;)&#39;</span>;</div>
+<div class="line"><a id="l02487" name="l02487"></a><span class="lineno"> 2487</span> </div>
+<div class="line"><a id="l02488" name="l02488"></a><span class="lineno"> 2488</span>  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
+<div class="line"><a id="l02489" name="l02489"></a><span class="lineno"> 2489</span>  printer.printRegion(body, <span class="keyword">false</span>, <span class="keyword">true</span>);</div>
+<div class="line"><a id="l02490" name="l02490"></a><span class="lineno"> 2490</span>}</div>
+<div class="line"><a id="l02491" name="l02491"></a><span class="lineno"> 2491</span> </div>
+<div class="line"><a id="l02492" name="l02492"></a><span class="lineno"> 2492</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l02493" name="l02493"></a><span class="lineno"> 2493</span><span class="comment">// ShimDMAAllocationOp</span></div>
+<div class="line"><a id="l02494" name="l02494"></a><span class="lineno"> 2494</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l02495" name="l02495"></a><span class="lineno"> 2495</span> </div>
+<div class="line"><a id="l02496" name="l02496"></a><span class="lineno"> 2496</span>LogicalResult ShimDMAAllocationOp::verify() {</div>
+<div class="line"><a id="l02497" name="l02497"></a><span class="lineno"> 2497</span>  TileOp tileOp = getTileOp();</div>
+<div class="line"><a id="l02498" name="l02498"></a><span class="lineno"> 2498</span>  <span class="keywordflow">if</span> (!tileOp) {</div>
+<div class="line"><a id="l02499" name="l02499"></a><span class="lineno"> 2499</span>    <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;tile operand must be a TileOp&quot;</span>);</div>
+<div class="line"><a id="l02500" name="l02500"></a><span class="lineno"> 2500</span>  }</div>
+<div class="line"><a id="l02501" name="l02501"></a><span class="lineno"> 2501</span> </div>
+<div class="line"><a id="l02502" name="l02502"></a><span class="lineno"> 2502</span>  <span class="keyword">const</span> <span class="keyword">auto</span> &amp;targetModel = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(*<span class="keyword">this</span>);</div>
+<div class="line"><a id="l02503" name="l02503"></a><span class="lineno"> 2503</span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.getCol();</div>
+<div class="line"><a id="l02504" name="l02504"></a><span class="lineno"> 2504</span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.getRow();</div>
+<div class="line"><a id="l02505" name="l02505"></a><span class="lineno"> 2505</span> </div>
+<div class="line"><a id="l02506" name="l02506"></a><span class="lineno"> 2506</span>  <span class="keywordflow">if</span> (!targetModel.<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a972d27d64945987b74b4ec51fc831db6">isShimNOCorPLTile</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)) {</div>
+<div class="line"><a id="l02507" name="l02507"></a><span class="lineno"> 2507</span>    <span class="keywordflow">return</span> emitOpError(<span class="stringliteral">&quot;tile must be a shim tile, but got tile(&quot;</span>)</div>
+<div class="line"><a id="l02508" name="l02508"></a><span class="lineno"> 2508</span>           &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;)&quot;</span>;</div>
+<div class="line"><a id="l02509" name="l02509"></a><span class="lineno"> 2509</span>  }</div>
+<div class="line"><a id="l02510" name="l02510"></a><span class="lineno"> 2510</span> </div>
+<div class="line"><a id="l02511" name="l02511"></a><span class="lineno"> 2511</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02512" name="l02512"></a><span class="lineno"> 2512</span>}</div>
+<div class="line"><a id="l02513" name="l02513"></a><span class="lineno"> 2513</span> </div>
+<div class="line"><a id="l02514" name="l02514"></a><span class="lineno"> 2514</span>TileOp ShimDMAAllocationOp::getTileOp() {</div>
+<div class="line"><a id="l02515" name="l02515"></a><span class="lineno"> 2515</span>  <span class="keywordflow">return</span> cast&lt;TileOp&gt;(getTile().getDefiningOp());</div>
 <div class="line"><a id="l02516" name="l02516"></a><span class="lineno"> 2516</span>}</div>
 <div class="line"><a id="l02517" name="l02517"></a><span class="lineno"> 2517</span> </div>
-<div class="line"><a id="l02518" name="l02518"></a><span class="lineno"> 2518</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l02519" name="l02519"></a><span class="lineno"> 2519</span><span class="comment">// RuntimeSequenceOp</span></div>
-<div class="line"><a id="l02520" name="l02520"></a><span class="lineno"> 2520</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l02521" name="l02521"></a><span class="lineno"> 2521</span> </div>
-<div class="line"><a id="l02522" name="l02522"></a><span class="lineno"> 2522</span>ParseResult RuntimeSequenceOp::parse(OpAsmParser &amp;parser,</div>
-<div class="line"><a id="l02523" name="l02523"></a><span class="lineno"> 2523</span>                                     OperationState &amp;result) {</div>
-<div class="line"><a id="l02524" name="l02524"></a><span class="lineno"> 2524</span> </div>
-<div class="line"><a id="l02525" name="l02525"></a><span class="lineno"> 2525</span>  <span class="comment">// Name of this runtime sequence</span></div>
-<div class="line"><a id="l02526" name="l02526"></a><span class="lineno"> 2526</span>  StringAttr nameAttr;</div>
-<div class="line"><a id="l02527" name="l02527"></a><span class="lineno"> 2527</span>  (void)parser.parseOptionalSymbolName(</div>
-<div class="line"><a id="l02528" name="l02528"></a><span class="lineno"> 2528</span>      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);</div>
-<div class="line"><a id="l02529" name="l02529"></a><span class="lineno"> 2529</span> </div>
-<div class="line"><a id="l02530" name="l02530"></a><span class="lineno"> 2530</span>  SmallVector&lt;OpAsmParser::Argument&gt; entryArgs;</div>
-<div class="line"><a id="l02531" name="l02531"></a><span class="lineno"> 2531</span> </div>
-<div class="line"><a id="l02532" name="l02532"></a><span class="lineno"> 2532</span>  <span class="comment">// Entry arguments,  e.g. (%addr: memref&lt;1xi32&gt;)</span></div>
-<div class="line"><a id="l02533" name="l02533"></a><span class="lineno"> 2533</span>  ParseResult argParseResult = parser.parseCommaSeparatedList(</div>
-<div class="line"><a id="l02534" name="l02534"></a><span class="lineno"> 2534</span>      OpAsmParser::Delimiter::Paren, [&amp;]() -&gt; ParseResult {</div>
-<div class="line"><a id="l02535" name="l02535"></a><span class="lineno"> 2535</span>        OpAsmParser::Argument argument;</div>
-<div class="line"><a id="l02536" name="l02536"></a><span class="lineno"> 2536</span>        <span class="keywordflow">if</span> (parser.parseArgument(argument, <span class="keyword">true</span>, <span class="keyword">true</span>)) {</div>
-<div class="line"><a id="l02537" name="l02537"></a><span class="lineno"> 2537</span>          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l02538" name="l02538"></a><span class="lineno"> 2538</span>        }</div>
-<div class="line"><a id="l02539" name="l02539"></a><span class="lineno"> 2539</span>        entryArgs.push_back(argument);</div>
-<div class="line"><a id="l02540" name="l02540"></a><span class="lineno"> 2540</span>        <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l02541" name="l02541"></a><span class="lineno"> 2541</span>      });</div>
-<div class="line"><a id="l02542" name="l02542"></a><span class="lineno"> 2542</span>  <span class="keywordflow">if</span> (argParseResult) {</div>
-<div class="line"><a id="l02543" name="l02543"></a><span class="lineno"> 2543</span>    <span class="keywordflow">return</span> argParseResult;</div>
-<div class="line"><a id="l02544" name="l02544"></a><span class="lineno"> 2544</span>  }</div>
-<div class="line"><a id="l02545" name="l02545"></a><span class="lineno"> 2545</span> </div>
-<div class="line"><a id="l02546" name="l02546"></a><span class="lineno"> 2546</span>  <span class="comment">// Body</span></div>
-<div class="line"><a id="l02547" name="l02547"></a><span class="lineno"> 2547</span>  <span class="keyword">auto</span> *body = result.addRegion();</div>
-<div class="line"><a id="l02548" name="l02548"></a><span class="lineno"> 2548</span>  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, <span class="keyword">false</span>);</div>
-<div class="line"><a id="l02549" name="l02549"></a><span class="lineno"> 2549</span>  <span class="keywordflow">if</span> (bodyParseResult) {</div>
-<div class="line"><a id="l02550" name="l02550"></a><span class="lineno"> 2550</span>    <span class="keywordflow">return</span> bodyParseResult;</div>
-<div class="line"><a id="l02551" name="l02551"></a><span class="lineno"> 2551</span>  }</div>
-<div class="line"><a id="l02552" name="l02552"></a><span class="lineno"> 2552</span> </div>
-<div class="line"><a id="l02553" name="l02553"></a><span class="lineno"> 2553</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l02554" name="l02554"></a><span class="lineno"> 2554</span>}</div>
-<div class="line"><a id="l02555" name="l02555"></a><span class="lineno"> 2555</span> </div>
-<div class="line"><a id="l02556" name="l02556"></a><span class="lineno"> 2556</span><span class="keywordtype">void</span> RuntimeSequenceOp::print(OpAsmPrinter &amp;printer) {</div>
-<div class="line"><a id="l02557" name="l02557"></a><span class="lineno"> 2557</span>  Region &amp;body = getRegion();</div>
-<div class="line"><a id="l02558" name="l02558"></a><span class="lineno"> 2558</span> </div>
-<div class="line"><a id="l02559" name="l02559"></a><span class="lineno"> 2559</span>  <span class="keyword">auto</span> nameAttr = (*this)-&gt;getAttrOfType&lt;StringAttr&gt;(</div>
-<div class="line"><a id="l02560" name="l02560"></a><span class="lineno"> 2560</span>      mlir::SymbolTable::getSymbolAttrName());</div>
-<div class="line"><a id="l02561" name="l02561"></a><span class="lineno"> 2561</span>  <span class="keywordflow">if</span> (nameAttr &amp;&amp;</div>
-<div class="line"><a id="l02562" name="l02562"></a><span class="lineno"> 2562</span>      nameAttr != ::mlir::OpBuilder((*this)-&gt;getContext())</div>
-<div class="line"><a id="l02563" name="l02563"></a><span class="lineno"> 2563</span>                      .getStringAttr(getDefaultRuntimeSequenceName())) {</div>
-<div class="line"><a id="l02564" name="l02564"></a><span class="lineno"> 2564</span>    printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
-<div class="line"><a id="l02565" name="l02565"></a><span class="lineno"> 2565</span>    printer.printSymbolName(nameAttr);</div>
-<div class="line"><a id="l02566" name="l02566"></a><span class="lineno"> 2566</span>  }</div>
-<div class="line"><a id="l02567" name="l02567"></a><span class="lineno"> 2567</span> </div>
-<div class="line"><a id="l02568" name="l02568"></a><span class="lineno"> 2568</span>  printer &lt;&lt; <span class="charliteral">&#39;(&#39;</span>;</div>
-<div class="line"><a id="l02569" name="l02569"></a><span class="lineno"> 2569</span>  <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0, n = body.getNumArguments(); i &lt; n; i++) {</div>
-<div class="line"><a id="l02570" name="l02570"></a><span class="lineno"> 2570</span>    <span class="keywordflow">if</span> (i &gt; 0) {</div>
-<div class="line"><a id="l02571" name="l02571"></a><span class="lineno"> 2571</span>      printer &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
-<div class="line"><a id="l02572" name="l02572"></a><span class="lineno"> 2572</span>    }</div>
-<div class="line"><a id="l02573" name="l02573"></a><span class="lineno"> 2573</span>    printer.printRegionArgument(body.getArgument(i));</div>
-<div class="line"><a id="l02574" name="l02574"></a><span class="lineno"> 2574</span>  }</div>
-<div class="line"><a id="l02575" name="l02575"></a><span class="lineno"> 2575</span>  printer &lt;&lt; <span class="charliteral">&#39;)&#39;</span>;</div>
-<div class="line"><a id="l02576" name="l02576"></a><span class="lineno"> 2576</span> </div>
-<div class="line"><a id="l02577" name="l02577"></a><span class="lineno"> 2577</span>  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
-<div class="line"><a id="l02578" name="l02578"></a><span class="lineno"> 2578</span>  printer.printRegion(body, <span class="keyword">false</span>, <span class="keyword">true</span>);</div>
-<div class="line"><a id="l02579" name="l02579"></a><span class="lineno"> 2579</span>}</div>
-<div class="line"><a id="l02580" name="l02580"></a><span class="lineno"> 2580</span> </div>
-<div class="line"><a id="l02581" name="l02581"></a><span class="lineno"> 2581</span>LogicalResult RuntimeSequenceOp::verify() {</div>
-<div class="line"><a id="l02582" name="l02582"></a><span class="lineno"> 2582</span>  DeviceOp device = (*this)-&gt;getParentOfType&lt;DeviceOp&gt;();</div>
-<div class="line"><a id="l02583" name="l02583"></a><span class="lineno"> 2583</span>  <span class="keywordflow">if</span> (!device) {</div>
-<div class="line"><a id="l02584" name="l02584"></a><span class="lineno"> 2584</span>    <span class="comment">// this check is redudnant with the HasParent trait, but can&#39;t hurt</span></div>
-<div class="line"><a id="l02585" name="l02585"></a><span class="lineno"> 2585</span>    (*this)-&gt;emitOpError() &lt;&lt; <span class="stringliteral">&quot;must be inside AIE device operation.&quot;</span>;</div>
-<div class="line"><a id="l02586" name="l02586"></a><span class="lineno"> 2586</span>    <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l02587" name="l02587"></a><span class="lineno"> 2587</span>  }</div>
-<div class="line"><a id="l02588" name="l02588"></a><span class="lineno"> 2588</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l02589" name="l02589"></a><span class="lineno"> 2589</span>}</div>
-<div class="line"><a id="l02590" name="l02590"></a><span class="lineno"> 2590</span> </div>
-<div class="line"><a id="l02591" name="l02591"></a><span class="lineno"> 2591</span>RuntimeSequenceOp</div>
-<div class="line"><a id="l02592" name="l02592"></a><span class="lineno"> 2592</span>RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,</div>
-<div class="line"><a id="l02593" name="l02593"></a><span class="lineno"> 2593</span>                                        llvm::StringRef symbol) {</div>
-<div class="line"><a id="l02594" name="l02594"></a><span class="lineno"> 2594</span>  RuntimeSequenceOp runtimeSequenceOp;</div>
-<div class="line"><a id="l02595" name="l02595"></a><span class="lineno"> 2595</span>  <span class="keywordflow">if</span> (!symbol.size()) {</div>
-<div class="line"><a id="l02596" name="l02596"></a><span class="lineno"> 2596</span>    runtimeSequenceOp = *deviceOp.getOps&lt;RuntimeSequenceOp&gt;().begin();</div>
-<div class="line"><a id="l02597" name="l02597"></a><span class="lineno"> 2597</span>  } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l02598" name="l02598"></a><span class="lineno"> 2598</span>    Operation *maybeRuntimeSequenceOp =</div>
-<div class="line"><a id="l02599" name="l02599"></a><span class="lineno"> 2599</span>        mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);</div>
-<div class="line"><a id="l02600" name="l02600"></a><span class="lineno"> 2600</span>    <span class="keywordflow">if</span> (!maybeRuntimeSequenceOp) {</div>
-<div class="line"><a id="l02601" name="l02601"></a><span class="lineno"> 2601</span>      <span class="keywordflow">return</span> <span class="keyword">nullptr</span>;</div>
-<div class="line"><a id="l02602" name="l02602"></a><span class="lineno"> 2602</span>    }</div>
-<div class="line"><a id="l02603" name="l02603"></a><span class="lineno"> 2603</span>    runtimeSequenceOp =</div>
-<div class="line"><a id="l02604" name="l02604"></a><span class="lineno"> 2604</span>        llvm::dyn_cast&lt;RuntimeSequenceOp&gt;(maybeRuntimeSequenceOp);</div>
-<div class="line"><a id="l02605" name="l02605"></a><span class="lineno"> 2605</span>  }</div>
-<div class="line"><a id="l02606" name="l02606"></a><span class="lineno"> 2606</span>  <span class="keywordflow">return</span> runtimeSequenceOp;</div>
-<div class="line"><a id="l02607" name="l02607"></a><span class="lineno"> 2607</span>}</div>
-<div class="line"><a id="l02608" name="l02608"></a><span class="lineno"> 2608</span> </div>
-<div class="line"><a id="l02609" name="l02609"></a><span class="lineno"> 2609</span>RuntimeSequenceOp</div>
-<div class="line"><a id="l02610" name="l02610"></a><span class="lineno"> 2610</span>RuntimeSequenceOp::getForSymbolInDeviceOrError(DeviceOp deviceOp,</div>
-<div class="line"><a id="l02611" name="l02611"></a><span class="lineno"> 2611</span>                                               llvm::StringRef symbol) {</div>
-<div class="line"><a id="l02612" name="l02612"></a><span class="lineno"> 2612</span>  RuntimeSequenceOp runtimeSequenceOp = getForSymbolInDevice(deviceOp, symbol);</div>
-<div class="line"><a id="l02613" name="l02613"></a><span class="lineno"> 2613</span>  <span class="keywordflow">if</span> (!runtimeSequenceOp) {</div>
-<div class="line"><a id="l02614" name="l02614"></a><span class="lineno"> 2614</span>    <span class="keywordflow">if</span> (!symbol.empty()) {</div>
-<div class="line"><a id="l02615" name="l02615"></a><span class="lineno"> 2615</span>      deviceOp.emitError(<span class="stringliteral">&quot;No such runtime sequence: &quot;</span>) &lt;&lt; symbol;</div>
-<div class="line"><a id="l02616" name="l02616"></a><span class="lineno"> 2616</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l02617" name="l02617"></a><span class="lineno"> 2617</span>      deviceOp.emitError(<span class="stringliteral">&quot;No runtime sequence in device&quot;</span>);</div>
-<div class="line"><a id="l02618" name="l02618"></a><span class="lineno"> 2618</span>    }</div>
-<div class="line"><a id="l02619" name="l02619"></a><span class="lineno"> 2619</span>  }</div>
-<div class="line"><a id="l02620" name="l02620"></a><span class="lineno"> 2620</span>  <span class="keywordflow">return</span> runtimeSequenceOp;</div>
-<div class="line"><a id="l02621" name="l02621"></a><span class="lineno"> 2621</span>}</div>
-<div class="line"><a id="l02622" name="l02622"></a><span class="lineno"> 2622</span> </div>
-<div class="line"><a id="l02623" name="l02623"></a><span class="lineno"> 2623</span>LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {</div>
-<div class="line"><a id="l02624" name="l02624"></a><span class="lineno"> 2624</span>  <span class="comment">// Check that all symbol references within the runtime sequence</span></div>
-<div class="line"><a id="l02625" name="l02625"></a><span class="lineno"> 2625</span>  <span class="comment">// are either to ShimDMAAllocationOp, DeviceOp or another RuntimeSequenceOp;</span></div>
-<div class="line"><a id="l02626" name="l02626"></a><span class="lineno"> 2626</span>  <span class="comment">// these are the only symbols that can be lowered with the NPU passes</span></div>
-<div class="line"><a id="l02627" name="l02627"></a><span class="lineno"> 2627</span>  <span class="keyword">auto</span> result = (*this)-&gt;walk([&amp;](Operation *op) {</div>
-<div class="line"><a id="l02628" name="l02628"></a><span class="lineno"> 2628</span>    <span class="keywordflow">for</span> (NamedAttribute namedAttr : op-&gt;getAttrs()) {</div>
-<div class="line"><a id="l02629" name="l02629"></a><span class="lineno"> 2629</span>      Attribute attr = namedAttr.getValue();</div>
-<div class="line"><a id="l02630" name="l02630"></a><span class="lineno"> 2630</span>      <span class="keyword">auto</span> walkResult = attr.walk([&amp;](SymbolRefAttr symbolRef) {</div>
-<div class="line"><a id="l02631" name="l02631"></a><span class="lineno"> 2631</span>        Operation *symbolDefOp =</div>
-<div class="line"><a id="l02632" name="l02632"></a><span class="lineno"> 2632</span>            SymbolTable::lookupNearestSymbolFrom(*<span class="keyword">this</span>, symbolRef);</div>
-<div class="line"><a id="l02633" name="l02633"></a><span class="lineno"> 2633</span>        <span class="keywordflow">if</span> (symbolDefOp) {</div>
-<div class="line"><a id="l02634" name="l02634"></a><span class="lineno"> 2634</span>          <span class="keywordflow">if</span> (!llvm::isa&lt;ShimDMAAllocationOp&gt;(symbolDefOp) &amp;&amp;</div>
-<div class="line"><a id="l02635" name="l02635"></a><span class="lineno"> 2635</span>              !llvm::isa&lt;DeviceOp&gt;(symbolDefOp) &amp;&amp;</div>
-<div class="line"><a id="l02636" name="l02636"></a><span class="lineno"> 2636</span>              !llvm::isa&lt;RuntimeSequenceOp&gt;(symbolDefOp) &amp;&amp;</div>
-<div class="line"><a id="l02637" name="l02637"></a><span class="lineno"> 2637</span>              !llvm::isa&lt;BufferOp&gt;(symbolDefOp) &amp;&amp;</div>
-<div class="line"><a id="l02638" name="l02638"></a><span class="lineno"> 2638</span>              !llvm::isa&lt;memref::GlobalOp&gt;(symbolDefOp)) {</div>
-<div class="line"><a id="l02639" name="l02639"></a><span class="lineno"> 2639</span>            op-&gt;emitOpError()</div>
-<div class="line"><a id="l02640" name="l02640"></a><span class="lineno"> 2640</span>                &lt;&lt; <span class="stringliteral">&quot;references symbol &#39;&quot;</span></div>
-<div class="line"><a id="l02641" name="l02641"></a><span class="lineno"> 2641</span>                &lt;&lt; symbolRef.getRootReference().getValue()</div>
-<div class="line"><a id="l02642" name="l02642"></a><span class="lineno"> 2642</span>                &lt;&lt; <span class="stringliteral">&quot;&#39; which must be either a ShimDMAAllocationOp, DeviceOp, &quot;</span></div>
-<div class="line"><a id="l02643" name="l02643"></a><span class="lineno"> 2643</span>                   <span class="stringliteral">&quot;RuntimeSequenceOp, BufferOp or GlobalOp, but got: &quot;</span></div>
-<div class="line"><a id="l02644" name="l02644"></a><span class="lineno"> 2644</span>                &lt;&lt; symbolDefOp-&gt;getName().getStringRef();</div>
-<div class="line"><a id="l02645" name="l02645"></a><span class="lineno"> 2645</span>            <span class="keywordflow">return</span> WalkResult::interrupt();</div>
-<div class="line"><a id="l02646" name="l02646"></a><span class="lineno"> 2646</span>          }</div>
-<div class="line"><a id="l02647" name="l02647"></a><span class="lineno"> 2647</span>          <span class="keywordflow">if</span> (BufferOp bufferOp = llvm::dyn_cast&lt;BufferOp&gt;(symbolDefOp)) {</div>
-<div class="line"><a id="l02648" name="l02648"></a><span class="lineno"> 2648</span>            <span class="keywordflow">if</span> (!bufferOp.getAddress()) {</div>
-<div class="line"><a id="l02649" name="l02649"></a><span class="lineno"> 2649</span>              op-&gt;emitOpError()</div>
-<div class="line"><a id="l02650" name="l02650"></a><span class="lineno"> 2650</span>                  &lt;&lt; <span class="stringliteral">&quot;Unallocated buffer; fixed addresses are required before &quot;</span></div>
-<div class="line"><a id="l02651" name="l02651"></a><span class="lineno"> 2651</span>                     <span class="stringliteral">&quot;runtime sequence materialization.&quot;</span>;</div>
-<div class="line"><a id="l02652" name="l02652"></a><span class="lineno"> 2652</span>              <span class="keywordflow">return</span> WalkResult::interrupt();</div>
-<div class="line"><a id="l02653" name="l02653"></a><span class="lineno"> 2653</span>            }</div>
-<div class="line"><a id="l02654" name="l02654"></a><span class="lineno"> 2654</span>          }</div>
-<div class="line"><a id="l02655" name="l02655"></a><span class="lineno"> 2655</span>        }</div>
-<div class="line"><a id="l02656" name="l02656"></a><span class="lineno"> 2656</span>        <span class="keywordflow">return</span> WalkResult::advance();</div>
-<div class="line"><a id="l02657" name="l02657"></a><span class="lineno"> 2657</span>      });</div>
-<div class="line"><a id="l02658" name="l02658"></a><span class="lineno"> 2658</span>      <span class="keywordflow">if</span> (walkResult.wasInterrupted()) {</div>
-<div class="line"><a id="l02659" name="l02659"></a><span class="lineno"> 2659</span>        <span class="keywordflow">return</span> WalkResult::interrupt();</div>
-<div class="line"><a id="l02660" name="l02660"></a><span class="lineno"> 2660</span>      }</div>
-<div class="line"><a id="l02661" name="l02661"></a><span class="lineno"> 2661</span>    }</div>
-<div class="line"><a id="l02662" name="l02662"></a><span class="lineno"> 2662</span>    <span class="keywordflow">return</span> WalkResult::advance();</div>
-<div class="line"><a id="l02663" name="l02663"></a><span class="lineno"> 2663</span>  });</div>
-<div class="line"><a id="l02664" name="l02664"></a><span class="lineno"> 2664</span> </div>
-<div class="line"><a id="l02665" name="l02665"></a><span class="lineno"> 2665</span>  <span class="keywordflow">if</span> (result.wasInterrupted()) {</div>
-<div class="line"><a id="l02666" name="l02666"></a><span class="lineno"> 2666</span>    <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l02667" name="l02667"></a><span class="lineno"> 2667</span>  }</div>
-<div class="line"><a id="l02668" name="l02668"></a><span class="lineno"> 2668</span> </div>
-<div class="line"><a id="l02669" name="l02669"></a><span class="lineno"> 2669</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l02670" name="l02670"></a><span class="lineno"> 2670</span>}</div>
-<div class="line"><a id="l02671" name="l02671"></a><span class="lineno"> 2671</span> </div>
-<div class="line"><a id="l02672" name="l02672"></a><span class="lineno"> 2672</span><span class="comment">// Include implementations for custom attributes</span></div>
-<div class="line"><a id="l02673" name="l02673"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a2491ed70a2ad4f52db3cda183c0f649c"> 2673</a></span><span class="preprocessor">#define GET_ATTRDEF_CLASSES</span></div>
-<div class="line"><a id="l02674" name="l02674"></a><span class="lineno"> 2674</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEAttrs.cpp.inc&quot;</span></div>
+<div class="line"><a id="l02518" name="l02518"></a><span class="lineno"> 2518</span>ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,</div>
+<div class="line"><a id="l02519" name="l02519"></a><span class="lineno"> 2519</span>                                                      llvm::StringRef symbol) {</div>
+<div class="line"><a id="l02520" name="l02520"></a><span class="lineno"> 2520</span>  Operation *maybeOp = device.lookupSymbol(symbol);</div>
+<div class="line"><a id="l02521" name="l02521"></a><span class="lineno"> 2521</span>  <span class="keywordflow">if</span> (maybeOp) {</div>
+<div class="line"><a id="l02522" name="l02522"></a><span class="lineno"> 2522</span>    <span class="keywordflow">if</span> (ShimDMAAllocationOp op = dyn_cast&lt;ShimDMAAllocationOp&gt;(maybeOp)) {</div>
+<div class="line"><a id="l02523" name="l02523"></a><span class="lineno"> 2523</span>      <span class="keywordflow">return</span> op;</div>
+<div class="line"><a id="l02524" name="l02524"></a><span class="lineno"> 2524</span>    }</div>
+<div class="line"><a id="l02525" name="l02525"></a><span class="lineno"> 2525</span>  }</div>
+<div class="line"><a id="l02526" name="l02526"></a><span class="lineno"> 2526</span>  <span class="keywordflow">return</span> <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l02527" name="l02527"></a><span class="lineno"> 2527</span>}</div>
+<div class="line"><a id="l02528" name="l02528"></a><span class="lineno"> 2528</span> </div>
+<div class="line"><a id="l02529" name="l02529"></a><span class="lineno"> 2529</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l02530" name="l02530"></a><span class="lineno"> 2530</span><span class="comment">// RuntimeSequenceOp</span></div>
+<div class="line"><a id="l02531" name="l02531"></a><span class="lineno"> 2531</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l02532" name="l02532"></a><span class="lineno"> 2532</span> </div>
+<div class="line"><a id="l02533" name="l02533"></a><span class="lineno"> 2533</span>ParseResult RuntimeSequenceOp::parse(OpAsmParser &amp;parser,</div>
+<div class="line"><a id="l02534" name="l02534"></a><span class="lineno"> 2534</span>                                     OperationState &amp;result) {</div>
+<div class="line"><a id="l02535" name="l02535"></a><span class="lineno"> 2535</span> </div>
+<div class="line"><a id="l02536" name="l02536"></a><span class="lineno"> 2536</span>  <span class="comment">// Name of this runtime sequence</span></div>
+<div class="line"><a id="l02537" name="l02537"></a><span class="lineno"> 2537</span>  StringAttr nameAttr;</div>
+<div class="line"><a id="l02538" name="l02538"></a><span class="lineno"> 2538</span>  (void)parser.parseOptionalSymbolName(</div>
+<div class="line"><a id="l02539" name="l02539"></a><span class="lineno"> 2539</span>      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);</div>
+<div class="line"><a id="l02540" name="l02540"></a><span class="lineno"> 2540</span> </div>
+<div class="line"><a id="l02541" name="l02541"></a><span class="lineno"> 2541</span>  SmallVector&lt;OpAsmParser::Argument&gt; entryArgs;</div>
+<div class="line"><a id="l02542" name="l02542"></a><span class="lineno"> 2542</span> </div>
+<div class="line"><a id="l02543" name="l02543"></a><span class="lineno"> 2543</span>  <span class="comment">// Entry arguments,  e.g. (%addr: memref&lt;1xi32&gt;)</span></div>
+<div class="line"><a id="l02544" name="l02544"></a><span class="lineno"> 2544</span>  ParseResult argParseResult = parser.parseCommaSeparatedList(</div>
+<div class="line"><a id="l02545" name="l02545"></a><span class="lineno"> 2545</span>      OpAsmParser::Delimiter::Paren, [&amp;]() -&gt; ParseResult {</div>
+<div class="line"><a id="l02546" name="l02546"></a><span class="lineno"> 2546</span>        OpAsmParser::Argument argument;</div>
+<div class="line"><a id="l02547" name="l02547"></a><span class="lineno"> 2547</span>        <span class="keywordflow">if</span> (parser.parseArgument(argument, <span class="keyword">true</span>, <span class="keyword">true</span>)) {</div>
+<div class="line"><a id="l02548" name="l02548"></a><span class="lineno"> 2548</span>          <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l02549" name="l02549"></a><span class="lineno"> 2549</span>        }</div>
+<div class="line"><a id="l02550" name="l02550"></a><span class="lineno"> 2550</span>        entryArgs.push_back(argument);</div>
+<div class="line"><a id="l02551" name="l02551"></a><span class="lineno"> 2551</span>        <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02552" name="l02552"></a><span class="lineno"> 2552</span>      });</div>
+<div class="line"><a id="l02553" name="l02553"></a><span class="lineno"> 2553</span>  <span class="keywordflow">if</span> (argParseResult) {</div>
+<div class="line"><a id="l02554" name="l02554"></a><span class="lineno"> 2554</span>    <span class="keywordflow">return</span> argParseResult;</div>
+<div class="line"><a id="l02555" name="l02555"></a><span class="lineno"> 2555</span>  }</div>
+<div class="line"><a id="l02556" name="l02556"></a><span class="lineno"> 2556</span> </div>
+<div class="line"><a id="l02557" name="l02557"></a><span class="lineno"> 2557</span>  <span class="comment">// Body</span></div>
+<div class="line"><a id="l02558" name="l02558"></a><span class="lineno"> 2558</span>  <span class="keyword">auto</span> *body = result.addRegion();</div>
+<div class="line"><a id="l02559" name="l02559"></a><span class="lineno"> 2559</span>  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, <span class="keyword">false</span>);</div>
+<div class="line"><a id="l02560" name="l02560"></a><span class="lineno"> 2560</span>  <span class="keywordflow">if</span> (bodyParseResult) {</div>
+<div class="line"><a id="l02561" name="l02561"></a><span class="lineno"> 2561</span>    <span class="keywordflow">return</span> bodyParseResult;</div>
+<div class="line"><a id="l02562" name="l02562"></a><span class="lineno"> 2562</span>  }</div>
+<div class="line"><a id="l02563" name="l02563"></a><span class="lineno"> 2563</span> </div>
+<div class="line"><a id="l02564" name="l02564"></a><span class="lineno"> 2564</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02565" name="l02565"></a><span class="lineno"> 2565</span>}</div>
+<div class="line"><a id="l02566" name="l02566"></a><span class="lineno"> 2566</span> </div>
+<div class="line"><a id="l02567" name="l02567"></a><span class="lineno"> 2567</span><span class="keywordtype">void</span> RuntimeSequenceOp::print(OpAsmPrinter &amp;printer) {</div>
+<div class="line"><a id="l02568" name="l02568"></a><span class="lineno"> 2568</span>  Region &amp;body = getRegion();</div>
+<div class="line"><a id="l02569" name="l02569"></a><span class="lineno"> 2569</span> </div>
+<div class="line"><a id="l02570" name="l02570"></a><span class="lineno"> 2570</span>  <span class="keyword">auto</span> nameAttr = (*this)-&gt;getAttrOfType&lt;StringAttr&gt;(</div>
+<div class="line"><a id="l02571" name="l02571"></a><span class="lineno"> 2571</span>      mlir::SymbolTable::getSymbolAttrName());</div>
+<div class="line"><a id="l02572" name="l02572"></a><span class="lineno"> 2572</span>  <span class="keywordflow">if</span> (nameAttr &amp;&amp;</div>
+<div class="line"><a id="l02573" name="l02573"></a><span class="lineno"> 2573</span>      nameAttr != ::mlir::OpBuilder((*this)-&gt;getContext())</div>
+<div class="line"><a id="l02574" name="l02574"></a><span class="lineno"> 2574</span>                      .getStringAttr(getDefaultRuntimeSequenceName())) {</div>
+<div class="line"><a id="l02575" name="l02575"></a><span class="lineno"> 2575</span>    printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
+<div class="line"><a id="l02576" name="l02576"></a><span class="lineno"> 2576</span>    printer.printSymbolName(nameAttr);</div>
+<div class="line"><a id="l02577" name="l02577"></a><span class="lineno"> 2577</span>  }</div>
+<div class="line"><a id="l02578" name="l02578"></a><span class="lineno"> 2578</span> </div>
+<div class="line"><a id="l02579" name="l02579"></a><span class="lineno"> 2579</span>  printer &lt;&lt; <span class="charliteral">&#39;(&#39;</span>;</div>
+<div class="line"><a id="l02580" name="l02580"></a><span class="lineno"> 2580</span>  <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0, n = body.getNumArguments(); i &lt; n; i++) {</div>
+<div class="line"><a id="l02581" name="l02581"></a><span class="lineno"> 2581</span>    <span class="keywordflow">if</span> (i &gt; 0) {</div>
+<div class="line"><a id="l02582" name="l02582"></a><span class="lineno"> 2582</span>      printer &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
+<div class="line"><a id="l02583" name="l02583"></a><span class="lineno"> 2583</span>    }</div>
+<div class="line"><a id="l02584" name="l02584"></a><span class="lineno"> 2584</span>    printer.printRegionArgument(body.getArgument(i));</div>
+<div class="line"><a id="l02585" name="l02585"></a><span class="lineno"> 2585</span>  }</div>
+<div class="line"><a id="l02586" name="l02586"></a><span class="lineno"> 2586</span>  printer &lt;&lt; <span class="charliteral">&#39;)&#39;</span>;</div>
+<div class="line"><a id="l02587" name="l02587"></a><span class="lineno"> 2587</span> </div>
+<div class="line"><a id="l02588" name="l02588"></a><span class="lineno"> 2588</span>  printer &lt;&lt; <span class="charliteral">&#39; &#39;</span>;</div>
+<div class="line"><a id="l02589" name="l02589"></a><span class="lineno"> 2589</span>  printer.printRegion(body, <span class="keyword">false</span>, <span class="keyword">true</span>);</div>
+<div class="line"><a id="l02590" name="l02590"></a><span class="lineno"> 2590</span>}</div>
+<div class="line"><a id="l02591" name="l02591"></a><span class="lineno"> 2591</span> </div>
+<div class="line"><a id="l02592" name="l02592"></a><span class="lineno"> 2592</span>LogicalResult RuntimeSequenceOp::verify() {</div>
+<div class="line"><a id="l02593" name="l02593"></a><span class="lineno"> 2593</span>  DeviceOp device = (*this)-&gt;getParentOfType&lt;DeviceOp&gt;();</div>
+<div class="line"><a id="l02594" name="l02594"></a><span class="lineno"> 2594</span>  <span class="keywordflow">if</span> (!device) {</div>
+<div class="line"><a id="l02595" name="l02595"></a><span class="lineno"> 2595</span>    <span class="comment">// this check is redudnant with the HasParent trait, but can&#39;t hurt</span></div>
+<div class="line"><a id="l02596" name="l02596"></a><span class="lineno"> 2596</span>    (*this)-&gt;emitOpError() &lt;&lt; <span class="stringliteral">&quot;must be inside AIE device operation.&quot;</span>;</div>
+<div class="line"><a id="l02597" name="l02597"></a><span class="lineno"> 2597</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l02598" name="l02598"></a><span class="lineno"> 2598</span>  }</div>
+<div class="line"><a id="l02599" name="l02599"></a><span class="lineno"> 2599</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02600" name="l02600"></a><span class="lineno"> 2600</span>}</div>
+<div class="line"><a id="l02601" name="l02601"></a><span class="lineno"> 2601</span> </div>
+<div class="line"><a id="l02602" name="l02602"></a><span class="lineno"> 2602</span>RuntimeSequenceOp</div>
+<div class="line"><a id="l02603" name="l02603"></a><span class="lineno"> 2603</span>RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,</div>
+<div class="line"><a id="l02604" name="l02604"></a><span class="lineno"> 2604</span>                                        llvm::StringRef symbol) {</div>
+<div class="line"><a id="l02605" name="l02605"></a><span class="lineno"> 2605</span>  RuntimeSequenceOp runtimeSequenceOp;</div>
+<div class="line"><a id="l02606" name="l02606"></a><span class="lineno"> 2606</span>  <span class="keywordflow">if</span> (!symbol.size()) {</div>
+<div class="line"><a id="l02607" name="l02607"></a><span class="lineno"> 2607</span>    runtimeSequenceOp = *deviceOp.getOps&lt;RuntimeSequenceOp&gt;().begin();</div>
+<div class="line"><a id="l02608" name="l02608"></a><span class="lineno"> 2608</span>  } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l02609" name="l02609"></a><span class="lineno"> 2609</span>    Operation *maybeRuntimeSequenceOp =</div>
+<div class="line"><a id="l02610" name="l02610"></a><span class="lineno"> 2610</span>        mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);</div>
+<div class="line"><a id="l02611" name="l02611"></a><span class="lineno"> 2611</span>    <span class="keywordflow">if</span> (!maybeRuntimeSequenceOp) {</div>
+<div class="line"><a id="l02612" name="l02612"></a><span class="lineno"> 2612</span>      <span class="keywordflow">return</span> <span class="keyword">nullptr</span>;</div>
+<div class="line"><a id="l02613" name="l02613"></a><span class="lineno"> 2613</span>    }</div>
+<div class="line"><a id="l02614" name="l02614"></a><span class="lineno"> 2614</span>    runtimeSequenceOp =</div>
+<div class="line"><a id="l02615" name="l02615"></a><span class="lineno"> 2615</span>        llvm::dyn_cast&lt;RuntimeSequenceOp&gt;(maybeRuntimeSequenceOp);</div>
+<div class="line"><a id="l02616" name="l02616"></a><span class="lineno"> 2616</span>  }</div>
+<div class="line"><a id="l02617" name="l02617"></a><span class="lineno"> 2617</span>  <span class="keywordflow">return</span> runtimeSequenceOp;</div>
+<div class="line"><a id="l02618" name="l02618"></a><span class="lineno"> 2618</span>}</div>
+<div class="line"><a id="l02619" name="l02619"></a><span class="lineno"> 2619</span> </div>
+<div class="line"><a id="l02620" name="l02620"></a><span class="lineno"> 2620</span>RuntimeSequenceOp</div>
+<div class="line"><a id="l02621" name="l02621"></a><span class="lineno"> 2621</span>RuntimeSequenceOp::getForSymbolInDeviceOrError(DeviceOp deviceOp,</div>
+<div class="line"><a id="l02622" name="l02622"></a><span class="lineno"> 2622</span>                                               llvm::StringRef symbol) {</div>
+<div class="line"><a id="l02623" name="l02623"></a><span class="lineno"> 2623</span>  RuntimeSequenceOp runtimeSequenceOp = getForSymbolInDevice(deviceOp, symbol);</div>
+<div class="line"><a id="l02624" name="l02624"></a><span class="lineno"> 2624</span>  <span class="keywordflow">if</span> (!runtimeSequenceOp) {</div>
+<div class="line"><a id="l02625" name="l02625"></a><span class="lineno"> 2625</span>    <span class="keywordflow">if</span> (!symbol.empty()) {</div>
+<div class="line"><a id="l02626" name="l02626"></a><span class="lineno"> 2626</span>      deviceOp.emitError(<span class="stringliteral">&quot;No such runtime sequence: &quot;</span>) &lt;&lt; symbol;</div>
+<div class="line"><a id="l02627" name="l02627"></a><span class="lineno"> 2627</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l02628" name="l02628"></a><span class="lineno"> 2628</span>      deviceOp.emitError(<span class="stringliteral">&quot;No runtime sequence in device&quot;</span>);</div>
+<div class="line"><a id="l02629" name="l02629"></a><span class="lineno"> 2629</span>    }</div>
+<div class="line"><a id="l02630" name="l02630"></a><span class="lineno"> 2630</span>  }</div>
+<div class="line"><a id="l02631" name="l02631"></a><span class="lineno"> 2631</span>  <span class="keywordflow">return</span> runtimeSequenceOp;</div>
+<div class="line"><a id="l02632" name="l02632"></a><span class="lineno"> 2632</span>}</div>
+<div class="line"><a id="l02633" name="l02633"></a><span class="lineno"> 2633</span> </div>
+<div class="line"><a id="l02634" name="l02634"></a><span class="lineno"> 2634</span>LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {</div>
+<div class="line"><a id="l02635" name="l02635"></a><span class="lineno"> 2635</span>  <span class="comment">// Check that all symbol references within the runtime sequence</span></div>
+<div class="line"><a id="l02636" name="l02636"></a><span class="lineno"> 2636</span>  <span class="comment">// are either to ShimDMAAllocationOp, DeviceOp or another RuntimeSequenceOp;</span></div>
+<div class="line"><a id="l02637" name="l02637"></a><span class="lineno"> 2637</span>  <span class="comment">// these are the only symbols that can be lowered with the NPU passes</span></div>
+<div class="line"><a id="l02638" name="l02638"></a><span class="lineno"> 2638</span>  <span class="keyword">auto</span> result = (*this)-&gt;walk([&amp;](Operation *op) {</div>
+<div class="line"><a id="l02639" name="l02639"></a><span class="lineno"> 2639</span>    <span class="keywordflow">for</span> (NamedAttribute namedAttr : op-&gt;getAttrs()) {</div>
+<div class="line"><a id="l02640" name="l02640"></a><span class="lineno"> 2640</span>      Attribute attr = namedAttr.getValue();</div>
+<div class="line"><a id="l02641" name="l02641"></a><span class="lineno"> 2641</span>      <span class="keyword">auto</span> walkResult = attr.walk([&amp;](SymbolRefAttr symbolRef) {</div>
+<div class="line"><a id="l02642" name="l02642"></a><span class="lineno"> 2642</span>        Operation *symbolDefOp =</div>
+<div class="line"><a id="l02643" name="l02643"></a><span class="lineno"> 2643</span>            SymbolTable::lookupNearestSymbolFrom(*<span class="keyword">this</span>, symbolRef);</div>
+<div class="line"><a id="l02644" name="l02644"></a><span class="lineno"> 2644</span>        <span class="keywordflow">if</span> (symbolDefOp) {</div>
+<div class="line"><a id="l02645" name="l02645"></a><span class="lineno"> 2645</span>          <span class="keywordflow">if</span> (!llvm::isa&lt;ShimDMAAllocationOp&gt;(symbolDefOp) &amp;&amp;</div>
+<div class="line"><a id="l02646" name="l02646"></a><span class="lineno"> 2646</span>              !llvm::isa&lt;DeviceOp&gt;(symbolDefOp) &amp;&amp;</div>
+<div class="line"><a id="l02647" name="l02647"></a><span class="lineno"> 2647</span>              !llvm::isa&lt;RuntimeSequenceOp&gt;(symbolDefOp) &amp;&amp;</div>
+<div class="line"><a id="l02648" name="l02648"></a><span class="lineno"> 2648</span>              !llvm::isa&lt;BufferOp&gt;(symbolDefOp) &amp;&amp;</div>
+<div class="line"><a id="l02649" name="l02649"></a><span class="lineno"> 2649</span>              !llvm::isa&lt;memref::GlobalOp&gt;(symbolDefOp)) {</div>
+<div class="line"><a id="l02650" name="l02650"></a><span class="lineno"> 2650</span>            op-&gt;emitOpError()</div>
+<div class="line"><a id="l02651" name="l02651"></a><span class="lineno"> 2651</span>                &lt;&lt; <span class="stringliteral">&quot;references symbol &#39;&quot;</span></div>
+<div class="line"><a id="l02652" name="l02652"></a><span class="lineno"> 2652</span>                &lt;&lt; symbolRef.getRootReference().getValue()</div>
+<div class="line"><a id="l02653" name="l02653"></a><span class="lineno"> 2653</span>                &lt;&lt; <span class="stringliteral">&quot;&#39; which must be either a ShimDMAAllocationOp, DeviceOp, &quot;</span></div>
+<div class="line"><a id="l02654" name="l02654"></a><span class="lineno"> 2654</span>                   <span class="stringliteral">&quot;RuntimeSequenceOp, BufferOp or GlobalOp, but got: &quot;</span></div>
+<div class="line"><a id="l02655" name="l02655"></a><span class="lineno"> 2655</span>                &lt;&lt; symbolDefOp-&gt;getName().getStringRef();</div>
+<div class="line"><a id="l02656" name="l02656"></a><span class="lineno"> 2656</span>            <span class="keywordflow">return</span> WalkResult::interrupt();</div>
+<div class="line"><a id="l02657" name="l02657"></a><span class="lineno"> 2657</span>          }</div>
+<div class="line"><a id="l02658" name="l02658"></a><span class="lineno"> 2658</span>          <span class="keywordflow">if</span> (BufferOp bufferOp = llvm::dyn_cast&lt;BufferOp&gt;(symbolDefOp)) {</div>
+<div class="line"><a id="l02659" name="l02659"></a><span class="lineno"> 2659</span>            <span class="keywordflow">if</span> (!bufferOp.getAddress()) {</div>
+<div class="line"><a id="l02660" name="l02660"></a><span class="lineno"> 2660</span>              op-&gt;emitOpError()</div>
+<div class="line"><a id="l02661" name="l02661"></a><span class="lineno"> 2661</span>                  &lt;&lt; <span class="stringliteral">&quot;Unallocated buffer; fixed addresses are required before &quot;</span></div>
+<div class="line"><a id="l02662" name="l02662"></a><span class="lineno"> 2662</span>                     <span class="stringliteral">&quot;runtime sequence materialization.&quot;</span>;</div>
+<div class="line"><a id="l02663" name="l02663"></a><span class="lineno"> 2663</span>              <span class="keywordflow">return</span> WalkResult::interrupt();</div>
+<div class="line"><a id="l02664" name="l02664"></a><span class="lineno"> 2664</span>            }</div>
+<div class="line"><a id="l02665" name="l02665"></a><span class="lineno"> 2665</span>          }</div>
+<div class="line"><a id="l02666" name="l02666"></a><span class="lineno"> 2666</span>        }</div>
+<div class="line"><a id="l02667" name="l02667"></a><span class="lineno"> 2667</span>        <span class="keywordflow">return</span> WalkResult::advance();</div>
+<div class="line"><a id="l02668" name="l02668"></a><span class="lineno"> 2668</span>      });</div>
+<div class="line"><a id="l02669" name="l02669"></a><span class="lineno"> 2669</span>      <span class="keywordflow">if</span> (walkResult.wasInterrupted()) {</div>
+<div class="line"><a id="l02670" name="l02670"></a><span class="lineno"> 2670</span>        <span class="keywordflow">return</span> WalkResult::interrupt();</div>
+<div class="line"><a id="l02671" name="l02671"></a><span class="lineno"> 2671</span>      }</div>
+<div class="line"><a id="l02672" name="l02672"></a><span class="lineno"> 2672</span>    }</div>
+<div class="line"><a id="l02673" name="l02673"></a><span class="lineno"> 2673</span>    <span class="keywordflow">return</span> WalkResult::advance();</div>
+<div class="line"><a id="l02674" name="l02674"></a><span class="lineno"> 2674</span>  });</div>
+<div class="line"><a id="l02675" name="l02675"></a><span class="lineno"> 2675</span> </div>
+<div class="line"><a id="l02676" name="l02676"></a><span class="lineno"> 2676</span>  <span class="keywordflow">if</span> (result.wasInterrupted()) {</div>
+<div class="line"><a id="l02677" name="l02677"></a><span class="lineno"> 2677</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l02678" name="l02678"></a><span class="lineno"> 2678</span>  }</div>
+<div class="line"><a id="l02679" name="l02679"></a><span class="lineno"> 2679</span> </div>
+<div class="line"><a id="l02680" name="l02680"></a><span class="lineno"> 2680</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l02681" name="l02681"></a><span class="lineno"> 2681</span>}</div>
+<div class="line"><a id="l02682" name="l02682"></a><span class="lineno"> 2682</span> </div>
+<div class="line"><a id="l02683" name="l02683"></a><span class="lineno"> 2683</span><span class="comment">// Include implementations for custom attributes</span></div>
+<div class="line"><a id="l02684" name="l02684"></a><span class="lineno"><a class="line" href="AIEDialect_8cpp.html#a2491ed70a2ad4f52db3cda183c0f649c"> 2684</a></span><span class="preprocessor">#define GET_ATTRDEF_CLASSES</span></div>
+<div class="line"><a id="l02685" name="l02685"></a><span class="lineno"> 2685</span><span class="preprocessor">#include &quot;aie/Dialect/AIE/IR/AIEAttrs.cpp.inc&quot;</span></div>
 <div class="ttc" id="aAIEDialect_8cpp_html_a7585c08f47b5f720ae1e3d2e8ee5f9b6"><div class="ttname"><a href="AIEDialect_8cpp.html#a7585c08f47b5f720ae1e3d2e8ee5f9b6">isLegalTileConnection</a></div><div class="ttdeci">bool isLegalTileConnection(TileOp tile, const AIETargetModel &amp;targetModel, MasterSetOp masterOp, PacketRulesOp slaveOp)</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8cpp_source.html#l01314">AIEDialect.cpp:1314</a></div></div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEXDialect_8h_html"><div class="ttname"><a href="AIEXDialect_8h.html">AIEXDialect.h</a></div></div>
@@ -2814,7 +2825,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_ac4a5968d889bb72edcd5d97f42659fd6"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#ac4a5968d889bb72edcd5d97f42659fd6">xilinx::AIE::myVerifyOffsetSizeAndStrideOp</a></div><div class="ttdeci">mlir::LogicalResult myVerifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op)</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8cpp_source.html#l00131">AIEDialect.cpp:131</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_adcc5fb612881f6f2a768bc0a69ce74b0"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#adcc5fb612881f6f2a768bc0a69ce74b0">xilinx::AIE::printObjectFifoProducerTile</a></div><div class="ttdeci">void printObjectFifoProducerTile(mlir::OpAsmPrinter &amp;printer, mlir::Operation *op, mlir::Value tile, BDDimLayoutArrayAttr dimensions)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_af5603b5cf48d422243ce503e1df35142"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#af5603b5cf48d422243ce503e1df35142">xilinx::AIE::parseObjectFifoConsumerTiles</a></div><div class="ttdeci">mlir::ParseResult parseObjectFifoConsumerTiles(mlir::OpAsmParser &amp;parser, llvm::SmallVectorImpl&lt; mlir::OpAsmParser::UnresolvedOperand &gt; &amp;tiles, BDDimLayoutArrayArrayAttr &amp;dimensions)</div></div>
-<div class="ttc" id="anamespacexilinx_1_1AIE_html_afbf8b37a87138e2f447abf920fb36937"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937">xilinx::AIE::getConnectingBundle</a></div><div class="ttdeci">WireBundle getConnectingBundle(WireBundle dir)</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8cpp_source.html#l02405">AIEDialect.cpp:2405</a></div></div>
+<div class="ttc" id="anamespacexilinx_1_1AIE_html_afbf8b37a87138e2f447abf920fb36937"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#afbf8b37a87138e2f447abf920fb36937">xilinx::AIE::getConnectingBundle</a></div><div class="ttdeci">WireBundle getConnectingBundle(WireBundle dir)</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8cpp_source.html#l02416">AIEDialect.cpp:2416</a></div></div>
 <div class="ttc" id="anamespacexilinx_html_aff3fe97ec80fed475662ca415d95f0a3a7c5a2bea9a27c4771156b8894b793a54"><div class="ttname"><a href="namespacexilinx.html#aff3fe97ec80fed475662ca415d95f0a3a7c5a2bea9a27c4771156b8894b793a54">xilinx::AIEArch::AIE</a></div><div class="ttdeci">@ AIE</div></div>
 <div class="ttc" id="astructAccessesLocalLocks_html"><div class="ttname"><a href="structAccessesLocalLocks.html">AccessesLocalLocks</a></div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8cpp_source.html#l02331">AIEDialect.cpp:2331</a></div></div>
 <div class="ttc" id="astructAccessesLocalLocks_html_afd806eb0ffbd22cc3e3198141179a0bc"><div class="ttname"><a href="structAccessesLocalLocks.html#afd806eb0ffbd22cc3e3198141179a0bc">AccessesLocalLocks::verifyTrait</a></div><div class="ttdeci">static LogicalResult verifyTrait(Operation *op)</div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8cpp_source.html#l02332">AIEDialect.cpp:2332</a></div></div>
@@ -2832,7 +2843,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Feb 6 2026 22:45:53 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sat Feb 7 2026 02:24:38 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
