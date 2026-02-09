@@ -127,7 +127,7 @@ run_py: build/final.xclbin
 
 trace_py: build/final_trace.xclbin
 	${powershell} python3 ${srcdir}/test_${targetname}.py -v 1 -x build/final_trace.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../python/utils/trace/parse.py --input log/trace_magika.txt --mlir build/${mlirFileName}_trace.mlir --colshift ${colshift} --output trace_${targetname}.json
+	${srcdir}/../../../python/utils/trace/parse.py --input log/trace_magika.txt --mlir build/${mlirFileName}_trace.mlir --output trace_${targetname}.json
 	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_${targetname}.json
 
 clean:
