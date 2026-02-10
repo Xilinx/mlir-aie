@@ -1010,3 +1010,32 @@ LogicalResult AIEX::RunOp::verify() {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// NpuLoadPdiOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,
+                                               PatternRewriter &rewriter) {
+  // Check for back-to-back identical load_pdi ops and remove duplicates
+  Operation *nextOp = op->getNextNode();
+  if (!nextOp)
+    return failure();
+
+  // Check if next op is also a NpuLoadPdiOp
+  auto nextLoadPdi = dyn_cast<AIEX::NpuLoadPdiOp>(nextOp);
+  if (!nextLoadPdi)
+    return failure();
+
+  // Check if they are identical (all attributes match)
+  if (op.getDeviceRefAttr() == nextLoadPdi.getDeviceRefAttr() &&
+      op.getId() == nextLoadPdi.getId() &&
+      op.getSize() == nextLoadPdi.getSize() &&
+      op.getAddress() == nextLoadPdi.getAddress()) {
+    // Erase the first one, keeping the second
+    rewriter.eraseOp(op);
+    return success();
+  }
+
+  return failure();
+}

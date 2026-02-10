@@ -516,6 +516,25 @@ def AIEVec_ExpOp:
   let hasVerifier = 0;
 }
 
+def AIEVec_InvOp:
+  AIEVec_Op<"inv", [
+    Pure,
+    AllTypesMatch<["source", "result"]>
+  ]>,
+  Arguments<(ins AnyTypeOf<[F32, VectorOfLengthAndType<[16, 32], [F32]>]>:$source)>,
+  Results<(outs AnyTypeOf<[F32, VectorOfLengthAndType<[16, 32], [F32]>]>:$result)> {
+  let summary = "AIE inverse";
+  let description = [{
+    AMD-specific intrinsic that computes the inverse (1/x) of a scalar f32
+    or a vector of f32 elements.
+    For AIE2P, scalar f32 is lowered to the inv intrinsic, and vector f32
+    is unrolled into scalar inv intrinsic calls.
+    `$result = inv(`$source`) = 1.0 / $source`.
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
 def AIEVec_BxorOp:
   AIEVec_Op<"bxor", [
     Pure,

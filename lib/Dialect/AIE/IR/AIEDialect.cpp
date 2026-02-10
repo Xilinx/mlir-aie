@@ -2377,9 +2377,20 @@ LogicalResult UseLockOp::verify() {
   if (HasSomeParent<CoreOp, func::FuncOp>::verifyTrait(*this).succeeded()) {
     return success();
   }
+  // Or it can be in a DMAConfigureTaskOp (for runtime DMA configuration)
+  // Check by operation name to avoid circular dependency with AIEX dialect
+  {
+    Operation *operation = (*this)->getParentOp();
+    while (operation) {
+      if (operation->getName().getStringRef() == "aiex.dma_configure_task")
+        return success();
+      operation = operation->getParentOp();
+    }
+  }
   return (*this)->emitOpError()
          << "expects some parent op to be one of "
-         << "AIE::device, AIE::core, func::func, AIE::mem, or AIE::shimDMA";
+         << "AIE::device, AIE::core, func::func, AIE::mem, AIE::shimDMA, or "
+            "AIEX::dma_configure_task";
 }
 
 #include "aie/Dialect/AIE/IR/AIEEnums.cpp.inc"

@@ -1014,6 +1014,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
 
     If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
   }];
+  let hasCanonicalizeMethod = 1;
 }
 
 def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
