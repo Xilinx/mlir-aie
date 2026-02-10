@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -eux
 
-NUMBER=$(lspci -D | grep "\[AMD\] AMD IPU Device" | cut -d ' ' -f1)
+# Match both older NPUs ("AMD NPU Device") and newer Strix NPUs ("Neural Processing Unit")
+NUMBER=$(lspci -D | grep -E "\[AMD\] (AMD NPU Device|.*Neural Processing Unit)" | cut -d ' ' -f1)
 
 if [ x"$NUMBER" != x"" ]; then
   sudo modprobe -r amdxdna
@@ -10,4 +11,3 @@ if [ x"$NUMBER" != x"" ]; then
 else
   echo "couldn't find npu"
 fi
-
