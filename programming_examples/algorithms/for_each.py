@@ -1,4 +1,4 @@
-# transform_binary.py -*- Python -*-
+# for_each.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
@@ -43,11 +43,11 @@ def main():
 
     # Optionally, print the results
     if args.verbose:
-        print(f"{'input0':>4} + {'input1':>4} = {'output':>4}")
-        print("-" * 34)
+        print(f"{'input':>6} + 1 = {'output':>6}")
+        print("-" * 22)
         count = tensor.numel()
-        for idx, (a) in enumerate(zip(tensor[:count])):
-            print(f"{idx:2}: {a:4}")
+        for idx, (a, b) in enumerate(zip(initial_tensor[:count], tensor[:count])):
+            print(f"{idx:2}: {a:6} + 1 = {b:6}")
 
     # If the result is correct, exit with a success code.
     # Otherwise, exit with a failure code

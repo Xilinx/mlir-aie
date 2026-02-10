@@ -42,7 +42,6 @@ def vector_scalar_mul(input, factor, output):
     vectorized = True
 
     # Define tensor types
-    tensor_ty = np.ndarray[(tensor_size,), np.dtype[in1_dtype]]
     tile_ty = np.ndarray[(tile_size,), np.dtype[in1_dtype]]
     scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 

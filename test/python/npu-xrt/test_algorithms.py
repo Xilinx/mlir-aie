@@ -36,9 +36,9 @@ def test_transform_add():
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     original = input.numpy().copy()
-    iron.jit(is_placed=False)(transform)(lambda a: a + 1, input, input)
+    iron.jit(is_placed=False)(transform)(lambda a: a + 1, input, output)
 
-    assert np.allclose(original + 1, input.numpy())
+    assert np.allclose(original + 1, output.numpy())
 
 
 @pytest.mark.parametrize(

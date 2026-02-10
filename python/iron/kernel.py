@@ -8,7 +8,6 @@
 
 import hashlib
 import numpy as np
-import os
 
 from .. import ir  # type: ignore
 from ..extras.dialects.func import FuncOp  # type: ignore

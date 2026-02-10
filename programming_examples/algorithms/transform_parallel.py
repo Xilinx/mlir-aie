@@ -47,12 +47,11 @@ def main():
         print(f"Input shape: {input.shape}")
         print(f"Input dtype: {input.dtype}")
 
-        print(f"{'input':>4} + {'output':>4}")
-        print("-" * 34)
-        count = input.numel()
+        print(f"{'input':>6} + 1 = {'output':>6}")
+        print("-" * 24)
         # print the first 10 elements
         for idx, (a, b) in enumerate(zip(input[:10], output[:10])):
-            print(f"{idx:2}: {a:4} + {b:4}")
+            print(f"{idx:2}: {a:6} + 1 = {b:6}")
 
     # If the result is correct, exit with a success code.
     # Otherwise, exit with a failure code
