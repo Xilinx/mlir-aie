@@ -61,7 +61,9 @@ def vector_scalar_mul(input, factor, output):
     # Pass scale kernel to the transform algorithm
     # tile_size is passed as keyword argument
     # iron.jit compiles and runs the program
-    iron.jit(is_placed=False)(transform)(scale_kernel, input, output, factor, tile_size=tile_size)
+    iron.jit(is_placed=False)(transform)(
+        scale_kernel, input, output, factor, tile_size=tile_size
+    )
 
 
 def main():

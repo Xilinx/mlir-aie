@@ -396,4 +396,6 @@ def transform_parallel(func, input, output, *params, tile_size=16):
 def transform_parallel_binary(func, first, second, output, *params, tile_size=16):
     """Parallel binary transform across multiple AIE tiles."""
 
-    return _transform_parallel_gen(func, [first, second], output, *params, tile_size=tile_size)
+    return _transform_parallel_gen(
+        func, [first, second], output, *params, tile_size=tile_size
+    )

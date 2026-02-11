@@ -36,7 +36,9 @@ def main():
     output = iron.zeros_like(input)
 
     # JIT compile the algorithm
-    iron.jit(is_placed=False)(transform_parallel)(lambda a: a + 1, input, output, tile_size=16)
+    iron.jit(is_placed=False)(transform_parallel)(
+        lambda a: a + 1, input, output, tile_size=16
+    )
 
     # Check the correctness of the result
     e = np.equal(input.numpy() + 1, output.numpy())
