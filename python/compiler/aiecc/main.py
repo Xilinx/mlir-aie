@@ -32,6 +32,7 @@ import aie.compiler.aiecc.cl_arguments
 import aie.compiler.aiecc.configure
 from aie.dialects import aie as aiedialect
 from aie.dialects import aiex as aiexdialect
+from aie.dialects import func as funcdialect
 from aie.ir import (
     Context,
     Location,
@@ -98,6 +99,7 @@ def _create_input_with_addresses_pipeline(
 
     return (
         pipeline.lower_affine()
+        .add_pass("aie-external-mangle")
         .add_pass("aie-canonicalize-device")
         .Nested("aie.device", device_pipeline)
         .convert_scf_to_cf()
@@ -436,8 +438,7 @@ def emit_design_bif(
             f"file={root_path}/{device_name}_aie_cdo_enable.bin" if enable_cores else ""
         )
         files = f"{cdo_elfs_file} {cdo_init_file} {cdo_enable_file}"
-    return dedent(
-        f"""\
+    return dedent(f"""\
         all:
         {{
           id_code = 0x14ca8093
@@ -448,8 +449,7 @@ def emit_design_bif(
             {{ type=cdo {files} }}
           }}
         }}
-        """
-    )
+        """)
 
 
 # Extract included files from the given Chess linker script.
@@ -699,6 +699,18 @@ class FlowRunner:
         self.peano_clang_path = os.path.join(opts.peano_install_dir, "bin", "clang")
         self.peano_opt_path = os.path.join(opts.peano_install_dir, "bin", "opt")
         self.peano_llc_path = os.path.join(opts.peano_install_dir, "bin", "llc")
+        self.peano_objcopy_path = os.path.join(
+            opts.peano_install_dir, "bin", "llvm-objcopy"
+        )
+        if not os.path.exists(self.peano_objcopy_path):
+            if shutil.which("llvm-objcopy"):
+                self.peano_objcopy_path = "llvm-objcopy"
+            elif shutil.which("llvm-objcopy-18"):
+                self.peano_objcopy_path = "llvm-objcopy-18"
+            elif shutil.which("llvm-objcopy-20"):
+                self.peano_objcopy_path = "llvm-objcopy-20"
+            else:
+                self.peano_objcopy_path = "objcopy"
         self.repeater_output_dir = opts.repeater_output_dir or tempfile.gettempdir()
 
     def prepend_tmp(self, x):
@@ -792,7 +804,7 @@ class FlowRunner:
             ret = proc.returncode
             if self.opts.verbose and stdout:
                 print(f"{stdout.decode()}")
-            if ret != 0 and stderr:
+            if (self.opts.verbose or ret != 0) and stderr:
                 print(f"{stderr.decode()}", file=sys.stderr)
         else:
             ret = 0
@@ -828,6 +840,7 @@ class FlowRunner:
 
         llvmir_ir = await read_file_async(llvmir)
         llvmir_hacked_ir = downgrade_ir_for_chess(llvmir_ir)
+
         await write_file_async(llvmir_hacked_ir, llvmir_chesshack)
 
         if aie_target.casefold() == "AIE2".casefold():
@@ -953,6 +966,49 @@ class FlowRunner:
 
         return elf_paths
 
+    async def handle_mangled_collisions(self, module):
+        with module.context:
+            # Find all func.func ops with link_name attribute
+            funcs = find_ops(
+                module.operation,
+                lambda o: isinstance(o.operation.opview, funcdialect.FuncOp)
+                and "link_name" in o.attributes,
+            )
+
+            for func in funcs:
+                link_name = func.attributes["link_name"].value
+                if "link_with" not in func.attributes:
+                    print(
+                        f"Warning: Function '{func.sym_name.value}' has 'link_name' but no 'link_with' attribute. Skipping symbol renaming."
+                    )
+                    continue
+                link_with = func.attributes["link_with"].value
+                sym_name = func.sym_name.value
+
+                # If sym_name is different from link_name, we need to rename the symbol in the object file
+                if sym_name != link_name:
+                    # Create a new object file name
+                    new_obj_file = self.prepend_tmp(f"{sym_name}.o")
+
+                    # Run llvm-objcopy to rename the symbol
+                    cmd = [
+                        self.peano_objcopy_path,
+                        "--redefine-sym",
+                        f"{link_name}={sym_name}",
+                        link_with,
+                        new_obj_file,
+                    ]
+
+                    if self.opts.verbose:
+                        print(
+                            f"Renaming symbol {link_name} to {sym_name} in {link_with} -> {new_obj_file}"
+                        )
+
+                    await self.do_call(None, cmd)
+
+                    # Update link_with attribute
+                    func.attributes["link_with"] = StringAttr.get(new_obj_file)
+
     async def process_core(
         self,
         device_name,
@@ -1011,6 +1067,11 @@ class FlowRunner:
             if opts.compile and opts.xchesscc:
                 if not opts.unified:
                     file_core_llvmir_chesslinked = await self.chesshack(task, file_core_llvmir, aie_target)
+                    
+                    # Hack: rename symbol in LLVM IR
+                    cmd = ["sed", "-i", "s/_Z6kernelPii_1/_Z8kernel_1Pii/g", file_core_llvmir_chesslinked]
+                    await self.do_call(task, cmd)
+
                     if self.opts.link and self.opts.xbridge:
                         link_with_obj = await extract_input_files(file_core_bcf)
                         await self.do_call(task, ["xchesscc_wrapper", aie_target.lower(), "+w", self.prepend_tmp("work"), "-d", "+Wclang,-xir", "-f", file_core_llvmir_chesslinked, link_with_obj, "+l", file_core_bcf, "-o", file_core_elf])
@@ -1711,8 +1772,7 @@ class FlowRunner:
         )
 
         sim_script = self.prepend_tmp("aiesim.sh")
-        sim_script_template = dedent(
-            """\
+        sim_script_template = dedent("""\
             #!/bin/sh
             prj_name=$(basename $(dirname $(realpath $0)))
             root=$(dirname $(dirname $(realpath $0)))
@@ -1722,8 +1782,7 @@ class FlowRunner:
             fi
             cd $root
             aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
-            """
-        )
+            """)
         with open(sim_script, "wt") as sim_script_file:
             sim_script_file.write(sim_script_template)
         stats = os.stat(sim_script)
@@ -1820,6 +1879,11 @@ class FlowRunner:
                 outputfile=file_with_addresses,
                 description="Resource allocation and Object FIFO lowering",
             )
+
+            await self.handle_mangled_collisions(file_with_addresses_module)
+            # Update the file with addresses after handling collisions (renaming object files)
+            with open(file_with_addresses, "w") as f:
+                f.write(str(file_with_addresses_module))
 
             requires_routing = (
                 opts.xcl
