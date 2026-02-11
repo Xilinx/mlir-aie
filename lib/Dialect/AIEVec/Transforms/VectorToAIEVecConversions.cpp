@@ -619,7 +619,7 @@ static void splitWideVectorOp(SrcOpTy srcOp, ArrayRef<Value> wideInputs,
     auto lowerHalf =
         aievec::ExtOp::create(rewriter, loc, halfType, wideInput, 0);
     auto upperHalf =
-        aievec::ExtOp::create(reriter, loc, halfType, wideInput, 1);
+        aievec::ExtOp::create(rewriter, loc, halfType, wideInput, 1);
     halfInputs.emplace_back(lowerHalf.getResult(), upperHalf.getResult());
   }
 
