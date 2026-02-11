@@ -604,15 +604,11 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
 //   std::pair<Value, Value>(ArrayRef<std::pair<Value, Value>> halfInputs,
 //                           Location loc, ConversionPatternRewriter &rewriter)
 // where halfInputs[i] is {lowerHalf, upperHalf} for each wideInput
-template <typename SrcOpTy>
+template <typename SrcOpTy, typename Func>
 static void
 splitWideVectorOp(SrcOpTy srcOp, ArrayRef<Value> wideInputs,
                   VectorType halfType, VectorType wideType,
-                  ConversionPatternRewriter &rewriter,
-                  std::function<std::pair<Value, Value>(
-                      ArrayRef<std::pair<Value, Value>>, // halfInputs
-                      Location, ConversionPatternRewriter &)>
-                      processHalves) {
+                  ConversionPatternRewriter &rewriter, Func &&processHalves) {
 
   Location loc = srcOp.getLoc();
 
