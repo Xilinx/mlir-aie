@@ -37,7 +37,7 @@ def main():
 
     # JIT compile the algorithm
     iron.jit(is_placed=False)(transform_binary)(
-        lambda a, b: a + b, input0, input1, output
+        lambda a, b: a + b, input0, input1, output, tile_size=16
     )
 
     # Check the correctness of the result

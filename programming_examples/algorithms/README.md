@@ -14,38 +14,46 @@ Pre-built algorithms for common dataflow patterns on AIE. These abstractions han
 
 ## Available Algorithms
 
-| Algorithm | Description | ExternalFunction Support |
-|-----------|-------------|--------------------------|
-| `transform` | Unary transformation with tiled processing | Yes |
-| `transform_binary` | Binary transformation with tiled processing | Yes |
-| `for_each` | In-place transformation (same tensor for input/output) | Yes |
-| `transform_parallel` | Parallel `transform` across multiple AIE tiles | No |
-| `transform_parallel_binary` | Parallel `transform_binary` across multiple AIE tiles |  No |
+| Algorithm | Description | 
+|-----------|-------------|
+| `transform` | Unary transformation with tiled processing |
+| `transform_binary` | Binary transformation with tiled processing |
+| `for_each` | In-place transformation (same tensor for input/output) |
+| `transform_parallel` | Parallel `transform` across multiple AIE tiles |
+| `transform_parallel_binary` | Parallel `transform_binary` across multiple AIE tiles |
 
 ## Using C++ Kernels (ExternalFunction)
 
 For C++ kernels, the kernel signature and `ExternalFunction` must match the algorithm's expected format.
 
+**Important:** The last argument in every kernel must be `tile_size` (`np.int32`), which receives the tile size at runtime.
+
 | Algorithm | C++ Kernel Signature | ExternalFunction arg_types |
 |-----------|---------------------|---------------------------|
-| `transform` | `void kernel(T* in, T* out, params...)` | `[tile_ty, tile_ty, *param_types]` |
-| `transform_binary` | `void kernel(T* in1, T* in2, T* out, params...)` | `[tile_ty, tile_ty, tile_ty, *param_types]` |
-| `for_each` | `void kernel(T* in, T* out, params...)` | `[tile_ty, tile_ty, *param_types]` |
+| `transform` | `void kernel(T* in, T* out, params..., int32_t tile_size)` | `[tile_ty, tile_ty, *param_types, np.int32]` |
+| `transform_binary` | `void kernel(T* in1, T* in2, T* out, params..., int32_t tile_size)` | `[tile_ty, tile_ty, tile_ty, *param_types, np.int32]` |
+| `for_each` | `void kernel(T* in, T* out, params..., int32_t tile_size)` | `[tile_ty, tile_ty, *param_types, np.int32]` |
+| `transform_parallel` | `void kernel(T* in, T* out, params..., int32_t tile_size)` | `[tile_ty, tile_ty, *param_types, np.int32]` |
+| `transform_parallel_binary` | `void kernel(T* in1, T* in2, T* out, params..., int32_t tile_size)` | `[tile_ty, tile_ty, tile_ty, *param_types, np.int32]` |
 
 ### Example: transform with ExternalFunction
 ```python
-tile_ty = np.ndarray[(16,), np.dtype[np.int16]]
+TILE_SIZE = 16
+tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int16]]
 scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
+# Input and output should still be declared as tiled shapes in arg_types
+# TODO: remove this discrepancy
 my_kernel = ExternalFunction(
     "my_kernel",
     source_file="my_kernel.cc",
-    arg_types=[tile_ty, tile_ty, np.int32],  # [in, out, param_0]
+    arg_types=[tile_ty, tile_ty, np.int32, np.int32],  # [in, out, factor, tile_size]
 )
 
-# Pass in full size tensors, algorithm will tile it to tile_ty
+# Pass in full size tensors, algorithm will tile it to tile_size
+# tile_size must be passed as a keyword argument
 iron.jit(is_placed=False)(transform)(
-    my_kernel, input, output, factor, N
+    my_kernel, input, output, factor, tile_size=TILE_SIZE
 )
 ```
 

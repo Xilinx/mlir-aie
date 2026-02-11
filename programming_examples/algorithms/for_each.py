@@ -35,7 +35,7 @@ def main():
     initial_tensor = tensor.numpy().copy()
 
     # JIT compile the algorithm
-    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, tensor)
+    iron.jit(is_placed=False)(for_each)(lambda a: a + 1, tensor, tile_size=16)
 
     # Check the correctness of the result
     e = np.equal(initial_tensor + 1, tensor.numpy())

@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 import argparse
 import sys
 import numpy as np
@@ -37,7 +37,7 @@ def main():
 
     # JIT compile the algorithm
     iron.jit(is_placed=False)(transform_parallel_binary)(
-        lambda a, b: a + b, input0, input1, output
+        lambda a, b: a + b, input0, input1, output, tile_size=16
     )
 
     # Check the correctness of the result

@@ -13,7 +13,7 @@ from aie.iron.controlflow import range_
 import aie.iron as iron
 
 
-def for_each(func, tensor, *params):
+def for_each(func, tensor, *params, tile_size=16):
     """
     In-place transform. Internally uses separate input/output ObjectFifos,
     but fills and drains to same tensor.
@@ -25,6 +25,7 @@ def for_each(func, tensor, *params):
         *params: Additional parameters for ExternalFunction only.
                  Scalar dtypes (np.int32, etc.) are passed as MLIR constants;
                  array types are transferred via ObjectFifos.
+        tile_size: Size of each tile processed by a worker (default: 16)
 
     Example:
         # kernel has separate in/out tile buffers, but only pass one tensor in
@@ -34,8 +35,14 @@ def for_each(func, tensor, *params):
     is_external_func = isinstance(func, iron.ExternalFunction)
     num_elements = np.size(tensor)
 
-    # Get tile size from ExternalFunction or use default
-    n = func.tile_size() if is_external_func else 16
+    # Validate tile_size matches ExternalFunction's tile_size() if defined
+    if is_external_func and func.tile_size() != tile_size:
+        raise ValueError(
+            f"tile_size ({tile_size}) does not match ExternalFunction's "
+            f"input/output shape in arg_type"
+        )
+
+    n = tile_size
 
     if num_elements % n != 0:
         raise ValueError(
@@ -101,7 +108,7 @@ def for_each(func, tensor, *params):
             elem_out = of_output.acquire(1)
 
             if is_external_func:
-                func_to_apply(elem_in, elem_out, *all_params)
+                func_to_apply(elem_in, elem_out, *all_params, n)
             else:
                 # Lambda/callable: apply element-wise
                 # Without this explicit loop, only the
