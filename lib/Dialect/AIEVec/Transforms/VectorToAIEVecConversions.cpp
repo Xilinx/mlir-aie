@@ -605,10 +605,10 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
 //                           Location loc, ConversionPatternRewriter &rewriter)
 // where halfInputs[i] is {lowerHalf, upperHalf} for each wideInput
 template <typename SrcOpTy, typename Func>
-static void
-splitWideVectorOp(SrcOpTy srcOp, ArrayRef<Value> wideInputs,
-                  VectorType halfType, VectorType wideType,
-                  ConversionPatternRewriter &rewriter, Func &&processHalves) {
+static void splitWideVectorOp(SrcOpTy srcOp, ArrayRef<Value> wideInputs,
+                              VectorType halfType, VectorType wideType,
+                              ConversionPatternRewriter &rewriter,
+                              Func &&processHalves) {
 
   Location loc = srcOp.getLoc();
 
