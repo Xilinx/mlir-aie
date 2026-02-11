@@ -9,6 +9,7 @@
 ![GitHub Downloads 3](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-3/total?color=blue&cacheSeconds=86400)
 ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie?cacheSeconds=86400)
 
+_Note: Badge values are cached for up to 24 hours (`cacheSeconds=86400`) to reduce load on Shields.io and GitHub, so counts may lag behind real-time activity._
 <p align="left">
   <img src="https://github.com/llvm/mlir-www/blob/main/website/static/LogoAssets/logo/PNG/full_color/mlir-identity-03.png" alt="MLIR logo" height="80" />
   <img src="https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/community/logos/python-logo-only.png" alt="Python logo" height="80" />
