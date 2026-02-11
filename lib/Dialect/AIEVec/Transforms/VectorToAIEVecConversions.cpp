@@ -1887,20 +1887,51 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (auto kind = srcOp.getKind(); kind != vector::CombiningKind::MINSI &&
                                      kind != vector::CombiningKind::MINUI &&
-                                     kind != vector::CombiningKind::MINIMUMF)
+                                     kind != vector::CombiningKind::MINIMUMF &&
+                                     kind != vector::CombiningKind::MINNUMF)
       return failure();
 
     auto vType = cast<VectorType>(srcOp.getVector().getType());
     Type scalarType = vType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
+    unsigned vectorSize = laneSize * elWidth;
 
-    if (laneSize * elWidth != 512)
+    // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
+    if (vectorSize != 512 &&
+        !(vectorSize == 256 && elWidth == 16 && isa<FloatType>(scalarType)))
       return failure();
+
+    Location loc = srcOp.getLoc();
+    Value inputVec = srcOp.getVector();
+
+    // For 256-bit bf16 (v16bf16), pad to 512-bit (v32bf16) with +inf
+    if (vectorSize == 256) {
+      VectorType v32bf16Type = createVectorType(32, scalarType);
+      VectorType v16bf16Type = createVectorType(16, scalarType);
+
+      // Create a v16bf16 vector filled with +inf
+      auto posInfAttr = rewriter.getFloatAttr(
+          scalarType,
+          APFloat::getInf(cast<FloatType>(scalarType).getFloatSemantics(),
+                          /*Negative=*/false));
+      auto splatPosInf =
+          arith::ConstantOp::create(rewriter, loc, posInfAttr).getResult();
+      auto posInfVec = aievec::BroadcastScalarOp::create(
+          rewriter, loc, v32bf16Type, splatPosInf);
+
+      auto posInfUpperHalf =
+          aievec::ExtOp::create(rewriter, loc, v16bf16Type, posInfVec, 1);
+
+      inputVec = aievec::ConcatOp::create(
+          rewriter, loc, v32bf16Type,
+          ValueRange{srcOp.getVector(), posInfUpperHalf.getResult()});
+      laneSize = 32;
+    }
 
     int shiftIndex = laneSize / 2;
     auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MinOp>(
-        rewriter, srcOp, shiftIndex, srcOp.getVector());
+        rewriter, srcOp, shiftIndex, inputVec);
 
     if (srcOp.getAcc()) {
       Value reduceResult = reduceResultOp.getResult();
@@ -1951,13 +1982,49 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
     Type scalarType = vType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
+    unsigned vectorSize = laneSize * elWidth;
 
-    if (laneSize * elWidth != 512)
+    // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
+    if (vectorSize != 512 &&
+        !(vectorSize == 256 && elWidth == 16 && isa<FloatType>(scalarType)))
       return failure();
+
+    Location loc = srcOp.getLoc();
+    Value inputVec = srcOp.getVector();
+
+    // For 256-bit bf16 (v16bf16), pad to 512-bit (v32bf16) with -inf
+    if (vectorSize == 256) {
+      // Create v32bf16 by concatenating input with -inf padding
+      VectorType v32bf16Type = createVectorType(32, scalarType);
+      VectorType v16bf16Type = createVectorType(16, scalarType);
+
+      // Create a v16bf16 vector filled with -inf
+      auto negInfAttr = rewriter.getFloatAttr(
+          scalarType,
+          APFloat::getInf(cast<FloatType>(scalarType).getFloatSemantics(),
+                          /*Negative=*/true));
+      auto splatNegInf =
+          arith::ConstantOp::create(rewriter, loc, negInfAttr).getResult();
+      auto negInfVec = aievec::BroadcastScalarOp::create(
+          rewriter, loc, v32bf16Type, splatNegInf);
+
+      // Update the lower half with the input vector
+      // Use concat: [input, negInfVec[16:31]] = concat(input,
+      // extract(negInfVec, 1)) Since we filled negInfVec with -inf, we can just
+      // extract upper half
+      auto negInfUpperHalf =
+          aievec::ExtOp::create(rewriter, loc, v16bf16Type, negInfVec, 1);
+
+      // Concatenate input with -inf upper half
+      inputVec = aievec::ConcatOp::create(
+          rewriter, loc, v32bf16Type,
+          ValueRange{srcOp.getVector(), negInfUpperHalf.getResult()});
+      laneSize = 32; // Update for reduction
+    }
 
     int shiftIndex = laneSize / 2;
     auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MaxOp>(
-        rewriter, srcOp, shiftIndex, srcOp.getVector());
+        rewriter, srcOp, shiftIndex, inputVec);
 
     if (srcOp.getAcc()) {
       Value reduceResult = reduceResultOp.getResult();
@@ -4724,6 +4791,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                       kind != vector::CombiningKind::MINSI &&
                                       kind != vector::CombiningKind::MINUI &&
                                       kind != vector::CombiningKind::MINIMUMF &&
+                                      kind != vector::CombiningKind::MINNUMF &&
                                       kind != vector::CombiningKind::MAXSI &&
                                       kind != vector::CombiningKind::MAXUI &&
                                       kind != vector::CombiningKind::MAXIMUMF &&

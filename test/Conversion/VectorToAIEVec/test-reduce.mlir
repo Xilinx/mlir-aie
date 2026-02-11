@@ -544,3 +544,147 @@ func.func @reduce_add_bf16_w_acc(%arg0: vector<32xbf16>) -> bf16 {
   // CHECK: return %[[ADDF]] : bf16
   return %0 : bf16
 }
+
+// CHECK-LABEL:func @reduce_max_v16bf16
+// CHECK-SAME: %[[SRC:.*]]: vector<16xbf16>
+func.func @reduce_max_v16bf16(%arg0: vector<16xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i32
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : i32
+  // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : i32
+  // CHECK-DAG: %[[C32:.*]] = arith.constant 32 : i32
+  // CHECK-DAG: %[[NEGINF:.*]] = arith.constant 0xFF80 : bf16
+  // Pad v16bf16 to v32bf16 with -inf for max reduction
+  // CHECK: %[[BCAST:.*]] = aievec.broadcast_scalar %[[NEGINF]] : bf16, vector<32xbf16>
+  // CHECK: %[[UPPERHALF:.*]] = aievec.ext %[[BCAST]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[PADDED:.*]] = aievec.concat %[[SRC]], %[[UPPERHALF]] : vector<16xbf16>, vector<32xbf16>
+  // Perform reduction on padded vector
+  // CHECK: %[[SHIFT32:.*]] = aievec.shift %[[PADDED]], %[[PADDED]], %[[C32]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX1:.*]] = aievec.max %[[PADDED]], %[[SHIFT32]] : vector<32xbf16>
+  // CHECK: %[[SHIFT16:.*]] = aievec.shift %[[MAX1]], %[[MAX1]], %[[C16]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX2:.*]] = aievec.max %[[MAX1]], %[[SHIFT16]] : vector<32xbf16>
+  // CHECK: %[[SHIFT8:.*]] = aievec.shift %[[MAX2]], %[[MAX2]], %[[C8]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX3:.*]] = aievec.max %[[MAX2]], %[[SHIFT8]] : vector<32xbf16>
+  // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[MAX3]], %[[MAX3]], %[[C4]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX4:.*]] = aievec.max %[[MAX3]], %[[SHIFT4]] : vector<32xbf16>
+  // CHECK: %[[SHIFT5:.*]] = aievec.shift %[[MAX4]], %[[MAX4]], %[[C2]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MAX5:.*]] = aievec.max %[[MAX4]], %[[SHIFT5]] : vector<32xbf16>
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MAX5]], %[[C0]] : vector<32xbf16>, i32, bf16
+  %0 = vector.reduction <maximumf>, %arg0 : vector<16xbf16> into bf16
+  // CHECK: return %[[EXTELEM]] : bf16
+  return %0 : bf16
+}
+
+// CHECK-LABEL:func @reduce_min_v16bf16
+// CHECK-SAME: %[[SRC:.*]]: vector<16xbf16>
+func.func @reduce_min_v16bf16(%arg0: vector<16xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : i32
+  // CHECK-DAG: %[[C8:.*]] = arith.constant 8 : i32
+  // CHECK-DAG: %[[C16:.*]] = arith.constant 16 : i32
+  // CHECK-DAG: %[[C32:.*]] = arith.constant 32 : i32
+  // CHECK-DAG: %[[POSINF:.*]] = arith.constant 0x7F80 : bf16
+  // Pad v16bf16 to v32bf16 with +inf for min reduction
+  // CHECK: %[[BCAST:.*]] = aievec.broadcast_scalar %[[POSINF]] : bf16, vector<32xbf16>
+  // CHECK: %[[UPPERHALF:.*]] = aievec.ext %[[BCAST]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[PADDED:.*]] = aievec.concat %[[SRC]], %[[UPPERHALF]] : vector<16xbf16>, vector<32xbf16>
+  // Perform reduction on padded vector
+  // CHECK: %[[SHIFT32:.*]] = aievec.shift %[[PADDED]], %[[PADDED]], %[[C32]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MIN1:.*]] = aievec.min %[[PADDED]], %[[SHIFT32]] : vector<32xbf16>
+  // CHECK: %[[SHIFT16:.*]] = aievec.shift %[[MIN1]], %[[MIN1]], %[[C16]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MIN2:.*]] = aievec.min %[[MIN1]], %[[SHIFT16]] : vector<32xbf16>
+  // CHECK: %[[SHIFT8:.*]] = aievec.shift %[[MIN2]], %[[MIN2]], %[[C8]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MIN3:.*]] = aievec.min %[[MIN2]], %[[SHIFT8]] : vector<32xbf16>
+  // CHECK: %[[SHIFT4:.*]] = aievec.shift %[[MIN3]], %[[MIN3]], %[[C4]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MIN4:.*]] = aievec.min %[[MIN3]], %[[SHIFT4]] : vector<32xbf16>
+  // CHECK: %[[SHIFT5:.*]] = aievec.shift %[[MIN4]], %[[MIN4]], %[[C2]] {isAcc = false} : vector<32xbf16>, vector<32xbf16>, i32, vector<32xbf16>
+  // CHECK: %[[MIN5:.*]] = aievec.min %[[MIN4]], %[[SHIFT5]] : vector<32xbf16>
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[MIN5]], %[[C0]] : vector<32xbf16>, i32, bf16
+  %0 = vector.reduction <minimumf>, %arg0 : vector<16xbf16> into bf16
+  // CHECK: return %[[EXTELEM]] : bf16
+  return %0 : bf16
+}
+
+// CHECK-LABEL:func @reduce_maxnumf_v16bf16
+// CHECK-SAME: %[[SRC:.*]]: vector<16xbf16>
+func.func @reduce_maxnumf_v16bf16(%arg0: vector<16xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[NEGINF:.*]] = arith.constant 0xFF80 : bf16
+  // Pad v16bf16 to v32bf16 with -inf for maxnumf reduction
+  // CHECK: %[[BCAST:.*]] = aievec.broadcast_scalar %[[NEGINF]] : bf16, vector<32xbf16>
+  // CHECK: %[[UPPERHALF:.*]] = aievec.ext %[[BCAST]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[PADDED:.*]] = aievec.concat %[[SRC]], %[[UPPERHALF]] : vector<16xbf16>, vector<32xbf16>
+  %0 = vector.reduction <maxnumf>, %arg0 : vector<16xbf16> into bf16
+  return %0 : bf16
+}
+
+// CHECK-LABEL:func @reduce_minnumf_v16bf16
+// CHECK-SAME: %[[SRC:.*]]: vector<16xbf16>
+func.func @reduce_minnumf_v16bf16(%arg0: vector<16xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[POSINF:.*]] = arith.constant 0x7F80 : bf16
+  // Pad v16bf16 to v32bf16 with +inf for minnumf reduction
+  // CHECK: %[[BCAST:.*]] = aievec.broadcast_scalar %[[POSINF]] : bf16, vector<32xbf16>
+  // CHECK: %[[UPPERHALF:.*]] = aievec.ext %[[BCAST]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[PADDED:.*]] = aievec.concat %[[SRC]], %[[UPPERHALF]] : vector<16xbf16>, vector<32xbf16>
+  %0 = vector.reduction <minnumf>, %arg0 : vector<16xbf16> into bf16
+  return %0 : bf16
+}
+
+// CHECK-LABEL:func @reduce_max_v16bf16_w_acc
+// CHECK-SAME: %[[SRC:.*]]: vector<16xbf16>
+func.func @reduce_max_v16bf16_w_acc(%arg0: vector<16xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[CST:.*]] = arith.constant 0xCE6E0000 : f32
+  // CHECK-DAG: %[[NEGINF:.*]] = arith.constant 0xFF80 : bf16
+  // Pad v16bf16 to v32bf16 with -inf for max reduction
+  // CHECK: %[[BCAST:.*]] = aievec.broadcast_scalar %[[NEGINF]] : bf16, vector<32xbf16>
+  // CHECK: %[[UPPERHALF:.*]] = aievec.ext %[[BCAST]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[PADDED:.*]] = aievec.concat %[[SRC]], %[[UPPERHALF]] : vector<16xbf16>, vector<32xbf16>
+  // ... reduction steps ...
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %{{.*}}, %[[C0]] : vector<32xbf16>, i32, bf16
+  // CHECK: %[[EXTF:.*]] = arith.extf %[[EXTELEM]] : bf16 to f32
+  // CHECK: %[[CMP:.*]] = arith.cmpf ogt, %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[SELECT:.*]] = arith.select %[[CMP]], %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[TRUNCF:.*]] = arith.truncf %[[SELECT]] : f32 to bf16
+  %cst = arith.constant -1.0e+09 : bf16
+  %0 = vector.reduction <maximumf>, %arg0, %cst : vector<16xbf16> into bf16
+  // CHECK: return %[[TRUNCF]] : bf16
+  return %0 : bf16
+}
+
+// CHECK-LABEL:func @reduce_min_v16bf16_w_acc
+// CHECK-SAME: %[[SRC:.*]]: vector<16xbf16>
+func.func @reduce_min_v16bf16_w_acc(%arg0: vector<16xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[CST:.*]] = arith.constant 0x4E6E0000 : f32
+  // CHECK-DAG: %[[POSINF:.*]] = arith.constant 0x7F80 : bf16
+  // Pad v16bf16 to v32bf16 with +inf for min reduction
+  // CHECK: %[[BCAST:.*]] = aievec.broadcast_scalar %[[POSINF]] : bf16, vector<32xbf16>
+  // CHECK: %[[UPPERHALF:.*]] = aievec.ext %[[BCAST]] {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: %[[PADDED:.*]] = aievec.concat %[[SRC]], %[[UPPERHALF]] : vector<16xbf16>, vector<32xbf16>
+  // ... reduction steps ...
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %{{.*}}, %[[C0]] : vector<32xbf16>, i32, bf16
+  // CHECK: %[[EXTF:.*]] = arith.extf %[[EXTELEM]] : bf16 to f32
+  // CHECK: %[[CMP:.*]] = arith.cmpf olt, %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[SELECT:.*]] = arith.select %[[CMP]], %[[EXTF]], %[[CST]] : f32
+  // CHECK: %[[TRUNCF:.*]] = arith.truncf %[[SELECT]] : f32 to bf16
+  %cst = arith.constant 1.0e+09 : bf16
+  %0 = vector.reduction <minimumf>, %arg0, %cst : vector<16xbf16> into bf16
+  // CHECK: return %[[TRUNCF]] : bf16
+  return %0 : bf16
+}
+
+// CHECK-LABEL:func @reduce_add_v16bf16
+// CHECK-SAME: %[[SRC:.*]]: vector<16xbf16>
+func.func @reduce_add_v16bf16(%arg0: vector<16xbf16>) -> bf16 {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+  // CHECK: %[[UPS:.*]] = aievec.ups %[[SRC]] {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // ... reduction steps in f32 accumulator ...
+  // CHECK: %[[SRS:.*]] = aievec.srs %{{.*}}, %[[C0]] : vector<16xf32>, i32, vector<16xbf16>
+  // CHECK: %[[CONCAT:.*]] = aievec.concat %[[SRS]], %[[SRS]] : vector<16xbf16>, vector<32xbf16>
+  // CHECK: %[[EXTELEM:.*]] = aievec.ext_elem %[[CONCAT]], %[[C0]] : vector<32xbf16>, i32, bf16
+  %0 = vector.reduction <add>, %arg0 : vector<16xbf16> into bf16
+  // CHECK: return %[[EXTELEM]] : bf16
+  return %0 : bf16
+}
