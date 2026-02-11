@@ -669,8 +669,13 @@ def dma_start(
     chain_block = chain.block if isinstance(chain, ContextManagedBlock) else chain
     dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
     op = DMAStartOp(
-        channel_dir, channel_index, dest=dest_block, chain=chain_block, loc=loc,
-        ip=ip, repeat_count=repeat_count
+        channel_dir,
+        channel_index,
+        dest=dest_block,
+        chain=chain_block,
+        loc=loc,
+        ip=ip,
+        repeat_count=repeat_count,
     )
     return op.dest, op.chain
 
