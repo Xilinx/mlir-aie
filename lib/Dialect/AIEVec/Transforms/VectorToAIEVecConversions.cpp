@@ -552,6 +552,36 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
                                    zeroConstOp.getResult());
 }
 
+// Helper to pad a v16bf16 vector to v32bf16 by concatenating with a splat of
+// the given infinity value. Used by min/max reduction patterns.
+// Returns {paddedVector, newLaneSize}.
+static std::pair<Value, unsigned>
+padV16ToV32WithInfinity(ConversionPatternRewriter &rewriter, Location loc,
+                        Value inputVec, Type scalarType, bool negativeInf) {
+  VectorType v32bf16Type = createVectorType(32, scalarType);
+  VectorType v16bf16Type = createVectorType(16, scalarType);
+
+  // Create a scalar infinity constant
+  auto infAttr = rewriter.getFloatAttr(
+      scalarType,
+      APFloat::getInf(cast<FloatType>(scalarType).getFloatSemantics(),
+                      negativeInf));
+  auto splatInf = arith::ConstantOp::create(rewriter, loc, infAttr).getResult();
+
+  // Broadcast to v32bf16, then extract upper half (which is also infinity)
+  auto infVec =
+      aievec::BroadcastScalarOp::create(rewriter, loc, v32bf16Type, splatInf);
+  auto infUpperHalf =
+      aievec::ExtOp::create(rewriter, loc, v16bf16Type, infVec, 1);
+
+  // Concatenate input with infinity padding
+  Value paddedVec =
+      aievec::ConcatOp::create(rewriter, loc, v32bf16Type,
+                               ValueRange{inputVec, infUpperHalf.getResult()});
+
+  return {paddedVec, 32};
+}
+
 static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
                                         Operation *parentSymbolTableOp,
                                         StringRef funcName, TypeRange inTypes,
@@ -1898,8 +1928,7 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
     unsigned vectorSize = laneSize * elWidth;
 
     // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
-    if (vectorSize != 512 &&
-        !(vectorSize == 256 && elWidth == 16 && isa<FloatType>(scalarType)))
+    if (vectorSize != 512 && !(vectorSize == 256 && scalarType.isBF16()))
       return failure();
 
     Location loc = srcOp.getLoc();
@@ -1907,26 +1936,8 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
 
     // For 256-bit bf16 (v16bf16), pad to 512-bit (v32bf16) with +inf
     if (vectorSize == 256) {
-      VectorType v32bf16Type = createVectorType(32, scalarType);
-      VectorType v16bf16Type = createVectorType(16, scalarType);
-
-      // Create a v16bf16 vector filled with +inf
-      auto posInfAttr = rewriter.getFloatAttr(
-          scalarType,
-          APFloat::getInf(cast<FloatType>(scalarType).getFloatSemantics(),
-                          /*Negative=*/false));
-      auto splatPosInf =
-          arith::ConstantOp::create(rewriter, loc, posInfAttr).getResult();
-      auto posInfVec = aievec::BroadcastScalarOp::create(
-          rewriter, loc, v32bf16Type, splatPosInf);
-
-      auto posInfUpperHalf =
-          aievec::ExtOp::create(rewriter, loc, v16bf16Type, posInfVec, 1);
-
-      inputVec = aievec::ConcatOp::create(
-          rewriter, loc, v32bf16Type,
-          ValueRange{srcOp.getVector(), posInfUpperHalf.getResult()});
-      laneSize = 32;
+      std::tie(inputVec, laneSize) = padV16ToV32WithInfinity(
+          rewriter, loc, srcOp.getVector(), scalarType, /*negativeInf=*/false);
     }
 
     int shiftIndex = laneSize / 2;
@@ -1985,8 +1996,8 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
     unsigned vectorSize = laneSize * elWidth;
 
     // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
-    if (vectorSize != 512 &&
-        !(vectorSize == 256 && elWidth == 16 && isa<FloatType>(scalarType)))
+    // Only bf16 is supported for the 256-bit padding path (not f16)
+    if (vectorSize != 512 && !(vectorSize == 256 && scalarType.isBF16()))
       return failure();
 
     Location loc = srcOp.getLoc();
@@ -1994,32 +2005,8 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
 
     // For 256-bit bf16 (v16bf16), pad to 512-bit (v32bf16) with -inf
     if (vectorSize == 256) {
-      // Create v32bf16 by concatenating input with -inf padding
-      VectorType v32bf16Type = createVectorType(32, scalarType);
-      VectorType v16bf16Type = createVectorType(16, scalarType);
-
-      // Create a v16bf16 vector filled with -inf
-      auto negInfAttr = rewriter.getFloatAttr(
-          scalarType,
-          APFloat::getInf(cast<FloatType>(scalarType).getFloatSemantics(),
-                          /*Negative=*/true));
-      auto splatNegInf =
-          arith::ConstantOp::create(rewriter, loc, negInfAttr).getResult();
-      auto negInfVec = aievec::BroadcastScalarOp::create(
-          rewriter, loc, v32bf16Type, splatNegInf);
-
-      // Update the lower half with the input vector
-      // Use concat: [input, negInfVec[16:31]] = concat(input,
-      // extract(negInfVec, 1)) Since we filled negInfVec with -inf, we can just
-      // extract upper half
-      auto negInfUpperHalf =
-          aievec::ExtOp::create(rewriter, loc, v16bf16Type, negInfVec, 1);
-
-      // Concatenate input with -inf upper half
-      inputVec = aievec::ConcatOp::create(
-          rewriter, loc, v32bf16Type,
-          ValueRange{srcOp.getVector(), negInfUpperHalf.getResult()});
-      laneSize = 32; // Update for reduction
+      std::tie(inputVec, laneSize) = padV16ToV32WithInfinity(
+          rewriter, loc, srcOp.getVector(), scalarType, /*negativeInf=*/true);
     }
 
     int shiftIndex = laneSize / 2;
