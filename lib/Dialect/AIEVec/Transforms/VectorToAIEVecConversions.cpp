@@ -618,12 +618,13 @@ splitWideVectorOp(SrcOpTy srcOp, ArrayRef<Value> wideInputs,
 
   // Extract lower and upper halves for each wide input
   SmallVector<std::pair<Value, Value>> halfInputs;
+  halfInputs.reserve(wideInputs.size());
   for (Value wideInput : wideInputs) {
     auto lowerHalf =
         aievec::ExtOp::create(rewriter, loc, halfType, wideInput, 0);
     auto upperHalf =
-        aievec::ExtOp::create(rewriter, loc, halfType, wideInput, 1);
-    halfInputs.push_back({lowerHalf.getResult(), upperHalf.getResult()});
+        aievec::ExtOp::create(reriter, loc, halfType, wideInput, 1);
+    halfInputs.emplace_back(lowerHalf.getResult(), upperHalf.getResult());
   }
 
   // Process halves using the callback
