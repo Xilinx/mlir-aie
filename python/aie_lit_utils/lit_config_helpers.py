@@ -216,16 +216,26 @@ class LitConfigHelper:
 
         print(f"xrt found at {os.path.dirname(xrt_lib_dir)}")
         config.found = True
-        config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -luuid -lxrt_coreutil"
-        config.substitutions["%xrt_flags"] = config.flags
-        # Add XRT library directory to LD_LIBRARY_PATH for runtime linking,
-        # preserving any existing entries from the parent environment.
-        existing_ld_library_path = os.environ.get("LD_LIBRARY_PATH")
-        if existing_ld_library_path:
-            new_ld_library_path = existing_ld_library_path + os.pathsep + xrt_lib_dir
+        if os.name == "nt":
+            config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -lxrt_coreutil"
         else:
-            new_ld_library_path = xrt_lib_dir
-        config.environment["LD_LIBRARY_PATH"] = new_ld_library_path
+            config.flags = f"-I{xrt_include_dir} -L{xrt_lib_dir} -luuid -lxrt_coreutil"
+        config.substitutions["%xrt_flags"] = config.flags
+        # Runtime library search path.
+        if os.name == "nt":
+            # Windows: ensure XRT DLLs can be resolved at runtime.
+            existing_path = os.environ.get("PATH", "")
+            config.environment["PATH"] = (
+                xrt_bin_dir + os.pathsep + existing_path if existing_path else xrt_bin_dir
+            )
+        else:
+            # Linux: add XRT library directory to LD_LIBRARY_PATH.
+            existing_ld_library_path = os.environ.get("LD_LIBRARY_PATH")
+            if existing_ld_library_path:
+                new_ld_library_path = existing_ld_library_path + os.pathsep + xrt_lib_dir
+            else:
+                new_ld_library_path = xrt_lib_dir
+            config.environment["LD_LIBRARY_PATH"] = new_ld_library_path
 
         # Detect NPU hardware
         try:
@@ -242,7 +252,7 @@ class LitConfigHelper:
             # Old: "|[0000:41:00.1]  ||RyzenAI-npu1  |"
             # New: "|[0000:41:00.1]  |NPU Phoenix  |"
             pattern = re.compile(
-                r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU ([\w ]+?))\s*\|"
+                r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU (\w+))\W*\|"
             )
 
             for line in output:

@@ -24,6 +24,11 @@ def check_env(build, default=0):
     return os.getenv(build, str(default)) in {"1", "true", "True", "ON", "YES"}
 
 
+# Always use forward slashes for CMake paths.
+def _cmake_path(p: object) -> str:
+    return os.fspath(p).replace("\\", "/")
+
+
 class CMakeExtension(Extension):
     def __init__(self, name: str, sourcedir: Union[str, Path] = "") -> None:
         super().__init__(name, sources=[])
@@ -127,11 +132,12 @@ class CMakeBuild(build_ext):
             MLIR_INSTALL_ABS_PATH = Path("/tmp/m").absolute()
 
         cmake_args = [
-            f"-G {cmake_generator}",
-            f"-DCMAKE_MODULE_PATH={MLIR_AIE_SOURCE_DIR / 'cmake' / 'modulesXilinx'}",
-            f"-DCMAKE_PREFIX_PATH={MLIR_INSTALL_ABS_PATH}",
-            f"-DCMAKE_INSTALL_PREFIX={install_dir}",
-            f"-DPython3_EXECUTABLE={sys.executable}",
+            "-G",
+            cmake_generator,
+            f"-DCMAKE_MODULE_PATH={_cmake_path(MLIR_AIE_SOURCE_DIR / 'cmake' / 'modulesXilinx')}",
+            f"-DCMAKE_PREFIX_PATH={_cmake_path(MLIR_INSTALL_ABS_PATH)}",
+            f"-DCMAKE_INSTALL_PREFIX={_cmake_path(install_dir)}",
+            f"-DPython3_EXECUTABLE={_cmake_path(sys.executable)}",
             f"-DCMAKE_BUILD_TYPE={cfg}",
             # prevent symbol collision that leads to multiple pass registration and such
             "-DCMAKE_VISIBILITY_INLINES_HIDDEN=ON",
@@ -153,7 +159,7 @@ class CMakeBuild(build_ext):
         ]
 
         if os.getenv("XRT_ROOT"):
-            xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
+            xrt_dir = _cmake_path(Path(os.getenv("XRT_ROOT")).absolute())
             cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
 
         if shutil.which("ccache"):
@@ -167,8 +173,8 @@ class CMakeBuild(build_ext):
                 "-DCMAKE_C_COMPILER=cl",
                 "-DCMAKE_CXX_COMPILER=cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
-                "-DCMAKE_C_FLAGS=/MT",
-                "-DCMAKE_CXX_FLAGS=/MT",
+                "-DCMAKE_C_FLAGS=/MT /wd4065",
+                "-DCMAKE_CXX_FLAGS=/MT /wd4065",
                 "-DLLVM_USE_CRT_MINSIZEREL=MT",
                 "-DLLVM_USE_CRT_RELEASE=MT",
             ]
@@ -187,7 +193,6 @@ class CMakeBuild(build_ext):
 
                     ninja_executable_path = Path(ninja.BIN_DIR) / "ninja"
                     cmake_args += [
-                        "-GNinja",
                         f"-DCMAKE_MAKE_PROGRAM:FILEPATH={ninja_executable_path}",
                     ]
                 except ImportError:
@@ -225,9 +230,6 @@ class CMakeBuild(build_ext):
 
         print("ENV", pprint(os.environ), file=sys.stderr)
         print("cmake", " ".join(cmake_args), file=sys.stderr)
-
-        if platform.system() == "Windows":
-            cmake_args = [c.replace("\\", "\\\\") for c in cmake_args]
 
         subprocess.run(
             ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True

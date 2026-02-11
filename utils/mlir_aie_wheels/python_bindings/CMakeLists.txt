@@ -71,10 +71,21 @@ mlir_configure_python_dev_packages()
 add_compile_definitions("MLIR_PYTHON_PACKAGE_PREFIX=aie.")
 
 if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  if(WIN32)
+    # Prefer in-tree Find*.cmake modules.
+    list(PREPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modulesXilinx")
+  endif()
+
   find_package(XRT)
   find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
   add_library(xrt_coreutil SHARED IMPORTED)
-  set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
+  if(WIN32)
+    set_target_properties(xrt_coreutil PROPERTIES
+      IMPORTED_IMPLIB "${XRT_COREUTIL}"
+    )
+  else()
+    set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
+  endif()
 endif()
 
 set(_sources
@@ -128,20 +139,23 @@ add_mlir_python_modules(AIEMLIRPythonModules
 
 # TODO(max): this is not DRY - should be able to fetch it from mlir_aie_install/lib
 if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  # for build dir (superfluous here because setup.py builds the wheel from the install dir but good for sanity checking)
-  add_custom_command(
-    TARGET AIEAggregateCAPI PRE_BUILD
-    COMMENT "Copying libxrt_coreutil into _mlir_libs during build"
-    DEPENDS "${XRT_COREUTIL}"
-    COMMAND "${CMAKE_COMMAND}" -E copy
-    "${XRT_COREUTIL}" "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs/libxrt_coreutil.so"
-  )
+  if(NOT WIN32)
+    # Linux wheel: for now, keep shipping libxrt_coreutil
+    # Do not ship SIGNED DLLs in Windows wheels.
+    add_custom_command(
+      TARGET AIEAggregateCAPI PRE_BUILD
+      COMMENT "Copying libxrt_coreutil into _mlir_libs during build"
+      DEPENDS "${XRT_COREUTIL}"
+      COMMAND "${CMAKE_COMMAND}" -E copy
+      "${XRT_COREUTIL}" "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs/libxrt_coreutil.so"
+    )
   # for install
-  install(FILES
-    "${XRT_COREUTIL}"
-    COMPONENT xrt_coreutil
-    DESTINATION "${CMAKE_INSTALL_PREFIX}/aie/_mlir_libs"
+    install(FILES
+      "${XRT_COREUTIL}"
+      COMPONENT xrt_coreutil
+      DESTINATION "${CMAKE_INSTALL_PREFIX}/aie/_mlir_libs"
     # hack
-    RENAME libxrt_coreutil.so.2
-  )
+      RENAME libxrt_coreutil.so.2
+    )
+  endif()
 endif()

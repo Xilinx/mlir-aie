@@ -211,7 +211,10 @@ if (AIE_ENABLE_PYTHON_PASSES)
 
   if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
     list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
-    list(APPEND _py_libs xrt_coreutil uuid)
+    list(APPEND _py_libs xrt_coreutil)
+    if(NOT WIN32)
+      list(APPEND _py_libs uuid)
+    endif()
   endif()
   list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
 
@@ -339,10 +342,12 @@ else ()
       PRIVATE_LINK_LIBS
         LLVMSupport
         xrt_coreutil
-        uuid
       PYTHON_BINDINGS_LIBRARY
         nanobind
     )
+    if(NOT WIN32)
+      target_link_libraries(AIEPythonExtensions.XRT PRIVATE uuid)
+    endif()
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
   endif()

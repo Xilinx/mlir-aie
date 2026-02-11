@@ -1,3 +1,11 @@
+[build-system]
+requires = [
+    "setuptools>=40.8.0",
+    "wheel",
+    "nanobind>=2.9,<3",
+]
+build-backend = "setuptools.build_meta"
+
 [tool.cibuildwheel]
 environment = { PIP_NO_BUILD_ISOLATION = "false" }
 build-verbosity = 3
@@ -40,5 +48,5 @@ repair-wheel-command = [
 before-build = [
     "pip install delvewheel",
     "pip install -r requirements.txt",
-    "bash {project}\\scripts\\download_mlir.sh",
+    'python "{project}/scripts/download_mlir.py"',
 ]

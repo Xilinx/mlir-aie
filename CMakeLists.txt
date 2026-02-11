@@ -101,6 +101,16 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(AIE_TOOLS_BINARY_DIR ${AIE_BINARY_DIR}/bin)
 set(AIE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
+if(WIN32)
+  # Prefer in-tree Find*.cmake modules (FindVitis.cmake, FindXRT.cmake, etc.).
+  list(PREPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/modulesXilinx")
+  # Force xchesscc off on Windows, since the Vitis chess toolchain is not supported.
+  set(_AIE_BUILD_CHESS_CLANG_DEFAULT OFF)
+else()
+  set(_AIE_BUILD_CHESS_CLANG_DEFAULT ON)
+endif()
+option(AIE_BUILD_CHESS_CLANG "Build chess-clang (requires Vitis chess toolchain)" ${_AIE_BUILD_CHESS_CLANG_DEFAULT})
+
 find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
@@ -160,12 +170,29 @@ cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
   "Enables building of passes that connect to python." OFF "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
 
 find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
-find_library(UUID uuid)
+
+# On Windows, the UUID library is linked implicitly. 
+# Just tell CMake that it's available.
+if(WIN32)
+  set(UUID TRUE)
+else()
+  find_library(UUID uuid)
+endif()
+
 cmake_dependent_option(AIE_ENABLE_XRT_PYTHON_BINDINGS
   "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL;UUID" OFF)
+
 if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   add_library(xrt_coreutil SHARED IMPORTED)
-  set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
+  if (WIN32)
+    # FindXRT.cmake returns only an import lib. We also need the runtime dll.
+    set_target_properties(xrt_coreutil PROPERTIES
+      IMPORTED_IMPLIB   "${XRT_COREUTIL}"
+      IMPORTED_LOCATION "${XRT_BIN_DIR}/xrt_coreutil.dll"
+    )
+  else()
+    set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
+  endif()
 endif()
 
 cmake_dependent_option(AIECC_COMPILE

@@ -161,8 +161,8 @@ jobs:
             if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
               export AIE_PROJECT_COMMIT=$MLIR_VERSION
             else
-              MLIR_VERSION = "${{ inputs.AIE_COMMIT }}"
-              export AIE_PROJECT_COMMIT=${MLIR_VERSION:0:7}
+              export AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+              export AIE_PROJECT_COMMIT="${AIE_PROJECT_COMMIT:0:7}"
             fi
             export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
             export DATETIME=$(date +"%Y%m%d%H")
@@ -182,17 +182,252 @@ jobs:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: mlir_aie_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
 
+
+  build-windows:
+    name: Build and upload mlir_aie wheels (Windows)
+  
+    runs-on: windows-2022
+  
+    permissions:
+      id-token: write
+      contents: write
+      packages: read
+  
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python_version: "3.10"
+            ENABLE_RTTI: ON
+  
+          - python_version: "3.10"
+            ENABLE_RTTI: OFF
+  
+          - python_version: "3.11"
+            ENABLE_RTTI: ON
+  
+          - python_version: "3.11"
+            ENABLE_RTTI: OFF
+  
+          - python_version: "3.12"
+            ENABLE_RTTI: ON
+  
+          - python_version: "3.12"
+            ENABLE_RTTI: OFF
+  
+          - python_version: "3.13"
+            ENABLE_RTTI: ON
+  
+          - python_version: "3.13"
+            ENABLE_RTTI: OFF
+  
+          - python_version: "3.14"
+            ENABLE_RTTI: ON
+  
+          - python_version: "3.14"
+            ENABLE_RTTI: OFF
+  
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: "true"
+  
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
+          allow-prereleases: true
+
+      - name: Set up MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # We don't get OpenSSL for free on Windows. Manage the pain.
+      # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
+      - name: Enable vcpkg binary caching
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
+      - name: Install OpenSSL
+        shell: pwsh
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ($vcpkgRoot) {
+            $vcpkg = Join-Path $vcpkgRoot "vcpkg.exe"
+          } else {
+            $vcpkg = (Get-Command vcpkg.exe -ErrorAction Stop).Source
+            $vcpkgRoot = Split-Path -Parent $vcpkg
+          }
+
+          $env:VCPKG_BINARY_SOURCES = "clear;x-gha,readwrite"
+          & $vcpkg install openssl:x64-windows
+
+          "OPENSSL_ROOT_DIR=$($vcpkgRoot -replace '\','/')/installed/x64-windows" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build mlir-aie wheel
+        shell: bash
+        env:
+          # Copy Linux job style: tag-aligned versioning only on version tags.
+          # Perhaps a literal "" should be here?
+          AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '' }}
+          ENABLE_RTTI: ${{ matrix.ENABLE_RTTI }}
+          CMAKE_GENERATOR: Ninja
+          CMAKE_ARGS: -DAIE_BUILD_CHESS_CLANG=OFF
+        run: |
+          set -euo pipefail
+  
+          # No Vitis on Windows!
+          unset VITIS XILINXD_LICENSE_FILE || true
+  
+          git config --global --add safe.directory "$PWD"
+          MLIR_VERSION=$(git rev-parse --short HEAD)
+          echo "Building mlir-aie version $MLIR_VERSION"
+  
+          python -m venv aie-venv
+          source aie-venv/Scripts/activate
+  
+          python -m pip install --upgrade pip
+          pip install -r python/requirements_ml.txt
+          pip install -r python/requirements_dev.txt
+  
+          export ENABLE_RTTI="${ENABLE_RTTI}"
+  
+          NO_RTTI=""  # Set a default value
+          NO_RTTI_UNDERSCORE=""  # Set a default value
+          if [ x"$ENABLE_RTTI" == x"OFF" ]; then
+            NO_RTTI="-no-rtti"
+            NO_RTTI_UNDERSCORE="_no_rtti"
+          fi
+  
+          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+  
+          # Grab the MLIR distro wheel and extract
+          pip -q download "mlir${NO_RTTI}==${VERSION}" -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          python -m zipfile -e mlir*.whl .
+  
+          # Linux-style timestamp magic should work fine on Windows.
+          find "mlir${NO_RTTI_UNDERSCORE}" -exec touch -a -m -t 201108231405.14 {} \;
+  
+          # Match Linux wheel version metadata on non-tag builds.
+          export DATETIME=$(date +"%Y%m%d%H")
+          if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
+            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+          else
+            export AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+            export AIE_PROJECT_COMMIT="${AIE_PROJECT_COMMIT:0:7}"
+          fi
+          export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
+  
+          # Try to always forward slash paths.
+          ROOT_WIN=$(python -c "import os; print(os.getcwd().replace('\\\\', '/'))")
+
+          export MLIR_INSTALL_ABS_PATH="${ROOT_WIN}/mlir${NO_RTTI_UNDERSCORE}"
+          export MLIR_AIE_SOURCE_DIR="${ROOT_WIN}"
+          export WHEELHOUSE_DIR="${ROOT_WIN}/wheelhouse"
+          export CMAKE_MODULE_PATH="${ROOT_WIN}/cmake/modulesXilinx"
+  
+          mkdir -p "${WHEELHOUSE_DIR}"
+          pushd utils/mlir_aie_wheels
+  
+          pip install wheel importlib_metadata ninja
+          CIBW_ARCHS=AMD64 pip wheel . -v -w "${WHEELHOUSE_DIR}" --no-build-isolation
+  
+          popd
+  
+          # Try to repair the wheel on Windows using delvewheel (closest auditwheel equivalent).
+          pip install delvewheel
+
+          OPENSSL_BIN=$(python -c "import os, pathlib; print(pathlib.Path(os.environ['OPENSSL_ROOT_DIR']).joinpath('bin').as_posix())")
+          python -m delvewheel repair --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl --add-path "${OPENSSL_BIN}"
+  
+      - name: Upload mlir_aie
+        uses: actions/upload-artifact@v4
+        with:
+          path: wheelhouse/repaired_wheel/mlir_aie*whl
+          name: mlir_aie_windows_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
+
+  publish:
+    name: Publish wheels
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-latest
+    needs: [build-repo, build-windows]
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download wheels (RTTI ON)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mlir_aie*_rtti_ON-*
+          path: wheels_on
+          merge-multiple: true
+
+      - name: Download wheels (RTTI OFF)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mlir_aie*_rtti_OFF-*
+          path: wheels_off
+          merge-multiple: true
+
+      - name: Flatten wheels (RTTI ON)
+        run: |
+          set -euo pipefail
+          mkdir -p wheels_on_flat
+          find wheels_on -name 'mlir_aie*whl' -exec cp -f {} wheels_on_flat/ \;
+
+      - name: Flatten wheels (RTTI OFF)
+        run: |
+          set -euo pipefail
+          mkdir -p wheels_off_flat
+          find wheels_off -name 'mlir_aie*whl' -exec cp -f {} wheels_off_flat/ \;
+
+      - name: Combine wheels
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          mkdir -p wheels_all
+          cp wheels_on_flat/mlir_aie*whl wheels_all/
+          cp wheels_off_flat/mlir_aie*whl wheels_all/
+
       - name: Release
-        if: |
-          github.event_name == 'workflow_dispatch' ||
-          github.event_name == 'schedule' ||
-          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: ncipollo/release-action@v1.12.0
         with:
-          artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
+          artifacts: wheels_all/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: ${{ github.event_name == 'push' && github.ref_name || (matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-3' || 'latest-wheels-no-rtti') }}
-          name: ${{ github.event_name == 'push' && github.ref_name || (matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-3' || 'latest-wheels-no-rtti') }}
+          tag: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           allowUpdates: true
-          replacesArtifacts: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
-          makeLatest: ${{ github.event_name == 'push' }}
+          replacesArtifacts: true
+          makeLatest: true
+
+      - name: Release latest wheels (RTTI ON)
+        if: github.event_name != 'push'
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: wheels_on_flat/mlir_aie*whl
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: latest-wheels-3
+          name: latest-wheels-3
+          allowUpdates: true
+          replacesArtifacts: false
+          makeLatest: false
+
+      - name: Release latest wheels (RTTI OFF)
+        if: github.event_name != 'push'
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          artifacts: wheels_off_flat/mlir_aie*whl
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: latest-wheels-no-rtti
+          name: latest-wheels-no-rtti
+          allowUpdates: true
+          replacesArtifacts: false
+          makeLatest: false
