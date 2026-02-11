@@ -96,6 +96,16 @@ def TileElement : OpInterface<"TileElement", [
   let cppNamespace = "::xilinx::AIE";
   let methods = [
     InterfaceMethod<[{
+        Return the TileOp where the element is located.
+      }],
+      "xilinx::AIE::TileOp", "getTileOp", (ins ),
+      /*methodBody=*/[{}],
+      /*defaultImpl=*/[{
+        ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
+        return llvm::cast<xilinx::AIE::TileOp>(op.getTile().getDefiningOp());
+      }]
+    >,
+    InterfaceMethod<[{
         Return the location of the Tile where the element is located.
       }],
       "xilinx::AIE::TileID", "getTileID", (ins ),
@@ -103,6 +113,26 @@ def TileElement : OpInterface<"TileElement", [
       /*defaultImpl=*/[{
         ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
         return op.getTileOp().getTileID();
+      }]
+    >,
+    InterfaceMethod<[{
+        Return the column index of the Tile where the element is located.
+      }],
+      "int", "colIndex", (ins ),
+      /*methodBody=*/[{}],
+      /*defaultImpl=*/[{
+        ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
+        return op.getTileOp().colIndex();
+      }]
+    >,
+    InterfaceMethod<[{
+        Return the row index of the Tile where the element is located.
+      }],
+      "int", "rowIndex", (ins ),
+      /*methodBody=*/[{}],
+      /*defaultImpl=*/[{
+        ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
+        return op.getTileOp().rowIndex();
       }]
     >,
   ];

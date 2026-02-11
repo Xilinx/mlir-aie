@@ -914,10 +914,6 @@ LogicalResult ObjectFifoRegisterExternalBuffersOp::verify() {
   return success();
 }
 
-TileOp ObjectFifoRegisterExternalBuffersOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
-}
-
 ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
   Operation *parent = getOperation();
   while ((parent = parent->getParentOp())) {
@@ -1421,14 +1417,6 @@ size_t ShimMuxOp::getNumDestConnections(WireBundle bundle) {
                                                   bundle);
 }
 
-TileOp ShimMuxOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
-}
-
-int ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
-
-int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
-
 //===----------------------------------------------------------------------===//
 // ShimDMAOp
 //===----------------------------------------------------------------------===//
@@ -1442,14 +1430,6 @@ LogicalResult ShimDMAOp::verify() {
     return failure();
   return success();
 }
-
-TileOp ShimDMAOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
-}
-
-int ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
-
-int ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult PacketRulesOp::verify() {
   if (Region &body = getRules(); body.empty())
@@ -1494,12 +1474,6 @@ LogicalResult CoreOp::verify() {
   return success();
 }
 
-int CoreOp::colIndex() { return getTileOp().colIndex(); }
-
-int CoreOp::rowIndex() { return getTileOp().rowIndex(); }
-
-TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
-
 bool CoreOp::isEmpty() {
   Region &body = getBody();
   // Return iff. core body contains exactly one block with exactly one AIE.EndOp
@@ -1516,8 +1490,6 @@ int64_t BufferOp::getAllocationSize() {
   DataLayout dataLayout = DataLayout::closest(getOperation());
   return type.getNumElements() * dataLayout.getTypeSize(type.getElementType());
 }
-
-TileOp BufferOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
 LogicalResult BufferOp::verify() {
   if (UsesAreAccessible::verifyTrait(*this).failed())
@@ -1601,12 +1573,6 @@ LogicalResult MemOp::verify() {
   }
   return success();
 }
-
-TileOp MemOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
-
-int MemOp::colIndex() { return getTileOp().colIndex(); }
-
-int MemOp::rowIndex() { return getTileOp().rowIndex(); }
 
 //===----------------------------------------------------------------------===//
 // MemTileDMAOp
@@ -2032,14 +1998,6 @@ LogicalResult DMABDOp::verify() {
   return success();
 }
 
-TileOp MemTileDMAOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
-}
-
-int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
-
-int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
-
 //===----------------------------------------------------------------------===//
 // DMAStartOp
 //===----------------------------------------------------------------------===//
@@ -2247,14 +2205,6 @@ LogicalResult SwitchboxOp::verify() {
   return success();
 }
 
-TileOp SwitchboxOp::getTileOp() {
-  return cast<TileOp>(getTile().getDefiningOp());
-}
-
-int SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
-
-int SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
-
 template <typename... ParentOpTypes>
 struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
@@ -2267,12 +2217,6 @@ struct HasSomeParent {
     return failure();
   }
 };
-
-TileOp LockOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
-
-int LockOp::colIndex() { return getTileOp().colIndex(); }
-
-int LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult LockOp::verify() {
   if (auto result = UsesAreAccessible::verifyTrait(*this); result.failed())

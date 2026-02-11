@@ -209,9 +209,6 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   let extraClassDeclaration = [{
     size_t getNumSourceConnections(WireBundle bundle);
     size_t getNumDestConnections(WireBundle bundle);
-    int colIndex();
-    int rowIndex();
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
@@ -271,11 +268,8 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
     size_t getNumSourceConnections(WireBundle bundle);
     size_t getNumDestConnections(WireBundle bundle);
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames(setNameFn);
@@ -319,9 +313,6 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
@@ -384,11 +375,8 @@ def AIE_CoreOp: AIE_Op<"core", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
@@ -1135,9 +1123,6 @@ def AIE_MemOp: AIE_Op<"mem", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
@@ -1182,9 +1167,6 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);
@@ -1272,9 +1254,6 @@ def AIE_LockOp: AIE_Op<"lock", [
       return getLockID().value();
     }
 
-    int colIndex();
-    int rowIndex();
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       if (hasName())
@@ -1405,7 +1384,6 @@ def AIE_BufferOp: AIE_Op<"buffer", [
 
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       if (hasName())
@@ -1943,7 +1921,6 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    TileOp getTileOp();
     ObjectFifoCreateOp getObjectFifo();
   }];
 }
