@@ -3920,43 +3920,47 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return elWidth * laneSize != 512 && elWidth * laneSize != 256;
   });
 
-  target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
-    if (auto srcType = dyn_cast<VectorType>(divfOp.getLhs().getType());
-        !srcType) {
-      Type scalarType = divfOp.getLhs().getType();
-      if (!divfOp->hasOneUse() || !isa<FloatType>(scalarType))
-        return true;
-      if (!isNarrowingOp(*divfOp->getUsers().begin()))
-        return true;
+  // CPP backend: Mark 1/x pattern as illegal for conversion to inv() via LUT
+  // LLVMIR backend: Keep scalar divf legal (handled by downstream passes)
+  if (backend == TargetBackend::CPP) {
+    target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
+      if (auto srcType = dyn_cast<VectorType>(divfOp.getLhs().getType());
+          !srcType) {
+        Type scalarType = divfOp.getLhs().getType();
+        if (!divfOp->hasOneUse() || !isa<FloatType>(scalarType))
+          return true;
+        if (!isNarrowingOp(*divfOp->getUsers().begin()))
+          return true;
 
-      auto fType = cast<FloatType>(scalarType);
-      if (fType.getWidth() != 32)
-        return true;
+        auto fType = cast<FloatType>(scalarType);
+        if (fType.getWidth() != 32)
+          return true;
 
-      auto constOp =
-          dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
-      if (!constOp ||
-          cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
-              1.0f)
-        return true;
-    } else {
-      Type scalarType = srcType.getElementType();
-      if (!isa<FloatType>(scalarType))
-        return true;
+        auto constOp =
+            dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
+        if (!constOp ||
+            cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
+                1.0f)
+          return true;
+      } else {
+        Type scalarType = srcType.getElementType();
+        if (!isa<FloatType>(scalarType))
+          return true;
 
-      unsigned laneSize = getVectorLaneSize(srcType);
-      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+        unsigned laneSize = getVectorLaneSize(srcType);
+        unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-      if (elWidth != 16 || (laneSize != 16 && laneSize != 32))
-        return true;
+        if (elWidth != 16 || (laneSize != 16 && laneSize != 32))
+          return true;
 
-      arith::NegFOp negOp = nullptr;
-      if (!hasSigmoidComputationChain(divfOp, negOp))
-        return true;
-    }
+        arith::NegFOp negOp = nullptr;
+        if (!hasSigmoidComputationChain(divfOp, negOp))
+          return true;
+      }
 
-    return false;
-  });
+      return false;
+    });
+  }
 
   target.addDynamicallyLegalOp<math::CeilOp>([](math::CeilOp ceilOp) {
     auto srcType = dyn_cast<VectorType>(ceilOp.getOperand().getType());

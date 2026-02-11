@@ -4525,18 +4525,18 @@ class FoldAIECastOps : public mlir::ConvertOpToLLVMPattern<aievec::CastOp> {
     // For f32 vectors (accfloat), use vbroadcast.zero.acc1024
     if (srcElemType.isF32() && lanes == 16) {
       // Call vbroadcast.zero.acc1024 to get vector<16xi64>
-      auto zeroAcc1024 =
-          rewriter.create<xllvm::VectorBroadcastZeroAcc1024IntrOp>(
-              loc, VectorType::get({16}, rewriter.getI64Type()));
+      auto zeroAcc1024 = xllvm::VectorBroadcastZeroAcc1024IntrOp::create(
+          rewriter, loc, VectorType::get({16}, rewriter.getI64Type()));
 
       // Extract lower 8 elements to get vector<8xi64> (512-bit accumulator)
       SmallVector<int64_t> extractMask = {0, 1, 2, 3, 4, 5, 6, 7};
-      auto zeroAcc512 = rewriter.create<vector::ShuffleOp>(
-          loc, zeroAcc1024, zeroAcc1024, extractMask);
+      auto zeroAcc512 = vector::ShuffleOp::create(rewriter, loc, zeroAcc1024,
+                                                  zeroAcc1024, extractMask);
 
       // Bitcast back to vector<16xf32> to match the cast result type
-      auto result = rewriter.create<LLVM::BitcastOp>(
-          loc, VectorType::get({16}, rewriter.getF32Type()), zeroAcc512);
+      auto result = LLVM::BitcastOp::create(
+          rewriter, loc, VectorType::get({16}, rewriter.getF32Type()),
+          zeroAcc512);
 
       rewriter.replaceOp(castOp, result);
       return success();
@@ -4797,11 +4797,15 @@ public:
 
 // Convert arith.divf for vector<N x f32> to unrolled scalar divisions
 // Uses a noinline helper function call as a barrier to prevent LLVM
-// re-vectorization Scalar f32 divisions are handled by downstream passes
-class FdivOpAIE2pConversion
-    : public mlir::ConvertOpToLLVMPattern<arith::DivFOp> {
+// re-vectorization. Scalar f32 divisions are handled by downstream passes.
+class FdivOpConversion : public mlir::ConvertOpToLLVMPattern<arith::DivFOp> {
 public:
   using ConvertOpToLLVMPattern<arith::DivFOp>::ConvertOpToLLVMPattern;
+
+  FdivOpConversion(const LLVMTypeConverter &typeConverter, StringRef device)
+      : ConvertOpToLLVMPattern(typeConverter), deviceName(device.str()) {}
+
+  std::string deviceName;
 
   LogicalResult
   matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
@@ -4825,7 +4829,7 @@ public:
     auto f32Ty = rewriter.getF32Type();
 
     auto helperFunc = getOrCreateScalarHelperFunc(
-        module, rewriter, "fdiv", "aie2p",
+        module, rewriter, "fdiv", deviceName,
         /*argTypes=*/{f32Ty, f32Ty},
         /*resultType=*/f32Ty,
         /*bodyBuilder=*/[](OpBuilder &builder, Location loc, ValueRange args) {
@@ -4896,6 +4900,7 @@ void populateAIEVecToLLVMAIE2ConversionPatterns(
   patterns.add<ExtractElemOpConversion>(converter);
   patterns.add<ConcatOpConversion>(converter);
   patterns.add<FoldAIECastOps>(converter);
+  patterns.add<FdivOpConversion>(converter, "aie2");
 }
 
 // AIE2p version of ExtractElemOp conversion using LLVM extractelement
@@ -4996,7 +5001,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<InvOpAIE2pConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
   patterns.add<RsqrtOpAIE2pConversion>(converter);
-  patterns.add<FdivOpAIE2pConversion>(converter);
+  patterns.add<FdivOpConversion>(converter, "aie2p");
   patterns.add<FoldAIECastOpsAIE2p>(converter);
 }
 
@@ -5011,10 +5016,8 @@ void populateAIEVecToLLVMConversionPatterns(
                                                aie2Fp32EmulationOption);
 }
 
-// Configure AIE2p-specific legalization rules
-static void
-configureAIEVecToLLVMAIE2pLegalizations(LLVMConversionTarget &target) {
-  // AIE2p-specific legalization for vector f32 divf
+// Configure legalization rules shared by AIE2 and AIE2p
+static void configureAIEVecToLLVMLegalizations(LLVMConversionTarget &target) {
   // Vector f32 divf is illegal (needs unrolling to scalar divf)
   // Scalar f32 divf is legal (handled by downstream passes)
   target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divOp) {
@@ -5048,10 +5051,8 @@ struct ConvertAIEVecToLLVMPass
     target.addLegalDialect<arith::ArithDialect, vector::VectorDialect,
                            xilinx::xllvm::XLLVMDialect, ub::UBDialect>();
 
-    // Configure AIE2p-specific legalizations
-    if (aieTarget == "aie2p") {
-      configureAIEVecToLLVMAIE2pLegalizations(target);
-    }
+    // Configure legalizations for AIE2/AIE2p
+    configureAIEVecToLLVMLegalizations(target);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
