@@ -481,12 +481,11 @@ def install_plan(args: argparse.Namespace, repo_root: Path, *, update_mode: bool
 # --------------------------------------------------------------------------------------
 
 
-# If anything reports like an NPU, even if unknown type, accept it as an NPU.
-NPU_REGEX = re.compile(r"(RyzenAI-npu[(?![2-3]\b)\d+]|\bNPU\b)", re.IGNORECASE)
+NPU_REGEX = re.compile(r"NPU Phoenix|RyzenAI-npu[1]", re.IGNORECASE)
 # Only the following devices are NPU2
-NPU2_REGEX = re.compile(r"NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon|RyzenAI-npu[4567]", re.IGNORECASE)
+NPU2_REGEX = re.compile(r"NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]", re.IGNORECASE)
 # Reserved for future use.
-NPU3_REGEX = re.compile(r"NPU Medusa|RyzenAI-npu[8]", re.IGNORECASE)
+NPU3_REGEX = re.compile(r"NPU Medusa|RyzenAI-npu[3]", re.IGNORECASE)
 
 
 # Windows and WSL must use a driver-provided xrt-smi.exe in System32\AMD.
@@ -525,10 +524,9 @@ def detect_npu2_flag() -> tuple[Optional[bool], str]:
             out = capture_text(cmd).replace("\r", "")
         except Exception:
             continue
-        if NPU_REGEX.search(out):
-            if NPU2_REGEX.search(out):
-                return True, f"Detected NPU2 device via: {_format_cmd(cmd)}"
-            return False, f"Detected NPU device via: {_format_cmd(cmd)}"
+        if NPU2_REGEX.search(out):
+            return True, f"Detected NPU2 device via: {_format_cmd(cmd)}"
+        return False, f"Detected NPU device via: {_format_cmd(cmd)}"
     return None, "WARNING: xrt-smi not available (or no NPU detected)"
 
 
