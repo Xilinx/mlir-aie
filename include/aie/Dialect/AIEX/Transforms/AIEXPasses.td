@@ -148,11 +148,11 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 }
 
 def AIENpuToCert : Pass<"aie-npu-to-cert", "AIE::DeviceOp"> {
-  let summary = "transform aie.npu operations to aie.cert operations";
+  let summary = "transform aiex.npu operations to aiex.cert operations";
   let description = [{
-    This pass transforms low level aie.npu operations contained in
-    aiex.runtime_sequence operations into aie.cert operations enclosed in
-    aie.cert.job operations. The write32, maskwrite32, blockwrite and sync
+    This pass transforms low level aiex.npu operations contained in
+    aie.runtime_sequence operations into aiex.cert operations enclosed in
+    aiex.cert.job operations. The write32, maskwrite32, blockwrite and sync
     operations are supported.
   }];
 
