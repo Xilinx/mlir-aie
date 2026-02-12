@@ -43,6 +43,9 @@ mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp,
                                             std::vector<uint32_t> &,
                                             llvm::StringRef deviceName = "",
                                             llvm::StringRef sequenceName = "");
+mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
+                                        llvm::raw_ostream &output);
+mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp, std::string &assembly);
 mlir::LogicalResult
 AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
                                     llvm::StringRef deviceName = "",
