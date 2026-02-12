@@ -118,6 +118,386 @@ Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
 
 
 
+### `aiex.cert.apply_offset_57` (::xilinx::AIEX::CertApplyOffset57Op)
+
+_Apply offset 57 operation_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.apply_offset_57` `(` $symbol `,` $num_entries `,` $offset `)` attr-dict
+```
+
+This operation adds a 57-bit offset to Shim DMA BD base address fields.
+The offset is loaded from the 32-bit registers arg[offset] and arg[offset+1]
+from the current argument list.
+'symbol' - A symbol pointing to the data to be patched
+'num_entries' - the number of Shim DMA BD entries to patch
+'offset' - index into the argument list to the start of offset data
+
+Example:
+```
+  memref.global "private" constant @bd_table : memref<9xi32> = dense<[0, -2147483648, 256, 117440512, 4351, 1, 1, 1, 1024]>
+  ...
+  cert.apply_offset_57(@bd_table, 1, 2)
+```
+
+Traits: `HasParent<CertJobOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>symbol</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>num_entries</code></td><td>::mlir::IntegerAttr</td><td>16-bit signless integer attribute</td></tr>
+<tr><td><code>offset</code></td><td>::mlir::IntegerAttr</td><td>16-bit signless integer attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.attach_to_group` (::xilinx::AIEX::CertAttachToGroupOp)
+
+_Attach to a group operation_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.attach_to_group` `(` $group_id `)` $body attr-dict
+```
+
+This operation attaches enclosed jobs to a specified group identified by an
+integer ID.
+
+Example:
+```
+  cert.attach_to_group(1) {
+    ...
+    cert.job(2) {
+      ...
+    }
+    cert.job(3) {
+      ...
+    }
+    ...
+  }
+```
+
+Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>group_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.job` (::xilinx::AIEX::CertJobOp)
+
+_Start a job with a given job ID_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.job` `(` $job_id `)` $body attr-dict
+```
+
+This operation starts a job identified by the given job ID. The job ID is an
+integer that uniquely identifies the job to be started.
+
+Example:
+```
+  cert.job(42) {
+    ...
+  }
+```
+
+Traits: `HasParent<AIE::DeviceOp, CertAttachToGroupOp>`, `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>job_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.local_barrier` (::xilinx::AIEX::CertLocalBarrierOp)
+
+_Local barrier operation_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.local_barrier` `(` $local_barrier_id `,` $num_participants `)` attr-dict
+```
+
+This operation represents a local barrier that synchronizes execution based on a barrier ID and the number of participants.
+
+Example:
+```
+  cert.local_barrier(1, 2)
+```
+
+Traits: `HasParent<CertJobOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>local_barrier_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>num_participants</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.maskwrite32` (::xilinx::AIEX::CertMaskWrite32Op)
+
+_Write a masked 32-bit value to a specified address_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.maskwrite32` `(` $address `,` $mask `,` $value `)` attr-dict
+```
+
+This operation writes a masked 32-bit value to a specified address.
+
+Example:
+```
+  cert.maskwrite32(0x1000, 0xFF, 42)
+```
+
+Traits: `HasParent<CertJobOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>mask</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.nop` (::xilinx::AIEX::CertNopOp)
+
+_No operation (NOP)_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.nop` attr-dict
+```
+
+This operation represents a no-op instruction. It does nothing.
+
+Example:
+```
+  cert.nop
+```
+
+
+
+### `aiex.cert.remote_barrier` (::xilinx::AIEX::CertRemoteBarrierOp)
+
+_Remote barrier operation_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.remote_barrier` `(` $remote_barrier_id `,` $party_mask `)` attr-dict
+```
+
+This operation represents a remote barrier that synchronizes execution
+based on a barrier ID `remote_barrier_id` and `party_mask`, a bit map of
+participant uC IDs.
+
+Example:
+```
+  cert.remote_barrier(1, 0x3)
+```
+
+Traits: `HasParent<CertJobOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>remote_barrier_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>party_mask</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.uc_dma_bd` (::xilinx::AIEX::CertUcDmaBdOp)
+
+_A DMA Buffer Descriptor for uC-DMA_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.uc_dma_bd` $remote_address `,` $local_address `,` $length `,` $next_bd  attr-dict
+```
+
+Defines a uC-DMA buffer descriptor within a chain. The descriptor specifies
+how the uC-DMA should transfer data from a remote address to a local address.
+
+- `remote_address`: Symbol reference to the data to be written
+- `local_address`: Address in the AIE array register that uC-DMA will access
+- `length`: Number of 32-bit words to transfer
+- `next_bd`: Flag indicating if this is the last uC-DMA BD in the chain
+  (true if there are more BDs following, false if this is the last)
+
+Example:
+```mlir
+  cert.uc_dma_chain @dma_chain {
+    aiex.cert.uc_dma_bd @mem01_bd0, 0x20400, 8, true
+    aiex.cert.uc_dma_bd @mem01_bd1, 0x20420, 8, true
+    aiex.cert.uc_dma_bd @mem11_bd0, 0x40400, 8, false
+  }
+```
+
+Traits: `HasParent<CertUcDmaChainOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>remote_address</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+<tr><td><code>local_address</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>length</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>next_bd</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.uc_dma_chain` (::xilinx::AIEX::CertUcDmaChainOp)
+
+_UC DMA Chain operation_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.uc_dma_chain` $sym_name $body attr-dict
+```
+
+This operation defines a chain of uC DMA buffer descriptors. It contains a
+single region where the buffer descriptors can be specified.
+
+Example:
+```
+  cert.uc_dma_chain @dma_chain {
+    aiex.uc_dma_bd 0x600400, 0x20400, 128, true, false, false
+    ...
+  }
+```
+
+Traits: `SingleBlockImplicitTerminator<AIE::EndOp>`, `SingleBlock`
+
+Interfaces: `Symbol`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sym_name</code></td><td>::mlir::StringAttr</td><td>string attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.uc_dma_write_des_sync` (::xilinx::AIEX::CertUcDmaWriteDesSyncOp)
+
+_UC DMA Write Descriptor Sync operation_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.uc_dma_write_des_sync` `(` $symbol `)` attr-dict
+```
+
+This operation enqueues a uC DMA transfer. The symbol operand refers to a
+cert.uc_dma_bd_chain operation.
+
+Example:
+```
+  cert.uc_dma_write_des_sync(@dma_descriptor)
+```
+
+Traits: `HasParent<CertJobOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>symbol</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.wait_tcts` (::xilinx::AIEX::CertWaitTCTSOp)
+
+_Wait for a specified number of TCTs (Task Completion Tokens)_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.wait_tcts` `(` $tile_id `,` $channel_id `,` $target_tcts `)` attr-dict
+```
+
+This operation waits for a specified number of Task Completion Tokens (TCTs)
+for a given shim tile and channel.
+
+Example:
+```
+  cert.wait_tcts(1, 2, 3) // Wait for 3 TCTs on shim column 1, channel 2
+```
+
+Traits: `HasParent<CertJobOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>tile_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>channel_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>target_tcts</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+</table>
+
+
+
+### `aiex.cert.write32` (::xilinx::AIEX::CertWrite32Op)
+
+_Write a 32-bit value to a specified address_
+
+Syntax:
+
+```
+operation ::= `aiex.cert.write32` `(` $address `,` $value `)` attr-dict
+```
+
+This operation writes a 32-bit value to a specified address.
+
+Example:
+```
+  cert.write32(0x1000, 42)
+```
+
+Traits: `HasParent<CertJobOp>`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
+</table>
+
+
+
 ### `aiex.configure` (::xilinx::AIEX::ConfigureOp)
 
 _Set up a configuration (program memories, stream switches, etc.) on the NPU device._
