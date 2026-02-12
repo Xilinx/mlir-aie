@@ -147,6 +147,39 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
   ];
 }
 
+def AIENpuToCert : Pass<"aie-npu-to-cert", "AIE::DeviceOp"> {
+  let summary = "transform aie.npu operations to aie.cert operations";
+  let description = [{
+    This pass transforms low level aie.npu operations contained in
+    aiex.runtime_sequence operations into aie.cert operations enclosed in
+    aie.cert.job operations. The write32, maskwrite32, blockwrite and sync
+    operations are supported.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIENpuToCertPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIECertPages : Pass<"cert-legalize-pages", "AIE::DeviceOp"> {
+  let summary = "Split cert jobs to fit into 8k pages";
+  let description = [{
+    This pass splits cert jobs into smaller jobs that fit into 8k pages.
+    It is used to ensure that the generated code does not exceed the page size
+    limit of the aiebu tools and cert firmware.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIECertPagesPass()";
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEMaterializeBDChains : Pass<"aie-materialize-bd-chains", "AIE::DeviceOp"> {
   let summary = "Concretize aie.bd_chain ops at aiex.start_task use sites";
   let description = [{
