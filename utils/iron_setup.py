@@ -304,45 +304,50 @@ def fixup_llvm_aie_windows(peano_root: Optional[Path]) -> None:
     if not IS_WINDOWS or peano_root is None:
         return
 
-    libdir = peano_root / "lib" / "aie2p-none-unknown-elf"
-    if not libdir.is_dir():
+    libroot = peano_root / "lib"
+    if not libroot.is_dir():
         return
-
-    for src_name, dst_name in (("c.lib", "libc.a"), ("m.lib", "libm.a")):
-        src = libdir / src_name
-        dst = libdir / dst_name
-        if src.exists() and not dst.exists():
-            try:
-                shutil.copy2(src, dst)
-                print(f"[fixup] Created alias: {dst.name} (copy of {src.name})")
-            except Exception as e:
-                print(f"[fixup] WARNING: failed to create {dst} from {src}: {e}")
-
-    crt1 = libdir / "crt1.o"
-    if not crt1.exists():
-        return
+    # llvm-aie installs are organized by target triple under <prefix>/lib.
+    toolchains = [p for p in libroot.iterdir() if p.is_dir() and p.name.endswith("-none-unknown-elf")]
+    if not toolchains:
+        print(f"[fixup] NOTE: no *-none-unknown-elf toolchains found under: {libroot} (skipping llvm-aie patches)")
 
     objcopy = peano_root / "bin" / "llvm-objcopy.exe"
     objcopy_exe = str(objcopy) if objcopy.exists() else (shutil.which("llvm-objcopy") or shutil.which("llvm-objcopy.exe"))
     if not objcopy_exe:
-        print("[fixup] NOTE: llvm-objcopy not found; skipping crt1.o patch.")
-        return
+        print(f"[fixup] NOTE: llvm-objcopy not found; skipping crt1.o patch.")
 
-    bak = crt1.with_suffix(crt1.suffix + ".bak")
-    if not bak.exists():
-        try:
-            shutil.copy2(crt1, bak)
-        except Exception:
-            pass
+    for libdir in toolchains:
+        if not libdir.is_dir():
+            continue
+        for src_name, dst_name in (("c.lib", "libc.a"), ("m.lib", "libm.a")):
+            src = libdir / src_name
+            dst = libdir / dst_name
+            if src.exists() and not dst.exists():
+                try:
+                    shutil.copy2(src, dst)
+                    print(f"[fixup] Created alias in {libdir.name}: {dst.name} (copy of {src.name})")
+                except Exception as e:
+                    print(f"[fixup] WARNING: failed to create {dst} from {src}: {e}")
 
-    proc = subprocess.run(
-        [objcopy_exe, "--remove-section=.deplibs", str(crt1)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    if proc.returncode == 0:
-        print("[fixup] Patched crt1.o: removed '.deplibs' (if present)")
+        crt1 = libdir / "crt1.o"
+        if not crt1.exists() or not objcopy_exe:
+            continue
+        bak = crt1.with_suffix(crt1.suffix + ".bak")
+        if not bak.exists():
+            try:
+                shutil.copy2(crt1, bak)
+            except Exception:
+                pass
+
+        proc = subprocess.run(
+            [objcopy_exe, "--remove-section=.deplibs", str(crt1)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if proc.returncode == 0:
+            print(f"[fixup] Patched {libdir.name}/crt1.o: removed '.deplibs' (if present)")
 
 
 # --------------------------------------------------------------------------------------
@@ -476,9 +481,10 @@ def install_plan(args: argparse.Namespace, repo_root: Path, *, update_mode: bool
 # --------------------------------------------------------------------------------------
 
 
-NPU_REGEX = re.compile(r"NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon|NPU Gorgon Halo|RyzenAI-npu[14567]", re.IGNORECASE,)
-NPU2_REGEX = re.compile(r"NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon|NPU Gorgon Halo|RyzenAI-npu[4567]", re.IGNORECASE)
-NPU3_REGEX = re.compile(r"NPU Medusa|NPU Medusa Halo|RyzenAI-npu[8]", re.IGNORECASE)
+# If we have anything that reports like an NPU, even if unknown type, accept it as at least XDNA.
+NPU_REGEX = re.compile(r"(RyzenAI-npu(?![0-3]\b)\d+|\bNPU\b)", re.IGNORECASE)
+NPU2_REGEX = re.compile(r"NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon|RyzenAI-npu[4567]", re.IGNORECASE)
+NPU3_REGEX = re.compile(r"NPU Medusa|RyzenAI-npu[8]", re.IGNORECASE)
 
 
 # Windows and WSL must use a driver-provided xrt-smi.exe in System32\AMD.
@@ -512,7 +518,7 @@ def xrt_smi_commands() -> list[list[str]]:
     return out
 
 
-# Detect NPU2 (AIE2P) vs legacy AIE device via xrt-smi output.
+# Detect NPU2 (or greater) capability via xrt-smi output.
 def detect_npu2_flag() -> tuple[Optional[bool], str]:
     for cmd in xrt_smi_commands():
         try:
@@ -522,12 +528,12 @@ def detect_npu2_flag() -> tuple[Optional[bool], str]:
 
         # For now, treat newer NPUs as a superset of NPU2.
         if NPU3_REGEX.search(out):
-            return True, f"Detected AIE2PS device via: {_format_cmd(cmd)}"
+            return True, f"Detected NPU2-capable device via: {_format_cmd(cmd)}"
 
         if NPU_REGEX.search(out):
             if NPU2_REGEX.search(out):
-                return True, f"Detected AIE2P device via: {_format_cmd(cmd)}"
-            return False, f"Detected legacy AIE device via: {_format_cmd(cmd)}"
+                return True, f"Detected NPU2 device via: {_format_cmd(cmd)}"
+            return False, f"Detected NPU device via: {_format_cmd(cmd)}"
 
     return None, "WARNING: xrt-smi not available (or no NPU detected)"
 
