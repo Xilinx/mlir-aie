@@ -481,9 +481,11 @@ def install_plan(args: argparse.Namespace, repo_root: Path, *, update_mode: bool
 # --------------------------------------------------------------------------------------
 
 
-# If we have anything that reports like an NPU, even if unknown type, accept it as at least XDNA.
-NPU_REGEX = re.compile(r"(RyzenAI-npu(?![0-3]\b)\d+|\bNPU\b)", re.IGNORECASE)
+# If anything reports like an NPU, even if unknown type, accept it as an NPU.
+NPU_REGEX = re.compile(r"(RyzenAI-npu[(?![2-3]\b)\d+]|\bNPU\b)", re.IGNORECASE)
+# Only the following devices are NPU2
 NPU2_REGEX = re.compile(r"NPU Strix|NPU Strix Halo|NPU Krackan|NPU Gorgon|RyzenAI-npu[4567]", re.IGNORECASE)
+# Reserved for future use.
 NPU3_REGEX = re.compile(r"NPU Medusa|RyzenAI-npu[8]", re.IGNORECASE)
 
 
@@ -514,27 +516,19 @@ def xrt_smi_commands() -> list[list[str]]:
 
     if (sys32 := system32_amd_xrt_smi_dir()):
         _add([str(sys32 / "xrt-smi.exe"), "examine"])
-
     return out
 
 
-# Detect NPU2 (or greater) capability via xrt-smi output.
 def detect_npu2_flag() -> tuple[Optional[bool], str]:
     for cmd in xrt_smi_commands():
         try:
             out = capture_text(cmd).replace("\r", "")
         except Exception:
             continue
-
-        # For now, we detect but do not support NPU3.
-        if NPU3_REGEX.search(out):
-            return False, f"Detected unsupported device via: {_format_cmd(cmd)}"
-
         if NPU_REGEX.search(out):
             if NPU2_REGEX.search(out):
                 return True, f"Detected NPU2 device via: {_format_cmd(cmd)}"
             return False, f"Detected NPU device via: {_format_cmd(cmd)}"
-
     return None, "WARNING: xrt-smi not available (or no NPU detected)"
 
 

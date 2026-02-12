@@ -346,7 +346,7 @@ else ()
         nanobind
     )
     if(NOT WIN32)
-      target_link_libraries(AIEPythonExtensions.XRT PRIVATE uuid)
+      target_link_libraries(AIEPythonExtensions.XRT INTERFACE uuid)
     endif()
     target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
     target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})

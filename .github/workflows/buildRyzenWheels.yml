@@ -262,10 +262,12 @@ jobs:
             $vcpkgRoot = Split-Path -Parent $vcpkg
           }
 
+          Remove-Item Env:VCPKG_ROOT -ErrorAction SilentlyContinue
+
           $env:VCPKG_BINARY_SOURCES = "clear;x-gha,readwrite"
           & $vcpkg install openssl:x64-windows
 
-          "OPENSSL_ROOT_DIR=$($vcpkgRoot -replace '\','/')/installed/x64-windows" |
+          "OPENSSL_ROOT_DIR=$($vcpkgRoot.Replace('\','/'))/installed/x64-windows" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build mlir-aie wheel
