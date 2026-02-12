@@ -526,9 +526,9 @@ def detect_npu2_flag() -> tuple[Optional[bool], str]:
         except Exception:
             continue
 
-        # For now, treat newer NPUs as a superset of NPU2.
+        # For now, we detect but do not support NPU3.
         if NPU3_REGEX.search(out):
-            return True, f"Detected NPU2-capable device via: {_format_cmd(cmd)}"
+            return False, f"Detected unsupported device via: {_format_cmd(cmd)}"
 
         if NPU_REGEX.search(out):
             if NPU2_REGEX.search(out):
