@@ -80,14 +80,13 @@ def AIE_DeviceOp: AIE_Op<"device", [
 }
 
 def AIE_TileOp: AIE_Op<"tile", [
-    Pure,
     FlowEndPoint,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index:$result)> {
   let arguments = (
-    ins ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$col,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$row,
+    ins ConfinedAttr<AIEI32Attr, [IntMinValue<-1>]>:$col,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<-1>]>:$row,
         OptionalAttr<StrAttr>:$allocation_scheme
   );
 
@@ -137,12 +136,10 @@ def AIE_TileOp: AIE_Op<"tile", [
     static AIE::TileOp getOrCreate(mlir::OpBuilder builder, AIE::DeviceOp device, int col, int row);
   }];
 
-  let assemblyFormat = [{
-    `(` $col `,` $row `)` attr-dict
-  }];
+  let hasCustomAssemblyFormat = 1;
+  let hasCanonicalizer = 1;
 
   let hasVerifier = 1;
-
   let extraClassDefinition = [{
     void $cppClass::getAsmResultNames(
         function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
@@ -157,9 +154,9 @@ def AIE_TileOp: AIE_Op<"tile", [
          tileName = "shim_pl_" + tileName;
        else if (isShimTile())
          tileName = "shim_" + tileName;
-       setNameFn(getResult(), tileName + "_" +
-                                  std::to_string(getCol()) + "_" +
-                                  std::to_string(getRow()));
+       std::string col_str = getCol() >= 0 ? std::to_string(getCol()) : "c"; 
+       std::string row_str = getRow() >= 0 ? std::to_string(getRow()) : "r"; 
+       setNameFn(getResult(), tileName + "_" + col_str + "_" + row_str);
     }
   }];
 
@@ -1282,9 +1279,12 @@ def AIE_LockOp: AIE_Op<"lock", [
       else {
         std::string nameWithoutDialect =
             getOperationName().str().substr(getOperationName().find('.') + 1);
+        std::string col_str =
+          getTileID().col >= 0 ? std::to_string(getTileID().col) : "c";
+        std::string row_str =
+          getTileID().row >= 0 ? std::to_string(getTileID().row) : "r";
         setNameFn(getResult(), nameWithoutDialect + "_" +
-              std::to_string(getTileID().col) + "_" +
-              std::to_string(getTileID().row));
+              std::to_string(getTileID().col) + "_" + col_str + "_" + row_str);
       }
     }
   }];
