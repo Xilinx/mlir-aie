@@ -167,7 +167,9 @@ def run_checked(
     return str(proc.stdout) if capture else None
 
 
-def capture_text(cmd: list[str], *, cwd: Optional[Path] = None, env: Optional[dict[str, str]] = None) -> str:
+def capture_text(
+    cmd: list[str], *, cwd: Optional[Path] = None, env: Optional[dict[str, str]] = None
+) -> str:
     return run_checked(cmd, cwd=cwd, env=env, capture=True) or ""
 
 
@@ -184,7 +186,11 @@ class VenvInfo:
 
 def venv_python_path(venv_dir: Path) -> Path:
     # Python layout differs between POSIX and Windows.
-    return (venv_dir / "Scripts" / "python.exe") if IS_WINDOWS else (venv_dir / "bin" / "python")
+    return (
+        (venv_dir / "Scripts" / "python.exe")
+        if IS_WINDOWS
+        else (venv_dir / "bin" / "python")
+    )
 
 
 def ensure_venv(venv_dir: Path, *, python_exe: str) -> VenvInfo:
@@ -200,7 +206,9 @@ def pip_install(venv: VenvInfo, args: list[str]) -> None:
     run_checked([str(venv.python), "-m", "pip"] + args)
 
 
-def pip_install_requirements(venv: VenvInfo, requirements: Path, *, upgrade: bool, force_reinstall: bool) -> None:
+def pip_install_requirements(
+    venv: VenvInfo, requirements: Path, *, upgrade: bool, force_reinstall: bool
+) -> None:
     cmd = ["install"]
     if upgrade:
         cmd.append("--upgrade")
@@ -247,12 +255,18 @@ def pip_install_prefix(
 ) -> Optional[Path]:
     # Resolve a wheel install prefix from site-packages using `pip show`.
     try:
-        out = capture_text([str(venv.python), "-m", "pip", "show", dist_name]).replace("\r", "")
+        out = capture_text([str(venv.python), "-m", "pip", "show", dist_name]).replace(
+            "\r", ""
+        )
     except CommandError:
         return None
 
     location = next(
-        (line.split(":", 1)[1].strip() for line in out.splitlines() if line.lower().startswith("location:")),
+        (
+            line.split(":", 1)[1].strip()
+            for line in out.splitlines()
+            if line.lower().startswith("location:")
+        ),
         "",
     )
     if not location:
@@ -261,7 +275,9 @@ def pip_install_prefix(
     base = Path(location).resolve()
 
     def _ok(prefix: Path) -> bool:
-        return prefix.is_dir() and ((require_subdir is None) or (prefix / require_subdir).is_dir())
+        return prefix.is_dir() and (
+            (require_subdir is None) or (prefix / require_subdir).is_dir()
+        )
 
     for cand in candidates:
         cand = str(cand).strip()
@@ -280,7 +296,11 @@ def ensure_mlir_aie_pth(venv: VenvInfo, mlir_aie_install_dir: Path) -> None:
         return
     try:
         site_pkgs = capture_text(
-            [str(venv.python), "-c", "import sysconfig; p=sysconfig.get_paths().get('purelib') or sysconfig.get_paths().get('platlib') or ''; print(p)"]
+            [
+                str(venv.python),
+                "-c",
+                "import sysconfig; p=sysconfig.get_paths().get('purelib') or sysconfig.get_paths().get('platlib') or ''; print(p)",
+            ]
         ).strip()
         if not site_pkgs:
             return
@@ -308,12 +328,22 @@ def fixup_llvm_aie_windows(peano_root: Optional[Path]) -> None:
     if not libroot.is_dir():
         return
     # llvm-aie installs are organized by target triple under <prefix>/lib.
-    toolchains = [p for p in libroot.iterdir() if p.is_dir() and p.name.endswith("-none-unknown-elf")]
+    toolchains = [
+        p
+        for p in libroot.iterdir()
+        if p.is_dir() and p.name.endswith("-none-unknown-elf")
+    ]
     if not toolchains:
-        print(f"[fixup] NOTE: no *-none-unknown-elf toolchains found under: {libroot} (skipping llvm-aie patches)")
+        print(
+            f"[fixup] NOTE: no *-none-unknown-elf toolchains found under: {libroot} (skipping llvm-aie patches)"
+        )
 
     objcopy = peano_root / "bin" / "llvm-objcopy.exe"
-    objcopy_exe = str(objcopy) if objcopy.exists() else (shutil.which("llvm-objcopy") or shutil.which("llvm-objcopy.exe"))
+    objcopy_exe = (
+        str(objcopy)
+        if objcopy.exists()
+        else (shutil.which("llvm-objcopy") or shutil.which("llvm-objcopy.exe"))
+    )
     if not objcopy_exe:
         print(f"[fixup] NOTE: llvm-objcopy not found; skipping crt1.o patch.")
 
@@ -326,7 +356,9 @@ def fixup_llvm_aie_windows(peano_root: Optional[Path]) -> None:
             if src.exists() and not dst.exists():
                 try:
                     shutil.copy2(src, dst)
-                    print(f"[fixup] Created alias in {libdir.name}: {dst.name} (copy of {src.name})")
+                    print(
+                        f"[fixup] Created alias in {libdir.name}: {dst.name} (copy of {src.name})"
+                    )
                 except Exception as e:
                     print(f"[fixup] WARNING: failed to create {dst} from {src}: {e}")
 
@@ -347,7 +379,9 @@ def fixup_llvm_aie_windows(peano_root: Optional[Path]) -> None:
             check=False,
         )
         if proc.returncode == 0:
-            print(f"[fixup] Patched {libdir.name}/crt1.o: removed '.deplibs' (if present)")
+            print(
+                f"[fixup] Patched {libdir.name}/crt1.o: removed '.deplibs' (if present)"
+            )
 
 
 # --------------------------------------------------------------------------------------
@@ -369,7 +403,9 @@ def _apply_all_flag(args: argparse.Namespace, argv: list[str]) -> None:
 def update_submodules(repo_root: Path) -> None:
     if (repo_root / ".git").exists() and shutil.which("git"):
         print("[setup] Updating git submodules...")
-        run_checked(["git", "submodule", "update", "--init", "--recursive"], cwd=repo_root)
+        run_checked(
+            ["git", "submodule", "update", "--init", "--recursive"], cwd=repo_root
+        )
     else:
         print("[setup] NOTE: Skipping submodules (not a git checkout)")
 
@@ -382,17 +418,27 @@ def print_next_steps(repo_root: Path, *, venv_name: str) -> None:
         script_rel = script_path
     script_str = str(script_rel)
 
-    print("\n[setup] Setup complete. Set environment variables for your current shell session with:")
-    print(f"  # PowerShell:  python {script_str} env --venv {venv_name} --shell pwsh | iex")
-    print(fr'  # cmd.exe   :  python {script_str} env --venv {venv_name} --shell cmd > "%TEMP%\iron_env.bat" && call "%TEMP%\iron_env.bat"')
-    print(f'  # POSIX sh  :  eval "$(python3 {script_str} env --venv {venv_name} --shell sh)"')
+    print(
+        "\n[setup] Setup complete. Set environment variables for your current shell session with:"
+    )
+    print(
+        f"  # PowerShell:  python {script_str} env --venv {venv_name} --shell pwsh | iex"
+    )
+    print(
+        rf'  # cmd.exe   :  python {script_str} env --venv {venv_name} --shell cmd > "%TEMP%\iron_env.bat" && call "%TEMP%\iron_env.bat"'
+    )
+    print(
+        f'  # POSIX sh  :  eval "$(python3 {script_str} env --venv {venv_name} --shell sh)"'
+    )
     print("  #              source /opt/xilinx/xrt/setup.sh")
 
     print("\n[setup] To update later:")
     print(f"  python {script_str} update")
 
 
-def install_plan(args: argparse.Namespace, repo_root: Path, *, update_mode: bool) -> None:
+def install_plan(
+    args: argparse.Namespace, repo_root: Path, *, update_mode: bool
+) -> None:
     _apply_all_flag(args, sys.argv[1:])
 
     venv_dir = (repo_root / args.venv).resolve()
@@ -404,18 +450,29 @@ def install_plan(args: argparse.Namespace, repo_root: Path, *, update_mode: bool
     print(f"[setup] mode      : {'update' if update_mode else 'install'}")
 
     force_reinstall = bool(getattr(args, "force_reinstall", False))
-    pip_reqs = lambda req: pip_install_requirements(venv, req, upgrade=update_mode, force_reinstall=force_reinstall)
-    pip_pkg = lambda pkg, **kw: pip_install_package(venv, pkg, upgrade=update_mode, force_reinstall=force_reinstall, **kw)
+    pip_reqs = lambda req: pip_install_requirements(
+        venv, req, upgrade=update_mode, force_reinstall=force_reinstall
+    )
+    pip_pkg = lambda pkg, **kw: pip_install_package(
+        venv, pkg, upgrade=update_mode, force_reinstall=force_reinstall, **kw
+    )
 
     # Base tooling.
-    pip_install(venv, ["install", "--upgrade", "pip", "setuptools", "wheel", "packaging"])
+    pip_install(
+        venv, ["install", "--upgrade", "pip", "setuptools", "wheel", "packaging"]
+    )
 
     # Repo requirements + optional extras.
     req_specs = [
         ("repo_reqs", "python/requirements.txt", None, None),
         ("dev", "python/requirements_dev.txt", ["pre_commit", "install"], repo_root),
         ("ml", "python/requirements_ml.txt", None, None),
-        ("notebook", "python/requirements_notebook.txt", ["ipykernel", "install", "--user", "--name", args.venv], None),
+        (
+            "notebook",
+            "python/requirements_notebook.txt",
+            ["ipykernel", "install", "--user", "--name", args.venv],
+            None,
+        ),
     ]
 
     for flag, req_rel, post_mod_args, post_cwd in req_specs:
@@ -438,13 +495,23 @@ def install_plan(args: argparse.Namespace, repo_root: Path, *, update_mode: bool
     # Modes: auto | skip | latest-wheels-3 | wheelhouse[:<path>]
     # Auto mode exists until wheels are available for Windows.
     mlir_raw = str(getattr(args, "mlir_aie", "auto") or "auto").strip().lower()
-    mlir_mode, allow_missing_mlir_aie = (("latest-wheels-3", IS_WINDOWS) if mlir_raw == "auto" else (mlir_raw, False))
+    mlir_mode, allow_missing_mlir_aie = (
+        ("latest-wheels-3", IS_WINDOWS) if mlir_raw == "auto" else (mlir_raw, False)
+    )
     if mlir_mode != "skip":
         try:
             if mlir_mode == "wheelhouse" or mlir_mode.startswith("wheelhouse:"):
-                wheelhouse_dir = Path(mlir_mode.partition(":")[2] or (repo_root / "utils" / "mlir_aie_wheels" / "wheelhouse")).expanduser()
-                if not wheelhouse_dir.exists(): raise RuntimeError(f"Wheelhouse directory not found: {wheelhouse_dir}")
-                print(f"[setup] Installing mlir_aie + aie_python_bindings from wheelhouse: {wheelhouse_dir}")
+                wheelhouse_dir = Path(
+                    mlir_mode.partition(":")[2]
+                    or (repo_root / "utils" / "mlir_aie_wheels" / "wheelhouse")
+                ).expanduser()
+                if not wheelhouse_dir.exists():
+                    raise RuntimeError(
+                        f"Wheelhouse directory not found: {wheelhouse_dir}"
+                    )
+                print(
+                    f"[setup] Installing mlir_aie + aie_python_bindings from wheelhouse: {wheelhouse_dir}"
+                )
                 for pkg in ("mlir_aie", "aie_python_bindings"):
                     pip_pkg(pkg, wheelhouse=wheelhouse_dir, no_deps=True, no_index=True)
             else:
@@ -453,21 +520,29 @@ def install_plan(args: argparse.Namespace, repo_root: Path, *, update_mode: bool
                 pip_pkg("mlir_aie", find_links=mlir_find_links)
         except CommandError:
             if allow_missing_mlir_aie:
-                print("[setup] NOTE: mlir_aie wheels not available for this platform/Python (continuing).")
+                print(
+                    "[setup] NOTE: mlir_aie wheels not available for this platform/Python (continuing)."
+                )
             else:
                 raise
-        if (mlir_prefix := pip_install_prefix(venv, "mlir_aie", ["mlir_aie"])):
+        if mlir_prefix := pip_install_prefix(venv, "mlir_aie", ["mlir_aie"]):
             ensure_mlir_aie_pth(venv, mlir_prefix)
 
     # llvm-aie wheels (Peano)
     llvm_choice = str(getattr(args, "llvm_aie", "nightly") or "nightly").strip()
-    llvm_find_links = "https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly" if llvm_choice == "nightly" else llvm_choice
+    llvm_find_links = (
+        "https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly"
+        if llvm_choice == "nightly"
+        else llvm_choice
+    )
 
     print(f"[setup] Installing llvm-aie from {llvm_find_links}")
     pip_pkg("llvm-aie", find_links=llvm_find_links)
 
     if IS_WINDOWS:
-        peano_prefix = pip_install_prefix(venv, "llvm-aie", ["llvm-aie", "llvm_aie"], require_subdir="bin")
+        peano_prefix = pip_install_prefix(
+            venv, "llvm-aie", ["llvm-aie", "llvm_aie"], require_subdir="bin"
+        )
         fixup_llvm_aie_windows(peano_prefix)
 
     if getattr(args, "submodules", False):
@@ -483,7 +558,9 @@ def install_plan(args: argparse.Namespace, repo_root: Path, *, update_mode: bool
 
 NPU_REGEX = re.compile(r"NPU Phoenix|RyzenAI-npu[1]", re.IGNORECASE)
 # Only the following devices are NPU2
-NPU2_REGEX = re.compile(r"NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]", re.IGNORECASE)
+NPU2_REGEX = re.compile(
+    r"NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]", re.IGNORECASE
+)
 # Reserved for future use.
 NPU3_REGEX = re.compile(r"NPU Medusa|RyzenAI-npu[3]", re.IGNORECASE)
 
@@ -513,7 +590,7 @@ def xrt_smi_commands() -> list[list[str]]:
         if shutil.which(exe):
             _add([exe, "examine"])
 
-    if (sys32 := system32_amd_xrt_smi_dir()):
+    if sys32 := system32_amd_xrt_smi_dir():
         _add([str(sys32 / "xrt-smi.exe"), "examine"])
     return out
 
@@ -564,16 +641,22 @@ def env_plan(args: argparse.Namespace, repo_root: Path) -> None:
         out_lines.append(f"{comment} Activate venv: {venv_dir}")
         if shell == "pwsh":
             activate = venv_dir / "Scripts" / "Activate.ps1"
-            out_lines.append(f"if (Test-Path {ps_quote(str(activate))}) {{ . {ps_quote(str(activate))} }}")
+            out_lines.append(
+                f"if (Test-Path {ps_quote(str(activate))}) {{ . {ps_quote(str(activate))} }}"
+            )
         elif shell == "cmd":
             activate = venv_dir / "Scripts" / "activate.bat"
             q = cmd_quote(str(activate))
             out_lines.append(f"if exist {q} call {q}")
         else:
-            activate = (venv_dir / "bin" / "activate")
-            out_lines.append(f"if [ -f {sh_quote(str(activate))} ]; then source {sh_quote(str(activate))}; fi")
+            activate = venv_dir / "bin" / "activate"
+            out_lines.append(
+                f"if [ -f {sh_quote(str(activate))} ]; then source {sh_quote(str(activate))}; fi"
+            )
     else:
-        out_lines.append(f"{comment} WARNING: venv not found at: {venv_dir} (run: `python utils/iron_setup.py install`)")
+        out_lines.append(
+            f"{comment} WARNING: venv not found at: {venv_dir} (run: `python utils/iron_setup.py install`)"
+        )
 
     mlir_prefix: Optional[Path] = None
     peano_prefix: Optional[Path] = None
@@ -581,7 +664,9 @@ def env_plan(args: argparse.Namespace, repo_root: Path) -> None:
     if venv_py.exists():
         venv = VenvInfo(venv_dir=venv_dir, python=venv_py)
         mlir_prefix = pip_install_prefix(venv, "mlir_aie", ["mlir_aie"])
-        peano_prefix = pip_install_prefix(venv, "llvm-aie", ["llvm-aie", "llvm_aie"], require_subdir="bin")
+        peano_prefix = pip_install_prefix(
+            venv, "llvm-aie", ["llvm-aie", "llvm_aie"], require_subdir="bin"
+        )
 
     def _override(raw: str, valid, note: str) -> Optional[Path]:
         raw = (raw or "").strip()
@@ -596,11 +681,19 @@ def env_plan(args: argparse.Namespace, repo_root: Path) -> None:
         return None
 
     # Optional explicit overrides.
-    override = _override(getattr(args, "mlir_aie_install", ""), lambda p: (p / "bin").is_dir() or (p / "python").is_dir(), "Ignoring --mlir-aie-install (not a valid prefix)")
+    override = _override(
+        getattr(args, "mlir_aie_install", ""),
+        lambda p: (p / "bin").is_dir() or (p / "python").is_dir(),
+        "Ignoring --mlir-aie-install (not a valid prefix)",
+    )
     if override:
         mlir_prefix = override
 
-    override = _override(getattr(args, "llvm_aie_install", ""), lambda p: (p / "bin").is_dir(), "Ignoring --llvm-aie-install (missing bin/)")
+    override = _override(
+        getattr(args, "llvm_aie_install", ""),
+        lambda p: (p / "bin").is_dir(),
+        "Ignoring --llvm-aie-install (missing bin/)",
+    )
     if override:
         peano_prefix = override
 
@@ -613,25 +706,37 @@ def env_plan(args: argparse.Namespace, repo_root: Path) -> None:
     if mlir_prefix:
         out_lines.extend(emit_set(shell, "MLIR_AIE_INSTALL_DIR", str(mlir_prefix)))
         out_lines.extend(emit_prepend_path(shell, "PATH", str(mlir_prefix / "bin")))
-        out_lines.extend(emit_prepend_path(shell, "PYTHONPATH", str(mlir_prefix / "python")))
+        out_lines.extend(
+            emit_prepend_path(shell, "PYTHONPATH", str(mlir_prefix / "python"))
+        )
         lib_var = "PATH" if IS_WINDOWS else "LD_LIBRARY_PATH"
         out_lines.extend(emit_prepend_path(shell, lib_var, str(mlir_prefix / "lib")))
     else:
-        out_lines.append(f"{comment} NOTE: mlir_aie not installed in this venv (or not detected).")
+        out_lines.append(
+            f"{comment} NOTE: mlir_aie not installed in this venv (or not detected)."
+        )
 
     # llvm-aie env.
     if peano_prefix:
         out_lines.extend(emit_set(shell, "PEANO_INSTALL_DIR", str(peano_prefix)))
-        out_lines.append(f"{comment} NOTE: llvm-aie is not added to PATH to avoid conflicts with system clang/clang++.")
-        out_lines.append(f"{comment}       It can be found in: {str(peano_prefix / 'bin')}")
+        out_lines.append(
+            f"{comment} NOTE: llvm-aie is not added to PATH to avoid conflicts with system clang/clang++."
+        )
+        out_lines.append(
+            f"{comment}       It can be found in: {str(peano_prefix / 'bin')}"
+        )
     else:
-        out_lines.append(f"{comment} WARNING: llvm-aie not installed in this venv (run: `python utils/iron_setup.py install`)")
+        out_lines.append(
+            f"{comment} WARNING: llvm-aie not installed in this venv (run: `python utils/iron_setup.py install`)"
+        )
 
     # XRT env.
     if IS_WINDOWS:
         # XILINX_XRT must not be set on Windows.
         if shell == "pwsh":
-            out_lines.append(r"Remove-Item Env:\XILINX_XRT -ErrorAction SilentlyContinue")
+            out_lines.append(
+                r"Remove-Item Env:\XILINX_XRT -ErrorAction SilentlyContinue"
+            )
         elif shell == "cmd":
             out_lines.append('set "XILINX_XRT="')
         else:
@@ -640,11 +745,25 @@ def env_plan(args: argparse.Namespace, repo_root: Path) -> None:
         xrt_root = _resolve_windows_xrt_root(args)
         if xrt_root:
             out_lines.extend(emit_set(shell, "XRT_ROOT", str(xrt_root)))
-            for p in (xrt_root / "ext" / "bin", xrt_root / "lib", xrt_root / "unwrapped", xrt_root):
+            for p in (
+                xrt_root / "ext" / "bin",
+                xrt_root / "lib",
+                xrt_root / "unwrapped",
+                xrt_root,
+            ):
                 out_lines.extend(emit_append_path_if_exists(shell, "PATH", str(p)))
-            out_lines.extend(emit_append_path_if_exists(shell, "PYTHONPATH", str(xrt_root / "python")))
+            out_lines.extend(
+                emit_append_path_if_exists(
+                    shell, "PYTHONPATH", str(xrt_root / "python")
+                )
+            )
     else:
-        xrt_root = (getattr(args, "xrt_root", "") or os.environ.get("XRT_ROOT") or os.environ.get("XILINX_XRT") or "").strip()
+        xrt_root = (
+            getattr(args, "xrt_root", "")
+            or os.environ.get("XRT_ROOT")
+            or os.environ.get("XILINX_XRT")
+            or ""
+        ).strip()
         if xrt_root:
             out_lines.extend(emit_set(shell, "XRT_ROOT", xrt_root))
             out_lines.extend(emit_set(shell, "XILINX_XRT", xrt_root))
@@ -682,18 +801,71 @@ def _add_bool_flag_pair(
 
 
 def _add_install_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--python", default=sys.executable, help="Python executable used to create the venv")
-    p.add_argument("--venv", default="ironenv", help="Venv directory name relative to repo root")
-    p.add_argument("--mlir-aie", default="auto", help="mlir_aie wheel source: auto | skip | latest-wheels-3 | wheelhouse[:<path>]")
-    p.add_argument("--llvm-aie", default="nightly", help="llvm-aie wheels: nightly (default) or a custom -f URL")
-    p.add_argument("--force-reinstall", dest="force_reinstall", action="store_true", help="Force reinstall packages (pip --force-reinstall). Useful for testers.",)
-    p.add_argument("--all", action="store_true", help="Enable everything (repo-reqs + dev + ml + notebook + submodules).")
+    p.add_argument(
+        "--python",
+        default=sys.executable,
+        help="Python executable used to create the venv",
+    )
+    p.add_argument(
+        "--venv", default="ironenv", help="Venv directory name relative to repo root"
+    )
+    p.add_argument(
+        "--mlir-aie",
+        default="auto",
+        help="mlir_aie wheel source: auto | skip | latest-wheels-3 | wheelhouse[:<path>]",
+    )
+    p.add_argument(
+        "--llvm-aie",
+        default="nightly",
+        help="llvm-aie wheels: nightly (default) or a custom -f URL",
+    )
+    p.add_argument(
+        "--force-reinstall",
+        dest="force_reinstall",
+        action="store_true",
+        help="Force reinstall packages (pip --force-reinstall). Useful for testers.",
+    )
+    p.add_argument(
+        "--all",
+        action="store_true",
+        help="Enable everything (repo-reqs + dev + ml + notebook + submodules).",
+    )
 
-    _add_bool_flag_pair(p, "repo-reqs", default=True, help_on="Install python/requirements.txt (repo Python deps).", help_off="Skip repo Python deps install.")
-    _add_bool_flag_pair(p, "dev", default=True, help_on="Install python/requirements_dev.txt + pre-commit.", help_off="Skip dev deps.")
-    _add_bool_flag_pair(p, "ml", default=False, help_on="Install python/requirements_ml.txt.", help_off="Skip ML deps.")
-    _add_bool_flag_pair(p, "notebook", default=False, help_on="Install python/requirements_notebook.txt + (best-effort) ipykernel registration.", help_off="Skip notebook deps.",)
-    _add_bool_flag_pair(p, "submodules", default=False, help_on="Update git submodules if this is a git checkout.", help_off="Do not update git submodules.",)
+    _add_bool_flag_pair(
+        p,
+        "repo-reqs",
+        default=True,
+        help_on="Install python/requirements.txt (repo Python deps).",
+        help_off="Skip repo Python deps install.",
+    )
+    _add_bool_flag_pair(
+        p,
+        "dev",
+        default=True,
+        help_on="Install python/requirements_dev.txt + pre-commit.",
+        help_off="Skip dev deps.",
+    )
+    _add_bool_flag_pair(
+        p,
+        "ml",
+        default=False,
+        help_on="Install python/requirements_ml.txt.",
+        help_off="Skip ML deps.",
+    )
+    _add_bool_flag_pair(
+        p,
+        "notebook",
+        default=False,
+        help_on="Install python/requirements_notebook.txt + (best-effort) ipykernel registration.",
+        help_off="Skip notebook deps.",
+    )
+    _add_bool_flag_pair(
+        p,
+        "submodules",
+        default=False,
+        help_on="Update git submodules if this is a git checkout.",
+        help_off="Do not update git submodules.",
+    )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -704,16 +876,45 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_install_common = argparse.ArgumentParser(add_help=False)
     _add_install_args(p_install_common)
 
-    p_install = sub.add_parser("install", parents=[p_install_common], help="Install toolchain wheels + deps into the venv")
-    p_update = sub.add_parser("update", parents=[p_install_common], help="Update to newest wheels + deps in the existing venv")
+    p_install = sub.add_parser(
+        "install",
+        parents=[p_install_common],
+        help="Install toolchain wheels + deps into the venv",
+    )
+    p_update = sub.add_parser(
+        "update",
+        parents=[p_install_common],
+        help="Update to newest wheels + deps in the existing venv",
+    )
     p_update.set_defaults(submodules=True)
 
-    p_env = sub.add_parser("env", help="Print shell commands to activate venv + export toolchain env vars")
-    p_env.add_argument("--venv", default="ironenv", help="Venv directory relative to repo root")
-    p_env.add_argument("--xrt-root", default="", help="Optional XRT install directory (Windows: default C:/Xilinx/XRT). Can also be set via XRT_ROOT.",)
-    p_env.add_argument("--mlir-aie-install", default="", help="Optional explicit mlir-aie install prefix (relative to repo root unless absolute).")
-    p_env.add_argument("--llvm-aie-install", default="", help="Optional explicit llvm-aie/peano install prefix (relative to repo root unless absolute).")
-    p_env.add_argument("--shell", default="auto", choices=["auto", "sh", "pwsh", "cmd"], help="Which shell syntax to emit (default: auto based on platform)")
+    p_env = sub.add_parser(
+        "env", help="Print shell commands to activate venv + export toolchain env vars"
+    )
+    p_env.add_argument(
+        "--venv", default="ironenv", help="Venv directory relative to repo root"
+    )
+    p_env.add_argument(
+        "--xrt-root",
+        default="",
+        help="Optional XRT install directory (Windows: default C:/Xilinx/XRT). Can also be set via XRT_ROOT.",
+    )
+    p_env.add_argument(
+        "--mlir-aie-install",
+        default="",
+        help="Optional explicit mlir-aie install prefix (relative to repo root unless absolute).",
+    )
+    p_env.add_argument(
+        "--llvm-aie-install",
+        default="",
+        help="Optional explicit llvm-aie/peano install prefix (relative to repo root unless absolute).",
+    )
+    p_env.add_argument(
+        "--shell",
+        default="auto",
+        choices=["auto", "sh", "pwsh", "cmd"],
+        help="Which shell syntax to emit (default: auto based on platform)",
+    )
 
     return p
 

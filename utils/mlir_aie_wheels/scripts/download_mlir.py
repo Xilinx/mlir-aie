@@ -193,7 +193,9 @@ def _fixup_llvm_diaguids(mlir_prefix):
             cmake_file.write_text(new_data, encoding="utf-8")
 
     if patched:
-        print(f"[fixup] Patched diaguids.lib path -> {repl_path if repl_path else 'diaguids.lib'}")
+        print(
+            f"[fixup] Patched diaguids.lib path -> {repl_path if repl_path else 'diaguids.lib'}"
+        )
 
 
 def main():
@@ -219,7 +221,9 @@ def main():
         elif matrix_os == "ubuntu-20.04" and cibw_archs == "aarch64":
             plat = "linux_aarch64"
         else:
-            raise SystemExit(f"Unsupported CIBW_ARCHS/MATRIX_OS: {cibw_archs}/{matrix_os}")
+            raise SystemExit(
+                f"Unsupported CIBW_ARCHS/MATRIX_OS: {cibw_archs}/{matrix_os}"
+            )
 
         _pip(["-q", "download", pkg, "--platform", plat, "--only-binary=:all:"])
     else:

@@ -49,7 +49,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-
 # --------------------------------------------------------------------------------------
 # Platform + process helpers
 # --------------------------------------------------------------------------------------
@@ -65,7 +64,9 @@ def is_wsl() -> bool:
     if os.environ.get("WSL_INTEROP") or os.environ.get("WSL_DISTRO_NAME"):
         return True
     try:
-        osrelease = Path("/proc/sys/kernel/osrelease").read_text(errors="ignore").lower()
+        osrelease = (
+            Path("/proc/sys/kernel/osrelease").read_text(errors="ignore").lower()
+        )
         return "microsoft" in osrelease or "wsl" in osrelease
     except Exception:
         return False
@@ -77,7 +78,9 @@ def _wsl_to_windows_path(path: Path) -> str:
         return str(path)
     wslpath_exe = which("wslpath")
     if not wslpath_exe:
-        raise RuntimeError("wslpath not found; cannot translate WSL paths for Windows tools")
+        raise RuntimeError(
+            "wslpath not found; cannot translate WSL paths for Windows tools"
+        )
     out = subprocess.check_output([wslpath_exe, "-w", str(path)], text=True).strip()
     if not out:
         raise RuntimeError(f"wslpath returned empty path for: {path}")
@@ -123,7 +126,6 @@ def _cmake_generator_from_cache(build_dir: Path) -> Optional[str]:
 def _is_multi_config_generator(generator: str) -> bool:
     g = (generator or "").lower()
     return ("visual studio" in g) or ("xcode" in g) or ("ninja multi-config" in g)
-
 
 
 def run_checked(
@@ -230,7 +232,9 @@ def _looks_like_flag_incompatible(stderr_text: str) -> bool:
     return False
 
 
-def _run_to_file(cmd: list[str], cwd: Path, out_path: Path) -> subprocess.CompletedProcess[str]:
+def _run_to_file(
+    cmd: list[str], cwd: Path, out_path: Path
+) -> subprocess.CompletedProcess[str]:
     # Write to a temp file and replace on success so failed attempts don't clobber good artifacts.
     tmp = out_path.with_suffix(out_path.suffix + ".tmp")
     with tmp.open("w", encoding="utf-8") as f:
@@ -275,6 +279,7 @@ class ExampleMakeInfo:
     default_trace_size: Optional[int]
     default_col: Optional[int]
 
+
 _TARGET_RE = re.compile(r"^\s*targetname\s*[:?]?=\s*(\S+)\s*$")
 _AIE_PY_SRC_RE = re.compile(r"^\s*aie_py_src\s*[:?]?=\s*(\S+)\s*$")
 _FINAL_RULE_RE = re.compile(r"^\s*(build/final[^:]*\.xclbin)\s*:\s*(.+?)\s*$")
@@ -283,7 +288,9 @@ _IN2_RE = re.compile(r"^\s*in2_size\s*[:?]?=\s*(\d+)\s*(?:#.*)?$")
 _TRACE_RE = re.compile(r"^\s*trace_size\s*[:?]?=\s*(\d+)\s*(?:#.*)?$")
 _COL_RE = re.compile(r"^\s*col\s*[:?]?=\s*(\d+)\s*(?:#.*)?$", re.IGNORECASE)
 _VAR_REF_RE = re.compile(r"\$\(([^)]+)\)|\${([^}]+)}")
-_SIMPLE_ASSIGN_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\?|\+|:)?=\s*(.+?)\s*$")
+_SIMPLE_ASSIGN_RE = re.compile(
+    r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\?|\+|:)?=\s*(.+?)\s*$"
+)
 
 
 def expand_make_vars(value: str, vars_map: dict[str, str]) -> str:
@@ -292,6 +299,7 @@ def expand_make_vars(value: str, vars_map: dict[str, str]) -> str:
     #   targetname=${orig_targetname}_chained
     cur = value
     for _ in range(6):
+
         def _repl(m: re.Match) -> str:
             name = m.group(1) or m.group(2) or ""
             return vars_map.get(name, m.group(0))
@@ -337,7 +345,9 @@ def _parse_vpath(line: str, example_dir: Path, vars_map: dict[str, str]) -> list
     vpath_dirs: list[Path] = []
     for p in raw_parts:
         # Expand ${srcdir}/$(srcdir) even if it wasn't in the vars map.
-        p = p.replace("${srcdir}", str(example_dir)).replace("$(srcdir)", str(example_dir))
+        p = p.replace("${srcdir}", str(example_dir)).replace(
+            "$(srcdir)", str(example_dir)
+        )
         vpath_dirs.append(Path(p).resolve())
     return vpath_dirs
 
@@ -365,7 +375,6 @@ def parse_makefile(example_dir: Path) -> ExampleMakeInfo:
     uses_elf_insts = "--aie-generate-elf" in txt
     xclbin_name_hint: Optional[str] = None
     insts_name_hint: Optional[str] = None
-
 
     def _sanitize_make_token(tok: str) -> Optional[str]:
         # Ignore Make variables like ${@F} / ${<F}.
@@ -497,7 +506,7 @@ def _env_activation_hint() -> str:
         )
     return (
         "Activate the mlir-aie environment first (sets MLIR_AIE_INSTALL_DIR, PEANO_INSTALL_DIR, XRT_ROOT, PATH):\n"
-        "  eval \"$(python3 utils/iron_setup.py env --shell bash)\""
+        '  eval "$(python3 utils/iron_setup.py env --shell bash)"'
     )
 
 
@@ -529,7 +538,9 @@ def preflight_or_die(action: str) -> None:
         if not which("bootgen"):
             missing.append("bootgen (required by aiecc to package .xclbin)")
         if not which("xclbinutil"):
-            missing.append("xclbinutil (required by aiecc; usually from XRT/Vitis/Ryzen AI)")
+            missing.append(
+                "xclbinutil (required by aiecc; usually from XRT/Vitis/Ryzen AI)"
+            )
 
     if need_kernel_compile:
         peano = resolve_peano_install_dir()
@@ -647,7 +658,9 @@ def resolve_kernel_sources(info: ExampleMakeInfo) -> list[tuple[str, Path]]:
         candidates: list[Path] = []
         for ext in exts:
             fname = f"{name}{ext}"
-            candidates.extend([info.example_dir / fname] + [vp / fname for vp in info.vpath_dirs])
+            candidates.extend(
+                [info.example_dir / fname] + [vp / fname for vp in info.vpath_dirs]
+            )
         found: Optional[Path] = None
         for cand in candidates:
             if cand.exists():
@@ -665,7 +678,9 @@ def resolve_kernel_sources(info: ExampleMakeInfo) -> list[tuple[str, Path]]:
     return sources
 
 
-def compile_kernel_objects(cfg: BuildConfig, info: ExampleMakeInfo, build_dir: Path) -> None:
+def compile_kernel_objects(
+    cfg: BuildConfig, info: ExampleMakeInfo, build_dir: Path
+) -> None:
     mlir_aie_root = resolve_mlir_aie_root()
     peano_install = resolve_peano_install_dir()
     clangpp = resolve_aie_clangpp(peano_install)
@@ -732,7 +747,9 @@ def resolve_generator_script(cfg: BuildConfig, info: ExampleMakeInfo) -> Path:
 
     if info.aie_py_src:
         cand = Path(info.aie_py_src)
-        cand = cand.resolve() if cand.is_absolute() else (cfg.example_dir / cand).resolve()
+        cand = (
+            cand.resolve() if cand.is_absolute() else (cfg.example_dir / cand).resolve()
+        )
         if cand.exists():
             if cfg.placed:
                 placed_cand = cand.with_name(f"{cand.stem}_placed{cand.suffix}")
@@ -765,7 +782,9 @@ def resolve_generator_script(cfg: BuildConfig, info: ExampleMakeInfo) -> Path:
     raise FileNotFoundError(f"No python generator script found in: {cfg.example_dir}")
 
 
-def generate_aie_mlir(cfg: BuildConfig, info: ExampleMakeInfo, build_dir: Path, trace: bool) -> Path:
+def generate_aie_mlir(
+    cfg: BuildConfig, info: ExampleMakeInfo, build_dir: Path, trace: bool
+) -> Path:
     data_size = cfg.in1_size
     suffix = "trace_" if trace else ""
     out_path = build_dir / f"aie_{suffix}{data_size}.mlir"
@@ -843,7 +862,9 @@ def generate_aie_mlir(cfg: BuildConfig, info: ExampleMakeInfo, build_dir: Path, 
             print("[gen] Retrying generator with positional args.")
             proc2 = _run_to_file(cmd, cwd=cfg.example_dir, out_path=out_path)
             if proc2.returncode == 0:
-                print("[gen] NOTE: generator does not accept flags; using positional invocation.")
+                print(
+                    "[gen] NOTE: generator does not accept flags; using positional invocation."
+                )
                 _write_json_atomic(stamp, stamp_data)
                 return out_path
             err = proc2.stderr or err
@@ -923,7 +944,9 @@ def build_xclbin_and_insts(
 
     # Some examples name outputs differently; fall back to the most recent artifacts.
     if not xclbin_path.exists():
-        candidates = sorted(build_dir.glob("*.xclbin"), key=lambda p: p.stat().st_mtime, reverse=True)
+        candidates = sorted(
+            build_dir.glob("*.xclbin"), key=lambda p: p.stat().st_mtime, reverse=True
+        )
         if candidates:
             xclbin_path = candidates[0]
         else:
@@ -938,13 +961,16 @@ def build_xclbin_and_insts(
         for pat in patterns:
             inst_candidates.extend(build_dir.glob(pat))
 
-        inst_candidates = sorted(set(inst_candidates), key=lambda p: p.stat().st_mtime, reverse=True)
+        inst_candidates = sorted(
+            set(inst_candidates), key=lambda p: p.stat().st_mtime, reverse=True
+        )
         if inst_candidates:
             insts_path = inst_candidates[0]
         else:
             raise FileNotFoundError(f"Expected insts not produced: {insts_path}")
 
     return (xclbin_path, insts_path)
+
 
 def _copy_if_newer(src: Path, dst: Path) -> bool:
     # Copy src -> dst if src is newer (or dst missing). Returns True if copied.
@@ -985,13 +1011,18 @@ def build_host_exe(cfg: BuildConfig) -> Path:
         "out_size": cfg.out_size,
         "int_bit_width": cfg.int_bit_width,
         "generator_request": cfg.generator,
-        "generator_effective": _cmake_generator_from_cache(host_build_dir) or cfg.generator,
+        "generator_effective": _cmake_generator_from_cache(host_build_dir)
+        or cfg.generator,
         "config": cfg.config,
-        "platform": ("wsl_windows_host" if is_wsl() else ("windows" if is_windows() else "posix")),
+        "platform": (
+            "wsl_windows_host" if is_wsl() else ("windows" if is_windows() else "posix")
+        ),
     }
 
     need_configure = True
-    if (host_build_dir / "CMakeCache.txt").exists() and _stamp_matches(configure_stamp, configure_data):
+    if (host_build_dir / "CMakeCache.txt").exists() and _stamp_matches(
+        configure_stamp, configure_data
+    ):
         need_configure = False
 
     if need_configure:
@@ -1059,8 +1090,8 @@ def build_host_exe(cfg: BuildConfig) -> Path:
 
     # Common output locations:
     candidates = [
-        host_build_dir / cfg.config / exe_file,   # multi-config (VS/MSBuild)
-        host_build_dir / exe_file,                # single-config (Ninja/Unix Makefiles)
+        host_build_dir / cfg.config / exe_file,  # multi-config (VS/MSBuild)
+        host_build_dir / exe_file,  # single-config (Ninja/Unix Makefiles)
     ]
 
     src_exe: Optional[Path] = None
@@ -1073,7 +1104,9 @@ def build_host_exe(cfg: BuildConfig) -> Path:
     if src_exe is None:
         hits: list[Path] = []
         for cand in host_build_dir.rglob(exe_file):
-            if any(part in {"CMakeFiles"} or part.endswith(".dir") for part in cand.parts):
+            if any(
+                part in {"CMakeFiles"} or part.endswith(".dir") for part in cand.parts
+            ):
                 continue
             if cand.is_file():
                 hits.append(cand)
@@ -1094,7 +1127,10 @@ def build_host_exe(cfg: BuildConfig) -> Path:
         print(f"[host] Up-to-date: {out}")
     return out
 
-def run_host_exe(exe: Path, xclbin: Path, insts: Path, trace_size: Optional[int]) -> None:
+
+def run_host_exe(
+    exe: Path, xclbin: Path, insts: Path, trace_size: Optional[int]
+) -> None:
     if is_wsl():
         # The host binary is a Windows executable (built via Windows CMake) and must be launched via Windows.
         exe_win = _wsl_to_windows_path(exe)
@@ -1112,7 +1148,14 @@ def run_host_exe(exe: Path, xclbin: Path, insts: Path, trace_size: Optional[int]
         )
         if trace_size is not None:
             cmd += f" -t {trace_size}"
-        ps = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd]
+        ps = [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            cmd,
+        ]
         run_checked(ps, cwd=exe.parent)
         return
 
@@ -1121,7 +1164,10 @@ def run_host_exe(exe: Path, xclbin: Path, insts: Path, trace_size: Optional[int]
         cmd += ["-t", str(trace_size)]
     run_checked(cmd, cwd=exe.parent)
 
-def run_python_test(example_dir: Path, xclbin: Path, insts: Path, cfg: BuildConfig, trace: bool) -> None:
+
+def run_python_test(
+    example_dir: Path, xclbin: Path, insts: Path, cfg: BuildConfig, trace: bool
+) -> None:
     test_py = example_dir / "test.py"
     if not test_py.exists():
         raise FileNotFoundError(f"test.py not found: {test_py}")
@@ -1219,7 +1265,9 @@ def parse_trace_outputs(example_dir: Path, build_dir: Path, cfg: BuildConfig) ->
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Run mlir-aie programming examples (python backend).")
+    p = argparse.ArgumentParser(
+        description="Run mlir-aie programming examples (python backend)."
+    )
 
     p.add_argument(
         "action",
@@ -1329,10 +1377,14 @@ def _default_device_from_env() -> Optional[str]:
 
 def _maybe_warn_trace_target_missing(info: ExampleMakeInfo) -> None:
     if not info.has_trace:
-        print("[trace] NOTE: Makefile has no obvious trace target; attempting trace build anyway.")
+        print(
+            "[trace] NOTE: Makefile has no obvious trace target; attempting trace build anyway."
+        )
 
 
-def _build_config_from_args(args: argparse.Namespace, example_dir: Path, info: ExampleMakeInfo) -> BuildConfig:
+def _build_config_from_args(
+    args: argparse.Namespace, example_dir: Path, info: ExampleMakeInfo
+) -> BuildConfig:
     # Defaults
     device = args.device
     if device is None:
@@ -1351,10 +1403,18 @@ def _build_config_from_args(args: argparse.Namespace, example_dir: Path, info: E
     in1_default, in2_default, _out_default = default_sizes_for_bitwidth(bit_width)
 
     in1 = args.in1_size if args.in1_size is not None else in1_default
-    in2 = args.in2_size if args.in2_size is not None else (info.default_in2_size or in2_default)
+    in2 = (
+        args.in2_size
+        if args.in2_size is not None
+        else (info.default_in2_size or in2_default)
+    )
     out = args.out_size if args.out_size is not None else in1
 
-    trace_size = args.trace_size if args.trace_size is not None else (info.default_trace_size or 8192)
+    trace_size = (
+        args.trace_size
+        if args.trace_size is not None
+        else (info.default_trace_size or 8192)
+    )
 
     generator_script = Path(args.generator_script) if args.generator_script else None
 
@@ -1448,7 +1508,9 @@ def main() -> int:
 
     if action in RUN_HOST_ACTIONS:
         assert exe is not None and xclbin is not None and insts is not None
-        run_host_exe(exe, xclbin, insts, trace_size=cfg.trace_size if is_trace else None)
+        run_host_exe(
+            exe, xclbin, insts, trace_size=cfg.trace_size if is_trace else None
+        )
 
     if action in RUN_PY_ACTIONS:
         assert xclbin is not None and insts is not None

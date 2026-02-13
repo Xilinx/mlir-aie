@@ -187,9 +187,7 @@ class CMakeBuild(build_ext):
         if platform.system() == "Windows":
             cmake_src = _cmake_path(cmake_src)
 
-        subprocess.run(
-            ["cmake", cmake_src, *cmake_args], cwd=build_temp, check=True
-        )
+        subprocess.run(["cmake", cmake_src, *cmake_args], cwd=build_temp, check=True)
         subprocess.run(
             ["cmake", "--build", ".", "--target", "install", *build_args],
             cwd=build_temp,
