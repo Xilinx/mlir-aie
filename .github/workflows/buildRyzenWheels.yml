@@ -344,7 +344,7 @@ jobs:
           pip install delvewheel
 
           OPENSSL_BIN=$(python -c "import os, pathlib; print(pathlib.Path(os.environ['OPENSSL_ROOT_DIR']).joinpath('bin').as_posix())")
-          python -m delvewheel repair --analyze-existing-exes -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl --add-path "${OPENSSL_BIN}"
+          python -m delvewheel repair --ignore-existing --analyze-existing-exes --add-path "${OPENSSL_BIN}" -w "${WHEELHOUSE_DIR}/repaired_wheel" "${WHEELHOUSE_DIR}"/mlir_aie*.whl
   
       - name: Upload mlir_aie
         uses: actions/upload-artifact@v4
