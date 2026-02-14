@@ -267,7 +267,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$libDir=Join-Path $env:XRT_ROOT 'lib';" ^
   "Push-Location $libDir;" ^
   "@('LIBRARY xrt_coreutil','EXPORTS')|Set-Content xrt_coreutil.def -Encoding ascii;" ^
-  "dumpbin /exports $dll|Where-Object{$_ -match '^\s+(\d+)\s+[0-9A-F]+\s+[0-9A-F]+\s+(\S+)'}|ForEach-Object{""$($matches[2]) @$($matches[1])""}|Select-Object -Unique|Add-Content xrt_coreutil.def -Encoding ascii;" ^
+  "dumpbin /exports $dll|Where-Object{$_ -match '^^\s+(\d+)\s+[0-9A-F]+\s+[0-9A-F]+\s+(\S+)'}|ForEach-Object{('{0} @{1}' -f $matches[2],$matches[1])}|Select-Object -Unique|Add-Content xrt_coreutil.def -Encoding ascii;" ^
   "lib /nologo /def:xrt_coreutil.def /machine:x64 /out:xrt_coreutil.lib;" ^
   "Pop-Location"
 ```
