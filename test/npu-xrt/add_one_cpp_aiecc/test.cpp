@@ -19,8 +19,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <cstring>
 
 #include "cxxopts.hpp"
 #include "test_utils.h"
