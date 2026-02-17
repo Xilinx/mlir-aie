@@ -27,6 +27,8 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 class AIE_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIE_Dialect, mnemonic, traits>;
 
+include "aie/Dialect/AIE/IR/AIETraceOps.td"
+
 
 def AIE_DeviceOp: AIE_Op<"device", [
     Symbol,
