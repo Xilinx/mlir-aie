@@ -101,10 +101,10 @@ std::cout << "    } {link_with = \"passThrough.cc.o\"}\n";
 ```
 
 The C++ version directly generates the MLIR textual representation, which is:
-- Simpler to implement without full MLIR C++ API
+- Simpler to implement without MLIR C++ API or LLVM dependencies
 - Easier to understand and maintain
 - Provides complete control over the generated IR
-- Requires only LLVM CommandLine library (not full MLIR)
+- Requires only standard C++ (no external libraries)
 
 ## Learning Value
 
@@ -125,8 +125,7 @@ This example demonstrates:
 
 ## Requirements
 
-- C++ compiler (g++)
-- LLVM (for CommandLine library)
+- C++ compiler (g++ or clang++)
 - Xilinx Vitis tools
 - XRT (Xilinx Runtime)
 

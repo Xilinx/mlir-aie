@@ -8,46 +8,64 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/InitLLVM.h"
-
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <limits>
 #include <string>
 
-using namespace llvm;
-
-// Command line options
-static cl::opt<std::string> deviceOpt("d", cl::desc("AIE Device (npu or npu2)"),
-                                       cl::init("npu"));
-static cl::opt<int64_t> in1SizeOpt("i1s", cl::desc("Input 1 size in bytes"),
-                                    cl::init(4096));
-static cl::opt<int64_t> outSizeOpt("os", cl::desc("Output size in bytes"),
-                                    cl::init(4096));
-static cl::opt<int64_t> traceSizeOpt("t", cl::desc("Trace buffer size"),
-                                      cl::init(0));
-
 namespace {
+
+// Command line option parser
+struct Options {
+  std::string device = "npu";
+  int64_t in1Size = 4096;
+  int64_t outSize = 4096;
+  int64_t traceSize = 0;
+
+  bool parseArgs(int argc, char **argv) {
+    for (int i = 1; i < argc; ++i) {
+      std::string arg = argv[i];
+      if ((arg == "-d" || arg == "--device") && i + 1 < argc) {
+        device = argv[++i];
+      } else if ((arg == "-i1s" || arg == "--in1_size") && i + 1 < argc) {
+        in1Size = std::stoll(argv[++i]);
+      } else if ((arg == "-os" || arg == "--out_size") && i + 1 < argc) {
+        outSize = std::stoll(argv[++i]);
+      } else if ((arg == "-t" || arg == "--trace_size") && i + 1 < argc) {
+        traceSize = std::stoll(argv[++i]);
+      } else if (arg == "-h" || arg == "--help") {
+        std::cout << "Usage: " << argv[0] << " [options]\n";
+        std::cout << "Options:\n";
+        std::cout << "  -d, --device <npu|npu2>   AIE Device (default: npu)\n";
+        std::cout << "  -i1s, --in1_size <bytes>  Input size in bytes (default: 4096)\n";
+        std::cout << "  -os, --out_size <bytes>   Output size in bytes (default: 4096)\n";
+        std::cout << "  -t, --trace_size <bytes>  Trace buffer size (default: 0)\n";
+        std::cout << "  -h, --help                Show this help\n";
+        return false;
+      }
+    }
+    return true;
+  }
+};
 
 // Main function to generate the passthrough kernel MLIR
 void generatePassthroughKernel(const std::string &device, int64_t in1Size,
                                 int64_t outSize, int64_t traceSize) {
-  // Data type
   // Calculate sizes
   int64_t N = in1Size; // N elements of uint8
   int64_t lineWidthInBytes = N / 4; // chop input in 4 sub-tensors
 
   // Check that output size matches input size
   if (outSize != in1Size) {
-    llvm::errs() << "Error: Output buffer size must be equal to input buffer "
+    std::cerr << "Error: Output buffer size must be equal to input buffer "
                     "size.\n";
     exit(1);
   }
 
   // Check input size constraints
   if (in1Size % 64 != 0 || in1Size < 512) {
-    llvm::errs() << "Error: In1 buffer size (" << in1Size
+    std::cerr << "Error: In1 buffer size (" << in1Size
                  << ") must be a multiple of 64 and greater than or equal to "
                     "512\n";
     exit(1);
@@ -60,7 +78,7 @@ void generatePassthroughKernel(const std::string &device, int64_t in1Size,
   } else if (device == "npu2") {
     deviceEnum = "npu2";
   } else {
-    llvm::errs() << "Error: Device name " << device << " is unknown\n";
+    std::cerr << "Error: Device name " << device << " is unknown\n";
     exit(1);
   }
 
@@ -101,19 +119,13 @@ void generatePassthroughKernel(const std::string &device, int64_t in1Size,
 } // namespace
 
 int main(int argc, char **argv) {
-  InitLLVM y(argc, argv);
-
-  // Parse command line options
-  cl::ParseCommandLineOptions(argc, argv, "AIE passthrough kernel generator\n");
-
-  // Get parameters
-  std::string device = deviceOpt;
-  int64_t in1Size = in1SizeOpt;
-  int64_t outSize = outSizeOpt;
-  int64_t traceSize = traceSizeOpt;
+  Options opts;
+  if (!opts.parseArgs(argc, argv)) {
+    return 0;
+  }
 
   // Generate the kernel
-  generatePassthroughKernel(device, in1Size, outSize, traceSize);
+  generatePassthroughKernel(opts.device, opts.in1Size, opts.outSize, opts.traceSize);
 
   return 0;
 }
