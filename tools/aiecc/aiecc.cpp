@@ -326,12 +326,14 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
       "aie-assign-tile-controller-ids,"
       "aie-assign-buffer-addresses{alloc-scheme=" + allocSchemeOpt + "}))";
 
-  // Store strings that need to outlive the command vector
+  // Store strings that need to outlive the command vector to ensure proper lifetime
+  std::string aieOptPathStr = aieOptPath;
+  std::string inputPathStr = std::string(inputPath.str());
   std::string passPipelineArg = "--pass-pipeline=" + passPipeline;
-  std::string outputPathStr = std::string(outputPath);
+  std::string outputPathStr = std::string(outputPath.str());
 
-  SmallVector<StringRef, 16> aieOptCmd{aieOptPath, inputPath, passPipelineArg,
-                                       "-o", outputPathStr};
+  SmallVector<StringRef, 16> aieOptCmd{aieOptPathStr, inputPathStr,
+                                       passPipelineArg, "-o", outputPathStr};
 
 
   if (!executeCommand(aieOptCmd, verbose)) {
