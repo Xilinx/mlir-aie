@@ -8,7 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// This test verifies that the C++ aiecc generates working xclbin and instructions
+// This test verifies that the C++ aiecc generates working xclbin and
+// instructions
 
 #include <cstdint>
 #include <fstream>
@@ -122,7 +123,7 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t i = 0; i < 64; i++) {
-    uint32_t ref = i + 2;  // Input is i+1, core adds 1, so result is i+2
+    uint32_t ref = i + 2; // Input is i+1, core adds 1, so result is i+2
     if (*(bufOut + i) != ref) {
       std::cout << "Error in output " << *(bufOut + i) << " != " << ref
                 << std::endl;

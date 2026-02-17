@@ -103,8 +103,7 @@ static cl::opt<bool> noXbridge("no-xbridge",
 static cl::opt<bool> xchesscc("xchesscc", cl::desc("Compile using xchesscc"),
                               cl::init(true), cl::cat(aieCompilerOptions));
 
-static cl::opt<bool> noXchesscc("no-xchesscc",
-                                cl::desc("Compile using peano"),
+static cl::opt<bool> noXchesscc("no-xchesscc", cl::desc("Compile using peano"),
                                 cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
@@ -148,8 +147,7 @@ static cl::opt<bool> generatePdi("aie-generate-pdi",
                                  cl::desc("Generate PDI binary"),
                                  cl::init(false), cl::cat(aieCompilerOptions));
 
-static cl::opt<std::string> pdiName("pdi-name",
-                                    cl::desc("Output PDI filename"),
+static cl::opt<std::string> pdiName("pdi-name", cl::desc("Output PDI filename"),
                                     cl::init("{0}.pdi"),
                                     cl::cat(aieCompilerOptions));
 
@@ -168,8 +166,7 @@ static cl::opt<std::string>
                cl::init(""), cl::cat(aieCompilerOptions));
 
 static cl::opt<std::string>
-    sequenceName("sequence-name",
-                 cl::desc("Runtime sequence name to compile"),
+    sequenceName("sequence-name", cl::desc("Runtime sequence name to compile"),
                  cl::init(""), cl::cat(aieCompilerOptions));
 
 static cl::opt<unsigned> optLevel("O", cl::desc("Optimization level (0-3)"),
@@ -193,10 +190,10 @@ static cl::opt<bool> packetSwObjFifos("packet-sw-objFifos",
                                       cl::init(false),
                                       cl::cat(aieCompilerOptions));
 
-static cl::opt<bool>
-    ctrlPktOverlay("generate-ctrl-pkt-overlay",
-                   cl::desc("Generate control packet overlay"),
-                   cl::init(false), cl::cat(aieCompilerOptions));
+static cl::opt<bool> ctrlPktOverlay("generate-ctrl-pkt-overlay",
+                                    cl::desc("Generate control packet overlay"),
+                                    cl::init(false),
+                                    cl::cat(aieCompilerOptions));
 
 //===----------------------------------------------------------------------===//
 // Helper Functions
@@ -225,7 +222,8 @@ static std::string findAieTool(StringRef toolName) {
   return "";
 }
 
-static bool executeCommand(ArrayRef<StringRef> command, bool verboseOutput = true) {
+static bool executeCommand(ArrayRef<StringRef> command,
+                           bool verboseOutput = true) {
   if (verbose && verboseOutput) {
     llvm::outs() << "Executing:";
     for (const auto &arg : command) {
@@ -295,7 +293,7 @@ static void findAIEDevices(ModuleOp module,
 
 // Find runtime sequences in a device
 static void findRuntimeSequences(Operation *deviceOp,
-                                SmallVectorImpl<Operation *> &sequences) {
+                                 SmallVectorImpl<Operation *> &sequences) {
   deviceOp->walk([&](Operation *op) {
     if (auto seqOp = dyn_cast<xilinx::AIE::RuntimeSequenceOp>(op)) {
       if (sequenceName.empty() ||
@@ -328,8 +326,10 @@ static std::string buildInputWithAddressesPipeline() {
   pipeline += "aie-assign-lock-ids,";
   pipeline += "aie-register-objectFifos,";
   pipeline += "aie-objectFifo-stateful-transform{";
-  pipeline += "dynamic-objFifos=" + std::string(dynamicObjFifos ? "true" : "false");
-  pipeline += " packet-sw-objFifos=" + std::string(packetSwObjFifos ? "true" : "false");
+  pipeline +=
+      "dynamic-objFifos=" + std::string(dynamicObjFifos ? "true" : "false");
+  pipeline +=
+      " packet-sw-objFifos=" + std::string(packetSwObjFifos ? "true" : "false");
   pipeline += "},";
   pipeline += "aie-assign-bd-ids,";
   pipeline += "aie-lower-cascade-flows,";
@@ -337,11 +337,15 @@ static std::string buildInputWithAddressesPipeline() {
   pipeline += "aie-lower-multicast,";
   pipeline += "aie-assign-tile-controller-ids,";
   if (ctrlPktOverlay) {
-    pipeline += "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=true},";
+    pipeline +=
+        "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=true},";
   } else {
-    pipeline += "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=false},";
+    pipeline +=
+        "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=false},";
   }
-  pipeline += "aie-assign-buffer-addresses{alloc-scheme=" + allocScheme.getValue() + "},";
+  pipeline +=
+      "aie-assign-buffer-addresses{alloc-scheme=" + allocScheme.getValue() +
+      "},";
   pipeline += "aie-vector-transfer-lowering{max-transfer-rank=1}";
   pipeline += "))";
   return pipeline;
@@ -428,7 +432,8 @@ static void generateKernelsJson(StringRef jsonPath, StringRef devName) {
     jsonFile << "            \"memory-connection\": \"HOST\",\n";
     jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
     jsonFile << "            \"type\": \"void*\",\n";
-    jsonFile << "            \"offset\": \"" << std::hex << "0x" << (0x14 + i * 8) << std::dec << "\"\n";
+    jsonFile << "            \"offset\": \"" << std::hex << "0x"
+             << (0x14 + i * 8) << std::dec << "\"\n";
     jsonFile << "          }" << (i < 4 ? "," : "") << "\n";
   }
   jsonFile << "        ],\n";
@@ -444,7 +449,8 @@ static void generateKernelsJson(StringRef jsonPath, StringRef devName) {
   jsonFile.close();
 }
 
-static void generatePartitionJson(StringRef jsonPath, StringRef devName, StringRef pdiPath) {
+static void generatePartitionJson(StringRef jsonPath, StringRef devName,
+                                  StringRef pdiPath) {
   std::ofstream jsonFile(jsonPath.str());
   jsonFile << "{\n";
   jsonFile << "  \"aie_partition\": {\n";
@@ -481,20 +487,21 @@ static void generatePartitionJson(StringRef jsonPath, StringRef devName, StringR
 //===----------------------------------------------------------------------===//
 
 static LogicalResult generateNpuInstructions(MLIRContext &context,
-                                            StringRef mlirFilePath,
-                                            StringRef tmpDirName,
-                                            StringRef devName) {
+                                             StringRef mlirFilePath,
+                                             StringRef tmpDirName,
+                                             StringRef devName) {
   if (!generateNpuInsts) {
     return success();
   }
 
   if (verbose) {
-    llvm::outs() << "Generating NPU instructions for device: " << devName << "\n";
+    llvm::outs() << "Generating NPU instructions for device: " << devName
+                 << "\n";
   }
 
   std::string aieOptPath = findAieTool("aie-opt");
   std::string aieTranslatePath = findAieTool("aie-translate");
-  
+
   if (aieOptPath.empty() || aieTranslatePath.empty()) {
     llvm::errs() << "Error: Could not find required AIE tools\n";
     return failure();
@@ -506,14 +513,11 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
 
   std::string pipeline = buildNpuLoweringPipeline();
   std::string pipelineArg = "--pass-pipeline=" + pipeline;
-  
-  SmallVector<std::string, 8> cmdStrs = {
-    aieOptPath,
-    mlirFilePath.str(),
-    pipelineArg,
-    "-o", npuLoweredPath.str().str()
-  };
-  
+
+  SmallVector<std::string, 8> cmdStrs = {aieOptPath, mlirFilePath.str(),
+                                         pipelineArg, "-o",
+                                         npuLoweredPath.str().str()};
+
   SmallVector<StringRef, 8> cmd;
   for (const auto &str : cmdStrs) {
     cmd.push_back(str);
@@ -527,12 +531,13 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
   // Step 2: Translate to NPU binary
   // Find runtime sequences and generate instructions for each
   SmallVector<Operation *, 4> sequences;
-  
+
   // Parse the lowered module to find sequences
   // Note: We reuse the main context which already has all dialects registered
   ParserConfig parseConfig(&context);
   SourceMgr sourceMgr;
-  auto module = parseSourceFile<ModuleOp>(npuLoweredPath, sourceMgr, parseConfig);
+  auto module =
+      parseSourceFile<ModuleOp>(npuLoweredPath, sourceMgr, parseConfig);
 
   if (!module) {
     llvm::errs() << "Error parsing lowered MLIR file\n";
@@ -542,43 +547,44 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
   // Find device
   SmallVector<Operation *, 1> devices;
   findAIEDevices(module.get(), devices);
-  
+
   for (auto *deviceOp : devices) {
     if (auto devOp = dyn_cast<xilinx::AIE::DeviceOp>(deviceOp)) {
       if (devOp.getSymName() != devName) {
         continue;
       }
-      
+
       SmallVector<Operation *, 4> seqs;
       findRuntimeSequences(deviceOp, seqs);
-      
+
       for (auto *seqOp : seqs) {
         if (auto seq = dyn_cast<xilinx::AIE::RuntimeSequenceOp>(seqOp)) {
           StringRef seqName = seq.getSymName();
-          std::string outputFileName = formatString(instsName, devName, seqName);
-          
+          std::string outputFileName =
+              formatString(instsName, devName, seqName);
+
           // Output to current directory, not tmpdir (matches Python aiecc.py)
           SmallString<128> outputPath;
           if (sys::path::is_absolute(outputFileName)) {
             outputPath = outputFileName;
           } else {
-            outputPath = outputFileName;  // Relative to current directory
+            outputPath = outputFileName; // Relative to current directory
           }
-          
+
           if (verbose) {
-            llvm::outs() << "Generating NPU instructions for sequence: " 
-                        << seqName << " -> " << outputPath << "\n";
+            llvm::outs() << "Generating NPU instructions for sequence: "
+                         << seqName << " -> " << outputPath << "\n";
           }
 
           SmallVector<std::string, 8> translateStrs = {
-            aieTranslatePath,
-            npuLoweredPath.str().str(),
-            "--aie-npu-to-binary",
-            "--aie-device-name=" + devName.str(),
-            "--aie-sequence-name=" + seqName.str(),
-            "-o", outputPath.str().str()
-          };
-          
+              aieTranslatePath,
+              npuLoweredPath.str().str(),
+              "--aie-npu-to-binary",
+              "--aie-device-name=" + devName.str(),
+              "--aie-sequence-name=" + seqName.str(),
+              "-o",
+              outputPath.str().str()};
+
           SmallVector<StringRef, 8> translateCmd;
           for (const auto &str : translateStrs) {
             translateCmd.push_back(str);
@@ -597,8 +603,8 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
 }
 
 static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
-                                         StringRef tmpDirName,
-                                         StringRef devName) {
+                                          StringRef tmpDirName,
+                                          StringRef devName) {
   if (!generateCdo && !generatePdi && !generateXclbin) {
     return success();
   }
@@ -614,14 +620,11 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
   }
 
   // Generate CDO files
-  SmallVector<std::string, 8> cdoStrs = {
-    aieTranslatePath,
-    mlirFilePath.str(),
-    "--aie-generate-cdo",
-    "--aie-device-name=" + devName.str(),
-    "--work-dir-path=" + tmpDirName.str()
-  };
-  
+  SmallVector<std::string, 8> cdoStrs = {aieTranslatePath, mlirFilePath.str(),
+                                         "--aie-generate-cdo",
+                                         "--aie-device-name=" + devName.str(),
+                                         "--work-dir-path=" + tmpDirName.str()};
+
   SmallVector<StringRef, 8> cdoCmd;
   for (const auto &str : cdoStrs) {
     cdoCmd.push_back(str);
@@ -637,11 +640,12 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
     std::string bootgenPath = findAieTool("bootgen");
     if (bootgenPath.empty()) {
       if (verbose) {
-        llvm::outs() << "Warning: bootgen not found, skipping PDI/xclbin generation\n";
+        llvm::outs()
+            << "Warning: bootgen not found, skipping PDI/xclbin generation\n";
       }
       return success();
     }
-    
+
     std::string pdiFileName = formatString(pdiName, devName);
     SmallString<128> pdiPath(tmpDirName);
     sys::path::append(pdiPath, pdiFileName);
@@ -649,7 +653,7 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
     // Create BIF file
     SmallString<128> bifPath(tmpDirName);
     sys::path::append(bifPath, devName.str() + "_design.bif");
-    
+
     std::error_code ec;
     raw_fd_ostream bifFile(bifPath, ec);
     if (ec) {
@@ -673,14 +677,15 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
     bifFile << "}\n";
     bifFile.close();
 
-    SmallVector<std::string, 8> bootgenStrs = {
-      bootgenPath,
-      "-arch", "versal",
-      "-image", bifPath.str().str(),
-      "-o", pdiPath.str().str(),
-      "-w"
-    };
-    
+    SmallVector<std::string, 8> bootgenStrs = {bootgenPath,
+                                               "-arch",
+                                               "versal",
+                                               "-image",
+                                               bifPath.str().str(),
+                                               "-o",
+                                               pdiPath.str().str(),
+                                               "-w"};
+
     SmallVector<StringRef, 8> bootgenCmd;
     for (const auto &str : bootgenStrs) {
       bootgenCmd.push_back(str);
@@ -700,7 +705,8 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
       std::string xclbinutilPath = findAieTool("xclbinutil");
       if (xclbinutilPath.empty()) {
         if (verbose) {
-          llvm::outs() << "Warning: xclbinutil not found, skipping xclbin generation\n";
+          llvm::outs()
+              << "Warning: xclbinutil not found, skipping xclbin generation\n";
         }
         return success();
       }
@@ -720,7 +726,7 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
 
       SmallString<128> partitionPath(tmpDirName);
       sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
-      
+
       // Make pdiPath absolute for partition JSON
       SmallString<128> absPdiPath;
       if (sys::path::is_absolute(pdiPath)) {
@@ -733,7 +739,7 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
           sys::path::append(absPdiPath, pdiPath);
         }
       }
-      
+
       generatePartitionJson(partitionPath, devName, absPdiPath);
 
       // Build xclbin
@@ -748,14 +754,17 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
       }
 
       SmallVector<std::string, 16> xclbinStrs = {
-        xclbinutilPath,
-        "--add-replace-section", "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
-        "--add-kernel", kernelsPath.str().str(),
-        "--add-replace-section", "AIE_PARTITION:JSON:" + partitionPath.str().str(),
-        "--force",
-        "--output", xclbinPath.str().str()
-      };
-      
+          xclbinutilPath,
+          "--add-replace-section",
+          "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
+          "--add-kernel",
+          kernelsPath.str().str(),
+          "--add-replace-section",
+          "AIE_PARTITION:JSON:" + partitionPath.str().str(),
+          "--force",
+          "--output",
+          xclbinPath.str().str()};
+
       SmallVector<StringRef, 16> xclbinCmd;
       for (const auto &str : xclbinStrs) {
         xclbinCmd.push_back(str);
@@ -843,14 +852,11 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
 
   std::string pipeline = buildInputWithAddressesPipeline();
   std::string pipelineArg = "--pass-pipeline=" + pipeline;
-  
-  SmallVector<std::string, 16> passStrs = {
-    aieOptPath,
-    inputPath.str().str(),
-    pipelineArg,
-    "-o", withAddressesPath.str().str()
-  };
-  
+
+  SmallVector<std::string, 16> passStrs = {aieOptPath, inputPath.str().str(),
+                                           pipelineArg, "-o",
+                                           withAddressesPath.str().str()};
+
   SmallVector<StringRef, 16> passCmd;
   for (const auto &str : passStrs) {
     passCmd.push_back(str);
@@ -869,16 +875,14 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   SmallString<128> physicalPath(tmpDirName);
   sys::path::append(physicalPath, "input_physical.mlir");
 
-  std::string routingPipeline = "builtin.module(aie.device(aie-create-pathfinder-flows))";
+  std::string routingPipeline =
+      "builtin.module(aie.device(aie-create-pathfinder-flows))";
   std::string routingArg = "--pass-pipeline=" + routingPipeline;
-  
+
   SmallVector<std::string, 16> routingStrs = {
-    aieOptPath,
-    withAddressesPath.str().str(),
-    routingArg,
-    "-o", physicalPath.str().str()
-  };
-  
+      aieOptPath, withAddressesPath.str().str(), routingArg, "-o",
+      physicalPath.str().str()};
+
   SmallVector<StringRef, 16> routingCmd;
   for (const auto &str : routingStrs) {
     routingCmd.push_back(str);
@@ -897,13 +901,14 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   for (auto *device : devices) {
     if (auto deviceOp = dyn_cast<xilinx::AIE::DeviceOp>(device)) {
       StringRef devName = deviceOp.getSymName();
-      
+
       if (verbose) {
         llvm::outs() << "\nProcessing device: " << devName << "\n";
       }
 
       // Generate NPU instructions
-      if (failed(generateNpuInstructions(context, physicalPath, tmpDirName, devName))) {
+      if (failed(generateNpuInstructions(context, physicalPath, tmpDirName,
+                                         devName))) {
         return failure();
       }
 
@@ -922,7 +927,7 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
   MLIRContext context;
   context.loadDialect<xilinx::AIE::AIEDialect>();
   context.loadDialect<xilinx::AIEX::AIEXDialect>();
-  
+
   DialectRegistry registry;
   registry.insert<arith::ArithDialect>();
   registry.insert<memref::MemRefDialect>();
