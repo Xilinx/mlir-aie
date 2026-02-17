@@ -164,8 +164,9 @@ static void printVersion(raw_ostream &os) {
 
 static std::string findAieTool(StringRef toolName) {
   // Try to find tool in PATH
-  if (auto result = sys::findProgramByName(toolName)) {
-    return result.get();
+  auto result = sys::findProgramByName(toolName);
+  if (result) {
+    return *result;
   }
 
   // Try relative to this executable
@@ -198,7 +199,8 @@ static bool executeCommand(ArrayRef<StringRef> command, bool verbose) {
 
   std::string errMsg;
   SmallVector<StringRef, 8> env;
-  Optional<StringRef> redirects[] = {None, None, None};
+  std::optional<StringRef> redirects[] = {std::nullopt, std::nullopt,
+                                          std::nullopt};
   int result = sys::ExecuteAndWait(command[0], command, env, redirects,
                                    /*secondsToWait=*/0,
                                    /*memoryLimit=*/0, &errMsg);
