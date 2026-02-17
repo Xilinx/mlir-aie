@@ -149,9 +149,9 @@ static cl::alias optLevelLong("opt-level", cl::desc("Alias for -O"),
                              cl::aliasopt(optLevel),
                              cl::cat(aieCompilerOptions));
 
-static cl::opt<bool> execute("n",
-                            cl::desc("Disable executing commands (dry run)"),
-                            cl::init(true), cl::cat(aieCompilerOptions));
+static cl::opt<bool> dryRun("n",
+                           cl::desc("Dry run mode (don't execute commands)"),
+                           cl::init(false), cl::cat(aieCompilerOptions));
 
 //===----------------------------------------------------------------------===//
 // Helper Functions
@@ -188,7 +188,7 @@ static bool executeCommand(ArrayRef<StringRef> command, bool verbose) {
     llvm::outs() << "\n";
   }
 
-  if (!execute) {
+  if (dryRun) {
     if (verbose) {
       llvm::outs() << "(Dry run - command not executed)\n";
     }
@@ -326,9 +326,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
       "aie-assign-tile-controller-ids,"
       "aie-assign-buffer-addresses{alloc-scheme=" + allocSchemeOpt + "}))";
 
-  SmallVector<StringRef, 16> aieOptCmd{
-      aieOptPath, inputPath, "--pass-pipeline=" + passPipeline, "-o",
-      outputPath};
+  // Store strings that need to outlive the command vector
+  std::string passPipelineArg = "--pass-pipeline=" + passPipeline;
+  std::string outputPathStr = std::string(outputPath);
+
+  SmallVector<StringRef, 16> aieOptCmd{aieOptPath, inputPath, passPipelineArg,
+                                       "-o", outputPathStr};
+
 
   if (!executeCommand(aieOptCmd, verbose)) {
     llvm::errs() << "Error running aie-opt passes\n";
