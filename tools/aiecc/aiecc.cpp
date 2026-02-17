@@ -639,11 +639,8 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
   if (generatePdi || generateXclbin) {
     std::string bootgenPath = findAieTool("bootgen");
     if (bootgenPath.empty()) {
-      if (verbose) {
-        llvm::outs()
-            << "Warning: bootgen not found, skipping PDI/xclbin generation\n";
-      }
-      return success();
+      llvm::errs() << "Error: bootgen not found, cannot generate requested PDI/xclbin\n";
+      return failure();
     }
 
     std::string pdiFileName = formatString(pdiName, devName);
@@ -702,10 +699,9 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
 
     // Generate xclbin if requested
     if (generateXclbin) {
-      std::string xclbinutilPath = findAieTool("xclbinutil");
-      if (xclbinutilPath.empty()) {
-        if (verbose) {
-          llvm::outs()
+        llvm::errs() << "Error: xclbinutil not found, but xclbin generation was requested "
+                     << "(--aie-generate-xclbin). Cannot generate xclbin.\n";
+        return failure();
               << "Warning: xclbinutil not found, skipping xclbin generation\n";
         }
         return success();
