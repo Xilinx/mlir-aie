@@ -17,6 +17,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
+#include <cstring>
 
 #include "cxxopts.hpp"
 #include "test_utils.h"
@@ -59,9 +61,10 @@ int main(int argc, const char *argv[]) {
   // Get the kernel from the xclbin
   auto xkernels = xclbin.get_kernels();
   auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
+                               [Node, verbosity](xrt::xclbin::kernel &k) {
                                  auto name = k.get_name();
-                                 std::cout << "Name: " << name << std::endl;
+                                 if (verbosity >= 1)
+                                   std::cout << "Name: " << name << std::endl;
                                  return name.rfind(Node, 0) == 0;
                                });
   auto kernelName = xkernel.get_name();

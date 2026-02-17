@@ -17,9 +17,9 @@
 // 1. Command-line argument parsing using LLVM CommandLine library
 // 2. MLIR module loading and parsing
 // 3. MLIR transformation pipeline execution
-// 4. Core compilation orchestration (xchesscc/peano)
+// 4. Optional integration points for core compilation tools (e.g. xchesscc/peano)
 // 5. NPU instruction generation
-// 6. CDO/PDI/xclbin generation
+// 6. Optional integration with external CDO/PDI/xclbin generation flows
 // 7. Multi-device support
 //
 //===----------------------------------------------------------------------===//

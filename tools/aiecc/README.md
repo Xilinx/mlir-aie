@@ -34,8 +34,8 @@ aiecc [options] <input.mlir>
 - `--version` - Show version information
 - `--verbose` / `-v` - Enable verbose output
 - `--tmpdir <dir>` - Directory for temporary files (default: `<input>.prj`)
-- `--compile` / `--no-compile` - Enable/disable AIE core compilation
-- `--link` / `--no-link` - Enable/disable AIE code linking
+- `--compile` / `--no-compile` - Enable/disable AIE core compilation (**currently a no-op in the C++ implementation; reserved for future use**)
+- `--link` / `--no-link` - Enable/disable AIE code linking (**currently a no-op in the C++ implementation; reserved for future use**)
 - `--alloc-scheme <scheme>` - Buffer allocation scheme (basic-sequential or bank-aware)
 - `-O <level>` - Optimization level (0-3, default: 2)
 - `-n` - Dry run mode (don't execute commands)
