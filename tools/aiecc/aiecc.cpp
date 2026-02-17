@@ -189,6 +189,9 @@ static bool executeCommand(ArrayRef<StringRef> command, bool verbose) {
   }
 
   if (!execute) {
+    if (verbose) {
+      llvm::outs() << "(Dry run - command not executed)\n";
+    }
     return true; // Dry run mode
   }
 
@@ -199,12 +202,45 @@ static bool executeCommand(ArrayRef<StringRef> command, bool verbose) {
                                    /*secondsToWait=*/0,
                                    /*memoryLimit=*/0, &errMsg);
 
-  if (result != 0 || !errMsg.empty()) {
-    llvm::errs() << "Error executing command: " << errMsg << "\n";
+  if (result != 0) {
+    llvm::errs() << "Error: Command failed with exit code " << result << "\n";
+    if (!errMsg.empty()) {
+      llvm::errs() << "Error message: " << errMsg << "\n";
+    }
     return false;
   }
 
   return true;
+}
+
+//===----------------------------------------------------------------------===//
+// AIE Device and Core Discovery
+//===----------------------------------------------------------------------===//
+
+// Walk the module to find AIE device operations
+static void findAIEDevices(ModuleOp module,
+                          SmallVectorImpl<Operation *> &devices) {
+  module.walk([&](Operation *op) {
+    if (auto deviceOp = dyn_cast<xilinx::AIE::DeviceOp>(op)) {
+      // Filter by device name if specified
+      if (deviceName.empty() ||
+          (deviceOp.getSymNameAttr() &&
+           deviceOp.getSymName() == deviceName)) {
+        devices.push_back(op);
+      }
+    }
+  });
+}
+
+// Count cores in a device for progress reporting
+static unsigned countCoresInDevice(Operation *deviceOp) {
+  unsigned count = 0;
+  deviceOp->walk([&](Operation *op) {
+    if (isa<xilinx::AIE::CoreOp>(op)) {
+      count++;
+    }
+  });
+  return count;
 }
 
 //===----------------------------------------------------------------------===//
@@ -216,6 +252,29 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   if (verbose) {
     llvm::outs() << "Starting AIE compilation in directory: " << tmpDirName
                  << "\n";
+  }
+
+  // Discover AIE devices in the module
+  SmallVector<Operation *, 4> devices;
+  findAIEDevices(module, devices);
+
+  if (devices.empty()) {
+    llvm::errs() << "Error: No AIE devices found in module\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Found " << devices.size() << " AIE device(s)\n";
+    for (auto *device : devices) {
+      if (auto deviceOp = dyn_cast<xilinx::AIE::DeviceOp>(device)) {
+        unsigned coreCount = countCoresInDevice(device);
+        llvm::outs() << "  Device";
+        if (deviceOp.getSymNameAttr()) {
+          llvm::outs() << " '" << deviceOp.getSymName() << "'";
+        }
+        llvm::outs() << " with " << coreCount << " core(s)\n";
+      }
+    }
   }
 
   // Step 1: Run initial MLIR transformation passes
@@ -241,6 +300,10 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   }
   module->print(inputFile);
   inputFile.close();
+
+  if (verbose) {
+    llvm::outs() << "Wrote input MLIR to: " << inputPath << "\n";
+  }
 
   // Step 2: Run MLIR passes (simplified version)
   SmallString<128> outputPath(tmpDirName);
