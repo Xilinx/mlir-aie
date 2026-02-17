@@ -17,7 +17,8 @@
 // 1. Command-line argument parsing using LLVM CommandLine library
 // 2. MLIR module loading and parsing
 // 3. MLIR transformation pipeline execution
-// 4. Optional integration points for core compilation tools (e.g. xchesscc/peano)
+// 4. Optional integration points for core compilation tools (e.g.
+// xchesscc/peano)
 // 5. NPU instruction generation
 // 6. Optional integration with external CDO/PDI/xclbin generation flows
 // 7. Multi-device support
@@ -639,7 +640,8 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
   if (generatePdi || generateXclbin) {
     std::string bootgenPath = findAieTool("bootgen");
     if (bootgenPath.empty()) {
-      llvm::errs() << "Error: bootgen not found, cannot generate requested PDI/xclbin\n";
+      llvm::errs()
+          << "Error: bootgen not found, cannot generate requested PDI/xclbin\n";
       return failure();
     }
 
@@ -699,85 +701,86 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
 
     // Generate xclbin if requested
     if (generateXclbin) {
-        llvm::errs() << "Error: xclbinutil not found, but xclbin generation was requested "
-                     << "(--aie-generate-xclbin). Cannot generate xclbin.\n";
-        return failure();
-              << "Warning: xclbinutil not found, skipping xclbin generation\n";
-        }
-        return success();
-      }
+      llvm::errs()
+          << "Error: xclbinutil not found, but xclbin generation was requested "
+          << "(--aie-generate-xclbin). Cannot generate xclbin.\n";
+      return failure();
+      << "Warning: xclbinutil not found, skipping xclbin generation\n";
+    }
+    return success();
+  }
 
-      if (verbose) {
-        llvm::outs() << "Generating xclbin for device: " << devName << "\n";
-      }
+  if (verbose) {
+    llvm::outs() << "Generating xclbin for device: " << devName << "\n";
+  }
 
-      // Generate JSON metadata files
-      SmallString<128> memTopoPath(tmpDirName);
-      sys::path::append(memTopoPath, devName.str() + "_mem_topology.json");
-      generateMemTopologyJson(memTopoPath);
+  // Generate JSON metadata files
+  SmallString<128> memTopoPath(tmpDirName);
+  sys::path::append(memTopoPath, devName.str() + "_mem_topology.json");
+  generateMemTopologyJson(memTopoPath);
 
-      SmallString<128> kernelsPath(tmpDirName);
-      sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-      generateKernelsJson(kernelsPath, devName);
+  SmallString<128> kernelsPath(tmpDirName);
+  sys::path::append(kernelsPath, devName.str() + "_kernels.json");
+  generateKernelsJson(kernelsPath, devName);
 
-      SmallString<128> partitionPath(tmpDirName);
-      sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
+  SmallString<128> partitionPath(tmpDirName);
+  sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
 
-      // Make pdiPath absolute for partition JSON
-      SmallString<128> absPdiPath;
-      if (sys::path::is_absolute(pdiPath)) {
-        absPdiPath = pdiPath;
-      } else {
-        std::error_code ec = sys::fs::real_path(pdiPath, absPdiPath);
-        if (ec) {
-          // If real_path fails, try making it absolute manually
-          sys::fs::current_path(absPdiPath);
-          sys::path::append(absPdiPath, pdiPath);
-        }
-      }
-
-      generatePartitionJson(partitionPath, devName, absPdiPath);
-
-      // Build xclbin
-      std::string xclbinFileName = formatString(xclbinName, devName);
-      SmallString<128> xclbinPath;
-      // Check if xclbinFileName is an absolute path or relative
-      if (sys::path::is_absolute(xclbinFileName)) {
-        xclbinPath = xclbinFileName;
-      } else {
-        // Put it in current working directory, not tmpdir
-        xclbinPath = xclbinFileName;
-      }
-
-      SmallVector<std::string, 16> xclbinStrs = {
-          xclbinutilPath,
-          "--add-replace-section",
-          "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
-          "--add-kernel",
-          kernelsPath.str().str(),
-          "--add-replace-section",
-          "AIE_PARTITION:JSON:" + partitionPath.str().str(),
-          "--force",
-          "--output",
-          xclbinPath.str().str()};
-
-      SmallVector<StringRef, 16> xclbinCmd;
-      for (const auto &str : xclbinStrs) {
-        xclbinCmd.push_back(str);
-      }
-
-      if (!executeCommand(xclbinCmd)) {
-        llvm::errs() << "Error generating xclbin\n";
-        return failure();
-      }
-
-      if (verbose) {
-        llvm::outs() << "Generated xclbin: " << xclbinPath << "\n";
-      }
+  // Make pdiPath absolute for partition JSON
+  SmallString<128> absPdiPath;
+  if (sys::path::is_absolute(pdiPath)) {
+    absPdiPath = pdiPath;
+  } else {
+    std::error_code ec = sys::fs::real_path(pdiPath, absPdiPath);
+    if (ec) {
+      // If real_path fails, try making it absolute manually
+      sys::fs::current_path(absPdiPath);
+      sys::path::append(absPdiPath, pdiPath);
     }
   }
 
-  return success();
+  generatePartitionJson(partitionPath, devName, absPdiPath);
+
+  // Build xclbin
+  std::string xclbinFileName = formatString(xclbinName, devName);
+  SmallString<128> xclbinPath;
+  // Check if xclbinFileName is an absolute path or relative
+  if (sys::path::is_absolute(xclbinFileName)) {
+    xclbinPath = xclbinFileName;
+  } else {
+    // Put it in current working directory, not tmpdir
+    xclbinPath = xclbinFileName;
+  }
+
+  SmallVector<std::string, 16> xclbinStrs = {
+      xclbinutilPath,
+      "--add-replace-section",
+      "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
+      "--add-kernel",
+      kernelsPath.str().str(),
+      "--add-replace-section",
+      "AIE_PARTITION:JSON:" + partitionPath.str().str(),
+      "--force",
+      "--output",
+      xclbinPath.str().str()};
+
+  SmallVector<StringRef, 16> xclbinCmd;
+  for (const auto &str : xclbinStrs) {
+    xclbinCmd.push_back(str);
+  }
+
+  if (!executeCommand(xclbinCmd)) {
+    llvm::errs() << "Error generating xclbin\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generated xclbin: " << xclbinPath << "\n";
+  }
+}
+}
+
+return success();
 }
 
 //===----------------------------------------------------------------------===//
