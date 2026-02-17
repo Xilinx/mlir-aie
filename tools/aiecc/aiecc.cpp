@@ -236,7 +236,7 @@ static bool executeCommand(ArrayRef<StringRef> command, bool verboseOutput = tru
 
   if (dryRun) {
     if (verbose) {
-      llvm::outs() << "(Dry run - command not executed)\n";
+      llvm::outs() << "Dry run - command not executed\n";
     }
     return true;
   }
