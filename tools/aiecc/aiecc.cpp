@@ -499,6 +499,15 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
                  << "\n";
   }
 
+  // In dry-run mode, just show what would be done and return
+  if (dryRun) {
+    if (verbose) {
+      llvm::outs() << "Would generate NPU instructions for device: " << devName
+                   << "\n";
+    }
+    return success();
+  }
+
   std::string aieOptPath = findAieTool("aie-opt");
   std::string aieTranslatePath = findAieTool("aie-translate");
 
@@ -611,6 +620,15 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
 
   if (verbose) {
     llvm::outs() << "Generating CDO artifacts for device: " << devName << "\n";
+  }
+
+  // In dry-run mode, just show what would be done and return
+  if (dryRun) {
+    if (verbose) {
+      llvm::outs() << "Would generate CDO artifacts for device: " << devName
+                   << "\n";
+    }
+    return success();
   }
 
   std::string aieTranslatePath = findAieTool("aie-translate");
