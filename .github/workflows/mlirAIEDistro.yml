@@ -51,7 +51,12 @@ jobs:
         run: |
           if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
             sudo apt install jq
-            AIE_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/Xilinx/mlir-aie/commits/${{ github.head_ref || github.ref_name }} | jq -r '.sha[:8]')
+            if [ x"${{ github.event_name }}" == x"pull_request" ]; then
+              AIE_PROJECT_COMMIT="${{ github.event.pull_request.head.sha }}"
+              AIE_PROJECT_COMMIT="${AIE_PROJECT_COMMIT:0:8}"
+            else
+              AIE_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/Xilinx/mlir-aie/commits/${{ github.ref_name }} | jq -r '.sha[:8]')
+            fi
           else
             AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
           fi
@@ -190,7 +195,8 @@ jobs:
       shell: bash
       run: |
 
-        git clone --recursive https://github.com/${{ github.repository }}.git
+        AIE_REPO="${{ github.event.pull_request.head.repo.full_name || github.repository }}"
+        git clone --recursive https://github.com/${AIE_REPO}.git
         pushd mlir-aie
         git reset --hard ${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
         git submodule update
