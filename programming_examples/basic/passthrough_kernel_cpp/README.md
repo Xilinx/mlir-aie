@@ -1,6 +1,6 @@
 # Passthrough Kernel with C++ Bindings
 
-This example demonstrates the same functionality as `passthrough_kernel_placed.py` but uses C++ to generate MLIR-AIE operations instead of Python bindings.
+This example demonstrates the same functionality as `passthrough_kernel_placed.py` but uses C++ bindings for MLIR-AIE operations instead of Python bindings.
 
 ## Overview
 
@@ -13,15 +13,15 @@ The example creates a simple passthrough kernel that:
 
 ### C++ Generator (`passthrough_kernel_placed.cpp`)
 
-This C++ program generates AIE configuration in MLIR textual format:
+This C++ program uses the MLIR C++ API to programmatically generate AIE configuration:
 
-- **Device Setup**: Creates an AIE device configuration
-- **Tile Declarations**: Defines Shim Tile (0,0) and Compute Tile (0,2)
-- **ObjectFIFOs**: Sets up data movement channels between tiles
-- **Core Logic**: Implements the passthrough operation with an external kernel
-- **Runtime Sequence**: Defines the DMA operations for data transfer
+- **Device Setup**: Creates an AIE device configuration using `DeviceOp`
+- **Tile Declarations**: Defines Shim Tile (0,0) and Compute Tile (0,2) using `TileOp::create`
+- **ObjectFIFOs**: Sets up data movement channels using `ObjectFifoCreateOp`
+- **Core Logic**: Implements the passthrough operation with an external kernel using `CoreOp`
+- **Runtime Sequence**: Defines the DMA operations for data transfer using `NpuDmaMemcpyNdOp`
 
-The generator outputs MLIR IR to stdout, which is then compiled by aiecc.py to generate the device binary.
+The generator uses OpBuilder and the MLIR C++ API to construct the IR programmatically, then outputs MLIR IR to stdout for compilation by aiecc.py.
 
 ### Kernel (`passThrough.cc`)
 
@@ -39,12 +39,12 @@ Host code that:
 
 | Aspect | Python Version | C++ Version |
 |--------|---------------|-------------|
-| **Language** | Python with IRON decorators | C++ with MLIR text generation |
-| **API** | High-level Python bindings | Direct MLIR text output |
+| **Language** | Python with IRON decorators | C++ with MLIR API |
+| **API** | High-level Python bindings | MLIR C++ OpBuilder API |
 | **Generation** | Direct script execution | Compiled generator binary |
-| **Expressiveness** | More concise syntax | More explicit control |
+| **Expressiveness** | More concise syntax | More verbose, explicit |
 | **Type Safety** | Runtime type checking | Compile-time type checking |
-| **Dependencies** | Python + aie-python-extras | C++ compiler + LLVM Support |
+| **Dependencies** | Python + aie-python-extras | C++ compiler + MLIR + AIE libraries |
 
 ## Building
 
@@ -53,7 +53,7 @@ make
 ```
 
 This will:
-1. Build the C++ generator (`passthrough_kernel_gen`)
+1. Build the C++ generator (`passthrough_kernel_gen`) using MLIR C++ API
 2. Run the generator to create MLIR IR
 3. Compile the kernel with Peano
 4. Generate the device binary with aiecc.py
@@ -69,7 +69,7 @@ make run
 
 ```
 passthrough_kernel_placed.cpp (C++)
-    ↓ (cmake + make)
+    ↓ (cmake + make with MLIR/AIE libs)
 passthrough_kernel_gen (executable)
     ↓ (./passthrough_kernel_gen -d npu -i1s 4096 -os 4096)
 aie2_lineBased_8b_4096.mlir (MLIR IR)
@@ -79,7 +79,7 @@ final_4096.xclbin (device binary)
 passthrough_kernel_cpp.exe (host app)
 ```
 
-## Key Differences in Implementation
+## Key Implementation Details
 
 ### Python Version (Decorator-based)
 ```python
@@ -90,42 +90,43 @@ def device_body():
         # Core logic
 ```
 
-### C++ Version (Text Generation)
+### C++ Version (OpBuilder-based)
 ```cpp
-std::cout << "module {\n";
-std::cout << "  aie.device(" << deviceEnum << ") {\n";
-std::cout << "    %tile_0_2 = aie.tile(0, 2)\n";
-std::cout << "    %core_0_2 = aie.core(%tile_0_2) {\n";
-// Core logic
-std::cout << "    } {link_with = \"passThrough.cc.o\"}\n";
+auto deviceOp = builder.create<DeviceOp>(loc, AIEDeviceAttr::get(ctx, device));
+auto computeTile2 = TileOp::create(builder, loc, 0, 2);
+auto coreOp = CoreOp::create(builder, loc, indexType, computeTile2);
+// Insert core operations into coreOp's block
 ```
 
-The C++ version directly generates the MLIR textual representation, which is:
-- Simpler to implement without MLIR C++ API or LLVM dependencies
-- Easier to understand and maintain
-- Provides complete control over the generated IR
-- Requires only standard C++ (no external libraries)
+The C++ version uses the MLIR OpBuilder pattern:
+- Explicit OpBuilder management for insertion points
+- Block creation and manipulation
+- Location tracking for diagnostics
+- Type construction using MLIR type system
+- Operation creation using builder.create<> or Op::create() patterns
 
 ## Learning Value
 
 This example demonstrates:
-1. How to generate MLIR-AIE IR programmatically using C++
-2. The textual format of MLIR-AIE operations
-3. The relationship between high-level Python API and underlying MLIR operations
-4. How to build custom AIE generators in C++
-5. An alternative approach to the MLIR C++ API for code generation
+1. How to use MLIR C++ API for AIE programming
+2. The relationship between high-level Python API and underlying MLIR C++ operations
+3. How to build custom AIE generators using C++ bindings
+4. The MLIR generation and compilation pipeline
+5. OpBuilder patterns for creating MLIR operations programmatically
 
 ## Files
 
-- `passthrough_kernel_placed.cpp` - C++ generator that outputs MLIR text
+- `passthrough_kernel_placed.cpp` - C++ generator using MLIR C++ API
 - `CMakeLists.txt` - Build configuration for generator and test
 - `Makefile` - Build orchestration
-- `test.cpp` - Host application (reused from passthrough_kernel)
+- `test.cpp` - Host application (reused from passthrough_kernel with fixes)
 - `README.md` - This file
 
 ## Requirements
 
 - C++ compiler (g++ or clang++)
+- MLIR/LLVM installation
+- AIE dialect libraries
 - Xilinx Vitis tools
 - XRT (Xilinx Runtime)
 

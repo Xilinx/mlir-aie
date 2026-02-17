@@ -31,8 +31,38 @@ project(passthrough_kernel_cpp_gen)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
-# Passthrough kernel generator executable - simple standalone C++ program
+# Find MLIR and AIE packages
+find_package(MLIR REQUIRED CONFIG)
+find_package(AIE REQUIRED CONFIG)
+
+include_directories(${MLIR_INCLUDE_DIRS})
+include_directories(${AIE_INCLUDE_DIRS})
+include_directories(${LLVM_INCLUDE_DIRS})
+
+link_directories(${MLIR_LIBRARY_DIRS})
+link_directories(${AIE_LIBRARY_DIRS})
+
+add_definitions(${MLIR_DEFINITIONS})
+add_definitions(${LLVM_DEFINITIONS})
+
+# Passthrough kernel generator executable using MLIR C++ API
 add_executable(passthrough_kernel_gen passthrough_kernel_placed.cpp)
+
+get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
+
+target_link_libraries(passthrough_kernel_gen
+  PRIVATE
+    AIEDialectIR
+    AIEXDialectIR
+    MLIRIR
+    MLIRArithDialect
+    MLIRFuncDialect
+    MLIRMemRefDialect
+    MLIRSCFDialect
+    MLIRSupport
+    LLVMSupport
+)
 
 # Test executable (for running the generated kernel)
 if(NOT DEFINED TARGET_NAME)
