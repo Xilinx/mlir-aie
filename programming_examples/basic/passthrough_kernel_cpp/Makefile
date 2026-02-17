@@ -31,9 +31,8 @@ build/passthrough_kernel_gen: passthrough_kernel_placed.cpp
 	mkdir -p ${@D}
 	mkdir -p ${@D}/_gen_build
 	cd ${@D}/_gen_build && cmake ${srcdir} \
-		-DCMAKE_PREFIX_PATH="${LLVM_BUILD};${AIE_BUILD}" \
-		-DMLIR_DIR=${LLVM_BUILD}/lib/cmake/mlir \
-		-DAIE_DIR=${AIE_BUILD}/lib/cmake/aie
+		-DCMAKE_PREFIX_PATH="${LLVM_BUILD}" \
+		-DLLVM_DIR=${LLVM_BUILD}/lib/cmake/llvm
 	cd ${@D}/_gen_build && make passthrough_kernel_gen
 	cp ${@D}/_gen_build/passthrough_kernel_gen $@
 

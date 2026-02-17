@@ -8,35 +8,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/InitialAllDialect.h"
-
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Location.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Support/FileUtilities.h"
-
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/ToolOutputFile.h"
 
 #include <cstdint>
+#include <iostream>
+#include <limits>
 #include <string>
 
 using namespace llvm;
-using namespace mlir;
-using namespace xilinx;
-using namespace xilinx::AIE;
-using namespace xilinx::AIEX;
 
 // Command line options
 static cl::opt<std::string> deviceOpt("d", cl::desc("AIE Device (npu or npu2)"),
@@ -50,24 +30,10 @@ static cl::opt<int64_t> traceSizeOpt("t", cl::desc("Trace buffer size"),
 
 namespace {
 
-// Helper function to create a memref type
-MemRefType createMemRefType(MLIRContext *ctx, ArrayRef<int64_t> shape,
-                             Type elementType) {
-  return MemRefType::get(shape, elementType);
-}
-
-// Main function to generate the passthrough kernel
-void generatePassthroughKernel(ModuleOp module, AIEDevice device,
-                                int64_t in1Size, int64_t outSize,
-                                int64_t traceSize) {
-  MLIRContext *ctx = module.getContext();
-  OpBuilder builder(ctx);
-  Location loc = builder.getUnknownLoc();
-
+// Main function to generate the passthrough kernel MLIR
+void generatePassthroughKernel(const std::string &device, int64_t in1Size,
+                                int64_t outSize, int64_t traceSize) {
   // Data type
-  Type i8Type = builder.getI8Type();
-  Type i32Type = builder.getI32Type();
-
   // Calculate sizes
   int64_t N = in1Size; // N elements of uint8
   int64_t lineWidthInBytes = N / 4; // chop input in 4 sub-tensors
@@ -87,149 +53,49 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
     exit(1);
   }
 
-  // Create device operation
-  builder.setInsertionPointToStart(module.getBody());
-  auto deviceOp =
-      builder.create<DeviceOp>(loc, AIEDeviceAttr::get(ctx, device));
-  Block *deviceBlock = builder.createBlock(&deviceOp.getRegion());
-  builder.setInsertionPointToStart(deviceBlock);
+  // Determine device enum
+  std::string deviceEnum;
+  if (device == "npu") {
+    deviceEnum = "npu1_1col";
+  } else if (device == "npu2") {
+    deviceEnum = "npu2";
+  } else {
+    llvm::errs() << "Error: Device name " << device << " is unknown\n";
+    exit(1);
+  }
 
-  // Define types
-  auto vectorTy = createMemRefType(ctx, {N}, i8Type);
-  auto lineTy = createMemRefType(ctx, {lineWidthInBytes}, i8Type);
-
-  // Tile declarations
-  auto shimTile = builder.create<TileOp>(loc, 0, 0);
-  auto computeTile2 = builder.create<TileOp>(loc, 0, 2);
-
-  // AIE-array data movement with object fifos
-  auto ofIn = builder.create<ObjectFifoCreateOp>(
-      loc, builder.getStringAttr("in"), shimTile, computeTile2,
-      builder.getI32IntegerAttr(2), lineTy);
-
-  auto ofOut = builder.create<ObjectFifoCreateOp>(
-      loc, builder.getStringAttr("out"), computeTile2, shimTile,
-      builder.getI32IntegerAttr(2), lineTy);
-
-  // Create core operation
-  auto coreOp = builder.create<CoreOp>(loc, computeTile2);
-  Block *coreBlock = builder.createBlock(&coreOp.getBody());
-  builder.setInsertionPointToStart(coreBlock);
-
-  // Create constants for the loop
-  auto cZero = builder.create<arith::ConstantIndexOp>(loc, 0);
-  auto cMaxSize = builder.create<arith::ConstantIndexOp>(loc, INT32_MAX);
-  auto cOne = builder.create<arith::ConstantIndexOp>(loc, 1);
-  auto cLineWidth =
-      builder.create<arith::ConstantOp>(loc, builder.getI32IntegerAttr(lineWidthInBytes));
-
-  // Create the infinite loop
-  auto forOp = builder.create<scf::ForOp>(loc, cZero, cMaxSize, cOne);
-  Block *loopBlock = &forOp.getRegion().front();
-  builder.setInsertionPointToStart(loopBlock);
-
-  // Acquire output and input
-  auto elemOut = builder.create<ObjectFifoAcquireOp>(
-      loc, TypeRange{lineTy}, ObjectFifoPort::Produce,
-      builder.getStringAttr("out"), builder.getI32IntegerAttr(1));
-
-  auto elemIn = builder.create<ObjectFifoAcquireOp>(
-      loc, TypeRange{lineTy}, ObjectFifoPort::Consume,
-      builder.getStringAttr("in"), builder.getI32IntegerAttr(1));
-
-  // Call external function passThroughLine
-  // First, we need to declare the function
-  builder.setInsertionPointToStart(deviceBlock);
-  auto funcType = builder.getFunctionType(
-      {lineTy, lineTy, i32Type}, {});
-  auto funcOp = builder.create<func::FuncOp>(
-      loc, "passThroughLine", funcType);
-  funcOp.setPrivate();
-
-  // Go back to the loop body
-  builder.setInsertionPointToEnd(loopBlock);
-
-  // Call the function
-  builder.create<func::CallOp>(loc, funcOp,
-                                ValueRange{elemIn.getResult(0),
-                                           elemOut.getResult(0), cLineWidth});
-
-  // Release input and output
-  builder.create<ObjectFifoReleaseOp>(loc, ObjectFifoPort::Consume,
-                                       builder.getStringAttr("in"),
-                                       builder.getI32IntegerAttr(1));
-
-  builder.create<ObjectFifoReleaseOp>(loc, ObjectFifoPort::Produce,
-                                       builder.getStringAttr("out"),
-                                       builder.getI32IntegerAttr(1));
-
-  // Yield for the for loop
-  builder.create<scf::YieldOp>(loc);
-
-  // End the core
-  builder.setInsertionPointToEnd(coreBlock);
-  builder.create<EndOp>(loc);
-
-  // Set link_with attribute on core
-  coreOp->setAttr("link_with",
-                  builder.getStringAttr("passThrough.cc.o"));
-
-  // Create runtime sequence
-  builder.setInsertionPointToEnd(deviceBlock);
-  auto seqOp = builder.create<AIEX::RuntimeSequenceOp>(
-      loc, builder.getFunctionType({vectorTy, vectorTy, vectorTy}, {}),
-      "sequence");
-  Block *seqBlock = builder.createBlock(&seqOp.getBody());
-  seqBlock->addArguments({vectorTy, vectorTy, vectorTy},
-                          {loc, loc, loc});
-  builder.setInsertionPointToStart(seqBlock);
-
-  Value inTensor = seqBlock->getArgument(0);
-  Value outTensor = seqBlock->getArgument(1);
-  // notUsed = seqBlock->getArgument(2);
-
-  // Create DMA BD operations for input
-  auto inTask = builder.create<AIEX::NpuDmaBdTaskOp>(
-      loc, ofIn.getSymNameAttr(), /*bd_id=*/0,
-      /*offset=*/builder.getI32IntegerAttr(0),
-      /*sizes=*/
-      DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>{1, 1, 1, (int32_t)N}),
-      /*strides=*/DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>{0, 0, 0}),
-      /*iteration_current=*/nullptr, /*iteration_size=*/nullptr,
-      /*iteration_stride=*/nullptr);
-
-  // Create DMA BD operations for output
-  auto outTask = builder.create<AIEX::NpuDmaBdTaskOp>(
-      loc, ofOut.getSymNameAttr(), /*bd_id=*/0,
-      /*offset=*/builder.getI32IntegerAttr(0),
-      /*sizes=*/
-      DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>{1, 1, 1, (int32_t)N}),
-      /*strides=*/DenseI32ArrayAttr::get(ctx, ArrayRef<int32_t>{0, 0, 0}),
-      /*iteration_current=*/nullptr, /*iteration_size=*/nullptr,
-      /*iteration_stride=*/nullptr);
-
-  // Write DMA operations
-  builder.create<AIEX::NpuWriteChannelOp>(
-      loc, inTask, inTensor, /*channel=*/0, /*column=*/0, /*bd_id=*/0);
-  builder.create<AIEX::NpuWriteChannelOp>(
-      loc, outTask, outTensor, /*channel=*/0, /*column=*/0, /*bd_id=*/0);
-
-  // Sync operations
-  builder.create<AIEX::NpuSyncOp>(loc, /*column=*/0, /*row=*/0,
-                                   /*direction=*/
-                                   AIEX::AIEDmaDirection::S2MM,
-                                   /*channel=*/0);
-  builder.create<AIEX::NpuSyncOp>(loc, /*column=*/0, /*row=*/0,
-                                   /*direction=*/
-                                   AIEX::AIEDmaDirection::MM2S,
-                                   /*channel=*/0);
-
-  // End sequence
-  builder.create<AIEX::EndOp>(loc);
-
-  // Add terminator to device block
-  builder.setInsertionPointToEnd(deviceBlock);
-  builder.create<EndOp>(loc);
+  // Generate MLIR text
+  std::cout << "module {\n";
+  std::cout << "  aie.device(" << deviceEnum << ") {\n";
+  std::cout << "    %tile_0_0 = aie.tile(0, 0)\n";
+  std::cout << "    %tile_0_2 = aie.tile(0, 2)\n";
+  std::cout << "    aie.objectfifo @in(%tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<" << lineWidthInBytes << "xi8>>\n";
+  std::cout << "    aie.objectfifo @out(%tile_0_2, {%tile_0_0}, 2 : i32) : !aie.objectfifo<memref<" << lineWidthInBytes << "xi8>>\n";
+  std::cout << "    func.func private @passThroughLine(memref<" << lineWidthInBytes << "xi8>, memref<" << lineWidthInBytes << "xi8>, i32)\n";
+  std::cout << "    %core_0_2 = aie.core(%tile_0_2) {\n";
+  std::cout << "      %c0 = arith.constant 0 : index\n";
+  std::cout << "      %c" << std::numeric_limits<int32_t>::max() << " = arith.constant " << std::numeric_limits<int32_t>::max() << " : index\n";
+  std::cout << "      %c1 = arith.constant 1 : index\n";
+  std::cout << "      scf.for %arg0 = %c0 to %c" << std::numeric_limits<int32_t>::max() << " step %c1 {\n";
+  std::cout << "        %0 = aie.objectfifo.acquire @out(Produce, 1) : !aie.objectfifosubview<memref<" << lineWidthInBytes << "xi8>>\n";
+  std::cout << "        %1 = aie.objectfifo.subview.access %0[0] : !aie.objectfifosubview<memref<" << lineWidthInBytes << "xi8>> -> memref<" << lineWidthInBytes << "xi8>\n";
+  std::cout << "        %2 = aie.objectfifo.acquire @in(Consume, 1) : !aie.objectfifosubview<memref<" << lineWidthInBytes << "xi8>>\n";
+  std::cout << "        %3 = aie.objectfifo.subview.access %2[0] : !aie.objectfifosubview<memref<" << lineWidthInBytes << "xi8>> -> memref<" << lineWidthInBytes << "xi8>\n";
+  std::cout << "        %c" << lineWidthInBytes << "_i32 = arith.constant " << lineWidthInBytes << " : i32\n";
+  std::cout << "        func.call @passThroughLine(%3, %1, %c" << lineWidthInBytes << "_i32) : (memref<" << lineWidthInBytes << "xi8>, memref<" << lineWidthInBytes << "xi8>, i32) -> ()\n";
+  std::cout << "        aie.objectfifo.release @in(Consume, 1)\n";
+  std::cout << "        aie.objectfifo.release @out(Produce, 1)\n";
+  std::cout << "      }\n";
+  std::cout << "      aie.end\n";
+  std::cout << "    } {link_with = \"passThrough.cc.o\"}\n";
+  std::cout << "    func.func @sequence(%arg0: memref<" << N << "xi8>, %arg1: memref<" << N << "xi8>, %arg2: memref<" << N << "xi8>) {\n";
+  std::cout << "      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, " << N << "][0, 0, 0]) {id = 0 : i64, metadata = @in} : memref<" << N << "xi8>\n";
+  std::cout << "      aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 1, " << N << "][0, 0, 0]) {id = 1 : i64, metadata = @out} : memref<" << N << "xi8>\n";
+  std::cout << "      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}\n";
+  std::cout << "      return\n";
+  std::cout << "    }\n";
+  std::cout << "  }\n";
+  std::cout << "}\n";
 }
 
 } // namespace
@@ -237,53 +103,17 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
 int main(int argc, char **argv) {
   InitLLVM y(argc, argv);
 
-  // Register dialects
-  DialectRegistry registry;
-  xilinx::registerAllDialects(registry);
-  registry.insert<mlir::arith::ArithDialect>();
-  registry.insert<mlir::func::FuncDialect>();
-  registry.insert<mlir::memref::MemRefDialect>();
-  registry.insert<mlir::scf::SCFDialect>();
-
-  MLIRContext context(registry);
-  context.loadAllAvailableDialects();
-
   // Parse command line options
   cl::ParseCommandLineOptions(argc, argv, "AIE passthrough kernel generator\n");
 
-  // Determine device
-  AIEDevice device;
-  if (deviceOpt == "npu") {
-    device = AIEDevice::npu1_1col;
-  } else if (deviceOpt == "npu2") {
-    device = AIEDevice::npu2;
-  } else {
-    llvm::errs() << "Error: Device name " << deviceOpt << " is unknown\n";
-    return 1;
-  }
-
-  // Get sizes
+  // Get parameters
+  std::string device = deviceOpt;
   int64_t in1Size = in1SizeOpt;
   int64_t outSize = outSizeOpt;
   int64_t traceSize = traceSizeOpt;
 
-  // Create module
-  OpBuilder builder(&context);
-  auto loc = builder.getUnknownLoc();
-  auto module = ModuleOp::create(loc);
-
   // Generate the kernel
-  generatePassthroughKernel(module, device, in1Size, outSize, traceSize);
-
-  // Verify the module
-  if (failed(verify(module))) {
-    llvm::errs() << "Module verification failed\n";
-    return 1;
-  }
-
-  // Print the module
-  module.print(llvm::outs());
-  llvm::outs() << "\n";
+  generatePassthroughKernel(device, in1Size, outSize, traceSize);
 
   return 0;
 }
