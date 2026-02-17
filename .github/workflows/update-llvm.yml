@@ -17,6 +17,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   update-llvm:
@@ -48,6 +49,16 @@ jobs:
             echo "changes=true" >> $GITHUB_OUTPUT
             echo "Changes detected."
           fi
+
+      - name: Trigger MLIR Distro Build
+        if: steps.check_changes.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract the new LLVM commit hash
+          NEW_COMMIT=$(grep "^LLVM_PROJECT_COMMIT=" utils/clone-llvm.sh | cut -d= -f2)
+          echo "Triggering MLIR Distro build for commit $NEW_COMMIT"
+          gh workflow run mlirDistro.yml -f LLVM_COMMIT=$NEW_COMMIT
 
       - name: Select Assignee
         if: steps.check_changes.outputs.changes == 'true'
