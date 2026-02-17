@@ -11,7 +11,9 @@
 // This test verifies that the C++ aiecc generates working xclbin and
 // instructions
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <sstream>
