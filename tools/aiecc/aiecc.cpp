@@ -79,35 +79,35 @@ static cl::opt<std::string> tmpDir("tmpdir",
                                    cl::init(""), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> verbose("verbose", cl::desc("Enable verbose output"),
-                            cl::init(false), cl::cat(aieCompilerOptions));
+                             cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::alias verboseShort("v", cl::desc("Alias for --verbose"),
                               cl::aliasopt(verbose),
                               cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> xbridge("xbridge", cl::desc("Link using xbridge"),
-                            cl::init(true), cl::cat(aieCompilerOptions));
+                             cl::init(true), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> noXbridge("no-xbridge",
-                              cl::desc("Link using peano (disable xbridge)"),
-                              cl::init(false), cl::cat(aieCompilerOptions));
+                               cl::desc("Link using peano (disable xbridge)"),
+                               cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
-                           cl::init(false), cl::cat(aieCompilerOptions));
+                            cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> compile("compile",
-                            cl::desc("Enable compiling of AIE cores"),
-                            cl::init(true), cl::cat(aieCompilerOptions));
+                             cl::desc("Enable compiling of AIE cores"),
+                             cl::init(true), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> noCompile("no-compile",
-                              cl::desc("Disable compiling of AIE cores"),
-                              cl::init(false), cl::cat(aieCompilerOptions));
+                               cl::desc("Disable compiling of AIE cores"),
+                               cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> link("link", cl::desc("Enable linking of AIE code"),
-                         cl::init(true), cl::cat(aieCompilerOptions));
+                          cl::init(true), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> noLink("no-link", cl::desc("Disable linking of AIE code"),
-                           cl::init(false), cl::cat(aieCompilerOptions));
+                            cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<std::string> allocScheme(
     "alloc-scheme",
@@ -117,41 +117,42 @@ static cl::opt<std::string> allocScheme(
 
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
-                    cl::desc("Generate NPU instruction stream"),
-                    cl::init(false), cl::cat(aieCompilerOptions));
+                     cl::desc("Generate NPU instruction stream"),
+                     cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<std::string>
     instsName("npu-insts-name",
-             cl::desc("Output instructions filename for NPU target"),
-             cl::init("{0}_{1}.bin"), cl::cat(aieCompilerOptions));
+              cl::desc("Output instructions filename for NPU target"),
+              cl::init("{0}_{1}.bin"), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> generateCdo("aie-generate-cdo",
-                                cl::desc("Generate libxaie v2 for CDO"),
-                                cl::init(false), cl::cat(aieCompilerOptions));
+                                 cl::desc("Generate libxaie v2 for CDO"),
+                                 cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> generateXclbin("aie-generate-xclbin",
-                                   cl::desc("Generate xclbin"),
-                                   cl::init(false), cl::cat(aieCompilerOptions));
+                                    cl::desc("Generate xclbin"),
+                                    cl::init(false),
+                                    cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string> xclbinName("xclbin-name",
+                                       cl::desc("Output xclbin filename"),
+                                       cl::init("{0}.xclbin"),
+                                       cl::cat(aieCompilerOptions));
 
 static cl::opt<std::string>
-    xclbinName("xclbin-name", cl::desc("Output xclbin filename"),
-              cl::init("{0}.xclbin"), cl::cat(aieCompilerOptions));
+    deviceName("device-name", cl::desc("Device configuration to compile"),
+               cl::init(""), cl::cat(aieCompilerOptions));
 
-static cl::opt<std::string> deviceName("device-name",
-                                      cl::desc("Device configuration to compile"),
-                                      cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<unsigned> optLevel("O",
-                                 cl::desc("Optimization level (0-3)"),
-                                 cl::init(2), cl::cat(aieCompilerOptions));
+static cl::opt<unsigned> optLevel("O", cl::desc("Optimization level (0-3)"),
+                                  cl::init(2), cl::cat(aieCompilerOptions));
 
 static cl::alias optLevelLong("opt-level", cl::desc("Alias for -O"),
-                             cl::aliasopt(optLevel),
-                             cl::cat(aieCompilerOptions));
+                              cl::aliasopt(optLevel),
+                              cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> dryRun("n",
-                           cl::desc("Dry run mode (don't execute commands)"),
-                           cl::init(false), cl::cat(aieCompilerOptions));
+                            cl::desc("Dry run mode (don't execute commands)"),
+                            cl::init(false), cl::cat(aieCompilerOptions));
 
 //===----------------------------------------------------------------------===//
 // Helper Functions
@@ -166,16 +167,16 @@ static std::string findAieTool(StringRef toolName) {
   if (auto result = sys::findProgramByName(toolName)) {
     return result.get();
   }
-  
+
   // Try relative to this executable
   auto mainExecutable = sys::fs::getMainExecutable(nullptr, nullptr);
   SmallString<128> toolPath(sys::path::parent_path(mainExecutable));
   sys::path::append(toolPath, toolName);
-  
+
   if (sys::fs::can_execute(toolPath)) {
     return std::string(toolPath);
   }
-  
+
   return "";
 }
 
@@ -219,13 +220,12 @@ static bool executeCommand(ArrayRef<StringRef> command, bool verbose) {
 
 // Walk the module to find AIE device operations
 static void findAIEDevices(ModuleOp module,
-                          SmallVectorImpl<Operation *> &devices) {
+                           SmallVectorImpl<Operation *> &devices) {
   module.walk([&](Operation *op) {
     if (auto deviceOp = dyn_cast<xilinx::AIE::DeviceOp>(op)) {
       // Filter by device name if specified
       if (deviceName.empty() ||
-          (deviceOp.getSymNameAttr() &&
-           deviceOp.getSymName() == deviceName)) {
+          (deviceOp.getSymNameAttr() && deviceOp.getSymName() == deviceName)) {
         devices.push_back(op);
       }
     }
@@ -248,7 +248,7 @@ static unsigned countCoresInDevice(Operation *deviceOp) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
-                                     StringRef tmpDirName) {
+                                      StringRef tmpDirName) {
   if (verbose) {
     llvm::outs() << "Starting AIE compilation in directory: " << tmpDirName
                  << "\n";
@@ -291,7 +291,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   // Write input MLIR to temp file
   SmallString<128> inputPath(tmpDirName);
   sys::path::append(inputPath, "input.mlir");
-  
+
   std::error_code ec;
   raw_fd_ostream inputFile(inputPath, ec);
   if (ec) {
@@ -315,18 +315,19 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   }
 
   // Build pass pipeline
-  std::string passPipeline =
-      "builtin.module(aie.device(aie-assign-lock-ids,"
-      "aie-register-objectFifos,"
-      "aie-objectFifo-stateful-transform,"
-      "aie-assign-bd-ids,"
-      "aie-lower-cascade-flows,"
-      "aie-lower-broadcast-packet,"
-      "aie-lower-multicast,"
-      "aie-assign-tile-controller-ids,"
-      "aie-assign-buffer-addresses{alloc-scheme=" + allocSchemeOpt + "}))";
+  std::string passPipeline = "builtin.module(aie.device(aie-assign-lock-ids,"
+                             "aie-register-objectFifos,"
+                             "aie-objectFifo-stateful-transform,"
+                             "aie-assign-bd-ids,"
+                             "aie-lower-cascade-flows,"
+                             "aie-lower-broadcast-packet,"
+                             "aie-lower-multicast,"
+                             "aie-assign-tile-controller-ids,"
+                             "aie-assign-buffer-addresses{alloc-scheme=" +
+                             allocSchemeOpt + "}))";
 
-  // Store strings that need to outlive the command vector to ensure proper lifetime
+  // Store strings that need to outlive the command vector to ensure proper
+  // lifetime
   std::string aieOptPathStr = aieOptPath;
   std::string inputPathStr = std::string(inputPath.str());
   std::string passPipelineArg = "--pass-pipeline=" + passPipeline;
@@ -334,7 +335,6 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
 
   SmallVector<StringRef, 16> aieOptCmd{aieOptPathStr, inputPathStr,
                                        passPipelineArg, "-o", outputPathStr};
-
 
   if (!executeCommand(aieOptCmd, verbose)) {
     llvm::errs() << "Error running aie-opt passes\n";
@@ -362,7 +362,7 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
   xilinx::registerAllDialects(context);
 
   OwningOpRef<ModuleOp> module;
-  
+
   if (inputFile.empty()) {
     llvm::errs() << "Error: No input file specified\n";
     return 1;
