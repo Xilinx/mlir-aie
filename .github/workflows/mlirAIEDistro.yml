@@ -486,6 +486,7 @@ jobs:
           path: dist
 
       - name: Release current commit
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: ncipollo/release-action@v1.12.0
         with:
           artifacts: "dist/*.whl,dist/*.tar.xz"
