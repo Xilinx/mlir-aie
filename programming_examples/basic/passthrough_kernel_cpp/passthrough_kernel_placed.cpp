@@ -38,20 +38,20 @@ using namespace xilinx::AIEX;
 
 // Command line options
 static cl::opt<std::string> deviceOpt("d", cl::desc("AIE Device (npu or npu2)"),
-                                       cl::init("npu"));
+                                      cl::init("npu"));
 static cl::opt<int64_t> in1SizeOpt("i1s", cl::desc("Input 1 size in bytes"),
-                                    cl::init(4096));
+                                   cl::init(4096));
 static cl::opt<int64_t> outSizeOpt("os", cl::desc("Output size in bytes"),
-                                    cl::init(4096));
+                                   cl::init(4096));
 static cl::opt<int64_t> traceSizeOpt("t", cl::desc("Trace buffer size"),
-                                      cl::init(0));
+                                     cl::init(0));
 
 namespace {
 
 // Main function to generate the passthrough kernel using MLIR C++ API
 void generatePassthroughKernel(ModuleOp module, AIEDevice device,
-                                int64_t in1Size, int64_t outSize,
-                                int64_t traceSize) {
+                               int64_t in1Size, int64_t outSize,
+                               int64_t traceSize) {
   MLIRContext *ctx = module.getContext();
   OpBuilder builder(ctx);
   Location loc = builder.getUnknownLoc();
@@ -62,7 +62,7 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
   Type indexType = builder.getIndexType();
 
   // Calculate sizes
-  int64_t N = in1Size; // N elements of uint8
+  int64_t N = in1Size;              // N elements of uint8
   int64_t lineWidthInBytes = N / 4; // chop input in 4 sub-tensors
 
   // Check that output size matches input size
@@ -82,7 +82,8 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
 
   // Note: Tracing support not yet implemented
   if (traceSize > 0) {
-    llvm::errs() << "Warning: Trace support not yet implemented in C++ version\n";
+    llvm::errs()
+        << "Warning: Trace support not yet implemented in C++ version\n";
   }
 
   // Define types
@@ -91,7 +92,8 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
 
   // Create device operation
   builder.setInsertionPointToStart(module.getBody());
-  auto deviceOp = builder.create<DeviceOp>(loc, AIEDeviceAttr::get(ctx, device));
+  auto deviceOp =
+      builder.create<DeviceOp>(loc, AIEDeviceAttr::get(ctx, device));
   Block *deviceBlock = builder.createBlock(&deviceOp.getRegion());
   builder.setInsertionPointToStart(deviceBlock);
 
@@ -130,7 +132,8 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
   // Using INT32_MAX to create an effectively infinite loop, matching the
   // Python version's sys.maxsize behavior
   auto cZero = builder.create<arith::ConstantIndexOp>(loc, 0);
-  auto cMaxSize = builder.create<arith::ConstantIndexOp>(loc, std::numeric_limits<int32_t>::max());
+  auto cMaxSize = builder.create<arith::ConstantIndexOp>(
+      loc, std::numeric_limits<int32_t>::max());
   auto cOne = builder.create<arith::ConstantIndexOp>(loc, 1);
 
   // Create the infinite loop
@@ -161,14 +164,14 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
 
   // Call the external function
   builder.create<func::CallOp>(loc, funcOp,
-                                ValueRange{elemInMem, elemOutMem, cLineWidth});
+                               ValueRange{elemInMem, elemOutMem, cLineWidth});
 
   // Release input and output
   builder.create<ObjectFifoReleaseOp>(loc, ObjectFifoPort::Consume, ofInName,
-                                       builder.getI32IntegerAttr(1));
+                                      builder.getI32IntegerAttr(1));
 
   builder.create<ObjectFifoReleaseOp>(loc, ObjectFifoPort::Produce, ofOutName,
-                                       builder.getI32IntegerAttr(1));
+                                      builder.getI32IntegerAttr(1));
 
   // Yield for the for loop
   builder.create<scf::YieldOp>(loc);
@@ -182,14 +185,16 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
 
   // Create runtime sequence function
   builder.setInsertionPointToEnd(deviceBlock);
-  auto seqFuncType = builder.getFunctionType({vectorTy, vectorTy, vectorTy}, {});
+  auto seqFuncType =
+      builder.getFunctionType({vectorTy, vectorTy, vectorTy}, {});
   auto seqFuncOp = builder.create<func::FuncOp>(loc, "sequence", seqFuncType);
   Block *seqBlock = seqFuncOp.addEntryBlock();
   builder.setInsertionPointToStart(seqBlock);
 
   Value inTensor = seqBlock->getArgument(0);
   Value outTensor = seqBlock->getArgument(1);
-  // Third argument is not used in this example but required by function signature
+  // Third argument is not used in this example but required by function
+  // signature
 
   // Create DMA operations for input
   SmallVector<int64_t> staticOffsets = {0, 0, 0, 0};
@@ -200,8 +205,8 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
       builder, loc, inTensor,
       /*offsets=*/SmallVector<Value>{},
       /*sizes=*/SmallVector<Value>{},
-      /*strides=*/SmallVector<Value>{},
-      ArrayRef(staticOffsets), ArrayRef(staticSizes), ArrayRef(staticStrides),
+      /*strides=*/SmallVector<Value>{}, ArrayRef(staticOffsets),
+      ArrayRef(staticSizes), ArrayRef(staticStrides),
       /*packet=*/nullptr, /*metadata=*/ofInName, /*id=*/0,
       /*issue_token=*/false,
       /*d0_zero_before=*/0, /*d1_zero_before=*/0, /*d2_zero_before=*/0,
@@ -213,8 +218,8 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
       builder, loc, outTensor,
       /*offsets=*/SmallVector<Value>{},
       /*sizes=*/SmallVector<Value>{},
-      /*strides=*/SmallVector<Value>{},
-      ArrayRef(staticOffsets), ArrayRef(staticSizes), ArrayRef(staticStrides),
+      /*strides=*/SmallVector<Value>{}, ArrayRef(staticOffsets),
+      ArrayRef(staticSizes), ArrayRef(staticStrides),
       /*packet=*/nullptr, /*metadata=*/ofOutName, /*id=*/1,
       /*issue_token=*/false,
       /*d0_zero_before=*/0, /*d1_zero_before=*/0, /*d2_zero_before=*/0,
@@ -223,12 +228,12 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
 
   // Sync operation
   NpuSyncOp::create(builder, loc,
-                     /*column=*/builder.getI32IntegerAttr(0),
-                     /*row=*/builder.getI32IntegerAttr(0),
-                     /*direction=*/builder.getI32IntegerAttr(0),
-                     /*channel=*/builder.getI32IntegerAttr(0),
-                     /*column_num=*/builder.getI32IntegerAttr(1),
-                     /*row_num=*/builder.getI32IntegerAttr(1));
+                    /*column=*/builder.getI32IntegerAttr(0),
+                    /*row=*/builder.getI32IntegerAttr(0),
+                    /*direction=*/builder.getI32IntegerAttr(0),
+                    /*channel=*/builder.getI32IntegerAttr(0),
+                    /*column_num=*/builder.getI32IntegerAttr(1),
+                    /*row_num=*/builder.getI32IntegerAttr(1));
 
   // Return
   builder.create<func::ReturnOp>(loc);
