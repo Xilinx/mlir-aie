@@ -269,7 +269,8 @@ jobs:
         $opensslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
         New-Item -ItemType Directory -Force -Path wheelhouse\repaired_wheel | Out-Null
 
-        python -m delvewheel repair --ignore-existing --analyze-existing-exes -add-path $opensslBin -w wheelhouse\repaired_wheel wheelhouse\mlir_aie*.whl
+        $wheels = Get-ChildItem wheelhouse\mlir_aie*.whl | ForEach-Object { $_.FullName }
+        python -m delvewheel repair --ignore-existing --analyze-existing-exes --add-path "$opensslBin" -w wheelhouse\repaired_wheel $wheels
 
         Remove-Item wheelhouse\mlir_aie*.whl -Force
         Move-Item wheelhouse\repaired_wheel\*.whl wheelhouse\
