@@ -7,6 +7,15 @@
 # Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
+#
+# This example requires MLIR_AIE_BUILD_DIR to be set to the build directory
+# of the mlir-aie project, which contains the MLIR and AIE libraries.
+#
+# Example:
+#   export MLIR_AIE_BUILD_DIR=/path/to/mlir-aie/build
+#   make
+#
+##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 

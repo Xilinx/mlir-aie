@@ -127,6 +127,8 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
   builder.setInsertionPointToStart(coreBlock);
 
   // Create constants for the loop
+  // Using INT32_MAX to create an effectively infinite loop, matching the
+  // Python version's sys.maxsize behavior
   auto cZero = builder.create<arith::ConstantIndexOp>(loc, 0);
   auto cMaxSize = builder.create<arith::ConstantIndexOp>(loc, std::numeric_limits<int32_t>::max());
   auto cOne = builder.create<arith::ConstantIndexOp>(loc, 1);
@@ -187,7 +189,7 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
 
   Value inTensor = seqBlock->getArgument(0);
   Value outTensor = seqBlock->getArgument(1);
-  // Value notUsed = seqBlock->getArgument(2);
+  // Third argument is not used in this example but required by function signature
 
   // Create DMA operations for input
   SmallVector<int64_t> staticOffsets = {0, 0, 0, 0};
