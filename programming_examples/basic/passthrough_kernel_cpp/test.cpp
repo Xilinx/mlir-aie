@@ -34,7 +34,7 @@ void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int SIZE) {
 
 // Initialize Output buffer
 void initialize_bufOut(DATATYPE_OUT *bufOut, int SIZE) {
-  memset(bufOut, 0, SIZE);
+  memset(bufOut, 0, SIZE * sizeof(DATATYPE_OUT));
 }
 
 // Functional correctness verifyer

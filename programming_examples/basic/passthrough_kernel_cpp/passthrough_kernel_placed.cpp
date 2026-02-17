@@ -71,6 +71,13 @@ void generatePassthroughKernel(const std::string &device, int64_t in1Size,
     exit(1);
   }
 
+  // Note: Tracing support (trace_size parameter) not yet implemented
+  // The Python version uses trace_utils to configure packet tracing flows
+  // This could be added in a future enhancement
+  if (traceSize > 0) {
+    std::cerr << "Warning: Trace support not yet implemented in C++ version\n";
+  }
+
   // Determine device enum
   std::string deviceEnum;
   if (device == "npu") {
