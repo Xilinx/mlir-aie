@@ -22,6 +22,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
 
@@ -189,24 +190,43 @@ void generatePassthroughKernel(ModuleOp module, AIEDevice device,
   // Value notUsed = seqBlock->getArgument(2);
 
   // Create DMA operations for input
-  builder.create<NpuDmaMemcpyNdOp>(
-      loc, /*x=*/0, /*y=*/0, inTensor,
-      /*offsets=*/ArrayRef<int32_t>{0, 0, 0, 0},
-      /*sizes=*/ArrayRef<int32_t>{1, 1, 1, (int32_t)N},
-      /*strides=*/ArrayRef<int32_t>{0, 0, 0},
-      /*metadata=*/ofInName);
+  SmallVector<int64_t> staticOffsets = {0, 0, 0, 0};
+  SmallVector<int64_t> staticSizes = {1, 1, 1, (int64_t)N};
+  SmallVector<int64_t> staticStrides = {0, 0, 0};
+
+  NpuDmaMemcpyNdOp::create(
+      builder, loc, inTensor,
+      /*offsets=*/SmallVector<Value>{},
+      /*sizes=*/SmallVector<Value>{},
+      /*strides=*/SmallVector<Value>{},
+      ArrayRef(staticOffsets), ArrayRef(staticSizes), ArrayRef(staticStrides),
+      /*packet=*/nullptr, /*metadata=*/ofInName, /*id=*/0,
+      /*issue_token=*/false,
+      /*d0_zero_before=*/0, /*d1_zero_before=*/0, /*d2_zero_before=*/0,
+      /*d0_zero_after=*/0, /*d1_zero_after=*/0, /*d2_zero_after=*/0,
+      /*burst_length=*/0);
 
   // Create DMA operations for output
-  builder.create<NpuDmaMemcpyNdOp>(
-      loc, /*x=*/0, /*y=*/0, outTensor,
-      /*offsets=*/ArrayRef<int32_t>{0, 0, 0, 0},
-      /*sizes=*/ArrayRef<int32_t>{1, 1, 1, (int32_t)N},
-      /*strides=*/ArrayRef<int32_t>{0, 0, 0},
-      /*metadata=*/ofOutName);
+  NpuDmaMemcpyNdOp::create(
+      builder, loc, outTensor,
+      /*offsets=*/SmallVector<Value>{},
+      /*sizes=*/SmallVector<Value>{},
+      /*strides=*/SmallVector<Value>{},
+      ArrayRef(staticOffsets), ArrayRef(staticSizes), ArrayRef(staticStrides),
+      /*packet=*/nullptr, /*metadata=*/ofOutName, /*id=*/1,
+      /*issue_token=*/false,
+      /*d0_zero_before=*/0, /*d1_zero_before=*/0, /*d2_zero_before=*/0,
+      /*d0_zero_after=*/0, /*d1_zero_after=*/0, /*d2_zero_after=*/0,
+      /*burst_length=*/0);
 
   // Sync operation
-  builder.create<NpuSyncOp>(loc, /*column=*/0, /*row=*/0, /*direction=*/0,
-                             /*channel=*/0, /*column_num=*/1, /*row_num=*/1);
+  NpuSyncOp::create(builder, loc,
+                     /*column=*/builder.getI32IntegerAttr(0),
+                     /*row=*/builder.getI32IntegerAttr(0),
+                     /*direction=*/builder.getI32IntegerAttr(0),
+                     /*channel=*/builder.getI32IntegerAttr(0),
+                     /*column_num=*/builder.getI32IntegerAttr(1),
+                     /*row_num=*/builder.getI32IntegerAttr(1));
 
   // Return
   builder.create<func::ReturnOp>(loc);
