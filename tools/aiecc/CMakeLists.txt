@@ -29,6 +29,7 @@ set(LIBS
   MLIRIR
   AIE
   AIEX
+  ${llvm_libs}
   )
 
 target_link_libraries(aiecc PUBLIC ${LIBS})
