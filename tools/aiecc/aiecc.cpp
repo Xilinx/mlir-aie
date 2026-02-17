@@ -12,6 +12,19 @@
 // This is the main entry point for the AIE compiler driver (aiecc).
 // It orchestrates the compilation flow for AIE devices.
 //
+// This C++ implementation provides similar functionality to the Python aiecc.py
+// tool, with the following architecture:
+//
+// 1. Command-line argument parsing using LLVM CommandLine library
+// 2. MLIR module loading and parsing
+// 3. MLIR transformation pipeline execution
+// 4. Orchestration of external tools (aie-opt, aie-translate, xchesscc, etc.)
+// 5. Generation of output artifacts (ELF files, NPU instructions, xclbin, etc.)
+//
+// This initial implementation provides the core infrastructure and can be
+// extended with additional features such as parallel compilation, progress
+// reporting, and comprehensive artifact generation.
+//
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/BuiltinOps.h"
