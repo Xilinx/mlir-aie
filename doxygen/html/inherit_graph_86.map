@@ -1,9 +1,11 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classmlir_1_1OpTrait_1_1TraitBase.html" title=" " alt="" coords="5,77,176,102"/>
+<area shape="rect" id="Node000000" href="$classmlir_1_1OpTrait_1_1TraitBase.html" title=" " alt="" coords="5,109,176,134"/>
 <area shape="rect" id="Node000001" href="$structxilinx_1_1AIE_1_1HasValidBDs.html" title=" " alt="" coords="256,5,435,45"/>
-<area shape="poly" id="edge81_Node000000_Node000001" title=" " alt="" coords="155,71,264,43,266,48,156,76"/>
+<area shape="poly" id="edge81_Node000000_Node000001" title=" " alt="" coords="125,100,171,77,223,55,259,43,261,48,225,60,174,82,128,105"/>
 <area shape="rect" id="Node000002" href="$structxilinx_1_1AIE_1_1HasValidDMAChannels.html" title=" " alt="" coords="224,69,467,109"/>
-<area shape="poly" id="edge82_Node000000_Node000002" title=" " alt="" coords="190,87,224,87,224,92,190,92"/>
-<area shape="rect" id="Node000003" href="$structxilinx_1_1AIE_1_1SkipAccessibilityCheckTrait.html" title=" " alt="" coords="241,133,449,173"/>
-<area shape="poly" id="edge83_Node000000_Node000003" title=" " alt="" coords="156,103,266,131,264,136,155,108"/>
+<area shape="poly" id="edge82_Node000000_Node000002" title=" " alt="" coords="189,106,224,102,224,107,190,112"/>
+<area shape="rect" id="Node000003" href="$structxilinx_1_1AIE_1_1IsFlowEndPoint.html" title=" " alt="" coords="248,133,443,173"/>
+<area shape="poly" id="edge83_Node000000_Node000003" title=" " alt="" coords="190,131,248,138,247,144,190,136"/>
+<area shape="rect" id="Node000004" href="$structxilinx_1_1AIE_1_1SkipAccessibilityCheckTrait.html" title=" " alt="" coords="241,197,449,237"/>
+<area shape="poly" id="edge84_Node000000_Node000004" title=" " alt="" coords="128,138,174,161,225,183,261,195,259,200,223,188,171,166,125,143"/>
 </map>

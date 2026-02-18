@@ -287,7 +287,9 @@ aie.core(%tile) {
 } { stackSize = 2048 : i32, elf_file = "core_33.elf" }
 ```
 
-Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+Traits: `IsFlowEndPoint`
+
+Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 
 #### Attributes:
 
@@ -959,9 +961,9 @@ Example:
 ```
 Create the memory module for tile %t73 and setup one DMA channel and one Buffer Descriptor.
 
-Traits: `HasValidBDs`, `HasValidDMAChannels`
+Traits: `HasValidBDs`, `HasValidDMAChannels`, `IsFlowEndPoint`
 
-Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 
 #### Operands:
 
@@ -1010,9 +1012,9 @@ Example:
 ```
 Create a description for tile `%t73` and setup one DMA channel and one Buffer Descriptor.
 
-Traits: `HasValidBDs`, `HasValidDMAChannels`
+Traits: `HasValidBDs`, `HasValidDMAChannels`, `IsFlowEndPoint`
 
-Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 
 #### Operands:
 
@@ -1835,9 +1837,9 @@ Example:
 ```
 Create the shim_dma for tile `%t70` and setup one DMA channel and one Buffer Descriptor.
 
-Traits: `HasValidBDs`, `HasValidDMAChannels`
+Traits: `HasValidBDs`, `HasValidDMAChannels`, `IsFlowEndPoint`
 
-Interfaces: `FlowEndPoint`, `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
+Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 
 #### Operands:
 
@@ -2047,9 +2049,9 @@ A tile is a logical abstraction. We use a tile to establish ownership of a hardw
 Note that row 0 of the Tile array is different from other rows, since it models the shim interface between
 the AIE array proper and the PL. The South-West/Lower Right most core exists in Tile(0,1).
 
-Traits: `AlwaysSpeculatableImplTrait`
+Traits: `AlwaysSpeculatableImplTrait`, `IsFlowEndPoint`
 
-Interfaces: `ConditionallySpeculatable`, `FlowEndPoint`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`, `OpAsmOpInterface`
 
 Effects: `MemoryEffects::Effect{}`
 
