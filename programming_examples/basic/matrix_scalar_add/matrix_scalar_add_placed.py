@@ -65,7 +65,7 @@ def my_matrix_add_one():
                 of_out.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
-        tap = TensorAccessPattern.identity(MATRIX_SHAPE).tile_sequence(TILE_SHAPE)[0]
+        tap = TensorAccessPattern(MATRIX_SHAPE).tile_sequence(TILE_SHAPE)[0]
 
         @runtime_sequence(matrix_ty, matrix_ty, matrix_ty)
         def sequence(inTensor, _, outTensor):

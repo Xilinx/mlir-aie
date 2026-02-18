@@ -27,7 +27,7 @@ def generate_module(
 
     # Define tensor access pattern. In this case, we access all elements in the tensor
     # in a tile-wise fashion.
-    t = TensorAccessPattern.identity((tensor_height, tensor_width)).tile_sequence(
+    t = TensorAccessPattern((tensor_height, tensor_width)).tile_sequence(
         (tile_height, tile_width),
         repeat_dims=(tensor_height // tile_height, tensor_width // tile_width),
     )[0]

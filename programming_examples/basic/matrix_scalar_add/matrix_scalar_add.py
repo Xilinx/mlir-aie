@@ -60,7 +60,7 @@ def my_matrix_add_one():
     my_worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
     # Define the data access pattern for input/output
-    tap = TensorAccessPattern.identity(MATRIX_SHAPE).tile_sequence(TILE_SHAPE)[0]
+    tap = TensorAccessPattern(MATRIX_SHAPE).tile_sequence(TILE_SHAPE)[0]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()

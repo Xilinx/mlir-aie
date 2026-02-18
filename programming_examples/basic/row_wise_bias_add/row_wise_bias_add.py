@@ -52,10 +52,10 @@ def row_wise_bias_add(dev, M, N, m, n):
     )
 
     # The tensor access pattern of the input/output tensors (tiling)
-    tap = TensorAccessPattern.identity((M, N)).tile_sequence(
+    tap = TensorAccessPattern((M, N)).tile_sequence(
         (m, n), repeat_dims=(M // m, N // n), repeat_dim_order=[1, 0]
     )[0]
-    bias_tap = TensorAccessPattern.identity((1, N)).tile_sequence(
+    bias_tap = TensorAccessPattern((1, N)).tile_sequence(
         (1, n), repeat_dims=(1, N // n)
     )[0]
 

@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -9,8 +9,8 @@ from util import construct_test
 # CHECK-LABEL: rectangular_tiler_col_major_tensor_and_tile
 @construct_test
 def rectangular_tiler_col_major_tensor_and_tile():
-    tiler = TensorTiler2D.simple_tiler(
-        (16, 8), (4, 2), iter_col_major=True, tile_col_major=True
+    tiler = TensorAccessPattern((16, 8)).tile_sequence(
+        (4, 2), dim_order=[1, 0], tile_dim_order=[1, 0]
     )
     access_order, access_count = tiler.accesses()
     reference_access = np.array(

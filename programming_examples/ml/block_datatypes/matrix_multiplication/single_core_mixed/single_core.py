@@ -61,7 +61,7 @@ def my_matmul(M, K, N, m, k, n):
     )
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = TensorAccessPattern.identity((m, k)).tile((r, s)).transformation_dims
+    a_dims = TensorAccessPattern((m, k)).tile((r, s)).transformation_dims
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
     inB = ObjectFifo(b_ty, name="inB")
@@ -69,7 +69,7 @@ def my_matmul(M, K, N, m, k, n):
 
     memC = ObjectFifo(c_ty, name="memC")
     c_dims = (
-        TensorAccessPattern.identity((m * n,))
+        TensorAccessPattern((m * n,))
         .tile((r * t,))
         .tile((n // t, t))
         .transformation_dims
@@ -98,14 +98,14 @@ def my_matmul(M, K, N, m, k, n):
 
     rows_per_block = 4
 
-    A_tiles = TensorAccessPattern.identity((M, K)).tile_sequence(
+    A_tiles = TensorAccessPattern((M, K)).tile_sequence(
         (m, k), repeat_dims=(1, K_div_k), pattern_repeat=N_div_n
     )
-    b_tap = TensorAccessPattern.identity((N, K // 8)).tile_sequence(
+    b_tap = TensorAccessPattern((N, K // 8)).tile_sequence(
         (n, k // 8), repeat_dims=(N_div_n, K_div_k)
     )[0]
 
-    C_tiles = TensorAccessPattern.identity((M, N)).tile_sequence(
+    C_tiles = TensorAccessPattern((M, N)).tile_sequence(
         (m, n), repeat_dims=(rows_per_block // 2, N_div_n)
     )
     c_index = 0

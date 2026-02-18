@@ -90,7 +90,7 @@ def conv2dk14(
     of_inOF_act_L3L2 = ObjectFifo(
         bufIn_ty,
         name="inOF_act_L3L2",
-        dims_from_stream_per_cons=TensorAccessPattern.identity(
+        dims_from_stream_per_cons=TensorAccessPattern(
             (64, kernel_size, kernel_size * in_channels)
         )
         .permute((1, 0, 2))
@@ -99,7 +99,7 @@ def conv2dk14(
     of_act_L2_02 = of_inOF_act_L3L2.cons().forward(
         obj_type=actIn_ty,
         name="act_L2_02",
-        dims_to_stream=TensorAccessPattern.identity(
+        dims_to_stream=TensorAccessPattern(
             (
                 2,
                 8,
@@ -119,7 +119,7 @@ def conv2dk14(
     of_outOFL2L3 = of_out_02_L2.cons().forward(
         obj_type=bufOut_ty,
         name="outOFL2L3",
-        dims_to_stream=TensorAccessPattern.identity((256, 2, 16, 8))
+        dims_to_stream=TensorAccessPattern((256, 2, 16, 8))
         .permute((0, 2, 1, 3))
         .transformation_dims,
     )

@@ -46,7 +46,7 @@ def my_matmul():
     )
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = TensorAccessPattern.identity((m, k)).tile((r, s)).transformation_dims
+    a_dims = TensorAccessPattern((m, k)).tile((r, s)).transformation_dims
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
     inB = ObjectFifo(b_ty, name="inB")
@@ -54,7 +54,7 @@ def my_matmul():
 
     memC = ObjectFifo(c_ty, name="memC")
     c_dims = (
-        TensorAccessPattern.identity((m * n,))
+        TensorAccessPattern((m * n,))
         .tile((r * t,))
         .tile((n // t, t))
         .transformation_dims

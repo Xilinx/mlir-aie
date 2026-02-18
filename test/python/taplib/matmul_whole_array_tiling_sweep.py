@@ -6,7 +6,7 @@
 # (c) Copyright 2023 AMD Inc.
 import random
 
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 from aie.helpers.taplib.utils import ceildiv
 from util import construct_test
 
@@ -30,10 +30,9 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
     B_ordered_tiles = []
     C_ordered_tiles = []
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K),  # Size of A matrix
+    A_tiles = TensorAccessPattern((M, K)).tile_sequence(
         (m * n_A_tiles_per_shim, k),  # Size of A (smallest) tile
-        (1, K // k),  # Size of "group" of tiles
+        repeat_dims=(1, K // k),  # Size of "group" of tiles
         pattern_repeat=N
         // n
         // n_aie_cols,  # Repeat data so can distribute across whole column
@@ -44,40 +43,40 @@ def matmul_tiler_helper(M, K, N, m, k, n, n_aie_cols, b_col_maj, n_aie_rows):
         assert k % 32 == 0
         assert n % 32 == 0
 
-        B_tiles = TensorTiler2D.step_tiler(
-            (K, N),  # Size of B matrix
+        B_tiles = TensorAccessPattern((K, N)).tile_sequence(
             (k, n),  # Size of B tile
-            tile_group_repeats=(
+            repeat_dims=(
                 K // k // n_aie_cols,
                 N // n,
             ),  # Number of tiles per transfer in each dimension (whole col, partial row)
-            tile_group_steps=(
+            step_dims=(
                 n_aie_cols,
                 1,
             ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
         )
     else:
-        B_tiles = TensorTiler2D.step_tiler(
-            (K, N),  # Size of B matrix
+        B_tiles = TensorAccessPattern((K, N)).tile_sequence(
             (k, n),  # Size of B tile
-            tile_group_repeats=(
+            repeat_dims=(
                 K // k,
                 N // n // n_aie_cols,
             ),  # Number of tiles per transfer in each dimension (whole col, partial row)
-            tile_group_steps=(
+            step_dims=(
                 1,
                 n_aie_cols,
             ),  # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
-            tile_group_col_major=True,  # Send all tiles in column before moving on to next column
+            repeat_dim_order=[
+                1,
+                0,
+            ],  # Send all tiles in column before moving on to next column
         )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N),  # Size of C matrix
+    C_tiles = TensorAccessPattern((M, N)).tile_sequence(
         (m * n_aie_rows, n),  # Size of C tile
-        tile_group_repeats=(
+        repeat_dims=(
             tb_n_rows,
             N // n // n_aie_cols,
         ),  # Number of tiles per transfer in each dimension (partial col, partial row)
-        tile_group_steps=(
+        step_dims=(
             1,
             n_aie_cols,
         ),  # Collect every n_aie_cols row at a time (mirroring how we sent in B data)

@@ -1,4 +1,4 @@
-from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -11,8 +11,8 @@ def group_tiler_partial_row():
     tensor_dims = (3 * 5 * 3, 2 * 6 * 2)
 
     # All row major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims, tile_dims=(3, 2), tile_group_dims=(5, 7), allow_partial=True
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
+        tile_dims=(3, 2), repeat_dims=(5, 7)
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -40,12 +40,10 @@ def group_tiler_partial_row():
     assert taps.compare_access_orders(reference_taps)
 
     # Tile col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        tile_dim_order=[1, 0],
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -73,12 +71,10 @@ def group_tiler_partial_row():
     assert taps.compare_access_orders(reference_taps)
 
     # Tile group col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_group_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        repeat_dim_order=[1, 0],
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -106,12 +102,10 @@ def group_tiler_partial_row():
     assert taps.compare_access_orders(reference_taps)
 
     # iter col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        iter_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        dim_order=[1, 0],
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -139,14 +133,12 @@ def group_tiler_partial_row():
     assert taps.compare_access_orders(reference_taps)
 
     # all col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_col_major=True,
-        tile_group_col_major=True,
-        iter_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        tile_dim_order=[1, 0],
+        repeat_dim_order=[1, 0],
+        dim_order=[1, 0],
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -174,12 +166,10 @@ def group_tiler_partial_row():
     assert taps.compare_access_orders(reference_taps)
 
     # pattern repeat
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        tile_dim_order=[1, 0],
         pattern_repeat=4,
     )
     reference_taps = TensorAccessSequence.from_taps(
@@ -217,8 +207,8 @@ def group_tiler_partial_col():
 
     # All row major
     tensor_dims = (3 * 4 * 3, 2 * 7 * 2)
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims, tile_dims=(3, 2), tile_group_dims=(5, 7), allow_partial=True
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
+        tile_dims=(3, 2), repeat_dims=(5, 7)
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -246,12 +236,10 @@ def group_tiler_partial_col():
     assert taps.compare_access_orders(reference_taps)
 
     # Tile col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        tile_dim_order=[1, 0],
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -279,12 +267,10 @@ def group_tiler_partial_col():
     assert taps.compare_access_orders(reference_taps)
 
     # Tile group col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_group_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        repeat_dim_order=[1, 0],
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -312,12 +298,10 @@ def group_tiler_partial_col():
     assert taps.compare_access_orders(reference_taps)
 
     # iter col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        iter_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        dim_order=[1, 0],
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -345,14 +329,12 @@ def group_tiler_partial_col():
     assert taps.compare_access_orders(reference_taps)
 
     # all col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_col_major=True,
-        tile_group_col_major=True,
-        iter_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        tile_dim_order=[1, 0],
+        repeat_dim_order=[1, 0],
+        dim_order=[1, 0],
     )
     reference_taps = TensorAccessSequence.from_taps(
         [
@@ -380,12 +362,10 @@ def group_tiler_partial_col():
     assert taps.compare_access_orders(reference_taps)
 
     # pattern repeat
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        tile_dim_order=[1, 0],
         pattern_repeat=3,
     )
     reference_taps = TensorAccessSequence.from_taps(
@@ -423,11 +403,9 @@ def group_tiler_partial_both():
 
     # All row major
     tensor_dims = (3 * 4 * 3, 2 * 6 * 2)
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        allow_partial=True,
+        repeat_dims=(5, 7),
     )
 
     reference_taps = TensorAccessSequence.from_taps(
@@ -456,12 +434,10 @@ def group_tiler_partial_both():
     assert taps.compare_access_orders(reference_taps)
 
     # Tile col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        tile_dim_order=[1, 0],
     )
 
     reference_taps = TensorAccessSequence.from_taps(
@@ -490,12 +466,10 @@ def group_tiler_partial_both():
     assert taps.compare_access_orders(reference_taps)
 
     # Tile group col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_group_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        repeat_dim_order=[1, 0],
     )
 
     reference_taps = TensorAccessSequence.from_taps(
@@ -524,12 +498,10 @@ def group_tiler_partial_both():
     assert taps.compare_access_orders(reference_taps)
 
     # iter col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        iter_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        dim_order=[1, 0],
     )
 
     reference_taps = TensorAccessSequence.from_taps(
@@ -558,14 +530,12 @@ def group_tiler_partial_both():
     assert taps.compare_access_orders(reference_taps)
 
     # all col major
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        iter_col_major=True,
-        tile_col_major=True,
-        tile_group_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        dim_order=[1, 0],
+        tile_dim_order=[1, 0],
+        repeat_dim_order=[1, 0],
     )
 
     reference_taps = TensorAccessSequence.from_taps(
@@ -594,12 +564,10 @@ def group_tiler_partial_both():
     assert taps.compare_access_orders(reference_taps)
 
     # pattern repeat
-    taps = TensorTiler2D.group_tiler(
-        tensor_dims,
+    taps = TensorAccessPattern(tensor_dims).tile_sequence(
         tile_dims=(3, 2),
-        tile_group_dims=(5, 7),
-        tile_col_major=True,
-        allow_partial=True,
+        repeat_dims=(5, 7),
+        tile_dim_order=[1, 0],
         pattern_repeat=2,
     )
 

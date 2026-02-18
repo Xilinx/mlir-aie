@@ -243,7 +243,7 @@ def my_matmul(
 
         # Construct TAP for A micro-tiling: (m, k) -> (m//r, k//s, r, s)
         # Start with identity on (m, k)
-        tap_A = TensorAccessPattern.identity((m, k)).tile((r, s))
+        tap_A = TensorAccessPattern((m, k)).tile((r, s))
         dims_to_stream = [tap_A.transformation_dims] * (stop_row - start_row)
 
         a_tmp_fifos = (
@@ -268,10 +268,10 @@ def my_matmul(
         B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         if b_col_maj:
             # (n, k) -> (n//t, k//s, t, s)
-            tap_B = TensorAccessPattern.identity((n, k)).tile((t, s))
+            tap_B = TensorAccessPattern((n, k)).tile((t, s))
         else:
             # (k, n) -> (k//s, n//t, s, t)
-            tap_B = TensorAccessPattern.identity((k, n)).tile((s, t))
+            tap_B = TensorAccessPattern((k, n)).tile((s, t))
         dims_to_stream = tap_B.transformation_dims
 
         B_l2l1_fifos[col] = (
@@ -294,7 +294,7 @@ def my_matmul(
         # 1. Tile into blocks: (blocks, block_size) -> (m*n // (r*t), r*t)
         # 2. Tile blocks and block_size: (m//r, n//t) and (r, t)
         #    This produces (m//r, r, n//t, t) with the correct strides.
-        tap_C = TensorAccessPattern.identity((m * n,)).tile((r * t,)).tile((n // t, t))
+        tap_C = TensorAccessPattern((m * n,)).tile((r * t,)).tile((n // t, t))
 
         C_l2l3_fifos[col] = ObjectFifo(
             C_l2_ty,
@@ -363,14 +363,14 @@ def my_matmul(
     tb_n_rows = tb_max_n_rows // 2
 
     # Define tensor access patterns (tiling) for A, B, and C
-    A_tiles = TensorAccessPattern.identity((M, K)).tile_sequence(
+    A_tiles = TensorAccessPattern((M, K)).tile_sequence(
         (m * n_A_tiles_per_shim, k),  # Size of A (smallest) tile
         repeat_dims=(1, K // k),  # Size of "group" of tiles
         # Repeat data so can distribute across whole column
         pattern_repeat=N // n // n_aie_cols,
     )
     if b_col_maj:
-        B_tiles = TensorAccessPattern.identity((N, K)).tile_sequence(
+        B_tiles = TensorAccessPattern((N, K)).tile_sequence(
             (n, k),  # Size of B tile
             # Number of tiles per transfer in each dimension (whole col, partial row)
             repeat_dims=(N // n // n_aie_cols, K // k),
@@ -378,7 +378,7 @@ def my_matmul(
             step_dims=(n_aie_cols, 1),
         )
     else:
-        B_tiles = TensorAccessPattern.identity((K, N)).tile_sequence(
+        B_tiles = TensorAccessPattern((K, N)).tile_sequence(
             (k, n),  # Size of B tile
             # Number of tiles per transfer in each dimension (whole col, partial row)
             repeat_dims=(K // k, N // n // n_aie_cols),
@@ -389,7 +389,7 @@ def my_matmul(
                 0,
             ],  # Send all tiles in column before moving on to next column
         )
-    C_tiles = TensorAccessPattern.identity((M, N)).tile_sequence(
+    C_tiles = TensorAccessPattern((M, N)).tile_sequence(
         (m * n_aie_rows, n),  # Size of C tile
         # Number of tiles per transfer in each dimension (partial col, partial row)
         repeat_dims=(tb_n_rows, N // n // n_aie_cols),

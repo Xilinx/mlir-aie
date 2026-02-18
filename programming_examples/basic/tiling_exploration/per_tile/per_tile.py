@@ -27,7 +27,7 @@ def generate_module(
     flattened_tile = np.ndarray[(tile_size,), np.dtype[dtype]]
 
     # Define tensor access pattern on the input/output tensor (tiling)
-    tiler = TensorAccessPattern.identity((tensor_height, tensor_width)).tile_sequence(
+    tiler = TensorAccessPattern((tensor_height, tensor_width)).tile_sequence(
         (tile_height, tile_width)
     )
 

@@ -1,4 +1,4 @@
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -24,15 +24,15 @@ def matrix_vector_tiling_sweep():
                 m_x_K = m * K
 
                 A_iter = iter(
-                    TensorTiler2D.group_tiler(
-                        (M, K), (m, k), (M_div_m_div_n_cores, K // k)
+                    TensorAccessPattern((M, K)).tile_sequence(
+                        (m, k), repeat_dims=(M_div_m_div_n_cores, K // k)
                     )
                 )
-                B_tap = TensorTiler2D.simple_tiler(
-                    (1, K), (1, K), pattern_repeat=M_div_m_div_n_cores
+                B_tap = TensorAccessPattern((1, K)).tile_sequence(
+                    (1, K), pattern_repeat=M_div_m_div_n_cores
                 )[0]
                 C_iter = iter(
-                    TensorTiler2D.simple_tiler((1, C_sz), (1, C_sz_div_n_cores))
+                    TensorAccessPattern((1, C_sz)).tile_sequence((1, C_sz_div_n_cores))
                 )
 
                 B_sizes = [M_div_m_div_n_cores, 1, 1, K]

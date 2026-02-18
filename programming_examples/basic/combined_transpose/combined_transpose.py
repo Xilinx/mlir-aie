@@ -46,13 +46,9 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
 
     # Data flow with ObjectFIFOs; partially transposes the input data so that
     # the kernel only needs to transpose s*s-sized sub-tiles.
-    tap_in_L3L2 = TensorAccessPattern.identity((M, N)).tile((m, n))
-    tap_in_L2L1 = (
-        TensorAccessPattern.identity((n, m)).tile((s, s)).permute((1, 2, 0, 3))
-    )
-    tap_out_L1L3 = (
-        TensorAccessPattern.identity((N, M)).tile((n, m)).permute((1, 0, 2, 3))
-    )
+    tap_in_L3L2 = TensorAccessPattern((M, N)).tile((m, n))
+    tap_in_L2L1 = TensorAccessPattern((n, m)).tile((s, s)).permute((1, 2, 0, 3))
+    tap_out_L1L3 = TensorAccessPattern((N, M)).tile((n, m)).permute((1, 0, 2, 3))
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
     in_L2L1_fifo = in_L3L2_fifo.cons(

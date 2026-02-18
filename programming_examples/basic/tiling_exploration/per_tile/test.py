@@ -21,7 +21,7 @@ def main(opts):
     dtype = np.int32
     data_size = opts.tensor_height * opts.tensor_width
 
-    reference_tiler = TensorAccessPattern.identity(
+    reference_tiler = TensorAccessPattern(
         (opts.tensor_height, opts.tensor_width)
     ).tile_sequence((opts.tile_height, opts.tile_width))
     reference_access_order = reference_tiler.access_order()

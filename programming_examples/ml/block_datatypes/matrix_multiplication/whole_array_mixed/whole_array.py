@@ -106,7 +106,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
         dims_to_stream = [
-            TensorAccessPattern.identity((m, k)).tile((r, s)).transformation_dims
+            TensorAccessPattern((m, k)).tile((r, s)).transformation_dims
         ] * (stop_row - start_row)
         a_tmp_fifos = (
             A_l3l2_fifos[i]
@@ -141,7 +141,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=TensorAccessPattern.identity((m * n,))
+            dims_to_stream=TensorAccessPattern((m * n,))
             .tile((r * t,))
             .tile((n // t, t))
             .transformation_dims,
@@ -200,17 +200,17 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
     tb_max_n_rows = 4
     tb_n_rows = tb_max_n_rows // 2
 
-    A_tiles = TensorAccessPattern.identity((M, K)).tile_sequence(
+    A_tiles = TensorAccessPattern((M, K)).tile_sequence(
         (m * n_A_tiles_per_shim, k),
         repeat_dims=(1, K // k),
         pattern_repeat=N // n // n_aie_cols,
     )
-    B_tiles = TensorAccessPattern.identity((N, K // 8)).tile_sequence(
+    B_tiles = TensorAccessPattern((N, K // 8)).tile_sequence(
         (n, k // 8),
         repeat_dims=(N // n // n_aie_cols, K // k),
         step_dims=(n_aie_cols, 1),
     )
-    C_tiles = TensorAccessPattern.identity((M, N)).tile_sequence(
+    C_tiles = TensorAccessPattern((M, N)).tile_sequence(
         (m * n_aie_rows, n),
         repeat_dims=(tb_n_rows, N // n // n_aie_cols),
         step_dims=(1, n_aie_cols),

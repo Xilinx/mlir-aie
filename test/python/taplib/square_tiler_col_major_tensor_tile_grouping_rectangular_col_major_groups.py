@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -9,8 +9,8 @@ from util import construct_test
 # CHECK-LABEL: square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_groups
 @construct_test
 def square_tiler_col_major_tensor_tile_grouping_rectangular_col_major_groups():
-    tiler = TensorTiler2D.group_tiler(
-        (16, 16), (4, 4), (2, 1), tile_group_col_major=True, iter_col_major=True
+    tiler = TensorAccessPattern((16, 16)).tile_sequence(
+        (4, 4), repeat_dims=(2, 1), repeat_dim_order=[1, 0], dim_order=[1, 0]
     )
     access_order, access_count = tiler.accesses()
     reference_access = np.array(

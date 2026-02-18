@@ -81,11 +81,11 @@ def my_matmul(dev):
         workers.append(w)
 
     # Define the tiling access patterns for input and output tensors
-    A_taps = TensorAccessPattern.identity((M, K)).tile_sequence(
+    A_taps = TensorAccessPattern((M, K)).tile_sequence(
         (m, k), repeat_dims=(M_div_m_div_n_cores, K_div_k)
     )
-    C_taps = TensorAccessPattern.identity((1, M)).tile_sequence((1, M_div_n_cores))
-    b_tap = TensorAccessPattern.identity((1, K)).tile_sequence(
+    C_taps = TensorAccessPattern((1, M)).tile_sequence((1, M_div_n_cores))
+    b_tap = TensorAccessPattern((1, K)).tile_sequence(
         (1, K), pattern_repeat=M_div_m_div_n_cores
     )[0]
 

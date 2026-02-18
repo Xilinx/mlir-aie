@@ -47,7 +47,7 @@ def shuffle_transpose(dev, M, N, m, n):
     )
 
     # The tensor access pattern of the input/output tensors (tiling)
-    tap = TensorAccessPattern.identity((M, N)).tile_sequence(
+    tap = TensorAccessPattern((M, N)).tile_sequence(
         (m, n), repeat_dims=(M // m, N // n), repeat_dim_order=[1, 0]
     )[0]
 

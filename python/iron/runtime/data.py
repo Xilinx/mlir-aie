@@ -14,7 +14,7 @@ from ...helpers.util import (
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
-from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
+from ...helpers.taplib import TensorAccessPattern
 
 
 class RuntimeData:
@@ -46,8 +46,7 @@ class RuntimeData:
 
     def default_tap(self) -> TensorAccessPattern:
         """A default access pattern for a linear transfer of the buffer."""
-        # TODO: what if not two dimensional?
-        return TensorTiler2D.simple_tiler(self.shape)[0]
+        return TensorAccessPattern(self.shape)
 
     @property
     def op(self) -> MemRefValue:

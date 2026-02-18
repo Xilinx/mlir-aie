@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -9,7 +9,7 @@ from util import construct_test
 # CHECK-LABEL: square_tiler
 @construct_test
 def square_tiler():
-    tiler = TensorTiler2D.simple_tiler((32, 32), (4, 4))
+    tiler = TensorAccessPattern((32, 32)).tile_sequence((4, 4))
     access_order, access_count = tiler.accesses()
     reference_access = np.array(
         # fmt: off

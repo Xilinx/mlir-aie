@@ -29,9 +29,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
 
     # Define tensor access pattern
-    tap_in = TensorAccessPattern.identity((M, K)).tile_sequence(
-        (M, K), tile_dim_order=[1, 0]
-    )[0]
+    tap_in = TensorAccessPattern((M, K)).tile_sequence((M, K), tile_dim_order=[1, 0])[0]
 
     # Use tensor access pattern to create a graph
     if generate_acccess_map:
