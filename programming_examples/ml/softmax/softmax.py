@@ -16,7 +16,6 @@ from aie.iron.controlflow import range_
 
 
 def vector_softmax(dev, trace_size, N):
-    # N = 262144  # *1024
 
     # Tile sizes
     n = 1024

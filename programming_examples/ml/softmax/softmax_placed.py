@@ -21,7 +21,6 @@ import aie.utils.trace as trace_utils
 def vector_softmax(dev, trace_size, N):
 
     word_size_in = 2
-    # N = 262144  # *1024
     N_in_bytes = N * word_size_in
 
     # Tile sizes
