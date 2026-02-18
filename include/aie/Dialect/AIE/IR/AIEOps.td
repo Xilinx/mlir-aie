@@ -81,7 +81,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
 
 def AIE_TileOp: AIE_Op<"tile", [
     Pure,
-    FlowEndPoint,
+    IsFlowEndPoint,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index:$result)> {
@@ -182,7 +182,7 @@ def AIE_EndOp: AIE_Op<"end", [Terminator]> {
 }
 
 def AIE_SwitchboxOp: AIE_Op<"switchbox", [
-    Interconnect, TileElement,
+    Interconnect,
     SingleBlockImplicitTerminator<"EndOp">,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index:$result)> {
@@ -207,11 +207,9 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    TileOp getTileOp();
     size_t getNumSourceConnections(WireBundle bundle);
     size_t getNumDestConnections(WireBundle bundle);
-    int colIndex();
-    int rowIndex();
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
@@ -245,7 +243,7 @@ def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
 }
 
 def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
-    Interconnect, TileElement, IsShimTile,
+    Interconnect, IsShimTile,
     SingleBlockImplicitTerminator<"EndOp">,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -271,11 +269,9 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
+    TileOp getTileOp();
     size_t getNumSourceConnections(WireBundle bundle);
     size_t getNumDestConnections(WireBundle bundle);
-    TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
       ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames(setNameFn);
@@ -284,7 +280,7 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
 }
 
 def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
-    FlowEndPoint, TileElement, HasValidBDs,
+    IsFlowEndPoint, TileElement, HasValidBDs,
     HasValidDMAChannels, IsShimNOCTile,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -319,8 +315,6 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
@@ -330,7 +324,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
 }
 
 def AIE_CoreOp: AIE_Op<"core", [
-    FlowEndPoint, IsCoreTile, TileElement,
+    IsFlowEndPoint, IsCoreTile, TileElement,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
@@ -384,8 +378,6 @@ def AIE_CoreOp: AIE_Op<"core", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
     TileOp getTileOp();
@@ -1103,7 +1095,7 @@ def AIE_DMAOp: AIE_Op<"dma", [
 }
 
 def AIE_MemOp: AIE_Op<"mem", [
-    TileElement, FlowEndPoint,
+    TileElement, IsFlowEndPoint,
     IsCoreTile, HasValidBDs, HasValidDMAChannels,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -1135,8 +1127,6 @@ def AIE_MemOp: AIE_Op<"mem", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
@@ -1146,7 +1136,7 @@ def AIE_MemOp: AIE_Op<"mem", [
 }
 
 def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
-    TileElement, FlowEndPoint,
+    TileElement, IsFlowEndPoint,
     IsMemTile, HasValidBDs, HasValidDMAChannels,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
@@ -1182,8 +1172,6 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
-    int colIndex();
-    int rowIndex();
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
@@ -1272,8 +1260,6 @@ def AIE_LockOp: AIE_Op<"lock", [
       return getLockID().value();
     }
 
-    int colIndex();
-    int rowIndex();
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
@@ -1939,8 +1925,6 @@ def AIE_ObjectFifoRegisterExternalBuffersOp: AIE_Op<"objectfifo.register_externa
   let assemblyFormat = [{
     attr-dict $objFifo_name `(` $tile `,` `{` $externalBuffers `}` `)` `:` `(` type($externalBuffers) `)`
   }];
-
-  let hasVerifier = 1;
 
   let extraClassDeclaration = [{
     TileOp getTileOp();
