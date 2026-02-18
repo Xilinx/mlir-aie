@@ -46,6 +46,12 @@ template <typename ConcreteType>
 struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
+// Marker trait for operations that can be flow endpoints (e.g., TileOp, CoreOp,
+// MemOp)
+template <typename ConcreteType>
+struct IsFlowEndPoint : mlir::OpTrait::TraitBase<ConcreteType, IsFlowEndPoint> {
+};
+
 class TileOp;
 
 uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,

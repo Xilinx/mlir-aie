@@ -907,13 +907,6 @@ std::optional<int> ObjectFifoLinkOp::getRepeatCount() {
 // ObjectFifoRegisterExternalBuffersOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult ObjectFifoRegisterExternalBuffersOp::verify() {
-  if (!getTileOp().isShimTile())
-    return emitOpError("tile is not a shim tile");
-
-  return success();
-}
-
 TileOp ObjectFifoRegisterExternalBuffersOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
@@ -1425,18 +1418,11 @@ TileOp ShimMuxOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
 
-int ShimMuxOp::colIndex() { return getTileOp().colIndex(); }
-
-int ShimMuxOp::rowIndex() { return getTileOp().rowIndex(); }
-
 //===----------------------------------------------------------------------===//
 // ShimDMAOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimDMAOp::verify() {
-  if (!getTileOp().isShimNOCTile())
-    return emitOpError("must be in a ShimTile with a NOC connection");
-
   if (HasSomeTerminator<DMAStartOp, NextBDOp, EndOp>::verifyTrait(*this)
           .failed())
     return failure();
@@ -1446,10 +1432,6 @@ LogicalResult ShimDMAOp::verify() {
 TileOp ShimDMAOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
-
-int ShimDMAOp::colIndex() { return getTileOp().colIndex(); }
-
-int ShimDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult PacketRulesOp::verify() {
   if (Region &body = getRules(); body.empty())
@@ -1477,10 +1459,6 @@ LogicalResult PacketFlowOp::verify() {
 LogicalResult CoreOp::verify() {
   if (getBody().empty())
     return emitOpError("should have non-empty body");
-  if (getTileOp().isShimTile())
-    return emitOpError("CoreOp cannot be created on shim tile, i.e. row == 0");
-  if (getTileOp().isMemTile())
-    return emitOpError("CoreOp cannot be created on mem tile");
   if (getElfFile()) {
     // If an ELF file is specified, no MLIR body is allowed (to remove
     // ambiguity); the ELF file will fully dictate what runs on the
@@ -1493,10 +1471,6 @@ LogicalResult CoreOp::verify() {
   }
   return success();
 }
-
-int CoreOp::colIndex() { return getTileOp().colIndex(); }
-
-int CoreOp::rowIndex() { return getTileOp().rowIndex(); }
 
 TileOp CoreOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
@@ -1541,9 +1515,7 @@ int32_t xilinx::AIE::getBufferBaseAddress(Operation *bufOp) {
 void xilinx::AIE::collectTiles(DeviceOp &device,
                                DenseMap<TileID, Operation *> &tiles) {
   for (auto tile : device.getOps<TileOp>()) {
-    int colIndex = tile.colIndex();
-    int rowIndex = tile.rowIndex();
-    tiles[{colIndex, rowIndex}] = tile;
+    tiles[tile.getTileID()] = tile;
   }
 }
 
@@ -1604,10 +1576,6 @@ LogicalResult MemOp::verify() {
 
 TileOp MemOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
 
-int MemOp::colIndex() { return getTileOp().colIndex(); }
-
-int MemOp::rowIndex() { return getTileOp().rowIndex(); }
-
 //===----------------------------------------------------------------------===//
 // MemTileDMAOp
 //===----------------------------------------------------------------------===//
@@ -1653,8 +1621,7 @@ LogicalResult MemTileDMAOp::verify() {
         for (Block *b : reachable) {
           for (DMABDOp bd : b->getOps<DMABDOp>()) {
             if (auto bufferOp = bd.getBufferOp();
-                bufferOp.getTileOp().colIndex() != colIndex() ||
-                bufferOp.getTileOp().rowIndex() != rowIndex()) {
+                bufferOp.getTileID() != getTileID()) {
               InFlightDiagnostic err =
                   bd.emitOpError()
                   << "is reachable from DMA channel "
@@ -1667,8 +1634,7 @@ LogicalResult MemTileDMAOp::verify() {
           }
           for (auto useLock : b->getOps<UseLockOp>()) {
             if (auto lockOp = useLock.getLockOp();
-                lockOp.getTileOp().colIndex() != colIndex() ||
-                lockOp.getTileOp().rowIndex() != rowIndex()) {
+                lockOp.getTileID() != getTileID()) {
               InFlightDiagnostic err =
                   useLock.emitOpError()
                   << "is reachable from DMA channel "
@@ -1912,8 +1878,7 @@ LogicalResult DMABDOp::verify() {
   TileID parentTileId = getParentTileElement(getOperation()).getTileID();
 
   if (!isUnrankedMemRef && getOperation()->getParentOfType<MemOp>() &&
-      (getBufferOp().getTileOp().colIndex() != parentTileId.col ||
-       getBufferOp().getTileOp().rowIndex() != parentTileId.row))
+      getBufferOp().getTileID() != parentTileId)
     return emitOpError(
         "Core tile DMAs can only access a buffer in the same tile.");
 
@@ -2035,10 +2000,6 @@ LogicalResult DMABDOp::verify() {
 TileOp MemTileDMAOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
-
-int MemTileDMAOp::colIndex() { return getTileOp().colIndex(); }
-
-int MemTileDMAOp::rowIndex() { return getTileOp().rowIndex(); }
 
 //===----------------------------------------------------------------------===//
 // DMAStartOp
@@ -2251,10 +2212,6 @@ TileOp SwitchboxOp::getTileOp() {
   return cast<TileOp>(getTile().getDefiningOp());
 }
 
-int SwitchboxOp::colIndex() { return getTileOp().colIndex(); }
-
-int SwitchboxOp::rowIndex() { return getTileOp().rowIndex(); }
-
 template <typename... ParentOpTypes>
 struct HasSomeParent {
   static LogicalResult verifyTrait(Operation *op) {
@@ -2269,10 +2226,6 @@ struct HasSomeParent {
 };
 
 TileOp LockOp::getTileOp() { return cast<TileOp>(getTile().getDefiningOp()); }
-
-int LockOp::colIndex() { return getTileOp().colIndex(); }
-
-int LockOp::rowIndex() { return getTileOp().rowIndex(); }
 
 LogicalResult LockOp::verify() {
   if (auto result = UsesAreAccessible::verifyTrait(*this); result.failed())
@@ -2333,8 +2286,7 @@ struct AccessesLocalLocks {
     if (auto memOp = op->getParentOfType<MemOp>()) {
       auto useLock = dyn_cast<UseLockOp>(op);
       if (auto lock = useLock.getLockOp();
-          lock.getTileOp().colIndex() != memOp.colIndex() ||
-          lock.getTileOp().rowIndex() != memOp.rowIndex())
+          lock.getTileID() != memOp.getTileID())
         return failure();
     }
     return success();
