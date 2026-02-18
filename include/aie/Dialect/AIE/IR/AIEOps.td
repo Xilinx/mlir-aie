@@ -111,11 +111,15 @@ def AIE_TileOp: AIE_Op<"tile", [
     int colIndex() { return getCol(); }
     int rowIndex() { return getRow(); }
     TileID getTileID() { return {getCol(), getRow()}; }
+    AIETileType getTileType();
     bool isShimTile() { return getRow() == 0; }
-    bool isMemTile();
-    bool isShimNOCTile();
-    bool isShimPLTile();
-    bool isShimNOCorPLTile();
+    bool isMemTile() { return getTileType() == AIETileType::MemTile; }
+    bool isShimNOCTile() { return getTileType() == AIETileType::ShimNOCTile; }
+    bool isShimPLTile() { return getTileType() == AIETileType::ShimPLTile; }
+    bool isShimNOCorPLTile() { 
+      AIETileType t = getTileType();
+      return t == AIETileType::ShimNOCTile || t == AIETileType::ShimPLTile; 
+    }
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
 
     MemOp getMemOp() {

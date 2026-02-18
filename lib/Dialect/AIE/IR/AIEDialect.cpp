@@ -1246,7 +1246,7 @@ LogicalResult TileOp::verify() {
     }
   }
 
-  if (isShimTile() && getAllocationScheme())
+  if (isShimNOCorPLTile() && getAllocationScheme())
     return emitOpError("Shim tiles cannot have an allocation scheme");
 
   return success();
@@ -1258,8 +1258,7 @@ size_t TileOp::getNumSourceConnections(WireBundle bundle) {
   // Note dest is correct here, since direction is reversed.
   {
     // Note dest is correct here, since direction is reversed.
-    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
-        targetModel.isShimPLTile(getCol(), getRow()))
+    if (isShimNOCorPLTile())
       return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
                                                       bundle);
     return targetModel.getNumDestSwitchboxConnections(getCol(), getRow(),
@@ -1274,8 +1273,7 @@ size_t TileOp::getNumDestConnections(WireBundle bundle) {
   // Note source is correct here, since direction is reversed.
   {
     // Note source is correct here, since direction is reversed.
-    if (targetModel.isShimNOCTile(getCol(), getRow()) ||
-        targetModel.isShimPLTile(getCol(), getRow()))
+    if (isShimNOCorPLTile())
       return targetModel.getNumDestShimMuxConnections(getCol(), getRow(),
                                                       bundle);
     return targetModel.getNumSourceSwitchboxConnections(getCol(), getRow(),
@@ -1284,24 +1282,9 @@ size_t TileOp::getNumDestConnections(WireBundle bundle) {
   return 0;
 }
 
-bool TileOp::isMemTile() {
+AIETileType TileOp::getTileType() {
   const auto &targetModel = getTargetModel(*this);
-  return targetModel.isMemTile(getCol(), getRow());
-}
-
-bool TileOp::isShimNOCTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimNOCTile(getCol(), getRow());
-}
-
-bool TileOp::isShimPLTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimPLTile(getCol(), getRow());
-}
-
-bool TileOp::isShimNOCorPLTile() {
-  const auto &targetModel = getTargetModel(*this);
-  return targetModel.isShimNOCorPLTile(getCol(), getRow());
+  return targetModel.getTileType(getCol(), getRow());
 }
 
 bool isLegalTileConnection(TileOp tile, const AIETargetModel &targetModel,
