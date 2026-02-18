@@ -44,10 +44,7 @@ class TensorAccessPattern:
             sizes = self._tensor_dims
 
         if strides is None:
-            # Calculate contiguous strides
-            strides = [1] * len(sizes)
-            for i in range(len(sizes) - 2, -1, -1):
-                strides[i] = strides[i + 1] * sizes[i + 1]
+            strides = self._get_contiguous_strides(sizes)
 
         self._sizes, self._strides = validate_and_clean_sizes_strides(sizes, strides)
         self._validate_bounds()
@@ -465,12 +462,7 @@ class TensorAccessPattern:
                 if s != 1:
                     new_sizes.append(s)
                     new_strides.append(st)
-            # If we squeezed everything (scalar), we might want to keep it as 0-rank or 1-rank?
-            # TensorAccessPattern supports empty sizes (rank 0)?
-            # __init__ checks len(sizes) > 0 if not None.
-            # So we must keep at least one dimension?
-            # validate_and_clean_sizes_strides checks len > 0.
-            # So we should keep one if empty.
+            # If we squeezed everything (scalar), we must keep at least one dimension
             if not new_sizes:
                 new_sizes = [1]
                 new_strides = [0]  # Stride doesn't matter for size 1
@@ -479,30 +471,8 @@ class TensorAccessPattern:
             self.tensor_dims, self.offset, new_sizes, new_strides
         )
 
-    def _map_linear_index(self, linear_index: int) -> int:
-        coords = self._decompose_index(linear_index, self.sizes)
-        return self._offset + np.sum(np.multiply(coords, self._strides))
-
-    def _map_linear_stride(self, linear_stride: int) -> int:
-        coords = self._decompose_index(linear_stride, self.sizes)
-        return np.sum(np.multiply(coords, self._strides))
-
-    def _decompose_index(self, index: int, dims: Sequence[int]) -> Sequence[int]:
-        coords = []
-        contiguous_strides = self._get_contiguous_strides(dims)
-
-        rem = index
-        for i in range(len(dims)):
-            val = rem // contiguous_strides[i]
-            rem = rem % contiguous_strides[i]
-            coords.append(val)
-        return coords
-
-    def _linearize_index(self, coords: Sequence[int], dims: Sequence[int]) -> int:
-        contiguous_strides = self._get_contiguous_strides(dims)
-        return np.sum(np.multiply(coords, contiguous_strides))
-
-    def _get_contiguous_strides(self, dims: Sequence[int]) -> Sequence[int]:
+    @staticmethod
+    def _get_contiguous_strides(dims: Sequence[int]) -> Sequence[int]:
         strides = [1] * len(dims)
         for i in range(len(dims) - 2, -1, -1):
             strides[i] = strides[i + 1] * dims[i + 1]
@@ -684,22 +654,8 @@ class TensorAccessPattern:
                     step = 1
                 actual_steps.append(step)
 
-            # Slice
-            # tile() produces (out0, out1, ..., in0, in1, ...)
-            # Wait, my tile implementation produces (out0, in0, out1, in1, ...) ?
-            # Let's check tile implementation in this file.
-            # perm.append(2 * i) -> 0, 2, 4...
-            # perm.append(2 * i + 1) -> 1, 3, 5...
-            # So (out0, out1, ..., in0, in1, ...).
-            # So outer dims are 0 to rank-1.
-            # Inner dims are rank to 2*rank-1.
-
+            # Slice outer dimensions
             for i in range(rank):
-                # Slice outer dimension i (which is at index i)
-                # Start index is 0 relative to the offset handled by offset_fn?
-                # No, offset_fn handles offset in original tensor.
-                # But here we are constructing a TAP that represents the view relative to that offset.
-                # So we slice from 0.
                 tap = tap.slice(i, 0, actual_repeats[i], actual_steps[i])
 
             # Handle tile_dim_order (permute inner dims)
@@ -723,15 +679,7 @@ class TensorAccessPattern:
                 tap = tap.unsqueeze(0)
                 tap = tap.broadcast(0, pattern_repeat)
 
-            # Squeeze size 1 dimensions to fit in 4 dims if possible
-            # But only if we have > 4 dims?
-            # Or always squeeze?
-            # TensorTiler2D logic tries to fit in 4 dims.
-            # If we have > 4 dims, we MUST squeeze.
-            # If we have <= 4 dims, squeezing is optional but good for cleanup.
-            # However, squeezing might change the interpretation if the user expects specific rank.
-            # But for DMA BDs, we just want to fit in 4 dims.
-            # So let's squeeze if > 4 dims.
+            # Squeeze dimensions if rank > 4 to fit hardware constraints (e.g. DMA BDs)
             if len(tap.sizes) > 4:
                 tap = tap.squeeze()
 
