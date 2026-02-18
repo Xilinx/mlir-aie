@@ -253,35 +253,6 @@ class TensorAccessPattern:
             )
         )
 
-    def compose(self, other: TensorAccessPattern) -> TensorAccessPattern:
-        """
-        Compose this access pattern with another.
-        The resulting pattern represents applying 'other' to the view created by 'self'.
-
-        Args:
-            other (TensorAccessPattern): The outer access pattern.
-
-        Returns:
-            TensorAccessPattern: The composed access pattern.
-        """
-        if tuple(other.tensor_dims) != tuple(self.sizes):
-            raise ValueError(
-                f"Dimension mismatch: self.sizes={self.sizes}, other.tensor_dims={other.tensor_dims}"
-            )
-
-        # Calculate new offset
-        new_offset = self._map_linear_index(other.offset)
-
-        # Calculate new strides
-        new_strides = []
-        for s in other.strides:
-            mapped_stride = self._map_linear_stride(s)
-            new_strides.append(mapped_stride)
-
-        return TensorAccessPattern(
-            self.tensor_dims, new_offset, other.sizes, new_strides
-        )
-
     def permute(self, dims: Sequence[int]) -> TensorAccessPattern:
         """
         Permute the dimensions of the view.
@@ -405,35 +376,6 @@ class TensorAccessPattern:
 
         return TensorAccessPattern(self.tensor_dims, new_offset, new_sizes, new_strides)
 
-    def subview(
-        self,
-        offsets: Sequence[int],
-        sizes: Sequence[int],
-        steps: Sequence[int] | None = None,
-    ) -> TensorAccessPattern:
-        """
-        Create a subview of the access pattern.
-
-        Args:
-            offsets (Sequence[int]): The offsets for each dimension.
-            sizes (Sequence[int]): The sizes for each dimension.
-            steps (Sequence[int] | None, optional): The steps for each dimension. Defaults to None (1).
-
-        Returns:
-            TensorAccessPattern: The subview access pattern.
-        """
-        if len(offsets) != len(self.sizes) or len(sizes) != len(self.sizes):
-            raise ValueError("Rank mismatch")
-        if steps is None:
-            steps = [1] * len(self.sizes)
-        elif len(steps) != len(self.sizes):
-            raise ValueError("Rank mismatch for steps")
-
-        tap = self
-        for i in range(len(self.sizes)):
-            tap = tap.slice(i, offsets[i], sizes[i], steps[i])
-        return tap
-
     def unsqueeze(self, dim: int) -> TensorAccessPattern:
         """
         Insert a dimension of size 1 at the specified position.
@@ -537,123 +479,6 @@ class TensorAccessPattern:
             self.tensor_dims, self.offset, new_sizes, new_strides
         )
 
-    def resize(self, new_sizes: Sequence[int]) -> TensorAccessPattern:
-        """
-        Resize the access pattern by changing the sizes of dimensions.
-        This is equivalent to slicing from 0 with the new sizes.
-        Strides are preserved.
-
-        Args:
-            new_sizes (Sequence[int]): The new sizes for each dimension.
-
-        Returns:
-            TensorAccessPattern: The resized access pattern.
-        """
-        if len(new_sizes) != len(self.sizes):
-            raise ValueError("Rank mismatch")
-
-        return self.subview([0] * len(self.sizes), new_sizes)
-
-    def reshape(self, new_shape: Sequence[int]) -> TensorAccessPattern:
-        """
-        Reshape the access pattern.
-        This only works if the current pattern is contiguous in memory
-        and can be viewed as the new shape with constant strides.
-
-        Args:
-            new_shape (Sequence[int]): The new shape.
-
-        Returns:
-            TensorAccessPattern: The reshaped access pattern.
-        """
-        if np.prod(new_shape) != np.prod(self.sizes):
-            raise ValueError(
-                f"Total size mismatch: {np.prod(new_shape)} != {np.prod(self.sizes)}"
-            )
-
-        # Check if contiguous
-        # We can check if we can linearize to (total_size,) with some stride S.
-        # But simpler: if we are identity-like (contiguous row-major), we can reshape easily.
-        # Or if we can untile to flat?
-        # Let's try to construct strides for new_shape assuming row-major layout of the underlying data
-        # as seen by the current view.
-        # This is hard if current view is not contiguous.
-        # But for identity((N,)), we can reshape.
-        # If we assume the underlying data is contiguous row-major with respect to current view?
-        # No, TAP describes view on T_orig.
-        # If T_orig is contiguous, and TAP is identity, then TAP is contiguous.
-        # If TAP is contiguous, we can calculate new strides based on T_orig strides?
-        # If TAP covers a contiguous range of T_orig, we can reshape.
-        # For now, let's just support reshaping if it's equivalent to tiling/untiling.
-        # But tile/untile is safer.
-        # However, for identity((4,)), reshape((2, 2)) is just tile((2,)).
-        # So maybe we don't need reshape if we have tile?
-        # But tile adds dimensions. Reshape replaces them.
-        # identity((4,)).tile((2,)) -> (2, 2).
-        # So tile IS reshape for 1D?
-        # Yes.
-        # So we can use tile.
-
-        # I will skip reshape for now to avoid complexity and potential bugs.
-        # subview is enough for the user request.
-        raise NotImplementedError("Reshape not implemented yet")
-
-    def untile(
-        self, tile_sizes: Sequence[int], merge: bool = True
-    ) -> TensorAccessPattern:
-        """
-        Untile the access pattern.
-        This is the reverse of tile().
-        It expects dimensions to be (dim0//tile0, dim1//tile1, ..., tile0, tile1, ...).
-        It permutes them to (dim0//tile0, tile0, dim1//tile1, tile1, ...)
-        and optionally merges them to (dim0, dim1, ...).
-
-        Args:
-            tile_sizes (Sequence[int]): The size of the tiles.
-            merge (bool, optional): Whether to merge the split dimensions. Defaults to True.
-
-        Returns:
-            TensorAccessPattern: The untiled access pattern.
-        """
-        n = len(tile_sizes)
-        if len(self.sizes) != 2 * n:
-            raise ValueError(
-                f"Expected {2*n} dimensions for untiling with {n} tile sizes, got {len(self.sizes)}"
-            )
-
-        # Permute from (out0, out1, ..., in0, in1, ...) to (out0, in0, out1, in1, ...)
-        perm = []
-        for i in range(n):
-            perm.append(i)  # out_i
-            perm.append(n + i)  # in_i
-
-        tap = self.permute(perm)
-
-        if not merge:
-            return tap
-
-        # Merge dimensions
-        new_sizes = []
-        new_strides = []
-
-        for i in range(n):
-            out_size = tap.sizes[2 * i]
-            in_size = tap.sizes[2 * i + 1]
-            out_stride = tap.strides[2 * i]
-            in_stride = tap.strides[2 * i + 1]
-
-            if out_stride != in_size * in_stride:
-                raise ValueError(
-                    f"Cannot merge dimension {i}: strides do not match (out_stride={out_stride}, in_size={in_size}, in_stride={in_stride})"
-                )
-
-            new_sizes.append(out_size * in_size)
-            new_strides.append(in_stride)
-
-        return TensorAccessPattern(
-            self.tensor_dims, self.offset, new_sizes, new_strides
-        )
-
     def _map_linear_index(self, linear_index: int) -> int:
         coords = self._decompose_index(linear_index, self.sizes)
         return self._offset + np.sum(np.multiply(coords, self._strides))
@@ -682,49 +507,6 @@ class TensorAccessPattern:
         for i in range(len(dims) - 2, -1, -1):
             strides[i] = strides[i + 1] * dims[i + 1]
         return strides
-
-    def _solve_indices(self, target: int) -> Sequence[int] | None:
-        # Solve offset + sum(x_i * stride_i) = target for x_i in [0, size_i)
-        # Greedy approach with sorting strides
-        dims = []
-        for i in range(len(self.strides)):
-            dims.append((self.strides[i], self.sizes[i], i))
-
-        # Sort by stride descending
-        dims.sort(key=lambda x: abs(x[0]), reverse=True)
-
-        current = target - self.offset
-        solution = [0] * len(self.sizes)
-
-        for stride, size, idx in dims:
-            if stride == 0:
-                continue
-
-            # If stride is negative, we need to handle it carefully
-            # But usually strides are positive in this context.
-            # If stride is negative, we might need to subtract?
-            # Let's assume positive strides for greedy.
-            # If mixed, greedy is hard.
-
-            count = current // stride
-
-            # Check bounds
-            if count >= size:
-                count = size - 1
-            elif count < 0:
-                # This shouldn't happen if everything is positive and target >= offset
-                count = 0
-
-            # We need to check if taking 'count' is valid.
-            # For standard tilings/permutations, greedy works.
-
-            solution[idx] = count
-            current -= count * stride
-
-        if current != 0:
-            return None
-
-        return tuple(solution)
 
     def visualize(
         self,
