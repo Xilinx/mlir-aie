@@ -11,7 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def shuffle_transpose(dev, M, N, m, n, s, dtype):
@@ -46,23 +46,12 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
 
     # Data flow with ObjectFIFOs; partially transposes the input data so that
     # the kernel only needs to transpose s*s-sized sub-tiles.
-    tap_in_L3L2 = TensorAccessPattern(
-        tensor_dims=(M, N),
-        offset=0,
-        sizes=[M // m, N // n, m, n],
-        strides=[m * N, n, N, 1],
+    tap_in_L3L2 = TensorAccessPattern.identity((M, N)).tile((m, n))
+    tap_in_L2L1 = (
+        TensorAccessPattern.identity((n, m)).tile((s, s)).permute((1, 2, 0, 3))
     )
-    tap_in_L2L1 = TensorAccessPattern(
-        tensor_dims=(M, N),
-        offset=0,
-        sizes=[m // s, s, n // s, s],
-        strides=[s, m, s * m, 1],
-    )
-    tap_out_L1L3 = TensorAccessPattern(
-        tensor_dims=(N, M),
-        offset=0,
-        sizes=[M // m, N // n, n, m],
-        strides=[m, n * M, M, 1],
+    tap_out_L1L3 = (
+        TensorAccessPattern.identity((N, M)).tile((n, m)).permute((1, 0, 2, 3))
     )
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")

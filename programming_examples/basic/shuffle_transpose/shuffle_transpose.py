@@ -12,7 +12,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def shuffle_transpose(dev, M, N, m, n):
@@ -47,8 +47,8 @@ def shuffle_transpose(dev, M, N, m, n):
     )
 
     # The tensor access pattern of the input/output tensors (tiling)
-    tap = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
+    tap = TensorAccessPattern.identity((M, N)).tile_sequence(
+        (m, n), repeat_dims=(M // m, N // n), repeat_dim_order=[1, 0]
     )[0]
 
     # Runtime operations to move data to/from the AIE-array

@@ -11,8 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
-
+from aie.helpers.taplib import TensorAccessSequence, TensorAccessPattern
 
 microkernel_mac_dim_map = {
     "npu": {
@@ -171,7 +170,7 @@ def my_matmul(
     inA = ObjectFifo(a_ty, name="inA")
     a_dims = None
     if vectorized:
-        a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+        a_dims = TensorAccessPattern.identity((m, k)).tile((r, s)).transformation_dims
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
     # Input B
@@ -179,16 +178,25 @@ def my_matmul(
     b_dims = None
     if vectorized:
         if b_col_maj:
-            b_dims = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
+            b_dims = (
+                TensorAccessPattern.identity((n, k)).tile((t, s)).transformation_dims
+            )
         else:
-            b_dims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
+            b_dims = (
+                TensorAccessPattern.identity((k, n)).tile((s, t)).transformation_dims
+            )
     memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)
 
     # Output C
     memC = ObjectFifo(c_ty, name="memC")
     c_dims = None
     if vectorized:
-        c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+        c_dims = (
+            TensorAccessPattern.identity((m * n,))
+            .tile((r * t,))
+            .tile((n // t, t))
+            .transformation_dims
+        )
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     # Task each core will run
@@ -217,25 +225,21 @@ def my_matmul(
     rows_per_block = 4
 
     # Define tensor access patterns for inputs/outputs
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n, prune_step=False
+    A_tiles = TensorAccessPattern.identity((M, K)).tile_sequence(
+        (m, k), repeat_dims=(1, K_div_k), pattern_repeat=N_div_n
     )
     # There is only one access pattern for B - it tiles the entire matrix in (k x n) tiles.
     if b_col_maj:
-        b_tap = TensorTiler2D.group_tiler(
-            (N, K), (n, k), (N_div_n, K_div_k), prune_step=False
+        b_tap = TensorAccessPattern.identity((N, K)).tile_sequence(
+            (n, k), repeat_dims=(N_div_n, K_div_k)
         )[0]
     else:
-        b_tap = TensorTiler2D.group_tiler(
-            (K, N),
-            (k, n),
-            (K_div_k, N_div_n),
-            tile_group_col_major=True,
-            prune_step=False,
+        b_tap = TensorAccessPattern.identity((K, N)).tile_sequence(
+            (k, n), repeat_dims=(K_div_k, N_div_n), repeat_dim_order=[1, 0]
         )[0]
 
-    C_tiles = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (rows_per_block // 2, N_div_n), prune_step=False
+    C_tiles = TensorAccessPattern.identity((M, N)).tile_sequence(
+        (m, n), repeat_dims=(rows_per_block // 2, N_div_n)
     )
     c_index = 0
 

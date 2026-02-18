@@ -12,7 +12,7 @@ import sys
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU1Col1, NPU2Col1, AnyComputeTile
 from aie.iron.placers import SequentialPlacer
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 if len(sys.argv) > 3:
     if sys.argv[1] == "npu":
@@ -29,7 +29,9 @@ def my_passthrough(M, K, generate_acccess_map=False):
     tensor_ty = np.ndarray[(M, K), np.dtype[np.int32]]
 
     # Define tensor access pattern
-    tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
+    tap_in = TensorAccessPattern.identity((M, K)).tile_sequence(
+        (M, K), tile_dim_order=[1, 0]
+    )[0]
 
     # Use tensor access pattern to create a graph
     if generate_acccess_map:

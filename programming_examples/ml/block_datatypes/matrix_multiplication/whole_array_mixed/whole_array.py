@@ -9,7 +9,7 @@ from ml_dtypes import bfloat16
 import numpy as np
 
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2
@@ -106,12 +106,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
         dims_to_stream = [
-            [
-                (m // r, r * k),
-                (k // s, s),
-                (r, k),
-                (s, 1),
-            ]
+            TensorAccessPattern.identity((m, k)).tile((r, s)).transformation_dims
         ] * (stop_row - start_row)
         a_tmp_fifos = (
             A_l3l2_fifos[i]
@@ -146,7 +141,10 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
+            dims_to_stream=TensorAccessPattern.identity((m * n,))
+            .tile((r * t,))
+            .tile((n // t, t))
+            .transformation_dims,
         )
         of_offsets = [m * n * i for i in range(n_aie_rows)]
 
@@ -202,23 +200,20 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
     tb_max_n_rows = 4
     tb_n_rows = tb_max_n_rows // 2
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K),
+    A_tiles = TensorAccessPattern.identity((M, K)).tile_sequence(
         (m * n_A_tiles_per_shim, k),
-        (1, K // k),
+        repeat_dims=(1, K // k),
         pattern_repeat=N // n // n_aie_cols,
     )
-    B_tiles = TensorTiler2D.step_tiler(
-        (N, K // 8),
+    B_tiles = TensorAccessPattern.identity((N, K // 8)).tile_sequence(
         (n, k // 8),
-        tile_group_repeats=(N // n // n_aie_cols, K // k),
-        tile_group_steps=(n_aie_cols, 1),
+        repeat_dims=(N // n // n_aie_cols, K // k),
+        step_dims=(n_aie_cols, 1),
     )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N),
+    C_tiles = TensorAccessPattern.identity((M, N)).tile_sequence(
         (m * n_aie_rows, n),
-        tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
+        repeat_dims=(tb_n_rows, N // n // n_aie_cols),
+        step_dims=(1, n_aie_cols),
     )
     c_index = 0
 

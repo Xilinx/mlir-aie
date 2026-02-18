@@ -11,7 +11,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def row_wise_bias_add(dev, M, N, m, n):
@@ -49,10 +49,12 @@ def row_wise_bias_add(dev, M, N, m, n):
                         in_fifo.release(ObjectFifoPort.Consume, 1)
                     bias_fifo.release(ObjectFifoPort.Consume, 1)
 
-        tiler = TensorTiler2D.group_tiler(
-            (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
+        tiler = TensorAccessPattern.identity((M, N)).tile_sequence(
+            (m, n), repeat_dims=(M // m, N // n), repeat_dim_order=[1, 0]
         )
-        bias_tiler = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))
+        bias_tiler = TensorAccessPattern.identity((1, N)).tile_sequence(
+            (1, n), repeat_dims=(1, N // n)
+        )
 
         @runtime_sequence(tensor_ty, bias_ty, tensor_ty)
         def sequence(inp, bias, out):

@@ -11,7 +11,7 @@ import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.extras.dialects.arith as arith
 from aie.helpers.util import np_dtype_to_mlir_type
@@ -27,10 +27,9 @@ def generate_module(
 
     # Define tensor access pattern. In this case, we access all elements in the tensor
     # in a tile-wise fashion.
-    t = TensorTiler2D.group_tiler(
-        (tensor_height, tensor_width),
+    t = TensorAccessPattern.identity((tensor_height, tensor_width)).tile_sequence(
         (tile_height, tile_width),
-        (tensor_height // tile_height, tensor_width // tile_width),
+        repeat_dims=(tensor_height // tile_height, tensor_width // tile_width),
     )[0]
 
     # Generate a graph of the tensor access pattern

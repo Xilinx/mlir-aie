@@ -9,7 +9,7 @@ from ml_dtypes import bfloat16
 import numpy as np
 
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2
@@ -61,14 +61,19 @@ def my_matmul(M, K, N, m, k, n):
     )
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    a_dims = TensorAccessPattern.identity((m, k)).tile((r, s)).transformation_dims
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
 
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_dims = (
+        TensorAccessPattern.identity((m * n,))
+        .tile((r * t,))
+        .tile((n // t, t))
+        .transformation_dims
+    )
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
@@ -93,12 +98,16 @@ def my_matmul(M, K, N, m, k, n):
 
     rows_per_block = 4
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
+    A_tiles = TensorAccessPattern.identity((M, K)).tile_sequence(
+        (m, k), repeat_dims=(1, K_div_k), pattern_repeat=N_div_n
     )
-    b_tap = TensorTiler2D.group_tiler((N, K // 8), (n, k // 8), (N_div_n, K_div_k))[0]
+    b_tap = TensorAccessPattern.identity((N, K // 8)).tile_sequence(
+        (n, k // 8), repeat_dims=(N_div_n, K_div_k)
+    )[0]
 
-    C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
+    C_tiles = TensorAccessPattern.identity((M, N)).tile_sequence(
+        (m, n), repeat_dims=(rows_per_block // 2, N_div_n)
+    )
     c_index = 0
 
     rt = Runtime()

@@ -11,7 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.dialects.aiex import v8bfp16ebs8
 
 
@@ -102,6 +102,9 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k // 8 * j for j in range(stop_row - start_row)]
+        dims_to_stream = [
+            TensorAccessPattern.identity((m, k)).tile((r, s)).transformation_dims
+        ] * (stop_row - start_row)
         a_tmp_fifos = (
             A_l3l2_fifos[i]
             .cons()
@@ -109,6 +112,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
                 of_offsets,
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
+                dims_to_stream=dims_to_stream,
                 placement=Tile(2 * i if n_aie_cols == 8 else i, 1),
             )
         )
@@ -187,23 +191,20 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
     tb_max_n_rows = 4
     tb_n_rows = tb_max_n_rows // 2
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K // 8),
+    A_tiles = TensorAccessPattern.identity((M, K // 8)).tile_sequence(
         (m * n_A_tiles_per_shim, k // 8),
-        (1, K // k),
+        repeat_dims=(1, K // k),
         pattern_repeat=N // n // n_aie_cols,
     )
-    B_tiles = TensorTiler2D.step_tiler(
-        (N, K // 8),
+    B_tiles = TensorAccessPattern.identity((N, K // 8)).tile_sequence(
         (n, k // 8),
-        tile_group_repeats=(N // n // n_aie_cols, K // k),
-        tile_group_steps=(n_aie_cols, 1),
+        repeat_dims=(N // n // n_aie_cols, K // k),
+        step_dims=(n_aie_cols, 1),
     )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N // 8),
+    C_tiles = TensorAccessPattern.identity((M, N // 8)).tile_sequence(
         (m * n_aie_rows, n // 8),
-        tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
-        tile_group_steps=(1, n_aie_cols),
+        repeat_dims=(tb_n_rows, N // n // n_aie_cols),
+        step_dims=(1, n_aie_cols),
     )
     c_index = 0
 

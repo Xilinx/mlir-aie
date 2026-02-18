@@ -19,6 +19,7 @@ from aie.iron import (
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def conv2dk14(
@@ -89,21 +90,25 @@ def conv2dk14(
     of_inOF_act_L3L2 = ObjectFifo(
         bufIn_ty,
         name="inOF_act_L3L2",
-        dims_from_stream_per_cons=[
-            (kernel_size, kernel_size * in_channels),  # (14, 56)
-            (64, kernel_size * kernel_size * in_channels),  # (64, 784)
-            (kernel_size * in_channels, 1),  # (56, 1)
-        ],
+        dims_from_stream_per_cons=TensorAccessPattern.identity(
+            (64, kernel_size, kernel_size * in_channels)
+        )
+        .permute((1, 0, 2))
+        .transformation_dims,
     )
     of_act_L2_02 = of_inOF_act_L3L2.cons().forward(
         obj_type=actIn_ty,
         name="act_L2_02",
-        dims_to_stream=[
-            (2, kernel_size * kernel_size * in_channels * 8),  # (2, 6272)
-            (kernel_size * kernel_size // 2, 2 * in_channels),  # (98, 8)
-            (8, kernel_size * kernel_size * in_channels),  # (8, 784)
-            (2 * in_channels, 1),  # (8, 1)
-        ],
+        dims_to_stream=TensorAccessPattern.identity(
+            (
+                2,
+                8,
+                kernel_size * kernel_size // 2,
+                2 * in_channels,
+            )
+        )
+        .permute((0, 2, 1, 3))
+        .transformation_dims,
     )
 
     # wts
@@ -114,7 +119,9 @@ def conv2dk14(
     of_outOFL2L3 = of_out_02_L2.cons().forward(
         obj_type=bufOut_ty,
         name="outOFL2L3",
-        dims_to_stream=[(256, 256), (16, 8), (2, 128), (8, 1)],
+        dims_to_stream=TensorAccessPattern.identity((256, 2, 16, 8))
+        .permute((0, 2, 1, 3))
+        .transformation_dims,
     )
 
     # Setup a global buffer to hold runtime parameters

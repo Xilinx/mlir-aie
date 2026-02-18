@@ -11,8 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU1Col2, NPU1, NPU2, Tile
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
-
+from aie.helpers.taplib import TensorAccessSequence, TensorAccessPattern
 
 microkernel_mac_dim_map = {
     "npu": {
@@ -241,14 +240,12 @@ def my_matmul(
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        dims_to_stream = [
-            [
-                (m // r, r * k),
-                (k // s, s),
-                (r, k),
-                (s, 1),
-            ]
-        ] * (stop_row - start_row)
+
+        # Construct TAP for A micro-tiling: (m, k) -> (m//r, k//s, r, s)
+        # Start with identity on (m, k)
+        tap_A = TensorAccessPattern.identity((m, k)).tile((r, s))
+        dims_to_stream = [tap_A.transformation_dims] * (stop_row - start_row)
+
         a_tmp_fifos = (
             A_l3l2_fifos[i]
             .cons()
@@ -270,9 +267,13 @@ def my_matmul(
     for col in range(n_aie_cols):
         B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
         if b_col_maj:
-            dims_to_stream = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
+            # (n, k) -> (n//t, k//s, t, s)
+            tap_B = TensorAccessPattern.identity((n, k)).tile((t, s))
         else:
-            dims_to_stream = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
+            # (k, n) -> (k//s, n//t, s, t)
+            tap_B = TensorAccessPattern.identity((k, n)).tile((s, t))
+        dims_to_stream = tap_B.transformation_dims
+
         B_l2l1_fifos[col] = (
             B_l3l2_fifos[col]
             .cons()
@@ -285,11 +286,21 @@ def my_matmul(
         )
 
         # Output C
+        # Construct TAP for C micro-tiling reading from blocked layout
+        # Blocked layout: (m//r, n//t, r, t) with strides (r*n, r*t, t, 1)
+        # We want to traverse it in row-major order (i, j) which corresponds to (i0, i1, i2, i3)
+        # i0=m//r, i1=r, i2=n//t, i3=t
+        # We can construct this by tiling the flat buffer twice:
+        # 1. Tile into blocks: (blocks, block_size) -> (m*n // (r*t), r*t)
+        # 2. Tile blocks and block_size: (m//r, n//t) and (r, t)
+        #    This produces (m//r, r, n//t, t) with the correct strides.
+        tap_C = TensorAccessPattern.identity((m * n,)).tile((r * t,)).tile((n // t, t))
+
         C_l2l3_fifos[col] = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
+            dims_to_stream=tap_C.transformation_dims,
         )
         of_offsets = [m * n * i for i in range(n_aie_rows)]
 
@@ -352,43 +363,38 @@ def my_matmul(
     tb_n_rows = tb_max_n_rows // 2
 
     # Define tensor access patterns (tiling) for A, B, and C
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K),  # Size of A matrix
+    A_tiles = TensorAccessPattern.identity((M, K)).tile_sequence(
         (m * n_A_tiles_per_shim, k),  # Size of A (smallest) tile
-        (1, K // k),  # Size of "group" of tiles
+        repeat_dims=(1, K // k),  # Size of "group" of tiles
         # Repeat data so can distribute across whole column
         pattern_repeat=N // n // n_aie_cols,
-        prune_step=False,
     )
     if b_col_maj:
-        B_tiles = TensorTiler2D.step_tiler(
-            (N, K),  # Size of B matrix
+        B_tiles = TensorAccessPattern.identity((N, K)).tile_sequence(
             (n, k),  # Size of B tile
             # Number of tiles per transfer in each dimension (whole col, partial row)
-            tile_group_repeats=(N // n // n_aie_cols, K // k),
+            repeat_dims=(N // n // n_aie_cols, K // k),
             # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
-            tile_group_steps=(n_aie_cols, 1),
-            prune_step=False,
+            step_dims=(n_aie_cols, 1),
         )
     else:
-        B_tiles = TensorTiler2D.step_tiler(
-            (K, N),  # Size of B matrix
+        B_tiles = TensorAccessPattern.identity((K, N)).tile_sequence(
             (k, n),  # Size of B tile
             # Number of tiles per transfer in each dimension (whole col, partial row)
-            tile_group_repeats=(K // k, N // n // n_aie_cols),
+            repeat_dims=(K // k, N // n // n_aie_cols),
             # Contiguous tile group in col, but send every n_aie_cols-th tile in the row
-            tile_group_steps=(1, n_aie_cols),
-            tile_group_col_major=True,  # Send all tiles in column before moving on to next column
-            prune_step=False,
+            step_dims=(1, n_aie_cols),
+            repeat_dim_order=[
+                1,
+                0,
+            ],  # Send all tiles in column before moving on to next column
         )
-    C_tiles = TensorTiler2D.step_tiler(
-        (M, N),  # Size of C matrix
+    C_tiles = TensorAccessPattern.identity((M, N)).tile_sequence(
         (m * n_aie_rows, n),  # Size of C tile
         # Number of tiles per transfer in each dimension (partial col, partial row)
-        tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
+        repeat_dims=(tb_n_rows, N // n // n_aie_cols),
         # Collect every n_aie_cols row at a time (mirroring how we sent in B data)
-        tile_group_steps=(1, n_aie_cols),
-        prune_step=False,
+        step_dims=(1, n_aie_cols),
     )
     c_index = 0
 

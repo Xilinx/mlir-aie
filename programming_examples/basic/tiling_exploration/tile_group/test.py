@@ -8,7 +8,7 @@
 import argparse
 import numpy as np
 
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
@@ -21,9 +21,9 @@ def main(opts):
     dtype = np.int32
     data_size = opts.tensor_height * opts.tensor_width
 
-    reference_tiler = TensorTiler2D.simple_tiler(
-        (opts.tensor_height, opts.tensor_width), (opts.tile_height, opts.tile_width)
-    )
+    reference_tiler = TensorAccessPattern.identity(
+        (opts.tensor_height, opts.tensor_width)
+    ).tile_sequence((opts.tile_height, opts.tile_width))
     reference_access_order = reference_tiler.access_order()
 
     out = iron.zeros(data_size, dtype=dtype)

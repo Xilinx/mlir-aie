@@ -12,7 +12,7 @@ from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def generate_module(
@@ -27,8 +27,8 @@ def generate_module(
     flattened_tile = np.ndarray[(tile_size,), np.dtype[dtype]]
 
     # Define tensor access pattern on the input/output tensor (tiling)
-    tiler = TensorTiler2D.simple_tiler(
-        (tensor_height, tensor_width), (tile_height, tile_width)
+    tiler = TensorAccessPattern.identity((tensor_height, tensor_width)).tile_sequence(
+        (tile_height, tile_width)
     )
 
     # Generate a graph from the tensor access pattern

@@ -12,7 +12,7 @@ from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2, XCVC1902
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 # Size of the entire matrix
 MATRIX_HEIGHT = 16
@@ -60,7 +60,7 @@ def my_matrix_add_one():
     my_worker = Worker(core_fn, fn_args=[of_in.cons(), of_out.prod()])
 
     # Define the data access pattern for input/output
-    tap = TensorTiler2D.simple_tiler(MATRIX_SHAPE, TILE_SHAPE)[0]
+    tap = TensorAccessPattern.identity(MATRIX_SHAPE).tile_sequence(TILE_SHAPE)[0]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()

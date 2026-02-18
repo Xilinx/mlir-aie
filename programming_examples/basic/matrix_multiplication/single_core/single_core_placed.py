@@ -15,10 +15,9 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 import aie.utils.trace as trace_utils
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
+from aie.helpers.taplib import TensorAccessSequence, TensorAccessPattern
 from aie.iron.controlflow import range_
 from aie.iron.dtype import str_to_dtype
-
 
 microkernel_mac_dim_map = {
     "npu": {
@@ -313,18 +312,20 @@ def my_matmul(
             b_tasks = []
             c_tasks = []
 
-            A_taps = TensorTiler2D.group_tiler(
-                (M, K), (m, k), (1, K_div_k), pattern_repeat=N_div_n
+            A_taps = TensorAccessPattern.identity((M, K)).tile_sequence(
+                (m, k), repeat_dims=(1, K_div_k), pattern_repeat=N_div_n
             )
             # There is only one access pattern for B - it tiles the entire matrix in (k x n) tiles.
             if b_col_maj:
-                b_tap = TensorTiler2D.group_tiler((N, K), (n, k), (N_div_n, K_div_k))[0]
-            else:
-                b_tap = TensorTiler2D.group_tiler(
-                    (K, N), (k, n), (K_div_k, N_div_n), tile_group_col_major=True
+                b_tap = TensorAccessPattern.identity((N, K)).tile_sequence(
+                    (n, k), repeat_dims=(N_div_n, K_div_k)
                 )[0]
-            C_taps = TensorTiler2D.group_tiler(
-                (M, N), (m, n), (rows_per_block // 2, N_div_n)
+            else:
+                b_tap = TensorAccessPattern.identity((K, N)).tile_sequence(
+                    (k, n), repeat_dims=(K_div_k, N_div_n), repeat_dim_order=[1, 0]
+                )[0]
+            C_taps = TensorAccessPattern.identity((M, N)).tile_sequence(
+                (m, n), repeat_dims=(rows_per_block // 2, N_div_n)
             )
             c_index = 0
 

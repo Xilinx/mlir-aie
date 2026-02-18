@@ -19,7 +19,7 @@ from aie.utils.trace.events import (
     ShimTileEvent,
     MemTileEvent,
 )
-from aie.helpers.taplib import TensorTiler2D, TensorAccessSequence
+from aie.helpers.taplib import TensorAccessSequence
 
 
 def conv2dk14(

@@ -11,7 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def my_matmul(dev):
@@ -81,12 +81,12 @@ def my_matmul(dev):
         workers.append(w)
 
     # Define the tiling access patterns for input and output tensors
-    A_taps = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (M_div_m_div_n_cores, K_div_k), prune_step=False
+    A_taps = TensorAccessPattern.identity((M, K)).tile_sequence(
+        (m, k), repeat_dims=(M_div_m_div_n_cores, K_div_k)
     )
-    C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores), prune_step=False)
-    b_tap = TensorTiler2D.simple_tiler(
-        (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
+    C_taps = TensorAccessPattern.identity((1, M)).tile_sequence((1, M_div_n_cores))
+    b_tap = TensorAccessPattern.identity((1, K)).tile_sequence(
+        (1, K), pattern_repeat=M_div_m_div_n_cores
     )[0]
 
     # Runtime operations to move data to/from the AIE-array

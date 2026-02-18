@@ -14,7 +14,7 @@ from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.utils.config import cxx_header_path
 
 

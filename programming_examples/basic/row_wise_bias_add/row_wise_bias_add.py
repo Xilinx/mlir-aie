@@ -11,7 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def row_wise_bias_add(dev, M, N, m, n):
@@ -52,10 +52,12 @@ def row_wise_bias_add(dev, M, N, m, n):
     )
 
     # The tensor access pattern of the input/output tensors (tiling)
-    tap = TensorTiler2D.group_tiler(
-        (M, N), (m, n), (M // m, N // n), tile_group_col_major=True
+    tap = TensorAccessPattern.identity((M, N)).tile_sequence(
+        (m, n), repeat_dims=(M // m, N // n), repeat_dim_order=[1, 0]
     )[0]
-    bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
+    bias_tap = TensorAccessPattern.identity((1, N)).tile_sequence(
+        (1, n), repeat_dims=(1, N // n)
+    )[0]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()

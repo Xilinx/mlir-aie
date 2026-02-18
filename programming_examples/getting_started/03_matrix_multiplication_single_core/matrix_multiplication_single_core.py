@@ -13,7 +13,7 @@ from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from aie.utils.config import cxx_header_path
 
 
@@ -49,24 +49,19 @@ def matrix_multiplication_single_core(input0, input1, output):
     # into r*s-, s*t-, and r*t-sized sub-subtiles.
 
     fifo_A_L3L2 = ObjectFifo(a_ty, name="A_L3L2")
-    tap_A_L2L1 = TensorTiler2D.group_tiler((m, k), (r, s), (m // r, k // s))[0]
+    tap_A_L2L1 = TensorAccessPattern.identity((m, k)).tile((r, s))
     fifo_A_L2L1 = fifo_A_L3L2.cons().forward(
         dims_to_stream=tap_A_L2L1.transformation_dims, name="A_L2L1"
     )
 
     fifo_B_L3L2 = ObjectFifo(b_ty, name="B_L3L2")
-    tap_B_L2L1 = TensorTiler2D.group_tiler((k, n), (s, t), (k // s, n // t))[0]
+    tap_B_L2L1 = TensorAccessPattern.identity((k, n)).tile((s, t))
     fifo_B_L2L1 = fifo_B_L3L2.cons().forward(
         dims_to_stream=tap_B_L2L1.transformation_dims, name="B_L2L1"
     )
 
     fifo_C_L1L2 = ObjectFifo(c_ty, name="C_L1L2")
-    tap_C_L1L2 = TensorAccessPattern(
-        tensor_dims=(m, n),
-        offset=0,
-        sizes=[m // r, r, n // t, t],
-        strides=[r * n, t, r * t, 1],
-    )
+    tap_C_L1L2 = TensorAccessPattern.identity((m * n,)).tile((r * t,)).tile((n // t, t))
     fifo_C_L2L3 = fifo_C_L1L2.cons().forward(
         dims_to_stream=tap_C_L1L2.transformation_dims, name="C_L2L3"
     )
@@ -115,13 +110,15 @@ def matrix_multiplication_single_core(input0, input1, output):
     # m*n-sized subtiles. Each single "task group" encompasses all data
     # movement required for a single row of the output matrix.
 
-    a_taps = TensorTiler2D.group_tiler(
-        (M, K), (m, k), (1, K // k), pattern_repeat=(N // n)
+    a_taps = TensorAccessPattern.identity((M, K)).tile_sequence(
+        (m, k), repeat_dims=(1, K // k), pattern_repeat=(N // n)
     )
-    b_tap = TensorTiler2D.group_tiler(
-        (K, N), (k, n), (K // k, N // n), tile_group_col_major=True
+    b_tap = TensorAccessPattern.identity((K, N)).tile_sequence(
+        (k, n), repeat_dims=(K // k, N // n), repeat_dim_order=[1, 0]
     )[0]
-    c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
+    c_taps = TensorAccessPattern.identity((M, N)).tile_sequence(
+        (m, n), repeat_dims=(1, N // n)
+    )
 
     rt = Runtime()
     with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):

@@ -12,7 +12,7 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
 from aie.iron.controlflow import range_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 
 # Size of the entire matrix
 MATRIX_HEIGHT = 16
@@ -65,7 +65,7 @@ def my_matrix_add_one():
                 of_out.release(ObjectFifoPort.Produce, 1)
 
         # To/from AIE-array data movement
-        tap = TensorTiler2D.simple_tiler(MATRIX_SHAPE, TILE_SHAPE)[0]
+        tap = TensorAccessPattern.identity(MATRIX_SHAPE).tile_sequence(TILE_SHAPE)[0]
 
         @runtime_sequence(matrix_ty, matrix_ty, matrix_ty)
         def sequence(inTensor, _, outTensor):

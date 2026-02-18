@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 
 from aie.dialects.aiex import v8bfp16ebs8
-from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
+from aie.helpers.taplib import TensorAccessSequence, TensorAccessPattern
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2
@@ -89,13 +89,15 @@ def my_matmul(M, K, N, m, k, n):
 
     rows_per_block = 4
 
-    A_tiles = TensorTiler2D.group_tiler(
-        (M, K // 8), (m, k // 8), (1, K_div_k), pattern_repeat=N_div_n
+    A_tiles = TensorAccessPattern.identity((M, K // 8)).tile_sequence(
+        (m, k // 8), repeat_dims=(1, K_div_k), pattern_repeat=N_div_n
     )
-    b_tap = TensorTiler2D.group_tiler((N, K // 8), (n, k // 8), (N_div_n, K_div_k))[0]
+    b_tap = TensorAccessPattern.identity((N, K // 8)).tile_sequence(
+        (n, k // 8), repeat_dims=(N_div_n, K_div_k)
+    )[0]
 
-    C_tiles = TensorTiler2D.group_tiler(
-        (M, N // 8), (m, n // 8), (rows_per_block // 2, N_div_n)
+    C_tiles = TensorAccessPattern.identity((M, N // 8)).tile_sequence(
+        (m, n // 8), repeat_dims=(rows_per_block // 2, N_div_n)
     )
     c_index = 0
 

@@ -11,6 +11,7 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.dialects.aiex import v8bfp16ebs8
+from aie.helpers.taplib import TensorAccessPattern
 
 
 def ceildiv(a, b):
@@ -45,14 +46,19 @@ def my_matmul():
     )
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    a_dims = TensorAccessPattern.identity((m, k)).tile((r, s)).transformation_dims
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
 
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_dims = (
+        TensorAccessPattern.identity((m * n,))
+        .tile((r * t,))
+        .tile((n // t, t))
+        .transformation_dims
+    )
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
