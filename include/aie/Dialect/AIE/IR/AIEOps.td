@@ -212,7 +212,7 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     size_t getNumDestConnections(WireBundle bundle);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      return ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
+      ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -274,7 +274,7 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
     size_t getNumDestConnections(WireBundle bundle);
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      return ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames(setNameFn);
+      ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -318,7 +318,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      return ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
+      ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -383,7 +383,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      return ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
+      ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }
   }];
 
@@ -1130,7 +1130,7 @@ def AIE_MemOp: AIE_Op<"mem", [
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      return ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
+      ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -1175,7 +1175,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
     TileOp getTileOp();
     void getAsmResultNames(
         llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      return ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);
+      ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
