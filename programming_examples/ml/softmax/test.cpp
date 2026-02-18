@@ -179,8 +179,8 @@ int main(int argc, const char *argv[]) {
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
-  std::vector<float> npu_times;  // Store measured iteration times
-  std::vector<float> warmup_times;  // Store warmup iteration times for debugging
+  std::vector<float> npu_times;    // Store measured iteration times
+  std::vector<float> warmup_times; // Store warmup iteration times for debugging
 
   int errors = 0;
 
@@ -218,20 +218,20 @@ int main(int argc, const char *argv[]) {
 
     // Accumulate run times immediately for both warmup and measured
     if (iter < n_warmup_iterations) {
-      warmup_times.push_back(npu_time);  // Store warmup time for debugging
+      warmup_times.push_back(npu_time); // Store warmup time for debugging
     } else {
-      npu_times.push_back(npu_time);  // Store this iteration's time
+      npu_times.push_back(npu_time); // Store this iteration's time
       npu_time_total += npu_time;
       npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
       npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
     }
-    
+
     // Continue immediately to next iteration (mimicking warmup's tight loop)
     // This tests whether the variance is caused by post-timing work
-    if (iter < num_iter - 1) {  // Not the last iteration
+    if (iter < num_iter - 1) { // Not the last iteration
       continue;
     }
-    
+
     // Only do verify on the last iteration
     if (do_verify) {
       if (verbosity >= 1) {
@@ -266,14 +266,16 @@ int main(int argc, const char *argv[]) {
   if (warmup_times.size() > 0) {
     std::cout << std::endl << "Warmup times:" << std::endl;
     for (int i = 0; i < warmup_times.size(); i++) {
-      std::cout << "  Warmup " << (i + 1) << ": " << warmup_times[i] << " us" << std::endl;
+      std::cout << "  Warmup " << (i + 1) << ": " << warmup_times[i] << " us"
+                << std::endl;
     }
   }
 
   // Print individual iteration times
   std::cout << std::endl << "NPU times for each iteration:" << std::endl;
   for (int i = 0; i < npu_times.size(); i++) {
-    std::cout << "  Iteration " << (i + 1) << ": " << npu_times[i] << " us" << std::endl;
+    std::cout << "  Iteration " << (i + 1) << ": " << npu_times[i] << " us"
+              << std::endl;
   }
 
   // TODO - Mac count to guide gflops

@@ -123,7 +123,9 @@ def main():
 
     args = parser.parse_args()
 
-    trace_size = args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
+    trace_size = (
+        args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
+    )
 
     if args.device_name == "npu":
         dev = NPU1Col1()

@@ -59,7 +59,8 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
   // First pass - Optimized: element-wise max + single final reduce_max
   // Use vector max accumulation, then reduce once at the end
-  aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec = aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)-32768.0f);
+  aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec =
+      aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)-32768.0f);
   for (int i = 0; i < elem_iters; i++) {
     input_bf16 = *it_log_in++;
     scaled_accum = aie::mul(input_bf16, log2e_vec);
@@ -70,17 +71,17 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
   // Second pass
   for (int i = 0; i < elem_iters; i++) {
-  
+
     input_bf16 = *it_exp_in++;
-  
+
     scaled_accum = aie::mul(input_bf16, log2e_vec);
     exp_in_accum = aie::sub(scaled_accum, max_val_vec);
     exp_val = aie::exp2<bfloat16>(exp_in_accum.to_vector<float>());
     exp_val_accum = add(exp_val_accum, exp_val);
-  
+
     *it_exp_out++ = exp_val;
   }
-  
+
   // Final reduction after loop
   aie::vector<float, SM_VEC_LEN> reduce = exp_val_accum.to_vector<float>();
   accum_exp_val = aie::reduce_add(reduce);

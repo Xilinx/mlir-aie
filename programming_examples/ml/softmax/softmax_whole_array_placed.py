@@ -270,10 +270,12 @@ def main():
 
     args = parser.parse_args()
 
-    trace_size = args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
+    trace_size = (
+        args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
+    )
 
     n_col = args.n_col
-    
+
     if args.device_name == "npu":
         # NPU1 supports up to 4 columns
         if n_col > 4:
