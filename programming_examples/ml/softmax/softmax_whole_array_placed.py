@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 AMD Inc.
+# (c) Copyright 2026 AMD Inc.
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
@@ -38,7 +38,7 @@ def vector_softmax(dev, trace_size, n_col, n_cores_per_col, N):
         raise ValueError(
             "[ERROR] NPU1 device only supports 4 columns. Please set n_col <= 4"
         )
-    if dev == AIEDevice.npu2_4col and n_col > 8:
+    if dev == AIEDevice.npu2 and n_col > 8:
         raise ValueError(
             "[ERROR] NPU2 device only supports 8 columns. Please set n_col <= 8"
         )
@@ -272,12 +272,23 @@ def main():
 
     trace_size = args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
 
+    n_col = args.n_col
+    
     if args.device_name == "npu":
+        # NPU1 supports up to 4 columns
+        if n_col > 4:
+            raise ValueError(
+                f"[ERROR] NPU1 device only supports up to 4 columns. Got n_col={n_col}"
+            )
         dev = AIEDevice.npu1
     elif args.device_name == "npu2":
-        dev = AIEDevice.npu2_4col
+        # NPU2 supports up to 8 columns
+        if n_col > 8:
+            raise ValueError(
+                f"[ERROR] NPU2 device only supports up to 8 columns. Got n_col={n_col}"
+            )
+        dev = AIEDevice.npu2
     else:
-        # This should be caught by argparse choices, but just in case
         raise ValueError(f"[ERROR] Device name {args.device_name} is unknown")
 
     with mlir_mod_ctx() as ctx:
