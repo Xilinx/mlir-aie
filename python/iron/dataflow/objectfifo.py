@@ -13,6 +13,7 @@ from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import ObjectFifoPort  # type: ignore
 from ...dialects._aie_ops_gen import ObjectFifoCreateOp  # type: ignore
 from ...dialects.aie import object_fifo, object_fifo_link
+from ...helpers.taplib import TensorAccessPattern
 from ...helpers.util import (
     np_ndarray_type_to_memref_type,
     np_ndarray_type_get_dtype,
@@ -42,8 +43,8 @@ class ObjectFifo(Resolvable):
         obj_type: type[np.ndarray],
         depth: int | None = 2,
         name: str | None = None,
-        dims_to_stream: list[Sequence[int]] | None = None,
-        dims_from_stream_per_cons: list[Sequence[int]] | None = None,
+        tap_to_stream: TensorAccessPattern | None = None,
+        taps_from_stream_per_cons: list[TensorAccessPattern] | None = None,
         plio: bool = False,
     ):
         """Construct an ObjectFifo.
@@ -52,8 +53,8 @@ class ObjectFifo(Resolvable):
             obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
             depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
             name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
-            dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
-            dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
+            tap_to_stream (TensorAccessPattern | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as a TensorAccessPattern. Defaults to None.
+            taps_from_stream_per_cons (list[TensorAccessPattern] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as a list of TensorAccessPatterns. Defaults to None.
             plio (bool, optional): _description_. Defaults to False.
 
         Raises:
@@ -65,8 +66,17 @@ class ObjectFifo(Resolvable):
                 f"Default ObjectFifo depth must be > 0, but got {self._depth}"
             )
         self._obj_type = obj_type
-        self._dims_to_stream = dims_to_stream
-        self._dims_from_stream_per_cons = dims_from_stream_per_cons
+
+        self._dims_to_stream = None
+        if tap_to_stream is not None:
+            self._dims_to_stream = tap_to_stream.transformation_dims
+
+        self._dims_from_stream_per_cons = None
+        if taps_from_stream_per_cons is not None:
+            self._dims_from_stream_per_cons = [
+                t.transformation_dims for t in taps_from_stream_per_cons
+            ]
+
         self._plio = plio
         if name is None:
             self.name = f"of{ObjectFifo.__get_index()}"
@@ -174,14 +184,14 @@ class ObjectFifo(Resolvable):
     def cons(
         self,
         depth: int | None = None,
-        dims_from_stream: list[Sequence[int]] | None = None,
+        tap: TensorAccessPattern | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
         will return a new consumer handle every time is it callled.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
-            dims_from_stream (list[Sequence[int]] | None, optional): Dimensions from stream for this consumer. Defaults to None.
+            tap (TensorAccessPattern | None, optional): Dimensions from stream for this consumer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated
@@ -194,6 +204,10 @@ class ObjectFifo(Resolvable):
                 raise ValueError(f"If depth is None, then depth must be specified.")
             else:
                 depth = self._depth
+
+        dims_from_stream = None
+        if tap is not None:
+            dims_from_stream = tap.transformation_dims
 
         if dims_from_stream is None:
             dims_from_stream = self._dims_from_stream_per_cons
@@ -479,26 +493,22 @@ class ObjectFifoHandle(Resolvable):
 
     def join(
         self,
-        offsets: list[int],
+        taps: list[TensorAccessPattern],
         placement: PlacementTile = AnyMemTile,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] = None,
         names: list[str] | None = None,
-        dims_to_stream: list[list[Sequence[int] | None]] | None = None,
-        dims_from_stream: list[list[Sequence[int] | None]] | None = None,
         plio: bool = False,
     ) -> list[ObjectFifo]:
         """Construct multiple ObjectFifos which feed data into a ObjectFifoHandle.
         Note that this function is only valid for producer ObjectFifoHandles.
 
         Args:
-            offsets (list[int]): Offsets into the current producer, each corresponding to a new consumer.
+            taps (list[TensorAccessPattern]): A list of TensorAccessPatterns to use for offsets and dims_from_stream.
             placement (PlacementTile, optional): The placement where the Join operation occurs. Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The type of the buffers corresponding to each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, unique names will be generated. Defaults to None.
-            dims_to_stream (list[list[Sequence[int]  |  None]] | None, optional): The dimensionsToStream to assign to each new ObjectFifo. Defaults to None.
-            dims_from_stream (list[list[Sequence[int]  |  None]] | None, optional): The dimensionsFromStream to assign to each new ObjectFifo consumer. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
 
         Raises:
@@ -509,6 +519,8 @@ class ObjectFifoHandle(Resolvable):
         """
         if not self._is_prod:
             raise ValueError(f"Cannot join() a {self.handle_type} ObjectFifoHandle")
+
+        offsets = [t.offset for t in taps]
         num_subfifos = len(offsets)
         if depths is None:
             depths = [self.depth] * num_subfifos
@@ -525,20 +537,6 @@ class ObjectFifoHandle(Resolvable):
         elif len(names) != num_subfifos:
             raise ValueError("Number of names does not match number of offsets")
 
-        if dims_to_stream is None:
-            dims_to_stream = [[]] * num_subfifos
-        elif len(dims_to_stream) != num_subfifos:
-            raise ValueError(
-                "Number of dims to stream does not match number of offsets"
-            )
-
-        if dims_from_stream is None:
-            dims_from_stream = [[]] * num_subfifos
-        elif dims_from_stream and len(dims_from_stream) != num_subfifos:
-            raise ValueError(
-                "Number of dims_from_stream does not match number of offsets"
-            )
-
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
@@ -547,40 +545,34 @@ class ObjectFifoHandle(Resolvable):
                     obj_types[i],
                     name=names[i],
                     depth=depths[i],
-                    dims_to_stream=dims_to_stream[i],
                     plio=plio,
                 )
             )
 
         subfifo_cons = [
-            s.cons(depth=depths[i], dims_from_stream=dims_from_stream[i])
-            for s in subfifos
+            s.cons(depth=depths[i], tap=taps[i]) for i, s in enumerate(subfifos)
         ]
         _ = ObjectFifoLink(subfifo_cons, self, placement, offsets, [])
         return subfifos
 
     def split(
         self,
-        offsets: list[int],
+        taps: list[TensorAccessPattern],
         placement: PlacementTile = AnyMemTile,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] = None,
         names: list[str] | None = None,
-        dims_to_stream: list[list[Sequence[int]]] | None = None,
-        dims_from_stream: list[list[Sequence[int]]] | None = None,
         plio: bool = False,
     ) -> list[ObjectFifo]:
         """Split the data from an ObjectFifoConsumer handle by sending it to producers in N newly constructed ObjectFifos.
         Note this operation is only valid for ObjectFifoHandles of type consumer.
 
         Args:
-            offsets (list[int]): The offset into the current consumer for each new ObjectFifo producer.
+            taps (list[TensorAccessPattern]): A list of TensorAccessPatterns to use for offsets and dims_to_stream.
             placement (PlacementTile, optional): The placement tile where the Split operation takes place. Defaults to AnyMemTile.
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The buffer type of each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, a unique name will be generated. Defaults to None.
-            dims_to_stream (list[list[Sequence[int]]] | None, optional): The dimensions to stream for each new ObjectFifo. Defaults to None.
-            dims_from_stream (list[list[Sequence[int]]] | None, optional): The dimensions from stream for each new ObjectFifo. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
 
         Raises:
@@ -591,6 +583,8 @@ class ObjectFifoHandle(Resolvable):
         """
         if self._is_prod:
             raise ValueError(f"Cannot split() a {self.handle_type} ObjectFifoHandle")
+
+        offsets = [t.offset for t in taps]
         num_subfifos = len(offsets)
         if depths is None:
             depths = [self.depth] * num_subfifos
@@ -607,20 +601,6 @@ class ObjectFifoHandle(Resolvable):
         elif len(names) != num_subfifos:
             raise ValueError("Number of names does not match number of offsets")
 
-        if dims_to_stream is None:
-            dims_to_stream = [[]] * num_subfifos
-        elif len(dims_to_stream) != num_subfifos:
-            raise ValueError(
-                "Number of dims_to_stream arrays does not match number of offsets"
-            )
-
-        if dims_from_stream is None:
-            dims_from_stream = [[]] * num_subfifos
-        elif len(dims_from_stream) != num_subfifos:
-            raise ValueError(
-                "Number of dims_from_stream arrays does not match number of offsets"
-            )
-
         # Create subfifos
         subfifos = []
         for i in range(num_subfifos):
@@ -629,8 +609,7 @@ class ObjectFifoHandle(Resolvable):
                     obj_types[i],
                     name=names[i],
                     depth=depths[i],
-                    dims_to_stream=dims_to_stream[i],
-                    dims_from_stream_per_cons=dims_from_stream[i],
+                    tap_to_stream=taps[i],
                     plio=plio,
                 )
             )
@@ -646,8 +625,7 @@ class ObjectFifoHandle(Resolvable):
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
         name: str | None = None,
-        dims_to_stream: list[Sequence[int]] | None = None,
-        dims_from_stream: list[Sequence[int]] | None = None,
+        tap: TensorAccessPattern | None = None,
         plio: bool = False,
     ) -> ObjectFifo:
         """This is a special case of the split() operation where an ObjectFifoHandle of type consumer
@@ -658,8 +636,7 @@ class ObjectFifoHandle(Resolvable):
             obj_type (type[np.ndarray] | None, optional): The object type of the new ObjectFifo. Defaults to None.
             depth (int | None, optional): The depth of the new ObjectFifo. Defaults to None.
             name (str | None, optional): The name of the new ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
-            dims_to_stream (list[Sequence[int]] | None, optional): The dimensions to stream for the new ObjectFifo. Defaults to None.
-            dims_from_stream (list[Sequence[int]] | None, optional): The dimensions from stream for the new ObjectFifo. Defaults to None.
+            tap (TensorAccessPattern | None, optional): A TensorAccessPattern to use for dims_to_stream. Defaults to None.
             plio (bool, optional): Set plio on each new ObjectFifo. Defaults to False.
 
         Raises:
@@ -678,19 +655,41 @@ class ObjectFifoHandle(Resolvable):
             name = [name]
         else:
             name = [self._object_fifo.name + "_fwd"]
-        if dims_to_stream:
-            dims_to_stream = [dims_to_stream]
-        if dims_from_stream:
-            dims_from_stream = [dims_from_stream]
+
+        if tap is None:
+            # Create a default TAP if none provided, assuming identity on the object type?
+            # Or just pass None if split handles it?
+            # split expects taps list.
+            # If tap is None, we need a TAP with offset 0 and identity dims?
+            # Or maybe we should require tap?
+            # The original forward allowed dims_to_stream=None.
+            # If dims_to_stream is None, it means identity.
+            # So we need a TAP that represents identity.
+            # But we don't know the dimensions here easily without obj_type.
+            # If obj_type is provided, we can use it.
+            # If not, we use self._object_fifo.obj_type?
+            # But forward creates a NEW ObjectFifo.
+            # If obj_type is None, it uses self._object_fifo.obj_type.
+            pass
+
+        if tap is None:
+            # If no tap provided, we need to construct one that implies offset 0 and no transformation?
+            # But split requires taps.
+            # We can construct a TAP with offset 0 and empty sizes/strides?
+            # Or we can use the object type to construct a default TAP.
+            target_type = obj_type[0] if obj_type else self._object_fifo.obj_type
+            # We need the shape.
+            from ...helpers.util import np_ndarray_type_get_shape
+
+            shape = np_ndarray_type_get_shape(target_type)
+            tap = TensorAccessPattern(shape)
 
         forward_fifo = self.split(
-            [0],
+            [tap],
             placement=placement,
             obj_types=obj_type,
             depths=depth,
             names=name,
-            dims_to_stream=dims_to_stream,
-            dims_from_stream=dims_from_stream,
             plio=plio,
         )
         return forward_fifo[0]

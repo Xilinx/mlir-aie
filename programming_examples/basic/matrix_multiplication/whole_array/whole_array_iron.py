@@ -153,10 +153,6 @@ def my_matmul(
         N % (n * n_aie_cols) == 0
     ), """B must be tileable into (k, n * n_aie_cols)-sized blocks"""
 
-    assert m % r == 0
-    assert k % s == 0
-    assert n % t == 0
-
     # If you get errors during CDO generation due to running out of program
     # memory, it may be because too much code is generated due to ObjectFIFO
     # loop unrollings. Reducing the depth to 1 here will work around that at
@@ -239,21 +235,28 @@ def my_matmul(
         # tiles; distribute it along rows of AIE cores.
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
-        of_offsets = [m * k * j for j in range(stop_row - start_row)]
 
         # Construct TAP for A micro-tiling: (m, k) -> (m//r, k//s, r, s)
         # Start with identity on (m, k)
-        tap_A = TensorAccessPattern((m, k)).tile((r, s))
-        dims_to_stream = [tap_A.transformation_dims] * (stop_row - start_row)
+        tap_A_source = TensorAccessPattern((m * k * n_A_tiles_per_shim,))
+        # Note: TensorAccessPattern adds a dimension of size 1 for 1D tensors
+        # So shape is (1, m*k*n)
+        tap_A_source = tap_A_source.split_dim(1, n_A_tiles_per_shim)
+        tap_A_source = tap_A_source.split_dim(2, m)
+        tas_A = tap_A_source.tile_sequence(tile_dims=(1, 1, m, k))
+        taps_A = []
+        for tap in tas_A:
+            tap = tap.squeeze()
+            tap = tap.tile((r, s))
+            taps_A.append(tap)
 
         a_tmp_fifos = (
             A_l3l2_fifos[i]
             .cons()
             .split(
-                of_offsets,
+                taps=taps_A,
                 obj_types=[A_l1_ty] * (stop_row - start_row),
                 names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-                dims_to_stream=dims_to_stream,
                 placement=Tile(
                     2 * i if n_aie_cols == 8 else i, 1
                 ),  # alternate columns in full 4x8 NPU2 case
@@ -272,7 +275,6 @@ def my_matmul(
         else:
             # (k, n) -> (k//s, n//t, s, t)
             tap_B = TensorAccessPattern((k, n)).tile((s, t))
-        dims_to_stream = tap_B.transformation_dims
 
         B_l2l1_fifos[col] = (
             B_l3l2_fifos[col]
@@ -280,7 +282,7 @@ def my_matmul(
             .forward(
                 obj_type=B_l1_ty,
                 name=f"B_L2L1_{col}",
-                dims_to_stream=dims_to_stream,
+                tap=tap_B,
                 placement=Tile(col, 1),
             )
         )
@@ -294,22 +296,36 @@ def my_matmul(
         # 1. Tile into blocks: (blocks, block_size) -> (m*n // (r*t), r*t)
         # 2. Tile blocks and block_size: (m//r, n//t) and (r, t)
         #    This produces (m//r, r, n//t, t) with the correct strides.
-        tap_C = TensorAccessPattern((m * n,)).tile((r * t,)).tile((n // t, t))
+        # Note: TensorAccessPattern adds a dimension of size 1 for 1D tensors
+        tap_C = TensorAccessPattern((m * n,))
+        tap_C = tap_C.tile((1, r * t))
+        tap_C = tap_C.squeeze()
+        tap_C = tap_C.tile((n // t, t))
 
         C_l2l3_fifos[col] = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
-            dims_to_stream=tap_C.transformation_dims,
+            tap_to_stream=tap_C,
         )
-        of_offsets = [m * n * i for i in range(n_aie_rows)]
+
+        tap_C_dest = TensorAccessPattern((m * n * n_aie_rows,))
+        # Note: TensorAccessPattern adds a dimension of size 1 for 1D tensors
+        # So shape is (1, m*n*n_rows)
+        tap_C_dest = tap_C_dest.split_dim(1, n_aie_rows)
+        tap_C_dest = tap_C_dest.split_dim(2, m)
+        tas_C = tap_C_dest.tile_sequence(tile_dims=(1, 1, m, n))
+        taps_C = []
+        for tap in tas_C:
+            tap = tap.squeeze()
+            taps_C.append(tap)
 
         # join along one column
         c_tmp_fifos = (
             C_l2l3_fifos[col]
             .prod()
             .join(
-                of_offsets,
+                taps=taps_C,
                 obj_types=[C_l1_ty] * n_aie_rows,
                 names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
                 depths=[fifo_depth] * n_aie_rows,
