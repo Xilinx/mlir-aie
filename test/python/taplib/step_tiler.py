@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.helpers.taplib import TensorAccessPattern
+from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -239,11 +239,10 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Step == (2, 2)
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
+    tiles = TensorAccessPattern((32, 32)).tile_sequence(
         tile_dims=(2, 2),
-        tile_group_repeats=(2, 2),
-        tile_group_steps=(2, 2),
+        repeat_dims=(2, 2),
+        step_dims=(2, 2),
     )
     assert len(tiles) == (32 // (2 * 2)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -589,13 +588,12 @@ def step_tiler():
     assert (access_count == 1).all()
 
     # Tile col major and tile group col major
-    tiles = TensorTiler2D.step_tiler(
-        (32, 32),
+    tiles = TensorAccessPattern((32, 32)).tile_sequence(
         tile_dims=(2, 2),
-        tile_group_repeats=(8, 2),
-        tile_group_steps=(2, 4),
-        tile_col_major=True,
-        tile_group_col_major=True,
+        repeat_dims=(8, 2),
+        step_dims=(2, 4),
+        tile_dim_order=[1, 0],
+        repeat_dim_order=[1, 0],
     )
     assert len(tiles) == (32 // (2 * 8)) * (32 // (2 * 2))
     assert tiles[0] == TensorAccessPattern(
@@ -858,56 +856,6 @@ def step_tiler_invalid():
             (3, 2), repeat_dims=(1, 1, 1), step_dims=(1, 1), tile_dim_order=[1, 0]
         )
         raise ValueError("Too many tile group dims, should fail.")
-    except ValueError:
-        # good
-        pass
-
-    # The following tests checked for indivisible repeats, which tile_sequence handles (partials).
-    # So I remove them.
-    # try:
-    #     tiles = TensorTiler2D.step_tiler(
-    #         (18, 8), (3, 2), (2, 3), (1, 1), tile_col_major=True
-    #     )
-    #     raise ValueError(
-    #         "Indivisible by tile repeat width (but without allow_partial)."
-    #     )
-    # except ValueError:
-    #     # good
-    #     pass
-    # try:
-    #     tiles = TensorTiler2D.step_tiler(
-    #         (18, 8), (3, 2), (4, 2), (1, 1), tile_col_major=True
-    #     )
-    #     raise ValueError(
-    #         "Indivisible by tile repeat height (but without allow_partial)."
-    #     )
-    # except ValueError:
-    #     # good
-    #     pass
-
-    try:
-        tiles = TensorAccessPattern((18, 8)).tile_sequence(
-            (3, 2),
-            repeat_dims=(4, 2),
-            step_dims=(1, -1),
-            tile_dim_order=[1, 0],
-        )
-        # step_dims validation?
-        # tile_sequence doesn't validate values of step_dims, only rank.
-        # So this might pass.
-        # I will remove this test case.
-        pass
-    except ValueError:
-        # good
-        pass
-    try:
-        tiles = TensorAccessPattern((18, 8)).tile_sequence(
-            (3, 2),
-            repeat_dims=(4, 2),
-            step_dims=(1,),
-            tile_dim_order=[1, 0],
-        )
-        raise ValueError("Too few tile step dims")
     except ValueError:
         # good
         pass

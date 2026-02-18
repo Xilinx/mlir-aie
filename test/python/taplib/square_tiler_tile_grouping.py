@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s
@@ -9,7 +9,7 @@ from util import construct_test
 # CHECK-LABEL: square_tiler_tile_grouping
 @construct_test
 def square_tiler_tile_grouping():
-    tiler = TensorTiler2D.group_tiler((32, 32), (8, 8), (2, 2))
+    tiler = TensorAccessPattern((32, 32)).tile_sequence((8, 8), repeat_dims=(2, 2))
     access_count = tiler.access_count()
     assert (access_count == 1).all()
 
