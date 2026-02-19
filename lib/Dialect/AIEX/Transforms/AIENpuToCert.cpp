@@ -111,14 +111,13 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     rewriter.setInsertionPoint(op->getParentOfType<AIEX::CertJobOp>());
     auto symbolAttr = rewriter.getStringAttr(symbolName);
     auto chainOp =
-        rewriter.create<AIEX::CertUcDmaChainOp>(op.getLoc(), symbolAttr);
+        AIEX::CertUcDmaChainOp::create(rewriter, op.getLoc(), symbolAttr);
 
     Block *bb = new Block();
     chainOp.getRegion().push_back(bb);
     rewriter.setInsertionPointToStart(bb);
-    rewriter.create<AIEX::CertUcDmaBdOp>(op.getLoc(), SmallVector<Type>{},
-                                         dataOperand.getName(), op.getAddress(),
-                                         dataSize, false);
+    AIEX::CertUcDmaBdOp::create(rewriter, op.getLoc(), dataOperand.getName(),
+                                op.getAddress(), dataSize, false);
 
     AIEX::CertUcDmaChainOp::ensureTerminator(chainOp.getBody(), rewriter,
                                              op->getLoc());
@@ -279,9 +278,9 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
       auto bdOp = dyn_cast<AIEX::CertUcDmaBdOp>(o);
       if (!bdOp)
         continue;
-      rewriter.create<AIEX::CertUcDmaBdOp>(
-          bdOp.getLoc(), bdOp.getRemoteAddress(), bdOp.getLocalAddress(),
-          bdOp.getLength(), true);
+      AIEX::CertUcDmaBdOp::create(
+          rewriter, bdOp.getLoc(), bdOp.getRemoteAddress(),
+          bdOp.getLocalAddress(), bdOp.getLength(), true);
     }
     rewriter.eraseOp(prevChain);
     rewriter.eraseOp(prevWriteDesSync);
@@ -369,30 +368,31 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
 
     // Create the new global operations
     rewriter.setInsertionPoint(originalGlobal);
-    rewriter.create<memref::GlobalOp>(
-        loc, firstName, rewriter.getStringAttr("private"), firstChunkType,
-        firstChunkAttr, true, nullptr);
+    memref::GlobalOp::create(rewriter, loc, firstName,
+                             rewriter.getStringAttr("private"), firstChunkType,
+                             firstChunkAttr, true, nullptr);
 
-    rewriter.create<memref::GlobalOp>(
-        loc, secondName, rewriter.getStringAttr("private"), secondChunkType,
-        secondChunkAttr, true, nullptr);
+    memref::GlobalOp::create(rewriter, loc, secondName,
+                             rewriter.getStringAttr("private"), secondChunkType,
+                             secondChunkAttr, true, nullptr);
 
     // Create get_global operations for the new data
     rewriter.setInsertionPoint(op);
 
     auto firstGetGlobal =
-        rewriter.create<memref::GetGlobalOp>(loc, firstChunkType, firstName);
+        memref::GetGlobalOp::create(rewriter, loc, firstChunkType, firstName);
     auto secondGetGlobal =
-        rewriter.create<memref::GetGlobalOp>(loc, secondChunkType, secondName);
+        memref::GetGlobalOp::create(rewriter, loc, secondChunkType, secondName);
 
     uint32_t baseAddr = op.getAddress();
 
-    rewriter.create<AIEX::NpuBlockWriteOp>(
-        loc, baseAddr, firstGetGlobal.getResult(), nullptr, nullptr, nullptr);
+    AIEX::NpuBlockWriteOp::create(rewriter, loc, baseAddr,
+                                  firstGetGlobal.getResult(), nullptr, nullptr,
+                                  nullptr);
 
-    rewriter.create<AIEX::NpuBlockWriteOp>(loc, baseAddr + firstChunkSize * 4,
-                                           secondGetGlobal.getResult(), nullptr,
-                                           nullptr, nullptr);
+    AIEX::NpuBlockWriteOp::create(rewriter, loc, baseAddr + firstChunkSize * 4,
+                                  secondGetGlobal.getResult(), nullptr, nullptr,
+                                  nullptr);
 
     // Replace the original operation
     rewriter.eraseOp(op);
@@ -550,8 +550,8 @@ struct SplitCertJobOpPattern : OpRewritePattern<AIEX::CertJobOp> {
 
     // split the job
     auto jobId = op.getJobId();
-    auto newJobOp0 = rewriter.create<AIEX::CertJobOp>(loc, jobId);
-    auto newJobOp1 = rewriter.create<AIEX::CertJobOp>(loc, jobId + 1);
+    auto newJobOp0 = AIEX::CertJobOp::create(rewriter, loc, jobId);
+    auto newJobOp1 = AIEX::CertJobOp::create(rewriter, loc, jobId + 1);
 
     newJobOp0.getBody().push_back(new Block());
     rewriter.setInsertionPointToStart(&newJobOp0.getBody().front());
