@@ -182,7 +182,7 @@ public:
       MaskValue maskValue = t.mv;
       Operation *other = portConnection.op;
       Port otherPort = portConnection.port;
-      if (isa<FlowEndPoint>(other)) {
+      if (other && llvm::isa<FlowEndPoint>(other)) {
         // If we got to a tile, then add it to the result.
         connectedTiles.push_back(t);
       } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {

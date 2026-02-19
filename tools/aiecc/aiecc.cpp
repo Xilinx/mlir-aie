@@ -1089,6 +1089,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       SmallString<256> destLinkWith(tmpDirName);
       sys::path::append(destLinkWith, sys::path::filename(core.linkWith));
 
+      // Remove destination file first if it exists (to ensure overwrite)
+      sys::fs::remove(destLinkWith);
+
       std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
       if (ec) {
         llvm::errs() << "Error: Could not copy link_with file: " << srcLinkWith
@@ -1240,8 +1243,13 @@ static LogicalResult updateModuleWithElfs(
 // JSON Generation for xclbin Metadata
 //===----------------------------------------------------------------------===//
 
-static void generateMemTopologyJson(StringRef jsonPath) {
+static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
   std::ofstream jsonFile(jsonPath.str());
+  if (!jsonFile.is_open()) {
+    llvm::errs() << "Error: Could not open file for writing: " << jsonPath
+                 << "\n";
+    return failure();
+  }
   jsonFile << "{\n";
   jsonFile << "  \"mem_topology\": {\n";
   jsonFile << "    \"m_count\": \"2\",\n";
@@ -1264,10 +1272,17 @@ static void generateMemTopologyJson(StringRef jsonPath) {
   jsonFile << "  }\n";
   jsonFile << "}\n";
   jsonFile.close();
+  return success();
 }
 
-static void generateKernelsJson(StringRef jsonPath, StringRef devName) {
+static LogicalResult generateKernelsJson(StringRef jsonPath,
+                                         StringRef devName) {
   std::ofstream jsonFile(jsonPath.str());
+  if (!jsonFile.is_open()) {
+    llvm::errs() << "Error: Could not open file for writing: " << jsonPath
+                 << "\n";
+    return failure();
+  }
   jsonFile << "{\n";
   jsonFile << "  \"ps-kernels\": {\n";
   jsonFile << "    \"kernels\": [\n";
@@ -1320,11 +1335,18 @@ static void generateKernelsJson(StringRef jsonPath, StringRef devName) {
   jsonFile << "  }\n";
   jsonFile << "}\n";
   jsonFile.close();
+  return success();
 }
 
-static void generatePartitionJson(StringRef jsonPath, StringRef devName,
-                                  StringRef pdiPath) {
+static LogicalResult generatePartitionJson(StringRef jsonPath,
+                                           StringRef devName,
+                                           StringRef pdiPath) {
   std::ofstream jsonFile(jsonPath.str());
+  if (!jsonFile.is_open()) {
+    llvm::errs() << "Error: Could not open file for writing: " << jsonPath
+                 << "\n";
+    return failure();
+  }
   jsonFile << "{\n";
   jsonFile << "  \"aie_partition\": {\n";
   jsonFile << "    \"name\": \"QoS\",\n";
@@ -1353,6 +1375,7 @@ static void generatePartitionJson(StringRef jsonPath, StringRef devName,
   jsonFile << "  }\n";
   jsonFile << "}\n";
   jsonFile.close();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1588,11 +1611,13 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
       // Generate JSON metadata files
       SmallString<128> memTopoPath(tmpDirName);
       sys::path::append(memTopoPath, devName.str() + "_mem_topology.json");
-      generateMemTopologyJson(memTopoPath);
+      if (failed(generateMemTopologyJson(memTopoPath)))
+        return failure();
 
       SmallString<128> kernelsPath(tmpDirName);
       sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-      generateKernelsJson(kernelsPath, devName);
+      if (failed(generateKernelsJson(kernelsPath, devName)))
+        return failure();
 
       SmallString<128> partitionPath(tmpDirName);
       sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
@@ -1610,7 +1635,8 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
         }
       }
 
-      generatePartitionJson(partitionPath, devName, absPdiPath);
+      if (failed(generatePartitionJson(partitionPath, devName, absPdiPath)))
+        return failure();
 
       // Build xclbin
       std::string xclbinFileName = formatString(xclbinName, devName);
