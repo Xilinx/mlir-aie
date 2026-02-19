@@ -143,23 +143,36 @@ struct NpuSyncToCertWaitTCTS : OpConversionPattern<AIEX::NpuSyncOp> {
     uint32_t channel = op.getChannel();
     uint32_t direction = op.getDirection();
 
-    uint8_t actor_id = 0;
+    const std::vector<int> chan2actor_shim_s2mm = {0, 2};
+    const std::vector<int> chan2actor_shim_mm2s = {6, 7, 8, 9};
 
-    std::vector<int> chan2actor_shim_s2mm = {0, 2};
-    std::vector<int> chan2actor_shim_mm2s = {6, 7, 8, 9};
+    const std::vector<int> chan2actor_mem_s2mm = {1, 2, 3, 4, 5, 6, 7};
+    const std::vector<int> chan2actor_mem_mm2s = {16, 17, 18, 19, 20,
+                                                  22, 23, 24, 25, 26};
+    const std::vector<int> chan2actor_tile_s2mm = {0, 1};
+    const std::vector<int> chan2actor_tile_mm2s = {6};
+    const auto &tm = AIE::getTargetModel(op);
+    const bool isS2MM =
+        direction == static_cast<std::underlying_type_t<AIE::DMAChannelDir>>(
+                         AIE::DMAChannelDir::S2MM);
 
-    std::vector<int> chan2actor_mem_s2mm = {1, 2, 3, 4, 5, 6, 7};
-    std::vector<int> chan2actor_mem_mm2s = {16, 17, 18, 19, 20,
-                                            22, 23, 24, 25, 26};
-    std::vector<int> chan2actor_tile_s2mm = {0, 1};
-    std::vector<int> chan2actor_tile_mm2s = {6};
-    assert(channel < chan2actor_shim_mm2s.size());
-    if (direction == static_cast<std::underlying_type_t<AIE::DMAChannelDir>>(
-                         AIE::DMAChannelDir::S2MM))
-      actor_id = chan2actor_shim_s2mm[channel];
+    const std::vector<int> *chan2actor = nullptr;
+    if (tm.isCoreTile(col, row))
+      chan2actor = isS2MM ? &chan2actor_tile_s2mm : &chan2actor_tile_mm2s;
+    else if (tm.isMemTile(col, row))
+      chan2actor = isS2MM ? &chan2actor_mem_s2mm : &chan2actor_mem_mm2s;
     else
-      actor_id = chan2actor_shim_mm2s[channel];
+      chan2actor = isS2MM ? &chan2actor_shim_s2mm : &chan2actor_shim_mm2s;
 
+    size_t chanIdx = static_cast<size_t>(channel);
+    if (!chan2actor || chanIdx >= chan2actor->size()) {
+      op.emitError("invalid DMA channel ")
+          << channel << " for " << (isS2MM ? "S2MM" : "MM2S")
+          << " direction in NpuSyncToCertWaitTCTS conversion";
+      return failure();
+    }
+
+    uint8_t actor_id = static_cast<uint8_t>((*chan2actor)[chanIdx]);
     uint8_t num_tcts = 1;
     rewriter.replaceOpWithNewOp<AIEX::CertWaitTCTSOp>(op, tile_id, actor_id,
                                                       num_tcts);
