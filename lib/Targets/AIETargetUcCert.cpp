@@ -116,7 +116,10 @@ void emitJob(CertJobOp jobOp, std::string &text, std::string &data) {
         .Case<CertUcDmaWriteDesSyncOp>(
             [&](auto op) { emitUcDmaWriteDesSync(op, text); })
         .Case<CertWaitTCTSOp>([&](auto op) { emitWaitTCTS(op, text); })
-        .Case<CertWrite32Op>([&](auto op) { emitWrite32(op, text); });
+        .Case<CertWrite32Op>([&](auto op) { emitWrite32(op, text); })
+        .Default([&](Operation *op) {
+          op->emitError("Unsupported operation in CertJobOp");
+        });
   }
 
   text += "END_JOB\n\n";
