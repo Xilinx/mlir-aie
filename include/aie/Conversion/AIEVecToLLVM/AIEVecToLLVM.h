@@ -48,7 +48,8 @@ struct ConvertAIEVecToLLVMOptions;
 
 namespace aievec {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createConvertAIEVecToLLVMPass(const xilinx::ConvertAIEVecToLLVMOptions &options);
+createConvertAIEVecToLLVMPass(
+    const xilinx::ConvertAIEVecToLLVMOptions &options);
 } // namespace aievec
 } // namespace xilinx
 

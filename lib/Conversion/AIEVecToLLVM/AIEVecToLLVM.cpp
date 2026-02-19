@@ -5072,7 +5072,8 @@ createConvertAIEVecToLLVMPass() {
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-createConvertAIEVecToLLVMPass(const xilinx::ConvertAIEVecToLLVMOptions &options) {
+createConvertAIEVecToLLVMPass(
+    const xilinx::ConvertAIEVecToLLVMOptions &options) {
   return std::make_unique<ConvertAIEVecToLLVMPass>(options);
 }
 

@@ -29,9 +29,8 @@ bool checkAndPrintOverflow(TileOp tile, int address, int maxDataMemorySize,
         tile.emitOpError("allocated buffers exceeded available memory\n");
     auto &note = error.attachNote() << "MemoryMap:\n";
     auto printbuffer = [&](StringRef name, int address, int size) {
-      note << "\t" << name << " \t"
-           << ": 0x" << llvm::utohexstr(address) << "-0x"
-           << llvm::utohexstr(address + size - 1) << " \t(" << size
+      note << "\t" << name << " \t" << ": 0x" << llvm::utohexstr(address)
+           << "-0x" << llvm::utohexstr(address + size - 1) << " \t(" << size
            << " bytes)\n";
     };
     if (stacksize > 0)
@@ -219,10 +218,8 @@ void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
                << "Current configuration of buffers in bank(s) : ";
   note << "MemoryMap:\n";
   auto printbuffer = [&](StringRef name, int address, int size) {
-    note << "\t"
-         << "\t" << name << " \t"
-         << ": 0x" << llvm::utohexstr(address) << "-0x"
-         << llvm::utohexstr(address + size - 1) << " \t(" << size
+    note << "\t" << "\t" << name << " \t" << ": 0x" << llvm::utohexstr(address)
+         << "-0x" << llvm::utohexstr(address + size - 1) << " \t(" << size
          << " bytes)\n";
   };
   for (int i = 0; i < numBanks; i++) {
@@ -232,9 +229,8 @@ void printMemMap(TileOp tile, SmallVector<BufferOp> &allocatedBuffers,
       else
         note << "(no stack allocated)\n";
     }
-    note << "\t"
-         << "bank : " << i << "\t"
-         << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
+    note << "\t" << "bank : " << i << "\t" << "0x"
+         << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
          << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
     for (auto buffer : preAllocatedBuffers) {
       auto addr = buffer.getAddress().value();
@@ -311,16 +307,14 @@ bool checkAndPrintOverflow(TileOp tile, int numBanks, int stacksize,
     note << "\n";
     note << "MemoryMap:\n";
     auto printbuffer = [&](StringRef name, int address, int size) {
-      note << "\t"
-           << "\t" << name << " \t"
-           << ": 0x" << llvm::utohexstr(address) << "-0x"
+      note << "\t" << "\t" << name << " \t" << ": 0x"
+           << llvm::utohexstr(address) << "-0x"
            << llvm::utohexstr(address + size - 1) << " \t(" << size
            << " bytes)\n";
     };
     for (int i = 0; i < numBanks; i++) {
-      note << "\t"
-           << "bank : " << i << "\t"
-           << "0x" << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
+      note << "\t" << "bank : " << i << "\t" << "0x"
+           << llvm::utohexstr(bankLimits[i].startAddr) << "-0x"
            << llvm::utohexstr(bankLimits[i].endAddr - 1) << "\n";
       if (i == 0) {
         if (stacksize > 0)
