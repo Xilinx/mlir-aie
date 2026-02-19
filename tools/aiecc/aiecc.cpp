@@ -17,14 +17,14 @@
 // 1. Command-line argument parsing using LLVM CommandLine library
 // 2. MLIR module loading and parsing
 // 3. MLIR transformation pipeline execution
-// 4. Optional integration points for core compilation tools (e.g.
-// xchesscc/peano)
+// 4. Core compilation (xchesscc/peano)
 // 5. NPU instruction generation
-// 6. Optional integration with external CDO/PDI/xclbin generation flows
+// 6. CDO/PDI/xclbin generation
 // 7. Multi-device support
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
@@ -55,7 +55,9 @@
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <map>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -196,6 +198,10 @@ static cl::opt<bool> ctrlPktOverlay("generate-ctrl-pkt-overlay",
                                     cl::init(false),
                                     cl::cat(aieCompilerOptions));
 
+static cl::opt<std::string>
+    peanoInstallDir("peano", cl::desc("Peano compiler installation directory"),
+                    cl::init(""), cl::cat(aieCompilerOptions));
+
 //===----------------------------------------------------------------------===//
 // Helper Functions
 //===----------------------------------------------------------------------===//
@@ -273,9 +279,236 @@ static std::string formatString(StringRef formatStr, StringRef deviceName,
   return result;
 }
 
+// Get Peano target triple from AIE target
+static std::string getPeanoTarget(StringRef aieTarget) {
+  std::string target = aieTarget.lower();
+  return target + "-none-unknown-elf";
+}
+
+// Discover Peano installation directory (matching Python logic)
+static std::string discoverPeanoInstallDir() {
+  // 1. Check if --peano was specified
+  if (!peanoInstallDir.empty()) {
+    if (sys::fs::is_directory(peanoInstallDir)) {
+      return peanoInstallDir;
+    }
+  }
+
+  // 2. Check PEANO_INSTALL_DIR environment variable
+  if (const char *peanoEnv = std::getenv("PEANO_INSTALL_DIR")) {
+    if (sys::fs::is_directory(peanoEnv)) {
+      return peanoEnv;
+    }
+  }
+
+  // 3. Try relative to this executable (install area)
+  auto mainExe = sys::fs::getMainExecutable(
+      nullptr, reinterpret_cast<void *>(&discoverPeanoInstallDir));
+  SmallString<256> exeDir(sys::path::parent_path(mainExe));
+  // Go up from bin/ to install prefix
+  SmallString<256> installPrefix(sys::path::parent_path(exeDir));
+
+  SmallString<256> peanoDir(installPrefix);
+  sys::path::append(peanoDir, "peano");
+  if (sys::fs::is_directory(peanoDir)) {
+    return std::string(peanoDir);
+  }
+
+  // 4. Try sibling peano directory (build area)
+  SmallString<256> siblingPeano(sys::path::parent_path(installPrefix));
+  sys::path::append(siblingPeano, "peano");
+  if (sys::fs::is_directory(siblingPeano)) {
+    return std::string(siblingPeano);
+  }
+
+  // 5. Try Python site-packages location (llvm-aie package)
+  // This matches: sysconfig.get_path("platlib")/llvm-aie in Python
+  // Common locations: ~/.local/lib/pythonX.Y/site-packages/llvm-aie
+  //                   /path/to/venv/lib/pythonX.Y/site-packages/llvm-aie
+
+  // Try VIRTUAL_ENV first if set
+  if (const char *venvPath = std::getenv("VIRTUAL_ENV")) {
+    SmallString<256> venvLlvmAie(venvPath);
+    // Try common Python versions
+    for (const char *pyver :
+         {"python3.12", "python3.11", "python3.10", "python3.9"}) {
+      SmallString<256> testPath(venvLlvmAie);
+      sys::path::append(testPath, "lib", pyver, "site-packages", "llvm-aie");
+      if (sys::fs::is_directory(testPath)) {
+        return std::string(testPath);
+      }
+    }
+  }
+
+  // Try running python to get the actual site-packages path
+  // This is a fallback that invokes python -c "import sysconfig;
+  // print(sysconfig.get_path('platlib'))"
+  SmallString<256> pythonSitePackages;
+  {
+    auto pythonPath = sys::findProgramByName("python3");
+    if (!pythonPath) {
+      pythonPath = sys::findProgramByName("python");
+    }
+
+    if (pythonPath) {
+      // Use popen to capture output
+      std::string cmd =
+          *pythonPath + " -c \"import sysconfig; "
+                        "print(sysconfig.get_path('platlib'))\" 2>/dev/null";
+      FILE *pipe = popen(cmd.c_str(), "r");
+      if (pipe) {
+        char buffer[256];
+        if (fgets(buffer, sizeof(buffer), pipe)) {
+          // Remove trailing newline
+          std::string result(buffer);
+          while (!result.empty() &&
+                 (result.back() == '\n' || result.back() == '\r')) {
+            result.pop_back();
+          }
+          SmallString<256> llvmAiePath(result);
+          sys::path::append(llvmAiePath, "llvm-aie");
+          if (sys::fs::is_directory(llvmAiePath)) {
+            pclose(pipe);
+            return std::string(llvmAiePath);
+          }
+        }
+        pclose(pipe);
+      }
+    }
+  }
+
+  return "";
+}
+
+// Cached Peano install directory
+static std::optional<std::string> cachedPeanoDir;
+
+static StringRef getPeanoInstallDir() {
+  if (!cachedPeanoDir.has_value()) {
+    cachedPeanoDir = discoverPeanoInstallDir();
+    if (verbose && !cachedPeanoDir->empty()) {
+      llvm::outs() << "Discovered Peano installation: " << *cachedPeanoDir
+                   << "\n";
+    }
+  }
+  return *cachedPeanoDir;
+}
+
+// Find Peano compiler tools
+static std::string findPeanoTool(StringRef toolName) {
+  StringRef peanoDir = getPeanoInstallDir();
+
+  if (!peanoDir.empty()) {
+    SmallString<128> toolPath(peanoDir);
+    sys::path::append(toolPath, "bin", toolName);
+    if (sys::fs::can_execute(toolPath)) {
+      return std::string(toolPath);
+    }
+  }
+
+  // Try PATH as fallback
+  auto result = sys::findProgramByName(toolName);
+  if (result) {
+    return *result;
+  }
+
+  return "";
+}
+
+// Helper to capture stdout from a command execution
+static std::string executeAndCaptureOutput(ArrayRef<StringRef> command) {
+  // Create temporary file for output
+  SmallString<128> tmpPath;
+  std::error_code ec =
+      sys::fs::createTemporaryFile("aiecc_output", "txt", tmpPath);
+  if (ec) {
+    return "";
+  }
+
+  // Set up redirects: stdin=none, stdout=tmpPath, stderr=none
+  std::optional<StringRef> redirects[3];
+  redirects[0] = StringRef();        // stdin: none
+  redirects[1] = StringRef(tmpPath); // stdout: our temp file
+  redirects[2] = StringRef();        // stderr: none
+
+  std::string errMsg;
+  int result =
+      sys::ExecuteAndWait(command[0], command, /*Env=*/std::nullopt, redirects,
+                          /*secondsToWait=*/60,
+                          /*memoryLimit=*/0, &errMsg);
+
+  if (result != 0) {
+    sys::fs::remove(tmpPath);
+    return "";
+  }
+
+  // Read the output
+  auto bufferOrErr = llvm::MemoryBuffer::getFile(tmpPath);
+  sys::fs::remove(tmpPath);
+
+  if (!bufferOrErr) {
+    return "";
+  }
+
+  std::string output = bufferOrErr.get()->getBuffer().str();
+  // Trim whitespace
+  while (!output.empty() && (output.back() == '\n' || output.back() == '\r' ||
+                             output.back() == ' ' || output.back() == '\t')) {
+    output.pop_back();
+  }
+
+  return output;
+}
+
+// Get the AIE target architecture for a device by running aie-translate
+static std::string getAIETargetForDevice(StringRef mlirFilePath,
+                                         StringRef deviceName) {
+  std::string aieTranslatePath = findAieTool("aie-translate");
+  if (aieTranslatePath.empty()) {
+    if (verbose) {
+      llvm::outs()
+          << "Warning: Could not find aie-translate, defaulting to aie2\n";
+    }
+    return "aie2";
+  }
+
+  SmallVector<std::string, 6> cmdStrs = {
+      aieTranslatePath, "--aie-generate-target-arch",
+      "--aie-device-name=" + deviceName.str(), mlirFilePath.str()};
+
+  SmallVector<StringRef, 6> cmd;
+  for (const auto &str : cmdStrs) {
+    cmd.push_back(str);
+  }
+
+  std::string target = executeAndCaptureOutput(cmd);
+
+  if (target.empty()) {
+    if (verbose) {
+      llvm::outs() << "Warning: Could not determine target for device "
+                   << deviceName << ", defaulting to aie2\n";
+    }
+    return "aie2";
+  }
+
+  if (verbose) {
+    llvm::outs() << "Detected target architecture for device " << deviceName
+                 << ": " << target << "\n";
+  }
+
+  return target;
+}
+
 //===----------------------------------------------------------------------===//
 // AIE Device and Core Discovery
 //===----------------------------------------------------------------------===//
+
+struct CoreInfo {
+  int col;
+  int row;
+  std::string linkWith; // External object files to link
+  std::string elfFile;  // Generated ELF path (if already specified)
+};
 
 // Walk the module to find AIE device operations
 static void findAIEDevices(ModuleOp module,
@@ -288,6 +521,29 @@ static void findAIEDevices(ModuleOp module,
         devices.push_back(op);
       }
     }
+  });
+}
+
+// Find cores in a device
+static void findCores(Operation *deviceOp, SmallVectorImpl<CoreInfo> &cores) {
+  deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
+    CoreInfo info;
+    auto tileOp =
+        dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+    if (tileOp) {
+      info.col = tileOp.getCol();
+      info.row = tileOp.getRow();
+    }
+
+    if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
+      info.linkWith = linkWithAttr.getValue().str();
+    }
+
+    if (auto elfAttr = coreOp.getElfFileAttr()) {
+      info.elfFile = elfAttr.getValue().str();
+    }
+
+    cores.push_back(info);
   });
 }
 
@@ -319,8 +575,13 @@ static unsigned countCoresInDevice(Operation *deviceOp) {
 // Pass Pipeline Construction
 //===----------------------------------------------------------------------===//
 
-static std::string buildInputWithAddressesPipeline() {
+static std::string
+buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
   std::string pipeline = "builtin.module(";
+  // These passes must come before the device passes (matching Python)
+  pipeline += "convert-vector-to-aievec{aie-target=" + aieTarget.lower() +
+              " target-backend=llvmir},";
+  pipeline += "lower-affine,";
   pipeline += "aie-canonicalize-device,";
   pipeline += "aie.device(";
   pipeline += "aie-assign-lock-ids,";
@@ -347,7 +608,37 @@ static std::string buildInputWithAddressesPipeline() {
       "aie-assign-buffer-addresses{alloc-scheme=" + allocScheme.getValue() +
       "},";
   pipeline += "aie-vector-transfer-lowering{max-transfer-rank=1}";
-  pipeline += "))";
+  pipeline += "),";                // close aie.device
+  pipeline += "convert-scf-to-cf"; // Must come after device passes
+  pipeline += ")";                 // close builtin.module
+  return pipeline;
+}
+
+static std::string buildLLVMLoweringPipeline(StringRef deviceName,
+                                             StringRef aieTarget = "aie2") {
+  std::string deviceArg = "device=" + deviceName.str();
+
+  // Matching Python's _create_aie_lower_to_llvm_pipeline +
+  // LOWER_TO_LLVM_PIPELINE Note: Python does NOT pass tilecol/tilerow - the
+  // pass processes all cores at once
+  std::string pipeline = "builtin.module(";
+  pipeline += "aie.device(aie-localize-locks,aie-normalize-address-spaces,aie-"
+              "transform-bfp-types),";
+  pipeline += "aie-standard-lowering{" + deviceArg + "},";
+  pipeline += "aiex-standard-lowering,";
+  pipeline += "convert-aievec-to-llvm{aie-target=" + aieTarget.lower() + "},";
+  // LOWER_TO_LLVM_PIPELINE passes
+  pipeline += "canonicalize,";
+  pipeline += "cse,";
+  pipeline += "expand-strided-metadata,";
+  pipeline += "lower-affine,";
+  pipeline += "arith-expand,";
+  pipeline += "finalize-memref-to-llvm,";
+  pipeline += "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},";
+  pipeline += "convert-to-llvm{dynamic=true},";
+  pipeline += "canonicalize,";
+  pipeline += "cse";
+  pipeline += ")";
   return pipeline;
 }
 
@@ -361,6 +652,398 @@ static std::string buildNpuLoweringPipeline() {
   pipeline += "aie-lower-set-lock";
   pipeline += "))";
   return pipeline;
+}
+
+//===----------------------------------------------------------------------===//
+// Core Compilation
+//===----------------------------------------------------------------------===//
+
+struct CoreCompilationResult {
+  std::string elfPath;
+  bool success;
+};
+
+static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
+                                 const CoreInfo &core,
+                                 StringRef withAddressesPath,
+                                 StringRef tmpDirName, StringRef aieTarget,
+                                 std::string &outElfPath) {
+
+  if (!compile) {
+    // If we're not compiling, check if elf_file was already provided
+    if (!core.elfFile.empty()) {
+      outElfPath = core.elfFile;
+      return success();
+    }
+    return success(); // Skip compilation
+  }
+
+  if (verbose) {
+    llvm::outs() << "Compiling core (" << core.col << ", " << core.row << ")\n";
+  }
+
+  std::string aieOptPath = findAieTool("aie-opt");
+  std::string aieTranslatePath = findAieTool("aie-translate");
+
+  if (aieOptPath.empty() || aieTranslatePath.empty()) {
+    llvm::errs() << "Error: Could not find required AIE tools\n";
+    return failure();
+  }
+
+  // Step 1: Lower core to LLVM
+  SmallString<128> coreLoweredPath(tmpDirName);
+  sys::path::append(coreLoweredPath,
+                    deviceName.str() + "_core_" + std::to_string(core.col) +
+                        "_" + std::to_string(core.row) + "_lowered.mlir");
+
+  std::string pipeline = buildLLVMLoweringPipeline(deviceName, aieTarget);
+  std::string pipelineArg = "--pass-pipeline=" + pipeline;
+
+  SmallVector<std::string, 8> lowerStrs = {aieOptPath, withAddressesPath.str(),
+                                           pipelineArg, "-o",
+                                           coreLoweredPath.str().str()};
+
+  SmallVector<StringRef, 8> lowerCmd;
+  for (const auto &str : lowerStrs) {
+    lowerCmd.push_back(str);
+  }
+
+  if (!executeCommand(lowerCmd)) {
+    llvm::errs() << "Error lowering core to LLVM\n";
+    return failure();
+  }
+
+  // Step 2: Translate to LLVM IR
+  SmallString<128> llvmIRPath(tmpDirName);
+  sys::path::append(llvmIRPath, deviceName.str() + "_core_" +
+                                    std::to_string(core.col) + "_" +
+                                    std::to_string(core.row) + ".ll");
+
+  SmallVector<std::string, 6> translateStrs = {
+      aieTranslatePath, "--mlir-to-llvmir", coreLoweredPath.str().str(), "-o",
+      llvmIRPath.str().str()};
+
+  SmallVector<StringRef, 6> translateCmd;
+  for (const auto &str : translateStrs) {
+    translateCmd.push_back(str);
+  }
+
+  if (!executeCommand(translateCmd)) {
+    llvm::errs() << "Error translating to LLVM IR\n";
+    return failure();
+  }
+
+  // Step 3: Generate linker script
+  SmallString<128> ldScriptPath(tmpDirName);
+  sys::path::append(ldScriptPath, deviceName.str() + "_core_" +
+                                      std::to_string(core.col) + "_" +
+                                      std::to_string(core.row) + ".ld.script");
+
+  SmallVector<std::string, 10> ldgenStrs = {
+      aieTranslatePath,
+      withAddressesPath.str(),
+      "--aie-generate-ldscript",
+      "--aie-device-name=" + deviceName.str(),
+      "--tilecol=" + std::to_string(core.col),
+      "--tilerow=" + std::to_string(core.row),
+      "-o",
+      ldScriptPath.str().str()};
+
+  SmallVector<StringRef, 10> ldgenCmd;
+  for (const auto &str : ldgenStrs) {
+    ldgenCmd.push_back(str);
+  }
+
+  if (!executeCommand(ldgenCmd)) {
+    llvm::errs() << "Error generating linker script\n";
+    return failure();
+  }
+
+  // Step 4: Compile LLVM IR to object file
+  SmallString<128> objPath(tmpDirName);
+  sys::path::append(objPath, deviceName.str() + "_core_" +
+                                 std::to_string(core.col) + "_" +
+                                 std::to_string(core.row) + ".o");
+
+  if (xchesscc) {
+    // xchesscc compilation not yet implemented - would need chess-llvm-link +
+    // xchesscc_wrapper
+    llvm::errs()
+        << "Error: xchesscc compilation not yet implemented in C++ aiecc\n";
+    llvm::errs() << "Please use --no-xchesscc flag to compile with Peano\n";
+    return failure();
+  } else {
+    // Use Peano toolchain
+    std::string peanoOpt = findPeanoTool("opt");
+    std::string peanoLlc = findPeanoTool("llc");
+
+    if (peanoOpt.empty() || peanoLlc.empty()) {
+      llvm::errs() << "Error: Could not find Peano compiler tools (opt/llc)\n";
+      llvm::errs() << "Set PEANO_INSTALL_DIR or use --peano option\n";
+      return failure();
+    }
+
+    // Run opt
+    SmallString<128> optPath(tmpDirName);
+    sys::path::append(optPath, deviceName.str() + "_core_" +
+                                   std::to_string(core.col) + "_" +
+                                   std::to_string(core.row) + ".opt.ll");
+
+    std::string optLevelStr = std::to_string(optLevel);
+    SmallVector<std::string, 12> optStrs = {peanoOpt,
+                                            "--passes=default<O" + optLevelStr +
+                                                ">,strip",
+                                            "-inline-threshold=10",
+                                            "-S",
+                                            llvmIRPath.str().str(),
+                                            "-o",
+                                            optPath.str().str()};
+
+    if (optLevel >= 3) {
+      optStrs.insert(optStrs.begin() + 1, "-disable-loop-idiom-memset");
+    }
+
+    SmallVector<StringRef, 12> optCmd;
+    for (const auto &str : optStrs) {
+      optCmd.push_back(str);
+    }
+
+    if (!executeCommand(optCmd)) {
+      llvm::errs() << "Error running Peano opt\n";
+      return failure();
+    }
+
+    // Run llc
+    SmallVector<std::string, 10> llcStrs = {peanoLlc,
+                                            optPath.str().str(),
+                                            "-O" + optLevelStr,
+                                            "--march=" + aieTarget.lower(),
+                                            "--function-sections",
+                                            "--filetype=obj",
+                                            "-o",
+                                            objPath.str().str()};
+
+    SmallVector<StringRef, 10> llcCmd;
+    for (const auto &str : llcStrs) {
+      llcCmd.push_back(str);
+    }
+
+    if (!executeCommand(llcCmd)) {
+      llvm::errs() << "Error running Peano llc\n";
+      return failure();
+    }
+  }
+
+  // Step 5: Link to ELF
+  if (!link) {
+    outElfPath = objPath.str().str();
+    return success();
+  }
+
+  SmallString<128> elfPath(tmpDirName);
+  sys::path::append(elfPath, deviceName.str() + "_core_" +
+                                 std::to_string(core.col) + "_" +
+                                 std::to_string(core.row) + ".elf");
+
+  if (xchesscc && xbridge) {
+    // xchesscc + xbridge linking not yet implemented
+    llvm::errs() << "Error: xchesscc linking not yet implemented\n";
+    return failure();
+  } else {
+    // Link with Peano clang
+    std::string peanoClang = findPeanoTool("clang");
+    if (peanoClang.empty()) {
+      llvm::errs() << "Error: Could not find Peano clang\n";
+      return failure();
+    }
+
+    std::string peanoTarget = getPeanoTarget(aieTarget);
+    std::string optLevelStr = std::to_string(optLevel);
+
+    // Get Peano bin directory for the linker
+    StringRef peanoDir = getPeanoInstallDir();
+    SmallString<128> peanoBinDir;
+    if (!peanoDir.empty()) {
+      peanoBinDir = peanoDir;
+      sys::path::append(peanoBinDir, "bin");
+    } else {
+      // Infer from clang path
+      peanoBinDir = sys::path::parent_path(peanoClang);
+    }
+
+    // Find Peano's lld linker explicitly
+    SmallString<256> peanoLld(peanoBinDir);
+    sys::path::append(peanoLld, "ld.lld");
+
+    SmallVector<std::string, 20> linkStrs = {peanoClang, "-O" + optLevelStr,
+                                             "--target=" + peanoTarget};
+
+    // Explicitly specify Peano's lld linker to avoid using system ld
+    if (sys::fs::can_execute(peanoLld)) {
+      linkStrs.push_back("-fuse-ld=" + peanoLld.str().str());
+    } else {
+      // Fallback: try to use lld from Peano bin via -B
+      linkStrs.push_back("-B" + peanoBinDir.str().str());
+      linkStrs.push_back("-fuse-ld=lld");
+    }
+
+    linkStrs.push_back(objPath.str().str());
+
+    // Make linker script path absolute
+    SmallString<128> absLdScriptPath;
+    if (sys::path::is_absolute(ldScriptPath)) {
+      absLdScriptPath = ldScriptPath;
+    } else {
+      std::error_code ec = sys::fs::real_path(ldScriptPath, absLdScriptPath);
+      if (ec) {
+        sys::fs::current_path(absLdScriptPath);
+        sys::path::append(absLdScriptPath, ldScriptPath);
+      }
+    }
+
+    linkStrs.push_back("-Wl,--gc-sections");
+    linkStrs.push_back("-Wl,--orphan-handling=error");
+    linkStrs.push_back("-Wl,-T," + absLdScriptPath.str().str());
+    linkStrs.push_back("-o");
+    linkStrs.push_back(elfPath.str().str());
+
+    SmallVector<StringRef, 20> linkCmd;
+    for (const auto &str : linkStrs) {
+      linkCmd.push_back(str);
+    }
+
+    if (!executeCommand(linkCmd)) {
+      llvm::errs() << "Error linking ELF file\n";
+      return failure();
+    }
+  }
+
+  outElfPath = elfPath.str().str();
+  if (verbose) {
+    llvm::outs() << "Generated ELF: " << outElfPath << "\n";
+  }
+
+  return success();
+}
+
+static LogicalResult
+compileCores(MLIRContext &context, Operation *deviceOp, StringRef deviceName,
+             StringRef withAddressesPath, StringRef tmpDirName,
+             StringRef aieTarget,
+             std::map<std::pair<int, int>, std::string> &elfPaths) {
+
+  SmallVector<CoreInfo> cores;
+  findCores(deviceOp, cores);
+
+  if (cores.empty()) {
+    if (verbose) {
+      llvm::outs() << "No cores to compile in device " << deviceName << "\n";
+    }
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Compiling " << cores.size() << " core(s)\n";
+  }
+
+  for (const auto &core : cores) {
+    std::string elfPath;
+    if (failed(compileCore(context, deviceName, core, withAddressesPath,
+                           tmpDirName, aieTarget, elfPath))) {
+      return failure();
+    }
+
+    if (!elfPath.empty()) {
+      elfPaths[{core.col, core.row}] = elfPath;
+    }
+  }
+
+  return success();
+}
+
+// Update MLIR module with ELF file paths
+static LogicalResult
+updateModuleWithElfs(MLIRContext &context, StringRef physicalPath,
+                     StringRef tmpDirName, StringRef deviceName,
+                     const std::map<std::pair<int, int>, std::string> &elfPaths,
+                     SmallString<128> &outPath) {
+
+  if (elfPaths.empty()) {
+    outPath = physicalPath;
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Updating MLIR with ELF paths\n";
+  }
+
+  // Parse the physical MLIR
+  ParserConfig parseConfig(&context);
+  SourceMgr sourceMgr;
+  auto module = parseSourceFile<ModuleOp>(physicalPath, sourceMgr, parseConfig);
+
+  if (!module) {
+    llvm::errs() << "Error parsing physical MLIR file\n";
+    return failure();
+  }
+
+  // Update cores with ELF paths
+  module->walk([&](xilinx::AIE::DeviceOp devOp) {
+    if (devOp.getSymName() != deviceName) {
+      return;
+    }
+
+    devOp.walk([&](xilinx::AIE::CoreOp coreOp) {
+      auto tileOp =
+          dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+      if (!tileOp)
+        return;
+
+      int col = tileOp.getCol();
+      int row = tileOp.getRow();
+
+      auto it = elfPaths.find({col, row});
+      if (it != elfPaths.end()) {
+        // When elf_file is specified, create a new core with empty body
+        // (matching Python's set_elf_file_for_core behavior)
+        OpBuilder builder(coreOp->getContext());
+        builder.setInsertionPoint(coreOp);
+
+        auto newCore = xilinx::AIE::CoreOp::create(
+            builder, coreOp.getLoc(), builder.getIndexType(), coreOp.getTile());
+
+        // Copy all attributes from the old core
+        for (auto attr : coreOp->getAttrs()) {
+          newCore->setAttr(attr.getName(), attr.getValue());
+        }
+        // Set the elf_file attribute
+        newCore.setElfFileAttr(builder.getStringAttr(it->second));
+
+        // Create empty body with just aie.end
+        Block *newBlock = builder.createBlock(&newCore.getBody());
+        builder.setInsertionPointToEnd(newBlock);
+        xilinx::AIE::EndOp::create(builder, coreOp.getLoc());
+
+        // Erase the old core
+        coreOp.erase();
+      }
+    });
+  });
+
+  // Write updated MLIR
+  outPath = tmpDirName;
+  sys::path::append(outPath, deviceName.str() + "_physical_with_elfs.mlir");
+
+  std::error_code ec;
+  raw_fd_ostream outFile(outPath, ec);
+  if (ec) {
+    llvm::errs() << "Error writing MLIR with ELFs: " << ec.message() << "\n";
+    return failure();
+  }
+  module->print(outFile);
+  outFile.close();
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -483,7 +1166,7 @@ static void generatePartitionJson(StringRef jsonPath, StringRef devName,
 }
 
 //===----------------------------------------------------------------------===//
-// Core Compilation and NPU Instruction Generation
+// NPU Instruction Generation
 //===----------------------------------------------------------------------===//
 
 static LogicalResult generateNpuInstructions(MLIRContext &context,
@@ -538,11 +1221,7 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
   }
 
   // Step 2: Translate to NPU binary
-  // Find runtime sequences and generate instructions for each
-  SmallVector<Operation *, 4> sequences;
-
   // Parse the lowered module to find sequences
-  // Note: We reuse the main context which already has all dialects registered
   ParserConfig parseConfig(&context);
   SourceMgr sourceMgr;
   auto module =
@@ -572,12 +1251,12 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
           std::string outputFileName =
               formatString(instsName, devName, seqName);
 
-          // Output to current directory, not tmpdir (matches Python aiecc.py)
+          // Output to current directory (matches Python aiecc.py)
           SmallString<128> outputPath;
           if (sys::path::is_absolute(outputFileName)) {
             outputPath = outputFileName;
           } else {
-            outputPath = outputFileName; // Relative to current directory
+            outputPath = outputFileName;
           }
 
           if (verbose) {
@@ -610,6 +1289,10 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// CDO/PDI/xclbin Generation
+//===----------------------------------------------------------------------===//
 
 static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
                                           StringRef tmpDirName,
@@ -761,11 +1444,9 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
       // Build xclbin
       std::string xclbinFileName = formatString(xclbinName, devName);
       SmallString<128> xclbinPath;
-      // Check if xclbinFileName is an absolute path or relative
       if (sys::path::is_absolute(xclbinFileName)) {
         xclbinPath = xclbinFileName;
       } else {
-        // Put it in current working directory, not tmpdir
         xclbinPath = xclbinFileName;
       }
 
@@ -913,7 +1594,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
     llvm::outs() << "Routing completed\n";
   }
 
-  // Step 3: Generate artifacts for each device
+  // Step 3: Compile cores and generate artifacts for each device
   for (auto *device : devices) {
     if (auto deviceOp = dyn_cast<xilinx::AIE::DeviceOp>(device)) {
       StringRef devName = deviceOp.getSymName();
@@ -922,14 +1603,48 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
         llvm::outs() << "\nProcessing device: " << devName << "\n";
       }
 
+      // Get AIE target for this device using aie-translate
+      std::string aieTarget;
+      if (!dryRun) {
+        aieTarget = getAIETargetForDevice(physicalPath.str(), devName);
+      } else {
+        aieTarget = "aie2"; // Default for dry-run
+      }
+
+      if (verbose) {
+        llvm::outs() << "Using AIE target: " << aieTarget << "\n";
+      }
+
+      // Compile cores
+      std::map<std::pair<int, int>, std::string> elfPaths;
+      if (failed(compileCores(context, deviceOp, devName, withAddressesPath,
+                              tmpDirName, aieTarget, elfPaths))) {
+        return failure();
+      }
+
+      // Update MLIR with ELF paths
+      SmallString<128> physicalWithElfs;
+      if (failed(updateModuleWithElfs(context, physicalPath, tmpDirName,
+                                      devName, elfPaths, physicalWithElfs))) {
+        return failure();
+      }
+
+      // Use the updated MLIR for artifact generation
+      StringRef mlirForArtifacts;
+      if (elfPaths.empty()) {
+        mlirForArtifacts = physicalPath;
+      } else {
+        mlirForArtifacts = physicalWithElfs.str();
+      }
+
       // Generate NPU instructions
-      if (failed(generateNpuInstructions(context, physicalPath, tmpDirName,
+      if (failed(generateNpuInstructions(context, mlirForArtifacts, tmpDirName,
                                          devName))) {
         return failure();
       }
 
       // Generate CDO/PDI/xclbin
-      if (failed(generateCdoArtifacts(physicalPath, tmpDirName, devName))) {
+      if (failed(generateCdoArtifacts(mlirForArtifacts, tmpDirName, devName))) {
         return failure();
       }
     }
