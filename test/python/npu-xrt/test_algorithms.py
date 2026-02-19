@@ -42,6 +42,7 @@ def test_transform_add():
 
     assert np.allclose(original + 1, output.numpy())
 
+
 @pytest.mark.parametrize("add_value", [-1, 0, 1, 2, 3])
 def test_transform_add_parametrized(add_value):
     """Test transform algorithm with different add values."""
@@ -53,6 +54,7 @@ def test_transform_add_parametrized(add_value):
     )
 
     assert np.allclose(original + add_value, output.numpy())
+
 
 @pytest.mark.parametrize(
     "dtype,c_type",
@@ -213,6 +215,7 @@ def test_transform_parallel_add():
     )
     assert np.allclose(input.numpy() + 1, output.numpy())
 
+
 @pytest.mark.parametrize("add_value", [-1, 0, 1, 2, 3])
 def test_transform_parallel_add_parametrized(add_value):
     """Test transform_parallel algorithm with different add values."""
@@ -224,6 +227,7 @@ def test_transform_parallel_add_parametrized(add_value):
     )
 
     assert np.allclose(original + add_value, output.numpy())
+
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
 def test_transform_parallel_different_datatypes(dtype):
