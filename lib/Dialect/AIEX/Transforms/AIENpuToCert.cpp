@@ -515,6 +515,8 @@ static uint32_t estimateCost(AIEX::CertJobOp op, uint32_t split_target,
         if (!initVal)
           continue;
         auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
+        if (!data)
+          continue;
         data_cost += data.getNumElements() * 4; // 4 bytes per element
       }
     }
