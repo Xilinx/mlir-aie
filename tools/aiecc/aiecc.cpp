@@ -52,6 +52,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -262,6 +263,17 @@ static bool executeCommand(ArrayRef<StringRef> command,
   }
 
   return true;
+}
+
+// Overload to avoid the pattern: vector<string> -> vector<StringRef> -> execute
+static bool executeCommand(ArrayRef<std::string> command,
+                           bool verboseOutput = true) {
+  SmallVector<StringRef, 16> cmdRefs;
+  cmdRefs.reserve(command.size());
+  for (const auto &arg : command) {
+    cmdRefs.push_back(arg);
+  }
+  return executeCommand(ArrayRef<StringRef>(cmdRefs), verboseOutput);
 }
 
 // Replace placeholders in format strings
@@ -504,8 +516,8 @@ static std::string getAIETargetForDevice(StringRef mlirFilePath,
 //===----------------------------------------------------------------------===//
 
 struct CoreInfo {
-  int col;
-  int row;
+  std::int32_t col;
+  std::int32_t row;
   std::string linkWith; // External object files to link
   std::string elfFile;  // Generated ELF path (if already specified)
 };
@@ -536,81 +548,51 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
 
 static std::string
 buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
-  std::string pipeline = "builtin.module(";
-  // These passes must come before the device passes (matching Python)
-  pipeline += "convert-vector-to-aievec{aie-target=" + aieTarget.lower() +
-              " target-backend=llvmir},";
-  pipeline += "lower-affine,";
-  pipeline += "aie-canonicalize-device,";
-  pipeline += "aie.device(";
-  pipeline += "aie-assign-lock-ids,";
-  pipeline += "aie-register-objectFifos,";
-  pipeline += "aie-objectFifo-stateful-transform{";
-  pipeline +=
-      "dynamic-objFifos=" + std::string(dynamicObjFifos ? "true" : "false");
-  pipeline +=
-      " packet-sw-objFifos=" + std::string(packetSwObjFifos ? "true" : "false");
-  pipeline += "},";
-  pipeline += "aie-assign-bd-ids,";
-  pipeline += "aie-lower-cascade-flows,";
-  pipeline += "aie-lower-broadcast-packet,";
-  pipeline += "aie-lower-multicast,";
-  pipeline += "aie-assign-tile-controller-ids,";
-  if (ctrlPktOverlay) {
-    pipeline +=
-        "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=true},";
-  } else {
-    pipeline +=
-        "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=false},";
-  }
-  pipeline +=
-      "aie-assign-buffer-addresses{alloc-scheme=" + allocScheme.getValue() +
-      "},";
-  pipeline += "aie-vector-transfer-lowering{max-transfer-rank=1}";
-  pipeline += "),";                // close aie.device
-  pipeline += "convert-scf-to-cf"; // Must come after device passes
-  pipeline += ")";                 // close builtin.module
-  return pipeline;
+  std::ostringstream oss;
+  oss << "builtin.module("
+      << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
+      << " target-backend=llvmir}," << "lower-affine,"
+      << "aie-canonicalize-device," << "aie.device(" << "aie-assign-lock-ids,"
+      << "aie-register-objectFifos," << "aie-objectFifo-stateful-transform{"
+      << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
+      << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
+      << "aie-assign-bd-ids," << "aie-lower-cascade-flows,"
+      << "aie-lower-broadcast-packet," << "aie-lower-multicast,"
+      << "aie-assign-tile-controller-ids,"
+      << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
+      << (ctrlPktOverlay ? "true" : "false") << "},"
+      << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
+      << "}," << "aie-vector-transfer-lowering{max-transfer-rank=1}"
+      << "),"                        // close aie.device
+      << "convert-scf-to-cf" << ")"; // close builtin.module
+  return oss.str();
 }
 
 static std::string buildLLVMLoweringPipeline(StringRef deviceName,
                                              StringRef aieTarget = "aie2") {
-  std::string deviceArg = "device=" + deviceName.str();
-
-  // Matching Python's _create_aie_lower_to_llvm_pipeline +
-  // LOWER_TO_LLVM_PIPELINE Note: Python does NOT pass tilecol/tilerow - the
-  // pass processes all cores at once
-  std::string pipeline = "builtin.module(";
-  pipeline += "aie.device(aie-localize-locks,aie-normalize-address-spaces,aie-"
-              "transform-bfp-types),";
-  pipeline += "aie-standard-lowering{" + deviceArg + "},";
-  pipeline += "aiex-standard-lowering,";
-  pipeline += "convert-aievec-to-llvm{aie-target=" + aieTarget.lower() + "},";
-  // LOWER_TO_LLVM_PIPELINE passes
-  pipeline += "canonicalize,";
-  pipeline += "cse,";
-  pipeline += "expand-strided-metadata,";
-  pipeline += "lower-affine,";
-  pipeline += "arith-expand,";
-  pipeline += "finalize-memref-to-llvm,";
-  pipeline += "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},";
-  pipeline += "convert-to-llvm{dynamic=true},";
-  pipeline += "canonicalize,";
-  pipeline += "cse";
-  pipeline += ")";
-  return pipeline;
+  std::ostringstream oss;
+  oss << "builtin.module("
+      << "aie.device(aie-localize-locks,aie-normalize-address-spaces,"
+      << "aie-transform-bfp-types),"
+      << "aie-standard-lowering{device=" << deviceName.str() << "},"
+      << "aiex-standard-lowering,"
+      << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
+      << "canonicalize," << "cse," << "expand-strided-metadata,"
+      << "lower-affine," << "arith-expand," << "finalize-memref-to-llvm,"
+      << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
+      << "convert-to-llvm{dynamic=true}," << "canonicalize," << "cse" << ")";
+  return oss.str();
 }
 
 static std::string buildNpuLoweringPipeline() {
-  std::string pipeline = "builtin.module(aie.device(";
-  pipeline += "aie-materialize-bd-chains,";
-  pipeline += "aie-substitute-shim-dma-allocations,";
-  pipeline += "aie-assign-runtime-sequence-bd-ids,";
-  pipeline += "aie-dma-tasks-to-npu,";
-  pipeline += "aie-dma-to-npu,";
-  pipeline += "aie-lower-set-lock";
-  pipeline += "))";
-  return pipeline;
+  return "builtin.module(aie.device("
+         "aie-materialize-bd-chains,"
+         "aie-substitute-shim-dma-allocations,"
+         "aie-assign-runtime-sequence-bd-ids,"
+         "aie-dma-tasks-to-npu,"
+         "aie-dma-to-npu,"
+         "aie-lower-set-lock"
+         "))";
 }
 
 //===----------------------------------------------------------------------===//
@@ -658,14 +640,9 @@ static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
   std::string pipeline = buildLLVMLoweringPipeline(deviceName, aieTarget);
   std::string pipelineArg = "--pass-pipeline=" + pipeline;
 
-  SmallVector<std::string, 8> lowerStrs = {aieOptPath, withAddressesPath.str(),
-                                           pipelineArg, "-o",
-                                           coreLoweredPath.str().str()};
-
-  SmallVector<StringRef, 8> lowerCmd;
-  for (const auto &str : lowerStrs) {
-    lowerCmd.push_back(str);
-  }
+  SmallVector<std::string, 8> lowerCmd = {aieOptPath, withAddressesPath.str(),
+                                          pipelineArg, "-o",
+                                          coreLoweredPath.str().str()};
 
   if (!executeCommand(lowerCmd)) {
     llvm::errs() << "Error lowering core to LLVM\n";
@@ -678,14 +655,9 @@ static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
                                     std::to_string(core.col) + "_" +
                                     std::to_string(core.row) + ".ll");
 
-  SmallVector<std::string, 6> translateStrs = {
+  SmallVector<std::string, 6> translateCmd = {
       aieTranslatePath, "--mlir-to-llvmir", coreLoweredPath.str().str(), "-o",
       llvmIRPath.str().str()};
-
-  SmallVector<StringRef, 6> translateCmd;
-  for (const auto &str : translateStrs) {
-    translateCmd.push_back(str);
-  }
 
   if (!executeCommand(translateCmd)) {
     llvm::errs() << "Error translating to LLVM IR\n";
@@ -698,7 +670,7 @@ static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
                                       std::to_string(core.col) + "_" +
                                       std::to_string(core.row) + ".ld.script");
 
-  SmallVector<std::string, 10> ldgenStrs = {
+  SmallVector<std::string, 10> ldgenCmd = {
       aieTranslatePath,
       withAddressesPath.str(),
       "--aie-generate-ldscript",
@@ -707,11 +679,6 @@ static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
       "--tilerow=" + std::to_string(core.row),
       "-o",
       ldScriptPath.str().str()};
-
-  SmallVector<StringRef, 10> ldgenCmd;
-  for (const auto &str : ldgenStrs) {
-    ldgenCmd.push_back(str);
-  }
 
   if (!executeCommand(ldgenCmd)) {
     llvm::errs() << "Error generating linker script\n";
@@ -773,19 +740,14 @@ static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
     }
 
     // Run llc
-    SmallVector<std::string, 10> llcStrs = {peanoLlc,
-                                            optPath.str().str(),
-                                            "-O" + optLevelStr,
-                                            "--march=" + aieTarget.lower(),
-                                            "--function-sections",
-                                            "--filetype=obj",
-                                            "-o",
-                                            objPath.str().str()};
-
-    SmallVector<StringRef, 10> llcCmd;
-    for (const auto &str : llcStrs) {
-      llcCmd.push_back(str);
-    }
+    SmallVector<std::string, 10> llcCmd = {peanoLlc,
+                                           optPath.str().str(),
+                                           "-O" + optLevelStr,
+                                           "--march=" + aieTarget.lower(),
+                                           "--function-sections",
+                                           "--filetype=obj",
+                                           "-o",
+                                           objPath.str().str()};
 
     if (!executeCommand(llcCmd)) {
       llvm::errs() << "Error running Peano llc\n";
@@ -997,15 +959,16 @@ updateModuleWithElfs(MLIRContext &context, StringRef physicalPath,
   // Parse the physical MLIR
   ParserConfig parseConfig(&context);
   SourceMgr sourceMgr;
-  auto module = parseSourceFile<ModuleOp>(physicalPath, sourceMgr, parseConfig);
+  auto moduleOp =
+      parseSourceFile<ModuleOp>(physicalPath, sourceMgr, parseConfig);
 
-  if (!module) {
+  if (!moduleOp) {
     llvm::errs() << "Error parsing physical MLIR file\n";
     return failure();
   }
 
   // Update cores with ELF paths
-  module->walk([&](xilinx::AIE::DeviceOp devOp) {
+  moduleOp->walk([&](xilinx::AIE::DeviceOp devOp) {
     if (devOp.getSymName() != deviceName) {
       return;
     }
@@ -1016,8 +979,8 @@ updateModuleWithElfs(MLIRContext &context, StringRef physicalPath,
       if (!tileOp)
         return;
 
-      int col = tileOp.getCol();
-      int row = tileOp.getRow();
+      std::int32_t col = tileOp.getCol();
+      std::int32_t row = tileOp.getRow();
 
       auto it = elfPaths.find({col, row});
       if (it != elfPaths.end()) {
@@ -1057,7 +1020,7 @@ updateModuleWithElfs(MLIRContext &context, StringRef physicalPath,
     llvm::errs() << "Error writing MLIR with ELFs: " << ec.message() << "\n";
     return failure();
   }
-  module->print(outFile);
+  moduleOp->print(outFile);
   outFile.close();
 
   return success();
@@ -1238,20 +1201,20 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
   }
 
   // Step 2: Translate to NPU binary
-  // Parse the lowered module to find sequences
+  // Parse the lowered moduleOp to find sequences
   ParserConfig parseConfig(&context);
   SourceMgr sourceMgr;
-  auto module =
+  auto moduleOp =
       parseSourceFile<ModuleOp>(npuLoweredPath, sourceMgr, parseConfig);
 
-  if (!module) {
+  if (!moduleOp) {
     llvm::errs() << "Error parsing lowered MLIR file\n";
     return failure();
   }
 
   // Find device and generate instructions for each runtime sequence
   LogicalResult result = success();
-  for (auto devOp : module->getOps<xilinx::AIE::DeviceOp>()) {
+  for (auto devOp : moduleOp->getOps<xilinx::AIE::DeviceOp>()) {
     if (!deviceName.empty() && devOp.getSymName() != devName) {
       continue;
     }
@@ -1282,7 +1245,7 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
                      << " -> " << outputPath << "\n";
       }
 
-      SmallVector<std::string, 8> translateStrs = {
+      SmallVector<std::string, 8> translateCmd = {
           aieTranslatePath,
           npuLoweredPath.str().str(),
           "--aie-npu-to-binary",
@@ -1290,11 +1253,6 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
           "--aie-sequence-name=" + seqName.str(),
           "-o",
           outputPath.str().str()};
-
-      SmallVector<StringRef, 8> translateCmd;
-      for (const auto &str : translateStrs) {
-        translateCmd.push_back(str);
-      }
 
       if (!executeCommand(translateCmd)) {
         llvm::errs() << "Error generating NPU instructions\n";
@@ -1341,15 +1299,10 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
   }
 
   // Generate CDO files
-  SmallVector<std::string, 8> cdoStrs = {aieTranslatePath, mlirFilePath.str(),
-                                         "--aie-generate-cdo",
-                                         "--aie-device-name=" + devName.str(),
-                                         "--work-dir-path=" + tmpDirName.str()};
-
-  SmallVector<StringRef, 8> cdoCmd;
-  for (const auto &str : cdoStrs) {
-    cdoCmd.push_back(str);
-  }
+  SmallVector<std::string, 8> cdoCmd = {aieTranslatePath, mlirFilePath.str(),
+                                        "--aie-generate-cdo",
+                                        "--aie-device-name=" + devName.str(),
+                                        "--work-dir-path=" + tmpDirName.str()};
 
   if (!executeCommand(cdoCmd)) {
     llvm::errs() << "Error generating CDO files\n";
@@ -1396,19 +1349,14 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
     bifFile << "}\n";
     bifFile.close();
 
-    SmallVector<std::string, 8> bootgenStrs = {bootgenPath,
-                                               "-arch",
-                                               "versal",
-                                               "-image",
-                                               bifPath.str().str(),
-                                               "-o",
-                                               pdiPath.str().str(),
-                                               "-w"};
-
-    SmallVector<StringRef, 8> bootgenCmd;
-    for (const auto &str : bootgenStrs) {
-      bootgenCmd.push_back(str);
-    }
+    SmallVector<std::string, 8> bootgenCmd = {bootgenPath,
+                                              "-arch",
+                                              "versal",
+                                              "-image",
+                                              bifPath.str().str(),
+                                              "-o",
+                                              pdiPath.str().str(),
+                                              "-w"};
 
     if (!executeCommand(bootgenCmd)) {
       llvm::errs() << "Error generating PDI\n";
@@ -1470,7 +1418,7 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
         xclbinPath = xclbinFileName;
       }
 
-      SmallVector<std::string, 16> xclbinStrs = {
+      SmallVector<std::string, 16> xclbinCmd = {
           xclbinutilPath,
           "--add-replace-section",
           "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
@@ -1481,11 +1429,6 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
           "--force",
           "--output",
           xclbinPath.str().str()};
-
-      SmallVector<StringRef, 16> xclbinCmd;
-      for (const auto &str : xclbinStrs) {
-        xclbinCmd.push_back(str);
-      }
 
       if (!executeCommand(xclbinCmd)) {
         llvm::errs() << "Error generating xclbin\n";
@@ -1505,7 +1448,7 @@ static LogicalResult generateCdoArtifacts(StringRef mlirFilePath,
 // Main Compilation Flow
 //===----------------------------------------------------------------------===//
 
-static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
+static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
                                       StringRef tmpDirName) {
   if (verbose) {
     llvm::outs() << "Starting AIE compilation in directory: " << tmpDirName
@@ -1515,7 +1458,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   // Count devices and cores for verbose output
   unsigned deviceCount = 0;
   if (verbose) {
-    for (auto deviceOp : module.getOps<xilinx::AIE::DeviceOp>()) {
+    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
       if (!deviceName.empty() && deviceOp.getSymName() != deviceName) {
         continue;
       }
@@ -1557,7 +1500,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
     llvm::errs() << "Error opening file: " << ec.message() << "\n";
     return failure();
   }
-  module->print(inputFile);
+  moduleOp->print(inputFile);
   inputFile.close();
 
   if (verbose) {
@@ -1571,14 +1514,9 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   std::string pipeline = buildInputWithAddressesPipeline();
   std::string pipelineArg = "--pass-pipeline=" + pipeline;
 
-  SmallVector<std::string, 16> passStrs = {aieOptPath, inputPath.str().str(),
-                                           pipelineArg, "-o",
-                                           withAddressesPath.str().str()};
-
-  SmallVector<StringRef, 16> passCmd;
-  for (const auto &str : passStrs) {
-    passCmd.push_back(str);
-  }
+  SmallVector<std::string, 16> passCmd = {aieOptPath, inputPath.str().str(),
+                                          pipelineArg, "-o",
+                                          withAddressesPath.str().str()};
 
   if (!executeCommand(passCmd)) {
     llvm::errs() << "Error running resource allocation passes\n";
@@ -1597,14 +1535,9 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
       "builtin.module(aie.device(aie-create-pathfinder-flows))";
   std::string routingArg = "--pass-pipeline=" + routingPipeline;
 
-  SmallVector<std::string, 16> routingStrs = {
+  SmallVector<std::string, 16> routingCmd = {
       aieOptPath, withAddressesPath.str().str(), routingArg, "-o",
       physicalPath.str().str()};
-
-  SmallVector<StringRef, 16> routingCmd;
-  for (const auto &str : routingStrs) {
-    routingCmd.push_back(str);
-  }
 
   if (!executeCommand(routingCmd)) {
     llvm::errs() << "Error running routing passes\n";
@@ -1616,7 +1549,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   }
 
   // Step 3: Compile cores and generate artifacts for each device
-  for (auto deviceOp : module.getOps<xilinx::AIE::DeviceOp>()) {
+  for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
     // Filter by device name if specified
     if (!deviceName.empty() && deviceOp.getSymName() != deviceName) {
       continue;
@@ -1693,7 +1626,7 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
   xilinx::registerAllDialects(registry);
   context.appendDialectRegistry(registry);
 
-  OwningOpRef<ModuleOp> module;
+  OwningOpRef<ModuleOp> moduleOp;
 
   if (inputFile.empty()) {
     llvm::errs() << "Error: No input file specified\n";
@@ -1702,9 +1635,9 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
 
   ParserConfig parseConfig(&context);
   SourceMgr sourceMgr;
-  module = parseSourceFile<ModuleOp>(inputFile, sourceMgr, parseConfig);
+  moduleOp = parseSourceFile<ModuleOp>(inputFile, sourceMgr, parseConfig);
 
-  if (!module) {
+  if (!moduleOp) {
     llvm::errs() << "Error parsing MLIR file\n";
     return 1;
   }
@@ -1736,7 +1669,7 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
   }
 
   // Run the compilation flow
-  if (failed(compileAIEModule(context, module.get(), actualTmpDir))) {
+  if (failed(compileAIEModule(context, moduleOp.get(), actualTmpDir))) {
     llvm::errs() << "Compilation failed\n";
     return 1;
   }
