@@ -17,6 +17,7 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
 
@@ -147,9 +148,12 @@ void emitAttachToGroupOp(CertAttachToGroupOp groupOp, std::string &text,
   emitJobs(jobs, text, data);
 }
 
-void emitUcDmaBdData(CertUcDmaBdOp op, std::string &data) {
+void emitUcDmaBdData(CertUcDmaBdOp op, std::string &data,
+                     llvm::StringSet<> &emittedGlobals) {
   // lookup data from operation
   auto dataSymbol = op.getRemoteAddress();
+  if (emittedGlobals.contains(dataSymbol))
+    return;
 
   auto global = dyn_cast_if_present<memref::GlobalOp>(
       op->getParentOfType<AIE::DeviceOp>().lookupSymbol(dataSymbol));
@@ -179,10 +183,12 @@ void emitUcDmaBdData(CertUcDmaBdOp op, std::string &data) {
   for (auto d : initData)
     ss << llvm::format("  .long           0x%08x\n", d.getZExtValue());
   data += ss.str();
+  emittedGlobals.insert(dataSymbol);
 }
 
 // UC_DMA_BD       0, 0x001A05C0, @data, 8, 0, 1
-void emitUcDmaBd(CertUcDmaBdOp op, std::string &chains, std::string &data) {
+void emitUcDmaBd(CertUcDmaBdOp op, std::string &chains, std::string &data,
+                 llvm::StringSet<> &emittedGlobals) {
   std::string s;
   llvm::raw_string_ostream ss(s);
   ss << "  UC_DMA_BD       ";
@@ -193,19 +199,19 @@ void emitUcDmaBd(CertUcDmaBdOp op, std::string &chains, std::string &data) {
   ss << "0, ";
   ss << (op.getNextBd() ? "1\n" : "0\n");
   chains += ss.str();
-  emitUcDmaBdData(op, data);
+  emitUcDmaBdData(op, data, emittedGlobals);
 }
 
 // .align           16
 // name_of_chain:
 //   UC_DMA_BD       0, 0x001A05C0, @data0, 8, 0, 1
-void emitUcDmaChain(CertUcDmaChainOp op, std::string &chains,
-                    std::string &data) {
+void emitUcDmaChain(CertUcDmaChainOp op, std::string &chains, std::string &data,
+                    llvm::StringSet<> &emittedGlobals) {
   chains += "  .align 16\n";
   chains += op.getName().str() + ":\n";
   for (auto &o : op.getBody().front()) {
     llvm::TypeSwitch<Operation *>(&o).Case<CertUcDmaBdOp>(
-        [&](auto op) { emitUcDmaBd(op, chains, data); });
+        [&](auto op) { emitUcDmaBd(op, chains, data, emittedGlobals); });
   }
 }
 
@@ -219,6 +225,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   std::vector<std::string> text;
   std::vector<std::string> data;
   std::vector<std::string> chains;
+  llvm::StringSet<> emittedGlobals;
 
   text.push_back("\n;\n; Code\n;\n\n");
   data.push_back("\n;\n; Data\n;\n\n");
@@ -235,7 +242,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
   });
 
   for (auto o : deviceOp.getBody()->getOps<CertUcDmaChainOp>())
-    emitUcDmaChain(o, chains[0], data[0]);
+    emitUcDmaChain(o, chains[0], data[0], emittedGlobals);
 
   int group_id = 0;
   for (auto &groupOp : groups) {
