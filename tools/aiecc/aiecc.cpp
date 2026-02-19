@@ -472,6 +472,16 @@ static std::string executeAndCaptureOutput(ArrayRef<StringRef> command) {
   return output;
 }
 
+// Helper to execute a command capturing output (std::string overload)
+static std::string executeAndCaptureOutput(ArrayRef<std::string> command) {
+  SmallVector<StringRef, 16> cmdRefs;
+  cmdRefs.reserve(command.size());
+  for (const auto &arg : command) {
+    cmdRefs.push_back(arg);
+  }
+  return executeAndCaptureOutput(ArrayRef<StringRef>(cmdRefs));
+}
+
 // Get the AIE target architecture for a device by running aie-translate
 static std::string getAIETargetForDevice(StringRef mlirFilePath,
                                          StringRef deviceName) {
@@ -484,16 +494,11 @@ static std::string getAIETargetForDevice(StringRef mlirFilePath,
     return "aie2";
   }
 
-  SmallVector<std::string, 6> cmdStrs = {
+  SmallVector<std::string, 6> targetArchCmd = {
       aieTranslatePath, "--aie-generate-target-arch",
       "--aie-device-name=" + deviceName.str(), mlirFilePath.str()};
 
-  SmallVector<StringRef, 6> cmd;
-  for (const auto &str : cmdStrs) {
-    cmd.push_back(str);
-  }
-
-  std::string target = executeAndCaptureOutput(cmd);
+  std::string target = executeAndCaptureOutput(targetArchCmd);
 
   if (target.empty()) {
     if (verbose) {
@@ -551,20 +556,30 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
   std::ostringstream oss;
   oss << "builtin.module("
       << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir}," << "lower-affine,"
-      << "aie-canonicalize-device," << "aie.device(" << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos," << "aie-objectFifo-stateful-transform{"
+      << " target-backend=llvmir},"
+      << "lower-affine,"
+      << "aie-canonicalize-device,"
+      << "aie.device("
+      << "aie-assign-lock-ids,"
+      << "aie-register-objectFifos,"
+      << "aie-objectFifo-stateful-transform{"
       << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
-      << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
-      << "aie-assign-bd-ids," << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet," << "aie-lower-multicast,"
+      << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false")
+      << "},"
+      << "aie-assign-bd-ids,"
+      << "aie-lower-cascade-flows,"
+      << "aie-lower-broadcast-packet,"
+      << "aie-lower-multicast,"
       << "aie-assign-tile-controller-ids,"
       << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
-      << (ctrlPktOverlay ? "true" : "false") << "},"
+      << (ctrlPktOverlay ? "true" : "false")
+      << "},"
       << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
-      << "}," << "aie-vector-transfer-lowering{max-transfer-rank=1}"
-      << "),"                        // close aie.device
-      << "convert-scf-to-cf" << ")"; // close builtin.module
+      << "},"
+      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
+      << "),"
+      << "convert-scf-to-cf"
+      << ")";
   return oss.str();
 }
 
@@ -577,22 +592,22 @@ static std::string buildLLVMLoweringPipeline(StringRef deviceName,
       << "aie-standard-lowering{device=" << deviceName.str() << "},"
       << "aiex-standard-lowering,"
       << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize," << "cse," << "expand-strided-metadata,"
-      << "lower-affine," << "arith-expand," << "finalize-memref-to-llvm,"
+      << "canonicalize,"
+      << "cse,"
+      << "expand-strided-metadata,"
+      << "lower-affine,"
+      << "arith-expand,"
+      << "finalize-memref-to-llvm,"
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
-      << "convert-to-llvm{dynamic=true}," << "canonicalize," << "cse" << ")";
+      << "convert-to-llvm{dynamic=true},"
+      << "canonicalize,"
+      << "cse"
+      << ")";
   return oss.str();
 }
 
 static std::string buildNpuLoweringPipeline() {
-  return "builtin.module(aie.device("
-         "aie-materialize-bd-chains,"
-         "aie-substitute-shim-dma-allocations,"
-         "aie-assign-runtime-sequence-bd-ids,"
-         "aie-dma-tasks-to-npu,"
-         "aie-dma-to-npu,"
-         "aie-lower-set-lock"
-         "))";
+  return R"(builtin.module(aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu,aie-dma-to-npu,aie-lower-set-lock)))";
 }
 
 //===----------------------------------------------------------------------===//
@@ -716,22 +731,17 @@ static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
                                    std::to_string(core.row) + ".opt.ll");
 
     std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optStrs = {peanoOpt,
-                                            "--passes=default<O" + optLevelStr +
-                                                ">,strip",
-                                            "-inline-threshold=10",
-                                            "-S",
-                                            llvmIRPath.str().str(),
-                                            "-o",
-                                            optPath.str().str()};
+    SmallVector<std::string, 12> optCmd = {peanoOpt,
+                                           "--passes=default<O" + optLevelStr +
+                                               ">,strip",
+                                           "-inline-threshold=10",
+                                           "-S",
+                                           llvmIRPath.str().str(),
+                                           "-o",
+                                           optPath.str().str()};
 
     if (optLevel >= 3) {
-      optStrs.insert(optStrs.begin() + 1, "-disable-loop-idiom-memset");
-    }
-
-    SmallVector<StringRef, 12> optCmd;
-    for (const auto &str : optStrs) {
-      optCmd.push_back(str);
+      optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
     }
 
     if (!executeCommand(optCmd)) {
@@ -811,19 +821,19 @@ static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
     SmallString<256> peanoLld(peanoBinDir);
     sys::path::append(peanoLld, "ld.lld");
 
-    SmallVector<std::string, 20> linkStrs = {peanoClang, "-O" + optLevelStr,
-                                             "--target=" + peanoTarget};
+    SmallVector<std::string, 20> linkCmd = {peanoClang, "-O" + optLevelStr,
+                                            "--target=" + peanoTarget};
 
     // Explicitly specify Peano's lld linker to avoid using system ld
     if (sys::fs::can_execute(peanoLld)) {
-      linkStrs.push_back("-fuse-ld=" + peanoLld.str().str());
+      linkCmd.push_back("-fuse-ld=" + peanoLld.str().str());
     } else {
       // Fallback: try to use lld from Peano bin via -B
-      linkStrs.push_back("-B" + peanoBinDir.str().str());
-      linkStrs.push_back("-fuse-ld=lld");
+      linkCmd.push_back("-B" + peanoBinDir.str().str());
+      linkCmd.push_back("-fuse-ld=lld");
     }
 
-    linkStrs.push_back(objPath.str().str());
+    linkCmd.push_back(objPath.str().str());
 
     // Handle external object file if link_with attribute is specified
     // The linker script generated by aie-translate will include an INPUT()
@@ -878,16 +888,11 @@ static LogicalResult compileCore(MLIRContext &context, StringRef deviceName,
       }
     }
 
-    linkStrs.push_back("-Wl,--gc-sections");
-    linkStrs.push_back("-Wl,--orphan-handling=error");
-    linkStrs.push_back("-Wl,-T," + absLdScriptPath.str().str());
-    linkStrs.push_back("-o");
-    linkStrs.push_back(elfPath.str().str());
-
-    SmallVector<StringRef, 20> linkCmd;
-    for (const auto &str : linkStrs) {
-      linkCmd.push_back(str);
-    }
+    linkCmd.push_back("-Wl,--gc-sections");
+    linkCmd.push_back("-Wl,--orphan-handling=error");
+    linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+    linkCmd.push_back("-o");
+    linkCmd.push_back(elfPath.str().str());
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking ELF file\n";
@@ -959,16 +964,16 @@ updateModuleWithElfs(MLIRContext &context, StringRef physicalPath,
   // Parse the physical MLIR
   ParserConfig parseConfig(&context);
   SourceMgr sourceMgr;
-  auto moduleOp =
+  auto parsedModuleOp =
       parseSourceFile<ModuleOp>(physicalPath, sourceMgr, parseConfig);
 
-  if (!moduleOp) {
+  if (!parsedModuleOp) {
     llvm::errs() << "Error parsing physical MLIR file\n";
     return failure();
   }
 
   // Update cores with ELF paths
-  moduleOp->walk([&](xilinx::AIE::DeviceOp devOp) {
+  parsedModuleOp->walk([&](xilinx::AIE::DeviceOp devOp) {
     if (devOp.getSymName() != deviceName) {
       return;
     }
@@ -1020,7 +1025,7 @@ updateModuleWithElfs(MLIRContext &context, StringRef physicalPath,
     llvm::errs() << "Error writing MLIR with ELFs: " << ec.message() << "\n";
     return failure();
   }
-  moduleOp->print(outFile);
+  parsedModuleOp->print(outFile);
   outFile.close();
 
   return success();
@@ -1186,35 +1191,30 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
   std::string pipeline = buildNpuLoweringPipeline();
   std::string pipelineArg = "--pass-pipeline=" + pipeline;
 
-  SmallVector<std::string, 8> cmdStrs = {aieOptPath, mlirFilePath.str(),
-                                         pipelineArg, "-o",
-                                         npuLoweredPath.str().str()};
+  SmallVector<std::string, 8> npuLowerCmd = {aieOptPath, mlirFilePath.str(),
+                                             pipelineArg, "-o",
+                                             npuLoweredPath.str().str()};
 
-  SmallVector<StringRef, 8> cmd;
-  for (const auto &str : cmdStrs) {
-    cmd.push_back(str);
-  }
-
-  if (!executeCommand(cmd)) {
+  if (!executeCommand(npuLowerCmd)) {
     llvm::errs() << "Error running NPU lowering passes\n";
     return failure();
   }
 
   // Step 2: Translate to NPU binary
-  // Parse the lowered moduleOp to find sequences
+  // Parse the lowered module to find sequences
   ParserConfig parseConfig(&context);
   SourceMgr sourceMgr;
-  auto moduleOp =
+  auto loweredModuleOp =
       parseSourceFile<ModuleOp>(npuLoweredPath, sourceMgr, parseConfig);
 
-  if (!moduleOp) {
+  if (!loweredModuleOp) {
     llvm::errs() << "Error parsing lowered MLIR file\n";
     return failure();
   }
 
   // Find device and generate instructions for each runtime sequence
   LogicalResult result = success();
-  for (auto devOp : moduleOp->getOps<xilinx::AIE::DeviceOp>()) {
+  for (auto devOp : loweredModuleOp->getOps<xilinx::AIE::DeviceOp>()) {
     if (!deviceName.empty() && devOp.getSymName() != devName) {
       continue;
     }
@@ -1626,7 +1626,7 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
   xilinx::registerAllDialects(registry);
   context.appendDialectRegistry(registry);
 
-  OwningOpRef<ModuleOp> moduleOp;
+  OwningOpRef<ModuleOp> inputModuleOp;
 
   if (inputFile.empty()) {
     llvm::errs() << "Error: No input file specified\n";
@@ -1635,9 +1635,9 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
 
   ParserConfig parseConfig(&context);
   SourceMgr sourceMgr;
-  moduleOp = parseSourceFile<ModuleOp>(inputFile, sourceMgr, parseConfig);
+  inputModuleOp = parseSourceFile<ModuleOp>(inputFile, sourceMgr, parseConfig);
 
-  if (!moduleOp) {
+  if (!inputModuleOp) {
     llvm::errs() << "Error parsing MLIR file\n";
     return 1;
   }
@@ -1669,7 +1669,7 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
   }
 
   // Run the compilation flow
-  if (failed(compileAIEModule(context, moduleOp.get(), actualTmpDir))) {
+  if (failed(compileAIEModule(context, inputModuleOp.get(), actualTmpDir))) {
     llvm::errs() << "Compilation failed\n";
     return 1;
   }
