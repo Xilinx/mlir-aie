@@ -510,65 +510,24 @@ struct CoreInfo {
   std::string elfFile;  // Generated ELF path (if already specified)
 };
 
-// Walk the module to find AIE device operations
-static void findAIEDevices(ModuleOp module,
-                           SmallVectorImpl<Operation *> &devices) {
-  module.walk([&](Operation *op) {
-    if (auto deviceOp = dyn_cast<xilinx::AIE::DeviceOp>(op)) {
-      // Filter by device name if specified
-      if (deviceName.empty() ||
-          (deviceOp.getSymNameAttr() && deviceOp.getSymName() == deviceName)) {
-        devices.push_back(op);
-      }
-    }
-  });
-}
+// Helper to extract core info from a CoreOp
+static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
+  CoreInfo info;
+  auto tileOp = dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
+  if (tileOp) {
+    info.col = tileOp.getCol();
+    info.row = tileOp.getRow();
+  }
 
-// Find cores in a device
-static void findCores(Operation *deviceOp, SmallVectorImpl<CoreInfo> &cores) {
-  deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    CoreInfo info;
-    auto tileOp =
-        dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-    if (tileOp) {
-      info.col = tileOp.getCol();
-      info.row = tileOp.getRow();
-    }
+  if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
+    info.linkWith = linkWithAttr.getValue().str();
+  }
 
-    if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
-      info.linkWith = linkWithAttr.getValue().str();
-    }
+  if (auto elfAttr = coreOp.getElfFileAttr()) {
+    info.elfFile = elfAttr.getValue().str();
+  }
 
-    if (auto elfAttr = coreOp.getElfFileAttr()) {
-      info.elfFile = elfAttr.getValue().str();
-    }
-
-    cores.push_back(info);
-  });
-}
-
-// Find runtime sequences in a device
-static void findRuntimeSequences(Operation *deviceOp,
-                                 SmallVectorImpl<Operation *> &sequences) {
-  deviceOp->walk([&](Operation *op) {
-    if (auto seqOp = dyn_cast<xilinx::AIE::RuntimeSequenceOp>(op)) {
-      if (sequenceName.empty() ||
-          (seqOp.getSymNameAttr() && seqOp.getSymName() == sequenceName)) {
-        sequences.push_back(op);
-      }
-    }
-  });
-}
-
-// Count cores in a device for progress reporting
-static unsigned countCoresInDevice(Operation *deviceOp) {
-  unsigned count = 0;
-  deviceOp->walk([&](Operation *op) {
-    if (isa<xilinx::AIE::CoreOp>(op)) {
-      count++;
-    }
-  });
-  return count;
+  return info;
 }
 
 //===----------------------------------------------------------------------===//
@@ -989,7 +948,9 @@ compileCores(MLIRContext &context, Operation *deviceOp, StringRef deviceName,
              std::map<std::pair<int, int>, std::string> &elfPaths) {
 
   SmallVector<CoreInfo> cores;
-  findCores(deviceOp, cores);
+  deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
+    cores.push_back(getCoreInfo(coreOp));
+  });
 
   if (cores.empty()) {
     if (verbose) {
@@ -1288,59 +1249,62 @@ static LogicalResult generateNpuInstructions(MLIRContext &context,
     return failure();
   }
 
-  // Find device
-  SmallVector<Operation *, 1> devices;
-  findAIEDevices(module.get(), devices);
-
-  for (auto *deviceOp : devices) {
-    if (auto devOp = dyn_cast<xilinx::AIE::DeviceOp>(deviceOp)) {
-      if (devOp.getSymName() != devName) {
-        continue;
-      }
-
-      SmallVector<Operation *, 4> seqs;
-      findRuntimeSequences(deviceOp, seqs);
-
-      for (auto *seqOp : seqs) {
-        if (auto seq = dyn_cast<xilinx::AIE::RuntimeSequenceOp>(seqOp)) {
-          StringRef seqName = seq.getSymName();
-          std::string outputFileName =
-              formatString(instsName, devName, seqName);
-
-          // Output to current directory (matches Python aiecc.py)
-          SmallString<128> outputPath;
-          if (sys::path::is_absolute(outputFileName)) {
-            outputPath = outputFileName;
-          } else {
-            outputPath = outputFileName;
-          }
-
-          if (verbose) {
-            llvm::outs() << "Generating NPU instructions for sequence: "
-                         << seqName << " -> " << outputPath << "\n";
-          }
-
-          SmallVector<std::string, 8> translateStrs = {
-              aieTranslatePath,
-              npuLoweredPath.str().str(),
-              "--aie-npu-to-binary",
-              "--aie-device-name=" + devName.str(),
-              "--aie-sequence-name=" + seqName.str(),
-              "-o",
-              outputPath.str().str()};
-
-          SmallVector<StringRef, 8> translateCmd;
-          for (const auto &str : translateStrs) {
-            translateCmd.push_back(str);
-          }
-
-          if (!executeCommand(translateCmd)) {
-            llvm::errs() << "Error generating NPU instructions\n";
-            return failure();
-          }
-        }
-      }
+  // Find device and generate instructions for each runtime sequence
+  LogicalResult result = success();
+  for (auto devOp : module->getOps<xilinx::AIE::DeviceOp>()) {
+    if (!deviceName.empty() && devOp.getSymName() != devName) {
+      continue;
     }
+
+    devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
+      if (failed(result)) {
+        return; // Skip if already failed
+      }
+
+      if (!sequenceName.empty() && seq.getSymName() != sequenceName) {
+        return;
+      }
+
+      StringRef seqName = seq.getSymName();
+      std::string outputFileName =
+          formatString(instsName, devName.str(), seqName);
+
+      // Output to current directory (matches Python aiecc.py)
+      SmallString<128> outputPath;
+      if (sys::path::is_absolute(outputFileName)) {
+        outputPath = outputFileName;
+      } else {
+        outputPath = outputFileName;
+      }
+
+      if (verbose) {
+        llvm::outs() << "Generating NPU instructions for sequence: " << seqName
+                     << " -> " << outputPath << "\n";
+      }
+
+      SmallVector<std::string, 8> translateStrs = {
+          aieTranslatePath,
+          npuLoweredPath.str().str(),
+          "--aie-npu-to-binary",
+          "--aie-device-name=" + devName.str(),
+          "--aie-sequence-name=" + seqName.str(),
+          "-o",
+          outputPath.str().str()};
+
+      SmallVector<StringRef, 8> translateCmd;
+      for (const auto &str : translateStrs) {
+        translateCmd.push_back(str);
+      }
+
+      if (!executeCommand(translateCmd)) {
+        llvm::errs() << "Error generating NPU instructions\n";
+        result = failure();
+      }
+    });
+  }
+
+  if (failed(result)) {
+    return failure();
   }
 
   return success();
@@ -1548,27 +1512,28 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
                  << "\n";
   }
 
-  // Discover AIE devices in the module
-  SmallVector<Operation *, 4> devices;
-  findAIEDevices(module, devices);
-
-  if (devices.empty()) {
-    llvm::errs() << "Error: No AIE devices found in module\n";
-    return failure();
-  }
-
+  // Count devices and cores for verbose output
+  unsigned deviceCount = 0;
   if (verbose) {
-    llvm::outs() << "Found " << devices.size() << " AIE device(s)\n";
-    for (auto *device : devices) {
-      if (auto deviceOp = dyn_cast<xilinx::AIE::DeviceOp>(device)) {
-        unsigned coreCount = countCoresInDevice(device);
-        llvm::outs() << "  Device";
-        if (deviceOp.getSymNameAttr()) {
-          llvm::outs() << " '" << deviceOp.getSymName() << "'";
-        }
-        llvm::outs() << " with " << coreCount << " core(s)\n";
+    for (auto deviceOp : module.getOps<xilinx::AIE::DeviceOp>()) {
+      if (!deviceName.empty() && deviceOp.getSymName() != deviceName) {
+        continue;
       }
+      deviceCount++;
+      unsigned coreCount = 0;
+      deviceOp.walk([&](xilinx::AIE::CoreOp) { coreCount++; });
+      llvm::outs() << "  Device";
+      if (deviceOp.getSymNameAttr()) {
+        llvm::outs() << " '" << deviceOp.getSymName() << "'";
+      }
+      llvm::outs() << " with " << coreCount << " core(s)\n";
     }
+
+    if (deviceCount == 0) {
+      llvm::errs() << "Error: No AIE devices found in module\n";
+      return failure();
+    }
+    llvm::outs() << "Found " << deviceCount << " AIE device(s)\n";
   }
 
   // Find required tools
@@ -1651,58 +1616,61 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp module,
   }
 
   // Step 3: Compile cores and generate artifacts for each device
-  for (auto *device : devices) {
-    if (auto deviceOp = dyn_cast<xilinx::AIE::DeviceOp>(device)) {
-      StringRef devName = deviceOp.getSymName();
+  for (auto deviceOp : module.getOps<xilinx::AIE::DeviceOp>()) {
+    // Filter by device name if specified
+    if (!deviceName.empty() && deviceOp.getSymName() != deviceName) {
+      continue;
+    }
 
-      if (verbose) {
-        llvm::outs() << "\nProcessing device: " << devName << "\n";
-      }
+    StringRef devName = deviceOp.getSymName();
 
-      // Get AIE target for this device using aie-translate
-      std::string aieTarget;
-      if (!dryRun) {
-        aieTarget = getAIETargetForDevice(physicalPath.str(), devName);
-      } else {
-        aieTarget = "aie2"; // Default for dry-run
-      }
+    if (verbose) {
+      llvm::outs() << "\nProcessing device: " << devName << "\n";
+    }
 
-      if (verbose) {
-        llvm::outs() << "Using AIE target: " << aieTarget << "\n";
-      }
+    // Get AIE target for this device using aie-translate
+    std::string aieTarget;
+    if (!dryRun) {
+      aieTarget = getAIETargetForDevice(physicalPath.str(), devName);
+    } else {
+      aieTarget = "aie2"; // Default for dry-run
+    }
 
-      // Compile cores
-      std::map<std::pair<int, int>, std::string> elfPaths;
-      if (failed(compileCores(context, deviceOp, devName, withAddressesPath,
-                              tmpDirName, aieTarget, elfPaths))) {
-        return failure();
-      }
+    if (verbose) {
+      llvm::outs() << "Using AIE target: " << aieTarget << "\n";
+    }
 
-      // Update MLIR with ELF paths
-      SmallString<128> physicalWithElfs;
-      if (failed(updateModuleWithElfs(context, physicalPath, tmpDirName,
-                                      devName, elfPaths, physicalWithElfs))) {
-        return failure();
-      }
+    // Compile cores
+    std::map<std::pair<int, int>, std::string> elfPaths;
+    if (failed(compileCores(context, deviceOp, devName, withAddressesPath,
+                            tmpDirName, aieTarget, elfPaths))) {
+      return failure();
+    }
 
-      // Use the updated MLIR for artifact generation
-      StringRef mlirForArtifacts;
-      if (elfPaths.empty()) {
-        mlirForArtifacts = physicalPath;
-      } else {
-        mlirForArtifacts = physicalWithElfs.str();
-      }
+    // Update MLIR with ELF paths
+    SmallString<128> physicalWithElfs;
+    if (failed(updateModuleWithElfs(context, physicalPath, tmpDirName, devName,
+                                    elfPaths, physicalWithElfs))) {
+      return failure();
+    }
 
-      // Generate NPU instructions
-      if (failed(generateNpuInstructions(context, mlirForArtifacts, tmpDirName,
-                                         devName))) {
-        return failure();
-      }
+    // Use the updated MLIR for artifact generation
+    StringRef mlirForArtifacts;
+    if (elfPaths.empty()) {
+      mlirForArtifacts = physicalPath;
+    } else {
+      mlirForArtifacts = physicalWithElfs.str();
+    }
 
-      // Generate CDO/PDI/xclbin
-      if (failed(generateCdoArtifacts(mlirForArtifacts, tmpDirName, devName))) {
-        return failure();
-      }
+    // Generate NPU instructions
+    if (failed(generateNpuInstructions(context, mlirForArtifacts, tmpDirName,
+                                       devName))) {
+      return failure();
+    }
+
+    // Generate CDO/PDI/xclbin
+    if (failed(generateCdoArtifacts(mlirForArtifacts, tmpDirName, devName))) {
+      return failure();
     }
   }
 
