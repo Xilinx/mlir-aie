@@ -475,7 +475,7 @@ static uint32_t estimateCost(Operation *op) {
 
 static uint32_t estimateCost(AIEX::CertJobOp op, uint32_t split_target,
                              Block::iterator &split_iter) {
-  // assume a job is on it's own page
+  // assume a job is on its own page
   uint32_t text_cost = 32; // page header
   uint32_t data_cost = 0;
   uint32_t split_cost = 0;
