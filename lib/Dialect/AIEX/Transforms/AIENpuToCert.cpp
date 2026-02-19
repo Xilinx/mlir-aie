@@ -191,8 +191,9 @@ struct NpuAddressPatchToCertApplyOffset57
     Block::iterator it(op);
     if (it == op->getBlock()->begin())
       return failure();
-    do {
-      auto blockWriteOp = dyn_cast<AIEX::NpuBlockWriteOp>(*it--);
+    while (it != op->getBlock()->begin()) {
+      --it;
+      auto blockWriteOp = dyn_cast<AIEX::NpuBlockWriteOp>(*it);
       if (!blockWriteOp)
         continue;
 
@@ -218,7 +219,7 @@ struct NpuAddressPatchToCertApplyOffset57
       rewriter.replaceOpWithNewOp<AIEX::CertApplyOffset57Op>(
           op, getGlobalOp.getName(), 1, op.getArgIdx());
       return success();
-    } while (it != op->getBlock()->begin());
+    }
 
     return failure();
   }
