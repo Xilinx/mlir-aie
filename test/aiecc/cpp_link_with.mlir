@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: peano
+
 // Test external object file linking via link_with attribute
 
 // RUN: aiecc --no-xchesscc --no-xbridge --no-compile --verbose %s | FileCheck %s

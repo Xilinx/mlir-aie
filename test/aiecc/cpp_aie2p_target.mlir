@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: peano
+
 // Test AIE2P (Strix) target compilation
 
 // RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s

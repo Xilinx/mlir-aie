@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: peano
+
 // Test device and sequence filtering
 
 // RUN: aiecc --no-xchesscc --no-xbridge --verbose %s 2>&1 | FileCheck %s --check-prefix=ALL

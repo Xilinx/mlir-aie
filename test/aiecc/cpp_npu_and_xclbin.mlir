@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: peano
+
 // Test NPU instruction and xclbin generation
 
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --verbose %s | FileCheck %s

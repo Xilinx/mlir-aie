@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: peano
+
 // Test multi-core compilation
 
 // RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s

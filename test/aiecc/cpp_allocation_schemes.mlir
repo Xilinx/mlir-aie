@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: peano
+
 // Test buffer allocation scheme options
 
 // RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=basic-sequential --verbose %s | FileCheck %s --check-prefix=BASIC
