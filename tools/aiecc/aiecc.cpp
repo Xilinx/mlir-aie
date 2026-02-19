@@ -83,6 +83,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <map>
@@ -231,6 +232,10 @@ static cl::opt<bool> ctrlPktOverlay("generate-ctrl-pkt-overlay",
 static cl::opt<std::string>
     peanoInstallDir("peano", cl::desc("Peano compiler installation directory"),
                     cl::init(""), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    aietoolsDir("aietools", cl::desc("Path to aietools installation directory"),
+                cl::init(""), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> dumpIntermediates(
     "dump-intermediates",
@@ -473,6 +478,59 @@ static std::string discoverPeanoInstallDir() {
 // Cached Peano install directory
 static std::optional<std::string> cachedPeanoDir;
 
+// Discover aietools installation directory by finding xchesscc in PATH
+static std::string discoverAietoolsDir() {
+  // 1. Check if --aietools was specified
+  if (!aietoolsDir.empty()) {
+    if (sys::fs::is_directory(aietoolsDir)) {
+      return aietoolsDir;
+    }
+  }
+
+  // 2. Find xchesscc in PATH and derive aietools from it
+  auto xchessccPath = sys::findProgramByName("xchesscc");
+  if (xchessccPath) {
+    // xchesscc is typically at <aietools>/bin/xchesscc or
+    // <aietools>/bin/unwrapped/lnx64.o/xchesscc
+    // Use std::string to avoid self-referencing issues with parent_path
+    std::string binDir = std::string(sys::path::parent_path(*xchessccPath));
+
+    // Handle unwrapped paths
+    // (e.g., aietools/bin/unwrapped/lnx64.o/xchesscc)
+    StringRef parentName = sys::path::filename(binDir);
+    if (parentName == "lnx64.o") {
+      binDir = std::string(sys::path::parent_path(binDir)); // up from lnx64.o
+      binDir = std::string(sys::path::parent_path(binDir)); // up from unwrapped
+      binDir = std::string(sys::path::parent_path(binDir)); // up from bin
+    } else if (parentName == "bin") {
+      binDir = std::string(sys::path::parent_path(binDir)); // up from bin
+    } else {
+      // Assume it's in bin/ directory
+      binDir = std::string(sys::path::parent_path(binDir));
+    }
+
+    if (sys::fs::is_directory(binDir)) {
+      return binDir;
+    }
+  }
+
+  return "";
+}
+
+// Cached aietools install directory
+static std::optional<std::string> cachedAietoolsDir;
+
+static StringRef getAietoolsDir() {
+  if (!cachedAietoolsDir.has_value()) {
+    cachedAietoolsDir = discoverAietoolsDir();
+    if (verbose && !cachedAietoolsDir->empty()) {
+      llvm::outs() << "Discovered aietools installation: " << *cachedAietoolsDir
+                   << "\n";
+    }
+  }
+  return *cachedAietoolsDir;
+}
+
 static StringRef getPeanoInstallDir() {
   if (!cachedPeanoDir.has_value()) {
     cachedPeanoDir = discoverPeanoInstallDir();
@@ -482,6 +540,109 @@ static StringRef getPeanoInstallDir() {
     }
   }
   return *cachedPeanoDir;
+}
+
+// Downgrade LLVM IR for compatibility with Chess toolchain's older LLVM.
+// The Chess LLVM is based on an older version that doesn't support modern
+// memory/capture attributes. This function performs string replacements
+// matching the Python downgrade_ir_for_chess() function.
+static std::string downgradeIRForChess(StringRef llvmIR) {
+  std::string result = llvmIR.str();
+
+  // Replace memory attributes
+  auto replace = [&result](const std::string &from, const std::string &to) {
+    size_t pos = 0;
+    while ((pos = result.find(from, pos)) != std::string::npos) {
+      result.replace(pos, from.length(), to);
+      pos += to.length();
+    }
+  };
+
+  replace("memory(none)", "readnone");
+  replace("memory(read)", "readonly");
+  replace("memory(write)", "writeonly");
+  replace("memory(argmem: readwrite)", "argmemonly");
+  replace("memory(argmem: read)", "argmemonly readonly");
+  replace("memory(argmem: write)", "argmemonly writeonly");
+  replace("memory(inaccessiblemem: readwrite)", "inaccessiblememonly");
+  replace("memory(inaccessiblemem: read)", "inaccessiblememonly readonly");
+  replace("memory(inaccessiblemem: write)", "inaccessiblememonly writeonly");
+  replace("memory(argmem: readwrite, inaccessiblemem: readwrite)",
+          "inaccessiblemem_or_argmemonly");
+  replace("memory(argmem: read, inaccessiblemem: read)",
+          "inaccessiblemem_or_argmemonly readonly");
+  replace("memory(argmem: write, inaccessiblemem: write)",
+          "inaccessiblemem_or_argmemonly writeonly");
+  replace("captures(none)", "nocapture");
+  replace("getelementptr inbounds nuw", "getelementptr inbounds");
+
+  // Remove nocreateundeforpoison attribute using regex-like logic
+  // Pattern: \bnocreateundeforpoison\s+
+  // We'll do a simple find-and-replace for this attribute
+  size_t pos = 0;
+  while ((pos = result.find("nocreateundeforpoison", pos)) !=
+         std::string::npos) {
+    // Find the end of the attribute (skip trailing whitespace)
+    size_t end = pos + strlen("nocreateundeforpoison");
+    while (end < result.size() && (result[end] == ' ' || result[end] == '\t')) {
+      end++;
+    }
+    result.erase(pos, end - pos);
+  }
+
+  return result;
+}
+
+// Get the chess-llvm-link target directory name for a given AIE target
+static std::string getChessTarget(StringRef aieTarget) {
+  std::string target = aieTarget.lower();
+  if (target == "aie2") {
+    return "target_aie_ml";
+  } else if (target == "aie2p") {
+    return "target_aie2p";
+  } else if (target == "aie" || target == "aie1") {
+    return "target";
+  }
+  // Unknown target - warn and return empty
+  llvm::errs() << "Warning: Unsupported AIE target for chess toolchain: "
+               << aieTarget << "\n";
+  return "";
+}
+
+// Get the install path for mlir-aie (for finding runtime libraries)
+// Checks multiple possible locations to support both build and install areas
+static std::string getInstallPath() {
+  auto mainExe = sys::fs::getMainExecutable(
+      nullptr, reinterpret_cast<void *>(&getInstallPath));
+  SmallString<256> binDir(sys::path::parent_path(mainExe));
+  // Go up from bin/ to install prefix
+  SmallString<256> installPrefix(sys::path::parent_path(binDir));
+
+  // Check if aie_runtime_lib exists at this location
+  SmallString<256> runtimeLibPath(installPrefix);
+  sys::path::append(runtimeLibPath, "aie_runtime_lib");
+  if (sys::fs::is_directory(runtimeLibPath)) {
+    return std::string(installPrefix);
+  }
+
+  // Try sibling "install" directory (for when running from build/bin)
+  SmallString<256> siblingInstall(sys::path::parent_path(installPrefix));
+  sys::path::append(siblingInstall, "install");
+  SmallString<256> siblingRuntimeLib(siblingInstall);
+  sys::path::append(siblingRuntimeLib, "aie_runtime_lib");
+  if (sys::fs::is_directory(siblingRuntimeLib)) {
+    return std::string(siblingInstall);
+  }
+
+  // Check MLIR_AIE_INSTALL_DIR environment variable
+  if (const char *installEnv = std::getenv("MLIR_AIE_INSTALL_DIR")) {
+    if (sys::fs::is_directory(installEnv)) {
+      return installEnv;
+    }
+  }
+
+  // Fallback: return the original calculated path
+  return std::string(installPrefix);
 }
 
 // Find Peano compiler tools
@@ -503,6 +664,89 @@ static std::string findPeanoTool(StringRef toolName) {
   }
 
   return "";
+}
+
+// Run chess-llvm-link to link LLVM IR with chess_intrinsic_wrapper.ll
+// Returns the path to the linked .ll file, or empty string on failure.
+static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
+                                    StringRef aieTarget, StringRef tmpDirName) {
+  StringRef aietoolsPath = getAietoolsDir();
+  if (aietoolsPath.empty()) {
+    llvm::errs() << "Error: Could not find aietools (xchesscc not in PATH)\n";
+    return "";
+  }
+
+  // Build chess-llvm-link path
+  // Path: <aietools>/tps/lnx64/<target>/bin/LNa64bin/chess-llvm-link
+  std::string chessTarget = getChessTarget(aieTarget);
+  SmallString<256> chessLlvmLinkPath(aietoolsPath);
+  sys::path::append(chessLlvmLinkPath, "tps", "lnx64", chessTarget, "bin");
+  sys::path::append(chessLlvmLinkPath, "LNa64bin", "chess-llvm-link");
+
+  if (!sys::fs::can_execute(chessLlvmLinkPath)) {
+    llvm::errs() << "Error: Could not find chess-llvm-link at: "
+                 << chessLlvmLinkPath << "\n";
+    return "";
+  }
+
+  // Build chess_intrinsic_wrapper.ll path
+  std::string installPath = getInstallPath();
+  SmallString<256> wrapperPath(installPath);
+  std::string aieTargetUpper = aieTarget.upper();
+  sys::path::append(wrapperPath, "aie_runtime_lib", aieTargetUpper,
+                    "chess_intrinsic_wrapper.ll");
+
+  if (!sys::fs::exists(wrapperPath)) {
+    llvm::errs() << "Error: Could not find chess_intrinsic_wrapper.ll at: "
+                 << wrapperPath << "\n";
+    return "";
+  }
+
+  // Run chess-llvm-link
+  SmallVector<std::string, 8> cmd = {chessLlvmLinkPath.str().str(),
+                                     inputLLPath.str(),
+                                     wrapperPath.str().str(),
+                                     "-S",
+                                     "-o",
+                                     outputPath.str()};
+
+  if (!executeCommand(cmd)) {
+    llvm::errs() << "Error running chess-llvm-link\n";
+    return "";
+  }
+
+  return outputPath.str();
+}
+
+// Extract _include _file entries from a BCF file
+// BCF files contain lines like: _include _file path/to/file.o
+// These specify object files that need to be linked.
+static std::vector<std::string> extractInputFilesFromBCF(StringRef bcfPath) {
+  std::vector<std::string> files;
+
+  auto bufOrErr = MemoryBuffer::getFile(bcfPath);
+  if (!bufOrErr) {
+    llvm::errs() << "Warning: Could not read BCF file '" << bcfPath
+                 << "': " << bufOrErr.getError().message() << "\n";
+    return files;
+  }
+
+  StringRef content = (*bufOrErr)->getBuffer();
+  SmallVector<StringRef, 32> lines;
+  content.split(lines, '\n');
+
+  for (StringRef line : lines) {
+    // Match: _include _file <path>
+    line = line.trim();
+    if (line.starts_with("_include _file ")) {
+      StringRef filePath = line.drop_front(strlen("_include _file ")).trim();
+      if (!filePath.empty()) {
+        files.push_back(filePath.str());
+      }
+    }
+  }
+
+  return files;
 }
 
 // Get the AIE target architecture for a device using direct C++ API call.
@@ -604,10 +848,8 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
       << (ctrlPktOverlay ? "true" : "false") << "},"
       << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
       << "},"
-      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
-      << "),"
-      << "convert-scf-to-cf"
-      << ")";
+      << "aie-vector-transfer-lowering{max-transfer-rank=1}" << "),"
+      << "convert-scf-to-cf" << ")";
   return oss.str();
 }
 
@@ -630,8 +872,7 @@ buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
       << "convert-to-llvm{dynamic=true},"
       << "canonicalize,"
-      << "cse"
-      << ")";
+      << "cse" << ")";
   return oss.str();
 }
 
@@ -928,13 +1169,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
-  // Step 3: Generate linker script using direct C++ API call.
+  // Step 3: Generate linker script (for non-xbridge linking)
+  // Note: BCF is generated later in the linking step when xbridge is enabled
   SmallString<128> ldScriptPath(tmpDirName);
   sys::path::append(ldScriptPath, deviceName.str() + "_core_" +
                                       std::to_string(core.col) + "_" +
                                       std::to_string(core.row) + ".ld.script");
 
-  {
+  if (!xbridge) {
     // Generate linker script to file using the original (unmodified) module
     std::error_code ec;
     raw_fd_ostream ldScriptFile(ldScriptPath, ec);
@@ -962,12 +1204,89 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                  std::to_string(core.row) + ".o");
 
   if (xchesscc) {
-    // xchesscc compilation not yet implemented - would need chess-llvm-link +
-    // xchesscc_wrapper
-    llvm::errs()
-        << "Error: xchesscc compilation not yet implemented in C++ aiecc\n";
-    llvm::errs() << "Please use --no-xchesscc flag to compile with Peano\n";
-    return failure();
+    // xchesscc compilation: IR downgrade -> chess-llvm-link -> xchesscc_wrapper
+
+    // Step 4a: Read LLVM IR and apply downgrade for Chess compatibility
+    auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
+    if (!bufOrErr) {
+      llvm::errs() << "Error reading LLVM IR file: "
+                   << bufOrErr.getError().message() << "\n";
+      return failure();
+    }
+    std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
+
+    // Write downgraded IR to .chesshack.ll
+    SmallString<128> chessHackPath(tmpDirName);
+    sys::path::append(chessHackPath,
+                      deviceName.str() + "_core_" + std::to_string(core.col) +
+                          "_" + std::to_string(core.row) + ".chesshack.ll");
+    {
+      std::error_code ec;
+      raw_fd_ostream chessHackFile(chessHackPath, ec);
+      if (ec) {
+        llvm::errs() << "Error writing chesshack file: " << ec.message()
+                     << "\n";
+        return failure();
+      }
+      chessHackFile << downgradedIR;
+    }
+
+    if (verbose) {
+      llvm::outs() << "Applied IR downgrade for Chess: " << chessHackPath
+                   << "\n";
+    }
+
+    // Step 4b: Run chess-llvm-link to link with intrinsic wrapper
+    SmallString<128> chessLinkedPath(tmpDirName);
+    sys::path::append(chessLinkedPath,
+                      deviceName.str() + "_core_" + std::to_string(core.col) +
+                          "_" + std::to_string(core.row) + ".chesslinked.ll");
+
+    std::string linkedResult =
+        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget, tmpDirName);
+    if (linkedResult.empty()) {
+      return failure();
+    }
+
+    if (verbose) {
+      llvm::outs() << "Linked with chess intrinsic wrapper: " << chessLinkedPath
+                   << "\n";
+    }
+
+    // Step 4c: Compile with xchesscc_wrapper
+    // Find xchesscc_wrapper in PATH
+    auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
+    if (!xchessccWrapperPath) {
+      llvm::errs() << "Error: Could not find xchesscc_wrapper in PATH\n";
+      return failure();
+    }
+
+    SmallString<128> workDir(tmpDirName);
+    sys::path::append(workDir, "work");
+
+    // xchesscc_wrapper <target> +w <work> -c -d +Wclang,-xir -f <input.ll> -o
+    // <output.o>
+    std::string aieTargetLower = aieTarget.lower();
+    SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
+                                              aieTargetLower,
+                                              "+w",
+                                              workDir.str().str(),
+                                              "-c",
+                                              "-d",
+                                              "+Wclang,-xir",
+                                              "-f",
+                                              chessLinkedPath.str().str(),
+                                              "-o",
+                                              objPath.str().str()};
+
+    if (!executeCommand(xchessCmd)) {
+      llvm::errs() << "Error running xchesscc_wrapper\n";
+      return failure();
+    }
+
+    if (verbose) {
+      llvm::outs() << "Compiled with xchesscc: " << objPath << "\n";
+    }
   } else {
     // Use Peano toolchain
     std::string peanoOpt = findPeanoTool("opt");
@@ -1046,10 +1365,117 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
   }
   elfPath = absElfPath;
 
-  if (xchesscc && xbridge) {
-    // xchesscc + xbridge linking not yet implemented
-    llvm::errs() << "Error: xchesscc linking not yet implemented\n";
-    return failure();
+  if (xbridge) {
+    // xbridge linking: generate BCF, extract link_with, link with
+    // xchesscc_wrapper Note: xbridge works with both xchesscc and
+    // peano-compiled object files
+
+    // Generate BCF file
+    SmallString<128> bcfPath(tmpDirName);
+    sys::path::append(bcfPath, deviceName.str() + "_core_" +
+                                   std::to_string(core.col) + "_" +
+                                   std::to_string(core.row) + ".bcf");
+
+    {
+      std::error_code ec;
+      raw_fd_ostream bcfFile(bcfPath, ec);
+      if (ec) {
+        llvm::errs() << "Error opening BCF file: " << ec.message() << "\n";
+        return failure();
+      }
+
+      if (failed(xilinx::AIE::AIETranslateToBCF(moduleOp, bcfFile, core.col,
+                                                core.row, deviceName))) {
+        llvm::errs() << "Error generating BCF file\n";
+        return failure();
+      }
+    }
+
+    if (verbose) {
+      llvm::outs() << "Generated BCF: " << bcfPath << "\n";
+    }
+
+    // Extract link_with files from BCF
+    std::vector<std::string> linkWithFiles = extractInputFilesFromBCF(bcfPath);
+
+    // Handle link_with files: copy to .prj directory if needed
+    std::string linkWithArgs;
+    for (const auto &linkWithFile : linkWithFiles) {
+      SmallString<256> srcPath;
+      if (sys::path::is_absolute(linkWithFile)) {
+        srcPath = linkWithFile;
+      } else {
+        SmallString<256> inputDir = sys::path::parent_path(inputFilename);
+        if (inputDir.empty()) {
+          sys::fs::current_path(inputDir);
+        }
+        srcPath = inputDir;
+        sys::path::append(srcPath, linkWithFile);
+        sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
+      }
+
+      // Copy to .prj directory
+      SmallString<256> destPath(tmpDirName);
+      sys::path::append(destPath, sys::path::filename(linkWithFile));
+
+      sys::fs::remove(destPath);
+      std::error_code ec = sys::fs::copy_file(srcPath, destPath);
+      if (ec) {
+        llvm::errs() << "Error: Could not copy link_with file: " << srcPath
+                     << " to " << destPath << ": " << ec.message() << "\n";
+        return failure();
+      }
+
+      if (verbose) {
+        llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
+                     << "\n";
+      }
+
+      if (!linkWithArgs.empty()) {
+        linkWithArgs += " ";
+      }
+      linkWithArgs += destPath.str().str();
+    }
+
+    // Find xchesscc_wrapper
+    auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
+    if (!xchessccWrapperPath) {
+      llvm::errs() << "Error: Could not find xchesscc_wrapper in PATH for "
+                      "xbridge linking\n";
+      return failure();
+    }
+
+    SmallString<128> workDir(tmpDirName);
+    sys::path::append(workDir, "work");
+
+    // Link: xchesscc_wrapper <target> +w <work> -d -f <obj> [link_with_files]
+    // +l <bcf> -o <elf>
+    std::string aieTargetLower = aieTarget.lower();
+    SmallVector<std::string, 20> linkCmd = {
+        *xchessccWrapperPath, aieTargetLower, "+w",
+        workDir.str().str(),  "-d",           "-f",
+        objPath.str().str()};
+
+    // Add link_with files if any
+    for (const auto &linkWithFile : linkWithFiles) {
+      SmallString<256> localPath(tmpDirName);
+      sys::path::append(localPath, sys::path::filename(linkWithFile));
+      linkCmd.push_back(localPath.str().str());
+    }
+
+    linkCmd.push_back("+l");
+    linkCmd.push_back(bcfPath.str().str());
+    linkCmd.push_back("-o");
+    linkCmd.push_back(elfPath.str().str());
+
+    if (!executeCommand(linkCmd)) {
+      llvm::errs() << "Error linking with xbridge\n";
+      return failure();
+    }
+
+    if (verbose) {
+      llvm::outs() << "Linked with xbridge: " << elfPath << "\n";
+    }
   } else {
     // Link with Peano clang
     std::string peanoClang = findPeanoTool("clang");

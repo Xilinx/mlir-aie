@@ -65,6 +65,7 @@ aiecc [options] <input.mlir>
 - `--xbridge` / `--no-xbridge` - Link using xbridge (default: enabled)
 - `--xchesscc` / `--no-xchesscc` - Compile using xchesscc vs Peano (default: xchesscc)
 - `--peano <dir>` - Peano compiler installation directory
+- `--aietools <dir>` - Vitis aietools installation directory (auto-discovered from PATH or `AIETOOLS_ROOT`)
 - `--aiesim` - Generate aiesim work folder
 - `--dynamic-objFifos` - Use dynamic object FIFOs
 - `--packet-sw-objFifos` - Use packet-switched flows
@@ -177,7 +178,7 @@ xclbinutil → xclbin
 | Translation | Direct API | **Direct API** |
 | aie-opt subprocess | None | **None** |
 | aie-translate subprocess | None | **None** |
-| Core Compilation | Peano/xchesscc | **Peano** (xchesscc planned) |
+| Core Compilation | Peano/xchesscc | **Peano/xchesscc** |
 | External Object Linking | ✅ | ✅ |
 | Performance | Good | **Better** (no Python overhead) |
 
@@ -199,8 +200,9 @@ The C++ implementation provides **full feature parity**:
 - ✅ xclbin generation via xclbinutil
 - ✅ Verbose output and dry-run mode
 
+- ✅ xchesscc compiler support (with xbridge linking)
+
 Planned enhancements:
-- ⏳ xchesscc compiler support
 - ⏳ Parallel compilation of cores
 - ⏳ AIE simulator support
 
@@ -250,6 +252,7 @@ Use `--verbose` to see detailed command execution and debug issues.
 
 The tool respects standard MLIR/AIE environment variables:
 - `PEANO_INSTALL_DIR` - Peano compiler installation directory
+- `AIETOOLS_ROOT` - Vitis aietools installation directory (for xchesscc)
 - `VIRTUAL_ENV` - Python virtual environment (for auto-discovering llvm-aie package)
 
 Tools are automatically found in PATH or relative to the aiecc installation directory.
