@@ -28,6 +28,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
+#include "mlir/InitAllDialects.h"
+#include "mlir/InitAllExtensions.h"
+#include "mlir/InitAllPasses.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 
@@ -40,8 +43,15 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEVec/Analysis/Passes.h"
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
+#include "aie/Dialect/AIEVec/Transforms/Passes.h"
 #include "aie/InitialAllDialect.h"
 #include "aie/version.h"
 
@@ -1508,17 +1518,19 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   }
 
   // Step 1: Run resource allocation and lowering passes
-  SmallString<128> withAddressesPath(tmpDirName);
-  sys::path::append(withAddressesPath, "input_with_addresses.mlir");
-
+  // Note: Currently using subprocess call as in-memory execution has issues
+  // with nested pass pipeline matching. TODO: Debug and fix in-memory execution.
   std::string pipeline = buildInputWithAddressesPipeline();
   std::string pipelineArg = "--pass-pipeline=" + pipeline;
 
-  SmallVector<std::string, 16> passCmd = {aieOptPath, inputPath.str().str(),
-                                          pipelineArg, "-o",
-                                          withAddressesPath.str().str()};
+  SmallString<128> withAddressesPath(tmpDirName);
+  sys::path::append(withAddressesPath, "input_with_addresses.mlir");
 
-  if (!executeCommand(passCmd)) {
+  SmallVector<std::string, 8> resourceAllocCmd = {
+      aieOptPath, inputPath.str().str(), pipelineArg, "-o",
+      withAddressesPath.str().str()};
+
+  if (!executeCommand(resourceAllocCmd)) {
     llvm::errs() << "Error running resource allocation passes\n";
     return failure();
   }
@@ -1611,20 +1623,26 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
 }
 
 static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
-  // Parse the input file
-  MLIRContext context;
-  context.loadDialect<xilinx::AIE::AIEDialect>();
-  context.loadDialect<xilinx::AIEX::AIEXDialect>();
+  // Register passes for in-memory execution (must happen before context creation)
+  registerAllPasses();
+  xilinx::registerConversionPasses();
+  xilinx::AIE::registerAIEPasses();
+  xilinx::AIEX::registerAIEXPasses();
+  xilinx::aievec::registerAIEVecAnalysisPasses();
+  xilinx::aievec::registerAIEVecPasses();
+  xilinx::aievec::registerAIEVecPipelines();
 
+  // Set up dialect registry with all MLIR and AIE dialects
   DialectRegistry registry;
-  registry.insert<arith::ArithDialect>();
-  registry.insert<memref::MemRefDialect>();
-  registry.insert<scf::SCFDialect>();
-  registry.insert<func::FuncDialect>();
-  registry.insert<cf::ControlFlowDialect>();
-  registry.insert<vector::VectorDialect>();
+  registerAllDialects(registry);
   xilinx::registerAllDialects(registry);
+  registerAllExtensions(registry);
+  xilinx::aievec::registerTransformDialectExtension(registry);
+
+  // Create context and attach registry
+  MLIRContext context;
   context.appendDialectRegistry(registry);
+  context.loadAllAvailableDialects();
 
   OwningOpRef<ModuleOp> inputModuleOp;
 

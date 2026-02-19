@@ -23,12 +23,28 @@ set(LIBS
   ${dialect_libs}
   ${conversion_libs}
   ${extension_libs}
+  ADF
+  MLIROptLib
   MLIRParser
   MLIRPass
   MLIRSupport
   MLIRIR
+  MLIRRegisterAllDialects
+  MLIRRegisterAllExtensions
+  MLIRRegisterAllPasses
+  MLIRTransformDialect
   AIE
+  AIETransforms
   AIEX
+  AIEXTransforms
+  AIEXUtils
+  MLIRAIEToConfiguration
+  MLIRAIEVecDialect
+  MLIRAIEVecAIE1Dialect
+  MLIRAIEVecTransformOps
+  MLIRAIEVecTransforms
+  MLIRAIEVecToLLVM
+  MLIRXLLVMDialect
   ${llvm_libs}
   )
 
