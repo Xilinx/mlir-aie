@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;ff383721e53f3ab3f2a0f4c94ac2188ef27a293c</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;5fcea1aa9bb3eb71b4cbcff6c46353f07b5f6b19</span>
    </div>
   </td>
  </tr>
@@ -84,6 +84,10 @@ $(function() {
 Functions</h2></td></tr>
 <tr class="memitem:a3a560442168821cdbf12b9dbfd820076" id="r_a3a560442168821cdbf12b9dbfd820076"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a3a560442168821cdbf12b9dbfd820076">jit</a> (function=None, is_placed=True, use_cache=True)</td></tr>
 <tr class="separator:a3a560442168821cdbf12b9dbfd820076"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afe76838a07fbc8ee0e692cdbd3f4b20e" id="r_afe76838a07fbc8ee0e692cdbd3f4b20e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#afe76838a07fbc8ee0e692cdbd3f4b20e">_filter_tensor_args</a> (args)</td></tr>
+<tr class="separator:afe76838a07fbc8ee0e692cdbd3f4b20e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a95ea89438dc265b95a392f27b3b0df21" id="r_a95ea89438dc265b95a392f27b3b0df21"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a95ea89438dc265b95a392f27b3b0df21">_has_closure</a> (arg)</td></tr>
+<tr class="separator:a95ea89438dc265b95a392f27b3b0df21"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a669fbdff6cbb64841a02c98956f5bf5d" id="r_a669fbdff6cbb64841a02c98956f5bf5d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a669fbdff6cbb64841a02c98956f5bf5d">hash_module</a> (module, external_kernels=None, target_arch=None)</td></tr>
 <tr class="separator:a669fbdff6cbb64841a02c98956f5bf5d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -93,6 +97,65 @@ Variables</h2></td></tr>
 <tr class="separator:a7c705e3a7fb7b14b5b028e59e5e62430"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <h2 class="groupheader">Function Documentation</h2>
+<a id="afe76838a07fbc8ee0e692cdbd3f4b20e" name="afe76838a07fbc8ee0e692cdbd3f4b20e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afe76838a07fbc8ee0e692cdbd3f4b20e">&#9670;&#160;</a></span>_filter_tensor_args()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.jit._filter_tensor_args </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>args</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Filter out non-tensor arguments from args. Required for Algorithms because
+they pass ExternalFunction and scalar values in their signature that should
+not be interpreted as runtime sequence arguments.
+
+Removes:
+- ExternalFunction instances
+- Scalar values (int, float, np.integer, np.floating), embedded as MLIR constants
+</pre> 
+</div>
+</div>
+<a id="a95ea89438dc265b95a392f27b3b0df21" name="a95ea89438dc265b95a392f27b3b0df21"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a95ea89438dc265b95a392f27b3b0df21">&#9670;&#160;</a></span>_has_closure()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.jit._has_closure </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>arg</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Check if a callable has non-empty closures (captured variables).</pre> 
+</div>
+</div>
 <a id="a669fbdff6cbb64841a02c98956f5bf5d" name="a669fbdff6cbb64841a02c98956f5bf5d"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a669fbdff6cbb64841a02c98956f5bf5d">&#9670;&#160;</a></span>hash_module()</h2>
 
