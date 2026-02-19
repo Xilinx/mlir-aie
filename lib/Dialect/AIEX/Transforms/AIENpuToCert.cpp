@@ -272,7 +272,6 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
           bdOp.getLoc(), bdOp.getRemoteAddress(), bdOp.getLocalAddress(),
           bdOp.getLength(), true);
     }
-    prevChain.getBody().cloneInto(&chain.getBody(), map);
     rewriter.eraseOp(prevChain);
     rewriter.eraseOp(prevWriteDesSync);
     return success();
