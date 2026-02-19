@@ -5033,6 +5033,12 @@ static void configureAIEVecToLLVMLegalizations(LLVMConversionTarget &target) {
 
 struct ConvertAIEVecToLLVMPass
     : ConvertAIEVecToLLVMBase<ConvertAIEVecToLLVMPass> {
+  ConvertAIEVecToLLVMPass() = default;
+  ConvertAIEVecToLLVMPass(const xilinx::ConvertAIEVecToLLVMOptions &options) {
+    aieTarget = options.aieTarget;
+    aie2Fp32Emulation = options.aie2Fp32Emulation;
+  }
+
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     LLVMTypeConverter converter(&getContext());
@@ -5063,6 +5069,11 @@ struct ConvertAIEVecToLLVMPass
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertAIEVecToLLVMPass() {
   return std::make_unique<ConvertAIEVecToLLVMPass>();
+}
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertAIEVecToLLVMPass(const xilinx::ConvertAIEVecToLLVMOptions &options) {
+  return std::make_unique<ConvertAIEVecToLLVMPass>(options);
 }
 
 } // namespace xilinx::aievec

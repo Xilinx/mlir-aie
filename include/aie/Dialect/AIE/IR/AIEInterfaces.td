@@ -44,9 +44,48 @@ def IsShimTile : PredOpTrait<"op exists in a shim tile", Or<[PredIsShimNOCTile, 
 def IsShimNOCTile : PredOpTrait<"op exists in a shim tile with NOC connection", PredIsShimNOCTile>;
 def IsShimPLTile : PredOpTrait<"op exists in a shim tile with PL interface", PredIsShimPLTile>;
 
-def IsFlowEndPoint : NativeOpTrait<"IsFlowEndPoint"> {
-  string cppNamespace = "::xilinx::AIE";
+def FlowEndPoint : OpInterface<"FlowEndPoint"> {
+  let description = [{
+    Interface for operations that have interconnect-like properties,
+    enabling them to host flows for routing.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+  let methods = [
+    InterfaceMethod<[{}],
+      "int", "colIndex", (ins )
+    >,
+    InterfaceMethod<[{}],
+      "int", "rowIndex", (ins )
+    >
+  ];
 }
+
+def Interconnect : OpInterface<"Interconnect"> {
+  let description = [{
+    Interface for operations that have interconnect-like properties,
+    enabling them to host flows for routing.
+  }];
+  let cppNamespace = "::xilinx::AIE";
+
+  let methods = [
+    InterfaceMethod<[{}],
+      "mlir::Region &", "getConnections", (ins )
+    >,
+    InterfaceMethod<[{}],
+      "int", "colIndex", (ins )
+    >,
+    InterfaceMethod<[{}],
+      "int", "rowIndex", (ins )
+    >,
+    InterfaceMethod<[{}],
+      "size_t", "getNumSourceConnections", (ins "WireBundle":$bundle)
+    >,
+    InterfaceMethod<[{}],
+      "size_t", "getNumDestConnections", (ins "WireBundle":$bundle)
+    >
+  ];
+}
+
 
 def TileElement : OpInterface<"TileElement", [
     DeclareOpInterfaceMethods<OpAsmOpInterface>,
@@ -57,11 +96,6 @@ def TileElement : OpInterface<"TileElement", [
   let cppNamespace = "::xilinx::AIE";
   let methods = [
     InterfaceMethod<[{
-        Return the tile operand value.
-      }],
-      "mlir::Value", "getTile", (ins )
-    >,
-    InterfaceMethod<[{
         Return the location of the Tile where the element is located.
       }],
       "xilinx::AIE::TileID", "getTileID", (ins ),
@@ -69,24 +103,6 @@ def TileElement : OpInterface<"TileElement", [
       /*defaultImpl=*/[{
         ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
         return op.getTileOp().getTileID();
-      }]
-    >,
-    InterfaceMethod<[{
-        Return column.
-      }],
-      "int", "colIndex", (ins), 
-      /*methodBody=*/[{}],
-      /*defaultImpl=*/[{ 
-        return $_op.getTileID().col; 
-      }]
-    >,
-    InterfaceMethod<[{
-        Return row.
-      }],
-      "int", "rowIndex", (ins), 
-      /*methodBody=*/[{}],
-      /*defaultImpl=*/[{ 
-        return $_op.getTileID().row; 
       }]
     >,
   ];
@@ -101,26 +117,6 @@ def TileElement : OpInterface<"TileElement", [
                                     std::to_string(getTileID().row));
     }
   }];
-}
-
-def Interconnect : OpInterface<"Interconnect", [TileElement]> {
-  let description = [{
-    Interface for operations that have interconnect-like properties,
-    enabling them to host flows for routing.
-  }];
-  let cppNamespace = "::xilinx::AIE";
-
-  let methods = [
-    InterfaceMethod<[{}],
-      "mlir::Region &", "getConnections", (ins )
-    >,
-    InterfaceMethod<[{}],
-      "size_t", "getNumSourceConnections", (ins "WireBundle":$bundle)
-    >,
-    InterfaceMethod<[{}],
-      "size_t", "getNumDestConnections", (ins "WireBundle":$bundle)
-    >
-  ];
 }
 
 def AIETarget : OpInterface<"AIETarget"> {
