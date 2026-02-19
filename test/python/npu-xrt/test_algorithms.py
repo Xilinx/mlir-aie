@@ -42,6 +42,17 @@ def test_transform_add():
 
     assert np.allclose(original + 1, output.numpy())
 
+@pytest.mark.parametrize("add_value", [-1, 0, 1, 2, 3])
+def test_transform_add_parametrized(add_value):
+    """Test transform algorithm with different add values."""
+    input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input)
+    original = input.numpy().copy()
+    iron.jit(is_placed=False)(transform)(
+        lambda a: a + add_value, input, output, tile_size=TILE_SIZE
+    )
+
+    assert np.allclose(original + add_value, output.numpy())
 
 @pytest.mark.parametrize(
     "dtype,c_type",
@@ -194,7 +205,7 @@ def test_transform_binary_different_num_elements(num_elements):
 
 
 def test_transform_parallel_add():
-    """Test transform_parallel algorithm with simple add_one operation"""
+    """Test transform_parallel algorithm with simple add_one operation."""
     input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
     output = iron.zeros_like(input)
     iron.jit(is_placed=False)(transform_parallel)(
@@ -202,6 +213,17 @@ def test_transform_parallel_add():
     )
     assert np.allclose(input.numpy() + 1, output.numpy())
 
+@pytest.mark.parametrize("add_value", [-1, 0, 1, 2, 3])
+def test_transform_parallel_add_parametrized(add_value):
+    """Test transform_parallel algorithm with different add values."""
+    input = iron.randint(0, 100, (1024,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input)
+    original = input.numpy().copy()
+    iron.jit(is_placed=False)(transform_parallel)(
+        lambda a: a + add_value, input, output, tile_size=TILE_SIZE
+    )
+
+    assert np.allclose(original + add_value, output.numpy())
 
 @pytest.mark.parametrize("dtype", [np.float32, np.int32])
 def test_transform_parallel_different_datatypes(dtype):

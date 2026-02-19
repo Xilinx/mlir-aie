@@ -9,7 +9,6 @@ import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.iron as iron
@@ -218,9 +217,7 @@ def _transform_parallel_gen(func, inputs: list, output, *params, tile_size=16):
     dtype = ref_dtype
 
     # Determine number of columns based on device
-    num_columns = 4
-    if isinstance(iron.get_current_device(), NPU2):
-        num_columns = 8
+    num_columns = iron.get_current_device().cols
 
     per_tile_elements = tile_size
     n = per_tile_elements * num_columns

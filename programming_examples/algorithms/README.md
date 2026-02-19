@@ -26,8 +26,6 @@ Pre-built algorithms for common dataflow patterns on AIE. These abstractions han
 
 For C++ kernels, the kernel signature and `ExternalFunction` must match the algorithm's expected format.
 
-**Important:** The last argument in every kernel must be `tile_size` (`np.int32`), which receives the tile size at runtime.
-
 | Algorithm | C++ Kernel Signature | ExternalFunction arg_types |
 |-----------|---------------------|---------------------------|
 | `transform` | `void kernel(T* in, T* out, params..., int32_t tile_size)` | `[tile_ty, tile_ty, *param_types, np.int32]` |
@@ -36,14 +34,23 @@ For C++ kernels, the kernel signature and `ExternalFunction` must match the algo
 | `transform_parallel` | `void kernel(T* in, T* out, params..., int32_t tile_size)` | `[tile_ty, tile_ty, *param_types, np.int32]` |
 | `transform_parallel_binary` | `void kernel(T* in1, T* in2, T* out, params..., int32_t tile_size)` | `[tile_ty, tile_ty, tile_ty, *param_types, np.int32]` |
 
-### Example: transform with ExternalFunction
+## Important: Tile Size Configuration
+The algorithm library automatically tiles input/output tensors and streams them through ObjectFifos. However, C++ kernels require tile_size as a runtime parameter because they loop over tile data without compile-time knowledge of the size. As such the last argument of each kernel this library supports must be `tile_size` (`np.int32`)
+
+For setup, this means:
+- `ExternalFunction.arg_types` must match the C++ kernel signature, using tile-sized array shapes
+- **Algorithm call** accepts full-size tensors and handles tile automatically in terms of ObjectFifo streaming.
+- `tile_size` **must be passed explictly** as a keyword argument because the kernel needs it at runtime.
+
+**TODO:** Future work is needed to consolidate this setup process and combine with ExternalFunction declaration.
+
+### Example: `transform` with ExternalFunction
 ```python
 TILE_SIZE = 16
 tile_ty = np.ndarray[(TILE_SIZE,), np.dtype[np.int16]]
 scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
 # Input and output should still be declared as tiled shapes in arg_types
-# TODO: remove this discrepancy
 my_kernel = ExternalFunction(
     "my_kernel",
     source_file="my_kernel.cc",
