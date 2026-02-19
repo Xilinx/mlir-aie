@@ -240,7 +240,7 @@ The tool provides clear error messages for common issues:
 ```
 Error: No input file specified
 Error: No AIE devices found in module
-Error: Could not find aie-opt tool
+Error: Could not find Peano installation
 Error: Command failed with exit code 1
 ```
 
@@ -248,10 +248,13 @@ Use `--verbose` to see detailed command execution and debug issues.
 
 ## Environment
 
-The tool respects standard MLIR/AIE environment variables and automatically finds tools in the PATH or relative to its installation directory.
+The tool respects standard MLIR/AIE environment variables:
+- `PEANO_INSTALL_DIR` - Peano compiler installation directory
+- `VIRTUAL_ENV` - Python virtual environment (for auto-discovering llvm-aie package)
+
+Tools are automatically found in PATH or relative to the aiecc installation directory.
 
 ## See Also
 
 - Python aiecc: `python/compiler/aiecc/main.py`
 - AIE dialect documentation: `docs/`
-- MLIR passes: Run `aie-opt --help` for available passes
