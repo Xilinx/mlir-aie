@@ -552,6 +552,36 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
                                    zeroConstOp.getResult());
 }
 
+// Helper to pad a v16bf16 vector to v32bf16 by concatenating with a splat of
+// the given infinity value. Used by min/max reduction patterns.
+// Returns {paddedVector, newLaneSize}.
+static std::pair<Value, unsigned>
+padV16ToV32WithInfinity(ConversionPatternRewriter &rewriter, Location loc,
+                        Value inputVec, Type scalarType, bool negativeInf) {
+  VectorType v32bf16Type = createVectorType(32, scalarType);
+  VectorType v16bf16Type = createVectorType(16, scalarType);
+
+  // Create a scalar infinity constant
+  auto infAttr = rewriter.getFloatAttr(
+      scalarType,
+      APFloat::getInf(cast<FloatType>(scalarType).getFloatSemantics(),
+                      negativeInf));
+  auto splatInf = arith::ConstantOp::create(rewriter, loc, infAttr).getResult();
+
+  // Broadcast to v32bf16, then extract upper half (which is also infinity)
+  auto infVec =
+      aievec::BroadcastScalarOp::create(rewriter, loc, v32bf16Type, splatInf);
+  auto infUpperHalf =
+      aievec::ExtOp::create(rewriter, loc, v16bf16Type, infVec, 1);
+
+  // Concatenate input with infinity padding
+  Value paddedVec =
+      aievec::ConcatOp::create(rewriter, loc, v32bf16Type,
+                               ValueRange{inputVec, infUpperHalf.getResult()});
+
+  return {paddedVec, 32};
+}
+
 static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
                                         Operation *parentSymbolTableOp,
                                         StringRef funcName, TypeRange inTypes,
@@ -1887,20 +1917,32 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (auto kind = srcOp.getKind(); kind != vector::CombiningKind::MINSI &&
                                      kind != vector::CombiningKind::MINUI &&
-                                     kind != vector::CombiningKind::MINIMUMF)
+                                     kind != vector::CombiningKind::MINIMUMF &&
+                                     kind != vector::CombiningKind::MINNUMF)
       return failure();
 
     auto vType = cast<VectorType>(srcOp.getVector().getType());
     Type scalarType = vType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
+    unsigned vectorSize = laneSize * elWidth;
 
-    if (laneSize * elWidth != 512)
+    // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
+    if (vectorSize != 512 && !(vectorSize == 256 && scalarType.isBF16()))
       return failure();
+
+    Location loc = srcOp.getLoc();
+    Value inputVec = srcOp.getVector();
+
+    // For 256-bit bf16 (v16bf16), pad to 512-bit (v32bf16) with +inf
+    if (vectorSize == 256) {
+      std::tie(inputVec, laneSize) = padV16ToV32WithInfinity(
+          rewriter, loc, srcOp.getVector(), scalarType, /*negativeInf=*/false);
+    }
 
     int shiftIndex = laneSize / 2;
     auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MinOp>(
-        rewriter, srcOp, shiftIndex, srcOp.getVector());
+        rewriter, srcOp, shiftIndex, inputVec);
 
     if (srcOp.getAcc()) {
       Value reduceResult = reduceResultOp.getResult();
@@ -1951,13 +1993,25 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
     Type scalarType = vType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
+    unsigned vectorSize = laneSize * elWidth;
 
-    if (laneSize * elWidth != 512)
+    // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
+    // Only bf16 is supported for the 256-bit padding path (not f16)
+    if (vectorSize != 512 && !(vectorSize == 256 && scalarType.isBF16()))
       return failure();
+
+    Location loc = srcOp.getLoc();
+    Value inputVec = srcOp.getVector();
+
+    // For 256-bit bf16 (v16bf16), pad to 512-bit (v32bf16) with -inf
+    if (vectorSize == 256) {
+      std::tie(inputVec, laneSize) = padV16ToV32WithInfinity(
+          rewriter, loc, srcOp.getVector(), scalarType, /*negativeInf=*/true);
+    }
 
     int shiftIndex = laneSize / 2;
     auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MaxOp>(
-        rewriter, srcOp, shiftIndex, srcOp.getVector());
+        rewriter, srcOp, shiftIndex, inputVec);
 
     if (srcOp.getAcc()) {
       Value reduceResult = reduceResultOp.getResult();
@@ -4724,6 +4778,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                       kind != vector::CombiningKind::MINSI &&
                                       kind != vector::CombiningKind::MINUI &&
                                       kind != vector::CombiningKind::MINIMUMF &&
+                                      kind != vector::CombiningKind::MINNUMF &&
                                       kind != vector::CombiningKind::MAXSI &&
                                       kind != vector::CombiningKind::MAXUI &&
                                       kind != vector::CombiningKind::MAXIMUMF &&
