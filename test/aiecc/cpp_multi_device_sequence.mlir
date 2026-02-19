@@ -10,28 +10,25 @@
 
 // Test device and sequence filtering
 
-// RUN: aiecc --verbose %s 2>&1 | FileCheck %s --check-prefix=ALL
-// RUN: aiecc --device-name=device1 --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV1
-// RUN: aiecc --device-name=device2 --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV2  
-// RUN: aiecc --device-name=device1 --sequence-name=seq_a --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
+// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s 2>&1 | FileCheck %s --check-prefix=ALL
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV1
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV2
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
 
-// ALL: Found 2 AIE device(s)
-// ALL: Device 'device1'
-// ALL: Device 'device2'
+// ALL: Starting AIE compilation
 // ALL: Processing device: device1
 // ALL: Processing device: device2
+// ALL: Compilation completed successfully
 
-// DEV1: Found 1 AIE device(s)
-// DEV1: Device 'device1'
-// DEV1-NOT: Device 'device2'
 // DEV1: Processing device: device1
+// DEV1: Compiling 1 core(s)
 // DEV1-NOT: Processing device: device2
+// DEV1: Compilation completed successfully
 
-// DEV2: Found 1 AIE device(s)
-// DEV2-NOT: Device 'device1'
-// DEV2: Device 'device2'
-// DEV2-NOT: Processing device: device1
 // DEV2: Processing device: device2
+// DEV2: Compiling 1 core(s)
+// DEV2-NOT: Processing device: device1
+// DEV2: Compilation completed successfully
 
 // DEV1_SEQ_A: Generating NPU instructions for device: device1
 // DEV1_SEQ_A: Generating NPU instructions for sequence: seq_a

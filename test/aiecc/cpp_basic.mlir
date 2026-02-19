@@ -8,9 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aiecc --verbose %s | FileCheck %s
-// RUN: aiecc -n --verbose %s | FileCheck %s --check-prefix=DRY
-// RUN: aiecc --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=NPU
+// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge -n --verbose %s | FileCheck %s --check-prefix=DRY
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=NPU
 
 // CHECK: Successfully parsed input file
 // CHECK: Found 1 AIE device

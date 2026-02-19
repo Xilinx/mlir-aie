@@ -27,10 +27,10 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/Parser/Parser.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
+#include "mlir/Parser/Parser.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 
@@ -46,12 +46,12 @@
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/Dialect/AIEVec/Analysis/Passes.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
 #include "aie/Dialect/AIEVec/Transforms/Passes.h"
+#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
 #include "aie/version.h"
 
@@ -374,8 +374,8 @@ static std::string discoverPeanoInstallDir() {
 
     if (pythonPath) {
       // Use popen to capture output
-      std::string cmd =
-          *pythonPath + " -c \"import sysconfig; "
+      std::string cmd = *pythonPath +
+                        " -c \"import sysconfig; "
                         "print(sysconfig.get_path('platlib'))\" 2>/dev/null";
       FILE *pipe = popen(cmd.c_str(), "r");
       if (pipe) {
@@ -566,30 +566,19 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
   std::ostringstream oss;
   oss << "builtin.module("
       << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir},"
-      << "lower-affine,"
-      << "aie-canonicalize-device,"
-      << "aie.device("
-      << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos,"
-      << "aie-objectFifo-stateful-transform{"
+      << " target-backend=llvmir}," << "lower-affine,"
+      << "aie-canonicalize-device," << "aie.device(" << "aie-assign-lock-ids,"
+      << "aie-register-objectFifos," << "aie-objectFifo-stateful-transform{"
       << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
-      << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false")
-      << "},"
-      << "aie-assign-bd-ids,"
-      << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet,"
-      << "aie-lower-multicast,"
+      << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
+      << "aie-assign-bd-ids," << "aie-lower-cascade-flows,"
+      << "aie-lower-broadcast-packet," << "aie-lower-multicast,"
       << "aie-assign-tile-controller-ids,"
       << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
-      << (ctrlPktOverlay ? "true" : "false")
-      << "},"
+      << (ctrlPktOverlay ? "true" : "false") << "},"
       << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
-      << "},"
-      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
-      << "),"
-      << "convert-scf-to-cf"
-      << ")";
+      << "}," << "aie-vector-transfer-lowering{max-transfer-rank=1}" << "),"
+      << "convert-scf-to-cf" << ")";
   return oss.str();
 }
 
@@ -602,17 +591,10 @@ static std::string buildLLVMLoweringPipeline(StringRef deviceName,
       << "aie-standard-lowering{device=" << deviceName.str() << "},"
       << "aiex-standard-lowering,"
       << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize,"
-      << "cse,"
-      << "expand-strided-metadata,"
-      << "lower-affine,"
-      << "arith-expand,"
-      << "finalize-memref-to-llvm,"
+      << "canonicalize," << "cse," << "expand-strided-metadata,"
+      << "lower-affine," << "arith-expand," << "finalize-memref-to-llvm,"
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
-      << "convert-to-llvm{dynamic=true},"
-      << "canonicalize,"
-      << "cse"
-      << ")";
+      << "convert-to-llvm{dynamic=true}," << "canonicalize," << "cse" << ")";
   return oss.str();
 }
 
@@ -1519,7 +1501,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
 
   // Step 1: Run resource allocation and lowering passes
   // Note: Currently using subprocess call as in-memory execution has issues
-  // with nested pass pipeline matching. TODO: Debug and fix in-memory execution.
+  // with nested pass pipeline matching. TODO: Debug and fix in-memory
+  // execution.
   std::string pipeline = buildInputWithAddressesPipeline();
   std::string pipelineArg = "--pass-pipeline=" + pipeline;
 
@@ -1623,7 +1606,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
 }
 
 static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
-  // Register passes for in-memory execution (must happen before context creation)
+  // Register passes for in-memory execution (must happen before context
+  // creation)
   registerAllPasses();
   xilinx::registerConversionPasses();
   xilinx::AIE::registerAIEPasses();
