@@ -38,6 +38,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/SourceMgr.h"
@@ -411,7 +412,7 @@ static std::string discoverPeanoInstallDir() {
   // Try running python to get the actual site-packages path
   // This is a fallback that invokes python -c "import sysconfig;
   // print(sysconfig.get_path('platlib'))"
-  SmallString<256> pythonSitePackages;
+  // Use LLVM's ExecuteAndWait with output redirection to avoid shell injection
   {
     auto pythonPath = sys::findProgramByName("python3");
     if (!pythonPath) {
@@ -419,28 +420,49 @@ static std::string discoverPeanoInstallDir() {
     }
 
     if (pythonPath) {
-      // Use popen to capture output
-      std::string cmd = *pythonPath +
-                        " -c \"import sysconfig; "
-                        "print(sysconfig.get_path('platlib'))\" 2>/dev/null";
-      FILE *pipe = popen(cmd.c_str(), "r");
-      if (pipe) {
-        char buffer[256];
-        if (fgets(buffer, sizeof(buffer), pipe)) {
-          // Remove trailing newline
-          std::string result(buffer);
-          while (!result.empty() &&
-                 (result.back() == '\n' || result.back() == '\r')) {
-            result.pop_back();
-          }
-          SmallString<256> llvmAiePath(result);
-          sys::path::append(llvmAiePath, "llvm-aie");
-          if (sys::fs::is_directory(llvmAiePath)) {
-            pclose(pipe);
-            return std::string(llvmAiePath);
+      // Create a temporary file for output
+      SmallString<128> tempFile;
+      std::error_code ec =
+          sys::fs::createTemporaryFile("peano-discover", "txt", tempFile);
+      if (!ec) {
+        StringRef nullFile;
+#ifdef _WIN32
+        nullFile = "NUL";
+#else
+        nullFile = "/dev/null";
+#endif
+        // Redirect stdout to temp file, stderr to /dev/null
+        std::optional<StringRef> redirects[] = {/*stdin=*/nullFile,
+                                                /*stdout=*/StringRef(tempFile),
+                                                /*stderr=*/nullFile};
+
+        SmallVector<StringRef, 4> args = {
+            *pythonPath, "-c",
+            "import sysconfig; print(sysconfig.get_path('platlib'))"};
+
+        int result =
+            sys::ExecuteAndWait(*pythonPath, args, /*Env=*/std::nullopt,
+                                redirects, /*secondsToWait=*/5);
+
+        if (result == 0) {
+          // Read the output from the temp file
+          auto bufOrErr = MemoryBuffer::getFile(tempFile);
+          if (bufOrErr) {
+            std::string output = (*bufOrErr)->getBuffer().str();
+            // Remove trailing newline
+            while (!output.empty() &&
+                   (output.back() == '\n' || output.back() == '\r')) {
+              output.pop_back();
+            }
+            SmallString<256> llvmAiePath(output);
+            sys::path::append(llvmAiePath, "llvm-aie");
+            sys::fs::remove(tempFile);
+            if (sys::fs::is_directory(llvmAiePath)) {
+              return std::string(llvmAiePath);
+            }
           }
         }
-        pclose(pipe);
+        sys::fs::remove(tempFile);
       }
     }
   }
@@ -564,28 +586,19 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
   std::ostringstream oss;
   oss << "builtin.module("
       << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir},"
-      << "lower-affine,"
-      << "aie-canonicalize-device,"
-      << "aie.device("
-      << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos,"
-      << "aie-objectFifo-stateful-transform{"
+      << " target-backend=llvmir}," << "lower-affine,"
+      << "aie-canonicalize-device," << "aie.device(" << "aie-assign-lock-ids,"
+      << "aie-register-objectFifos," << "aie-objectFifo-stateful-transform{"
       << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
       << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
-      << "aie-assign-bd-ids,"
-      << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet,"
-      << "aie-lower-multicast,"
+      << "aie-assign-bd-ids," << "aie-lower-cascade-flows,"
+      << "aie-lower-broadcast-packet," << "aie-lower-multicast,"
       << "aie-assign-tile-controller-ids,"
       << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
       << (ctrlPktOverlay ? "true" : "false") << "},"
       << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
-      << "},"
-      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
-      << "),"
-      << "convert-scf-to-cf"
-      << ")";
+      << "}," << "aie-vector-transfer-lowering{max-transfer-rank=1}" << "),"
+      << "convert-scf-to-cf" << ")";
   return oss.str();
 }
 
@@ -599,17 +612,10 @@ buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
       << "aie-standard-lowering{device=" << deviceName.str() << "},"
       << "aiex-standard-lowering,"
       << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize,"
-      << "cse,"
-      << "expand-strided-metadata,"
-      << "lower-affine,"
-      << "arith-expand,"
-      << "finalize-memref-to-llvm,"
+      << "canonicalize," << "cse," << "expand-strided-metadata,"
+      << "lower-affine," << "arith-expand," << "finalize-memref-to-llvm,"
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
-      << "convert-to-llvm{dynamic=true},"
-      << "canonicalize,"
-      << "cse"
-      << ")";
+      << "convert-to-llvm{dynamic=true}," << "canonicalize," << "cse" << ")";
   return oss.str();
 }
 
