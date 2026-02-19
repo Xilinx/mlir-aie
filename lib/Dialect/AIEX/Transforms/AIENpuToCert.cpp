@@ -189,8 +189,6 @@ struct NpuAddressPatchToCertApplyOffset57
                   ConversionPatternRewriter &rewriter) const override {
     // find the previous blockwrite operation
     Block::iterator it(op);
-    if (it == op->getBlock()->begin())
-      return failure();
     while (it != op->getBlock()->begin()) {
       --it;
       auto blockWriteOp = dyn_cast<AIEX::NpuBlockWriteOp>(*it);
@@ -233,18 +231,17 @@ struct MergeConsecutiveCertUcDmaWriteDesSyncOps
                                 PatternRewriter &rewriter) const override {
     // Get the previous operation in the block
     Block::iterator it(op);
-    if (it == op->getBlock()->begin())
-      return failure();
     AIEX::CertUcDmaWriteDesSyncOp prevWriteDesSync = nullptr;
-    do {
-      if (--it == op->getBlock()->end())
-        return failure();
+    while (it != op->getBlock()->begin() && !prevWriteDesSync) {
+      --it;
       Operation *prevOp = &*it;
       if (isa<AIEX::CertWrite32Op, AIEX::CertMaskWrite32Op,
               AIEX::CertApplyOffset57Op, AIEX::CertWaitTCTSOp>(prevOp))
         return failure();
       prevWriteDesSync = dyn_cast<AIEX::CertUcDmaWriteDesSyncOp>(prevOp);
-    } while (!prevWriteDesSync);
+    }
+    if (!prevWriteDesSync)
+      return failure();
 
     // find the uc_dma_chain
     StringRef sym_name = op.getSymbol();
