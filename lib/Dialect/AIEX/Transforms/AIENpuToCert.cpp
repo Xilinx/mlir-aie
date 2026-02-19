@@ -463,15 +463,6 @@ struct AIENpuToCertPass : AIEX::AIENpuToCertBase<AIENpuToCertPass> {
 
 } // namespace
 
-static uint32_t estimateCost(Operation *op) {
-  if (auto jobOp = dyn_cast<AIEX::CertJobOp>(op)) {
-    return estimateCost(jobOp);
-  } else if (!isa<AIE::EndOp>(op)) {
-    op->emitOpError("contains unsupported operation in cert job");
-  }
-  return 0;
-}
-
 static uint32_t estimateCost(AIEX::CertJobOp op, uint32_t split_target,
                              Block::iterator &split_iter) {
   // assume a job is on its own page
