@@ -1752,6 +1752,25 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     llvm::outs() << "Detected AIE target: " << aieTarget << "\n";
   }
 
+  // If device filtering is requested, remove non-matching devices from the
+  // module before running passes. This prevents passes from running on devices
+  // that won't be compiled, which can cause issues in some environments.
+  if (!deviceName.empty()) {
+    SmallVector<xilinx::AIE::DeviceOp> toErase;
+    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
+      if (deviceOp.getSymName() != deviceName) {
+        toErase.push_back(deviceOp);
+      }
+    }
+    for (auto deviceOp : toErase) {
+      if (verbose) {
+        llvm::outs() << "Removing non-matching device: "
+                     << deviceOp.getSymName() << "\n";
+      }
+      deviceOp.erase();
+    }
+  }
+
   // Step 1: Run resource allocation and lowering passes in-memory
   if (failed(runResourceAllocationPipeline(moduleOp, aieTarget))) {
     return failure();
