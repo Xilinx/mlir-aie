@@ -112,6 +112,7 @@ def AIE_TileOp: AIE_Op<"tile", [
     int rowIndex() { return getRow(); }
     TileID getTileID() { return {getCol(), getRow()}; }
     AIETileType getTileType();
+    bool isCoreTile() { return getTileType() == AIETileType::CoreTile; }
     bool isShimTile() { return getRow() == 0; }
     bool isMemTile() { return getTileType() == AIETileType::MemTile; }
     bool isShimNOCTile() { return getTileType() == AIETileType::ShimNOCTile; }
@@ -214,9 +215,8 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
     TileOp getTileOp();
     size_t getNumSourceConnections(WireBundle bundle);
     size_t getNumDestConnections(WireBundle bundle);
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      ::xilinx::AIE::TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+      TileElement::Trait<SwitchboxOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -276,9 +276,8 @@ def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
     TileOp getTileOp();
     size_t getNumSourceConnections(WireBundle bundle);
     size_t getNumDestConnections(WireBundle bundle);
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      ::xilinx::AIE::TileElement::Trait<ShimMuxOp>::getAsmResultNames(setNameFn);
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+      TileElement::Trait<ShimMuxOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -317,12 +316,10 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
-
   let extraClassDeclaration = [{
     TileOp getTileOp();
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      ::xilinx::AIE::TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+      TileElement::Trait<ShimDMAOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -382,12 +379,11 @@ def AIE_CoreOp: AIE_Op<"core", [
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
+    TileOp getTileOp();
     bool isMemWest() { return ((rowIndex() % 2) == 0); };
     bool isEmpty();
-    TileOp getTileOp();
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      ::xilinx::AIE::TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+      TileElement::Trait<CoreOp>::getAsmResultNames(setNameFn);
     }
   }];
 
@@ -1089,8 +1085,7 @@ def AIE_DMAOp: AIE_Op<"dma", [
   let hasVerifier = 1;
 
   let extraClassDefinition = [{
-    void $cppClass::getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+    void $cppClass::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (auto name = getOperation()->getAttrOfType<mlir::StringAttr>(
               mlir::SymbolTable::getSymbolAttrName()))
         setNameFn(getResult(), name.str());
@@ -1129,12 +1124,10 @@ def AIE_MemOp: AIE_Op<"mem", [
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
-
   let extraClassDeclaration = [{
     TileOp getTileOp();
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      ::xilinx::AIE::TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+      TileElement::Trait<MemOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -1174,12 +1167,10 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
   let regions = (region AnyRegion:$body);
   let assemblyFormat = [{ `(` $tile `)` regions attr-dict }];
   let hasVerifier = 1;
-
   let extraClassDeclaration = [{
     TileOp getTileOp();
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      ::xilinx::AIE::TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+      TileElement::Trait<MemTileDMAOp>::getAsmResultNames(setNameFn);
     }
   }];
 }
@@ -1265,16 +1256,16 @@ def AIE_LockOp: AIE_Op<"lock", [
     }
 
     TileOp getTileOp();
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+
+    void getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
       else {
         std::string nameWithoutDialect =
-            getOperationName().str().substr(getOperationName().find('.') + 1);
+            getOperation()->getName().stripDialect().str();
         setNameFn(getResult(), nameWithoutDialect + "_" +
-              std::to_string(getTileID().col) + "_" +
-              std::to_string(getTileID().row));
+              std::to_string(colIndex()) + "_" +
+              std::to_string(rowIndex()));
       }
     }
   }];
@@ -1393,19 +1384,18 @@ def AIE_BufferOp: AIE_Op<"buffer", [
       llvm::report_fatal_error("couldn't get name");
     }
 
+    TileOp getTileOp();
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
-    TileOp getTileOp();
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+    void getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
       else {
         std::string nameWithoutDialect =
-            getOperationName().str().substr(getOperationName().find('.') + 1);
+            getOperation()->getName().stripDialect().str();
         setNameFn(getResult(), nameWithoutDialect + "_" +
-              std::to_string(getTileID().col) + "_" +
-              std::to_string(getTileID().row));
+              std::to_string(colIndex()) + "_" +
+              std::to_string(rowIndex()));
       }
     }
   }];
@@ -1457,8 +1447,7 @@ def AIE_ExternalBufferOp: AIE_Op<"external_buffer", [
   }];
 
   let extraClassDefinition = [{
-    void $cppClass::getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
+    void $cppClass::getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
     }

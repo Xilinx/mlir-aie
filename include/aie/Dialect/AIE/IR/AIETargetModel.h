@@ -260,8 +260,13 @@ public:
   /// Return the size (in bits) of the accumulator/cascade.
   virtual uint32_t getAccumulatorCascadeSize() const = 0;
 
-  /// Return the number of lock objects
-  virtual uint32_t getNumLocks(int col, int row) const = 0;
+  /// Return the number of lock objects for a given tile type.
+  virtual uint32_t getNumLocks(AIETileType tileType) const = 0;
+
+  /// Return the number of lock objects for a tile at the given coordinates.
+  uint32_t getNumLocks(int col, int row) const {
+    return getNumLocks(getTileType(col, row));
+  }
 
   /// Return the maximum value that can be stored in a lock register
   virtual uint32_t getMaxLockValue() const = 0;
@@ -271,9 +276,14 @@ public:
   virtual std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
                                                       TileID tile) const = 0;
 
+  /// Return the number of buffer descriptors for a given tile type.
+  virtual uint32_t getNumBDs(AIETileType tileType) const = 0;
+
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
-  virtual uint32_t getNumBDs(int col, int row) const = 0;
+  uint32_t getNumBDs(int col, int row) const {
+    return getNumBDs(getTileType(col, row));
+  }
 
   /// Return true iff buffer descriptor `bd_id` on tile (`col`, `row`) can be
   /// submitted on channel `channel`.
@@ -410,11 +420,16 @@ public:
   uint32_t getMemEastBaseAddress() const override { return 0x00038000; }
   uint32_t getLocalMemorySize() const override { return 0x00008000; }
   uint32_t getAccumulatorCascadeSize() const override { return 384; }
-  uint32_t getNumLocks(int col, int row) const override { return 16; }
+  using AIETargetModel::getNumLocks;
+  uint32_t getNumLocks(AIETileType tileType) const override {
+    return 16; // AIE1 has no MemTiles, always 16
+  }
   uint32_t getMaxLockValue() const override { return 1; }
   std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
                                               TileID tile) const override;
-  uint32_t getNumBDs(int col, int row) const override { return 16; }
+  uint32_t getNumBDs(AIETileType tileType) const override {
+    return 16; // AIE1 has no MemTiles, always 16
+  }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
@@ -501,8 +516,9 @@ public:
   uint32_t getLocalMemorySize() const override { return 0x00010000; }
   uint32_t getAccumulatorCascadeSize() const override { return 512; }
 
-  uint32_t getNumLocks(int col, int row) const override {
-    return getTileType(col, row) == AIETileType::MemTile ? 64 : 16;
+  using AIETargetModel::getNumLocks;
+  uint32_t getNumLocks(AIETileType tileType) const override {
+    return tileType == AIETileType::MemTile ? 64 : 16;
   }
 
   uint32_t getMaxLockValue() const override { return 0x3F; }
@@ -510,8 +526,8 @@ public:
   std::optional<uint32_t> getLocalLockAddress(uint32_t lockId,
                                               TileID tile) const override;
 
-  uint32_t getNumBDs(int col, int row) const override {
-    return getTileType(col, row) == AIETileType::MemTile ? 48 : 16;
+  uint32_t getNumBDs(AIETileType tileType) const override {
+    return tileType == AIETileType::MemTile ? 48 : 16;
   }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
