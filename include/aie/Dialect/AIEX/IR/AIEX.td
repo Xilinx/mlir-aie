@@ -1017,6 +1017,129 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
+//===----------------------------------------------------------------------===//
+// Dynamic Runtime Sequence Operations
+//===----------------------------------------------------------------------===//
+// These operations accept SSA values for parameters that were previously
+// static attributes, enabling runtime-parameterized sequences and lowering
+// to templated C++ code.
+
+def AIE_NpuDynWrite32Op: AIEX_Op<"npu.dyn_write32", [HasParent<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Dynamic write32 operator with SSA value operands";
+  let arguments = (
+    ins AnySignlessInteger:$address,
+        AnySignlessInteger:$value,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $address `,` $value `)` attr-dict `:` type($address) `,` type($value)
+  }];
+  let description = [{
+    Dynamic NPU write32 operator that accepts SSA values for address and value,
+    enabling runtime parameterization. If 'buffer', 'column', or 'row' are present,
+    they function the same as in npu.write32. This operation can be lowered to
+    templated C++ code for runtime transaction generation.
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_NpuDynMaskWrite32Op: AIEX_Op<"npu.dyn_maskwrite32", [HasParent<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Dynamic masked write32 operator with SSA value operands";
+  let arguments = (
+    ins AnySignlessInteger:$address,
+        AnySignlessInteger:$value,
+        AnySignlessInteger:$mask,
+        OptionalAttr<FlatSymbolRefAttr>:$buffer,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
+  }];
+  let description = [{
+    Dynamic NPU maskwrite32 operator that accepts SSA values for address, value,
+    and mask, enabling runtime parameterization.
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_NpuDynDmaMemcpyNdOp: AIEX_Op<"npu.dyn_dma_memcpy_nd", [
+    HasParent<"AIE::RuntimeSequenceOp">,
+    AttrSizedOperandSegments
+  ]> {
+  let summary = "Fully dynamic n-dimensional DMA operator with SSA values";
+
+  let description = [{
+    A fully dynamic n-dimensional half DMA operator where all sizes, strides,
+    and offsets are SSA values instead of attributes. This enables runtime
+    parameterization of the DMA configuration and lowering to templated C++
+    code for runtime transaction generation.
+
+    Unlike `npu.dma_memcpy_nd`, this operation requires all offsets, sizes,
+    and strides to be provided as SSA values. Static optimizations can be
+    applied via canonicalization if the values are constants.
+
+    The `metadata` symbol and `id` remain as attributes since they reference
+    compile-time device configuration.
+  }];
+
+  let arguments = (
+    ins AnyRankedOrUnrankedMemRef:$memref,
+        Variadic<Index>:$offsets,
+        Variadic<Index>:$sizes,
+        Variadic<Index>:$strides,
+        SymbolRefAttr:$metadata,
+        I64Attr:$id,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
+        OptionalAttr<PacketInfoAttr>:$packet
+  );
+
+  let assemblyFormat = [{
+    `(` $memref `,` $offsets `,` $sizes `,` $strides
+    (`,` `packet` `=` $packet^)? `)`
+    attr-dict `:` type($memref) `,` type($offsets) `,` type($sizes) `,` type($strides)
+  }];
+
+  let extraClassDeclaration = [{
+    uint64_t getElementTypeBitwidth();
+  }];
+
+  let extraClassDefinition = [{
+    uint64_t $cppClass::getElementTypeBitwidth() {
+      DataLayout dataLayout = DataLayout::closest(*this);
+      return dataLayout.getTypeSizeInBits(getMemref().getType().getElementType());
+    }
+  }];
+
+  let hasVerifier = 1;
+}
+
+def AIE_NpuDynSyncOp: AIEX_Op<"npu.dyn_sync", [HasParent<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Dynamic synchronization operator with SSA value operands";
+  let arguments = (
+    ins AnySignlessInteger:$column,
+        AnySignlessInteger:$row,
+        AnySignlessInteger:$direction,
+        AnySignlessInteger:$channel,
+        AnySignlessInteger:$column_num,
+        AnySignlessInteger:$row_num
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $column `,` $row `,` $direction `,` $channel `,` $column_num `,` $row_num `)`
+    attr-dict `:` type($column) `,` type($row) `,` type($direction) `,` type($channel) `,` type($column_num) `,` type($row_num)
+  }];
+  let description = [{
+    Dynamic NPU synchronization operator that waits for a task completion token
+    with runtime-parameterized tile coordinates, direction, and channel.
+  }];
+  let hasVerifier = 1;
+}
+
 def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
