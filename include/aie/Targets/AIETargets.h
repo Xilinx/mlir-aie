@@ -70,6 +70,9 @@ mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
                                              llvm::raw_ostream &output,
                                              llvm::StringRef deviceName);
 
+mlir::LogicalResult AIETranslateToCppTxn(mlir::ModuleOp module,
+                                         llvm::raw_ostream &output);
+
 } // namespace AIE
 
 namespace aievec {

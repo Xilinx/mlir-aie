@@ -400,5 +400,11 @@ void registerAIETranslations() {
         return success();
       },
       registerDialects);
+  TranslateFromMLIRRegistration registrationCppTxn(
+      "aie-generate-txn-cpp", "Generate C++ transaction sequence code",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateToCppTxn(module, output);
+      },
+      registerDialects);
 }
 } // namespace xilinx::AIE

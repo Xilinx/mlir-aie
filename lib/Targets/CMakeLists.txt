@@ -33,6 +33,7 @@ add_mlir_library(AIETargets
   AIETargets.cpp
   AIETargetBCF.cpp
   AIETargetCDODirect.cpp
+  AIETargetCppTxn.cpp
   AIETargetNPU.cpp
   AIETargetLdScript.cpp
   AIETargetXAIEV2.cpp
