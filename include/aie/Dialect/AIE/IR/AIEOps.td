@@ -81,6 +81,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
 
 def AIE_TileOp: AIE_Op<"tile", [
     Pure,
+    DeclareOpInterfaceMethods<TileLike>,
     IsFlowEndPoint,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
@@ -106,21 +107,9 @@ def AIE_TileOp: AIE_Op<"tile", [
   }];
 
   let extraClassDeclaration = [{
-    size_t getNumSourceConnections(WireBundle bundle);
-    size_t getNumDestConnections(WireBundle bundle);
     int colIndex() { return getCol(); }
     int rowIndex() { return getRow(); }
     TileID getTileID() { return {getCol(), getRow()}; }
-    AIETileType getTileType();
-    bool isCoreTile() { return getTileType() == AIETileType::CoreTile; }
-    bool isShimTile() { return getRow() == 0; }
-    bool isMemTile() { return getTileType() == AIETileType::MemTile; }
-    bool isShimNOCTile() { return getTileType() == AIETileType::ShimNOCTile; }
-    bool isShimPLTile() { return getTileType() == AIETileType::ShimPLTile; }
-    bool isShimNOCorPLTile() { 
-      AIETileType t = getTileType();
-      return t == AIETileType::ShimNOCTile || t == AIETileType::ShimPLTile; 
-    }
     bool isInternalMemWest() { return ((rowIndex() % 2) == 0); };
 
     MemOp getMemOp() {
