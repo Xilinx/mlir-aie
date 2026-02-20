@@ -7,6 +7,7 @@
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
+import argparse
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
@@ -14,8 +15,7 @@ from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
 
-def vector_softmax(dev, trace_size):
-    N = 262144  # *1024
+def vector_softmax(dev, trace_size, N):
 
     # Tile sizes
     n = 1024
@@ -91,17 +91,51 @@ def vector_softmax(dev, trace_size):
     return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-try:
-    device_name = str(sys.argv[1])
-    if device_name == "npu":
+def main():
+    parser = argparse.ArgumentParser(prog="softmax")
+    parser.add_argument(
+        "device_name",
+        choices=["npu", "npu2"],
+        default="npu",
+        help="Device name (npu or npu2)",
+    )
+    parser.add_argument(
+        "trace_size_pos",
+        nargs="?",
+        type=int,
+        default=0,
+        help="Trace size (optional positional, default: 0)",
+    )
+    parser.add_argument(
+        "--trace_size",
+        dest="trace_size_flag",
+        type=int,
+        default=0,
+        help="Trace size (optional flag, default: 0)",
+    )
+    parser.add_argument(
+        "--size",
+        type=int,
+        default=262144,
+        help="Size of the input vector (default: 262144)",
+    )
+
+    args = parser.parse_args()
+
+    trace_size = (
+        args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
+    )
+
+    if args.device_name == "npu":
         dev = NPU1Col1()
-    elif device_name == "npu2":
+    elif args.device_name == "npu2":
         dev = NPU2Col1()
     else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[2]))
-    trace_size = 0 if (len(sys.argv) != 3) else int(sys.argv[2])
-except ValueError:
-    print("Argument is not an integer")
+        raise ValueError(f"[ERROR] Device name {args.device_name} is unknown")
 
-module = vector_softmax(dev, trace_size)
-print(module)
+    module = vector_softmax(dev, trace_size, args.size)
+    print(module)
+
+
+if __name__ == "__main__":
+    main()
