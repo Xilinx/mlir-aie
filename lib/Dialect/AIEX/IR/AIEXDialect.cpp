@@ -1039,3 +1039,94 @@ LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,
 
   return failure();
 }
+
+//===----------------------------------------------------------------------===//
+// Dynamic Runtime Sequence Operations Verification
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuDynWrite32Op::verify() {
+  // Ensure address and value are appropriate integer types
+  Type addrType = getAddress().getType();
+  Type valType = getValue().getType();
+
+  if (!addrType.isSignlessInteger())
+    return emitOpError("address must be a signless integer type");
+  if (!valType.isSignlessInteger())
+    return emitOpError("value must be a signless integer type");
+
+  // Address and value should be 32-bit or 64-bit integers (or index)
+  if (auto intType = dyn_cast<IntegerType>(addrType)) {
+    if (intType.getWidth() != 32 && intType.getWidth() != 64)
+      return emitOpError("address must be 32-bit or 64-bit integer");
+  }
+  if (auto intType = dyn_cast<IntegerType>(valType)) {
+    if (intType.getWidth() != 32 && intType.getWidth() != 64)
+      return emitOpError("value must be 32-bit or 64-bit integer");
+  }
+
+  return success();
+}
+
+LogicalResult AIEX::NpuDynMaskWrite32Op::verify() {
+  // Ensure all operands are appropriate integer types
+  Type addrType = getAddress().getType();
+  Type valType = getValue().getType();
+  Type maskType = getMask().getType();
+
+  if (!addrType.isSignlessInteger())
+    return emitOpError("address must be a signless integer type");
+  if (!valType.isSignlessInteger())
+    return emitOpError("value must be a signless integer type");
+  if (!maskType.isSignlessInteger())
+    return emitOpError("mask must be a signless integer type");
+
+  return success();
+}
+
+LogicalResult AIEX::NpuDynDmaMemcpyNdOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+  auto addressGranularity = targetModel.getAddressGenGranularity();
+
+  if (getElementTypeBitwidth() > addressGranularity) {
+    if (getOffsets().size() > 0)
+      return emitOpError(
+          "Cannot use dynamic offsets with element types larger than address "
+          "granularity");
+  }
+
+  // Verify that offsets, sizes, and strides are all index types
+  for (Value offset : getOffsets()) {
+    if (!offset.getType().isIndex())
+      return emitOpError("all offsets must be index type");
+  }
+  for (Value size : getSizes()) {
+    if (!size.getType().isIndex())
+      return emitOpError("all sizes must be index type");
+  }
+  for (Value stride : getStrides()) {
+    if (!stride.getType().isIndex())
+      return emitOpError("all strides must be index type");
+  }
+
+  // All three must have the same count
+  if (getOffsets().size() != getSizes().size() ||
+      getSizes().size() != getStrides().size())
+    return emitOpError(
+        "offsets, sizes, and strides must all have the same count");
+
+  // Maximum 4 dimensions supported by hardware
+  if (getSizes().size() > 4)
+    return emitOpError("maximum 4 dimensions supported");
+
+  return success();
+}
+
+LogicalResult AIEX::NpuDynSyncOp::verify() {
+  // Verify all operands are integer types
+  for (Value operand : getOperands()) {
+    if (!operand.getType().isSignlessInteger())
+      return emitOpError("all operands must be signless integer types");
+  }
+
+  return success();
+}
