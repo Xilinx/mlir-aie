@@ -830,19 +830,28 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
   std::ostringstream oss;
   oss << "builtin.module("
       << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir}," << "lower-affine,"
-      << "aie-canonicalize-device," << "aie.device(" << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos," << "aie-objectFifo-stateful-transform{"
+      << " target-backend=llvmir},"
+      << "lower-affine,"
+      << "aie-canonicalize-device,"
+      << "aie.device("
+      << "aie-assign-lock-ids,"
+      << "aie-register-objectFifos,"
+      << "aie-objectFifo-stateful-transform{"
       << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
       << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
-      << "aie-assign-bd-ids," << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet," << "aie-lower-multicast,"
+      << "aie-assign-bd-ids,"
+      << "aie-lower-cascade-flows,"
+      << "aie-lower-broadcast-packet,"
+      << "aie-lower-multicast,"
       << "aie-assign-tile-controller-ids,"
       << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
       << (ctrlPktOverlay ? "true" : "false") << "},"
       << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
-      << "}," << "aie-vector-transfer-lowering{max-transfer-rank=1}" << "),"
-      << "convert-scf-to-cf" << ")";
+      << "},"
+      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
+      << "),"
+      << "convert-scf-to-cf"
+      << ")";
   return oss.str();
 }
 
@@ -856,10 +865,17 @@ buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
       << "aie-standard-lowering{device=" << deviceName.str() << "},"
       << "aiex-standard-lowering,"
       << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize," << "cse," << "expand-strided-metadata,"
-      << "lower-affine," << "arith-expand," << "finalize-memref-to-llvm,"
+      << "canonicalize,"
+      << "cse,"
+      << "expand-strided-metadata,"
+      << "lower-affine,"
+      << "arith-expand,"
+      << "finalize-memref-to-llvm,"
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
-      << "convert-to-llvm{dynamic=true}," << "canonicalize," << "cse" << ")";
+      << "convert-to-llvm{dynamic=true},"
+      << "canonicalize,"
+      << "cse"
+      << ")";
   return oss.str();
 }
 
