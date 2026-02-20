@@ -101,10 +101,9 @@ def TileLike : OpInterface<"TileLike"> {
 def TileElement : OpInterface<"TileElement", [
     DeclareOpInterfaceMethods<OpAsmOpInterface>,
   ]> {
-  let description = [{
-    Interface for operations that exist in a TileOp.
-  }];
+  let description = [{ Interface for operations that exist in a TileOp. }];
   let cppNamespace = "::xilinx::AIE";
+  
   let methods = [
     InterfaceMethod<[{Return the tile operand value.}],
       "mlir::Value", "getTile", (ins)
