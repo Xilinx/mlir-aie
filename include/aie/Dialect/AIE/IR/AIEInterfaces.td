@@ -51,54 +51,40 @@ def IsFlowEndPoint : NativeOpTrait<"IsFlowEndPoint"> {
 def TileElement : OpInterface<"TileElement", [
     DeclareOpInterfaceMethods<OpAsmOpInterface>,
   ]> {
-  let description = [{
-    Interface for operations that exist in a TileOp.
-  }];
+  let description = [{ Interface for operations that exist in a TileOp. }];
   let cppNamespace = "::xilinx::AIE";
+  
   let methods = [
-    InterfaceMethod<[{
-        Return the tile operand value.
-      }],
-      "mlir::Value", "getTile", (ins )
+    InterfaceMethod<[{Return the tile operand value.}],
+      "mlir::Value", "getTile", (ins)
     >,
-    InterfaceMethod<[{
-        Return the location of the Tile where the element is located.
-      }],
-      "xilinx::AIE::TileID", "getTileID", (ins ),
-      /*methodBody=*/[{}],
-      /*defaultImpl=*/[{
-        ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
-        return op.getTileOp().getTileID();
+    InterfaceMethod<[{Return the column index of this tile element.}],
+      "int", "colIndex", (ins), [{}], [{
+        return $_op.getTileOp().getCol();
       }]
     >,
-    InterfaceMethod<[{
-        Return column.
-      }],
-      "int", "colIndex", (ins), 
-      /*methodBody=*/[{}],
-      /*defaultImpl=*/[{ 
-        return $_op.getTileID().col; 
+    InterfaceMethod<[{Return the row index of this tile element.}],
+      "int", "rowIndex", (ins), [{}], [{
+        return $_op.getTileOp().getRow();
       }]
     >,
-    InterfaceMethod<[{
-        Return row.
-      }],
-      "int", "rowIndex", (ins), 
-      /*methodBody=*/[{}],
-      /*defaultImpl=*/[{ 
-        return $_op.getTileID().row; 
+    InterfaceMethod<[{Return the TileID of this tile element.}],
+      "TileID", "getTileID", (ins), [{}], [{
+        return TileID{$_op.colIndex(), $_op.rowIndex()};
       }]
-    >,
+    >
   ];
+
+  let extraClassDeclaration = [{
+    TileOp getTileOp();
+  }];
+
   let extraTraitClassDeclaration = [{
-    void getAsmResultNames(
-        llvm::function_ref<void(mlir::Value, llvm::StringRef)> setNameFn) {
-      ConcreteOp op = llvm::cast<ConcreteOp>(this->getOperation());
-      std::string nameWithoutDialect =
-          op.getOperationName().str().substr(op.getOperationName().find('.') + 1);
-      setNameFn(op.getResult(), nameWithoutDialect + "_" +
-                                    std::to_string(getTileID().col) + "_" +
-                                    std::to_string(getTileID().row));
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
+      llvm::StringRef opName = $_op.getOperation()->getName().stripDialect();
+      std::string name = (opName + "_" + llvm::Twine($_op.colIndex()) + "_" +
+                          llvm::Twine($_op.rowIndex())).str();
+      setNameFn($_op.getResult(), name);
     }
   }];
 }
