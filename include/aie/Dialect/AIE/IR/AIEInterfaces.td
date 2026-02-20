@@ -28,14 +28,10 @@ def HasValidDMAChannels : NativeOpTrait<"HasValidDMAChannels"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
-def PredIsCoreTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isCoreTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
-                                                                       "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsMemTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isMemTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
-                                                                       "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsShimNOCTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimNOCTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
-                                                                        "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
-def PredIsShimPLTile : CPred<"xilinx::AIE::getTargetModel(&$_op).isShimPLTile(llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().col,"
-                                                                        "llvm::cast<xilinx::AIE::TileElement>($_op).getTileID().row)">;
+def PredIsCoreTile : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isCoreTile()">;
+def PredIsMemTile : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isMemTile()">;
+def PredIsShimNOCTile : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isShimNOCTile()">;
+def PredIsShimPLTile : CPred<"llvm::cast<xilinx::AIE::TileElement>($_op).getTileLike().isShimPLTile()">;
 
 def IsCoreTile : PredOpTrait<"op exists in a core tile", PredIsCoreTile>;
 def IsMemTile : PredOpTrait<"op exists in a MemTile", PredIsMemTile>;
@@ -48,6 +44,47 @@ def IsFlowEndPoint : NativeOpTrait<"IsFlowEndPoint"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
+def TileLike : OpInterface<"TileLike"> {
+  let description = [{ Interface for operations that represent an AIE tile (logical or physical). }];
+  let cppNamespace = "::xilinx::AIE";
+  
+  let methods = [
+    InterfaceMethod<[{Return the true hardware tile type.}],
+      "xilinx::AIE::AIETileType", "getTileType", (ins)
+    >,
+    InterfaceMethod<[{Return the optional column index.}],
+      "std::optional<int>", "tryGetCol", (ins)
+    >,
+    InterfaceMethod<[{Return the optional row index.}],
+      "std::optional<int>", "tryGetRow", (ins)
+    >,
+    InterfaceMethod<[{}], "bool", "isCoreTile", (ins), [{}], [{
+      return $_op.getTileType() == xilinx::AIE::AIETileType::CoreTile;
+    }]>,
+    InterfaceMethod<[{}], "bool", "isMemTile", (ins), [{}], [{
+      return $_op.getTileType() == xilinx::AIE::AIETileType::MemTile;
+    }]>,
+    InterfaceMethod<[{}], "bool", "isShimNOCTile", (ins), [{}], [{
+      return $_op.getTileType() == xilinx::AIE::AIETileType::ShimNOCTile;
+    }]>,
+    InterfaceMethod<[{}], "bool", "isShimPLTile", (ins), [{}], [{
+      return $_op.getTileType() == xilinx::AIE::AIETileType::ShimPLTile;
+    }]>,
+    InterfaceMethod<[{}], "bool", "isShimNOCorPLTile", (ins), [{}], [{
+      return $_op.isShimNOCTile() || $_op.isShimPLTile();
+    }]>,
+    InterfaceMethod<[{}], "bool", "isShimTile", (ins), [{}], [{
+      return $_op.isShimNOCTile() || $_op.isShimPLTile();
+    }]>,
+    InterfaceMethod<[{Return the number of source connections for a wire bundle.}],
+      "size_t", "getNumSourceConnections", (ins "xilinx::AIE::WireBundle":$bundle)
+    >,
+    InterfaceMethod<[{Return the number of dest connections for a wire bundle.}],
+      "size_t", "getNumDestConnections", (ins "xilinx::AIE::WireBundle":$bundle)
+    >,
+  ];
+}
+
 def TileElement : OpInterface<"TileElement", [
     DeclareOpInterfaceMethods<OpAsmOpInterface>,
   ]> {
@@ -58,17 +95,26 @@ def TileElement : OpInterface<"TileElement", [
     InterfaceMethod<[{Return the tile operand value.}],
       "mlir::Value", "getTile", (ins)
     >,
-    InterfaceMethod<[{Return the column index of this tile element.}],
+    InterfaceMethod<[{Return the TileLike interface for this element's tile.}],
+      "TileLike", "getTileLike", (ins), [{}], [{
+        return llvm::dyn_cast<TileLike>($_op.getTile().getDefiningOp());
+      }]
+    >,
+    InterfaceMethod<[{Return the column index of this element's tile. Asserts if unplaced.}],
       "int", "colIndex", (ins), [{}], [{
-        return $_op.getTileOp().getCol();
+        std::optional<int> col = $_op.getTileLike().tryGetCol();
+        assert(col.has_value() && "TileElement called colIndex() on an unplaced tile.");
+        return *col;
       }]
     >,
-    InterfaceMethod<[{Return the row index of this tile element.}],
+    InterfaceMethod<[{Return the row index of this element's tile. Asserts if unplaced.}],
       "int", "rowIndex", (ins), [{}], [{
-        return $_op.getTileOp().getRow();
+        std::optional<int> row = $_op.getTileLike().tryGetRow();
+        assert(row.has_value() && "TileElement called rowIndex() on an unplaced tile.");
+        return *row;
       }]
     >,
-    InterfaceMethod<[{Return the TileID of this tile element.}],
+    InterfaceMethod<[{Return the TileID of this element's tile.}],
       "TileID", "getTileID", (ins), [{}], [{
         return TileID{$_op.colIndex(), $_op.rowIndex()};
       }]
@@ -81,10 +127,15 @@ def TileElement : OpInterface<"TileElement", [
 
   let extraTraitClassDeclaration = [{
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
-      llvm::StringRef opName = $_op.getOperation()->getName().stripDialect();
-      std::string name = (opName + "_" + llvm::Twine($_op.colIndex()) + "_" +
-                          llvm::Twine($_op.rowIndex())).str();
-      setNameFn($_op.getResult(), name);
+      std::optional<int> col = $_op.getTileLike().tryGetCol();
+      std::optional<int> row = $_op.getTileLike().tryGetRow();
+
+      if (col && row) {
+        llvm::StringRef opName = $_op.getOperation()->getName().stripDialect();
+        std::string name = (opName + "_" + llvm::Twine($_op.colIndex()) + "_" +
+                            llvm::Twine($_op.rowIndex())).str();
+        setNameFn($_op.getResult(), name);
+      }
     }
   }];
 }
