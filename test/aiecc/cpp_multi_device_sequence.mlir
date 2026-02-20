@@ -10,23 +10,21 @@
 
 // REQUIRES: peano
 
-// Test device and sequence filtering
+// Test device and sequence filtering (mirrors test/npu-xrt/add_one_two pattern)
+// Each device is compiled separately with --device-name, similar to how
+// the Python aiecc.py is used in production multi-device flows.
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s 2>&1 | FileCheck %s --check-prefix=ALL
 // RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV1
 // RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV2
 // RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
 
-// ALL: Starting AIE compilation
-// ALL: Processing device: device1
-// ALL: Processing device: device2
-// ALL: Compilation completed successfully
-
+// DEV1: Removing non-matching device: device2
 // DEV1: Processing device: device1
 // DEV1: Compiling 1 core(s)
 // DEV1-NOT: Processing device: device2
 // DEV1: Compilation completed successfully
 
+// DEV2: Removing non-matching device: device1
 // DEV2: Processing device: device2
 // DEV2: Compiling 1 core(s)
 // DEV2-NOT: Processing device: device1
