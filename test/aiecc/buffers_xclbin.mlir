@@ -34,7 +34,7 @@
 // CHECK:             "memory-connection": "SRAM",
 // CHECK:             "address-qualifier": "GLOBAL",
 // CHECK:             "type": "char *",
-// CHECK:             "offset": "0x8"
+// CHECK:             "offset": "0x08"
 // CHECK:           },
 // CHECK:           {
 // CHECK:             "name": "ninstr",
