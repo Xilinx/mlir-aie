@@ -166,6 +166,37 @@ jobs:
         MATRIX_OS: ${{ matrix.OS }}
         MATRIX_ARCH: ${{ matrix.ARCH }}
 
+      # We don't get OpenSSL for free on Windows. Manage the pain.
+      # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
+    - name: Enable vcpkg binary caching
+      if: ${{ matrix.OS == 'windows-2022' }}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL)
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN)
+
+    # Install OpenSSL so bootgen.exe can build against it.
+    - name: Install OpenSSL
+      if: ${{ matrix.OS == 'windows-2022' }}
+      shell: pwsh
+      run: |
+        $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+        if ($vcpkgRoot) {
+          $vcpkg = Join-Path $vcpkgRoot "vcpkg.exe"
+        } else {
+          $vcpkg = (Get-Command vcpkg.exe -ErrorAction Stop).Source
+          $vcpkgRoot = Split-Path -Parent $vcpkg
+        }
+
+        Remove-Item Env:VCPKG_ROOT -ErrorAction SilentlyContinue
+
+        $env:VCPKG_BINARY_SOURCES = "clear;x-gha,readwrite"
+        & $vcpkg install openssl:x64-windows
+
+        "OPENSSL_ROOT_DIR=$($vcpkgRoot.Replace('\','/'))/installed/x64-windows" |
+          Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
     - uses: ./.github/actions/setup_ccache
       id: setup_ccache
       with:
@@ -226,6 +257,24 @@ jobs:
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir wheelhouse
+
+    - name: Repair wheels (Windows)
+      if: ${{ matrix.OS == 'windows-2022' }}
+      shell: pwsh
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      run: |
+        python -m pip install --upgrade pip
+        pip install delvewheel
+
+        $opensslBin = Join-Path $env:OPENSSL_ROOT_DIR "bin"
+        New-Item -ItemType Directory -Force -Path wheelhouse\repaired_wheel | Out-Null
+
+        $wheels = Get-ChildItem wheelhouse\mlir_aie*.whl | ForEach-Object { $_.FullName }
+        python -m delvewheel repair --ignore-existing --analyze-existing-exes --add-path "$opensslBin" -w wheelhouse\repaired_wheel $wheels
+
+        Remove-Item wheelhouse\mlir_aie*.whl -Force
+        Move-Item wheelhouse\repaired_wheel\*.whl wheelhouse\
+        Remove-Item wheelhouse\repaired_wheel -Recurse -Force
 
     - name: build aarch ubuntu wheel
       if: ${{ matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'aarch64' }}
@@ -437,6 +486,7 @@ jobs:
           path: dist
 
       - name: Release current commit
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: ncipollo/release-action@v1.12.0
         with:
           artifacts: "dist/*.whl,dist/*.tar.xz"

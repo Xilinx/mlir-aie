@@ -6,11 +6,51 @@
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 import contextlib
-import fcntl
 import os
 import time
 
+# Cross-platform file locking:
+# - POSIX: fcntl.flock
+# - Windows: msvcrt.locking
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
+
 from aie.utils.hostruntime.tensor_class import Tensor
+
+
+def _try_acquire_lock(lock_file) -> bool:
+    if os.name == "nt":
+        # msvcrt.locking locks a byte-range starting at the current file position.
+        # Try to use the first byte to provide a process-wide lock.
+        # Hacky and brittle, but works well enough to prevent a race.
+        try:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            return True
+        except OSError:
+            return False
+    else:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+
+
+def _release_lock(lock_file) -> None:
+    if os.name == "nt":
+        try:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        except OSError:
+            pass
+    else:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
 
 
 def _create_function_cache_key(function, args, kwargs):
@@ -88,18 +128,18 @@ def file_lock(lock_file_path, timeout_seconds=60):
         # Create lock file if it doesn't exist
         os.makedirs(os.path.dirname(lock_file_path), exist_ok=True)
         try:
-            f = os.open(lock_file_path, os.O_CREAT | os.O_EXCL)
+            f = os.open(lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.close(f)
         except FileExistsError:
             pass  # File already exists
-        lock_file = open(lock_file_path, "a")
+        lock_file = open(lock_file_path, "a+")
 
         # Try to acquire exclusive lock with timeout
         start_time = time.time()
         while True:
             try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
+                if _try_acquire_lock(lock_file):
+                    break
             except OSError:
                 # Lock is held by another process
                 if time.time() - start_time > timeout_seconds:
@@ -113,7 +153,7 @@ def file_lock(lock_file_path, timeout_seconds=60):
     finally:
         if lock_file is not None:
             try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                _release_lock(lock_file)
             except OSError:
                 pass  # Ignore errors when releasing lock
             lock_file.close()
