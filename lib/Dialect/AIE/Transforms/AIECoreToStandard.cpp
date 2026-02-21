@@ -614,6 +614,13 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
 };
 
 struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
+  AIECoreToStandardPass() = default;
+  AIECoreToStandardPass(const AIECoreToStandardOptions &options) {
+    deviceName = options.deviceName;
+    tileCol = options.tileCol;
+    tileRow = options.tileRow;
+  }
+
   void runOnOperation() override {
 
     ModuleOp m = getOperation();
@@ -699,4 +706,9 @@ struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
 
 std::unique_ptr<OperationPass<ModuleOp>> AIE::createAIECoreToStandardPass() {
   return std::make_unique<AIECoreToStandardPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+AIE::createAIECoreToStandardPass(const AIECoreToStandardOptions &options) {
+  return std::make_unique<AIECoreToStandardPass>(options);
 }
