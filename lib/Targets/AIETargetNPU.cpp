@@ -110,8 +110,8 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions,
 }
 
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
-  uint32_t size = op.getSize().value_or(0);
-  uint64_t address = op.getAddress().value_or(0);
+  uint32_t size = op.getSize();
+  uint64_t address = op.getAddress();
   aie::npu::appendLoadPdi(instructions, op.getId(), size, address);
 }
 

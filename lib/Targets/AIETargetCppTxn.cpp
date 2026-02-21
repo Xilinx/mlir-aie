@@ -341,11 +341,12 @@ LogicalResult CppTxnEmitter::emitNpuSync(AIEX::NpuSyncOp op) {
 }
 
 LogicalResult CppTxnEmitter::emitScfFor(scf::ForOp op) {
-  indent();
-  os << "for (";
+  // Create unique loop variable name
+  std::string inductionVar = "i" + std::to_string(varCounter++);
+  valueNames[op.getInductionVar()] = inductionVar;
 
-  std::string inductionVar = getOrCreateValueName(op.getInductionVar());
-  os << "auto " << inductionVar << " = ";
+  indent();
+  os << "for (auto " << inductionVar << " = ";
   emitValue(op.getLowerBound());
   os << "; " << inductionVar << " < ";
   emitValue(op.getUpperBound());
@@ -399,6 +400,10 @@ LogicalResult CppTxnEmitter::emitScfIf(scf::IfOp op) {
 }
 
 LogicalResult CppTxnEmitter::emitArithOp(Operation *op) {
+  // Skip constants - they're emitted inline
+  if (isa<arith::ConstantOp>(op))
+    return success();
+
   std::string resultName;
   if (op->getNumResults() > 0) {
     resultName = getOrCreateValueName(op->getResult(0));
@@ -427,15 +432,18 @@ LogicalResult CppTxnEmitter::emitArithOp(Operation *op) {
       os << " / ";
       emitValue(divOp.getRhs());
     })
-    .Case<arith::ConstantOp>([&](auto constOp) {
-      // Constants are handled inline in emitValue
-      return;
+    .Case<arith::IndexCastOp>([&](auto castOp) {
+      os << "static_cast<";
+      os << emitTypeName(castOp.getType());
+      os << ">(";
+      emitValue(castOp.getIn());
+      os << ")";
     })
     .Default([&](Operation *) {
       os << "/* unsupported arith op */";
     });
 
-  if (op->getNumResults() > 0 && !isa<arith::ConstantOp>(op))
+  if (op->getNumResults() > 0)
     os << ";\n";
 
   return success();
@@ -472,7 +480,7 @@ LogicalResult CppTxnEmitter::emitOp(Operation *op) {
     })
     // Arithmetic
     .Case<arith::AddIOp, arith::SubIOp, arith::MulIOp, arith::DivUIOp,
-          arith::ConstantOp>([&](auto arithOp) {
+          arith::ConstantOp, arith::IndexCastOp>([&](auto arithOp) {
       return emitArithOp(arithOp);
     })
     // Terminators
@@ -554,8 +562,11 @@ namespace xilinx {
 namespace AIE {
 
 LogicalResult AIETranslateToCppTxn(ModuleOp module, llvm::raw_ostream &output) {
-  // Find runtime sequence operations
-  auto runtimeSeqs = module.getOps<AIE::RuntimeSequenceOp>();
+  // Find runtime sequence operations (they may be nested in DeviceOp)
+  SmallVector<AIE::RuntimeSequenceOp> runtimeSeqs;
+  module.walk([&](AIE::RuntimeSequenceOp seqOp) {
+    runtimeSeqs.push_back(seqOp);
+  });
 
   if (runtimeSeqs.empty()) {
     return module.emitError("No runtime sequences found in module");

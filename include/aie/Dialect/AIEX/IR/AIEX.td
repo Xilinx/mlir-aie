@@ -1024,7 +1024,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
 // static attributes, enabling runtime-parameterized sequences and lowering
 // to templated C++ code.
 
-def AIE_NpuDynWrite32Op: AIEX_Op<"npu.dyn_write32", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_NpuDynWrite32Op: AIEX_Op<"npu.dyn_write32", []> {
   let summary = "Dynamic write32 operator with SSA value operands";
   let arguments = (
     ins AnySignlessInteger:$address,
@@ -1046,7 +1046,7 @@ def AIE_NpuDynWrite32Op: AIEX_Op<"npu.dyn_write32", [HasParent<"AIE::RuntimeSequ
   let hasVerifier = 1;
 }
 
-def AIE_NpuDynMaskWrite32Op: AIEX_Op<"npu.dyn_maskwrite32", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_NpuDynMaskWrite32Op: AIEX_Op<"npu.dyn_maskwrite32", []> {
   let summary = "Dynamic masked write32 operator with SSA value operands";
   let arguments = (
     ins AnySignlessInteger:$address,
@@ -1068,7 +1068,6 @@ def AIE_NpuDynMaskWrite32Op: AIEX_Op<"npu.dyn_maskwrite32", [HasParent<"AIE::Run
 }
 
 def AIE_NpuDynDmaMemcpyNdOp: AIEX_Op<"npu.dyn_dma_memcpy_nd", [
-    HasParent<"AIE::RuntimeSequenceOp">,
     AttrSizedOperandSegments
   ]> {
   let summary = "Fully dynamic n-dimensional DMA operator with SSA values";
@@ -1118,7 +1117,7 @@ def AIE_NpuDynDmaMemcpyNdOp: AIEX_Op<"npu.dyn_dma_memcpy_nd", [
   let hasVerifier = 1;
 }
 
-def AIE_NpuDynSyncOp: AIEX_Op<"npu.dyn_sync", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_NpuDynSyncOp: AIEX_Op<"npu.dyn_sync", []> {
   let summary = "Dynamic synchronization operator with SSA value operands";
   let arguments = (
     ins AnySignlessInteger:$column,
