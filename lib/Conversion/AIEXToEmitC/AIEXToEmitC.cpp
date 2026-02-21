@@ -23,7 +23,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -55,19 +55,18 @@ emitc::CallOp createEmitCCallVoid(OpBuilder &builder, Location loc,
 
 /// Convert aiex.npu.dyn_write32 to EmitC function call
 struct NpuDynWrite32ToEmitCPattern
-    : public OpConversionPattern<NpuDynWrite32Op> {
-  using OpConversionPattern<NpuDynWrite32Op>::OpConversionPattern;
+    : public OpRewritePattern<NpuDynWrite32Op> {
+  using OpRewritePattern<NpuDynWrite32Op>::OpRewritePattern;
 
   LogicalResult
-  matchAndRewrite(NpuDynWrite32Op op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  matchAndRewrite(NpuDynWrite32Op op,
+                  PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
     // Generate call to: append_npu_write32(address, value)
     // The transaction vector will be managed at function level
 
-    SmallVector<Value> callOperands = {adaptor.getAddress(),
-                                       adaptor.getValue()};
+    SmallVector<Value> callOperands = {op.getAddress(), op.getValue()};
     createEmitCCallVoid(rewriter, loc, "append_npu_write32", callOperands);
 
     rewriter.eraseOp(op);
@@ -77,16 +76,16 @@ struct NpuDynWrite32ToEmitCPattern
 
 /// Convert aiex.npu.dyn_maskwrite32 to EmitC function call
 struct NpuDynMaskWrite32ToEmitCPattern
-    : public OpConversionPattern<NpuDynMaskWrite32Op> {
-  using OpConversionPattern<NpuDynMaskWrite32Op>::OpConversionPattern;
+    : public OpRewritePattern<NpuDynMaskWrite32Op> {
+  using OpRewritePattern<NpuDynMaskWrite32Op>::OpRewritePattern;
 
   LogicalResult
-  matchAndRewrite(NpuDynMaskWrite32Op op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  matchAndRewrite(NpuDynMaskWrite32Op op,
+                  PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
-    SmallVector<Value> callOperands = {adaptor.getAddress(),
-                                       adaptor.getValue(), adaptor.getMask()};
+    SmallVector<Value> callOperands = {op.getAddress(),
+                                       op.getValue(), op.getMask()};
     createEmitCCallVoid(rewriter, loc, "append_npu_maskwrite32", callOperands);
 
     rewriter.eraseOp(op);
@@ -96,18 +95,18 @@ struct NpuDynMaskWrite32ToEmitCPattern
 
 /// Convert aiex.npu.dyn_sync to EmitC function call
 struct NpuDynSyncToEmitCPattern
-    : public OpConversionPattern<NpuDynSyncOp> {
-  using OpConversionPattern<NpuDynSyncOp>::OpConversionPattern;
+    : public OpRewritePattern<NpuDynSyncOp> {
+  using OpRewritePattern<NpuDynSyncOp>::OpRewritePattern;
 
   LogicalResult
-  matchAndRewrite(NpuDynSyncOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  matchAndRewrite(NpuDynSyncOp op,
+                  PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
     SmallVector<Value> callOperands = {
-        adaptor.getColumn(), adaptor.getRow(),
-        adaptor.getDirection(), adaptor.getChannel(),
-        adaptor.getColumnNum(), adaptor.getRowNum()};
+        op.getColumn(), op.getRow(),
+        op.getDirection(), op.getChannel(),
+        op.getColumnNum(), op.getRowNum()};
     createEmitCCallVoid(rewriter, loc, "append_npu_sync", callOperands);
 
     rewriter.eraseOp(op);
@@ -117,12 +116,12 @@ struct NpuDynSyncToEmitCPattern
 
 /// Convert aiex.npu.dyn_dma_memcpy_nd to EmitC function call
 struct NpuDynDmaMemcpyNdToEmitCPattern
-    : public OpConversionPattern<NpuDynDmaMemcpyNdOp> {
-  using OpConversionPattern<NpuDynDmaMemcpyNdOp>::OpConversionPattern;
+    : public OpRewritePattern<NpuDynDmaMemcpyNdOp> {
+  using OpRewritePattern<NpuDynDmaMemcpyNdOp>::OpRewritePattern;
 
   LogicalResult
-  matchAndRewrite(NpuDynDmaMemcpyNdOp op, OpAdaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
+  matchAndRewrite(NpuDynDmaMemcpyNdOp op,
+                  PatternRewriter &rewriter) const override {
     // This is more complex - needs to encode BD configuration
     // For now, emit a comment placeholder
     // TODO: Implement full BD encoding
@@ -141,21 +140,40 @@ struct ConvertAIEXToEmitCPass
   void runOnOperation() override {
     auto runtimeSeq = getOperation();
     MLIRContext *context = &getContext();
+    OpBuilder builder(context);
 
-    ConversionTarget target(*context);
-    target.addLegalDialect<emitc::EmitCDialect, func::FuncDialect,
-                           scf::SCFDialect, arith::ArithDialect>();
-    target.addIllegalOp<NpuDynWrite32Op, NpuDynMaskWrite32Op, NpuDynSyncOp,
-                        NpuDynDmaMemcpyNdOp>();
+    // Walk all operations in the runtime sequence body and convert
+    SmallVector<Operation*> opsToConvert;
+    runtimeSeq.walk([&](Operation *op) {
+      if (isa<NpuDynWrite32Op, NpuDynMaskWrite32Op, NpuDynSyncOp,
+              NpuDynDmaMemcpyNdOp>(op)) {
+        opsToConvert.push_back(op);
+      }
+    });
 
-    RewritePatternSet patterns(context);
-    patterns.add<NpuDynWrite32ToEmitCPattern, NpuDynMaskWrite32ToEmitCPattern,
-                 NpuDynSyncToEmitCPattern, NpuDynDmaMemcpyNdToEmitCPattern>(
-        context);
+    for (Operation *op : opsToConvert) {
+      builder.setInsertionPoint(op);
 
-    if (failed(applyPartialConversion(runtimeSeq, target,
-                                      std::move(patterns)))) {
-      signalPassFailure();
+      if (auto writeOp = dyn_cast<NpuDynWrite32Op>(op)) {
+        SmallVector<Value> callOperands = {writeOp.getAddress(), writeOp.getValue()};
+        createEmitCCallVoid(builder, op->getLoc(), "append_npu_write32", callOperands);
+        op->erase();
+      } else if (auto maskWriteOp = dyn_cast<NpuDynMaskWrite32Op>(op)) {
+        SmallVector<Value> callOperands = {maskWriteOp.getAddress(),
+                                           maskWriteOp.getValue(), maskWriteOp.getMask()};
+        createEmitCCallVoid(builder, op->getLoc(), "append_npu_maskwrite32", callOperands);
+        op->erase();
+      } else if (auto syncOp = dyn_cast<NpuDynSyncOp>(op)) {
+        SmallVector<Value> callOperands = {
+            syncOp.getColumn(), syncOp.getRow(),
+            syncOp.getDirection(), syncOp.getChannel(),
+            syncOp.getColumnNum(), syncOp.getRowNum()};
+        createEmitCCallVoid(builder, op->getLoc(), "append_npu_sync", callOperands);
+        op->erase();
+      } else if (auto dmaOp = dyn_cast<NpuDynDmaMemcpyNdOp>(op)) {
+        // TODO: Implement DMA conversion
+        op->erase();
+      }
     }
   }
 };

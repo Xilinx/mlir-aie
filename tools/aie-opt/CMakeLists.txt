@@ -28,6 +28,7 @@ set(LIBS
   AIE
   AIETransforms
   AIEX
+  AIEXToEmitC
   AIEXTransforms
   AIEXUtils
   MLIRAIEToConfiguration
