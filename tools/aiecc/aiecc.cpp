@@ -26,6 +26,7 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
@@ -38,6 +39,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
@@ -159,9 +161,10 @@ static cl::opt<bool> noLink("no-link", cl::desc("Disable linking of AIE code"),
 
 static cl::opt<std::string> allocScheme(
     "alloc-scheme",
-    cl::desc("Allocation scheme for AIE buffers (basic-sequential or "
-             "bank-aware)"),
-    cl::init("basic-sequential"), cl::cat(aieCompilerOptions));
+    cl::desc(
+        "Allocation scheme for AIE buffers (basic-sequential, bank-aware, "
+        "or empty string for bank-aware with fallback to basic-sequential)"),
+    cl::init(""), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
@@ -172,6 +175,25 @@ static cl::opt<std::string>
     instsName("npu-insts-name",
               cl::desc("Output instructions filename for NPU target"),
               cl::init("{0}_{1}.bin"), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> generateElf(
+    "aie-generate-elf",
+    cl::desc("Generate ELF for AIE control/configuration (via aiebu)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    elfName("elf-name", cl::desc("Output ELF filename for instruction ELF"),
+            cl::init("design.elf"), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> generateFullElf(
+    "generate-full-elf",
+    cl::desc("Generate complete full ELF with PDIs using aiebu-asm"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    fullElfName("full-elf-name",
+                cl::desc("Output filename for full ELF (default: aie.elf)"),
+                cl::init("aie.elf"), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> generateCdo("aie-generate-cdo",
                                  cl::desc("Generate libxaie v2 for CDO"),
@@ -194,6 +216,26 @@ static cl::opt<std::string> xclbinName("xclbin-name",
                                        cl::desc("Output xclbin filename"),
                                        cl::init("{0}.xclbin"),
                                        cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    xclbinInput("xclbin-input",
+                cl::desc("Input xclbin to extend with additional kernel/PDI"),
+                cl::init(""), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    xclbinKernelName("xclbin-kernel-name",
+                     cl::desc("Kernel name in xclbin (default: MLIR_AIE)"),
+                     cl::init("MLIR_AIE"), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    xclbinInstanceName("xclbin-instance-name",
+                       cl::desc("Instance name in xclbin (default: MLIRAIE)"),
+                       cl::init("MLIRAIE"), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    xclbinKernelId("xclbin-kernel-id",
+                   cl::desc("Kernel ID in xclbin (default: 0x901)"),
+                   cl::init("0x901"), cl::cat(aieCompilerOptions));
 
 static cl::opt<std::string>
     deviceName("device-name", cl::desc("Device configuration to compile"),
@@ -229,6 +271,41 @@ static cl::opt<bool> ctrlPktOverlay("generate-ctrl-pkt-overlay",
                                     cl::init(false),
                                     cl::cat(aieCompilerOptions));
 
+static cl::opt<bool>
+    generateTxn("aie-generate-txn",
+                cl::desc("Generate transaction binary MLIR for configuration"),
+                cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    txnName("txn-name",
+            cl::desc("Output filename for transaction MLIR. "
+                     "`{0}` is replaced with device name."),
+            cl::init("{0}_transaction.mlir"), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    generateCtrlPkt("aie-generate-ctrlpkt",
+                    cl::desc("Generate control packets for configuration"),
+                    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    ctrlPktName("ctrlpkt-name",
+                cl::desc("Output filename for control packet binary data. "
+                         "`{0}` is replaced with device name."),
+                cl::init("{0}_ctrlpkt.bin"), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    ctrlPktDmaSeqName("ctrlpkt-dma-seq-name",
+                      cl::desc("Output filename for control packet DMA "
+                               "sequence. `{0}` is replaced with device name."),
+                      cl::init("{0}_ctrlpkt_dma_seq.bin"),
+                      cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    ctrlPktElfName("ctrlpkt-elf-name",
+                   cl::desc("Output filename for control packet combined ELF. "
+                            "`{0}` is replaced with device name."),
+                   cl::init("{0}_ctrlpkt.elf"), cl::cat(aieCompilerOptions));
+
 static cl::opt<std::string>
     peanoInstallDir("peano", cl::desc("Peano compiler installation directory"),
                     cl::init(""), cl::cat(aieCompilerOptions));
@@ -245,6 +322,9 @@ static cl::opt<bool> dumpIntermediates(
 //===----------------------------------------------------------------------===//
 // Helper Functions
 //===----------------------------------------------------------------------===//
+
+// Forward declarations
+static std::string findAiebuAsm();
 
 static void printVersion(raw_ostream &os) {
   os << "aiecc (C++ version) " << AIE_GIT_COMMIT << "\n";
@@ -301,11 +381,13 @@ static bool executeCommand(ArrayRef<StringRef> command,
       llvm::outs() << " " << arg;
     }
     llvm::outs() << "\n";
+    llvm::outs().flush();
   }
 
   if (dryRun) {
     if (verbose) {
       llvm::outs() << "Dry run - command not executed\n";
+      llvm::outs().flush();
     }
     return true;
   }
@@ -583,13 +665,13 @@ static std::string downgradeIRForChess(StringRef llvmIR) {
   replace("captures(none)", "nocapture");
   replace("getelementptr inbounds nuw", "getelementptr inbounds");
 
-  // Remove nocreateundeforpoison attribute
-  // This attribute appears in LLVM IR and may be followed by whitespace or EOL
+  // Remove nocreateundeforpoison attribute using regex-like logic
+  // Pattern: \bnocreateundeforpoison\s+
+  // We'll do a simple find-and-replace for this attribute
   size_t pos = 0;
   while ((pos = result.find("nocreateundeforpoison", pos)) !=
          std::string::npos) {
-    // Find the end of the attribute (skip trailing whitespace, but not
-    // newlines)
+    // Find the end of the attribute (skip trailing whitespace)
     size_t end = pos + strlen("nocreateundeforpoison");
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t')) {
       end++;
@@ -713,9 +795,9 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
   }
 
   // Run chess-llvm-link
-  SmallVector<std::string, 8> cmd = {std::string(chessLlvmLinkPath),
+  SmallVector<std::string, 8> cmd = {chessLlvmLinkPath.str().str(),
                                      inputLLPath.str(),
-                                     std::string(wrapperPath),
+                                     wrapperPath.str().str(),
                                      "-S",
                                      "-o",
                                      outputPath.str()};
@@ -840,28 +922,19 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
   std::ostringstream oss;
   oss << "builtin.module("
       << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir},"
-      << "lower-affine,"
-      << "aie-canonicalize-device,"
-      << "aie.device("
-      << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos,"
-      << "aie-objectFifo-stateful-transform{"
+      << " target-backend=llvmir}," << "lower-affine,"
+      << "aie-canonicalize-device," << "aie.device(" << "aie-assign-lock-ids,"
+      << "aie-register-objectFifos," << "aie-objectFifo-stateful-transform{"
       << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
       << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
-      << "aie-assign-bd-ids,"
-      << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet,"
-      << "aie-lower-multicast,"
+      << "aie-assign-bd-ids," << "aie-lower-cascade-flows,"
+      << "aie-lower-broadcast-packet," << "aie-lower-multicast,"
       << "aie-assign-tile-controller-ids,"
       << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
       << (ctrlPktOverlay ? "true" : "false") << "},"
       << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
-      << "},"
-      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
-      << "),"
-      << "convert-scf-to-cf"
-      << ")";
+      << "}," << "aie-vector-transfer-lowering{max-transfer-rank=1}" << "),"
+      << "convert-scf-to-cf" << ")";
   return oss.str();
 }
 
@@ -875,17 +948,10 @@ buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
       << "aie-standard-lowering{device=" << deviceName.str() << "},"
       << "aiex-standard-lowering,"
       << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize,"
-      << "cse,"
-      << "expand-strided-metadata,"
-      << "lower-affine,"
-      << "arith-expand,"
-      << "finalize-memref-to-llvm,"
+      << "canonicalize," << "cse," << "expand-strided-metadata,"
+      << "lower-affine," << "arith-expand," << "finalize-memref-to-llvm,"
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
-      << "convert-to-llvm{dynamic=true},"
-      << "canonicalize,"
-      << "cse"
-      << ")";
+      << "convert-to-llvm{dynamic=true}," << "canonicalize," << "cse" << ")";
   return oss.str();
 }
 
@@ -1035,6 +1101,44 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp) {
   return success();
 }
 
+/// Run the transaction generation pipeline in-memory using PassManager.
+/// This converts the AIE device to a sequence of transaction binary operations.
+/// The pipeline: convert-aie-to-transaction{elf-dir=... device-name=...}
+static LogicalResult runTransactionPipeline(ModuleOp moduleOp, StringRef elfDir,
+                                            StringRef devName) {
+  MLIRContext *ctx = moduleOp.getContext();
+  PassManager pm(ctx);
+
+  if (verbose) {
+    pm.enableVerifier(true);
+  }
+
+  // Build pass pipeline string with options
+  std::string pipelineStr =
+      "builtin.module(aie.device(convert-aie-to-transaction{elf-dir=" +
+      elfDir.str() + " device-name=" + devName.str() + "}))";
+
+  if (failed(parsePassPipeline(pipelineStr, pm))) {
+    llvm::errs() << "Error: Failed to parse transaction pipeline\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Running transaction generation pipeline in-memory\n";
+  }
+
+  if (failed(pm.run(moduleOp))) {
+    llvm::errs() << "Error: Transaction generation pipeline failed\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Transaction generation pipeline completed successfully\n";
+  }
+
+  return success();
+}
+
 /// Run the LLVM lowering pipeline in-memory using PassManager.
 /// This replaces the subprocess calls to aie-opt and aie-translate for
 /// core compilation. The pipeline:
@@ -1061,9 +1165,7 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
   devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  // Note: aie-transform-bfp-types pass would go here if the design uses
-  // block floating-point (BFP) types that require normalization before
-  // lowering. Currently not needed for standard designs.
+  // TODO: Add aie-transform-bfp-types if needed
 
   // Step 2: aie-standard-lowering with specific core coordinates
   // This extracts the specified core and removes the aie.device wrapper
@@ -1285,14 +1387,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
                                               aieTargetLower,
                                               "+w",
-                                              std::string(workDir),
+                                              workDir.str().str(),
                                               "-c",
                                               "-d",
                                               "+Wclang,-xir",
                                               "-f",
-                                              std::string(chessLinkedPath),
+                                              chessLinkedPath.str().str(),
                                               "-o",
-                                              std::string(objPath)};
+                                              objPath.str().str()};
 
     if (!executeCommand(xchessCmd)) {
       llvm::errs() << "Error running xchesscc_wrapper\n";
@@ -1325,9 +1427,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                                ">,strip",
                                            "-inline-threshold=10",
                                            "-S",
-                                           std::string(llvmIRPath),
+                                           llvmIRPath.str().str(),
                                            "-o",
-                                           std::string(optPath)};
+                                           optPath.str().str()};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -1340,13 +1442,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Run llc
     SmallVector<std::string, 10> llcCmd = {peanoLlc,
-                                           std::string(optPath),
+                                           optPath.str().str(),
                                            "-O" + optLevelStr,
                                            "--march=" + aieTarget.lower(),
                                            "--function-sections",
                                            "--filetype=obj",
                                            "-o",
-                                           std::string(objPath)};
+                                           objPath.str().str()};
 
     if (!executeCommand(llcCmd)) {
       llvm::errs() << "Error running Peano llc\n";
@@ -1356,7 +1458,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   // Step 5: Link to ELF
   if (!link) {
-    outElfPath = std::string(objPath);
+    outElfPath = objPath.str().str();
     return success();
   }
 
@@ -1414,6 +1516,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::vector<std::string> linkWithFiles = extractInputFilesFromBCF(bcfPath);
 
     // Handle link_with files: copy to .prj directory if needed
+    std::string linkWithArgs;
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> srcPath;
       if (sys::path::is_absolute(linkWithFile)) {
@@ -1444,6 +1547,11 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
                      << "\n";
       }
+
+      if (!linkWithArgs.empty()) {
+        linkWithArgs += " ";
+      }
+      linkWithArgs += destPath.str().str();
     }
 
     // Find xchesscc_wrapper
@@ -1462,20 +1570,20 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::string aieTargetLower = aieTarget.lower();
     SmallVector<std::string, 20> linkCmd = {
         *xchessccWrapperPath, aieTargetLower, "+w",
-        std::string(workDir), "-d",           "-f",
-        std::string(objPath)};
+        workDir.str().str(),  "-d",           "-f",
+        objPath.str().str()};
 
     // Add link_with files if any
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> localPath(tmpDirName);
       sys::path::append(localPath, sys::path::filename(linkWithFile));
-      linkCmd.push_back(std::string(localPath));
+      linkCmd.push_back(localPath.str().str());
     }
 
     linkCmd.push_back("+l");
-    linkCmd.push_back(std::string(bcfPath));
+    linkCmd.push_back(bcfPath.str().str());
     linkCmd.push_back("-o");
-    linkCmd.push_back(std::string(elfPath));
+    linkCmd.push_back(elfPath.str().str());
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking with xbridge\n";
@@ -1516,14 +1624,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Explicitly specify Peano's lld linker to avoid using system ld
     if (sys::fs::can_execute(peanoLld)) {
-      linkCmd.push_back("-fuse-ld=" + std::string(peanoLld));
+      linkCmd.push_back("-fuse-ld=" + peanoLld.str().str());
     } else {
       // Fallback: try to use lld from Peano bin via -B
-      linkCmd.push_back("-B" + std::string(peanoBinDir));
+      linkCmd.push_back("-B" + peanoBinDir.str().str());
       linkCmd.push_back("-fuse-ld=lld");
     }
 
-    linkCmd.push_back(std::string(objPath));
+    linkCmd.push_back(objPath.str().str());
 
     // Handle external object file if link_with attribute is specified
     // The linker script generated by aie-translate will include an INPUT()
@@ -1583,9 +1691,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     linkCmd.push_back("-Wl,--gc-sections");
     linkCmd.push_back("-Wl,--orphan-handling=error");
-    linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
+    linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
     linkCmd.push_back("-o");
-    linkCmd.push_back(std::string(elfPath));
+    linkCmd.push_back(elfPath.str().str());
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking ELF file\n";
@@ -1593,7 +1701,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
-  outElfPath = std::string(elfPath);
+  outElfPath = elfPath.str().str();
   if (verbose) {
     llvm::outs() << "Generated ELF: " << outElfPath << "\n";
   }
@@ -1710,28 +1818,27 @@ static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
                  << "\n";
     return failure();
   }
-  jsonFile << R"({
-  "mem_topology": {
-    "m_count": "2",
-    "m_mem_data": [
-      {
-        "m_type": "MEM_DRAM",
-        "m_used": "1",
-        "m_sizeKB": "0x10000",
-        "m_tag": "HOST",
-        "m_base_address": "0x4000000"
-      },
-      {
-        "m_type": "MEM_DRAM",
-        "m_used": "1",
-        "m_sizeKB": "0xc000",
-        "m_tag": "SRAM",
-        "m_base_address": "0x4000000"
-      }
-    ]
-  }
-}
-)";
+  jsonFile << "{\n";
+  jsonFile << "  \"mem_topology\": {\n";
+  jsonFile << "    \"m_count\": \"2\",\n";
+  jsonFile << "    \"m_mem_data\": [\n";
+  jsonFile << "      {\n";
+  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
+  jsonFile << "        \"m_used\": \"1\",\n";
+  jsonFile << "        \"m_sizeKB\": \"0x10000\",\n";
+  jsonFile << "        \"m_tag\": \"HOST\",\n";
+  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
+  jsonFile << "      },\n";
+  jsonFile << "      {\n";
+  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
+  jsonFile << "        \"m_used\": \"1\",\n";
+  jsonFile << "        \"m_sizeKB\": \"0xc000\",\n";
+  jsonFile << "        \"m_tag\": \"SRAM\",\n";
+  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
+  jsonFile << "      }\n";
+  jsonFile << "    ]\n";
+  jsonFile << "  }\n";
+  jsonFile << "}\n";
   jsonFile.close();
   return success();
 }
@@ -1744,66 +1851,59 @@ static LogicalResult generateKernelsJson(StringRef jsonPath,
                  << "\n";
     return failure();
   }
-
-  // Static header
-  jsonFile << R"({
-  "ps-kernels": {
-    "kernels": [
-      {
-        "name": "MLIR_AIE",
-        "type": "dpu",
-        "extended-data": {
-          "subtype": "DPU",
-          "functional": "0",
-          "dpu_kernel_id": "0x901"
-        },
-        "arguments": [
-          {
-            "name": "opcode",
-            "address-qualifier": "SCALAR",
-            "type": "uint64_t",
-            "offset": "0x00"
-          },
-          {
-            "name": "instr",
-            "memory-connection": "SRAM",
-            "address-qualifier": "GLOBAL",
-            "type": "char *",
-            "offset": "0x08"
-          },
-          {
-            "name": "ninstr",
-            "address-qualifier": "SCALAR",
-            "type": "uint32_t",
-            "offset": "0x10"
-          },
-)";
-
-  // Dynamic buffer object arguments
+  jsonFile << "{\n";
+  jsonFile << "  \"ps-kernels\": {\n";
+  jsonFile << "    \"kernels\": [\n";
+  jsonFile << "      {\n";
+  jsonFile << "        \"name\": \"" << xclbinKernelName.getValue() << "\",\n";
+  jsonFile << "        \"type\": \"dpu\",\n";
+  jsonFile << "        \"extended-data\": {\n";
+  jsonFile << "          \"subtype\": \"DPU\",\n";
+  jsonFile << "          \"functional\": \"0\",\n";
+  jsonFile << "          \"dpu_kernel_id\": \"" << xclbinKernelId.getValue()
+           << "\"\n";
+  jsonFile << "        },\n";
+  jsonFile << "        \"arguments\": [\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"opcode\",\n";
+  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
+  jsonFile << "            \"type\": \"uint64_t\",\n";
+  jsonFile << "            \"offset\": \"0x00\"\n";
+  jsonFile << "          },\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"instr\",\n";
+  jsonFile << "            \"memory-connection\": \"SRAM\",\n";
+  jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
+  jsonFile << "            \"type\": \"char *\",\n";
+  jsonFile << "            \"offset\": \"0x08\"\n";
+  jsonFile << "          },\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"ninstr\",\n";
+  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
+  jsonFile << "            \"type\": \"uint32_t\",\n";
+  jsonFile << "            \"offset\": \"0x10\"\n";
+  jsonFile << "          },\n";
   for (int i = 0; i < 5; i++) {
     jsonFile << "          {\n";
     jsonFile << "            \"name\": \"bo" << i << "\",\n";
-    jsonFile << R"(            "memory-connection": "HOST",
-            "address-qualifier": "GLOBAL",
-            "type": "void*",
-)";
+    jsonFile << "            \"memory-connection\": \"HOST\",\n";
+    jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
+    jsonFile << "            \"type\": \"void*\",\n";
     jsonFile << "            \"offset\": \"" << std::hex << "0x"
              << (0x14 + i * 8) << std::dec << "\"\n";
     jsonFile << "          }" << (i < 4 ? "," : "") << "\n";
   }
-
-  // Static footer
-  jsonFile << R"(        ],
-        "instances": [
-          {
-            "name": "MLIRAIE"
-          }
-        ]
-      }
-    ]
-  }
-}
-)";
+  jsonFile << "        ],\n";
+  jsonFile << "        \"instances\": [\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"" << xclbinInstanceName.getValue()
+           << "\"\n";
+  jsonFile << "          }\n";
+  jsonFile << "        ]\n";
+  jsonFile << "      }\n";
+  jsonFile << "    ]\n";
+  jsonFile << "  }\n";
+  jsonFile << "}\n";
   jsonFile.close();
   return success();
 }
@@ -1817,37 +1917,146 @@ static LogicalResult generatePartitionJson(StringRef jsonPath,
                  << "\n";
     return failure();
   }
-
-  jsonFile << R"({
-  "aie_partition": {
-    "name": "QoS",
-    "operations_per_cycle": "2048",
-    "inference_fingerprint": "23423",
-    "pre_post_fingerprint": "12345",
-    "partition": {
-      "column_width": 1,
-      "start_columns": [0]
-    },
-    "PDIs": [
-      {
-        "uuid": "00000000-0000-0000-0000-000000000000",
-        "file_name": ")"
-           << pdiPath.str() << R"(",
-        "cdo_groups": [
-          {
-            "name": "DPU",
-            "type": "PRIMARY",
-            "pdi_id": "0x01",
-            "dpu_kernel_ids": ["0x901"],
-            "pre_cdo_groups": ["0xC1"]
-          }
-        ]
-      }
-    ]
-  }
-}
-)";
+  jsonFile << "{\n";
+  jsonFile << "  \"aie_partition\": {\n";
+  jsonFile << "    \"name\": \"QoS\",\n";
+  jsonFile << "    \"operations_per_cycle\": \"2048\",\n";
+  jsonFile << "    \"inference_fingerprint\": \"23423\",\n";
+  jsonFile << "    \"pre_post_fingerprint\": \"12345\",\n";
+  jsonFile << "    \"partition\": {\n";
+  jsonFile << "      \"column_width\": 1,\n";
+  jsonFile << "      \"start_columns\": [0]\n";
+  jsonFile << "    },\n";
+  jsonFile << "    \"PDIs\": [\n";
+  jsonFile << "      {\n";
+  jsonFile << "        \"uuid\": \"00000000-0000-0000-0000-000000000000\",\n";
+  jsonFile << "        \"file_name\": \"" << pdiPath.str() << "\",\n";
+  jsonFile << "        \"cdo_groups\": [\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"DPU\",\n";
+  jsonFile << "            \"type\": \"PRIMARY\",\n";
+  jsonFile << "            \"pdi_id\": \"0x01\",\n";
+  jsonFile << "            \"dpu_kernel_ids\": [\"" << xclbinKernelId.getValue()
+           << "\"],\n";
+  jsonFile << "            \"pre_cdo_groups\": [\"0xC1\"]\n";
+  jsonFile << "          }\n";
+  jsonFile << "        ]\n";
+  jsonFile << "      }\n";
+  jsonFile << "    ]\n";
+  jsonFile << "  }\n";
+  jsonFile << "}\n";
   jsonFile.close();
+  return success();
+}
+
+/// Extract AIE_PARTITION section from existing xclbin and merge new PDI.
+/// Returns the merged partition JSON path, or empty on failure.
+static LogicalResult extractAndMergePartition(StringRef inputXclbin,
+                                              StringRef newPartitionPath,
+                                              StringRef outputPartitionPath,
+                                              StringRef tmpDirName) {
+  // Find xclbinutil
+  auto xclbinutilPath = sys::findProgramByName("xclbinutil");
+  if (!xclbinutilPath) {
+    llvm::errs() << "Error: xclbinutil not found\n";
+    return failure();
+  }
+
+  // Extract partition from input xclbin
+  SmallString<128> inputPartitionPath(tmpDirName);
+  sys::path::append(inputPartitionPath, "input_aie_partition.json");
+
+  SmallVector<std::string, 10> extractCmd = {*xclbinutilPath,
+                                             "--dump-section",
+                                             "AIE_PARTITION:JSON:" +
+                                                 inputPartitionPath.str().str(),
+                                             "--force",
+                                             "--quiet",
+                                             "--input",
+                                             inputXclbin.str()};
+
+  if (!executeCommand(extractCmd)) {
+    llvm::errs() << "Error extracting AIE_PARTITION from input xclbin\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Extracted partition from input xclbin: "
+                 << inputPartitionPath << "\n";
+  }
+
+  // Read input partition JSON
+  auto inputBufOrErr = llvm::MemoryBuffer::getFile(inputPartitionPath);
+  if (!inputBufOrErr) {
+    llvm::errs() << "Error reading input partition JSON: "
+                 << inputBufOrErr.getError().message() << "\n";
+    return failure();
+  }
+
+  // Read new partition JSON
+  auto newBufOrErr = llvm::MemoryBuffer::getFile(newPartitionPath);
+  if (!newBufOrErr) {
+    llvm::errs() << "Error reading new partition JSON: "
+                 << newBufOrErr.getError().message() << "\n";
+    return failure();
+  }
+
+  // Parse both JSON files
+  auto inputJson = llvm::json::parse(inputBufOrErr.get()->getBuffer());
+  if (!inputJson) {
+    llvm::errs() << "Error parsing input partition JSON: "
+                 << llvm::toString(inputJson.takeError()) << "\n";
+    return failure();
+  }
+
+  auto newJson = llvm::json::parse(newBufOrErr.get()->getBuffer());
+  if (!newJson) {
+    llvm::errs() << "Error parsing new partition JSON: "
+                 << llvm::toString(newJson.takeError()) << "\n";
+    return failure();
+  }
+
+  // Get the PDIs arrays from both
+  auto *inputObj = inputJson->getAsObject();
+  auto *newObj = newJson->getAsObject();
+  if (!inputObj || !newObj) {
+    llvm::errs() << "Error: JSON files are not objects\n";
+    return failure();
+  }
+
+  auto *inputPartition = inputObj->getObject("aie_partition");
+  auto *newPartition = newObj->getObject("aie_partition");
+  if (!inputPartition || !newPartition) {
+    llvm::errs() << "Error: Missing aie_partition in JSON\n";
+    return failure();
+  }
+
+  auto *inputPDIs = inputPartition->getArray("PDIs");
+  auto *newPDIs = newPartition->getArray("PDIs");
+  if (!inputPDIs || !newPDIs) {
+    llvm::errs() << "Error: Missing PDIs array in partition JSON\n";
+    return failure();
+  }
+
+  // Append new PDIs to input PDIs
+  for (auto &pdi : *newPDIs) {
+    inputPDIs->push_back(std::move(pdi));
+  }
+
+  // Write merged partition JSON
+  std::error_code ec;
+  raw_fd_ostream outFile(outputPartitionPath, ec);
+  if (ec) {
+    llvm::errs() << "Error writing merged partition JSON: " << ec.message()
+                 << "\n";
+    return failure();
+  }
+  outFile << llvm::formatv("{0:2}", *inputJson);
+
+  if (verbose) {
+    llvm::outs() << "Merged partition JSON: " << outputPartitionPath << "\n";
+  }
+
   return success();
 }
 
@@ -1860,7 +2069,8 @@ static LogicalResult generatePartitionJson(StringRef jsonPath,
 static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
                                              StringRef tmpDirName,
                                              StringRef devName) {
-  if (!generateNpuInsts) {
+  // Full ELF requires NPU instructions
+  if (!generateNpuInsts && !generateFullElf) {
     return success();
   }
 
@@ -1912,12 +2122,18 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       std::string outputFileName =
           formatString(instsName, devName.str(), seqName);
 
-      // Output to current directory (matches Python aiecc.py)
+      // Determine output path:
+      // - If generateNpuInsts is set, use the filename as-is (relative to cwd)
+      //   This matches Python aiecc.py behavior where --npu-insts-name
+      //   specifies the output path relative to the current directory.
+      // - Otherwise (e.g., for generateFullElf), write to tmpDirName so
+      //   the full ELF generation can find them.
       SmallString<128> outputPath;
-      if (sys::path::is_absolute(outputFileName)) {
+      if (generateNpuInsts) {
         outputPath = outputFileName;
       } else {
-        outputPath = outputFileName;
+        outputPath = tmpDirName;
+        sys::path::append(outputPath, outputFileName);
       }
 
       if (verbose) {
@@ -1964,6 +2180,634 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 }
 
 //===----------------------------------------------------------------------===//
+// Transaction Generation
+//===----------------------------------------------------------------------===//
+
+/// Generate transaction MLIR output for a device.
+/// This converts the device configuration to transaction binary operations.
+static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
+                                               StringRef tmpDirName,
+                                               StringRef devName) {
+  if (!generateTxn) {
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generating transaction MLIR for device: " << devName
+                 << "\n";
+  }
+
+  // In dry-run mode, just show what would be done
+  if (dryRun) {
+    if (verbose) {
+      llvm::outs() << "Would generate transaction MLIR for device: " << devName
+                   << "\n";
+    }
+    return success();
+  }
+
+  // Clone the module since transaction generation is destructive
+  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+
+  // Run transaction pipeline
+  if (failed(runTransactionPipeline(*clonedModule, tmpDirName, devName))) {
+    return failure();
+  }
+
+  // Write the transaction MLIR to output file
+  std::string outputFileName = formatString(txnName, devName);
+  SmallString<128> outputPath;
+  if (sys::path::is_absolute(outputFileName)) {
+    outputPath = outputFileName;
+  } else {
+    outputPath = tmpDirName;
+    sys::path::append(outputPath, outputFileName);
+  }
+
+  // Dump intermediate MLIR
+  SmallString<128> txnMlirPath(tmpDirName);
+  sys::path::append(txnMlirPath, devName.str() + "_txn.mlir");
+  dumpModuleToFile(*clonedModule, txnMlirPath, "Transaction MLIR");
+
+  // Copy to output location
+  std::error_code ec;
+  raw_fd_ostream outFile(outputPath, ec, sys::fs::OpenFlags::OF_None);
+  if (ec) {
+    llvm::errs() << "Error opening transaction output file: " << ec.message()
+                 << "\n";
+    return failure();
+  }
+
+  clonedModule->print(outFile);
+
+  if (verbose) {
+    llvm::outs() << "Wrote transaction MLIR to: " << outputPath << "\n";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Control Packet Generation
+//===----------------------------------------------------------------------===//
+
+/// Generate control packet output for a device.
+/// This converts the device configuration to control packets and generates:
+/// 1. Control packet binary data (ctrlpkt.bin)
+/// 2. Control packet DMA sequence binary (ctrlpkt_dma_seq.bin)
+/// 3. Combined ELF file (ctrlpkt.elf) if aiebu-asm is available
+static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
+                                                 StringRef tmpDirName,
+                                                 StringRef devName) {
+  if (!generateCtrlPkt) {
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generating control packets for device: " << devName
+                 << "\n";
+  }
+
+  // In dry-run mode, just show what would be done
+  if (dryRun) {
+    if (verbose) {
+      llvm::outs() << "Would generate control packets for device: " << devName
+                   << "\n";
+    }
+    return success();
+  }
+
+  // Clone the module since control packet generation is destructive
+  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+
+  // Run control packet pipeline (Step 1: convert to control packets)
+  MLIRContext *ctx = clonedModule->getContext();
+  {
+    PassManager pm(ctx);
+    if (verbose) {
+      pm.enableVerifier(true);
+    }
+
+    // Build pass pipeline for control packet conversion
+    std::string pipelineStr =
+        "builtin.module(aie.device(convert-aie-to-transaction{elf-dir=" +
+        tmpDirName.str() +
+        "},aie-txn-to-ctrl-packet,aie-legalize-ctrl-packet))";
+
+    if (failed(parsePassPipeline(pipelineStr, pm))) {
+      llvm::errs()
+          << "Error: Failed to parse control packet conversion pipeline\n";
+      return failure();
+    }
+
+    if (verbose) {
+      llvm::outs() << "Running control packet conversion pipeline in-memory\n";
+    }
+
+    if (failed(pm.run(*clonedModule))) {
+      llvm::errs() << "Error: Control packet conversion pipeline failed\n";
+      return failure();
+    }
+  }
+
+  // Dump intermediate control packet MLIR
+  SmallString<128> ctrlPktMlirPath(tmpDirName);
+  sys::path::append(ctrlPktMlirPath, devName.str() + "_ctrlpkt.mlir");
+  dumpModuleToFile(*clonedModule, ctrlPktMlirPath, "Control packet MLIR");
+
+  // Generate control packet binary using AIETranslateControlPacketsToUI32Vec
+  std::string ctrlPktBinFileName = formatString(ctrlPktName, devName);
+  SmallString<128> ctrlPktBinPath;
+  if (sys::path::is_absolute(ctrlPktBinFileName)) {
+    ctrlPktBinPath = ctrlPktBinFileName;
+  } else {
+    ctrlPktBinPath = tmpDirName;
+    sys::path::append(ctrlPktBinPath, ctrlPktBinFileName);
+  }
+
+  std::vector<uint32_t> ctrlPktInstructions;
+  if (failed(xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
+          *clonedModule, ctrlPktInstructions, devName, ""))) {
+    llvm::errs() << "Error generating control packet binary for device: "
+                 << devName << "\n";
+    return failure();
+  }
+
+  // Write control packet binary
+  {
+    std::error_code ec;
+    raw_fd_ostream binFile(ctrlPktBinPath, ec, sys::fs::OpenFlags::OF_None);
+    if (ec) {
+      llvm::errs() << "Error opening control packet binary file: "
+                   << ec.message() << "\n";
+      return failure();
+    }
+    binFile.write(reinterpret_cast<const char *>(ctrlPktInstructions.data()),
+                  ctrlPktInstructions.size() * sizeof(uint32_t));
+  }
+
+  if (verbose) {
+    llvm::outs() << "Wrote " << ctrlPktInstructions.size()
+                 << " control packet instructions to: " << ctrlPktBinPath
+                 << "\n";
+  }
+
+  // Step 2: Convert control packets to DMA and NPU for DMA sequence
+  {
+    PassManager pm(ctx);
+    if (verbose) {
+      pm.enableVerifier(true);
+    }
+
+    OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+    devicePm.addPass(xilinx::AIEX::createAIECtrlPacketToDmaPass());
+    devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
+
+    if (verbose) {
+      llvm::outs() << "Running control packet to DMA pipeline in-memory\n";
+    }
+
+    if (failed(pm.run(*clonedModule))) {
+      llvm::errs() << "Error: Control packet to DMA pipeline failed\n";
+      return failure();
+    }
+  }
+
+  // Dump intermediate DMA sequence MLIR
+  SmallString<128> dmaSeqMlirPath(tmpDirName);
+  sys::path::append(dmaSeqMlirPath, devName.str() + "_ctrlpkt_dma_seq.mlir");
+  dumpModuleToFile(*clonedModule, dmaSeqMlirPath,
+                   "Control packet DMA sequence MLIR");
+
+  // Generate DMA sequence binary using AIETranslateNpuToBinary
+  std::string dmaSeqBinFileName = formatString(ctrlPktDmaSeqName, devName);
+  SmallString<128> dmaSeqBinPath;
+  if (sys::path::is_absolute(dmaSeqBinFileName)) {
+    dmaSeqBinPath = dmaSeqBinFileName;
+  } else {
+    dmaSeqBinPath = tmpDirName;
+    sys::path::append(dmaSeqBinPath, dmaSeqBinFileName);
+  }
+
+  std::vector<uint32_t> dmaSeqInstructions;
+  // Use "seq" as sequence name to match Python behavior
+  if (failed(xilinx::AIE::AIETranslateNpuToBinary(*clonedModule,
+                                                  dmaSeqInstructions, devName,
+                                                  "" /* all sequences */))) {
+    llvm::errs() << "Error generating control packet DMA sequence for device: "
+                 << devName << "\n";
+    return failure();
+  }
+
+  // Write DMA sequence binary
+  {
+    std::error_code ec;
+    raw_fd_ostream binFile(dmaSeqBinPath, ec, sys::fs::OpenFlags::OF_None);
+    if (ec) {
+      llvm::errs() << "Error opening DMA sequence binary file: " << ec.message()
+                   << "\n";
+      return failure();
+    }
+    binFile.write(reinterpret_cast<const char *>(dmaSeqInstructions.data()),
+                  dmaSeqInstructions.size() * sizeof(uint32_t));
+  }
+
+  if (verbose) {
+    llvm::outs() << "Wrote " << dmaSeqInstructions.size()
+                 << " DMA sequence instructions to: " << dmaSeqBinPath << "\n";
+  }
+
+  // Step 3: Generate combined ELF using aiebu-asm (if available)
+  std::string aiebuAsmPath = findAiebuAsm();
+  if (aiebuAsmPath.empty()) {
+    if (verbose) {
+      llvm::outs() << "aiebu-asm not found, skipping control packet ELF "
+                      "generation\n";
+    }
+    return success();
+  }
+
+  std::string elfFileName = formatString(ctrlPktElfName, devName);
+  SmallString<128> elfPath;
+  if (sys::path::is_absolute(elfFileName)) {
+    elfPath = elfFileName;
+  } else {
+    elfPath = tmpDirName;
+    sys::path::append(elfPath, elfFileName);
+  }
+
+  // Count runtime sequence arguments to determine ctrl_pkt buffer index
+  int ctrlIdx = 0;
+  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
+    if (!deviceName.empty() && devOp.getSymName() != devName) {
+      continue;
+    }
+    for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
+      // Get the number of arguments in the runtime sequence
+      if (!seqOp.getBody().empty()) {
+        ctrlIdx = seqOp.getBody().front().getNumArguments();
+        break;
+      }
+    }
+    break;
+  }
+
+  // Generate external_buffers.json for aiebu-asm
+  SmallString<128> extBufJsonPath(tmpDirName);
+  sys::path::append(extBufJsonPath, "external_buffers.json");
+
+  // Get control packet file size
+  uint64_t ctrlPktSize = 0;
+  if (auto status = sys::fs::file_size(ctrlPktBinPath, ctrlPktSize)) {
+    llvm::errs() << "Error getting control packet file size: "
+                 << status.message() << "\n";
+    return failure();
+  }
+
+  {
+    std::error_code ec;
+    raw_fd_ostream jsonFile(extBufJsonPath, ec, sys::fs::OpenFlags::OF_None);
+    if (ec) {
+      llvm::errs() << "Error creating external_buffers.json: " << ec.message()
+                   << "\n";
+      return failure();
+    }
+    jsonFile << "{\n";
+    jsonFile << "  \"external_buffers\": {\n";
+    jsonFile << "    \"buffer_ctrl\": {\n";
+    jsonFile << "      \"xrt_id\": " << ctrlIdx << ",\n";
+    jsonFile << "      \"logical_id\": -1,\n";
+    jsonFile << "      \"size_in_bytes\": " << ctrlPktSize << ",\n";
+    jsonFile << "      \"ctrl_pkt_buffer\": 1,\n";
+    jsonFile << "      \"name\": \"runtime_control_packet\"\n";
+    jsonFile << "    }\n";
+    jsonFile << "  }\n";
+    jsonFile << "}\n";
+  }
+
+  // Run aiebu-asm to generate combined ELF
+  std::vector<StringRef> args;
+  args.push_back(aiebuAsmPath);
+  args.push_back("-t");
+  args.push_back("aie2txn");
+  args.push_back("-c");
+  args.push_back(dmaSeqBinPath);
+  args.push_back("-o");
+  args.push_back(elfPath);
+  args.push_back("-j");
+  args.push_back(extBufJsonPath);
+  args.push_back("-p");
+  args.push_back(ctrlPktBinPath);
+
+  if (verbose) {
+    llvm::outs() << "Running: ";
+    for (const auto &arg : args) {
+      llvm::outs() << arg << " ";
+    }
+    llvm::outs() << "\n";
+  }
+
+  std::string errMsg;
+  int exitCode = sys::ExecuteAndWait(aiebuAsmPath, args, std::nullopt, {},
+                                     /*SecondsToWait=*/0,
+                                     /*MemoryLimit=*/0, &errMsg);
+  if (exitCode != 0) {
+    llvm::errs() << "Error running aiebu-asm for control packet ELF: " << errMsg
+                 << "\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generated control packet ELF: " << elfPath << "\n";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ELF Generation (via aiebu-asm)
+//===----------------------------------------------------------------------===//
+
+/// Find aiebu-asm binary in PATH or at default locations.
+static std::string findAiebuAsm() {
+  // First try PATH
+  auto aiebuAsmPath = sys::findProgramByName("aiebu-asm");
+  if (aiebuAsmPath) {
+    return *aiebuAsmPath;
+  }
+
+  // Try XRT installation location (common case)
+  std::string xrtPath = "/opt/xilinx/xrt/bin/aiebu-asm";
+  if (sys::fs::can_execute(xrtPath)) {
+    return xrtPath;
+  }
+
+  // Try standalone aiebu installation
+  std::string defaultPath = "/opt/xilinx/aiebu/bin/aiebu-asm";
+  if (sys::fs::can_execute(defaultPath)) {
+    return defaultPath;
+  }
+
+  return "";
+}
+
+/// Generate ELF file from NPU instruction binary using aiebu-asm.
+/// This generates an ELF that can be loaded using xrt::elf API.
+static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
+                                          StringRef tmpDirName,
+                                          StringRef devName) {
+  if (!generateElf) {
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generating ELF for device: " << devName << "\n";
+  }
+
+  if (dryRun) {
+    if (verbose) {
+      llvm::outs() << "Would generate ELF for device: " << devName << "\n";
+    }
+    return success();
+  }
+
+  // Find aiebu-asm
+  std::string aiebuAsmBin = findAiebuAsm();
+  if (aiebuAsmBin.empty()) {
+    llvm::errs() << "Error: aiebu-asm not found in PATH or at "
+                    "/opt/xilinx/aiebu/bin/aiebu-asm\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Found aiebu-asm: " << aiebuAsmBin << "\n";
+  }
+
+  // Clone and run NPU lowering (same as generateNpuInstructions)
+  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+
+  if (failed(runNpuLoweringPipeline(*clonedModule))) {
+    llvm::errs() << "Error running NPU lowering pipeline for ELF generation\n";
+    return failure();
+  }
+
+  // Generate instructions for each sequence and combine them
+  std::vector<uint32_t> allInstructions;
+  LogicalResult result = success();
+
+  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
+    if (!deviceName.empty() && devOp.getSymName() != devName) {
+      continue;
+    }
+
+    devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
+      if (failed(result)) {
+        return;
+      }
+
+      if (!sequenceName.empty() && seq.getSymName() != sequenceName) {
+        return;
+      }
+
+      std::vector<uint32_t> instructions;
+      if (failed(xilinx::AIE::AIETranslateNpuToBinary(
+              *clonedModule, instructions, devName, seq.getSymName()))) {
+        llvm::errs() << "Error generating NPU instructions for ELF: "
+                     << seq.getSymName() << "\n";
+        result = failure();
+        return;
+      }
+
+      // Append to combined instructions
+      allInstructions.insert(allInstructions.end(), instructions.begin(),
+                             instructions.end());
+    });
+  }
+
+  if (failed(result)) {
+    return failure();
+  }
+
+  if (allInstructions.empty()) {
+    llvm::errs() << "Warning: No NPU instructions generated for ELF\n";
+    return success();
+  }
+
+  // Write combined instructions to temporary binary file
+  SmallString<128> tempBinPath(tmpDirName);
+  sys::path::append(tempBinPath, devName.str() + "_elf_insts.bin");
+
+  {
+    std::error_code ec;
+    raw_fd_ostream binFile(tempBinPath, ec, sys::fs::OpenFlags::OF_None);
+    if (ec) {
+      llvm::errs() << "Error creating temp binary for ELF: " << ec.message()
+                   << "\n";
+      return failure();
+    }
+    binFile.write(reinterpret_cast<const char *>(allInstructions.data()),
+                  allInstructions.size() * sizeof(uint32_t));
+  }
+
+  if (verbose) {
+    llvm::outs() << "Wrote " << allInstructions.size()
+                 << " instructions to temp file: " << tempBinPath << "\n";
+  }
+
+  // Determine output ELF path
+  std::string outputElfPath = formatString(elfName, devName.str(), "");
+
+  // Run aiebu-asm to convert binary to ELF
+  // aiebu-asm -t aie2txn -c <input.bin> -o <output.elf>
+  SmallVector<std::string, 10> aiebuCmd = {
+      aiebuAsmBin, "-t",         "aie2txn", "-c", tempBinPath.str().str(),
+      "-o",        outputElfPath};
+
+  if (!executeCommand(aiebuCmd)) {
+    llvm::errs() << "Error running aiebu-asm\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generated ELF: " << outputElfPath << "\n";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Full ELF Generation (via aiebu-asm aie2_config)
+//===----------------------------------------------------------------------===//
+
+/// Structure to hold device info for full ELF generation.
+struct DeviceElfInfo {
+  std::string deviceName;
+  std::string pdiPath;
+  std::vector<std::pair<std::string, std::string>>
+      sequences; // (seqName, instsPath)
+  int pdiId;
+};
+
+/// Generate full ELF containing PDIs and instruction sequences.
+/// This creates a config.json and calls aiebu-asm -t aie2_config.
+static LogicalResult
+generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
+                        StringRef tmpDirName) {
+  if (!generateFullElf) {
+    return success();
+  }
+
+  if (deviceInfos.empty()) {
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generating full ELF with " << deviceInfos.size()
+                 << " device(s)\n";
+  }
+
+  if (dryRun) {
+    if (verbose) {
+      llvm::outs() << "Would generate full ELF\n";
+    }
+    return success();
+  }
+
+  // Find aiebu-asm
+  std::string aiebuAsmBin = findAiebuAsm();
+  if (aiebuAsmBin.empty()) {
+    llvm::errs() << "Error: aiebu-asm not found for full ELF generation\n";
+    return failure();
+  }
+
+  // Build config.json structure
+  // Format: { "xrt-kernels": [ { "name": ..., "PDIs": [...], "instance": [...]
+  // } ] }
+  std::string configJson = "{\n  \"xrt-kernels\": [\n";
+
+  for (size_t i = 0; i < deviceInfos.size(); ++i) {
+    const auto &info = deviceInfos[i];
+
+    if (i > 0)
+      configJson += ",\n";
+    configJson += "    {\n";
+    configJson += "      \"name\": \"" + info.deviceName + "\",\n";
+
+    // Arguments - determine max arg count from sequences
+    // For now, use a default set of arguments
+    configJson += "      \"arguments\": [\n";
+    configJson += "        {\"name\": \"arg_0\", \"type\": \"char *\", "
+                  "\"offset\": \"0x0\"},\n";
+    configJson += "        {\"name\": \"arg_1\", \"type\": \"char *\", "
+                  "\"offset\": \"0x8\"},\n";
+    configJson += "        {\"name\": \"arg_2\", \"type\": \"char *\", "
+                  "\"offset\": \"0x10\"}\n";
+    configJson += "      ],\n";
+
+    // PDIs
+    configJson += "      \"PDIs\": [\n";
+    configJson += "        {\"id\": " + std::to_string(info.pdiId) +
+                  ", \"PDI_file\": \"" + info.pdiPath + "\"}\n";
+    configJson += "      ],\n";
+
+    // Instances (runtime sequences)
+    configJson += "      \"instance\": [\n";
+    for (size_t j = 0; j < info.sequences.size(); ++j) {
+      if (j > 0)
+        configJson += ",\n";
+      configJson += "        {\"id\": \"" + info.sequences[j].first +
+                    "\", \"TXN_ctrl_code_file\": \"" +
+                    info.sequences[j].second + "\"}";
+    }
+    configJson += "\n      ]\n";
+    configJson += "    }";
+  }
+
+  configJson += "\n  ]\n}\n";
+
+  // Write config.json
+  SmallString<128> configPath(tmpDirName);
+  sys::path::append(configPath, "full_elf_config.json");
+
+  {
+    std::error_code ec;
+    raw_fd_ostream configFile(configPath, ec);
+    if (ec) {
+      llvm::errs() << "Error writing config.json: " << ec.message() << "\n";
+      return failure();
+    }
+    configFile << configJson;
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generated config.json: " << configPath << "\n";
+    llvm::outs().flush();
+  }
+
+  // Run aiebu-asm -t aie2_config -j config.json -o output.elf
+  SmallVector<std::string, 10> aiebuCmd = {aiebuAsmBin,
+                                           "-t",
+                                           "aie2_config",
+                                           "-j",
+                                           configPath.str().str(),
+                                           "-o",
+                                           fullElfName.getValue()};
+
+  if (!executeCommand(aiebuCmd)) {
+    llvm::errs() << "Error running aiebu-asm for full ELF\n";
+    llvm::errs().flush();
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Generated full ELF: " << fullElfName << "\n";
+    llvm::outs().flush();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CDO/PDI/xclbin Generation
 //===----------------------------------------------------------------------===//
 
@@ -1971,7 +2815,9 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                           StringRef tmpDirName,
                                           StringRef devName) {
-  if (!generateCdo && !generatePdi && !generateXclbin) {
+  // Full ELF requires PDI generation
+  bool needPdi = generatePdi || generateFullElf;
+  if (!generateCdo && !needPdi && !generateXclbin) {
     return success();
   }
 
@@ -1979,11 +2825,49 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     llvm::outs() << "Generating CDO artifacts for device: " << devName << "\n";
   }
 
-  // In dry-run mode, just show what would be done and return
+  // Generate JSON metadata files for xclbin even in dry-run mode
+  // (matching Python aiecc.py behavior where -n only skips command execution)
+  if (generateXclbin) {
+    SmallString<128> memTopoPath(tmpDirName);
+    sys::path::append(memTopoPath, devName.str() + "_mem_topology.json");
+    if (failed(generateMemTopologyJson(memTopoPath)))
+      return failure();
+
+    SmallString<128> kernelsPath(tmpDirName);
+    sys::path::append(kernelsPath, devName.str() + "_kernels.json");
+    if (failed(generateKernelsJson(kernelsPath, devName)))
+      return failure();
+
+    // Generate partition JSON (with placeholder PDI path in dry-run)
+    SmallString<128> partitionPath(tmpDirName);
+    sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
+    std::string pdiFileName = formatString(pdiName, devName);
+    SmallString<128> pdiPath(tmpDirName);
+    sys::path::append(pdiPath, pdiFileName);
+    // Make pdiPath absolute for partition JSON
+    SmallString<128> absPdiPath;
+    if (sys::path::is_absolute(pdiPath)) {
+      absPdiPath = pdiPath;
+    } else {
+      // In dry-run mode, just construct the path manually
+      sys::fs::current_path(absPdiPath);
+      sys::path::append(absPdiPath, pdiPath);
+    }
+    if (failed(generatePartitionJson(partitionPath, devName, absPdiPath)))
+      return failure();
+
+    if (verbose) {
+      llvm::outs() << "Generated JSON metadata files in: " << tmpDirName
+                   << "\n";
+    }
+  }
+
+  // In dry-run mode, skip actual command execution
   if (dryRun) {
     if (verbose) {
-      llvm::outs() << "Would generate CDO artifacts for device: " << devName
-                   << "\n";
+      llvm::outs() << "Dry-run: would generate CDO/PDI/xclbin artifacts for "
+                      "device: "
+                   << devName << "\n";
     }
     return success();
   }
@@ -2008,8 +2892,8 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     llvm::outs() << "Generated CDO files in: " << tmpDirName << "\n";
   }
 
-  // Generate PDI if requested
-  if (generatePdi || generateXclbin) {
+  // Generate PDI if requested (also required for full ELF)
+  if (needPdi || generateXclbin) {
     std::string bootgenPath = findAieTool("bootgen");
     if (bootgenPath.empty()) {
       llvm::errs()
@@ -2052,9 +2936,9 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                               "-arch",
                                               "versal",
                                               "-image",
-                                              std::string(bifPath),
+                                              bifPath.str().str(),
                                               "-o",
-                                              std::string(pdiPath),
+                                              pdiPath.str().str(),
                                               "-w"};
 
     if (!executeCommand(bootgenCmd)) {
@@ -2081,35 +2965,15 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
         llvm::outs() << "Generating xclbin for device: " << devName << "\n";
       }
 
-      // Generate JSON metadata files
+      // JSON metadata files were already generated earlier (even in dry-run)
       SmallString<128> memTopoPath(tmpDirName);
       sys::path::append(memTopoPath, devName.str() + "_mem_topology.json");
-      if (failed(generateMemTopologyJson(memTopoPath)))
-        return failure();
 
       SmallString<128> kernelsPath(tmpDirName);
       sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-      if (failed(generateKernelsJson(kernelsPath, devName)))
-        return failure();
 
       SmallString<128> partitionPath(tmpDirName);
       sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
-
-      // Make pdiPath absolute for partition JSON
-      SmallString<128> absPdiPath;
-      if (sys::path::is_absolute(pdiPath)) {
-        absPdiPath = pdiPath;
-      } else {
-        std::error_code ec = sys::fs::real_path(pdiPath, absPdiPath);
-        if (ec) {
-          // If real_path fails, try making it absolute manually
-          sys::fs::current_path(absPdiPath);
-          sys::path::append(absPdiPath, pdiPath);
-        }
-      }
-
-      if (failed(generatePartitionJson(partitionPath, devName, absPdiPath)))
-        return failure();
 
       // Build xclbin
       std::string xclbinFileName = formatString(xclbinName, devName);
@@ -2120,17 +2984,47 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
         xclbinPath = xclbinFileName;
       }
 
-      SmallVector<std::string, 16> xclbinCmd = {
-          xclbinutilPath,
-          "--add-replace-section",
-          "MEM_TOPOLOGY:JSON:" + std::string(memTopoPath),
-          "--add-kernel",
-          std::string(kernelsPath),
-          "--add-replace-section",
-          "AIE_PARTITION:JSON:" + std::string(partitionPath),
-          "--force",
-          "--output",
-          std::string(xclbinPath)};
+      SmallVector<std::string, 16> xclbinCmd;
+
+      // Handle xclbin-input: merge with existing xclbin
+      if (!xclbinInput.empty()) {
+        if (verbose) {
+          llvm::outs() << "Extending existing xclbin: " << xclbinInput << "\n";
+        }
+
+        // Merge partition JSONs
+        SmallString<128> mergedPartitionPath(tmpDirName);
+        sys::path::append(mergedPartitionPath,
+                          devName.str() + "_merged_partition.json");
+
+        if (failed(extractAndMergePartition(xclbinInput, partitionPath,
+                                            mergedPartitionPath, tmpDirName))) {
+          return failure();
+        }
+
+        xclbinCmd = {xclbinutilPath,
+                     "--input",
+                     xclbinInput.getValue(),
+                     "--add-kernel",
+                     kernelsPath.str().str(),
+                     "--add-replace-section",
+                     "AIE_PARTITION:JSON:" + mergedPartitionPath.str().str(),
+                     "--force",
+                     "--output",
+                     xclbinPath.str().str()};
+      } else {
+        // Create new xclbin from scratch
+        xclbinCmd = {xclbinutilPath,
+                     "--add-replace-section",
+                     "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
+                     "--add-kernel",
+                     kernelsPath.str().str(),
+                     "--add-replace-section",
+                     "AIE_PARTITION:JSON:" + partitionPath.str().str(),
+                     "--force",
+                     "--output",
+                     xclbinPath.str().str()};
+      }
 
       if (!executeCommand(xclbinCmd)) {
         llvm::errs() << "Error generating xclbin\n";
@@ -2256,6 +3150,10 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   dumpModuleToFile(moduleOp, physicalPath, "physical module");
 
   // Step 3: Compile cores and generate artifacts for each device
+  // Collect device info for full ELF generation if requested
+  std::vector<DeviceElfInfo> deviceElfInfos;
+  int devicePdiId = 1; // Start PDI IDs from 1
+
   for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
     // Filter by device name if specified
     if (!deviceName.empty() && deviceOp.getSymName() != deviceName) {
@@ -2291,10 +3189,63 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
+    // Generate transaction MLIR output if requested
+    if (failed(generateTransactionOutput(moduleOp, tmpDirName, devName))) {
+      return failure();
+    }
+
+    // Generate control packet output if requested
+    if (failed(generateControlPacketOutput(moduleOp, tmpDirName, devName))) {
+      return failure();
+    }
+
+    // Generate ELF from NPU instructions (via aiebu-asm)
+    if (failed(generateElfFromInsts(moduleOp, tmpDirName, devName))) {
+      return failure();
+    }
+
     // Generate CDO/PDI/xclbin from in-memory module
     if (failed(generateCdoArtifacts(moduleOp, tmpDirName, devName))) {
       return failure();
     }
+
+    // Collect info for full ELF generation
+    if (generateFullElf) {
+      DeviceElfInfo info;
+      info.deviceName = devName.str();
+      info.pdiId = devicePdiId++;
+
+      // Get absolute path to tmpDir for aiebu-asm (it needs absolute paths)
+      SmallString<256> absTmpDir;
+      if (auto ec = sys::fs::real_path(tmpDirName, absTmpDir)) {
+        // Fall back to current dir + tmpDirName
+        sys::fs::current_path(absTmpDir);
+        sys::path::append(absTmpDir, tmpDirName);
+      }
+
+      // PDI path (must match generateCdoArtifacts output)
+      std::string pdiFileName = formatString(pdiName, devName);
+      SmallString<256> pdiFullPath(absTmpDir);
+      sys::path::append(pdiFullPath, pdiFileName);
+      info.pdiPath = pdiFullPath.str().str();
+
+      // Collect runtime sequence instruction paths (also absolute)
+      for (auto seqOp : deviceOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
+        StringRef seqName = seqOp.getSymName();
+        std::string instsFileName =
+            formatString(instsName, devName.str(), seqName);
+        SmallString<256> instsFullPath(absTmpDir);
+        sys::path::append(instsFullPath, instsFileName);
+        info.sequences.emplace_back(seqName.str(), instsFullPath.str().str());
+      }
+
+      deviceElfInfos.push_back(std::move(info));
+    }
+  }
+
+  // Generate full ELF after all devices are processed
+  if (failed(generateFullElfArtifact(deviceElfInfos, tmpDirName))) {
+    return failure();
   }
 
   return success();
@@ -2338,6 +3289,11 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
     llvm::errs() << "Error parsing MLIR file\n";
     return 1;
   }
+
+  // Set up diagnostic handler to print all diagnostics (including warnings)
+  // This ensures that pass diagnostics like buffer allocation warnings are
+  // visible to the user. The handler will print to stderr by default.
+  SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
 
   if (verbose) {
     llvm::outs() << "Successfully parsed input file: " << inputFile << "\n";
