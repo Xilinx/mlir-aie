@@ -104,4 +104,30 @@ def ConvertAIEToControlPackets : Pass<"convert-aie-to-control-packets",
   ];
 }
 
+//===----------------------------------------------------------------------===//
+// AIEXToEmitC
+//===----------------------------------------------------------------------===//
+
+def ConvertAIEXToEmitC : Pass<"convert-aiex-to-emitc",
+                               "xilinx::AIE::RuntimeSequenceOp"> {
+  let summary = "Convert dynamic AIEX operations to EmitC dialect";
+  let description = [{
+    This pass converts dynamic AIEX runtime sequence operations to EmitC
+    dialect operations. Dynamic operations like aiex.npu.dyn_write32,
+    aiex.npu.dyn_sync, etc. are lowered to EmitC function calls that encode
+    NPU transaction instructions at runtime.
+
+    The generated EmitC code can be translated to C++ using MLIR's standard
+    EmitC translation, enabling runtime-parameterized transaction generation.
+
+    SCF control flow operations (scf.for, scf.if) are preserved and will be
+    converted to C control flow by the standard SCF to EmitC lowering.
+  }];
+  let constructor = "xilinx::AIEX::createConvertAIEXToEmitCPass()";
+  let dependentDialects = ["mlir::emitc::EmitCDialect",
+                           "mlir::func::FuncDialect",
+                           "mlir::scf::SCFDialect",
+                           "mlir::arith::ArithDialect"];
+}
+
 #endif // AIE_CONVERSION_PASSES

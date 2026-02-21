@@ -24,12 +24,16 @@ namespace xilinx {
 namespace AIE {
 
 class AIEDialect;
+class RuntimeSequenceOp;
 
 } // namespace AIE
 
 namespace AIEX {
 
 class AIEXDialect;
+
+std::unique_ptr<mlir::OperationPass<AIE::RuntimeSequenceOp>>
+createConvertAIEXToEmitCPass();
 
 } // namespace AIEX
 
@@ -52,6 +56,18 @@ namespace mlir {
 namespace LLVM {
 class LLVMDialect;
 } // namespace LLVM
+
+namespace emitc {
+class EmitCDialect;
+} // namespace emitc
+
+namespace func {
+class FuncDialect;
+} // namespace func
+
+namespace scf {
+class SCFDialect;
+} // namespace scf
 
 #define GEN_PASS_CLASSES
 #include "aie/Conversion/Passes.h.inc"
