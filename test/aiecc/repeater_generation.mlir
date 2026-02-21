@@ -1,4 +1,4 @@
-//===- fallback_routine_error.mlir -----------------------------*- MLIR -*-===//
+//===- repeater_generation.mlir --------------------------------*- MLIR -*-===//
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -7,6 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+// UNSUPPORTED: true
+// The --repeater-output-dir flag is a legacy aiecc.py debugging feature
+// that generates a shell script to reproduce compilation failures.
+// This feature is not implemented in the C++ aiecc.
+//
 // RUN: not %python aiecc.py --compile --repeater-output-dir=. %s 2>&1 | FileCheck %s
 // RUN: cat ./aiecc_repeater_*.sh | FileCheck --check-prefix=DIAG %s
 // RUN: cat ./aiecc_failure_*.mlir | FileCheck --check-prefix=MLIR %s
