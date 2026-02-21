@@ -3591,14 +3591,14 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     // AIETranslateToCDODirect generates CDO files directly to the work
     // directory: {devName}_aie_cdo_elfs.bin, {devName}_aie_cdo_init.bin,
     // {devName}_aie_cdo_enable.bin
-    if (failed(xilinx::AIE::AIETranslateToCDODirect(
-            moduleOp, tmpDirName, devName,
-            /*bigEndian=*/false,
-            /*emitUnified=*/false,
-            /*cdoDebug=*/false,
-            /*aieSim=*/aiesim,
-            /*xaieDebug=*/false,
-            /*enableCores=*/true))) {
+    if (failed(xilinx::AIE::AIETranslateToCDODirect(moduleOp, tmpDirName,
+                                                    devName,
+                                                    /*bigEndian=*/false,
+                                                    /*emitUnified=*/false,
+                                                    /*cdoDebug=*/false,
+                                                    /*aieSim=*/aiesim,
+                                                    /*xaieDebug=*/false,
+                                                    /*enableCores=*/true))) {
       llvm::errs() << "Error generating CDO files\n";
       return failure();
     }
