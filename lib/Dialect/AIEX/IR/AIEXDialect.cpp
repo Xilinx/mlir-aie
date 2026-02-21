@@ -1130,3 +1130,40 @@ LogicalResult AIEX::NpuDynSyncOp::verify() {
 
   return success();
 }
+
+LogicalResult AIEX::NpuDynBlockWriteOp::verify() {
+  Type addrType = getAddress().getType();
+  if (!addrType.isSignlessInteger())
+    return emitOpError("address must be a signless integer type");
+
+  for (Value dataVal : getData()) {
+    if (!dataVal.getType().isSignlessInteger())
+      return emitOpError("all data values must be signless integer types");
+  }
+
+  return success();
+}
+
+LogicalResult AIEX::NpuDynAddressPatchOp::verify() {
+  for (Value operand : getOperands()) {
+    if (!operand.getType().isSignlessInteger())
+      return emitOpError("all operands must be signless integer types");
+  }
+  return success();
+}
+
+LogicalResult AIEX::NpuDynPushQueueOp::verify() {
+  for (Value operand : getOperands()) {
+    if (!operand.getType().isSignlessInteger())
+      return emitOpError("all operands must be signless integer types");
+  }
+  return success();
+}
+
+LogicalResult AIEX::NpuDynWriteBdOp::verify() {
+  for (Value operand : getOperands()) {
+    if (!operand.getType().isSignlessInteger() && !operand.getType().isIndex())
+      return emitOpError("all operands must be signless integer or index types");
+  }
+  return success();
+}

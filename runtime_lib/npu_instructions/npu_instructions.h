@@ -151,6 +151,39 @@ inline void appendPreempt(std::vector<uint32_t> &instructions, uint32_t level) {
   words[0] = static_cast<uint32_t>(Opcode::PREEMPT) | (level << 8);
 }
 
+/// Append NPU push queue instruction
+inline void appendPushQueue(std::vector<uint32_t> &instructions,
+                            uint32_t column, uint32_t row, uint32_t direction,
+                            uint32_t channel, bool issueToken, uint32_t repeatCount,
+                            uint32_t bdId) {
+  // Push queue is a multi-field write operation
+  // Implementation would depend on hardware registers
+  // For now, placeholder using write32
+  uint32_t value = (bdId & 0xFF) | ((repeatCount & 0xFF) << 8) | ((issueToken ? 1 : 0) << 16);
+  uint32_t addr = 0x1D000000 + (column << 20) + (row << 16) + (direction << 12) + (channel << 8);
+  appendWrite32(instructions, addr, value);
+}
+
+/// Append NPU write BD instruction
+inline void appendWriteBd(std::vector<uint32_t> &instructions,
+                          uint32_t column, uint32_t row, uint32_t bdId,
+                          uint32_t bufferLength, uint32_t bufferOffset,
+                          uint32_t d0Size, uint32_t d0Stride,
+                          uint32_t d1Size, uint32_t d1Stride,
+                          uint32_t d2Size, uint32_t d2Stride,
+                          uint32_t iterationSize, uint32_t iterationStride) {
+  // BD configuration requires multiple register writes
+  // This is a simplified version - real implementation would write to specific BD registers
+  uint32_t bdBaseAddr = 0x1D000000 + (column << 20) + (row << 16) + (bdId << 8);
+
+  appendWrite32(instructions, bdBaseAddr + 0x00, bufferOffset);
+  appendWrite32(instructions, bdBaseAddr + 0x04, bufferLength);
+  appendWrite32(instructions, bdBaseAddr + 0x08, (d0Stride << 16) | d0Size);
+  appendWrite32(instructions, bdBaseAddr + 0x0C, (d1Stride << 16) | d1Size);
+  appendWrite32(instructions, bdBaseAddr + 0x10, (d2Stride << 16) | d2Size);
+  appendWrite32(instructions, bdBaseAddr + 0x14, (iterationStride << 16) | iterationSize);
+}
+
 /// Prepend transaction header to instruction sequence
 /// This should be called after all instructions are appended
 inline void prependHeader(std::vector<uint32_t> &instructions,

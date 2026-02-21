@@ -1139,6 +1139,121 @@ def AIE_NpuDynSyncOp: AIEX_Op<"npu.dyn_sync", []> {
   let hasVerifier = 1;
 }
 
+def AIE_NpuDynBlockWriteOp: AIEX_Op<"npu.dyn_blockwrite", []> {
+  let summary = "Dynamic block write operator with SSA value operands";
+  let arguments = (
+    ins AnySignlessInteger:$address,
+        Variadic<AnySignlessInteger>:$data,
+        OptionalAttr<I32Attr>:$column,
+        OptionalAttr<I32Attr>:$row
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $address `,` $data `)` attr-dict `:` type($address) `,` type($data)
+  }];
+  let description = [{
+    Dynamic NPU block write operator that accepts SSA values for address
+    and a variable-length list of data values to write as a block.
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_NpuDynAddressPatchOp: AIEX_Op<"npu.dyn_address_patch", []> {
+  let summary = "Dynamic address patch operator with SSA value operands";
+  let arguments = (
+    ins AnySignlessInteger:$addr,
+        AnySignlessInteger:$arg_idx,
+        AnySignlessInteger:$arg_plus
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $addr `,` $arg_idx `,` $arg_plus `)` attr-dict `:` type($addr) `,` type($arg_idx) `,` type($arg_plus)
+  }];
+  let description = [{
+    Dynamic NPU address patch operator for runtime address patching.
+    Patches the address at 'addr' with the value of runtime argument
+    'arg_idx' plus 'arg_plus' offset.
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_NpuDynPushQueueOp: AIEX_Op<"npu.dyn_push_queue", []> {
+  let summary = "Dynamic BD queue push operator with SSA value operands";
+  let arguments = (
+    ins AnySignlessInteger:$column,
+        AnySignlessInteger:$row,
+        AnySignlessInteger:$direction,
+        AnySignlessInteger:$channel,
+        AnySignlessInteger:$issue_token,
+        AnySignlessInteger:$repeat_count,
+        AnySignlessInteger:$bd_id
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $column `,` $row `,` $direction `,` $channel `,` $issue_token `,` $repeat_count `,` $bd_id `)`
+    attr-dict `:` type($column) `,` type($row) `,` type($direction) `,` type($channel) `,` type($issue_token) `,` type($repeat_count) `,` type($bd_id)
+  }];
+  let description = [{
+    Dynamic BD queue push operator with runtime-parameterized tile coordinates,
+    channel, direction, and BD ID.
+  }];
+  let hasVerifier = 1;
+}
+
+def AIE_NpuDynWriteBdOp: AIEX_Op<"npu.dyn_writebd", []> {
+  let summary = "Dynamic buffer descriptor write with SSA value operands";
+  let arguments = (
+    ins AnySignlessInteger:$column,
+        AnySignlessInteger:$row,
+        AnySignlessInteger:$bd_id,
+        AnySignlessInteger:$buffer_length,
+        AnySignlessInteger:$buffer_offset,
+        AnySignlessInteger:$d0_size,
+        AnySignlessInteger:$d0_stride,
+        AnySignlessInteger:$d1_size,
+        AnySignlessInteger:$d1_stride,
+        AnySignlessInteger:$d2_size,
+        AnySignlessInteger:$d2_stride,
+        AnySignlessInteger:$iteration_size,
+        AnySignlessInteger:$iteration_stride,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$enable_packet,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$out_of_order_id,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$packet_id,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$packet_type,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$next_bd,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$use_next_bd,
+        DefaultValuedOptionalAttr<I32Attr, "1">:$valid_bd,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$lock_rel_val,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$lock_rel_id,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$lock_acq_enable,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$lock_acq_val,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$lock_acq_id,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$d0_zero_before,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$d1_zero_before,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$d2_zero_before,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$d0_zero_after,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$d1_zero_after,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$d2_zero_after,
+        DefaultValuedOptionalAttr<I32Attr, "0">:$burst_length
+  );
+  let results = (outs);
+  let assemblyFormat = [{
+    `(` $column `,` $row `,` $bd_id `,` $buffer_length `,` $buffer_offset `,`
+    $d0_size `,` $d0_stride `,` $d1_size `,` $d1_stride `,`
+    $d2_size `,` $d2_stride `,` $iteration_size `,` $iteration_stride `)`
+    attr-dict `:` type($column) `,` type($row) `,` type($bd_id) `,`
+    type($buffer_length) `,` type($buffer_offset) `,`
+    type($d0_size) `,` type($d0_stride) `,` type($d1_size) `,` type($d1_stride) `,`
+    type($d2_size) `,` type($d2_stride) `,` type($iteration_size) `,` type($iteration_stride)
+  }];
+  let description = [{
+    Dynamic buffer descriptor write operator with runtime-parameterized
+    sizes, strides, and buffer configuration. All dimension parameters
+    are SSA values allowing runtime computation of DMA access patterns.
+  }];
+  let hasVerifier = 1;
+}
+
 def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
