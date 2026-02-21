@@ -77,3 +77,5 @@ target_include_directories(AIETargets SYSTEM PRIVATE
   ${AIE_BINARY_DIR}/include/xaienginecdo_static
 )
 target_include_directories(obj.AIETargets SYSTEM PRIVATE ${BOOTGEN_SOURCE_DIR})
+# Add runtime_lib for standalone NPU instruction encoding library
+target_include_directories(AIETargets PUBLIC ${PROJECT_SOURCE_DIR}/runtime_lib)

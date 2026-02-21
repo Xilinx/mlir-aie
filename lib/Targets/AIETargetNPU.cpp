@@ -23,6 +23,9 @@
 
 #include <vector>
 
+// Use standalone NPU instruction encoding library
+#include "npu_instructions/npu_instructions.h"
+
 extern "C" {
 // #include "xaiengine/xaie_txn.h"
 // see aie-rt commit a6196eb, xaiengine/xaie_txn.h for source of this enum
@@ -81,122 +84,57 @@ reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
 }
 
 void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
-
-  auto words = reserveAndGetTail(instructions, 4);
-
-  // XAIE_IO_CUSTOM_OP_TCT
-  words[0] = XAIE_IO_CUSTOM_OP_TCT;
-
-  words[1] = words.size() * sizeof(uint32_t); // Operation Size
-
-  words[2] |= static_cast<uint32_t>(op.getDirection()) & 0xff;
-  words[2] |= (op.getRow() & 0xff) << 8;
-  words[2] |= (op.getColumn() & 0xff) << 16;
-
-  words[3] |= (op.getRowNum() & 0xff) << 8;
-  words[3] |= (op.getColumnNum() & 0xff) << 16;
-  words[3] |= (op.getChannel() & 0xff) << 24;
+  aie::npu::appendSync(instructions, op.getColumn(), op.getRow(),
+                       static_cast<uint32_t>(op.getDirection()), op.getChannel(),
+                       op.getColumnNum(), op.getRowNum());
 }
 
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
-
-  auto words = reserveAndGetTail(instructions, 6);
-
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
     return;
   }
 
-  // XAIE_IO_WRITE
-  words[0] = XAIE_IO_WRITE;
-  words[2] = *op.getAbsoluteAddress();
-  words[3] = 0;                               // Extra bits for Reg Offset
-  words[4] = op.getValue();                   // Value
-  words[5] = words.size() * sizeof(uint32_t); // Operation Size
+  aie::npu::appendWrite32(instructions, *op.getAbsoluteAddress(), op.getValue());
 }
 
 void appendMaskWrite32(std::vector<uint32_t> &instructions,
                        NpuMaskWrite32Op op) {
-
-  auto words = reserveAndGetTail(instructions, 7);
-
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
     return;
   }
 
-  // XAIE_IO_MASKWRITE
-  words[0] = XAIE_IO_MASKWRITE;
-  words[2] = *op.getAbsoluteAddress();
-  words[3] = 0;
-  words[4] = op.getValue();                   // Value
-  words[5] = op.getMask();                    // Mask
-  words[6] = words.size() * sizeof(uint32_t); // Operation Size
+  aie::npu::appendMaskWrite32(instructions, *op.getAbsoluteAddress(),
+                               op.getValue(), op.getMask());
 }
 
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
-
-  auto words = reserveAndGetTail(instructions, 4);
-
-  // XAIE_IO_LOADPDI
-  words[0] = XAIE_IO_LOADPDI;
-  words[0] |= op.getId() << 16;
-  std::optional<uint32_t> size = op.getSize();
-  if (size)
-    words[1] = *size;
-  std::optional<uint64_t> address = op.getAddress();
-  if (address) {
-    words[2] = *address;
-    words[3] = *address >> 32;
-  }
+  uint32_t size = op.getSize().value_or(0);
+  uint64_t address = op.getAddress().value_or(0);
+  aie::npu::appendLoadPdi(instructions, op.getId(), size, address);
 }
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
                         NpuAddressPatchOp op) {
-
-  auto words = reserveAndGetTail(instructions, 12);
-
-  // XAIE_IO_CUSTOM_OP_DDR_PATCH
-  words[0] = XAIE_IO_CUSTOM_OP_DDR_PATCH;
-  words[1] = words.size() * sizeof(uint32_t); // Operation Size
-
-  words[5] = 0; // Action
-
-  words[6] = op.getAddr();
-
-  words[8] = op.getArgIdx();
-
-  words[10] = op.getArgPlus();
+  aie::npu::appendAddressPatch(instructions, op.getAddr(), op.getArgIdx(), op.getArgPlus());
 }
 
 void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
-  unsigned payload_start = 4;
-
   std::optional<uint32_t> address = op.getAbsoluteAddress();
   DenseIntElementsAttr data = op.getDataWords();
 
-  auto words = reserveAndGetTail(instructions, data.size() + payload_start);
-
-  // XAIE_IO_BLOCKWRITE
-  words[0] = XAIE_IO_BLOCKWRITE;
-  words[2] = op.getAddress();
-  auto col = op.getColumn();
-  auto row = op.getRow();
-  if (col && row) {
-    words[1] = (*col & 0xff) | ((*row & 0xff) << 8);
-  }
-  words[2] = *address;
-  words[3] = words.size() * sizeof(uint32_t); // Operation Size
-
-  unsigned i = payload_start;
+  // Extract data values
+  std::vector<uint32_t> dataVec;
+  dataVec.reserve(data.size());
   for (auto d : data)
-    words[i++] = d.getZExtValue();
+    dataVec.push_back(d.getZExtValue());
+
+  aie::npu::appendBlockWrite(instructions, *address, dataVec.data(), dataVec.size());
 }
 
 void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
-
-  auto words = reserveAndGetTail(instructions, 1);
-  words[0] = XAIE_IO_PREEMPT | (op.getLevel() << 8);
+  aie::npu::appendPreempt(instructions, op.getLevel());
 }
 
 } // namespace
