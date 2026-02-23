@@ -241,19 +241,26 @@ The C++ implementation provides **near-full feature parity**:
 - ✅ Transaction generation (`--aie-generate-txn`)
 - ✅ Control packet generation (`--aie-generate-ctrlpkt`)
 
-### Backward Compatibility Flags (accepted but no-op)
+### Features Not Yet Implemented
 
-The following flags are accepted for backward compatibility with existing scripts but have no effect in the C++ implementation (they were also unused or no-op in Python aiecc.py):
+The following flags are accepted for backward compatibility but functionality is not yet ported:
 
-- `--compile-host` / `--no-compile-host` / `--host-target` - Host compilation (deprecated)
-- `--vectorize` - Was defined but never used in Python aiecc.py
-- `--profile` - Not implemented
-- `--progress` - Not implemented
-- `--enable-repeater-scripts` / `--disable-repeater-scripts` / `--repeater-output-dir` - Repeater support
-- `--link_against_hsa` - HSA linking (not implemented)
-- `--no-materialize` - Materialization control
-- `--expand-load-pdis` - PDI loading optimization
-- `--no-aiesim` - Disable AIE simulation (default behavior)
+| Flag | Status | Notes |
+|------|--------|-------|
+| `--profile` | TODO | Command execution timing |
+| `--progress` | No-op | Rich progress bar (not planned for C++) |
+| `--enable-repeater-scripts` | No-op | Failure reproduction scripts (not planned) |
+| `--compile-host` / `--host-target` | Deprecated | Host compilation removed |
+
+### Recently Implemented Features
+
+| Flag | Status | Notes |
+|------|--------|-------|
+| `--link_against_hsa` | ✅ Implemented | Links against HSA runtime for ROCm |
+| `--no-materialize` | ✅ Implemented | Skip `aie-materialize-runtime-sequences` pass |
+| `--expand-load-pdis` | ✅ Implemented | Controls PDI expansion in NPU lowering |
+| `--aiesim` | ✅ Implemented | Full AIE simulator work folder generation |
+| `--no-aiesim` | ✅ Works | Sets aiesim=false (default behavior)
 
 ## Building
 

@@ -8,7 +8,10 @@
 llvm_map_components_to_libnames(llvm_libs support core irreader)
 
 # Build aiecc compiler driver
-add_llvm_executable(aiecc aiecc.cpp)
+add_llvm_executable(aiecc
+  aiecc.cpp
+  aiecc_aiesim.cpp
+)
 llvm_update_compile_flags(aiecc)
 install(TARGETS aiecc
   EXPORT AIETargets

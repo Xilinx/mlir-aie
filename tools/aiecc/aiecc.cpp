@@ -95,11 +95,12 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <system_error>
 #include <thread>
 #include <vector>
+
+#include "aiecc_aiesim.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -233,7 +234,7 @@ static cl::opt<std::string> pdiName("pdi-name", cl::desc("Output PDI filename"),
 
 static cl::opt<bool> expandLoadPdis(
     "expand-load-pdis",
-    cl::desc("Expand PDI loading (optimization flag, currently ignored)"),
+    cl::desc("Expand load_pdi operations to explicit configuration sequences"),
     cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> generateXclbin("aie-generate-xclbin",
@@ -349,7 +350,7 @@ static cl::opt<bool> dumpIntermediates(
     cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<unsigned> numThreads(
-    "j",
+    "j", cl::Prefix,
     cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
              "based on CPU count, default: 1 for sequential)"),
     cl::init(1), cl::cat(aieCompilerOptions));
@@ -373,10 +374,8 @@ static cl::opt<bool> noUnified(
 // compilation flow. They are kept for backward compatibility so that
 // existing scripts and test cases don't fail with "unknown argument" errors.
 
-static cl::opt<bool>
-    vectorize("vectorize",
-              cl::desc("Enable vectorization (deprecated, ignored)"),
-              cl::init(false), cl::cat(aieCompilerOptions));
+// Note: --vectorize was removed - it was defined but never used in Python
+// aiecc.py
 
 static cl::opt<bool> profile("profile",
                              cl::desc("Enable profiling (deprecated, ignored)"),
@@ -401,15 +400,22 @@ static cl::opt<std::string> repeaterOutputDir(
     cl::desc("Repeater output directory (deprecated, ignored)"), cl::init(""),
     cl::cat(aieCompilerOptions));
 
-static cl::opt<bool>
-    linkAgainstHsa("link_against_hsa",
-                   cl::desc("Link against HSA runtime (deprecated, ignored)"),
-                   cl::init(false), cl::cat(aieCompilerOptions));
+static cl::opt<bool> linkAgainstHsa(
+    "link_against_hsa",
+    cl::desc("Link against HSA runtime (-lhsa-runtime64 from ROCm)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
 
-static cl::opt<bool>
-    noMaterialize("no-materialize",
-                  cl::desc("Disable materialization (deprecated, ignored)"),
-                  cl::init(false), cl::cat(aieCompilerOptions));
+static cl::opt<bool> noMaterialize(
+    "no-materialize",
+    cl::desc("Skip aie-materialize-runtime-sequences pass in NPU lowering"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+//===----------------------------------------------------------------------===//
+// Thread-safe output
+//===----------------------------------------------------------------------===//
+
+// Global mutex for thread-safe verbose output during parallel compilation
+static std::mutex outputMutex;
 
 //===----------------------------------------------------------------------===//
 // Helper Functions
@@ -1000,71 +1006,6 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
 }
 
 //===----------------------------------------------------------------------===//
-// Pass Pipeline Construction (for subprocess calls)
-//===----------------------------------------------------------------------===//
-
-// Pipeline strings kept for reference - subprocess calls have been replaced
-// with in-memory PassManager execution in runResourceAllocationPipeline()
-[[maybe_unused]] static std::string
-buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
-  std::ostringstream oss;
-  oss << "builtin.module("
-      << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir},"
-      << "lower-affine,"
-      << "aie-canonicalize-device,"
-      << "aie.device("
-      << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos,"
-      << "aie-objectFifo-stateful-transform{"
-      << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
-      << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
-      << "aie-assign-bd-ids,"
-      << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet,"
-      << "aie-lower-multicast,"
-      << "aie-assign-tile-controller-ids,"
-      << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
-      << (ctrlPktOverlay ? "true" : "false") << "},"
-      << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
-      << "},"
-      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
-      << "),"
-      << "convert-scf-to-cf"
-      << ")";
-  return oss.str();
-}
-
-// Pipeline string kept for reference - replaced by runLLVMLoweringPipeline()
-[[maybe_unused]] static std::string
-buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
-  std::ostringstream oss;
-  oss << "builtin.module("
-      << "aie.device(aie-localize-locks,aie-normalize-address-spaces,"
-      << "aie-transform-bfp-types),"
-      << "aie-standard-lowering{device=" << deviceName.str() << "},"
-      << "aiex-standard-lowering,"
-      << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize,"
-      << "cse,"
-      << "expand-strided-metadata,"
-      << "lower-affine,"
-      << "arith-expand,"
-      << "finalize-memref-to-llvm,"
-      << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
-      << "convert-to-llvm{dynamic=true},"
-      << "canonicalize,"
-      << "cse"
-      << ")";
-  return oss.str();
-}
-
-// Pipeline string kept for reference - replaced by runNpuLoweringPipeline()
-[[maybe_unused]] static std::string buildNpuLoweringPipeline() {
-  return R"(builtin.module(aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu,aie-dma-to-npu,aie-lower-set-lock)))";
-}
-
-//===----------------------------------------------------------------------===//
 // In-Memory Pass Execution
 //===----------------------------------------------------------------------===//
 
@@ -1180,7 +1121,13 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp) {
     pm.enableVerifier(true);
   }
 
-  // All NPU lowering passes are device-level
+  // Add materialize runtime sequences pass at module level (before device
+  // nesting) unless --no-materialize is specified
+  if (!noMaterialize) {
+    pm.addPass(xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass());
+  }
+
+  // Device-level passes
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
   devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
@@ -1188,6 +1135,12 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp) {
   devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
   devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
   devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
+
+  // Add expand-load-pdi pass at module level (after device nesting)
+  // if --expand-load-pdis is specified
+  if (expandLoadPdis) {
+    pm.addPass(xilinx::AIEX::createAIEExpandLoadPdiPass());
+  }
 
   if (verbose) {
     llvm::outs() << "Running NPU lowering pipeline in-memory\n";
@@ -1302,6 +1255,7 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   pm.addPass(createCSEPass());
 
   if (verbose) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "Running LLVM lowering pipeline in-memory for core (" << col
                  << ", " << row << ")\n";
   }
@@ -1313,6 +1267,7 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   }
 
   if (verbose) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "LLVM lowering pipeline completed successfully for core ("
                  << col << ", " << row << ")\n";
   }
@@ -1409,7 +1364,22 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     return success(); // Skip compilation
   }
 
+  // When --no-unified is explicitly set with xchesscc, compile and link are
+  // combined into one step. If --no-link is also set, skip compilation entirely
+  // since xchesscc cannot produce object files without linking in this mode.
+  // Note: This optimization only applies when --no-unified is explicitly
+  // passed, not when unified is just false by default.
+  if (noUnified && xchesscc && !link) {
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
+      llvm::outs() << "Skipping core (" << core.col << ", " << core.row
+                   << ") compilation: xchesscc requires linking\n";
+    }
+    return success();
+  }
+
   if (verbose) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "Compiling core (" << core.col << ", " << core.row << ")\n";
   }
 
@@ -1452,6 +1422,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
     llvmModule->print(llvmIRFile, nullptr);
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Generated LLVM IR: " << llvmIRPath << "\n";
     }
   }
@@ -1480,6 +1451,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Generated linker script: " << ldScriptPath << "\n";
     }
   }
@@ -1519,6 +1491,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Applied IR downgrade for Chess: " << chessHackPath
                    << "\n";
     }
@@ -1536,6 +1509,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Linked with chess intrinsic wrapper: " << chessLinkedPath
                    << "\n";
     }
@@ -1572,6 +1546,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Compiled with xchesscc: " << objPath << "\n";
     }
   } else {
@@ -1679,6 +1654,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Generated BCF: " << bcfPath << "\n";
     }
 
@@ -1724,6 +1700,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       }
 
       if (verbose) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
                      << "\n";
       }
@@ -1771,6 +1748,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Linked with xbridge: " << elfPath << "\n";
     }
   } else {
@@ -1861,6 +1839,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       }
 
       if (verbose) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
                      << destLinkWith << "\n";
       }
@@ -1884,6 +1863,19 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     linkCmd.push_back("-Wl,--gc-sections");
     linkCmd.push_back("-Wl,--orphan-handling=error");
     linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+
+    // Add HSA runtime linking if requested
+    if (linkAgainstHsa) {
+      if (!sysroot.empty()) {
+        SmallString<256> rocmLibPath(sysroot);
+        sys::path::append(rocmLibPath, "opt", "rocm", "lib");
+        linkCmd.push_back("-L" + rocmLibPath.str().str());
+      } else {
+        linkCmd.push_back("-L/opt/rocm/lib");
+      }
+      linkCmd.push_back("-lhsa-runtime64");
+    }
+
     linkCmd.push_back("-o");
     linkCmd.push_back(elfPath.str().str());
 
@@ -1895,6 +1887,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   outElfPath = elfPath.str().str();
   if (verbose) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "Generated ELF: " << outElfPath << "\n";
   }
 
@@ -2515,6 +2508,19 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       linkCmd.push_back("-Wl,--gc-sections");
       linkCmd.push_back("-Wl,--orphan-handling=error");
       linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+
+      // Add HSA runtime linking if requested
+      if (linkAgainstHsa) {
+        if (!sysroot.empty()) {
+          SmallString<256> rocmLibPath(sysroot);
+          sys::path::append(rocmLibPath, "opt", "rocm", "lib");
+          linkCmd.push_back("-L" + rocmLibPath.str().str());
+        } else {
+          linkCmd.push_back("-L/opt/rocm/lib");
+        }
+        linkCmd.push_back("-lhsa-runtime64");
+      }
+
       linkCmd.push_back("-o");
       linkCmd.push_back(elfPath.str().str());
 
@@ -3597,6 +3603,42 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
 }
 
 //===----------------------------------------------------------------------===//
+// AIESim Work Folder Generation (wrapper)
+//===----------------------------------------------------------------------===//
+
+/// Wrapper to call the external aiesim generation function.
+/// Implementation is in aiecc_aiesim.cpp.
+static LogicalResult generateAiesimWorkFolder(ModuleOp moduleOp,
+                                              StringRef tmpDirName,
+                                              StringRef devName,
+                                              StringRef aieTarget) {
+  if (!aiesim) {
+    return success();
+  }
+
+  // Get aietools path (required for simulation)
+  StringRef aietoolsPath = getAietoolsDir();
+  if (aietoolsPath.empty()) {
+    llvm::errs() << "Error: --aiesim requires aietools installation. "
+                 << "Set AIETOOLS_ROOT or ensure xchesscc is in PATH.\n";
+    return failure();
+  }
+
+  // Get install path for runtime libraries
+  std::string installPath = getInstallPath();
+
+  // Set up configuration
+  aiecc::AiesimConfig config;
+  config.enabled = aiesim;
+  config.verbose = verbose;
+  config.dryRun = dryRun;
+
+  return aiecc::generateAiesimWorkFolder(moduleOp, tmpDirName, devName,
+                                         aieTarget, aietoolsPath, installPath,
+                                         config);
+}
+
+//===----------------------------------------------------------------------===//
 // CDO/PDI/xclbin Generation
 //===----------------------------------------------------------------------===//
 
@@ -4004,6 +4046,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
 
     // Generate CDO/PDI/xclbin from in-memory module
     if (failed(generateCdoArtifacts(moduleOp, tmpDirName, devName))) {
+      return failure();
+    }
+
+    // Generate AIE simulation work folder if requested
+    if (failed(generateAiesimWorkFolder(moduleOp, tmpDirName, devName,
+                                        aieTarget))) {
       return failure();
     }
 

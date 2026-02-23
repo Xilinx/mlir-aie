@@ -9,6 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano
+// REQUIRES: xrt
 
 // Test NPU instruction and xclbin generation
 
