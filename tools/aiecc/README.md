@@ -241,13 +241,19 @@ The C++ implementation provides **near-full feature parity**:
 - ✅ Transaction generation (`--aie-generate-txn`)
 - ✅ Control packet generation (`--aie-generate-ctrlpkt`)
 
-### Features not ported from Python aiecc.py
+### Backward Compatibility Flags (accepted but no-op)
 
-- ❌ Host compilation (`--compile-host`, `--no-compile-host`, `--host-target`) - deprecated
-- ⏳ AIE simulator support (`--aiesim` generates folder but not full simulation)
-- ⏳ HSA linking (`--link_against_hsa`)
-- ⏳ Progress bar (`--progress`)
-- ⏳ Vectorization pass (`--vectorize`)
+The following flags are accepted for backward compatibility with existing scripts but have no effect in the C++ implementation (they were also unused or no-op in Python aiecc.py):
+
+- `--compile-host` / `--no-compile-host` / `--host-target` - Host compilation (deprecated)
+- `--vectorize` - Was defined but never used in Python aiecc.py
+- `--profile` - Not implemented
+- `--progress` - Not implemented
+- `--enable-repeater-scripts` / `--disable-repeater-scripts` / `--repeater-output-dir` - Repeater support
+- `--link_against_hsa` - HSA linking (not implemented)
+- `--no-materialize` - Materialization control
+- `--expand-load-pdis` - PDI loading optimization
+- `--no-aiesim` - Disable AIE simulation (default behavior)
 
 ## Building
 

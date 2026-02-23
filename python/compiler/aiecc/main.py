@@ -49,11 +49,16 @@ def _find_aiecc_binary():
 
 
 # Features that are deprecated and not supported in C++ aiecc
+# These flags are now accepted by C++ aiecc as no-ops for compatibility,
+# but we still warn users that they have no effect
 _DEPRECATED_HOST_FLAGS = {
     "--compile-host": "Host compilation is deprecated and not supported in C++ aiecc.",
     "--no-compile-host": "Host compilation is deprecated and not supported in C++ aiecc.",
     "--host-target": "Host compilation is deprecated and not supported in C++ aiecc.",
 }
+
+# Flags that should be completely filtered out (not passed to C++ aiecc)
+_FILTERED_FLAGS = set()
 
 # Host compilation arguments that should be filtered out
 # These are compiler/linker flags used for host code compilation
@@ -92,23 +97,17 @@ def _check_deprecated_flags(args):
             skip_next = False
             continue
 
-        # Check for exact match or prefix (e.g., --host-target=x86_64)
-        matched_flag = None
+        # Check for deprecated flags and warn, but pass them through to C++ aiecc
+        # (C++ aiecc now accepts these as no-ops for compatibility)
         for flag, message in _DEPRECATED_HOST_FLAGS.items():
             if arg == flag or arg.startswith(flag + "="):
-                matched_flag = flag
                 warnings.warn(
-                    f"{message} This flag will be ignored.",
+                    f"{message} This flag will be passed to C++ aiecc but ignored.",
                     DeprecationWarning,
                     stacklevel=3,
                 )
-                # If it's --host-target without =, skip the next argument too
-                if flag == "--host-target" and arg == flag:
-                    skip_next = True
+                # Note: we don't skip_next for --host-target anymore since we pass it through
                 break
-
-        if matched_flag is not None:
-            continue
 
         # Filter out host compilation flags (-I, -L, -l prefixes)
         is_host_flag = False

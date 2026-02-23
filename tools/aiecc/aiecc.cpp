@@ -150,6 +150,10 @@ static cl::opt<bool> noXchesscc("no-xchesscc", cl::desc("Compile using peano"),
 static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
                             cl::init(false), cl::cat(aieCompilerOptions));
 
+static cl::opt<bool> noAiesim("no-aiesim",
+                              cl::desc("Disable AIE simulation mode (default)"),
+                              cl::init(false), cl::cat(aieCompilerOptions));
+
 static cl::opt<bool> compile("compile",
                              cl::desc("Enable compiling of AIE cores"),
                              cl::init(true), cl::cat(aieCompilerOptions));
@@ -157,6 +161,21 @@ static cl::opt<bool> compile("compile",
 static cl::opt<bool> noCompile("no-compile",
                                cl::desc("Disable compiling of AIE cores"),
                                cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> compileHost(
+    "compile-host",
+    cl::desc("Enable host compilation (not supported in C++ aiecc)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> noCompileHost(
+    "no-compile-host",
+    cl::desc("Disable host compilation (host compilation not supported)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    hostTarget("host-target",
+               cl::desc("Host target architecture (deprecated, ignored)"),
+               cl::init(""), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> link("link", cl::desc("Enable linking of AIE code"),
                           cl::init(true), cl::cat(aieCompilerOptions));
@@ -211,6 +230,11 @@ static cl::opt<bool> generatePdi("aie-generate-pdi",
 static cl::opt<std::string> pdiName("pdi-name", cl::desc("Output PDI filename"),
                                     cl::init("{0}.pdi"),
                                     cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> expandLoadPdis(
+    "expand-load-pdis",
+    cl::desc("Expand PDI loading (optimization flag, currently ignored)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> generateXclbin("aie-generate-xclbin",
                                     cl::desc("Generate xclbin"),
@@ -343,6 +367,49 @@ static cl::opt<bool> noUnified(
     "no-unified",
     cl::desc("Compile cores independently in separate processes (default)"),
     cl::init(false), cl::cat(aieCompilerOptions));
+
+// Backward compatibility flags (no-ops in C++ aiecc)
+// These flags existed in Python aiecc.py but are not used in the core
+// compilation flow. They are kept for backward compatibility so that
+// existing scripts and test cases don't fail with "unknown argument" errors.
+
+static cl::opt<bool>
+    vectorize("vectorize",
+              cl::desc("Enable vectorization (deprecated, ignored)"),
+              cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> profile("profile",
+                             cl::desc("Enable profiling (deprecated, ignored)"),
+                             cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    progress("progress", cl::desc("Show progress output (deprecated, ignored)"),
+             cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> enableRepeaterScripts(
+    "enable-repeater-scripts",
+    cl::desc("Enable repeater scripts (deprecated, ignored)"), cl::init(false),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> disableRepeaterScripts(
+    "disable-repeater-scripts",
+    cl::desc("Disable repeater scripts (deprecated, ignored)"), cl::init(false),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string> repeaterOutputDir(
+    "repeater-output-dir",
+    cl::desc("Repeater output directory (deprecated, ignored)"), cl::init(""),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    linkAgainstHsa("link_against_hsa",
+                   cl::desc("Link against HSA runtime (deprecated, ignored)"),
+                   cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    noMaterialize("no-materialize",
+                  cl::desc("Disable materialization (deprecated, ignored)"),
+                  cl::init(false), cl::cat(aieCompilerOptions));
 
 //===----------------------------------------------------------------------===//
 // Helper Functions
@@ -4078,6 +4145,9 @@ int main(int argc, char **argv) {
   }
 
   // Handle conflicting options
+  if (noAiesim) {
+    aiesim = false;
+  }
   if (noXbridge) {
     xbridge = false;
   }
