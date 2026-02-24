@@ -469,6 +469,12 @@ LogicalResult checkBufferScope(BufferOp buffer, DeviceOp device) {
 struct AIEAssignBufferAddressesPass
     : AIEAssignBufferAddressesBase<AIEAssignBufferAddressesPass> {
 
+  AIEAssignBufferAddressesPass() = default;
+
+  AIEAssignBufferAddressesPass(const AIEAssignBufferAddressesOptions &options) {
+    clAllocScheme = options.clAllocScheme;
+  }
+
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<AIEDialect>();
@@ -527,4 +533,10 @@ struct AIEAssignBufferAddressesPass
 std::unique_ptr<OperationPass<DeviceOp>>
 AIE::createAIEAssignBufferAddressesPass() {
   return std::make_unique<AIEAssignBufferAddressesPass>();
+}
+
+std::unique_ptr<OperationPass<DeviceOp>>
+AIE::createAIEAssignBufferAddressesPass(
+    const AIEAssignBufferAddressesOptions &options) {
+  return std::make_unique<AIEAssignBufferAddressesPass>(options);
 }
