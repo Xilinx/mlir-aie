@@ -1257,7 +1257,7 @@ def AIE_LockOp: AIE_Op<"lock", [
 
     TileOp getTileOp();
 
-    void getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
       else {
@@ -1387,7 +1387,7 @@ def AIE_BufferOp: AIE_Op<"buffer", [
     TileOp getTileOp();
     // Return the number of bytes that need to be allocated for this buffer.
     int64_t getAllocationSize();
-    void getAsmResultNames(mlir::OpAsmSetValueNameFn setNameFn) {
+    void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       if (hasName())
         setNameFn(getResult(), name().str());
       else {
