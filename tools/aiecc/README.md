@@ -74,6 +74,10 @@ aiecc [options] <input.mlir>
   - `--ctrlpkt-dma-seq-name <pattern>` - Output filename for DMA sequence (default: `{0}_ctrlpkt_dma_seq.bin`)
   - `--ctrlpkt-elf-name <pattern>` - Output filename for combined ELF (default: `{0}_ctrlpkt.elf`)
 
+### NPU Pipeline Options
+
+- `--expand-load-pdis` - Expand load_pdi operations to explicit configuration sequences
+
 ### Device and Sequence Selection
 
 - `--device-name <name>` - Compile only the specified device
@@ -201,7 +205,7 @@ xclbinutil → xclbin
 | External Object Linking | ✅ | ✅ |
 | Host Compilation | ✅ | ⏳ Not yet |
 | Parallel Cores (`-j`) | ✅ | ⏳ Not yet |
-| Control Packets | ✅ | ⏳ Not yet |
+| Control Packets | ✅ | ✅ |
 | Performance | Good | **Better** (no Python overhead) |
 
 ### Current Status

@@ -207,6 +207,11 @@ static cl::opt<std::string> pdiName("pdi-name", cl::desc("Output PDI filename"),
                                     cl::init("{0}.pdi"),
                                     cl::cat(aieCompilerOptions));
 
+static cl::opt<bool> expandLoadPdis(
+    "expand-load-pdis",
+    cl::desc("Expand load_pdi operations to explicit configuration sequences"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
 static cl::opt<bool> generateXclbin("aie-generate-xclbin",
                                     cl::desc("Generate xclbin"),
                                     cl::init(false),
@@ -1090,6 +1095,12 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp) {
 
   if (verbose) {
     pm.enableVerifier(true);
+  }
+
+  // Add expand-load-pdi pass at module level (after device nesting)
+  // if --expand-load-pdis is specified
+  if (expandLoadPdis) {
+    pm.addPass(xilinx::AIEX::createAIEExpandLoadPdiPass());
   }
 
   // All NPU lowering passes are device-level
