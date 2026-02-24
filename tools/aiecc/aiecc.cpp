@@ -3772,8 +3772,8 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                               "-w"};
 
     // DEBUG: Print bootgen path to verify we reach this point
-    llvm::outs() << bootgenPath << " -arch versal -image " << bifPath
-                 << " -o " << pdiPath << " -w\n";
+    llvm::outs() << bootgenPath << " -arch versal -image " << bifPath << " -o "
+                 << pdiPath << " -w\n";
     llvm::outs().flush();
 
     // Execute bootgen command
