@@ -89,7 +89,9 @@ aiecc [options] <input.mlir>
 - `--xchesscc` / `--no-xchesscc` - Compile using xchesscc vs Peano (default: xchesscc)
 - `--peano <dir>` - Peano compiler installation directory
 - `--aietools <dir>` - Vitis aietools installation directory (auto-discovered from PATH or `AIETOOLS_ROOT`)
-- `--aiesim` - Generate aiesim work folder
+- `--aiesim` / `--no-aiesim` - Generate aiesim work folder (requires xbridge)
+- `--compile-host` / `--no-compile-host` - Enable/disable host program compilation
+- `--host-target <target>` - Target architecture for host compilation (default: x86_64-linux-gnu)
 - `--dynamic-objFifos` - Use dynamic object FIFOs
 - `--packet-sw-objFifos` - Use packet-switched flows
 - `--generate-ctrl-pkt-overlay` - Generate control packet overlay
@@ -203,7 +205,8 @@ xclbinutil → xclbin
 | aie-translate subprocess | None | **None** |
 | Core Compilation | Peano/xchesscc | **Peano/xchesscc** |
 | External Object Linking | ✅ | ✅ |
-| Host Compilation | ✅ | ⏳ Not yet |
+| Host Compilation | ✅ | ✅ |
+| AIE Simulator | ✅ | ✅ |
 | Parallel Cores (`-j`) | ✅ | ⏳ Not yet |
 | Control Packets | ✅ | ✅ |
 | Performance | Good | **Better** (no Python overhead) |
@@ -233,12 +236,12 @@ The C++ implementation provides **near-full feature parity**:
 - ✅ xclbin customization (`--xclbin-kernel-name`, `--xclbin-instance-name`, `--xclbin-kernel-id`)
 - ✅ Transaction generation (`--aie-generate-txn`)
 - ✅ Control packet generation (`--aie-generate-ctrlpkt`)
+- ✅ AIE simulation (`--aiesim`)
+- ✅ Host compilation (`--compile-host`, `--host-target`)
 
 ### Features not yet ported from Python aiecc.py
 
 - ⏳ Parallel compilation of cores (`-j` option)
-- ⏳ Host compilation (`--compile-host`, `--no-compile-host`, `--host-target`)
-- ⏳ AIE simulator support (`--aiesim` generates folder but not full simulation)
 - ⏳ HSA linking (`--link_against_hsa`)
 - ⏳ Progress bar (`--progress`)
 - ⏳ Vectorization pass (`--vectorize`)
