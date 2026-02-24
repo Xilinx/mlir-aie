@@ -487,7 +487,14 @@ static std::string discoverAietoolsDir() {
     }
   }
 
-  // 2. Find xchesscc in PATH and derive aietools from it
+  // 2. Check AIETOOLS_ROOT environment variable
+  if (const char *aietoolsEnv = std::getenv("AIETOOLS_ROOT")) {
+    if (sys::fs::is_directory(aietoolsEnv)) {
+      return aietoolsEnv;
+    }
+  }
+
+  // 3. Find xchesscc in PATH and derive aietools from it
   auto xchessccPath = sys::findProgramByName("xchesscc");
   if (xchessccPath) {
     // xchesscc is typically at <aietools>/bin/xchesscc or
@@ -576,13 +583,13 @@ static std::string downgradeIRForChess(StringRef llvmIR) {
   replace("captures(none)", "nocapture");
   replace("getelementptr inbounds nuw", "getelementptr inbounds");
 
-  // Remove nocreateundeforpoison attribute using regex-like logic
-  // Pattern: \bnocreateundeforpoison\s+
-  // We'll do a simple find-and-replace for this attribute
+  // Remove nocreateundeforpoison attribute
+  // This attribute appears in LLVM IR and may be followed by whitespace or EOL
   size_t pos = 0;
   while ((pos = result.find("nocreateundeforpoison", pos)) !=
          std::string::npos) {
-    // Find the end of the attribute (skip trailing whitespace)
+    // Find the end of the attribute (skip trailing whitespace, but not
+    // newlines)
     size_t end = pos + strlen("nocreateundeforpoison");
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t')) {
       end++;
@@ -669,7 +676,7 @@ static std::string findPeanoTool(StringRef toolName) {
 // Run chess-llvm-link to link LLVM IR with chess_intrinsic_wrapper.ll
 // Returns the path to the linked .ll file, or empty string on failure.
 static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
-                                    StringRef aieTarget, StringRef tmpDirName) {
+                                    StringRef aieTarget) {
   StringRef aietoolsPath = getAietoolsDir();
   if (aietoolsPath.empty()) {
     llvm::errs() << "Error: Could not find aietools (xchesscc not in PATH)\n";
@@ -679,6 +686,9 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
   // Build chess-llvm-link path
   // Path: <aietools>/tps/lnx64/<target>/bin/LNa64bin/chess-llvm-link
   std::string chessTarget = getChessTarget(aieTarget);
+  if (chessTarget.empty()) {
+    return "";
+  }
   SmallString<256> chessLlvmLinkPath(aietoolsPath);
   sys::path::append(chessLlvmLinkPath, "tps", "lnx64", chessTarget, "bin");
   sys::path::append(chessLlvmLinkPath, "LNa64bin", "chess-llvm-link");
@@ -703,9 +713,9 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
   }
 
   // Run chess-llvm-link
-  SmallVector<std::string, 8> cmd = {chessLlvmLinkPath.str().str(),
+  SmallVector<std::string, 8> cmd = {std::string(chessLlvmLinkPath),
                                      inputLLPath.str(),
-                                     wrapperPath.str().str(),
+                                     std::string(wrapperPath),
                                      "-S",
                                      "-o",
                                      outputPath.str()};
@@ -830,19 +840,13 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
   std::ostringstream oss;
   oss << "builtin.module("
       << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir},"
-      << "lower-affine,"
-      << "aie-canonicalize-device,"
-      << "aie.device("
-      << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos,"
-      << "aie-objectFifo-stateful-transform{"
+      << " target-backend=llvmir}," << "lower-affine,"
+      << "aie-canonicalize-device," << "aie.device(" << "aie-assign-lock-ids,"
+      << "aie-register-objectFifos," << "aie-objectFifo-stateful-transform{"
       << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
       << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
-      << "aie-assign-bd-ids,"
-      << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet,"
-      << "aie-lower-multicast,"
+      << "aie-assign-bd-ids," << "aie-lower-cascade-flows,"
+      << "aie-lower-broadcast-packet," << "aie-lower-multicast,"
       << "aie-assign-tile-controller-ids,"
       << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
       << (ctrlPktOverlay ? "true" : "false") << "},"
@@ -865,12 +869,8 @@ buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
       << "aie-standard-lowering{device=" << deviceName.str() << "},"
       << "aiex-standard-lowering,"
       << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize,"
-      << "cse,"
-      << "expand-strided-metadata,"
-      << "lower-affine,"
-      << "arith-expand,"
-      << "finalize-memref-to-llvm,"
+      << "canonicalize," << "cse," << "expand-strided-metadata,"
+      << "lower-affine," << "arith-expand," << "finalize-memref-to-llvm,"
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
       << "convert-to-llvm{dynamic=true},"
       << "canonicalize,"
@@ -1051,7 +1051,9 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
   devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  // TODO: Add aie-transform-bfp-types if needed
+  // Note: aie-transform-bfp-types pass would go here if the design uses
+  // block floating-point (BFP) types that require normalization before
+  // lowering. Currently not needed for standard designs.
 
   // Step 2: aie-standard-lowering with specific core coordinates
   // This extracts the specified core and removes the aie.device wrapper
@@ -1246,7 +1248,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                           "_" + std::to_string(core.row) + ".chesslinked.ll");
 
     std::string linkedResult =
-        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget, tmpDirName);
+        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget);
     if (linkedResult.empty()) {
       return failure();
     }
@@ -1273,14 +1275,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
                                               aieTargetLower,
                                               "+w",
-                                              workDir.str().str(),
+                                              std::string(workDir),
                                               "-c",
                                               "-d",
                                               "+Wclang,-xir",
                                               "-f",
-                                              chessLinkedPath.str().str(),
+                                              std::string(chessLinkedPath),
                                               "-o",
-                                              objPath.str().str()};
+                                              std::string(objPath)};
 
     if (!executeCommand(xchessCmd)) {
       llvm::errs() << "Error running xchesscc_wrapper\n";
@@ -1313,9 +1315,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                                ">,strip",
                                            "-inline-threshold=10",
                                            "-S",
-                                           llvmIRPath.str().str(),
+                                           std::string(llvmIRPath),
                                            "-o",
-                                           optPath.str().str()};
+                                           std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -1328,13 +1330,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Run llc
     SmallVector<std::string, 10> llcCmd = {peanoLlc,
-                                           optPath.str().str(),
+                                           std::string(optPath),
                                            "-O" + optLevelStr,
                                            "--march=" + aieTarget.lower(),
                                            "--function-sections",
                                            "--filetype=obj",
                                            "-o",
-                                           objPath.str().str()};
+                                           std::string(objPath)};
 
     if (!executeCommand(llcCmd)) {
       llvm::errs() << "Error running Peano llc\n";
@@ -1344,7 +1346,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   // Step 5: Link to ELF
   if (!link) {
-    outElfPath = objPath.str().str();
+    outElfPath = std::string(objPath);
     return success();
   }
 
@@ -1402,7 +1404,6 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::vector<std::string> linkWithFiles = extractInputFilesFromBCF(bcfPath);
 
     // Handle link_with files: copy to .prj directory if needed
-    std::string linkWithArgs;
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> srcPath;
       if (sys::path::is_absolute(linkWithFile)) {
@@ -1433,11 +1434,6 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
                      << "\n";
       }
-
-      if (!linkWithArgs.empty()) {
-        linkWithArgs += " ";
-      }
-      linkWithArgs += destPath.str().str();
     }
 
     // Find xchesscc_wrapper
@@ -1456,20 +1452,20 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::string aieTargetLower = aieTarget.lower();
     SmallVector<std::string, 20> linkCmd = {
         *xchessccWrapperPath, aieTargetLower, "+w",
-        workDir.str().str(),  "-d",           "-f",
-        objPath.str().str()};
+        std::string(workDir), "-d",           "-f",
+        std::string(objPath)};
 
     // Add link_with files if any
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> localPath(tmpDirName);
       sys::path::append(localPath, sys::path::filename(linkWithFile));
-      linkCmd.push_back(localPath.str().str());
+      linkCmd.push_back(std::string(localPath));
     }
 
     linkCmd.push_back("+l");
-    linkCmd.push_back(bcfPath.str().str());
+    linkCmd.push_back(std::string(bcfPath));
     linkCmd.push_back("-o");
-    linkCmd.push_back(elfPath.str().str());
+    linkCmd.push_back(std::string(elfPath));
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking with xbridge\n";
@@ -1510,14 +1506,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Explicitly specify Peano's lld linker to avoid using system ld
     if (sys::fs::can_execute(peanoLld)) {
-      linkCmd.push_back("-fuse-ld=" + peanoLld.str().str());
+      linkCmd.push_back("-fuse-ld=" + std::string(peanoLld));
     } else {
       // Fallback: try to use lld from Peano bin via -B
-      linkCmd.push_back("-B" + peanoBinDir.str().str());
+      linkCmd.push_back("-B" + std::string(peanoBinDir));
       linkCmd.push_back("-fuse-ld=lld");
     }
 
-    linkCmd.push_back(objPath.str().str());
+    linkCmd.push_back(std::string(objPath));
 
     // Handle external object file if link_with attribute is specified
     // The linker script generated by aie-translate will include an INPUT()
@@ -1577,9 +1573,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     linkCmd.push_back("-Wl,--gc-sections");
     linkCmd.push_back("-Wl,--orphan-handling=error");
-    linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+    linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
     linkCmd.push_back("-o");
-    linkCmd.push_back(elfPath.str().str());
+    linkCmd.push_back(std::string(elfPath));
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking ELF file\n";
@@ -1587,7 +1583,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
-  outElfPath = elfPath.str().str();
+  outElfPath = std::string(elfPath);
   if (verbose) {
     llvm::outs() << "Generated ELF: " << outElfPath << "\n";
   }
@@ -1704,27 +1700,28 @@ static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
                  << "\n";
     return failure();
   }
-  jsonFile << "{\n";
-  jsonFile << "  \"mem_topology\": {\n";
-  jsonFile << "    \"m_count\": \"2\",\n";
-  jsonFile << "    \"m_mem_data\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
-  jsonFile << "        \"m_used\": \"1\",\n";
-  jsonFile << "        \"m_sizeKB\": \"0x10000\",\n";
-  jsonFile << "        \"m_tag\": \"HOST\",\n";
-  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
-  jsonFile << "      },\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
-  jsonFile << "        \"m_used\": \"1\",\n";
-  jsonFile << "        \"m_sizeKB\": \"0xc000\",\n";
-  jsonFile << "        \"m_tag\": \"SRAM\",\n";
-  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
+  jsonFile << R"({
+  "mem_topology": {
+    "m_count": "2",
+    "m_mem_data": [
+      {
+        "m_type": "MEM_DRAM",
+        "m_used": "1",
+        "m_sizeKB": "0x10000",
+        "m_tag": "HOST",
+        "m_base_address": "0x4000000"
+      },
+      {
+        "m_type": "MEM_DRAM",
+        "m_used": "1",
+        "m_sizeKB": "0xc000",
+        "m_tag": "SRAM",
+        "m_base_address": "0x4000000"
+      }
+    ]
+  }
+}
+)";
   jsonFile.close();
   return success();
 }
@@ -1737,57 +1734,66 @@ static LogicalResult generateKernelsJson(StringRef jsonPath,
                  << "\n";
     return failure();
   }
-  jsonFile << "{\n";
-  jsonFile << "  \"ps-kernels\": {\n";
-  jsonFile << "    \"kernels\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"name\": \"MLIR_AIE\",\n";
-  jsonFile << "        \"type\": \"dpu\",\n";
-  jsonFile << "        \"extended-data\": {\n";
-  jsonFile << "          \"subtype\": \"DPU\",\n";
-  jsonFile << "          \"functional\": \"0\",\n";
-  jsonFile << "          \"dpu_kernel_id\": \"0x901\"\n";
-  jsonFile << "        },\n";
-  jsonFile << "        \"arguments\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"opcode\",\n";
-  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
-  jsonFile << "            \"type\": \"uint64_t\",\n";
-  jsonFile << "            \"offset\": \"0x00\"\n";
-  jsonFile << "          },\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"instr\",\n";
-  jsonFile << "            \"memory-connection\": \"SRAM\",\n";
-  jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
-  jsonFile << "            \"type\": \"char *\",\n";
-  jsonFile << "            \"offset\": \"0x08\"\n";
-  jsonFile << "          },\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"ninstr\",\n";
-  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
-  jsonFile << "            \"type\": \"uint32_t\",\n";
-  jsonFile << "            \"offset\": \"0x10\"\n";
-  jsonFile << "          },\n";
+
+  // Static header
+  jsonFile << R"({
+  "ps-kernels": {
+    "kernels": [
+      {
+        "name": "MLIR_AIE",
+        "type": "dpu",
+        "extended-data": {
+          "subtype": "DPU",
+          "functional": "0",
+          "dpu_kernel_id": "0x901"
+        },
+        "arguments": [
+          {
+            "name": "opcode",
+            "address-qualifier": "SCALAR",
+            "type": "uint64_t",
+            "offset": "0x00"
+          },
+          {
+            "name": "instr",
+            "memory-connection": "SRAM",
+            "address-qualifier": "GLOBAL",
+            "type": "char *",
+            "offset": "0x08"
+          },
+          {
+            "name": "ninstr",
+            "address-qualifier": "SCALAR",
+            "type": "uint32_t",
+            "offset": "0x10"
+          },
+)";
+
+  // Dynamic buffer object arguments
   for (int i = 0; i < 5; i++) {
     jsonFile << "          {\n";
     jsonFile << "            \"name\": \"bo" << i << "\",\n";
-    jsonFile << "            \"memory-connection\": \"HOST\",\n";
-    jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
-    jsonFile << "            \"type\": \"void*\",\n";
+    jsonFile << R"(            "memory-connection": "HOST",
+            "address-qualifier": "GLOBAL",
+            "type": "void*",
+)";
     jsonFile << "            \"offset\": \"" << std::hex << "0x"
              << (0x14 + i * 8) << std::dec << "\"\n";
     jsonFile << "          }" << (i < 4 ? "," : "") << "\n";
   }
-  jsonFile << "        ],\n";
-  jsonFile << "        \"instances\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"MLIRAIE\"\n";
-  jsonFile << "          }\n";
-  jsonFile << "        ]\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
+
+  // Static footer
+  jsonFile << R"(        ],
+        "instances": [
+          {
+            "name": "MLIRAIE"
+          }
+        ]
+      }
+    ]
+  }
+}
+)";
   jsonFile.close();
   return success();
 }
@@ -1801,33 +1807,36 @@ static LogicalResult generatePartitionJson(StringRef jsonPath,
                  << "\n";
     return failure();
   }
-  jsonFile << "{\n";
-  jsonFile << "  \"aie_partition\": {\n";
-  jsonFile << "    \"name\": \"QoS\",\n";
-  jsonFile << "    \"operations_per_cycle\": \"2048\",\n";
-  jsonFile << "    \"inference_fingerprint\": \"23423\",\n";
-  jsonFile << "    \"pre_post_fingerprint\": \"12345\",\n";
-  jsonFile << "    \"partition\": {\n";
-  jsonFile << "      \"column_width\": 1,\n";
-  jsonFile << "      \"start_columns\": [0]\n";
-  jsonFile << "    },\n";
-  jsonFile << "    \"PDIs\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"uuid\": \"00000000-0000-0000-0000-000000000000\",\n";
-  jsonFile << "        \"file_name\": \"" << pdiPath.str() << "\",\n";
-  jsonFile << "        \"cdo_groups\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"DPU\",\n";
-  jsonFile << "            \"type\": \"PRIMARY\",\n";
-  jsonFile << "            \"pdi_id\": \"0x01\",\n";
-  jsonFile << "            \"dpu_kernel_ids\": [\"0x901\"],\n";
-  jsonFile << "            \"pre_cdo_groups\": [\"0xC1\"]\n";
-  jsonFile << "          }\n";
-  jsonFile << "        ]\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
+
+  jsonFile << R"({
+  "aie_partition": {
+    "name": "QoS",
+    "operations_per_cycle": "2048",
+    "inference_fingerprint": "23423",
+    "pre_post_fingerprint": "12345",
+    "partition": {
+      "column_width": 1,
+      "start_columns": [0]
+    },
+    "PDIs": [
+      {
+        "uuid": "00000000-0000-0000-0000-000000000000",
+        "file_name": ")"
+           << pdiPath.str() << R"(",
+        "cdo_groups": [
+          {
+            "name": "DPU",
+            "type": "PRIMARY",
+            "pdi_id": "0x01",
+            "dpu_kernel_ids": ["0x901"],
+            "pre_cdo_groups": ["0xC1"]
+          }
+        ]
+      }
+    ]
+  }
+}
+)";
   jsonFile.close();
   return success();
 }
@@ -2033,9 +2042,9 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                               "-arch",
                                               "versal",
                                               "-image",
-                                              bifPath.str().str(),
+                                              std::string(bifPath),
                                               "-o",
-                                              pdiPath.str().str(),
+                                              std::string(pdiPath),
                                               "-w"};
 
     if (!executeCommand(bootgenCmd)) {
@@ -2104,14 +2113,14 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
       SmallVector<std::string, 16> xclbinCmd = {
           xclbinutilPath,
           "--add-replace-section",
-          "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
+          "MEM_TOPOLOGY:JSON:" + std::string(memTopoPath),
           "--add-kernel",
-          kernelsPath.str().str(),
+          std::string(kernelsPath),
           "--add-replace-section",
-          "AIE_PARTITION:JSON:" + partitionPath.str().str(),
+          "AIE_PARTITION:JSON:" + std::string(partitionPath),
           "--force",
           "--output",
-          xclbinPath.str().str()};
+          std::string(xclbinPath)};
 
       if (!executeCommand(xclbinCmd)) {
         llvm::errs() << "Error generating xclbin\n";
