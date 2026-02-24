@@ -270,9 +270,28 @@ class Runtime(Resolvable):
         return self._workers.copy()
 
     @property
-    def fifos(self) -> list[ObjectFifoHandle]:
-        """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()"""
-        return self._fifos.copy()
+    def fifohandles(self) -> list[ObjectFifoHandle]:
+        """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()
+        or associated to workers attached to the runtime via start()."""
+
+        # Collect all fifos
+        all_fifos = set()
+        all_fifos.update(self._fifos)
+        for w in self.workers:
+            all_fifos.update(w.fifos)
+
+        # In some "incomplete" designs where ofs aren't fully used
+        # (a technique that is useful during development) or are forwarded
+        # we have to manually fetch all the handles
+        all_fifo_handles = set()
+        for ofh in all_fifos:
+            all_fifo_handles.add(ofh._object_fifo._prod)
+            all_fifo_handles.update(ofh._object_fifo._cons)
+
+        # Sort fifos for determinism
+        all_fifos = sorted(all_fifo_handles, key=lambda obj: obj.name)
+
+        return all_fifo_handles
 
     def get_first_cons_shimtile(self):
         """Find the first consumer side of an objfifo that is in the 0th row

@@ -60,7 +60,7 @@ def passthrough_local_buff():
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
+    with rt.sequence(vector_type, vector_type) as (a_in, b_out):
         rt.start(my_worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), b_out, wait=True)

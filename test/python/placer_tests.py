@@ -4,7 +4,8 @@
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2, AnyComputeTile, Tile
+from aie.iron.device import NPU2, AnyComputeTile, AnyShimTile, Tile
+from aie.iron.runtime.endpoint import RuntimeEndpoint
 from aie.helpers.util import np_ndarray_type_get_shape
 from util import construct_and_print_module
 
@@ -106,30 +107,28 @@ def shim_two_in_one_out(module):
     return module
 
 
-# CHECK-LABEL: TEST: compute_three_in
+# CHECK-LABEL: TEST: compute_two_in
 # CHECK: %[[tile_0_2:.+]] = aie.tile(0, 2)
 # CHECK-NOT: %[[tile_0_3:.+]] = aie.tile(0, 3)
 @construct_and_print_module
-def compute_three_in(module):
+def compute_two_in(module):
     n = 1024
 
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
     of_0 = ObjectFifo(n_ty, name="of0")
     of_1 = ObjectFifo(n_ty, name="of1")
-    of_2 = ObjectFifo(n_ty, name="iof2")
 
-    def core_fn(of_0, of_1, of_2):
+    def core_fn(of_0, of_1):
         pass
 
-    worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.cons()])
+    worker = Worker(core_fn, [of_0.cons(), of_1.cons()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
+    with rt.sequence(n_ty, n_ty) as (A, B):
         rt.start(worker)
         rt.fill(of_0.prod(), A)
         rt.fill(of_1.prod(), B)
-        rt.fill(of_2.prod(), C)
 
     module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module
@@ -265,7 +264,8 @@ def mem_eight_in_three_out(module):
 @construct_and_print_module
 def compute_three_in_col_lim(module):
     n = 1024
-    cores_per_col = 2
+    dev = NPU2()
+    dev_slice = dev[:, 0:4]
 
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
@@ -289,5 +289,36 @@ def compute_three_in_col_lim(module):
         rt.fill(of_1.prod(), B)
         rt.fill(of_2.prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
+    module = Program(dev_slice, rt).resolve_program(SequentialPlacer())
+    return module
+
+
+# CHECK-LABEL: TEST: explicit_of_endpoint
+# CHECK: aie.objectfifo @of0(%[[tile_0_2:.+]], {%[[shim_noc_tile_0_0:.+]]}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+# CHECK: aie.objectfifo @of1(%[[shim_noc_tile_0_0:.+]], {%[[tile_0_2:.+]]}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
+@construct_and_print_module
+def explicit_of_endpoint(module):
+    n = 1024
+    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
+
+    of_0 = ObjectFifo(n_ty, name="of0")
+    of_1 = ObjectFifo(n_ty, name="of1")
+
+    of_0_cons = of_0.cons()
+    of_0_cons.endpoint = RuntimeEndpoint(AnyShimTile)
+    of_1_prod = of_1.prod()
+    of_1_prod.endpoint = RuntimeEndpoint(AnyShimTile)
+
+    def core_fn(of0, of1):
+        pass
+
+    workers = [
+        Worker(core_fn, [of_0.prod(), of_1.cons()]),
+    ]
+
+    rt = Runtime()
+    with rt.sequence(n_ty) as (A):
+        rt.start(*workers)
+
+    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
     return module
