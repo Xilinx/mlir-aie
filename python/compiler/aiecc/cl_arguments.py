@@ -159,8 +159,8 @@ def parse_args(args=None):
     parser.add_argument(
         "--dynamic-objFifos",
         dest="dynamic_objFifos",
-        default=False,
-        action="store_true",
+        default=True,
+        action="store_false",
         help="Use dynamic object fifos for the for loops",
     )
     parser.add_argument(
