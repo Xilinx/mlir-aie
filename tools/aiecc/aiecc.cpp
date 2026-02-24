@@ -3771,8 +3771,20 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                               pdiPath.str().str(),
                                               "-w"};
 
-    // executeCommand handles dry-run internally (prints but doesn't execute)
-    if (!executeCommand(bootgenCmd)) {
+    // Print bootgen command explicitly for verbose output
+    // (matching Python aiecc.py behavior for tests that check command output)
+    if (verbose) {
+      for (size_t i = 0; i < bootgenCmd.size(); ++i) {
+        if (i > 0)
+          llvm::outs() << " ";
+        llvm::outs() << bootgenCmd[i];
+      }
+      llvm::outs() << "\n";
+      llvm::outs().flush();
+    }
+
+    // Execute bootgen without duplicate verbose output
+    if (!executeCommand(bootgenCmd, /*verboseOutput=*/false)) {
       llvm::errs() << "Error generating PDI\n";
       return failure();
     }
