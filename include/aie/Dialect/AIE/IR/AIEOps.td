@@ -79,6 +79,82 @@ def AIE_DeviceOp: AIE_Op<"device", [
   }];
 }
 
+def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
+    Pure,
+    SkipAccessibilityCheckTrait,
+    DeclareOpInterfaceMethods<TileLike>,
+    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>
+  ]>, Results<(outs Index:$result)> {
+  let arguments = (
+    ins AIETileType:$tile_type,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$col,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$row,
+        OptionalAttr<StrAttr>:$allocation_scheme
+  );
+
+  let summary = "Declare a logical AIE tile to be placed";
+  let description = [{
+    This operation creates a logical AIE tile that represents a tile to be 
+    mapped to a `aie.tile` during placement. Unlike `aie.tile`, 
+    this operation does not require absolute coordinates and instead uses
+    a tile type to specify the kind of tile needed.
+
+    The tile types are:
+    - `Core`: Maps to core tiles (tiles with a core, TileDMA, memory, 
+      and stream connections)
+    - `ShimNOC`: Maps to shim NOC tiles
+    - `ShimPL`: Maps to shim PL tiles
+    - `Mem`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory, 
+      but no core)
+
+    Optional `col` and `row` can be provided as placement hints or constraints.
+    Use `?` for unspecified coordinates.
+
+    Examples:
+    ```
+    // Logical core tile without placement constraints
+    %core_tile = aie.logical_tile<Core>(?, ?)
+    
+    // Logical shim tile with column hint but unspecified row
+    %shim_tile = aie.logical_tile<ShimNOC>(0, ?)
+    
+    // Logical tile with full placement constraint (effectively fixed)
+    %fixed = aie.logical_tile<Core>(2, 3)
+    ```
+  }];
+
+  let hasCustomAssemblyFormat = 1;
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    TileID getCanonicalTileID();
+  }];
+
+  let extraClassDefinition = [{
+    void $cppClass::getAsmResultNames(
+        function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
+       std::string tileName = "logical_";
+       switch (getTileType()) {
+         case AIETileType::CoreTile:
+           tileName += "core";
+           break;
+         case AIETileType::ShimNOCTile:
+           tileName += "shim_noc";
+           break;
+         case AIETileType::ShimPLTile:
+           tileName += "shim_pl";
+           break;
+         case AIETileType::MemTile:
+           tileName += "mem";
+           break;
+       }
+       setNameFn(getResult(), tileName);
+    }
+  }];
+}
+
 def AIE_TileOp: AIE_Op<"tile", [
     Pure,
     DeclareOpInterfaceMethods<TileLike>,
@@ -140,18 +216,18 @@ def AIE_TileOp: AIE_Op<"tile", [
   let extraClassDefinition = [{
     void $cppClass::getAsmResultNames(
         function_ref<void(::mlir::Value, ::llvm::StringRef)> setNameFn) {
-       std::string tileName =
-             getOperationName().str().substr(getOperationName().find('.') + 1);
-       // Specialize the SSA value name according to the tile kind
-       if (isMemTile())
-         tileName = "mem_" + tileName;
-       else if (isShimNOCTile())
-         tileName = "shim_noc_" + tileName;
-       else if (isShimPLTile())
-         tileName = "shim_pl_" + tileName;
-       else if (isShimTile())
-         tileName = "shim_" + tileName;
-       setNameFn(getResult(), tileName + "_" +
+      std::string tileName =
+            getOperationName().str().substr(getOperationName().find('.') + 1);
+      // Specialize the SSA value name according to the tile kind
+      if (isMemTile())
+        tileName = "mem_" + tileName;
+      else if (isShimNOCTile())
+        tileName = "shim_noc_" + tileName;
+      else if (isShimPLTile())
+        tileName = "shim_pl_" + tileName;
+      else if (isShimTile())
+        tileName = "shim_" + tileName;
+      setNameFn(getResult(), tileName + "_" +
                                   std::to_string(getCol()) + "_" +
                                   std::to_string(getRow()));
     }
@@ -1250,11 +1326,15 @@ def AIE_LockOp: AIE_Op<"lock", [
       if (hasName())
         setNameFn(getResult(), name().str());
       else {
-        std::string nameWithoutDialect =
-            getOperation()->getName().stripDialect().str();
-        setNameFn(getResult(), nameWithoutDialect + "_" +
-              std::to_string(colIndex()) + "_" +
-              std::to_string(rowIndex()));
+        std::optional<int> col = getTileLike().tryGetCol();
+        std::optional<int> row = getTileLike().tryGetRow();
+        if (col && row) {
+          std::string nameWithoutDialect =
+              getOperation()->getName().stripDialect().str();
+          setNameFn(getResult(), nameWithoutDialect + "_" +
+                std::to_string(*col) + "_" +
+                std::to_string(*row));
+        }
       }
     }
   }];
@@ -1380,11 +1460,15 @@ def AIE_BufferOp: AIE_Op<"buffer", [
       if (hasName())
         setNameFn(getResult(), name().str());
       else {
-        std::string nameWithoutDialect =
-            getOperation()->getName().stripDialect().str();
-        setNameFn(getResult(), nameWithoutDialect + "_" +
-              std::to_string(colIndex()) + "_" +
-              std::to_string(rowIndex()));
+        std::optional<int> col = getTileLike().tryGetCol();
+        std::optional<int> row = getTileLike().tryGetRow();
+        if (col && row) {
+          std::string nameWithoutDialect =
+              getOperation()->getName().stripDialect().str();
+          setNameFn(getResult(), nameWithoutDialect + "_" +
+                std::to_string(*col) + "_" +
+                std::to_string(*row));
+        }
       }
     }
   }];
