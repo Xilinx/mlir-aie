@@ -117,7 +117,7 @@ module @test_objectfifo_link {
 // CHECK: %[[SHIM:.*]] = aie.logical_tile<ShimNOCTile>(?, ?)
 // CHECK: %[[CORE:.*]] = aie.logical_tile<CoreTile>(?, ?)
 // CHECK: aie.objectfifo @of_alloc(%[[SHIM]], {%[[CORE]]}, 2 : i32)
-// CHECK: aie.shim_dma_allocation @of_alloc(%[[SHIM]], MM2S, 0)
+// CHECK: aie.shim_dma_allocation @of_alloc_dma(%[[SHIM]], MM2S, 0)
 module @test_shim_dma_allocation {
   aie.device(npu2) {
     %shim = aie.logical_tile<ShimNOCTile>(?, ?)

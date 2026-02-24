@@ -42,7 +42,7 @@ module @test_shim_mux_with_logical_tile {
 // -----
 
 // MemOp with wrong tile type
-// CHECK: error{{.*}}'aie.mem' op failed to verify that op can only be applied to a core tile
+// CHECK: error{{.*}}'aie.mem' op failed to verify that op exists in a core tile
 module @test_mem_wrong_tile_type {
   aie.device(npu2) {
     // MemTile cannot have MemOp (use MemTileDMAOp instead)
@@ -57,7 +57,7 @@ module @test_mem_wrong_tile_type {
 // -----
 
 // MemTileDMAOp with wrong tile type
-// CHECK: error{{.*}}'aie.memtile_dma' op failed to verify that op can only be applied to a MemTile
+// CHECK: error{{.*}}'aie.memtile_dma' op failed to verify that op exists in a MemTile
 module @test_memtile_dma_wrong_tile_type {
   aie.device(npu2) {
     // CoreTile cannot have MemTileDMAOp
@@ -72,7 +72,7 @@ module @test_memtile_dma_wrong_tile_type {
 // -----
 
 // ShimDMAOp with wrong tile type
-// CHECK: error{{.*}}'aie.shim_dma' op failed to verify that op can only be applied to a Shim NOC tile
+// CHECK: error{{.*}}'aie.shim_dma' op failed to verify that op exists in a shim tile with NOC connection
 module @test_shim_dma_wrong_tile_type {
   aie.device(npu2) {
     // CoreTile cannot have ShimDMAOp
@@ -87,7 +87,7 @@ module @test_shim_dma_wrong_tile_type {
 // -----
 
 // BufferOp on tile without memory
-// CHECK: error{{.*}}'aie.buffer' op failed to verify that op can only be applied to a tile with memory
+// CHECK: error{{.*}}'aie.buffer' op failed to verify that op exists in a tile with local memory
 module @test_buffer_on_shim_tile {
   aie.device(npu2) {
     // ShimNOCTile has no memory for buffers
