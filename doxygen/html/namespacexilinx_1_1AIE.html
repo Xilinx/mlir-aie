@@ -254,12 +254,16 @@ Functions</h2></td></tr>
 <tr class="separator:a638bb81621d64018812ed5fa7433b3f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab739be0589e309d7da3122b4143f3ede" id="r_ab739be0589e309d7da3122b4143f3ede"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#ab739be0589e309d7da3122b4143f3ede">createAIEAssignBufferAddressesPass</a> ()</td></tr>
 <tr class="separator:ab739be0589e309d7da3122b4143f3ede"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afc34b98288c8d246339e5c22ccd9f60a" id="r_afc34b98288c8d246339e5c22ccd9f60a"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#afc34b98288c8d246339e5c22ccd9f60a">createAIEAssignBufferAddressesPass</a> (const AIEAssignBufferAddressesOptions &amp;options)</td></tr>
+<tr class="separator:afc34b98288c8d246339e5c22ccd9f60a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8755a0005b3d9d2ffd10b3a2892c4fda" id="r_a8755a0005b3d9d2ffd10b3a2892c4fda"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a8755a0005b3d9d2ffd10b3a2892c4fda">createAIEAssignLockIDsPass</a> ()</td></tr>
 <tr class="separator:a8755a0005b3d9d2ffd10b3a2892c4fda"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aae72c634b59ad01f5ffcede68e68f0ba" id="r_aae72c634b59ad01f5ffcede68e68f0ba"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#aae72c634b59ad01f5ffcede68e68f0ba">createAIECanonicalizeDevicePass</a> ()</td></tr>
 <tr class="separator:aae72c634b59ad01f5ffcede68e68f0ba"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5599976c661458778a2aae4394c4191c" id="r_a5599976c661458778a2aae4394c4191c"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a5599976c661458778a2aae4394c4191c">createAIECoreToStandardPass</a> ()</td></tr>
 <tr class="separator:a5599976c661458778a2aae4394c4191c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2c4dc0928239c74122b58879988ea5a1" id="r_a2c4dc0928239c74122b58879988ea5a1"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a2c4dc0928239c74122b58879988ea5a1">createAIECoreToStandardPass</a> (const AIECoreToStandardOptions &amp;options)</td></tr>
+<tr class="separator:a2c4dc0928239c74122b58879988ea5a1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4debc99f2fdccddbaeaee111eb726842" id="r_a4debc99f2fdccddbaeaee111eb726842"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a4debc99f2fdccddbaeaee111eb726842">createAIEFindFlowsPass</a> ()</td></tr>
 <tr class="separator:a4debc99f2fdccddbaeaee111eb726842"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abc7dbd01bf01668e2dde85edfe95e65f" id="r_abc7dbd01bf01668e2dde85edfe95e65f"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#abc7dbd01bf01668e2dde85edfe95e65f">createAIELocalizeLocksPass</a> ()</td></tr>
@@ -1597,7 +1601,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="ab739be0589e309d7da3122b4143f3ede" name="ab739be0589e309d7da3122b4143f3ede"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab739be0589e309d7da3122b4143f3ede">&#9670;&#160;</a></span>createAIEAssignBufferAddressesPass()</h2>
+<h2 class="memtitle"><span class="permalink"><a href="#ab739be0589e309d7da3122b4143f3ede">&#9670;&#160;</a></span>createAIEAssignBufferAddressesPass() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1611,7 +1615,27 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00528">528</a> of file <a class="el" href="AIEAssignBuffers_8cpp_source.html">AIEAssignBuffers.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00534">534</a> of file <a class="el" href="AIEAssignBuffers_8cpp_source.html">AIEAssignBuffers.cpp</a>.</p>
+
+</div>
+</div>
+<a id="afc34b98288c8d246339e5c22ccd9f60a" name="afc34b98288c8d246339e5c22ccd9f60a"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afc34b98288c8d246339e5c22ccd9f60a">&#9670;&#160;</a></span>createAIEAssignBufferAddressesPass() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; DeviceOp &gt; &gt; xilinx::AIE::createAIEAssignBufferAddressesPass </td>
+          <td>(</td>
+          <td class="paramtype">const AIEAssignBufferAddressesOptions &amp;&#160;</td>
+          <td class="paramname"><em>options</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIEAssignBuffers_8cpp_source.html#l00539">539</a> of file <a class="el" href="AIEAssignBuffers_8cpp_source.html">AIEAssignBuffers.cpp</a>.</p>
 
 </div>
 </div>
@@ -1692,7 +1716,7 @@ Variables</h2></td></tr>
 </div>
 </div>
 <a id="a5599976c661458778a2aae4394c4191c" name="a5599976c661458778a2aae4394c4191c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5599976c661458778a2aae4394c4191c">&#9670;&#160;</a></span>createAIECoreToStandardPass()</h2>
+<h2 class="memtitle"><span class="permalink"><a href="#a5599976c661458778a2aae4394c4191c">&#9670;&#160;</a></span>createAIECoreToStandardPass() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1706,7 +1730,27 @@ Variables</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECoreToStandard_8cpp_source.html#l00700">700</a> of file <a class="el" href="AIECoreToStandard_8cpp_source.html">AIECoreToStandard.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECoreToStandard_8cpp_source.html#l00707">707</a> of file <a class="el" href="AIECoreToStandard_8cpp_source.html">AIECoreToStandard.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a2c4dc0928239c74122b58879988ea5a1" name="a2c4dc0928239c74122b58879988ea5a1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2c4dc0928239c74122b58879988ea5a1">&#9670;&#160;</a></span>createAIECoreToStandardPass() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; ModuleOp &gt; &gt; xilinx::AIE::createAIECoreToStandardPass </td>
+          <td>(</td>
+          <td class="paramtype">const AIECoreToStandardOptions &amp;&#160;</td>
+          <td class="paramname"><em>options</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIECoreToStandard_8cpp_source.html#l00712">712</a> of file <a class="el" href="AIECoreToStandard_8cpp_source.html">AIECoreToStandard.cpp</a>.</p>
 
 </div>
 </div>
@@ -4454,7 +4498,7 @@ Variables</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Feb 20 2026 23:11:07 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Feb 24 2026 18:00:15 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
