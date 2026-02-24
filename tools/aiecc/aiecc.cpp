@@ -848,8 +848,10 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
       << (ctrlPktOverlay ? "true" : "false") << "},"
       << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
       << "},"
-      << "aie-vector-transfer-lowering{max-transfer-rank=1}" << "),"
-      << "convert-scf-to-cf" << ")";
+      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
+      << "),"
+      << "convert-scf-to-cf"
+      << ")";
   return oss.str();
 }
 
@@ -872,7 +874,8 @@ buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
       << "convert-to-llvm{dynamic=true},"
       << "canonicalize,"
-      << "cse" << ")";
+      << "cse"
+      << ")";
   return oss.str();
 }
 
