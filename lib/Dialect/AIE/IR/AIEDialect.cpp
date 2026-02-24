@@ -1302,10 +1302,11 @@ TileID LogicalTileOp::getCanonicalTileID() {
 
   // Otherwise, find a representative tile of the given type
   AIETileType tileType = getTileType();
-  int col = 0;
-  for (int row = 0; row < targetModel.rows(); row++) {
-    if (targetModel.getTileType(col, row) == tileType) {
-      return {col, row};
+  for (int col = 0; col < targetModel.columns(); col++) {
+    for (int row = 0; row < targetModel.rows(); row++) {
+      if (targetModel.getTileType(col, row) == tileType) {
+        return {col, row};
+      }
     }
   }
   llvm_unreachable("No tile of matching tile type found in AIE device");
