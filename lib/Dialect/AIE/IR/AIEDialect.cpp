@@ -1239,7 +1239,10 @@ DeviceOp::getForSymbolInModuleOrError(mlir::ModuleOp module,
 
 TileOp TileElement::getTileOp() {
   auto element = cast<TileElement>(this->getOperation());
-  return dyn_cast_or_null<TileOp>(element.getTile().getDefiningOp());
+  Operation *definingOp = element.getTile().getDefiningOp();
+  if (auto tileOp = dyn_cast_or_null<TileOp>(definingOp))
+    return tileOp;
+  llvm::report_fatal_error("Calling getTileOp requires TileOp.");
 }
 
 //===----------------------------------------------------------------------===//
