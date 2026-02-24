@@ -314,8 +314,7 @@ template <typename ConcreteType>
 LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
   const auto &targetModel = getTargetModel(op);
-  int bdMax =
-      targetModel.getNumBDs(element.getTileOp().getTileType());
+  int bdMax = targetModel.getNumBDs(element.getTileOp().getTileType());
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
@@ -2275,8 +2274,7 @@ struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
     if (auto memOp = op->getParentOfType<MemOp>()) {
       auto useLock = dyn_cast<UseLockOp>(op);
-      if (auto lock = useLock.getLockOp();
-          lock.getTile() != memOp.getTile())
+      if (auto lock = useLock.getLockOp(); lock.getTile() != memOp.getTile())
         return failure();
     }
     return success();

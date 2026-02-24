@@ -51,9 +51,10 @@ def IsFlowEndPoint : NativeOpTrait<"IsFlowEndPoint"> {
 def TileElement : OpInterface<"TileElement", [
     DeclareOpInterfaceMethods<OpAsmOpInterface>,
   ]> {
-  let description = [{ Interface for operations that exist in a TileOp. }];
+  let description = [{
+    Interface for operations that exist in a TileOp.
+  }];
   let cppNamespace = "::xilinx::AIE";
-  
   let methods = [
     InterfaceMethod<[{Return the tile operand value.}],
       "mlir::Value", "getTile", (ins)
@@ -95,7 +96,6 @@ def Interconnect : OpInterface<"Interconnect", [TileElement]> {
     enabling them to host flows for routing.
   }];
   let cppNamespace = "::xilinx::AIE";
-
   let methods = [
     InterfaceMethod<[{}],
       "mlir::Region &", "getConnections", (ins )
