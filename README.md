@@ -162,6 +162,10 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
    # This installs the pre-commit hooks defined in .pre-commit-config.yaml
    pre-commit install
+
+   # Install pre-push hooks for formatting (clang-format, black)
+   # These run before push to catch formatting issues before CI
+   pre-commit install --hook-type pre-push
    ```
 
 1. Setup environment
