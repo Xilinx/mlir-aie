@@ -216,21 +216,18 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span> </div>
 <div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>MLIR_CAPI_EXPORTED uint32_t <a class="code hl_function" href="TargetModel_8h.html#a063475a6bc0d91c0bad45d57a002452c">aieTargetModelGetNumSourceShimMuxConnections</a>(</div>
 <div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>    AieTargetModel targetModel, <span class="keywordtype">int</span> col, <span class="keywordtype">int</span> row, uint32_t bundle);</div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span><span class="comment"></span> </div>
-<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span><span class="comment">/// Returns true if this is an NPU target model.</span></div>
-<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span><span class="comment"></span>MLIR_CAPI_EXPORTED <span class="keywordtype">bool</span> <a class="code hl_function" href="TargetModel_8h.html#a7d912a4e1d762dfa0a56b510d218a235">aieTargetModelIsNPU</a>(AieTargetModel targetModel);</div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span> </div>
+<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>MLIR_CAPI_EXPORTED uint32_t</div>
+<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span><a class="code hl_function" href="TargetModel_8h.html#af737b0bc9ce2760ac65e4bcb488dc768">aieTargetModelGetColumnShift</a>(AieTargetModel targetModel);</div>
 <div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span> </div>
 <div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>MLIR_CAPI_EXPORTED uint32_t</div>
-<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span><a class="code hl_function" href="TargetModel_8h.html#af737b0bc9ce2760ac65e4bcb488dc768">aieTargetModelGetColumnShift</a>(AieTargetModel targetModel);</div>
+<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span><a class="code hl_function" href="TargetModel_8h.html#af87b39f70e14377a2cbff5828e78b0e0">aieTargetModelGetRowShift</a>(AieTargetModel targetModel);</div>
 <div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span> </div>
-<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>MLIR_CAPI_EXPORTED uint32_t</div>
-<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span><a class="code hl_function" href="TargetModel_8h.html#af87b39f70e14377a2cbff5828e78b0e0">aieTargetModelGetRowShift</a>(AieTargetModel targetModel);</div>
-<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span> </div>
-<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span><span class="preprocessor">#ifdef __cplusplus</span></div>
-<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>}</div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span><span class="preprocessor">#endif</span></div>
-<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span> </div>
-<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span><span class="preprocessor">#endif </span><span class="comment">// AIE_C_TARGETMODEL_H</span></div>
+<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span><span class="preprocessor">#ifdef __cplusplus</span></div>
+<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>}</div>
+<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span><span class="preprocessor">#endif</span></div>
+<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span> </div>
+<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span><span class="preprocessor">#endif </span><span class="comment">// AIE_C_TARGETMODEL_H</span></div>
 <div class="ttc" id="aTargetModel_8h_html_a063475a6bc0d91c0bad45d57a002452c"><div class="ttname"><a href="TargetModel_8h.html#a063475a6bc0d91c0bad45d57a002452c">aieTargetModelGetNumSourceShimMuxConnections</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumSourceShimMuxConnections(AieTargetModel targetModel, int col, int row, uint32_t bundle)</div><div class="ttdef"><b>Definition</b> <a href="TargetModel_8cpp_source.html#l00187">TargetModel.cpp:187</a></div></div>
 <div class="ttc" id="aTargetModel_8h_html_a1e473a3912a9fff361fdad5ee66495cd"><div class="ttname"><a href="TargetModel_8h.html#a1e473a3912a9fff361fdad5ee66495cd">aieTargetModelIsWest</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED bool aieTargetModelIsWest(AieTargetModel targetModel, int src_col, int src_row, int dst_col, int dst_row)</div><div class="ttdef"><b>Definition</b> <a href="TargetModel_8cpp_source.html#l00069">TargetModel.cpp:69</a></div></div>
 <div class="ttc" id="aTargetModel_8h_html_a256d9e1bc39607fe11b71a28e16ae851"><div class="ttname"><a href="TargetModel_8h.html#a256d9e1bc39607fe11b71a28e16ae851">aieTargetModelGetMemWestBaseAddress</a></div><div class="ttdeci">MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetMemWestBaseAddress(AieTargetModel targetModel)</div><div class="ttdef"><b>Definition</b> <a href="TargetModel_8cpp_source.html#l00127">TargetModel.cpp:127</a></div></div>
@@ -272,7 +269,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Feb 24 2026 18:00:14 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Feb 24 2026 21:22:17 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
