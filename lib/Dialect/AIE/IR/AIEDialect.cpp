@@ -314,8 +314,7 @@ template <typename ConcreteType>
 LogicalResult HasValidBDs<ConcreteType>::verifyTrait(Operation *op) {
   auto element = cast<ConcreteType>(op);
   const auto &targetModel = getTargetModel(op);
-  int bdMax =
-      targetModel.getNumBDs(element.getTileLike().getTileType());
+  int bdMax = targetModel.getNumBDs(element.getTileLike().getTileType());
 
   int bdNum = 0;
   for (auto &block : element.getBody()) {
@@ -399,13 +398,11 @@ LogicalResult HasValidDMAChannels<ConcreteType>::verifyTrait(Operation *op) {
   if (!tile)
     return op->emitOpError("tile must implement TileLike interface");
 
-  if (inputChannels.size() >
-      tile.getNumSourceConnections(WireBundle::DMA))
+  if (inputChannels.size() > tile.getNumSourceConnections(WireBundle::DMA))
     return op->emitOpError(
         "uses more input channels than available on this tile");
 
-  if (outputChannels.size() >
-      tile.getNumDestConnections(WireBundle::DMA))
+  if (outputChannels.size() > tile.getNumDestConnections(WireBundle::DMA))
     return op->emitOpError(
         "uses more output channels than available on this tile");
   return success();
@@ -442,7 +439,8 @@ LogicalResult ObjectFifoCreateOp::verify() {
     TileLike consTile = getTileLikeFromValue(consTileVal);
     if (!consTile)
       return emitError("consumer tile must implement TileLike interface");
-    if (consTile.isShimTile() && !getDimensionsFromStream(consTileVal).empty()) {
+    if (consTile.isShimTile() &&
+        !getDimensionsFromStream(consTileVal).empty()) {
       return emitError(
           "`dimensionsFromStreamPerConsumer` data layout transformations are "
           "not supported on shim tile consumers");
@@ -487,8 +485,7 @@ LogicalResult ObjectFifoCreateOp::verify() {
 
     if (getAieStream().value() == 1 || getAieStream().value() == 2) {
       TileLike consTile = getTileLikeFromValue(getConsumerTiles()[0]);
-      if (consTile &&
-          (consTile.isShimTile() || consTile.isMemTile()))
+      if (consTile && (consTile.isShimTile() || consTile.isMemTile()))
         return emitError(
             "`aie_stream` is not available for shim and mem tiles");
     }
@@ -2302,8 +2299,7 @@ struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
     if (auto memOp = op->getParentOfType<MemOp>()) {
       auto useLock = dyn_cast<UseLockOp>(op);
-      if (auto lock = useLock.getLockOp();
-          lock.getTile() != memOp.getTile())
+      if (auto lock = useLock.getLockOp(); lock.getTile() != memOp.getTile())
         return failure();
     }
     return success();

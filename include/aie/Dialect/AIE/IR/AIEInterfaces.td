@@ -45,9 +45,10 @@ def IsFlowEndPoint : NativeOpTrait<"IsFlowEndPoint"> {
 }
 
 def TileLike : OpInterface<"TileLike"> {
-  let description = [{ Interface for operations that represent an AIE tile (logical or physical). }];
+  let description = [{
+    Interface for operations that represent an AIE tile (logical or physical).
+  }];
   let cppNamespace = "::xilinx::AIE";
-  
   let methods = [
     InterfaceMethod<[{Return the true hardware tile type.}],
       "xilinx::AIE::AIETileType", "getTileType", (ins)
@@ -88,9 +89,10 @@ def TileLike : OpInterface<"TileLike"> {
 def TileElement : OpInterface<"TileElement", [
     DeclareOpInterfaceMethods<OpAsmOpInterface>,
   ]> {
-  let description = [{ Interface for operations that exist in a TileOp. }];
+  let description = [{
+    Interface for operations that exist in a TileOp.
+  }];
   let cppNamespace = "::xilinx::AIE";
-  
   let methods = [
     InterfaceMethod<[{Return the tile operand value.}],
       "mlir::Value", "getTile", (ins)
@@ -129,11 +131,9 @@ def TileElement : OpInterface<"TileElement", [
     void getAsmResultNames(::mlir::OpAsmSetValueNameFn setNameFn) {
       std::optional<int> col = $_op.getTileLike().tryGetCol();
       std::optional<int> row = $_op.getTileLike().tryGetRow();
-
       if (col && row) {
         llvm::StringRef opName = $_op.getOperation()->getName().stripDialect();
-        std::string name = (opName + "_" + llvm::Twine($_op.colIndex()) + "_" +
-                            llvm::Twine($_op.rowIndex())).str();
+        std::string name = (opName + "_" + llvm::Twine(*col) + "_" + llvm::Twine(*row)).str();
         setNameFn($_op.getResult(), name);
       }
     }
@@ -146,7 +146,6 @@ def Interconnect : OpInterface<"Interconnect", [TileElement]> {
     enabling them to host flows for routing.
   }];
   let cppNamespace = "::xilinx::AIE";
-
   let methods = [
     InterfaceMethod<[{}],
       "mlir::Region &", "getConnections", (ins )
