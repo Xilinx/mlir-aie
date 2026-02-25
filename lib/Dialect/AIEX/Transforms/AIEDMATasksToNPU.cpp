@@ -252,6 +252,18 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                                  (buf_addr / 4) << 14, 0x0fffc000, nullptr,
                                  nullptr, nullptr);
       } else if (target_model.isMemTile(col, row)) {
+        // On AIE2p (NPU2), memtile DMAs use an offset-based address
+        // space where the base depends on the relative position of the
+        // buffer's tile (west=0, internal=getMemTileSize, east=2x).
+        // On AIE2 (NPU1), memtile DMAs address local memory directly
+        // starting at 0. Only add the offset for AIE2p.
+        if (target_model.getTargetArch() == AIE::AIEArch::AIE2p) {
+          auto addrOffset = target_model.getMemLocalBaseAddress(
+              col, row, buffer.getTileOp().getCol(),
+              buffer.getTileOp().getRow());
+          if (addrOffset)
+            buf_addr += addrOffset.value();
+        }
         NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
                                  buf_addr / 4, 0x0007FFFF, nullptr, nullptr,
                                  nullptr);
