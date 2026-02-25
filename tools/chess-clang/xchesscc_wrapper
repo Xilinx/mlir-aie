@@ -47,4 +47,4 @@ LIBDIR=${AIETOOLS}/data/${AIETARGET}/lib
 INCDIR=${AIETOOLS}/include
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-xchesscc --aiearch ${AIEARCH} -p me -C Release_LLVM -I $INCDIR -P $LIBDIR -d -f $@
+xchesscc --aiearch "$AIEARCH" -p me -C Release_LLVM -I "$INCDIR" -P "$LIBDIR" -d -f "$@"
