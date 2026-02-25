@@ -104,7 +104,26 @@ set(AIE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
-find_package(Peano COMPONENTS ${AIE_VITIS_COMPONENTS})
+
+# Find Peano (llvm-aie) compiler for AIE kernel compilation
+# Peano is an open-source alternative to xchesscc
+find_package(Peano COMPONENTS AIE2 AIE2P)
+
+# Option to build without Vitis (Peano only)
+# When enabled, only Peano-supported architectures (AIE2, AIE2P) are available
+option(AIE_PEANO_ONLY_BUILD "Build without Vitis (Peano only)" OFF)
+
+if(AIE_PEANO_ONLY_BUILD)
+  if(NOT Peano_FOUND)
+    message(FATAL_ERROR "AIE_PEANO_ONLY_BUILD=ON requires Peano to be found. Set PEANO_INSTALL_DIR.")
+  endif()
+  # Force Peano as compiler/linker for Peano-only builds
+  set(AIE_COMPILER "PEANO" CACHE STRING "Backend compiler" FORCE)
+  set(AIE_LINKER "PEANO" CACHE STRING "Backend linker" FORCE)
+  message(STATUS "Peano-only build enabled: AIE_COMPILER=PEANO, AIE_LINKER=PEANO")
+  message(STATUS "Note: Only AIE2 and AIE2P targets are supported in Peano-only builds")
+endif()
+
 find_package(XRT)
 find_package(hsa-runtime64)
 
@@ -179,10 +198,10 @@ cmake_dependent_option(AIECC_HOST_COMPILE
   "Set aiecc to host compile." ON "NOT HOST_COMPILER STREQUAL NONE" OFF)
 
 cmake_dependent_option(AIECC_COMPILE_WITH_XCHESSCC
-  "Set aiecc to compile with chess." ON "AIECC_COMPILE;AIE_COMPILER STREQUAL XCHESSCC;AIETools_FOUND" OFF)
+  "Set aiecc to compile with chess." ON "AIECC_COMPILE;AIE_COMPILER STREQUAL XCHESSCC" OFF)
 
 cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
-  "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC;AIETools_FOUND" OFF)
+  "Set aiecc to link with chess." ON "AIECC_LINK;AIE_LINKER STREQUAL XCHESSCC" OFF)
 
 # If we need runtime libs, then statically link them.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

@@ -178,6 +178,7 @@ class LitConfigHelper:
         xrt_bin_dir: str,
         aie_src_root: str,
         vitis_components: Optional[List[str]] = None,
+        peano_components: Optional[List[str]] = None,
     ) -> HardwareConfig:
         """
         Detect XRT installation and Ryzen AI NPU hardware.
@@ -201,6 +202,12 @@ class LitConfigHelper:
         """
         if vitis_components is None:
             vitis_components = []
+        if peano_components is None:
+            peano_components = []
+
+        # Combine Vitis and Peano components for NPU detection
+        # In Peano-only builds, vitis_components will be empty but peano_components will have AIE2/AIE2P
+        available_components = set(vitis_components) | set(peano_components)
 
         config = HardwareConfig()
         run_on_npu1 = "echo"
@@ -266,25 +273,26 @@ class LitConfigHelper:
                 run_on_npu = f"{aie_src_root}/utils/run_on_npu.sh"
 
                 # Map model to NPU generation and filter by available components
-                # Convert vitis_components to uppercase for case-insensitive comparison
-                vitis_components_upper = [c.upper() for c in vitis_components]
+                # available_components includes both Vitis and Peano components
+                # Convert to uppercase for case-insensitive comparison
+                available_components_upper = {c.upper() for c in available_components}
 
                 if model in LitConfigHelper.NPU_MODELS["npu1"]:
-                    if "AIE2" in vitis_components_upper:
+                    if "AIE2" in available_components_upper:
                         run_on_npu1 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
                         config.substitutions["%run_on_npu1%"] = run_on_npu1
                         print(f"Running tests on NPU1 with command line: {run_on_npu1}")
                     else:
-                        print("NPU1 detected but aietools for aie2 not available")
+                        print("NPU1 detected but AIE2 compiler support not available")
                 elif model in LitConfigHelper.NPU_MODELS["npu2"]:
-                    if "AIE2P" in vitis_components_upper:
+                    if "AIE2P" in available_components_upper:
                         run_on_npu2 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
                         config.substitutions["%run_on_npu2%"] = run_on_npu2
                         print(f"Running tests on NPU2 with command line: {run_on_npu2}")
                     else:
-                        print("NPU2 detected but aietools for aie2p not available")
+                        print("NPU2 detected but AIE2P compiler support not available")
                 else:
                     print(f"WARNING: xrt-smi reported unknown NPU model '{model}'.")
                 break
@@ -612,3 +620,15 @@ class LitConfigHelper:
         """
         for component in vitis_components:
             config_obj.available_features.add(f"aietools_{component.lower()}")
+
+    @staticmethod
+    def add_peano_components_features(config_obj, peano_components: List[str]):
+        """
+        Add Peano component features.
+
+        Args:
+            config_obj: Config object with available_features
+            peano_components: List of Peano component names (AIE2, AIE2P)
+        """
+        for component in peano_components:
+            config_obj.available_features.add(f"peano_{component.lower()}")

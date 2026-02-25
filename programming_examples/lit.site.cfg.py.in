@@ -72,6 +72,15 @@ if lit.util.pythonize_bool("@AIETools_AIE2_FOUND@") or lit.util.pythonize_bool("
 if lit.util.pythonize_bool("@AIETools_AIE2P_FOUND@") or lit.util.pythonize_bool("@Peano_AIE2P_FOUND@"):
     config.vitis_components.append("AIE2P")
 
+# Peano components (for Peano-only builds)
+config.peano_components = []
+if lit.util.pythonize_bool("@Peano_AIE2_FOUND@"):
+    config.peano_components.append("AIE2")
+if lit.util.pythonize_bool("@Peano_AIE2P_FOUND@"):
+    config.peano_components.append("AIE2P")
+
+config.peano_only_build = lit.util.pythonize_bool("@AIE_PEANO_ONLY_BUILD@")
+
 # Support substitution of the tools_dir with user parameters. This is
 # used when we can't determine the tool dir at configuration time.
 try:

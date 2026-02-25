@@ -67,18 +67,27 @@ except Exception:
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
 
+# Add Peano components as features
+LitConfigHelper.add_peano_components_features(config, config.peano_components)
+
+# Add peano_only_build feature for tests that should be skipped in Peano-only builds
+if config.peano_only_build:
+    config.available_features.add("peano_only_build")
+
 # Detect ROCm/HSA and VCK5000
 rocm_config = LitConfigHelper.detect_rocm(
     config.hsa_dir, config.aieHostTarget, config.enable_board_tests
 )
 
 # Detect XRT and Ryzen AI NPU devices
+# Pass both Vitis and Peano components so NPU tests work in Peano-only builds
 xrt_config = LitConfigHelper.detect_xrt(
     config.xrt_lib_dir,
     config.xrt_include_dir,
     config.xrt_bin_dir,
     config.aie_src_root,
     config.vitis_components,
+    config.peano_components,
 )
 
 # Detect OpenCV
