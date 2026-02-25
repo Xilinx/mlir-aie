@@ -4409,6 +4409,16 @@ int main(int argc, char **argv) {
   if (noUnified) {
     unified = false;
   }
+  if (noCompileHost) {
+    compileHost = false;
+  }
+
+  // Validate: aiesim requires xbridge
+  if (aiesim && !xbridge) {
+    llvm::errs()
+        << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
+    return 1;
+  }
 
   // Process the input file
   return processInputFile(inputFilename, tmpDir);
