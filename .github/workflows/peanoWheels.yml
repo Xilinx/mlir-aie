@@ -144,7 +144,7 @@ jobs:
         run: |
           mkdir -p wheelhouse/repaired_wheel
           auditwheel repair -w wheelhouse/repaired_wheel wheelhouse/mlir_aie*.whl \
-            --plat manylinux_2_35_x86_64 \
+            --plat manylinux_2_39_x86_64 \
             --exclude libcdo_driver.so \
             --exclude libmlir_async_runtime.so \
             --exclude libmlir_c_runner_utils.so \
