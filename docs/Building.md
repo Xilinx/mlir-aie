@@ -157,6 +157,56 @@ For your design of interest, for instance from [programming_examples](../program
     make run
     ```
 
+## Building without Vitis (Peano-only)
+
+For users who prefer to use only open-source tools, MLIR-AIE can be built using only the [Peano](https://github.com/Xilinx/llvm-aie) compiler (llvm-aie) instead of Vitis AIE Essentials. This enables:
+
+- **Open-source compilation**: No proprietary tools or licenses required
+- **AIE2 and AIE2P support**: Supports Ryzen AI NPUs (Phoenix, Strix, Strix Halo, Krackan)
+
+> **Note**: Peano-only builds do NOT support the original Versal AIE architecture. Only AIE2 (NPU1) and AIE2P (NPU2) targets are available.
+
+### Peano-only Build Steps
+
+1. Install Peano (llvm-aie) by downloading the wheel from [llvm-aie releases](https://github.com/Xilinx/llvm-aie/releases):
+   ```bash
+   pip download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/latest-peano
+   unzip llvm_aie*.whl -d peano_install
+   export PEANO_INSTALL_DIR=$PWD/peano_install/llvm_aie
+   ```
+
+2. Configure with the Peano-only build option:
+   ```bash
+   mkdir build && cd build
+   cmake -GNinja \
+     -DAIE_PEANO_ONLY_BUILD=ON \
+     -DPEANO_INSTALL_DIR=$PEANO_INSTALL_DIR \
+     -DCMAKE_INSTALL_PREFIX=../install \
+     -DMLIR_DIR=/path/to/llvm/build/lib/cmake/mlir \
+     -DLLVM_DIR=/path/to/llvm/build/lib/cmake/llvm \
+     ..
+   ninja install
+   ```
+
+3. When compiling AIE kernels, use the `--no-xchesscc` flag:
+   ```bash
+   cd programming_examples/basic/passthrough_kernel
+   make AIECC_FLAGS="--no-xchesscc --no-xbridge"
+   ```
+
+### CMake Options for Peano-only Builds
+
+| Option | Description |
+|--------|-------------|
+| `AIE_PEANO_ONLY_BUILD` | Enable Peano-only build (default: OFF) |
+| `PEANO_INSTALL_DIR` | Path to Peano (llvm-aie) installation |
+
+When `AIE_PEANO_ONLY_BUILD=ON`:
+- `AIE_COMPILER` is automatically set to `PEANO`
+- `AIE_LINKER` is automatically set to `PEANO`
+- Only AIE2 and AIE2P subdirectories in `aie_runtime_lib/` are built
+- The `chess_intrinsic_wrapper.ll` is not generated (not needed for Peano)
+
 ## Learn more
 
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)

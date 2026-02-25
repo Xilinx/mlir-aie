@@ -145,12 +145,28 @@ class CMakeBuild(build_ext):
             "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
             "-DLLVM_CCACHE_BUILD=ON",
             f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
-            f"-DAIE_VITIS_COMPONENTS={os.getenv('AIE_VITIS_COMPONENTS', 'AIE2')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
             "-DAIE_ENABLE_PYTHON_PASSES=OFF",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
             # not used on MSVC, but no harm
         ]
+
+        # Peano-only build configuration
+        # When AIE_PEANO_ONLY_BUILD=1, build without Vitis using only Peano (llvm-aie)
+        if check_env("AIE_PEANO_ONLY_BUILD"):
+            cmake_args.append("-DAIE_PEANO_ONLY_BUILD=ON")
+            # Peano only supports AIE2 and AIE2P, not the original AIE
+            cmake_args.append("-DAIE_VITIS_COMPONENTS=AIE2;AIE2P")
+        else:
+            # Standard build with Vitis components
+            cmake_args.append(
+                f"-DAIE_VITIS_COMPONENTS={os.getenv('AIE_VITIS_COMPONENTS', 'AIE2')}"
+            )
+
+        # Pass PEANO_INSTALL_DIR if set
+        peano_dir = os.getenv("PEANO_INSTALL_DIR")
+        if peano_dir:
+            cmake_args.append(f"-DPEANO_INSTALL_DIR={peano_dir}")
 
         if os.getenv("XRT_ROOT"):
             xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"

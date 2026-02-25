@@ -178,6 +178,7 @@ class LitConfigHelper:
         xrt_bin_dir: str,
         aie_src_root: str,
         vitis_components: Optional[List[str]] = None,
+        peano_components: Optional[List[str]] = None,
     ) -> HardwareConfig:
         """
         Detect XRT installation and Ryzen AI NPU hardware.
@@ -201,6 +202,12 @@ class LitConfigHelper:
         """
         if vitis_components is None:
             vitis_components = []
+        if peano_components is None:
+            peano_components = []
+
+        # Combine Vitis and Peano components for NPU detection
+        # In Peano-only builds, vitis_components will be empty but peano_components will have AIE2/AIE2P
+        available_components = set(vitis_components) | set(peano_components)
 
         config = HardwareConfig()
         run_on_npu1 = "echo"
@@ -241,6 +248,7 @@ class LitConfigHelper:
             # Pattern matches both old and new xrt-smi output formats:
             # Old: "|[0000:41:00.1]  ||RyzenAI-npu1  |"
             # New: "|[0000:41:00.1]  |NPU Phoenix  |"
+            # New with spaces: "|[0000:c6:00.1]  |NPU Strix Halo  |"
             pattern = re.compile(
                 r"[\|]?(\[.+:.+:.+\]).+\|(RyzenAI-(npu\d)|NPU ([\w ]+?))\s*\|"
             )
@@ -265,22 +273,26 @@ class LitConfigHelper:
                 run_on_npu = f"{aie_src_root}/utils/run_on_npu.sh"
 
                 # Map model to NPU generation and filter by available components
+                # available_components includes both Vitis and Peano components
+                # Convert to uppercase for case-insensitive comparison
+                available_components_upper = {c.upper() for c in available_components}
+
                 if model in LitConfigHelper.NPU_MODELS["npu1"]:
-                    if "AIE2" in vitis_components:
+                    if "AIE2" in available_components_upper:
                         run_on_npu1 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu1"])
                         config.substitutions["%run_on_npu1%"] = run_on_npu1
                         print(f"Running tests on NPU1 with command line: {run_on_npu1}")
                     else:
-                        print("NPU1 detected but aietools for aie2 not available")
+                        print("NPU1 detected but AIE2 compiler support not available")
                 elif model in LitConfigHelper.NPU_MODELS["npu2"]:
-                    if "AIE2P" in vitis_components:
+                    if "AIE2P" in available_components_upper:
                         run_on_npu2 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
                         config.substitutions["%run_on_npu2%"] = run_on_npu2
                         print(f"Running tests on NPU2 with command line: {run_on_npu2}")
                     else:
-                        print("NPU2 detected but aietools for aie2p not available")
+                        print("NPU2 detected but AIE2P compiler support not available")
                 else:
                     print(f"WARNING: xrt-smi reported unknown NPU model '{model}'.")
                 break
@@ -360,7 +372,7 @@ class LitConfigHelper:
         peano_tools_dir: str, peano_install_dir: str, llvm_config
     ) -> HardwareConfig:
         """
-        Detect Peano backend availability.
+        Detect Peano backend availability and supported AIE architectures.
 
         Args:
             peano_tools_dir: Path to Peano tools directory
@@ -368,7 +380,9 @@ class LitConfigHelper:
             llvm_config: LLVM lit config object for environment setup
 
         Returns:
-            HardwareConfig with Peano detection results
+            HardwareConfig with Peano detection results including supported AIE architectures.
+            The supported architectures are stored in config.substitutions["%peano_components%"]
+            as a list that can be added to vitis_components.
         """
         config = HardwareConfig()
 
@@ -381,15 +395,49 @@ class LitConfigHelper:
                 timeout=5,
             )
 
-            if re.search(
-                "Xilinx AI Engine", result.stdout.decode("utf-8", errors="ignore")
-            ):
+            version_output = result.stdout.decode("utf-8", errors="ignore")
+            if re.search("Xilinx AI Engine", version_output):
                 config.found = True
                 config.features.append("peano")
                 config.substitutions["%PEANO_INSTALL_DIR"] = peano_install_dir
                 # Also set environment variable for tests that need it
                 llvm_config.with_environment("PEANO_INSTALL_DIR", peano_install_dir)
                 print(f"Peano found: {llc_path}")
+
+                # Detect supported AIE architectures by checking include directories
+                # llvm-aie installed via pip will have include dirs like:
+                # - aie2-none-unknown-elf/
+                # - aie2p-none-unknown-elf/
+                supported_components = []
+                peano_include_dir = os.path.join(peano_install_dir, "include")
+
+                if os.path.isdir(peano_include_dir):
+                    # Check for AIE2 support
+                    aie2_include = os.path.join(
+                        peano_include_dir, "aie2-none-unknown-elf"
+                    )
+                    if os.path.isdir(aie2_include):
+                        supported_components.append("AIE2")
+                        config.features.append("peano_aie2")
+                        print("  Peano supports AIE2")
+
+                    # Check for AIE2P support
+                    aie2p_include = os.path.join(
+                        peano_include_dir, "aie2p-none-unknown-elf"
+                    )
+                    if os.path.isdir(aie2p_include):
+                        supported_components.append("AIE2P")
+                        config.features.append("peano_aie2p")
+                        print("  Peano supports AIE2P")
+
+                # Store supported components as a Python list string for lit config
+                if supported_components:
+                    config.substitutions["%peano_components%"] = str(
+                        supported_components
+                    )
+                else:
+                    config.substitutions["%peano_components%"] = "[]"
+
                 return config
         except subprocess.TimeoutExpired:
             print(f"Peano detection timed out at {peano_tools_dir}")
@@ -399,6 +447,7 @@ class LitConfigHelper:
             print(f"Peano detection failed: {e}")
 
         print(f"Peano not found, but expected at {peano_tools_dir}")
+        config.substitutions["%peano_components%"] = "[]"
         return config
 
     @staticmethod
@@ -571,3 +620,15 @@ class LitConfigHelper:
         """
         for component in vitis_components:
             config_obj.available_features.add(f"aietools_{component.lower()}")
+
+    @staticmethod
+    def add_peano_components_features(config_obj, peano_components: List[str]):
+        """
+        Add Peano component features.
+
+        Args:
+            config_obj: Config object with available_features
+            peano_components: List of Peano component names (AIE2, AIE2P)
+        """
+        for component in peano_components:
+            config_obj.available_features.add(f"peano_{component.lower()}")

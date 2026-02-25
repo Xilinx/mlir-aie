@@ -96,34 +96,39 @@ install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/$
 #
 # Memory Allocator libraries
 #
-
-# ion memory allocator library
-add_library(memory_allocator_ion STATIC memory_allocator_ion.cpp)
-set(ION_PUBLIC_HEADERS
-    memory_allocator.h
-    target.h
-)
-set_target_properties(memory_allocator_ion PROPERTIES PUBLIC_HEADER "${ION_PUBLIC_HEADERS}")
-find_program(UNAME_EXEC uname)
-execute_process(COMMAND ${UNAME_EXEC} -r OUTPUT_VARIABLE KERNEL_RELEASE OUTPUT_STRIP_TRAILING_WHITESPACE)
-find_path(LINUX_HEADERS_PATH NAMES "linux/dma-buf.h" PATHS "/usr/src/kernels/${KERNEL_RELEASE}/include" REQUIRED)
-target_include_directories(memory_allocator_ion PRIVATE
-        ${LINUX_HEADERS_PATH}/uapi
-        ${LINUX_HEADERS_PATH}
-        ${LibXAIE_INC_DIR}
-)
-target_compile_options(memory_allocator_ion PRIVATE -fPIC)
-target_compile_definitions(memory_allocator_ion PRIVATE)
+# Note: Memory allocators (ION, HSA) are not built on Windows.
+# AIE Simulator allocator requires Vitis.
+#
 
 message("LibXAIE_INC_DIR is at ${LibXAIE_INC_DIR} for ${AIE_RUNTIME_TARGET}")
 
-install(TARGETS memory_allocator_ion
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
-)
+# ion memory allocator library (Linux only, not Windows)
+if(NOT WIN32)
+  add_library(memory_allocator_ion STATIC memory_allocator_ion.cpp)
+  set(ION_PUBLIC_HEADERS
+      memory_allocator.h
+      target.h
+  )
+  set_target_properties(memory_allocator_ion PROPERTIES PUBLIC_HEADER "${ION_PUBLIC_HEADERS}")
+  find_program(UNAME_EXEC uname)
+  execute_process(COMMAND ${UNAME_EXEC} -r OUTPUT_VARIABLE KERNEL_RELEASE OUTPUT_STRIP_TRAILING_WHITESPACE)
+  find_path(LINUX_HEADERS_PATH NAMES "linux/dma-buf.h" PATHS "/usr/src/kernels/${KERNEL_RELEASE}/include" REQUIRED)
+  target_include_directories(memory_allocator_ion PRIVATE
+          ${LINUX_HEADERS_PATH}/uapi
+          ${LINUX_HEADERS_PATH}
+          ${LibXAIE_INC_DIR}
+  )
+  target_compile_options(memory_allocator_ion PRIVATE -fPIC)
+  target_compile_definitions(memory_allocator_ion PRIVATE)
 
-# HSA memory allocator library
-if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
+  install(TARGETS memory_allocator_ion
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+      PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
+  )
+endif()
+
+# HSA memory allocator library (Linux only, x86_64-hsa target)
+if (NOT WIN32 AND ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
   add_library(memory_allocator_hsa STATIC memory_allocator_hsa.cpp)
   set_target_properties(memory_allocator_hsa PROPERTIES PUBLIC_HEADER "memory_allocator.h")
   target_compile_options(memory_allocator_hsa PRIVATE -fPIC)
@@ -142,12 +147,14 @@ if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
   )
 endif()
 
-# simulation memory allocator library
-add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
-target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
-target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
-target_include_directories(memory_allocator_sim_aie PRIVATE ${LibXAIE_INC_DIR})
+# simulation memory allocator library (requires Vitis for AIE Simulator, not on Windows)
+if(NOT WIN32 AND VITIS_ROOT)
+  add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
+  target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
+  target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
+  target_include_directories(memory_allocator_sim_aie PRIVATE ${LibXAIE_INC_DIR})
 
-install(TARGETS memory_allocator_sim_aie
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
-)
+  install(TARGETS memory_allocator_sim_aie
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+  )
+endif()
