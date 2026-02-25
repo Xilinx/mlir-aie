@@ -101,13 +101,10 @@ jobs:
           # Fix timestamps to avoid ninja configuration issues
           find mlir$NO_RTTI_UNDERSCORE -exec touch -a -m -t 201108231405.14 {} \;
 
-      - name: Download Peano (llvm-aie) wheel
+      - name: Install Peano (llvm-aie)
         run: |
-          pip -q download llvm-aie \
+          pip install -I llvm-aie \
             -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-          unzip -q llvm_aie*.whl -d peano_install
-          # Fix timestamps
-          find peano_install -exec touch -a -m -t 201108231405.14 {} \;
 
       - name: Build mlir-aie wheel (Peano-only)
         run: |
@@ -127,7 +124,7 @@ jobs:
 
           # Configure Peano-only build
           export AIE_PEANO_ONLY_BUILD=1
-          export PEANO_INSTALL_DIR=$PWD/peano_install/llvm_aie
+          export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 
           if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
             export AIE_PROJECT_COMMIT=$MLIR_VERSION
