@@ -8,11 +8,11 @@
 // RUN: aie-opt --verify-diagnostics --aie-dma-tasks-to-npu %s 
        
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_1 = aie.tile(0, 1)
     %buf = aie.buffer(%tile_0_1) { address = 0xBEEF : i32 } : memref<32xi8> 
 
-    aiex.runtime_sequence(%arg0: memref<32xi8>) { 
+    aie.runtime_sequence(%arg0: memref<32xi8>) { 
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
       // expected-error@+1 {{supports padding only for MM2S direction on MemTiles.}}
           aie.dma_bd(%buf : memref<32xi8>, 4, 16,

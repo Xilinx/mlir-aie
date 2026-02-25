@@ -1,17 +1,9 @@
-PyYAML>=5.3.1, <=6.0.1
 aiofiles
-cmake>=3.29
 dataclasses>=0.6, <=0.8
-filelock==3.13.1
-lit
-numpy>=1.19.5, <=1.26 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
-pandas
-psutil
-pybind11>=2.9.0, <=2.10.3
+numpy>=1.19.5, <2.0 # 2.1 would be nice for typing improvements, but it doesn't seem to work well with pyxrt
 rich
-setuptools
-wheel
 ml_dtypes
-matplotlib
-notebook
-pre-commit
+cloudpickle # required by eudsl when it is vendored instead of installed
+eudsl-python-extras==0.1.0.20251215.1715+3c7ac1b \
+  --config-settings="EUDSL_PYTHON_EXTRAS_HOST_PACKAGE_PREFIX=aie"
+-f https://llvm.github.io/eudsl

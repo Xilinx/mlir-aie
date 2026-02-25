@@ -10,8 +10,8 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
-aie.device(npu1_4col) {
-  aiex.runtime_sequence() {
+aie.device(npu1) {
+  aie.runtime_sequence() {
     // expected-error@+1 {{'aiex.npu.dma_wait' op couldn't find symbol in parent device}}
     aiex.npu.dma_wait {symbol = @out0}
   }

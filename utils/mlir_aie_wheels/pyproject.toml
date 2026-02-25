@@ -1,6 +1,26 @@
+[project]
+name = "mlir-aie"
+description = "An MLIR-based toolchain for AMD AI Engine-enabled devices."
+readme = { text = """This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for Xilinx Versal
+AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the
+device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is
+included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with
+convenient low-level access to devices and enable the development of a wide variety of programming models
+from higher level abstractions.  As such, although it contains some examples, this project is not intended to
+represent end-to-end compilation flows or to be particularly easy to use for system design.
+""", content-type = "text/markdown" }
+dynamic = ["dependencies", "requires-python", "version", "license"]
+authors = [
+  { name="AMD Inc." },
+  { email="joseph.melber@amd.com" },
+]
+
+[project.urls]
+"Homepage" = "https://github.com/Xilinx/mlir-aie"
+
 [tool.cibuildwheel]
 build-verbosity = 3
-build = "cp310-*"
+build = "cp312-* cp313-* cp314-*"
 skip = ["*-manylinux_i686", "*-musllinux*"]
 manylinux-aarch64-image = "manylinux_2_28"
 manylinux-x86_64-image = "manylinux_2_28"
@@ -26,7 +46,7 @@ environment-pass = [
     "ENABLE_RTTI",
 ]
 repair-wheel-command = [
-    "auditwheel repair -w {dest_dir} {wheel} --exclude libmlir_float16_utils.so"
+    "auditwheel repair -w {dest_dir} {wheel} --exclude libmlir_async_runtime.so --exclude libmlir_c_runner_utils.so --exclude libmlir_float16_utils.so --exclude libmlir_runner_utils.so --exclude libmlir_apfloat_wrappers.so"
 ]
 
 [tool.cibuildwheel.macos]
@@ -46,3 +66,18 @@ before-build = [
     "pip install -r requirements.txt",
     "bash {project}\\scripts\\download_mlir.sh",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0", "nanobind", "pip>=22.1"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+aie-lsp-server = "aie.tools:aie_lsp_server"
+aie-opt = "aie.tools:aie_opt"
+aie-reset = "aie.tools:aie_reset"
+aie-translate = "aie.tools:aie_translate"
+aie-visualize = "aie.tools:aie_visualize"
+"aiecc.py" = "aie.compiler.aiecc.main:main"
+bootgen = "aie.tools:bootgen"
+"txn2mlir.py" = "aie.compiler.txn2mlir.main:main"
+xchesscc_wrapper = "aie.tools:xchesscc_wrapper"

@@ -3,16 +3,17 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 AMD Inc.
+# (c) Copyright 2025 AMD Inc.
 import numpy as np
+import argparse
 
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 
-def my_matmul():
+def my_matmul(dev):
     M = 288
     K = 288
     m = 32
@@ -42,7 +43,12 @@ def my_matmul():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        if dev == "npu":
+            dev_ty = AIEDevice.npu1
+        else:
+            dev_ty = AIEDevice.npu2
+
+        @device(dev_ty)
         def device_body():
             inA_ty = np.ndarray[(m * k,), dtype_in]
             inB_ty = np.ndarray[(k,), dtype_in]
@@ -173,4 +179,11 @@ def my_matmul():
     print(ctx.module)
 
 
-my_matmul()
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser(
+        prog="AIE Matrix Vector Multiplication MLIR Design",
+    )
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
+    args, _ = argparser.parse_known_args()  # <- ignore the rest args in makefile-common
+    dev = args.dev
+    my_matmul(dev)

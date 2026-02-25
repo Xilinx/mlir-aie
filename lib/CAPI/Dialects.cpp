@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <utility>
+
 #include "aie-c/Dialects.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -47,4 +49,16 @@ bool aieTypeIsObjectFifoSubviewType(MlirType type) {
 MlirType aieObjectFifoSubviewTypeGet(MlirType type) {
   return wrap(xilinx::AIE::AIEObjectFifoSubviewType::get(
       llvm::cast<mlir::MemRefType>(unwrap(type))));
+}
+
+//===---------------------------------------------------------------------===//
+// BlockFloatType
+//===---------------------------------------------------------------------===//
+
+bool aieTypeIsBlockFloatType(MlirType type) {
+  return llvm::isa<xilinx::AIEX::BlockFloatType>(unwrap(type));
+}
+
+MlirType aieBlockFloatTypeGet(MlirContext ctx, const std::string &blockType) {
+  return wrap(xilinx::AIEX::BlockFloatType::get(unwrap(ctx), blockType));
 }

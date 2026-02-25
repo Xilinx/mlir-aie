@@ -79,8 +79,8 @@ func.func @conv2d_0 (%A: memref<?x?xi32>, %B: memref<?xi32>, %C: memref<?x?xi32>
 // CHECK-SAME:                        %[[VAL_0:.*]]: memref<?x?xi32>,
 // CHECK-SAME:                        %[[VAL_1:.*]]: memref<?xi32>,
 // CHECK-SAME:                        %[[VAL_2:.*]]: memref<?x?xi32>) {
-// CHECK:           %[[VAL_3:.*]] = arith.constant 8 : index
 // CHECK:           %[[C0:.*]] = arith.constant 0 : i32
+// CHECK:           %[[VAL_3:.*]] = arith.constant 8 : index
 // CHECK:           %[[VAL_4:.*]] = arith.constant 1 : index
 // CHECK:           %[[VAL_5:.*]] = arith.constant 0 : index
 // CHECK:           %[[VAL_6:.*]] = memref.dim %[[VAL_0]], %[[VAL_5]] : memref<?x?xi32>
@@ -198,8 +198,8 @@ func.func @conv2d_1 (%A: memref<?x256xi32>, %B: memref<?xi32>, %C: memref<?x256x
 // CHECK-SAME:                        %[[VAL_0:.*]]: memref<?x256xi32>,
 // CHECK-SAME:                        %[[VAL_1:.*]]: memref<?xi32>,
 // CHECK-SAME:                        %[[VAL_2:.*]]: memref<?x256xi32>) {
-// CHECK:           %[[VAL_3:.*]] = arith.constant 8 : index
 // CHECK:           %[[C0:.*]] = arith.constant 0 : i32
+// CHECK:           %[[VAL_3:.*]] = arith.constant 8 : index
 // CHECK:           %[[VAL_4:.*]] = arith.constant 0 : index
 // CHECK:           %[[VAL_5:.*]] = memref.dim %[[VAL_0]], %[[VAL_4]] : memref<?x256xi32>
 // CHECK:           %[[VAL_6:.*]] = aievec.upd %[[VAL_1]]{{\[}}%[[VAL_4]]] {index = 0 : i8, offset = 0 : i32} : memref<?xi32>, vector<8xi32>

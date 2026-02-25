@@ -9,23 +9,13 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
-
-width = 512  # 1920 // 8
-height = 9  # 1080 // 8
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
-
-lineWidthInBytes = width
-tensorSize = width * height
-
-enableTrace = False
-traceSizeInBytes = 8192
-traceSizeInInt32s = traceSizeInBytes // 4
+from aie.iron.device import NPU1Col1, NPU2Col1
 
 
-def passThroughAIE2():
+def passThroughAIE2(dev, width, height):
+    lineWidthInBytes = width
+    tensorSize = width * height
+
     # define types
     tensor_ty = np.ndarray[(tensorSize,), np.dtype[np.int8]]
     line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
@@ -60,8 +50,20 @@ def passThroughAIE2():
         rt.drain(of_out.cons(), outTensor, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-module = passThroughAIE2()
+try:
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        dev = NPU2Col1()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    width = 512 if (len(sys.argv) != 4) else int(sys.argv[2])
+    height = 9 if (len(sys.argv) != 4) else int(sys.argv[3])
+except ValueError:
+    print("Argument has inappropriate value")
+module = passThroughAIE2(dev, width, height)
 print(module)

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// (c) Copyright 2023-2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -22,16 +23,46 @@
 
 #include <vector>
 
+extern "C" {
+// #include "xaiengine/xaie_txn.h"
+// see aie-rt commit a6196eb, xaiengine/xaie_txn.h for source of this enum
+typedef enum {
+  XAIE_IO_WRITE,
+  XAIE_IO_BLOCKWRITE,
+  XAIE_IO_BLOCKSET,
+  XAIE_IO_MASKWRITE,
+  XAIE_IO_MASKPOLL,
+  XAIE_IO_NOOP,
+  XAIE_IO_PREEMPT,
+  XAIE_IO_MASKPOLL_BUSY,
+  XAIE_IO_LOADPDI,
+  XAIE_IO_LOAD_PM_START,
+  XAIE_IO_CREATE_SCRATCHPAD,
+  XAIE_IO_UPDATE_STATE_TABLE,
+  XAIE_IO_UPDATE_REG,
+  XAIE_IO_UPDATE_SCRATCH,
+  XAIE_CONFIG_SHIMDMA_BD,
+  XAIE_CONFIG_SHIMDMA_DMABUF_BD,
+  XAIE_IO_CUSTOM_OP_BEGIN = 1U << 7U,
+  XAIE_IO_CUSTOM_OP_TCT = XAIE_IO_CUSTOM_OP_BEGIN,
+  XAIE_IO_CUSTOM_OP_DDR_PATCH, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
+                               // 1
+  XAIE_IO_CUSTOM_OP_READ_REGS, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
+                               // 2
+  XAIE_IO_CUSTOM_OP_RECORD_TIMER, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN
+                                  // + 3
+  XAIE_IO_CUSTOM_OP_MERGE_SYNC, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN +
+                                // 4
+  XAIE_IO_CUSTOM_OP_NEXT,
+  XAIE_IO_LOAD_PM_END_INTERNAL = 200,
+  XAIE_IO_CUSTOM_OP_MAX = UCHAR_MAX,
+} XAie_TxnOpcode;
+}
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
-
-#define TXN_OPC_WRITE 0x0
-#define TXN_OPC_BLOCKWRITE 0x1
-#define TXN_OPC_MASKWRITE 0x3
-#define TXN_OPC_TCT 0x80
-#define TXN_OPC_DDR_PATCH 0x81
 
 namespace {
 
@@ -54,7 +85,7 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
   auto words = reserveAndGetTail(instructions, 4);
 
   // XAIE_IO_CUSTOM_OP_TCT
-  words[0] = TXN_OPC_TCT;
+  words[0] = XAIE_IO_CUSTOM_OP_TCT;
 
   words[1] = words.size() * sizeof(uint32_t); // Operation Size
 
@@ -69,7 +100,7 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
 
-  auto words = reserveAndGetTail(instructions, 3);
+  auto words = reserveAndGetTail(instructions, 6);
 
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
@@ -77,22 +108,17 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   }
 
   // XAIE_IO_WRITE
-  words[0] = TXN_OPC_WRITE;
-  words[1] = op.getAddress();
-  auto col = op.getColumn();
-  auto row = op.getRow();
-  if (col && row) {
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[1] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[1] & 0xFFFFF);
-  }
-  words[2] = op.getValue(); // Value
+  words[0] = XAIE_IO_WRITE;
+  words[2] = *op.getAbsoluteAddress();
+  words[3] = 0;                               // Extra bits for Reg Offset
+  words[4] = op.getValue();                   // Value
+  words[5] = words.size() * sizeof(uint32_t); // Operation Size
 }
 
 void appendMaskWrite32(std::vector<uint32_t> &instructions,
                        NpuMaskWrite32Op op) {
 
-  auto words = reserveAndGetTail(instructions, 4);
+  auto words = reserveAndGetTail(instructions, 7);
 
   if (op.getBuffer()) {
     op.emitOpError("Cannot translate symbolic address");
@@ -100,105 +126,101 @@ void appendMaskWrite32(std::vector<uint32_t> &instructions,
   }
 
   // XAIE_IO_MASKWRITE
-  words[0] = TXN_OPC_MASKWRITE;
-  words[1] = op.getAddress();
-  auto col = op.getColumn();
-  auto row = op.getRow();
-  if (col && row) {
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[1] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[1] & 0xFFFFF);
+  words[0] = XAIE_IO_MASKWRITE;
+  words[2] = *op.getAbsoluteAddress();
+  words[3] = 0;
+  words[4] = op.getValue();                   // Value
+  words[5] = op.getMask();                    // Mask
+  words[6] = words.size() * sizeof(uint32_t); // Operation Size
+}
+
+void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
+
+  auto words = reserveAndGetTail(instructions, 4);
+
+  // XAIE_IO_LOADPDI
+  words[0] = XAIE_IO_LOADPDI;
+  words[0] |= op.getId() << 16;
+  std::optional<uint32_t> size = op.getSize();
+  if (size)
+    words[1] = *size;
+  std::optional<uint64_t> address = op.getAddress();
+  if (address) {
+    words[2] = *address;
+    words[3] = *address >> 32;
   }
-  words[2] = op.getValue(); // Value
-  words[3] = op.getMask();
 }
 
 void appendAddressPatch(std::vector<uint32_t> &instructions,
                         NpuAddressPatchOp op) {
 
-  auto words = reserveAndGetTail(instructions, 6);
+  auto words = reserveAndGetTail(instructions, 12);
 
   // XAIE_IO_CUSTOM_OP_DDR_PATCH
-  words[0] = TXN_OPC_DDR_PATCH;
+  words[0] = XAIE_IO_CUSTOM_OP_DDR_PATCH;
   words[1] = words.size() * sizeof(uint32_t); // Operation Size
 
-  words[2] = op.getAddr();
+  words[5] = 0; // Action
 
-  words[3] = op.getArgIdx();
+  words[6] = op.getAddr();
 
-  words[4] = op.getArgPlus();
-  words[5] = 0;
+  words[8] = op.getArgIdx();
+
+  words[10] = op.getArgPlus();
 }
 
 void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op) {
+  unsigned payload_start = 4;
 
-  Value memref = op.getData();
-  int64_t width = cast<MemRefType>(memref.getType()).getElementTypeBitWidth();
-  if (width != 32) {
-    op.emitWarning("Only 32-bit data type is supported for now");
-    return;
-  }
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  DenseIntElementsAttr data = op.getDataWords();
 
-  memref::GetGlobalOp getGlobal = memref.getDefiningOp<memref::GetGlobalOp>();
-  if (!getGlobal) {
-    op.emitError("Only MemRefs from memref.get_global are supported");
-    return;
-  }
-
-  auto global = dyn_cast_if_present<memref::GlobalOp>(
-      op->getParentOfType<AIE::DeviceOp>().lookupSymbol(getGlobal.getName()));
-  if (!global) {
-    op.emitError("Global symbol not found");
-    return;
-  }
-
-  auto initVal = global.getInitialValue();
-  if (!initVal) {
-    op.emitError("Global symbol has no initial value");
-    return;
-  }
-
-  auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
-  if (!data) {
-    op.emitError("Global symbol initial value is not a dense int array");
-    return;
-  }
-
-  auto words = reserveAndGetTail(instructions, data.size() + 3);
+  auto words = reserveAndGetTail(instructions, data.size() + payload_start);
 
   // XAIE_IO_BLOCKWRITE
-  words[0] = TXN_OPC_BLOCKWRITE;
-  words[1] = op.getAddress();
+  words[0] = XAIE_IO_BLOCKWRITE;
+  words[2] = op.getAddress();
   auto col = op.getColumn();
   auto row = op.getRow();
   if (col && row) {
-    const AIETargetModel &tm = op->getParentOfType<DeviceOp>().getTargetModel();
-    words[1] = ((*col & 0xff) << tm.getColumnShift()) |
-               ((*row & 0xff) << tm.getRowShift()) | (words[1] & 0xFFFFF);
+    words[1] = (*col & 0xff) | ((*row & 0xff) << 8);
   }
-  words[2] = words.size() * sizeof(uint32_t); // Operation Size
+  words[2] = *address;
+  words[3] = words.size() * sizeof(uint32_t); // Operation Size
 
-  unsigned i = 3;
+  unsigned i = payload_start;
   for (auto d : data)
     words[i++] = d.getZExtValue();
 }
 
+void appendPreempt(std::vector<uint32_t> &instructions, NpuPreemptOp op) {
+
+  auto words = reserveAndGetTail(instructions, 1);
+  words[0] = XAIE_IO_PREEMPT | (op.getLevel() << 8);
+}
+
 } // namespace
 
-LogicalResult
-xilinx::AIE::AIETranslateToNPU(ModuleOp module,
-                               std::vector<uint32_t> &instructions,
-                               StringRef sequenceName) {
+LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
+    mlir::ModuleOp moduleOp, std::vector<uint32_t> &instructions,
+    StringRef deviceName, StringRef sequenceName) {
+
+  DeviceOp deviceOp =
+      DeviceOp::getForSymbolInModuleOrError(moduleOp, deviceName);
+  if (!deviceOp) {
+    return failure();
+  }
 
   auto words = reserveAndGetTail(instructions, 4);
 
-  DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
   const AIETargetModel &tm = deviceOp.getTargetModel();
 
   // setup txn header
-  uint8_t major = 1;
-  uint8_t minor = 0;
-  uint8_t devGen = 3;
+  uint8_t major = 0;
+  uint8_t minor = 1;
+  uint8_t devGen = 3; // NPU (PHX HWK)
+  if (llvm::isa<AIE::BaseNPU2TargetModel>(tm))
+    devGen = 4; // NPU2 (STX KRK)
   uint8_t numRows = tm.rows();
   uint8_t numCols = tm.columns();
   uint8_t numMemTileRows = tm.getNumMemTileRows();
@@ -206,12 +228,14 @@ xilinx::AIE::AIETranslateToNPU(ModuleOp module,
   words[0] = (numRows << 24) | (devGen << 16) | (minor << 8) | major;
   words[1] = (numMemTileRows << 8) | numCols;
 
-  auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
-  for (auto seq : sequenceOps) {
-    if (sequenceName.size() && sequenceName != seq.getSymName())
-      continue;
-    Block &entry = seq.getBody().front();
-    for (auto &o : entry) {
+  AIE::RuntimeSequenceOp seq =
+      AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                          sequenceName);
+  if (!seq) {
+    return failure();
+  }
+  for (Block &block : seq.getBody()) {
+    for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuSyncOp>([&](auto op) {
             count++;
@@ -229,9 +253,17 @@ xilinx::AIE::AIETranslateToNPU(ModuleOp module,
             count++;
             appendMaskWrite32(instructions, op);
           })
+          .Case<NpuLoadPdiOp>([&](auto op) {
+            count++;
+            appendLoadPdi(instructions, op);
+          })
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
             appendAddressPatch(instructions, op);
+          })
+          .Case<NpuPreemptOp>([&](auto op) {
+            count++;
+            appendPreempt(instructions, op);
           });
     }
   }
@@ -242,68 +274,71 @@ xilinx::AIE::AIETranslateToNPU(ModuleOp module,
   return success();
 }
 
-LogicalResult xilinx::AIE::AIETranslateToNPU(ModuleOp module,
-                                             raw_ostream &output,
-                                             StringRef sequenceName) {
-  std::vector<uint32_t> instructions;
-  auto r = AIETranslateToNPU(module, instructions, sequenceName);
-  if (failed(r))
-    return r;
-  for (auto w : instructions)
-    output << llvm::format("%08X\n", w);
-  return success();
-}
-
 LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-    ModuleOp module, std::vector<uint32_t> &instructions,
+    ModuleOp module, std::vector<uint32_t> &instructions, StringRef deviceName,
     StringRef sequenceName) {
-  DeviceOp deviceOp = *module.getOps<DeviceOp>().begin();
-  auto sequenceOps = deviceOp.getOps<AIEX::RuntimeSequenceOp>();
-  for (auto seq : sequenceOps) {
-    if (sequenceName.size() && sequenceName != seq.getSymName())
-      continue;
-    Block &entry = seq.getBody().front();
-    for (auto &o : entry) {
-      llvm::TypeSwitch<Operation *>(&o).Case<NpuControlPacketOp>([&](auto op) {
-        uint32_t size = 0;
-        auto data = op.getData();
-        auto length = op.getLength();
-        if (data)
-          size = data->size();
-        auto words = reserveAndGetTail(instructions, 1 + size);
-        if (!data && length)
-          size = *length;
-        auto parity = [](uint32_t n) {
-          uint32_t p = 0;
-          while (n) {
-            p += n & 1;
-            n >>= 1;
-          }
-          return (p % 2) == 0;
-        };
-        uint32_t addr = op.getAddress() & 0xFFFFF;
-        uint32_t beats = size - 1;
-        uint32_t opc = op.getOpcode();
-        uint32_t id = op.getStreamId();
-        uint32_t hdr = id << 24 | opc << 22 | beats << 20 | addr;
-        words[0] = hdr | (0x1 & parity(hdr)) << 31;
-        if (opc == 0x0 || opc == 0x2)
-          for (unsigned i = 0; i < size; i++)
-            words[i + 1] = data.value()[i];
-      });
-    }
+  DeviceOp deviceOp =
+      AIE::DeviceOp::getForSymbolInModuleOrError(module, deviceName);
+  if (!deviceOp) {
+    return failure();
   }
-  return success();
-}
+  OpBuilder builder = OpBuilder::atBlockBegin(deviceOp.getBody());
+  AIE::RuntimeSequenceOp seq =
+      AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
+                                                          sequenceName);
+  if (!seq) {
+    return failure();
+  }
 
-LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-    ModuleOp module, raw_ostream &output, StringRef sequenceName) {
-  std::vector<uint32_t> instructions;
-  auto r =
-      AIETranslateControlPacketsToUI32Vec(module, instructions, sequenceName);
-  if (failed(r))
-    return r;
-  for (auto w : instructions)
-    output << llvm::format("%08X\n", w);
+  Block &entry = seq.getBody().front();
+  for (auto &o : entry) {
+    auto packetOp = dyn_cast<AIEX::NpuControlPacketOp>(o);
+    if (!packetOp)
+      continue;
+
+    uint32_t size = 0;
+    auto data = packetOp.getData();
+    if (data)
+      size = data->size();
+
+    auto words = reserveAndGetTail(instructions, 2 + size);
+
+    if (!data && packetOp.getLength())
+      size = *packetOp.getLength();
+
+    auto parity = [](uint32_t n) {
+      uint32_t p = 0;
+      while (n) {
+        p += n & 1;
+        n >>= 1;
+      }
+      return (p % 2) == 0;
+    };
+
+    // stream header is attached here instead of by shim dma
+    int col = packetOp.getColumnFromAddr();
+    int row = packetOp.getRowFromAddr();
+    auto destTile = TileOp::getOrCreate(builder, deviceOp, col, row);
+    auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+    uint32_t hdr = 0;
+    if (info)
+      hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
+    else
+      destTile->emitWarning("Expected controller_id attribute");
+    words[0] = hdr | (0x1 & parity(hdr)) << 31;
+
+    // control packet header
+    uint32_t addr = packetOp.getAddress() & 0xFFFFF;
+    uint32_t beats = size - 1;
+    uint32_t opc = packetOp.getOpcode();
+    uint32_t id = packetOp.getStreamId();
+    hdr = id << 24 | opc << 22 | beats << 20 | addr;
+    words[1] = hdr | (0x1 & parity(hdr)) << 31;
+
+    // configuration data
+    if (opc == 0x0 || opc == 0x2)
+      for (unsigned i = 0; i < size; i++)
+        words[i + 2] = data.value()[i];
+  }
   return success();
 }

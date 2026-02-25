@@ -1,1 +1,1 @@
-from .objectfifo import ObjectFifo, ObjectFifoHandle
+from .objectfifo import ObjectFifo, ObjectFifoHandle, ObjectFifoLink, ObjectFifoEndpoint

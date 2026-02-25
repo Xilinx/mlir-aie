@@ -59,8 +59,6 @@ static void initializeCDOGenerator(byte_ordering endianness, bool cdoDebug) {
 static LogicalResult
 generateCDOBinary(const StringRef outputPath,
                   const std::function<LogicalResult()> &cb) {
-
-  // TODO(newling): Get bootgen team to remove print statement in this function.
   startCDOFileStream(outputPath.str().c_str());
   FileHeader();
   // Never generate a completely empty CDO file.  If the file only contains a
@@ -81,17 +79,19 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
   auto ps = std::filesystem::path::preferred_separator;
 
   LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_elfs.bin");
-  if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_elfs.bin")
-              .str(),
-          [&ctl, &targetOp, &workDirPath, &aieSim] {
-            return ctl.addAieElfs(targetOp, workDirPath, aieSim);
-          })))
+  if (failed(generateCDOBinary((llvm::Twine(workDirPath) + std::string(1, ps) +
+                                targetOp.getSymName() + "_aie_cdo_elfs.bin")
+                                   .str(),
+                               [&ctl, &targetOp, &workDirPath, &aieSim] {
+                                 return ctl.addAieElfs(targetOp, workDirPath,
+                                                       aieSim);
+                               })))
     return failure();
 
   LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_init.bin");
   if (failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_init.bin")
+          (llvm::Twine(workDirPath) + std::string(1, ps) +
+           targetOp.getSymName() + "_aie_cdo_init.bin")
               .str(),
           [&ctl, &targetOp] { return ctl.addInitConfig(targetOp); })))
     return failure();
@@ -99,7 +99,8 @@ static LogicalResult generateCDOBinariesSeparately(AIERTControl &ctl,
   LLVM_DEBUG(llvm::dbgs() << "Generating aie_cdo_enable.bin");
   if (enableCores &&
       failed(generateCDOBinary(
-          (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo_enable.bin")
+          (llvm::Twine(workDirPath) + std::string(1, ps) +
+           targetOp.getSymName() + "_aie_cdo_enable.bin")
               .str(),
           [&ctl, &targetOp] { return ctl.addCoreEnable(targetOp); })))
     return failure();
@@ -114,7 +115,9 @@ static LogicalResult generateCDOUnified(AIERTControl &ctl,
   auto ps = std::filesystem::path::preferred_separator;
 
   return generateCDOBinary(
-      (llvm::Twine(workDirPath) + std::string(1, ps) + "aie_cdo.bin").str(),
+      (llvm::Twine(workDirPath) + std::string(1, ps) + targetOp.getSymName() +
+       "_aie_cdo.bin")
+          .str(),
       [&ctl, &targetOp, &workDirPath, &aieSim, &enableCores] {
         if (!targetOp.getOps<CoreOp>().empty() &&
             failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
@@ -130,15 +133,16 @@ static LogicalResult generateCDOUnified(AIERTControl &ctl,
 
 static LogicalResult
 translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
-                     byte_ordering endianness, bool emitUnified, bool cdoDebug,
-                     bool aieSim, bool xaieDebug, bool enableCores) {
+                     llvm::StringRef deviceName, byte_ordering endianness,
+                     bool emitUnified, bool cdoDebug, bool aieSim,
+                     bool xaieDebug, bool enableCores) {
 
-  auto devOps = m.getOps<DeviceOp>();
-  assert(llvm::range_size(devOps) == 1 &&
-         "only exactly 1 device op supported.");
-  DeviceOp targetOp = *devOps.begin();
-  const BaseNPUTargetModel &targetModel =
-      (const BaseNPUTargetModel &)targetOp.getTargetModel();
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModuleOrError(m, deviceName);
+  if (!targetOp) {
+    return failure();
+  }
+  const AIETargetModel &targetModel =
+      (const AIETargetModel &)targetOp.getTargetModel();
 
   // things like XAIE_MEM_TILE_ROW_START and the missing
   // shim dma on tile (0,0) are hard-coded assumptions about NPU...
@@ -162,10 +166,12 @@ translateToCDODirect(ModuleOp m, llvm::StringRef workDirPath,
 }
 
 LogicalResult xilinx::AIE::AIETranslateToCDODirect(
-    ModuleOp m, llvm::StringRef workDirPath, bool bigEndian, bool emitUnified,
-    bool cdoDebug, bool aieSim, bool xaieDebug, bool enableCores) {
+    ModuleOp m, llvm::StringRef workDirPath, llvm::StringRef deviceName,
+    bool bigEndian, bool emitUnified, bool cdoDebug, bool aieSim,
+    bool xaieDebug, bool enableCores) {
   byte_ordering endianness =
       bigEndian ? byte_ordering::Big_Endian : byte_ordering::Little_Endian;
-  return translateToCDODirect(m, workDirPath, endianness, emitUnified, cdoDebug,
-                              aieSim, xaieDebug, enableCores);
+  return translateToCDODirect(m, workDirPath, deviceName, endianness,
+                              emitUnified, cdoDebug, aieSim, xaieDebug,
+                              enableCores);
 }

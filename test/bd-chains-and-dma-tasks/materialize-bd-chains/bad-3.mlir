@@ -11,11 +11,11 @@
 // reference a BD chain that has not been defined.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aiex.runtime_sequence(%buf: memref<8xi16>) {
+    aie.runtime_sequence(%buf: memref<8xi16>) {
       // expected-error@+1 {{symbol does not reference valid BD chain}}
       %t1 = aiex.dma_start_bd_chain @concat(%buf) : (memref<8xi16>) 
                                     on (%tile_0_0, MM2S, 0) 

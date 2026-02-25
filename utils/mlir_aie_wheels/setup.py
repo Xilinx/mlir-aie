@@ -11,8 +11,13 @@ from textwrap import dedent
 from typing import Union
 
 from importlib_metadata import files
-from setuptools import Extension, setup
+from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
+from setuptools.command.develop import develop
+from setuptools.command.install import install
+
+sys.path.append(os.path.dirname(__file__))
+from vendor_eudsl import install_eudsl
 
 
 def check_env(build, default=0):
@@ -102,9 +107,7 @@ class CMakeBuild(build_ext):
     def build_extension(self, ext: CMakeExtension) -> None:
         ext_fullpath = Path.cwd() / self.get_ext_fullpath(ext.name)
         extdir = ext_fullpath.parent.resolve()
-        install_dir = extdir / (
-            "mlir_aie" if check_env("ENABLE_RTTI", 1) else "mlir_aie_no_rtti"
-        )
+        install_dir = extdir / "mlir_aie"
         cfg = "Release"
 
         cmake_generator = os.getenv("CMAKE_GENERATOR", "Ninja")
@@ -153,10 +156,14 @@ class CMakeBuild(build_ext):
             xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
             cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
 
-        if platform.system() == "Windows":
+        if shutil.which("ccache"):
             cmake_args += [
                 "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
                 "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
+            ]
+
+        if platform.system() == "Windows":
+            cmake_args += [
                 "-DCMAKE_C_COMPILER=cl",
                 "-DCMAKE_CXX_COMPILER=cl",
                 "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
@@ -231,14 +238,47 @@ class CMakeBuild(build_ext):
             check=True,
         )
 
+        # Vendor eudsl-python-extras
+        # Install eudsl to install_dir/python so it merges with mlir-aie's package structure (aie/extras).
+        target_dir = Path(install_dir) / "python"
+        req_file = Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
+        install_eudsl(req_file, target_dir)
 
-commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
-release_version = "0.0.1"
-now = datetime.now()
-datetime = os.environ.get(
-    "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
-)
-version = f"{release_version}.{datetime}+{commit_hash}"
+
+class DevelopWithPth(develop):
+    """Custom develop command to create a .pth file into the site-packages directory."""
+
+    def run(self):
+        super().run()
+        pth_target = os.path.join(self.install_dir, "aie.pth")
+        with open(pth_target, "w") as pth_file:
+            pth_file.write("mlir_aie/python")
+
+
+class InstallWithPth(install):
+    """Custom install command to create a .pth file into the site-packages directory."""
+
+    def run(self):
+        super().run()
+        pth_target = os.path.join(self.install_lib, "aie.pth")
+        with open(pth_target, "w") as pth_file:
+            pth_file.write("mlir_aie/python")
+
+
+def get_version():
+    if "AIE_WHEEL_VERSION" in os.environ and os.environ["AIE_WHEEL_VERSION"].lstrip(
+        "v"
+    ):
+        return os.environ["AIE_WHEEL_VERSION"].lstrip("v")
+    release_version = "0.0.1"
+    commit_hash = os.environ.get("AIE_PROJECT_COMMIT", "deadbeef")
+    now = datetime.now()
+    timestamp = os.environ.get(
+        "DATETIME", f"{now.year}{now.month:02}{now.day:02}{now.hour:02}"
+    )
+    suffix = "" if check_env("ENABLE_RTTI", 1) else "-no_rtti"
+    return f"{release_version}.{timestamp}+{commit_hash}{suffix}"
+
 
 MLIR_AIE_SOURCE_DIR = Path(
     os.getenv(
@@ -247,28 +287,43 @@ MLIR_AIE_SOURCE_DIR = Path(
     )
 ).absolute()
 
+
+def parse_requirements(filename):
+    with open(filename) as f:
+        lines = f.read().splitlines()
+        # Remove comments and empty lines
+        # Also remove lines starting with "-" (flags) and eudsl-python-extras
+        # because eudsl requires config settings that cannot be passed via install_requires
+        # in wheel metadata. It must be installed separately or vendored.
+        requirements = []
+        for line in lines:
+            line = line.strip()
+            if (
+                line
+                and not line.startswith("#")
+                and not line.startswith("-")
+                and not re.match(r"^eudsl-python-extras\b", line, re.IGNORECASE)
+            ):
+                requirements.append(line)
+        return requirements
+
+
 setup(
-    version=version,
-    author="",
-    name="mlir-aie" if check_env("ENABLE_RTTI", 1) else "mlir-aie-no-rtti",
+    version=get_version(),
+    license="Apache-2.0 WITH LLVM-exception",
     include_package_data=True,
-    description=f"An MLIR-based toolchain for Xilinx Versal AIEngine-based devices.",
-    long_description=dedent(
-        """\
-        This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for Xilinx Versal 
-        AIEngine-based devices.  This can be used to generate low-level configuration for the AIEngine portion of the 
-        device, including processors, stream switches, TileDMA and ShimDMA blocks. Backend code generation is 
-        included, targetting the LibXAIE library.  This project is primarily intended to support tool builders with 
-        convenient low-level access to devices and enable the development of a wide variety of programming models 
-        from higher level abstractions.  As such, although it contains some examples, this project is not intended to 
-        represent end-to-end compilation flows or to be particularly easy to use for system design.
-        """
-    ),
-    long_description_content_type="text/markdown",
     # note the name here isn't relevant because it's the install (CMake install target) directory that'll be used to
     # actually build the wheel.
     ext_modules=[CMakeExtension("_mlir_aie", sourcedir=MLIR_AIE_SOURCE_DIR)],
-    cmdclass={"build_ext": CMakeBuild},
+    cmdclass={
+        "build_ext": CMakeBuild,
+        "develop": DevelopWithPth,
+        "install": InstallWithPth,
+    },
     zip_safe=False,
+    packages=find_packages(exclude=["wheelhouse", "python_bindings", "mlir-aie"]),
     python_requires=">=3.10",
+    install_requires=parse_requirements(
+        Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"
+    ),
 )

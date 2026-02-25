@@ -9,10 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_1col) {
-    memref.global "public" @out0 : memref<8xi32>
-    memref.global "public" @ctrl0 : memref<8xi32>
-
+  aie.device(NPUDEVICE) {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
     %tile_0_2 = aie.tile(0, 2)
 
@@ -27,10 +24,10 @@ module {
 
     aie.packet_flow(0x1) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_2, Ctrl : 0>
+      aie.packet_dest<%tile_0_2, TileControl : 0>
     }
     aie.packet_flow(0x2) {
-      aie.packet_source<%tile_0_2, Ctrl : 0>
+      aie.packet_source<%tile_0_2, TileControl : 0>
       aie.packet_dest<%tile_0_0, DMA : 0>
     }
     aie.packet_flow(0x3) {
@@ -107,11 +104,11 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @ctrl0(S2MM, 0, 0)
-    aie.shim_dma_allocation @out0(S2MM, 1, 0)
+    aie.shim_dma_allocation @ctrl0 (%tile_0_0, S2MM, 0)
+    aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 1)
 
     memref.global "private" constant @blockwrite_data_0 : memref<8xi32> = dense<[2, 0, 0x40090000, 0, 0x40000000, 0, 0, 0x2000000]>
-    aiex.runtime_sequence @seq(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: memref<8xi32>) {
+    aie.runtime_sequence @seq(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: memref<8xi32>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c2_i64 = arith.constant 2 : i64
@@ -121,8 +118,8 @@ module {
       // aiex.npu.maskwrite32 {address = 0x00060000 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32, mask = 0x8 : ui32}
 
       // start reading output
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 1 : i64, issue_token = true, metadata = @ctrl0} : memref<8xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 2 : i64, issue_token = true, metadata = @out0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 1 : i64, issue_token = true, metadata = @ctrl0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 2 : i64, issue_token = true, metadata = @out0} : memref<8xi32>
 
       // write bd0
       %0 = memref.get_global @blockwrite_data_0 : memref<8xi32>

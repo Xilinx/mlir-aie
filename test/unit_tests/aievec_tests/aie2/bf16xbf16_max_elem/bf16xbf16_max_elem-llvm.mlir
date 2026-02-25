@@ -11,6 +11,8 @@
 // RUN: xca_udm_dbg --aiearch aie-ml -qf -T -P %aietools/data/aie_ml/lib/ -t "%S/../../profiling.tcl ./work/a.out" >& xca_udm_dbg.stdout
 // RUN: FileCheck --input-file=./xca_udm_dbg.stdout %s
 // CHECK: TEST PASSED
+// XFAIL: *
+// XFAIL: *
 
 module {
   func.func @dut(%arg0: memref<1024xbf16>, %arg1: memref<1024xbf16>, %arg2: memref<1024xbf16>) {

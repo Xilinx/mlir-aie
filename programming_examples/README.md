@@ -14,9 +14,13 @@ These programming examples are provided so that application programmers can lear
 
 Each IRON example has one or more implementations:
 * `<example_name>.py` - These designs are generally written using a higher-level version of IRON
-* `<example_name>_alt.py` - These designs are generally written using a lower-level verion of IRON
+* `<example_name>_placed.py` - These designs are generally written using a lower-level verion of IRON
 
 They are organized into the following directories:
+
+## [getting_started](./getting_started) 
+
+Designs tailored to the new user experience that span from basic applications such as SAXPY to more complicated ones such as tiled matrix multiplication, for the NPU in Ryzen™ AI.
 
 ## [basic](./basic) 
 

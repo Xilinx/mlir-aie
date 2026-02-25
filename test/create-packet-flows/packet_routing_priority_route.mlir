@@ -38,7 +38,7 @@ module @aie_module  {
 
   aie.packet_flow(0x2) {
     aie.packet_source<%t70, DMA : 0>
-    aie.packet_dest<%t72, Ctrl : 0>
+    aie.packet_dest<%t72, TileControl : 0>
   } {priority_route = true}
  }
 }

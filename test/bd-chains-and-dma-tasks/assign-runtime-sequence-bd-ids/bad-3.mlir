@@ -11,11 +11,11 @@
 // withou explicit ops `aiex.dma_free_task` or `aiex.dma_await_task` between them.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32}
         aie.end

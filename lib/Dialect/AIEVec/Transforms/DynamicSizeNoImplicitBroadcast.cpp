@@ -113,7 +113,7 @@ struct DynamicSizeNoImplicitBroadcastPass
 
     patterns.add<DynamicSizeNoImplicitBroadcastPattern>(patterns.getContext());
 
-    (void)applyPatternsAndFoldGreedily(op, std::move(patterns));
+    (void)applyPatternsGreedily(op, std::move(patterns));
   }
 };
 

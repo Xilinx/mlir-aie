@@ -11,11 +11,11 @@
 // op's dimensions and its overall transfer length do not match up.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aiex.runtime_sequence(%arg0: memref<32xi8>) {
+    aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-error@+2 {{Buffer descriptor length does not match length of transfer}}
           // expected-note@+1 {{}}

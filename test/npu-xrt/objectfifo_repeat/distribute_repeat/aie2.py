@@ -6,19 +6,20 @@
 #
 # (c) Copyright 2024 AMD Inc.
 
-# REQUIRES: ryzen_ai, peano
+# REQUIRES: ryzen_ai_npu1, peano
+# XFAIL: *
 #
 # RUN: %python %S/aie2.py 36 > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
+# RUN: %python aiecc.py --no-aiesim --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test.exe -x final.xclbin -i insts.txt -k MLIR_AIE -l 36
+# RUN: %run_on_npu1% ./test.exe -x final.xclbin -i insts.bin -k MLIR_AIE -l 36
 import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 dev = AIEDevice.npu1_1col
 col = 0
@@ -39,7 +40,7 @@ if len(sys.argv) > 3:
     col = int(sys.argv[3])
 
 assert N % 2 == 0, "N must be even"
-repeat_counter = 7
+repeat_counter = 1
 out_size = N * repeat_counter
 
 

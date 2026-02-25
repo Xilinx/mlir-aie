@@ -14,12 +14,15 @@
 #include <sstream>
 
 #include "xrt/xrt_bo.h"
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_kernel.h"
 
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 
 #include "OpenCVUtils.h"
+#include "cxxopts.hpp"
 #include "test_utils.h"
 
 double epsilon = 2.0;
@@ -29,8 +32,6 @@ constexpr int testImageHeight = EDGEDETECT_HEIGHT;
 
 constexpr int testImageSize = testImageWidth * testImageHeight;
 constexpr int kernelSize = 3;
-
-namespace po = boost::program_options;
 
 void edgeDetect(cv::Mat &inImage, cv::Mat &outImage) {
   cv::Mat inImageGray, imageFiltered, imageThreshold, imageThresholdBRG,
@@ -62,35 +63,32 @@ int main(int argc, const char *argv[]) {
    * Program arguments parsing
    ****************************************************************************
    */
-  po::options_description desc("Allowed options");
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")("image,p", po::value<std::string>(),
-                               "the input image")(
-      "outfile,o",
-      po::value<std::string>()->default_value("edgeDetectOut_test.jpg"),
-      "the output image")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6")(
-      "live,l", "capture from webcam")("video,m", po::value<std::string>(),
-                                       "optional video input file name");
-  po::variables_map vm;
+  cxxopts::Options options("edge_detect");
+  test_utils::add_default_options(options);
+  options.add_options()("image,p", "the input image",
+                        cxxopts::value<std::string>())(
+      "outfile,o", "the output image",
+      cxxopts::value<std::string>()->default_value("edgeDetectOut_test.jpg"))(
+      "live,l", "capture from webcam")("video,m",
+                                       "optional video input file name",
+                                       cxxopts::value<std::string>())(
+      "device,d", "webcam device number",
+      cxxopts::value<std::string>()->default_value("0"));
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
 
   std::cout << "Running edgeDetect for resolution: " << testImageWidth << "x"
             << testImageHeight << std::endl;
 
+  int webcam_dev = std::stoi(vm["device"].as<std::string>());
+  std::cout << "webcam device is " << webcam_dev << std::endl;
   if (vm.count("live")) {
     std::cout << "Using live webcam input" << std::endl;
 
     cv::VideoCapture cap;
     try {
-      initializeVideoCapture(cap);
+      initializeVideoCapture(cap, webcam_dev);
     } catch (const std::exception &ex) {
       std::cerr << ex.what() << "\n\n";
       return 1;
@@ -164,7 +162,7 @@ int main(int argc, const char *argv[]) {
      ****************************************************************************
      */
     std::vector<uint32_t> instr_v =
-        test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+        test_utils::load_instr_binary(vm["instr"].as<std::string>());
 
     int verbosity = vm["verbosity"].as<int>();
     if (verbosity >= 1)
@@ -265,7 +263,7 @@ int main(int argc, const char *argv[]) {
       cv::VideoCapture cap;
       try {
         if (vm.count("live"))
-          initializeVideoCapture(cap);
+          initializeVideoCapture(cap, webcam_dev);
         else
           initializeVideoFile(cap, vm["video"].as<std::string>());
       } catch (const std::exception &ex) {

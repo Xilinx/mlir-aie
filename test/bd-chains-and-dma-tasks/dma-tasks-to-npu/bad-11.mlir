@@ -12,13 +12,13 @@
 // the address of all referenced buffers is known.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
     %buf = aie.buffer(%tile_0_1) : memref<32xi8> 
 
-    aiex.runtime_sequence(%arg0: memref<32xi8>) {
+    aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
           // expected-error@+1 {{without associated address}}
           aie.dma_bd(%buf : memref<32xi8>, 4, 32) {bd_id = 0 : i32}

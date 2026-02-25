@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
 from collections import defaultdict
@@ -12,19 +12,21 @@ from contextlib import contextmanager
 import numpy as np
 from typing import Callable
 
+from ...utils import trace as trace_utils
 
 from ... import ir  # type: ignore
 
+from ...dialects.aie import tile
 from ...dialects.aiex import runtime_sequence
 from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
 from ..device import PlacementTile, AnyShimTile
 from ..resolvable import Resolvable
+from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
 from .dmatask import DMATask
 from .data import RuntimeData
 from .endpoint import RuntimeEndpoint
-from ..worker import Worker
 from .taskgroup import RuntimeTaskGroup
 from .task import (
     RuntimeTask,
@@ -44,13 +46,25 @@ class Runtime(Resolvable):
 
     def __init__(
         self,
+        strict_task_groups: bool = True,
     ) -> Runtime:
-        """Initialize a runtime object."""
+        """Initialize a runtime object.
+
+        Args:
+            check_task_groups: Disallows mixing the default group and explicit task groups during resolution.
+                This can catch common errors, but can be set to False to disable the checks.
+
+        """
         self._rt_data = []
         self._tasks: list[RuntimeTask] = []
         self._fifos = set()
         self._workers = []
         self._open_task_groups = []
+        self._trace_size = None
+        self._trace_offset = None
+        self._trace_workers = None
+        self._strict_task_groups = strict_task_groups
+        self.ddr_id = None
 
     @contextmanager
     def sequence(self, *input_types: type[np.ndarray]):
@@ -221,6 +235,35 @@ class Runtime(Resolvable):
         # TODO: should filter args based on some criteria??
         self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
 
+    def enable_trace(
+        self,
+        trace_size: int = None,
+        trace_offset: int = None,
+        workers: [] = None,
+        ddr_id: int = None,
+        coretile_events: [] = None,
+        memtile_events: [] = None,
+        shimtile_events: [] = None,
+    ):
+        """Enable trace."""
+        self._trace_size = trace_size
+        self._trace_offset = trace_offset
+        self._trace_workers = workers
+        self._ddr_id = ddr_id
+        self._coretile_events = coretile_events
+        self._memtile_events = memtile_events
+        self._shimtile_events = shimtile_events
+
+    def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
+        """Set the value of a worker barrier.
+        This should be called within a Runtime.sequence() context.
+
+        Args:
+            barrier (WorkerRuntimeBarrier): The WorkerRuntimeBarrier to set.
+            value (int): The value to set the barrier to.
+        """
+        self._tasks.append(_BarrierSetOp(barrier, value))
+
     @property
     def workers(self) -> list[Worker]:
         """The workers associated with the Runtime by calls to start()"""
@@ -230,6 +273,16 @@ class Runtime(Resolvable):
     def fifos(self) -> list[ObjectFifoHandle]:
         """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()"""
         return self._fifos.copy()
+
+    def get_first_cons_shimtile(self):
+        """Find the first consumer side of an objfifo that is in the 0th row
+        and uses it as the trace shim tile
+        """
+        for of_handle in self._fifos:
+            if not of_handle._is_prod:
+                endpoint_tile = of_handle._object_fifo._cons[0]._endpoint._tile
+                if endpoint_tile.row == 0:
+                    return endpoint_tile.op
 
     def resolve(
         self,
@@ -243,36 +296,94 @@ class Runtime(Resolvable):
         @runtime_sequence(*rt_dtypes)
         def sequence(*args):
 
+            if self._trace_size is not None:
+                tiles_to_trace = []
+                if self._trace_workers is not None:
+                    for w in self._trace_workers:
+                        tiles_to_trace.append(w.tile.op)
+                else:
+                    for w in self._workers:
+                        if w.trace is not None:
+                            tiles_to_trace.append(w.tile.op)
+
+                trace_shim_tile = self.get_first_cons_shimtile()
+
+                # print("config_trace")
+                trace_utils.configure_packet_tracing_aie2(
+                    # tiles_to_trace=[ tiles_to_trace[0] ],
+                    tiles_to_trace=tiles_to_trace,
+                    shim=trace_shim_tile,
+                    trace_size=self._trace_size // 4,
+                    trace_offset=(
+                        self._trace_offset if self._trace_offset is not None else 0
+                    ),
+                    ddr_id=self._ddr_id if self._ddr_id is not None else 4,
+                    coretile_events=self._coretile_events,
+                    memtile_events=self._memtile_events,
+                    shimtile_events=self._shimtile_events,
+                )
+
             for rt_data, rt_data_val in zip(self._rt_data, args):
                 rt_data.op = rt_data_val
 
-            no_waits = []
+            def finish_task_group(tg, task_group_actions):
+                actions = task_group_actions[tg]
+
+                # We want to keep order, EXCEPT do waits before frees
+                wait_tasks = [
+                    (fn, args) for (fn, args) in actions if fn == dma_await_task
+                ]
+                free_tasks = [
+                    (fn, args) for (fn, args) in actions if fn == dma_free_task
+                ]
+
+                # Check for anything known -- this shouldn't happen, but we'll catch it gracefully anyways.
+                if len(wait_tasks) + len(free_tasks) != len(actions):
+                    unknown_actions = [
+                        (fn, args)
+                        for (fn, args) in actions
+                        if fn != dma_await_task and fn != dma_free_task
+                    ]
+                    raise Exception(
+                        f"Unknown action type detected: {','.join(unknown_actions)}"
+                    )
+
+                for fn, args in wait_tasks + free_tasks:
+                    fn(*args)
+                task_group_actions[tg] = None
+
+            default_task_group = self.task_group()
+            default_tasks = False
+            task_group_tasks = False
             for task in self._tasks:
+
                 task.resolve()
                 if isinstance(task, DMATask):
-                    if task.will_wait():
-                        if task.task_group:
-                            task_group_actions[task.task_group].append(
-                                (dma_await_task, [task.task])
-                            )
-                        else:
-                            dma_await_task(task.task)
-                            for t in no_waits:
-                                dma_free_task(t.task)
-                            no_waits = []
+                    if task.task_group:
+                        task_group_tasks = True
+                        current_task_group = task.task_group
                     else:
-                        if task.task_group:
-                            task_group_actions[task.task_group].append(
-                                (dma_free_task, [task.task])
-                            )
-                        else:
-                            no_waits.append(task)
+                        default_tasks = True
+                        current_task_group = default_task_group
+                    if task.will_wait():
+                        task_group_actions[current_task_group].append(
+                            (dma_await_task, [task.task])
+                        )
+                    else:
+                        task_group_actions[current_task_group].append(
+                            (dma_free_task, [task.task])
+                        )
                 if isinstance(task, FinishTaskGroupTask):
-                    actions = task_group_actions[task.task_group]
-                    for fn, args in actions:
-                        if fn == dma_await_task:
-                            fn(*args)
-                    for fn, args in actions:
-                        if fn != dma_await_task:
-                            fn(*args)
-                    task_group_actions[task.task_group] = None
+                    finish_task_group(task.task_group, task_group_actions)
+
+            if self._strict_task_groups and default_tasks and task_group_tasks:
+                raise Exception(
+                    f"Mixing explicit task groups and the default task group is prohibitted. "
+                    f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
+                )
+
+            if task_group_actions[default_task_group]:
+                finish_task_group(default_task_group, task_group_actions)
+
+            if self._trace_size is not None:
+                trace_utils.gen_trace_done_aie2(trace_shim_tile)

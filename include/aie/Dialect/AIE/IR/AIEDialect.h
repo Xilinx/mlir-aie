@@ -15,17 +15,15 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
+#include "mlir/Dialect/DLTI/Traits.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
-#include "mlir/IR/Types.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
+
+#include "llvm/ADT/StringRef.h"
 
 namespace xilinx::AIE {
 
@@ -48,12 +46,22 @@ template <typename ConcreteType>
 struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
-class TileOp;
-} // namespace xilinx::AIE
+// Marker trait for operations that can be flow endpoints (e.g., TileOp, CoreOp,
+// MemOp)
+template <typename ConcreteType>
+struct IsFlowEndPoint : mlir::OpTrait::TraitBase<ConcreteType, IsFlowEndPoint> {
+};
 
-namespace xilinx::AIE {
+class TileOp;
+
+uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
+                                 uint32_t burstLength);
+uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
+                                    uint32_t burstLength);
+
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
+
 } // namespace xilinx::AIE
 
 /// Include the generated interface declarations.
@@ -91,58 +99,8 @@ void registerAIETranslations();
 /////////////////////// Custom Types for the Dialect ///////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-namespace xilinx::AIE {
-namespace detail {
-struct AIEObjectFifoTypeStorage;
-}
-
-/// This class defines the AIE ObjectFifo type.
-class AIEObjectFifoType
-    : public mlir::Type::TypeBase<AIEObjectFifoType, mlir::Type,
-                                  detail::AIEObjectFifoTypeStorage> {
-public:
-  /// Inherit some necessary constructors from 'TypeBase'.
-  using Base::Base;
-
-  /// Create an instance of a `ObjectFifoType` with the given element type.
-  static AIEObjectFifoType get(mlir::MemRefType elementType);
-
-  /// This method is used to verify the construction invariants.
-  static mlir::LogicalResult
-  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         mlir::MemRefType elementType);
-
-  static constexpr llvm::StringLiteral name = "objectfifo";
-  /// Returns the element type of this ObjectFifoType.
-  mlir::MemRefType getElementType();
-};
-
-namespace detail {
-struct AIEObjectFifoSubviewTypeStorage;
-}
-
-/// This class defines the AIE ObjectFifoSubview type.
-class AIEObjectFifoSubviewType
-    : public mlir::Type::TypeBase<AIEObjectFifoSubviewType, mlir::Type,
-                                  detail::AIEObjectFifoSubviewTypeStorage> {
-public:
-  /// Inherit some necessary constructors from 'TypeBase'.
-  using Base::Base;
-
-  /// Create an instance of a `SubviewType` with the given element type.
-  static AIEObjectFifoSubviewType get(mlir::MemRefType elementType);
-
-  /// This method is used to verify the construction invariants.
-  static mlir::LogicalResult
-  verify(llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-         mlir::MemRefType elementType);
-
-  static constexpr llvm::StringLiteral name = "objectfifosubview";
-  /// Returns the element type of this SubviewType.
-  mlir::MemRefType getElementType();
-};
-
-} // namespace xilinx::AIE
+#define GET_TYPEDEF_CLASSES
+#include "aie/Dialect/AIE/IR/AIETypes.h.inc"
 
 ////////////////////////////////////////////////////////////////////////////////
 // Custom Attributes ///////////////////////////////////////////////////////////
@@ -166,7 +124,7 @@ WireBundle getConnectingBundle(WireBundle dir);
     return ss.str();                                                           \
   }
 
-typedef struct Port {
+using Port = struct Port {
   WireBundle bundle;
   int channel;
 
@@ -182,29 +140,7 @@ typedef struct Port {
 
   friend std::ostream &operator<<(std::ostream &os, const Port &port) {
     os << "(";
-    switch (port.bundle) {
-    case WireBundle::Core:
-      os << "Core";
-      break;
-    case WireBundle::DMA:
-      os << "DMA";
-      break;
-    case WireBundle::North:
-      os << "N";
-      break;
-    case WireBundle::East:
-      os << "E";
-      break;
-    case WireBundle::South:
-      os << "S";
-      break;
-    case WireBundle::West:
-      os << "W";
-      break;
-    default:
-      os << "X";
-      break;
-    }
+    os << stringifyWireBundle(port.bundle).str();
     os << ": " << std::to_string(port.channel) << ")";
     return os;
   }
@@ -216,26 +152,31 @@ typedef struct Port {
     os << to_string(port);
     return os;
   }
+};
 
-} Port;
-
-typedef struct Connect {
+using Connect = struct Connect {
   Port src;
   Port dst;
 
   bool operator==(const Connect &rhs) const {
     return std::tie(src, dst) == std::tie(rhs.src, rhs.dst);
   }
-} Connect;
 
-typedef struct DMAChannel {
+  bool operator!=(const Connect &rhs) const { return !(*this == rhs); }
+
+  bool operator<(const Connect &rhs) const {
+    return std::tie(src, dst) < std::tie(rhs.src, rhs.dst);
+  }
+};
+
+using DMAChannel = struct DMAChannel {
   DMAChannelDir direction;
   int channel;
 
   bool operator==(const DMAChannel &rhs) const {
     return std::tie(direction, channel) == std::tie(rhs.direction, rhs.channel);
   }
-} DMAChannel;
+};
 
 const AIETargetModel &getTargetModel(mlir::Operation *op);
 const AIETargetModel &getTargetModel(AIEDevice device);
@@ -247,16 +188,16 @@ parseObjectFifoProducerTile(mlir::OpAsmParser &parser,
 
 void printObjectFifoProducerTile(mlir::OpAsmPrinter &printer,
                                  mlir::Operation *op, mlir::Value tile,
-                                 mlir::Attribute dimensions);
+                                 BDDimLayoutArrayAttr dimensions);
 
 mlir::ParseResult parseObjectFifoConsumerTiles(
     mlir::OpAsmParser &parser,
-    llvm::SmallVector<mlir::OpAsmParser::UnresolvedOperand> &tiles,
+    llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &tiles,
     BDDimLayoutArrayArrayAttr &dimensions);
 
 void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
-                                  mlir::Attribute dimensions);
+                                  BDDimLayoutArrayArrayAttr dimensions);
 
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 

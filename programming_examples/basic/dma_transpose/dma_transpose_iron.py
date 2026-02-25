@@ -10,9 +10,17 @@ import numpy as np
 import sys
 
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU1Col1, AnyComputeTile
+from aie.iron.device import NPU1Col1, NPU2Col1, AnyComputeTile
 from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib import TensorTiler2D
+
+if len(sys.argv) > 3:
+    if sys.argv[1] == "npu":
+        dev = NPU1Col1()
+    elif sys.argv[1] == "npu2":
+        dev = NPU2Col1()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 
 def my_passthrough(M, K, generate_acccess_map=False):
@@ -39,9 +47,9 @@ def my_passthrough(M, K, generate_acccess_map=False):
         rt.drain(of_out.cons(), c_out, wait=True)
 
     # Create the program from the device type and runtime
-    my_program = Program(NPU1Col1(), rt)
+    my_program = Program(dev, rt)
 
-    # Place program components (assign them resources on the device) and generate an MLIR module
+    # Place program components (assign the resources on the device) and generate an MLIR module
     module = my_program.resolve_program(SequentialPlacer())
 
     # Print the generated MLIR
@@ -50,6 +58,7 @@ def my_passthrough(M, K, generate_acccess_map=False):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
+    p.add_argument("device_name", help="Device name (npu or npu2)", type=str)
     p.add_argument("dims", help="M K", type=int, nargs="*", default=[64, 64])
     p.add_argument(
         "--generate-access-map",

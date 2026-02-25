@@ -13,14 +13,14 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 include ${srcdir}/../../makefile-common
 
 targetname = vector_vector_modulo
-devicename = npu
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 col = 0
 
 aie_py_src=${targetname}.py
-use_alt?=0
+use_placed?=0
 
-ifeq (${use_alt}, 1)
-aie_py_src=${targetname}_alt.py
+ifeq (${use_placed}, 1)
+aie_py_src=${targetname}_placed.py
 endif
 
 all: build/final.xclbin
@@ -31,14 +31,14 @@ build/aie.mlir: ${srcdir}/${aie_py_src}
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
+	cd ${@D} && aiecc.py --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
 		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+		--xclbin-name=${@F} --npu-insts-name=insts.bin ${<F}
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
 	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
+	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -64,7 +64,7 @@ vck5000: build/aie.mlir
 		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
+	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
 
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

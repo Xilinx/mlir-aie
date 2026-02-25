@@ -12,11 +12,11 @@ from ._aie_ops_gen import *
 from ._aie_ops_gen import _Dialect
 from ._ods_common import _cext
 from .func import FuncOp
-from ..helpers.dialects.ext.func import call
-from ..extras.dialects.ext.arith import Scalar, constant
-from ..extras.dialects.ext._shaped_value import ShapedValue
-from ..extras.dialects.ext.memref import (
-    MemRef,
+from ..helpers.dialects.func import call
+from ..extras.dialects.arith import ScalarValue, constant
+from ..extras.dialects._shaped_value import ShapedValue
+from ..extras.dialects.memref import (
+    MemRefValue,
     store as memref_store,
     load as memref_load,
 )
@@ -33,7 +33,7 @@ from .._mlir_libs._aie import (
     generate_cdo,
     generate_xaie,
     generate_control_packets,
-    npu_instgen,
+    translate_npu_to_binary,
     register_dialect,
     translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
@@ -105,13 +105,23 @@ class external_func(FuncOp):
         return call(self, call_args)
 
 
+@register_attribute_builder("BDDimLayoutAttr")
 def bd_dim_layout(size, stride):
     return Attribute.parse(f"#aie.bd_dim_layout<{size=}, {stride=}>")
 
 
+@register_attribute_builder("BDPadLayoutAttr")
 def bd_pad_layout(const_pad_before, const_pad_after):
     return Attribute.parse(
         f"#aie.bd_pad_layout<{const_pad_before=}, {const_pad_after=}>"
+    )
+
+
+@register_attribute_builder("PacketInfoAttr")
+def packet_info_attr_builder(tups: Tuple[int] | List[int], context=None):
+    assert (isinstance(tups, list) or isinstance(tups, Tuple)) and len(tups) == 2
+    return Attribute.parse(
+        f"#aie.packet_info<pkt_type = {tups[0]}, pkt_id = {tups[1]}>", context=context
     )
 
 
@@ -245,10 +255,13 @@ Device = DeviceOp
 
 class Core(CoreOp):
     # Until https://github.com/llvm/llvm-project/pull/73620 gets figured out.
-    def __init__(self, tile, link_with=None, dynamic_objfifo_lowering=None):
+    def __init__(
+        self, tile, link_with=None, dynamic_objfifo_lowering=None, stack_size=None
+    ):
         super().__init__(
             result=T.index(),
             tile=tile,
+            stack_size=stack_size,
             link_with=link_with,
             dynamic_objfifo_lowering=dynamic_objfifo_lowering,
         )
@@ -257,7 +270,8 @@ class Core(CoreOp):
 # Create an aie buffer of (shape x datatype) on given tile.
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the BufferOp and instead pretends to be a MemRef
-class buffer(BufferOp, ShapedValue):
+@ShapedValue
+class buffer(BufferOp):
     def __init__(self):
         raise ValueError("Should never be called")
 
@@ -266,6 +280,7 @@ class buffer(BufferOp, ShapedValue):
         tile,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
+        address=None,
         initial_value: np.ndarray | None = None,
         use_write_rtp: bool = False,
         loc=None,
@@ -284,6 +299,7 @@ class buffer(BufferOp, ShapedValue):
             buffer=self.type,
             tile=tile,
             sym_name=name,
+            address=address,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
@@ -302,7 +318,7 @@ class buffer(BufferOp, ShapedValue):
     def owner(self):
         return self.result.owner
 
-    def __getitem__(self, idx: tuple | Scalar) -> "MemRef":
+    def __getitem__(self, idx: tuple | ScalarValue) -> MemRefValue:
         loc = get_user_code_loc()
 
         if not self.has_rank():
@@ -312,7 +328,7 @@ class buffer(BufferOp, ShapedValue):
             return self
         elif isinstance(idx, tuple) and all(i == slice(None) for i in idx):
             return self
-        elif isinstance(idx, Scalar):
+        elif isinstance(idx, ScalarValue):
             idx = (idx,)
         elif idx is None:
             raise ValueError("Operation not supported for buffer")
@@ -322,7 +338,7 @@ class buffer(BufferOp, ShapedValue):
             if isinstance(d, int):
                 idx[i] = constant(d, index=True, loc=loc)
 
-        if all(isinstance(d, Scalar) for d in idx) and len(idx) == len(self.shape):
+        if all(isinstance(d, ScalarValue) for d in idx) and len(idx) == len(self.shape):
             return memref_load(self, idx, loc=loc)
         else:
             raise ValueError("Buffer slicing not supported, only indexing supported")
@@ -343,16 +359,16 @@ class buffer(BufferOp, ShapedValue):
                     "Buffer slicing not supported, only indexing supported"
                 )
         else:
-            idx = list((idx,) if isinstance(idx, (Scalar, int, Value)) else idx)
+            idx = list((idx,) if isinstance(idx, (ScalarValue, int, Value)) else idx)
             for i, d in enumerate(idx):
                 if isinstance(d, int):
                     idx[i] = constant(d, index=True, loc=loc)
 
-            if all(isinstance(d, (Scalar)) for d in idx) and len(idx) == len(
+            if all(isinstance(d, (ScalarValue)) for d in idx) and len(idx) == len(
                 self.shape
             ):
-                if not isinstance(source, Scalar):
-                    source = Scalar(source, dtype=self.dtype)
+                if not isinstance(source, ScalarValue):
+                    source = ScalarValue(source, dtype=self.dtype)
                 memref_store(source, self, idx, loc=loc)
             else:
                 raise ValueError(
@@ -363,7 +379,7 @@ class buffer(BufferOp, ShapedValue):
 # Create an aie external buffer of (shape x datatype).
 # shape examples: [256], [256, 256], [256, 256,]
 # This class hides the ExternalBufferOp and instead pretends to be a MemRef
-class external_buffer(MemRef):
+class external_buffer(MemRefValue):
     def __init__(self):
         raise ValueError("Should never be called")
 
@@ -371,12 +387,14 @@ class external_buffer(MemRef):
         cls,
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
+        address=None,
         loc=None,
         ip=None,
     ):
         my_buffer = ExternalBufferOp(
             buffer=try_convert_np_type_to_mlir_type(datatype),
             sym_name=name,
+            address=address,
             loc=loc,
             ip=ip,
         )
@@ -400,12 +418,13 @@ class object_fifo(ObjectFifoCreateOp):
         plio=None,
         padDimensions=None,
         disable_synchronization=None,
+        iter_count=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
-            dimensionsFromStreamPerConsumer = []
+            dimensionsFromStreamPerConsumer = [[] for _ in range(len(consumerTiles))]
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
@@ -430,6 +449,7 @@ class object_fifo(ObjectFifoCreateOp):
             padDimensions=padDimensions,
             disable_synchronization=disable_synchronization,
             initValues=initValues,
+            iter_count=iter_count,
         )
 
     def acquire(self, port, num_elem):
@@ -450,18 +470,23 @@ class object_fifo(ObjectFifoCreateOp):
     def release(self, port, num_elem):
         return objectfifo_release(port, self.sym_name.value, num_elem)
 
-    def set_via_shared_mem(self, port):
-        num = 0
-        if port == ObjectFifoPort.Produce:
-            num = 0
-        elif port == ObjectFifoPort.Consume:
-            num = 1
-        int_num = IntegerAttr.get(T.i32(), num)
-        self.attributes["via_shared_mem"] = int_num
+    def register_external_buffers(self, tile, external_buffers):
+        return objectfifo_register_external_buffers(
+            self.sym_name.value, tile, external_buffers
+        )
+
+    def allocate(self, tile):
+        return objectfifo_allocate(self.sym_name.value, tile)
 
     def set_repeat_count(self, num):
         int_num = IntegerAttr.get(T.i32(), num)
         self.attributes["repeat_count"] = int_num
+
+    def set_aie_stream(self, stream_end, stream_port):
+        int_stream_end = IntegerAttr.get(T.i32(), stream_end)
+        int_stream_port = IntegerAttr.get(T.i32(), stream_port)
+        self.attributes["aie_stream"] = int_stream_end
+        self.attributes["aie_stream_port"] = int_stream_port
 
 
 # Create an aie objectFifo_link between input and output objectFifos.
@@ -497,17 +522,17 @@ class packetflow(PacketFlowOp):
         source,
         source_port,
         source_channel,
-        dest,
-        dest_port,
-        dest_channel,
+        dests: Union[Dict, List[Dict]],
         keep_pkt_header: bool | None = None,
     ):
         super().__init__(ID=pkt_id, keep_pkt_header=keep_pkt_header)
         bb = Block.create_at_start(self.ports)
         with InsertionPoint(bb):
-            src = PacketSourceOp(source, source_port, source_channel)
-            dest = PacketDestOp(dest, dest_port, dest_channel)
-            end = EndOp()
+            PacketSourceOp(source, source_port, source_channel)
+            dests = [dests] if isinstance(dests, dict) else dests
+            for dest in dests:
+                PacketDestOp(dest["dest"], dest["port"], dest["channel"])
+            EndOp()
 
 
 core = region_op(Core, terminator=lambda *_: EndOp())
@@ -637,13 +662,20 @@ def dma_start(
     *,
     dest: Successor | Block | ContextManagedBlock | None = None,
     chain: Successor | Block | ContextManagedBlock | None = None,
+    repeat_count: int = 0,
     loc=None,
     ip=None,
 ):
     chain_block = chain.block if isinstance(chain, ContextManagedBlock) else chain
     dest_block = dest.block if isinstance(dest, ContextManagedBlock) else dest
     op = DMAStartOp(
-        channel_dir, channel_index, dest=dest_block, chain=chain_block, loc=loc, ip=ip
+        channel_dir,
+        channel_index,
+        dest=dest_block,
+        chain=chain_block,
+        loc=loc,
+        ip=ip,
+        repeat_count=repeat_count,
     )
     return op.dest, op.chain
 
@@ -912,13 +944,11 @@ class TileOp(TileOp):
         )
 
 
-def tile(col, row, *, loc=None, ip=None):
-    return TileOp(col=col, row=row, loc=loc, ip=ip)
+def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
+    return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
 
 
 # BDChainOp
-
-_orig_bd_chain = bd_chain
 
 
 def bd_chain(*inputs: T.Type | type[np.ndarray]):

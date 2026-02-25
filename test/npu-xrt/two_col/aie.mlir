@@ -128,7 +128,7 @@ module {
       }
       aie.end
     } {link_with = "threshold.o"}
-    aiex.runtime_sequence(%in : memref<2048xi32>, %buf : memref<32xi32>, %out : memref<2048xi32>) {
+    aie.runtime_sequence(%in : memref<2048xi32>, %buf : memref<32xi32>, %out : memref<2048xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2048 = arith.constant 2048 : i64
@@ -140,8 +140,8 @@ module {
       aiex.npu.rtp_write(@rtp1, 1, 0)
       aiex.npu.rtp_write(@rtp2, 1, 0)
       aiex.npu.rtp_write(@rtp3, 1, 0)
-      aiex.npu.dma_memcpy_nd (0, 0, %out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_out0, id = 1 : i64, issue_token = true } : memref<2048xi32>
-      aiex.npu.dma_memcpy_nd (0, 0, %in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_in0, id = 0 : i64 } : memref<2048xi32>
+      aiex.npu.dma_memcpy_nd (%out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_out0, id = 1 : i64, issue_token = true } : memref<2048xi32>
+      aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_in0, id = 0 : i64 } : memref<2048xi32>
       aiex.npu.dma_wait {symbol = @objFifo_out0}
     }
   }

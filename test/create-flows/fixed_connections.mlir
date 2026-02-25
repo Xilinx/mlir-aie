@@ -10,23 +10,23 @@
 
 // RUN: aie-opt --aie-create-pathfinder-flows --split-input-file %s | FileCheck %s
 
-// CHECK: %tile_2_0 = aie.tile(2, 0)
-// CHECK: %tile_3_0 = aie.tile(3, 0)
-// CHECK: %tile_6_0 = aie.tile(6, 0)
-// CHECK: %tile_7_0 = aie.tile(7, 0)
-// CHECK: %switchbox_2_0 = aie.switchbox(%tile_2_0) {
+// CHECK: %{{.*}}tile_2_0 = aie.tile(2, 0)
+// CHECK: %{{.*}}tile_3_0 = aie.tile(3, 0)
+// CHECK: %{{.*}}tile_6_0 = aie.tile(6, 0)
+// CHECK: %{{.*}}tile_7_0 = aie.tile(7, 0)
+// CHECK: %switchbox_2_0 = aie.switchbox(%{{.*}}tile_2_0) {
 // CHECK:   aie.connect<North : 0, South : 2>
 // CHECK:   aie.connect<North : 1, South : 3>
 // CHECK: }
-// CHECK: %switchbox_3_0 = aie.switchbox(%tile_3_0) {
+// CHECK: %switchbox_3_0 = aie.switchbox(%{{.*}}tile_3_0) {
 // CHECK:   aie.connect<North : 0, South : 2>
 // CHECK:   aie.connect<North : 1, South : 3>
 // CHECK: }
-// CHECK: %switchbox_6_0 = aie.switchbox(%tile_6_0) {
+// CHECK: %switchbox_6_0 = aie.switchbox(%{{.*}}tile_6_0) {
 // CHECK:   aie.connect<North : 0, South : 2>
 // CHECK:   aie.connect<North : 1, South : 3>
 // CHECK: }
-// CHECK: %switchbox_7_0 = aie.switchbox(%tile_7_0) {
+// CHECK: %switchbox_7_0 = aie.switchbox(%{{.*}}tile_7_0) {
 // CHECK:   aie.connect<North : 0, South : 2>
 // CHECK:   aie.connect<North : 1, South : 3>
 // CHECK: }

@@ -10,6 +10,8 @@
 
 # Vector Scalar Addition Runlist:
 
+> NOTE: The `xrt::runlist` feature is not implemented on Phoenix (NPU1)
+
 This design takes the simple Vector Scalar Addition example and shows how you can use the XRT runlist feature to chain multiple commands together. 
 
 This design shows an extremely simple single AIE design, which is incrementing every value in an input vector.
@@ -31,9 +33,9 @@ This example does not contain a C++ kernel file. The kernel is expressed in Pyth
 
 ## Source Files Overview
 
-1. `vector_scalar_add.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.txt for the NPU in Ryzen™ AI). 
+1. `vector_scalar_add.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
 
-1. `vector_scalar_add_alt.py`: An alternate version of the design in `vector_scalar_add.py`, that is expressed in a lower-level version of IRON.
+1. `vector_scalar_add_placed.py`: An alternative version of the design in `vector_scalar_add.py`, that is expressed in a lower-level version of IRON.
 
 1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
 
@@ -46,9 +48,9 @@ To compile the design:
 make
 ```
 
-To compile the alternative design:
+To compile the placed design:
 ```shell
-env use_alt=1 make
+env use_placed=1 make
 ```
 
 To compile the C++ testbench:

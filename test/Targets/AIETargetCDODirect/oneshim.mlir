@@ -19,18 +19,24 @@
 // CHECK:     Address: 0x000000000001D014  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
 // CHECK:     Address: 0x000000000001D018  Data@ {{0x[0-9a-z]+}} is: 0x00000000 
 // CHECK:     Address: 0x000000000001D01C  Data@ {{0x[0-9a-z]+}} is: 0x02000000 
-
+// check that burst length is set to 128B
+// CHECK:     Address: 0x000000000001D030  Data@ {{0x[0-9a-z]+}} is: 0x40000000
 // CHECK: (Write64): Address:  0x000000000001D204 Data:  0x80000000  
 // CHECK: (MaskWrite64): Address: 0x000000000001D200  Mask: 0x00000000  Data: 0x00000001 
 
 module {
- aie.device(npu1_4col) {
+ aie.device(npu1) {
   %buffer = aie.external_buffer { sym_name = "buf" } : memref<16 x f32>
   %t00 = aie.tile(0, 0)
   aie.shim_dma(%t00)  {
-      aie.dma_start(S2MM, 0, ^bd0, ^end)
+      aie.dma_start(S2MM, 0, ^bd0, ^bd1)
     ^bd0:
       aie.dma_bd(%buffer : memref<16 x f32>, 0, 4)  {bd_id = 0 : i32}
+      aie.next_bd ^end
+    ^bd1:
+      aie.dma_start(S2MM, 1, ^bd2, ^end)
+    ^bd2:
+      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4)  {bd_id = 1 : i32, burst_length = 128 : i32}
       aie.next_bd ^end
     ^end:
       aie.end

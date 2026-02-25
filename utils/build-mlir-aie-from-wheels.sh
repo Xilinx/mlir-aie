@@ -21,16 +21,24 @@
 ##===----------------------------------------------------------------------===##
 
 if [ "$#" -lt 1 ]; then
-    echo "ERROR: Needs at least 1 arguments for <llvm build dir>."
-    exit 1
+    VERSION=$(utils/clone-llvm.sh --get-wheel-version)
+
+    mkdir -p my_install
+    pushd my_install
+    python3 -m pip -q download mlir==$VERSION \
+      -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+    unzip -q -u mlir-*.whl
+    popd
+    WHL_MLIR_DIR=`realpath my_install/mlir`
+    echo "WHL_MLIR DIR: $WHL_MLIR_DIR"
+else 
+    WHL_MLIR_DIR=`realpath $1`
+    echo "WHL_MLIR DIR: $WHL_MLIR_DIR"
 fi
 
 BASE_DIR=`realpath $(dirname $0)/..`
 CMAKEMODULES_DIR=$BASE_DIR/cmake
 echo "CMAKEMODULES_DIR: $CMAKEMODULES_DIR"
-
-WHL_MLIR_DIR=`realpath $1`
-echo "WHL_MLIR DIR: $WHL_MLIR_DIR"
 
 BUILD_DIR=${2:-"build"}
 INSTALL_DIR=${3:-"install"}
@@ -40,7 +48,14 @@ if [ "$#" -ge 4 ]; then
   PEANO_INSTALL_DIR=`realpath $4`
   echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
   export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
+else
+  python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+  export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+  echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
+  export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
 fi
+
+BUILD_TYPE="${BUILD_TYPE:-Release}"
 
 mkdir -p $BUILD_DIR
 mkdir -p $INSTALL_DIR
@@ -55,7 +70,7 @@ CMAKE_CONFIGS="\
     -DCMAKE_MODULE_PATH=${CMAKEMODULES_DIR}/modulesXilinx \
     -DLLVM_EXTERNAL_LIT=$(which lit) \
     -DCMAKE_INSTALL_PREFIX="../${INSTALL_DIR}" \
-    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
     -DLLVM_ENABLE_ASSERTIONS=ON \
     -DAIE_ENABLE_BINDINGS_PYTHON=ON \
     -DLLVM_ENABLE_RTTI=$LLVM_ENABLE_RTTI \
@@ -63,9 +78,7 @@ CMAKE_CONFIGS="\
     -DAIE_RUNTIME_TARGETS=x86_64 \
     -DAIE_RUNTIME_TEST_TARGET=x86_64 "
 
-if [ "$#" -ge 4 ]; then
-  CMAKE_CONFIGS="${CMAKE_CONFIGS} -DPEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}"
-fi 
+CMAKE_CONFIGS="${CMAKE_CONFIGS} -DPEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}"
 
 if [ -x "$(command -v lld)" ]; then
   CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_USE_LINKER=lld"

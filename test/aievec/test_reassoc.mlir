@@ -71,9 +71,9 @@ func.func @conv2d (%A: memref<2048x2048xi32>, %B: memref<9xi32>, %C: memref<2046
     return
 }
 
+//CHECK-NEXT:    %c0_i32 = arith.constant 0 : i32
 //CHECK-NEXT:    %c8 = arith.constant 8 : index
 //CHECK-NEXT:    %c0 = arith.constant 0 : index
-//CHECK-NEXT:    %c0_i32 = arith.constant 0 : i32
 //CHECK-NEXT:    %0 = aievec.upd %arg1[%c0] {index = 0 : i8, offset = 0 : i32} : memref<9xi32>, vector<8xi32>
 //CHECK-NEXT:    %1 = aievec.upd %arg1[%c8] {index = 0 : i8, offset = 0 : i32} : memref<9xi32>, vector<8xi32>
 //CHECK-NEXT:    %c0_0 = arith.constant 0 : index

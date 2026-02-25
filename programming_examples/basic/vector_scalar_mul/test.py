@@ -4,82 +4,71 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-import time
-from aie.utils.xrt import setup_aie, write_out_trace, execute
 import aie.utils.test as test_utils
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime
 
 
 def main(opts):
-    print("Running...\n")
+    in1_size = int(opts.in1_size)  # in bytes
+    in2_size = int(opts.in2_size)  # in bytes
+    out_size = int(opts.out_size)  # in bytes
 
-    data_size = int(opts.size)
-    vector_dtype = np.int16
-    scalar_dtype = np.int32
+    # --------------------------------------------------------------------------
+    # ----- Edit your data types -----------------------------------------------
+    # --------------------------------------------------------------------------
+
+    in1_dtype = np.int16
+    in2_dtype = np.int32
+    out_dtype = in1_dtype
+
+    # --------------------------------------------------------------------------
+
+    in1_volume = in1_size // np.dtype(in1_dtype).itemsize
+    in2_volume = in2_size // np.dtype(in2_dtype).itemsize
+    out_volume = out_size // np.dtype(out_dtype).itemsize
+
+    # --------------------------------------------------------------------------
+    # ----- Edit your data init and reference data here ------------------------
+    # --------------------------------------------------------------------------
+
+    # check buffer sizes
+    assert in2_size == 4
+    assert out_size == in1_size
+
     scale_factor = 3
-    size_out = data_size * 2
-    print("output buffer size: " + str(size_out))
 
-    enable_trace = opts.trace_size > 0
+    # Initialize data
+    ref = np.arange(1, in1_volume + 1, dtype=in1_dtype)
+    in1 = iron.tensor(ref, dtype=in1_dtype)
+    in2_data = np.array([scale_factor], dtype=in2_dtype)
+    in2 = iron.tensor(in2_data, dtype=in2_dtype)
+    out = iron.zeros([out_volume], dtype=out_dtype)
+    ref = ref * scale_factor
 
-    app = setup_aie(
-        opts.xclbin,
-        opts.instr,
-        data_size,
-        vector_dtype,
-        1,
-        scalar_dtype,
-        data_size,
-        vector_dtype,
-        enable_trace=enable_trace,
-        trace_size=opts.trace_size,
+    # --------------------------------------------------------------------------
+
+    npu_opts = test_utils.create_npu_kernel(opts)
+    if npu_opts.npu_kernel.trace_config:
+        npu_opts.npu_kernel.trace_config.enable_ctrl_pkts = True
+
+    print("Running...\n")
+    res = DefaultNPURuntime.run_test(
+        npu_opts.npu_kernel,
+        [in1, in2, out],
+        {2: ref},
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     )
-    input_vector = np.arange(1, data_size + 1, dtype=vector_dtype)
-    input_factor = np.array([3], dtype=scalar_dtype)
-    # aie_output = execute_on_aie(app, input_vector, input_factor)
-
-    start = time.time_ns()
-    full_output = execute(app, input_vector, input_factor)
-    stop = time.time_ns()
-    npu_time = stop - start
-    print("npu_time: ", npu_time)
-
-    # aie_output = full_output[:size_out].view(np.int8)
-    # aie_output = full_output[:size_out].view(np.uint8)
-    aie_output = full_output[:size_out].view(np.int16)
-    if enable_trace:
-        trace_buffer = full_output[size_out:].view(np.uint32)
-
-    ref = np.arange(1, data_size + 1, dtype=vector_dtype) * scale_factor
-
-    if enable_trace:
-        # trace_buffer = full_output[3920:]
-        print("trace_buffer shape: ", trace_buffer.shape)
-        print("trace_buffer dtype: ", trace_buffer.dtype)
-        # write_out_trace(trace_buffer, str(opts.trace_file))
-        write_out_trace(trace_buffer, "trace.txt")
-
-    # Copy output results and verify they are correct
-    errors = 0
-    if opts.verify:
-        if opts.verbosity >= 1:
-            print("Verifying results ...")
-        e = np.equal(ref, aie_output)
-        errors = np.size(e) - np.count_nonzero(e)
-
-    if not errors:
+    if res == 0:
         print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
-        sys.exit(1)
+    sys.exit(res)
 
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
-    p.add_argument("-s", "--size", required=True, dest="size", help="Vector size")
     opts = p.parse_args(sys.argv[1:])
     main(opts)

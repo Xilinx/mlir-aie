@@ -7,6 +7,7 @@
 
 add_mlir_dialect_library(AIEXUtils
   AIETokenAnalysis.cpp
+  AIEUtils.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${AIE_BINARY_DIR}/include
@@ -15,6 +16,7 @@ add_mlir_dialect_library(AIEXUtils
   MLIRAIEAttrDefsIncGen
   MLIRAIEEnumsIncGen
   MLIRAIEIncGen
+  MLIRAIETypesIncGen
   MLIRAIEInterfacesIncGen
   MLIRAIEOpsIncGen
   MLIRAIEPassIncGen

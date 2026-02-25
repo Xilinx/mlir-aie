@@ -18,6 +18,7 @@
 #include "aie/Dialect/AIEVec/IR/AIEVecOps.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
@@ -241,7 +242,7 @@ struct LongestConvMACChainAnalysis {
       BackwardSliceOptions backwardSliceOptions;
       backwardSliceOptions.filter = opFilter;
 
-      getBackwardSlice(mulOpOperand, &opBwdSlices, backwardSliceOptions);
+      (void)getBackwardSlice(mulOpOperand, &opBwdSlices, backwardSliceOptions);
       opBwdSlices.insert(mulOpOperand);
 
       LLVM_DEBUG(llvm::dbgs() << "opBwdSlices = [\n");
@@ -427,9 +428,8 @@ struct FoldMulAddChainToConvOpPattern
     const auto &groups = convMacChainAnalysis.getGroupsInChain();
     Value grpAcc = (*convMacChain)[groups[0].fromIdx]->acc;
     if (grpAcc)
-      grpAcc = rewriter
-                   .create<aievec::UPSOp>(srcOp.getLoc(), accVecTy, grpAcc,
-                                          /*shift=*/0)
+      grpAcc = aievec::UPSOp::create(rewriter, srcOp.getLoc(), accVecTy, grpAcc,
+                                     /*shift=*/0)
                    .getResult();
     for (const auto &group : groups) {
       Value grpLhs = (*convMacChain)[group.fromIdx]->lhs;
@@ -441,16 +441,14 @@ struct FoldMulAddChainToConvOpPattern
       // the filter with itself.
       if (2 * filterVecTy.getShape()[0] == signalVecTy.getShape()[0])
         grpRhs =
-            rewriter
-                .create<aievec::ConcatOp>(
-                    loc, signalVecTy, SmallVector<Value, 2>({grpRhs, grpRhs}))
+            aievec::ConcatOp::create(rewriter, loc, signalVecTy,
+                                     SmallVector<Value, 2>({grpRhs, grpRhs}))
                 .getResult();
       // If the filter has duplicate elements, pack them.
       if (group.bcastDist == 2)
         // NOTE: This shuffle mode works for `vector<64xi8>`
-        grpRhs = rewriter
-                     .create<aievec::ShuffleOp>(loc, signalVecTy, grpRhs,
-                                                grpRhs, ShuffleMode::T8_64X2_LO)
+        grpRhs = aievec::ShuffleOp::create(rewriter, loc, signalVecTy, grpRhs,
+                                           grpRhs, ShuffleMode::T8_64X2_LO)
                      .getResult();
       // If the first element of the filter to be used is not 0, shift the
       // filter to align the first element to the beginning.
@@ -459,15 +457,13 @@ struct FoldMulAddChainToConvOpPattern
             group.bcastShift * getElementSizeInBits(filterVecTy) >>
             (3 + group.bcastDist - 1);
         auto shiftBytesCst =
-            rewriter
-                .create<arith::ConstantOp>(
-                    loc, rewriter.getI32IntegerAttr(shiftBytes))
+            arith::ConstantOp::create(rewriter, loc,
+                                      rewriter.getI32IntegerAttr(shiftBytes))
                 .getResult();
-        grpRhs = rewriter
-                     .create<aievec::ShiftOp>(grpRhs.getDefiningOp()->getLoc(),
-                                              signalVecTy, grpRhs, grpRhs,
-                                              shiftBytesCst)
-                     .getResult();
+        grpRhs =
+            aievec::ShiftOp::create(rewriter, grpRhs.getDefiningOp()->getLoc(),
+                                    signalVecTy, grpRhs, grpRhs, shiftBytesCst)
+                .getResult();
       }
       // Sort out the vector used as signal
       // If the signal to be convolved doesn't start at element 0, shift the
@@ -476,33 +472,28 @@ struct FoldMulAddChainToConvOpPattern
         int32_t shiftBytes =
             group.signalShift * getElementSizeInBits(signalVecTy) >> 3;
         auto shiftBytesCst =
-            rewriter
-                .create<arith::ConstantOp>(
-                    loc, rewriter.getI32IntegerAttr(shiftBytes))
+            arith::ConstantOp::create(rewriter, loc,
+                                      rewriter.getI32IntegerAttr(shiftBytes))
                 .getResult();
-        grpLhs = rewriter
-                     .create<aievec::ShiftOp>(loc, signalVecTy, grpLhs, grpLhs,
-                                              shiftBytesCst)
+        grpLhs = aievec::ShiftOp::create(rewriter, loc, signalVecTy, grpLhs,
+                                         grpLhs, shiftBytesCst)
                      .getResult();
       }
       // Generate a convolution operation for the group
       // If there is no upchain accumulator, use a mul_conv; use a mac_conv
       // otherwise.
       if (!grpAcc)
-        grpAcc = rewriter
-                     .create<aievec::MulConvOp>(srcOp.getLoc(), accVecTy,
-                                                grpLhs, grpRhs, M, N)
+        grpAcc = aievec::MulConvOp::create(rewriter, srcOp.getLoc(), accVecTy,
+                                           grpLhs, grpRhs, M, N)
                      .getResult();
       else
-        grpAcc =
-            rewriter
-                .create<aievec::FMAConvOp>(srcOp.getLoc(), accVecTy, grpLhs,
-                                           grpRhs, grpAcc, M, N, false)
-                .getResult();
+        grpAcc = aievec::FMAConvOp::create(rewriter, srcOp.getLoc(), accVecTy,
+                                           grpLhs, grpRhs, grpAcc, M, N, false)
+                     .getResult();
     }
 
-    auto shiftParamOp = rewriter.create<arith::ConstantOp>(
-        srcOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, srcOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(srcOp, vecTy, grpAcc,
                                                shiftParamOp.getResult());
     return success();
@@ -520,6 +511,7 @@ void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
   LongestConvMACChainAnalysis::am = &am;
   target.addLegalDialect<AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
+  target.addLegalDialect<ub::UBDialect>();
   target.addDynamicallyLegalOp<arith::AddIOp>([&am](arith::AddIOp op) {
     auto &convAnalysis = am.getChildAnalysis<LongestConvMACChainAnalysis>(op);
     return !convAnalysis.canChainBeReplacedWithConvOps();

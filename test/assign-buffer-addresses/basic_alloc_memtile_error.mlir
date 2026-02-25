@@ -10,6 +10,7 @@
 
 // RUN: not aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s 2>&1 | FileCheck %s
 // CHECK:   error: 'aie.tile' op allocated buffers exceeded available memory
+// CHECK: error: 'aie.tile' op Basic sequential allocation failed.
 
 module @test {
   aie.device(xcve2302) {

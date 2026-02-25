@@ -5,27 +5,29 @@
 # (c) Copyright 2023 Xilinx Inc.
 
 # parameters
-# -DBOOST_ROOT: Path to Boost install
 # -DOpenCV_DIR: Path to OpenCV install
 # -DXRT_INC_DIR: Full path to src/runtime_src/core/include in XRT cloned repo
 # -DXRT_LIB_DIR: Path to xrt_coreutil.lib
 # -DTARGET_NAME: Target name to be built
 
 # cmake needs this line
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.30)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
+
+include(../../common.cmake)
 
 find_program(WSL NAMES powershell.exe)
 
 if (NOT WSL)
-    set(BOOST_ROOT /usr/include/boost CACHE STRING "Path to Boost install")
     set(OpenCV_DIR /usr/include/opencv4 CACHE STRING "Path to OpenCV install")
     set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to xrt_coreutil.lib")
 else()
-    set(BOOST_ROOT C:/Technical/thirdParty/boost_1_83_0 CACHE STRING "Path to Boost install")
     set(OpenCV_DIR C:/Technical/thirdParty/opencv/build CACHE STRING "Path to OpenCV install")
     set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
     set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
+    add_compile_options("/std:c++17")
 endif ()
 
 set(COLORTHRESHOLD_WIDTH 128 CACHE STRING "image width")
@@ -38,12 +40,12 @@ SET (currentTarget ${TARGET_NAME})
 
 if ( WSL )
 	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR})
+    add_compile_options(/Zc:__cplusplus)
 endif ()
 
 project(${ProjectName})
 
 # Find packages
-find_package(Boost REQUIRED)
 find_package(OpenCV REQUIRED)
 message("opencv library paht: ${OpenCV_LIB_PATH}")
 message("opencv libs: ${OpenCV_LIBS}")
@@ -51,40 +53,29 @@ message("opencv libs: ${OpenCV_LIBS}")
 
 add_executable(${currentTarget}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils/OpenCVUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib/test_utils.cpp
     test.cpp
 )
 
-target_compile_definitions(${currentTarget} PUBLIC 
+target_compile_definitions(${currentTarget} PUBLIC
 	COLORTHRESHOLD_WIDTH=${COLORTHRESHOLD_WIDTH}
 	COLORTHRESHOLD_HEIGHT=${COLORTHRESHOLD_HEIGHT}
-	DISABLE_ABI_CHECK=1
 )
 
-target_include_directories (${currentTarget} PUBLIC 
+target_include_directories (${currentTarget} PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime_lib/test_lib
     ${XRT_INC_DIR}
     ${OpenCV_INCLUDE_DIRS}
-    ${Boost_INCLUDE_DIRS}
 )
 
 target_link_directories(${currentTarget} PUBLIC
     ${XRT_LIB_DIR}
     ${OpenCV_LIB_PATH}
-    ${Boost_LIBRARY_DIRS}
 )
 
-if (NOT WSL)
-    target_link_libraries(${currentTarget} PUBLIC
-        xrt_coreutil
-        ${OpenCV_LIBS}
-        boost_program_options
-        boost_filesystem
-    )
-else()
-    target_link_libraries(${currentTarget} PUBLIC
-        xrt_coreutil
-        ${OpenCV_LIBS}
-    )
-endif()
+
+target_link_libraries(${currentTarget} PUBLIC
+    xrt_coreutil
+    ${OpenCV_LIBS}
+)
+
+target_link_test_utils(${currentTarget})

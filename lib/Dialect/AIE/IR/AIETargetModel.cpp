@@ -10,13 +10,68 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
-#include "llvm/ADT/SmallSet.h"
+#include "aie/Dialect/AIE/Util/AIERegisterDatabase.h"
+#include "llvm/Support/ErrorHandling.h"
+#include <cstdint>
+#include <utility>
 
 using namespace llvm;
 
 namespace xilinx {
 namespace AIE {
+
+namespace {
+
+std::string getModuleForTile(const AIETargetModel &model, TileID tile,
+                             bool isMem) {
+  if (model.isShimNOCorPLTile(tile.col, tile.row))
+    return "shim";
+  if (model.isMemTile(tile.col, tile.row))
+    return "memory_tile";
+  return isMem ? std::string("memory") : std::string("core");
+}
+
+} // namespace
+
 AIETargetModel::~AIETargetModel() = default;
+
+// Base class implementations for register database
+
+std::unique_ptr<RegisterDatabase> AIETargetModel::loadRegisterDatabase() const {
+  // Default: no register database available
+  return nullptr;
+}
+
+const RegisterDatabase *AIETargetModel::getRegisterDatabase() const {
+  std::call_once(regDBInitFlag, [this]() { regDB = loadRegisterDatabase(); });
+  return regDB.get();
+}
+
+const RegisterInfo *AIETargetModel::lookupRegister(llvm::StringRef name,
+                                                   TileID tile,
+                                                   bool isMem) const {
+  const auto *db = getRegisterDatabase();
+  if (!db)
+    return nullptr;
+  return db->lookupRegister(name, getModuleForTile(*this, tile, isMem));
+}
+
+std::optional<uint32_t> AIETargetModel::lookupEvent(llvm::StringRef name,
+                                                    TileID tile,
+                                                    bool isMem) const {
+  const auto *db = getRegisterDatabase();
+  if (!db)
+    return std::nullopt;
+  return db->lookupEvent(name, getModuleForTile(*this, tile, isMem));
+}
+
+uint32_t AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
+                                          uint32_t value) const {
+  const auto *db = getRegisterDatabase();
+  if (!db)
+    return 0;
+  return db->encodeFieldValue(field, value);
+}
 
 ///
 /// AIE1 TargetModel
@@ -106,6 +161,49 @@ bool AIE1TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
   return IsMemSouth || IsMemNorth || IsMemWest || IsMemEast;
 }
 
+uint64_t AIE1TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
+                                          int channel,
+                                          AIE::DMAChannelDir direction) const {
+  uint32_t offset = 0;
+  if (isShimNOCTile(col, row)) {
+    offset = 0x0001D000 + (bd_id * 0x14);
+  } else if (isCoreTile(col, row)) {
+    offset = 0x0001D000 + (bd_id * 0x20);
+  } else {
+    llvm_unreachable(
+        "AIE1TargetModel::getDmaBdAddress called for non-DMA tile");
+  }
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
+uint32_t AIE1TargetModel::getDmaBdAddressOffset(int col, int row) const {
+  if (isShimNOCTile(col, row) || isCoreTile(col, row)) {
+    return 0;
+  }
+  llvm_unreachable(
+      "AIE1TargetModel::getDmaBdAddressOffset called for non-DMA tile");
+}
+
+uint32_t
+AIE1TargetModel::getDmaControlAddress(int col, int row, int channel,
+                                      AIE::DMAChannelDir direction) const {
+  uint32_t offset = 0;
+  if (isShimNOCTile(col, row))
+    offset = 0x0001D140 + (channel * 0x8);
+  else if (isCoreTile(col, row))
+    offset = 0x0001DE00 + (channel * 0x8);
+  else
+    llvm_unreachable(
+        "AIE1TargetModel::getDmaControlAddress called for non-DMA tile");
+
+  if (direction == AIE::DMAChannelDir::MM2S)
+    offset += 010;
+
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
 uint32_t
 AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
                                                 WireBundle bundle) const {
@@ -127,7 +225,7 @@ AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
         return 0;
       return 4;
     }
-    case WireBundle::Ctrl:
+    case WireBundle::TileControl:
       return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
@@ -155,7 +253,7 @@ AIE1TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 0;
     return 4;
   }
-  case WireBundle::Ctrl:
+  case WireBundle::TileControl:
     return 1;
   default:
     return 0;
@@ -185,7 +283,7 @@ AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     }
     case WireBundle::Trace:
       return 1;
-    case WireBundle::Ctrl:
+    case WireBundle::TileControl:
       return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
@@ -215,7 +313,7 @@ AIE1TargetModel::getNumSourceSwitchboxConnections(int col, int row,
   }
   case WireBundle::Trace:
     return 2;
-  case WireBundle::Ctrl:
+  case WireBundle::TileControl:
     return 1;
   default:
     return 0;
@@ -289,9 +387,27 @@ bool AIE1TargetModel::isLegalTileConnection(int col, int row,
   return false;
 }
 
+std::vector<std::pair<uint32_t, uint32_t>>
+AIE1TargetModel::getShimBurstEncodingsAndLengths() const {
+  return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256)};
+}
+
+std::optional<uint32_t>
+AIE1TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
+  // This function is currently not supported for AIE1.
+  // In order to be implemented for this target model, the interface
+  // would need to change given the different way locks are written to in AIE1.
+  return std::nullopt;
+}
+
 ///
 /// AIE2 TargetModel
 ///
+
+std::unique_ptr<RegisterDatabase>
+AIE2TargetModel::loadRegisterDatabase() const {
+  return RegisterDatabase::loadAIE2();
+}
 
 AIEArch AIE2TargetModel::getTargetArch() const { return AIEArch::AIE2; }
 
@@ -366,6 +482,55 @@ bool AIE2TargetModel::isLegalMemAffinity(int coreCol, int coreRow, int memCol,
          IsMemWest || IsMemEast;
 }
 
+uint64_t AIE2TargetModel::getDmaBdAddress(int col, int row, uint32_t bd_id,
+                                          int channel,
+                                          AIE::DMAChannelDir direction) const {
+  uint64_t offset = 0;
+  if (isShimNOCTile(col, row)) {
+    offset = 0x0001D000 + bd_id * 0x20;
+  } else if (isMemTile(col, row)) {
+    offset = 0x000A0000 + bd_id * 0x20;
+  } else if (isCoreTile(col, row)) {
+    offset = 0x0001D000 + bd_id * 0x20;
+  } else {
+    llvm_unreachable(
+        "AIE2TargetModel::getDmaBdAddress called for non-DMA tile");
+  }
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
+uint32_t AIE2TargetModel::getDmaBdAddressOffset(int col, int row) const {
+  if (isCoreTile(col, row))
+    return 0x0;
+  return 0x4;
+}
+
+uint32_t
+AIE2TargetModel::getDmaControlAddress(int col, int row, int channel,
+                                      AIE::DMAChannelDir direction) const {
+  uint32_t offset = 0;
+  if (isShimNOCTile(col, row)) {
+    offset = 0x0001D200 + (channel * 0x8);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x10;
+  } else if (isMemTile(col, row)) {
+    offset = 0x000A0600 + (channel * 0x8);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x30;
+  } else if (isCoreTile(col, row)) {
+    offset = 0x0001DE00 + (channel * 0x8);
+    if (direction == AIE::DMAChannelDir::MM2S)
+      offset += 0x10;
+  } else {
+    llvm_unreachable(
+        "AIE2TargetModel::getDmaControlAddress called for non-DMA tile");
+  }
+
+  return ((col & 0xff) << getColumnShift()) | ((row & 0xff) << getRowShift()) |
+         offset;
+}
+
 uint32_t
 AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
                                                 WireBundle bundle) const {
@@ -376,7 +541,7 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 6;
     case WireBundle::South:
       return 4;
-    case WireBundle::Ctrl:
+    case WireBundle::TileControl:
       return 1;
     default:
       return 0;
@@ -400,7 +565,7 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
         return 0;
       return 4;
     }
-    case WireBundle::Ctrl:
+    case WireBundle::TileControl:
       return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
@@ -430,7 +595,7 @@ AIE2TargetModel::getNumDestSwitchboxConnections(int col, int row,
       return 0;
     return 4;
   }
-  case WireBundle::Ctrl:
+  case WireBundle::TileControl:
     return 1;
   default:
     return 0;
@@ -449,7 +614,7 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     case WireBundle::South:
       return 6;
     case WireBundle::Trace:
-    case WireBundle::Ctrl:
+    case WireBundle::TileControl:
       return 1;
     default:
       return 0;
@@ -475,7 +640,7 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
     }
     case WireBundle::Trace:
       return 1;
-    case WireBundle::Ctrl:
+    case WireBundle::TileControl:
       return isShimNOCTile(col, row) ? 1 : 0;
     default:
       return 0;
@@ -509,7 +674,7 @@ AIE2TargetModel::getNumSourceSwitchboxConnections(int col, int row,
   case WireBundle::Trace:
     // Port 0: core trace. Port 1: memory trace.
     return 2;
-  case WireBundle::Ctrl:
+  case WireBundle::TileControl:
     return 1;
   default:
     return 0;
@@ -577,18 +742,18 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     if (srcBundle == WireBundle::DMA) {
       if (dstBundle == WireBundle::DMA)
         return srcChan == dstChan;
-      if (isBundleInList(dstBundle, {WireBundle::Ctrl, WireBundle::South,
+      if (isBundleInList(dstBundle, {WireBundle::TileControl, WireBundle::South,
                                      WireBundle::North}))
         return true;
     }
-    if (srcBundle == WireBundle::Ctrl) {
+    if (srcBundle == WireBundle::TileControl) {
       if (dstBundle == WireBundle::DMA)
         return dstChan == 5;
       if (isBundleInList(dstBundle, {WireBundle::South, WireBundle::North}))
         return true;
     }
     if (isBundleInList(srcBundle, {WireBundle::South, WireBundle::North})) {
-      if (isBundleInList(dstBundle, {WireBundle::DMA, WireBundle::Ctrl}))
+      if (isBundleInList(dstBundle, {WireBundle::DMA, WireBundle::TileControl}))
         return true;
       if (isBundleInList(dstBundle, {WireBundle::South, WireBundle::North}))
         return srcChan == dstChan;
@@ -602,18 +767,19 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
   }
   // Shimtile
   else if (isShimNOCorPLTile(col, row)) {
-    if (srcBundle == WireBundle::Ctrl)
-      return dstBundle != WireBundle::Ctrl;
+    if (srcBundle == WireBundle::TileControl)
+      return dstBundle != WireBundle::TileControl;
     if (isBundleInList(srcBundle, {WireBundle::FIFO, WireBundle::South}))
-      return isBundleInList(dstBundle, {WireBundle::Ctrl, WireBundle::FIFO,
-                                        WireBundle::South, WireBundle::West,
-                                        WireBundle::North, WireBundle::East});
+      return isBundleInList(dstBundle,
+                            {WireBundle::TileControl, WireBundle::FIFO,
+                             WireBundle::South, WireBundle::West,
+                             WireBundle::North, WireBundle::East});
     if (isBundleInList(srcBundle,
                        {WireBundle::West, WireBundle::North, WireBundle::East}))
       return (srcBundle == dstBundle)
                  ? (srcChan == dstChan)
                  : isBundleInList(dstBundle,
-                                  {WireBundle::Ctrl, WireBundle::FIFO,
+                                  {WireBundle::TileControl, WireBundle::FIFO,
                                    WireBundle::South, WireBundle::West,
                                    WireBundle::North, WireBundle::East});
     if (srcBundle == WireBundle::Trace) {
@@ -628,15 +794,16 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     if (isBundleInList(srcBundle,
                        {WireBundle::DMA, WireBundle::FIFO, WireBundle::South,
                         WireBundle::West, WireBundle::North, WireBundle::East}))
-      if (isBundleInList(dstBundle,
-                         {WireBundle::Core, WireBundle::DMA, WireBundle::Ctrl,
-                          WireBundle::FIFO, WireBundle::South, WireBundle::West,
-                          WireBundle::North, WireBundle::East}))
+      if (isBundleInList(dstBundle, {WireBundle::Core, WireBundle::DMA,
+                                     WireBundle::TileControl, WireBundle::FIFO,
+                                     WireBundle::South, WireBundle::West,
+                                     WireBundle::North, WireBundle::East}))
         return (srcBundle == dstBundle) ? (srcChan == dstChan) : true;
     if (srcBundle == WireBundle::Core)
       return dstBundle != WireBundle::Core;
-    if (srcBundle == WireBundle::Ctrl)
-      return dstBundle != WireBundle::Ctrl && dstBundle != WireBundle::DMA;
+    if (srcBundle == WireBundle::TileControl)
+      return dstBundle != WireBundle::TileControl &&
+             dstBundle != WireBundle::DMA;
     if (srcBundle == WireBundle::Trace) {
       if (dstBundle == WireBundle::DMA)
         return dstChan == 0;
@@ -645,6 +812,32 @@ bool AIE2TargetModel::isLegalTileConnection(int col, int row,
     }
   }
   return false;
+}
+
+std::vector<std::pair<uint32_t, uint32_t>>
+AIE2TargetModel::getShimBurstEncodingsAndLengths() const {
+  return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256)};
+}
+
+std::optional<uint32_t>
+AIE2TargetModel::getLocalLockAddress(uint32_t lockId, TileID tile) const {
+  auto computeTileBaseAddress = 0x0001F000;
+  auto memTileBaseAddress = 0x000C0000;
+  auto shimTileBaseAddress = 0x00014000;
+  auto lockAddrOffset = 0x10;
+
+  if (isCoreTile(tile.col, tile.row) &&
+      lockId < getNumLocks(tile.col, tile.row))
+    return computeTileBaseAddress + lockAddrOffset * lockId;
+
+  if (isMemTile(tile.col, tile.row) && lockId < getNumLocks(tile.col, tile.row))
+    return memTileBaseAddress + lockAddrOffset * lockId;
+
+  if (isShimNOCorPLTile(tile.col, tile.row) &&
+      lockId < getNumLocks(tile.col, tile.row))
+    return shimTileBaseAddress + lockAddrOffset * lockId;
+
+  return std::nullopt;
 }
 
 void AIETargetModel::validate() const {
@@ -705,7 +898,75 @@ void AIETargetModel::validate() const {
              getNumDestSwitchboxConnections(j, i, WireBundle::FIFO));
 }
 
-AIEArch NPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
+std::optional<uint32_t>
+AIETargetModel::getLockLocalBaseIndex(int localCol, int localRow, int lockCol,
+                                      int lockRow) const {
+  if (isCoreTile(localCol, localRow)) {
+    if (isMemSouth(localCol, localRow, lockCol, lockRow))
+      return 0;
+    if (isMemWest(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow);
+    if (isMemNorth(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow) * 2;
+    if (isMemEast(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow) * 3;
+  }
+
+  if (isMemTile(localCol, localRow)) {
+    if (isWest(localCol, localRow, lockCol, lockRow))
+      return 0;
+    if (isInternal(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow);
+    if (isEast(localCol, localRow, lockCol, lockRow))
+      return getNumLocks(localCol, localRow) * 2;
+  }
+
+  return std::nullopt;
+}
+
+std::optional<uint32_t>
+AIETargetModel::getMemLocalBaseAddress(int localCol, int localRow, int memCol,
+                                       int memRow) const {
+  if (isCoreTile(localCol, localRow)) {
+    if (isMemSouth(localCol, localRow, memCol, memRow))
+      return getMemSouthBaseAddress();
+    if (isMemWest(localCol, localRow, memCol, memRow))
+      return getMemWestBaseAddress();
+    if (isMemNorth(localCol, localRow, memCol, memRow))
+      return getMemNorthBaseAddress();
+    if (isMemEast(localCol, localRow, memCol, memRow))
+      return getMemEastBaseAddress();
+  }
+
+  if (isMemTile(localCol, localRow)) {
+    if (isWest(localCol, localRow, memCol, memRow))
+      return 0;
+    if (isInternal(localCol, localRow, memCol, memRow))
+      return getMemTileSize();
+    if (isEast(localCol, localRow, memCol, memRow))
+      return getMemTileSize() * 2;
+  }
+
+  return std::nullopt;
+}
+
+bool AIETargetModel::isSupportedBlockFormat(std::string const &format) const {
+  return false;
+}
+
+AIEArch BaseNPU2TargetModel::getTargetArch() const { return AIEArch::AIE2p; }
+
+std::vector<std::pair<uint32_t, uint32_t>>
+BaseNPU2TargetModel::getShimBurstEncodingsAndLengths() const {
+  return {std::pair(0, 64), std::pair(1, 128), std::pair(2, 256),
+          std::pair(3, 512)};
+}
+
+bool BaseNPU2TargetModel::isSupportedBlockFormat(
+    std::string const &format) const {
+  std::set<std::string> supportedTypes = {"v8bfp16ebs8", "v16bfp16ebs16"};
+  return static_cast<bool>(supportedTypes.find(format) != supportedTypes.end());
+}
 
 } // namespace AIE
 } // namespace xilinx

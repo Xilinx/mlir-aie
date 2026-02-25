@@ -49,12 +49,12 @@ def EastWire:   I32EnumAttrCase<"East", 6>;
 def PLIOWire:   I32EnumAttrCase<"PLIO", 7>;
 def NOCWire:    I32EnumAttrCase<"NOC", 8>;
 def TraceWire:  I32EnumAttrCase<"Trace", 9>;
-def ControlWire:  I32EnumAttrCase<"Ctrl", 10>;
+def TileControlWire:  I32EnumAttrCase<"TileControl", 10>;
 
 def WireBundle: I32EnumAttr<"WireBundle", "Bundle of wires",
   [
     CoreWire, DMAWire, FIFOWire, SouthWire, WestWire, NorthWire,
-    EastWire, PLIOWire, NOCWire, TraceWire, ControlWire
+    EastWire, PLIOWire, NOCWire, TraceWire, TileControlWire
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -106,8 +106,14 @@ def AIEDevice: I32EnumAttr<"AIEDevice", "AIE Device",
     I32EnumAttrCase<"npu1_1col", 5>,
     I32EnumAttrCase<"npu1_2col", 6>,
     I32EnumAttrCase<"npu1_3col", 7>,
-    I32EnumAttrCase<"npu1_4col", 8>,
-    I32EnumAttrCase<"npu2", 9>,
+    I32EnumAttrCase<"npu2", 8>,
+    I32EnumAttrCase<"npu2_1col", 9>,
+    I32EnumAttrCase<"npu2_2col", 10>,
+    I32EnumAttrCase<"npu2_3col", 11>,
+    I32EnumAttrCase<"npu2_4col", 12>,
+    I32EnumAttrCase<"npu2_5col", 13>,
+    I32EnumAttrCase<"npu2_6col", 14>,
+    I32EnumAttrCase<"npu2_7col", 15>,
   ]> {
 
   let cppNamespace = "xilinx::AIE";
@@ -200,5 +206,12 @@ def PacketInfoAttr : AttrDef<AIE_Dialect, "PacketInfo", []> {
 def InitValuesArrayAttr
   : OptionalAttr<TypedArrayAttrBase<ElementsAttr, "array of ElementsAttr">>;
 
+//===----------------------------------------------------------------------===//
+// Generated AIE event enumerations
+//===----------------------------------------------------------------------===//
+
+include "AIEEvents.td.inc"
+include "AIEEventsAIE2.td.inc"
+include "AIEEventsAIE2P.td.inc"
 
 #endif // AIE_ATTRS

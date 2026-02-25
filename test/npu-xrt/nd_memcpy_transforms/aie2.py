@@ -9,15 +9,15 @@
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
-# RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test
+# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: clang %S/test.cpp -o test -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %run_on_npu1% ./test
 import numpy as np
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 dtype = np.int16
 a_len = 8
@@ -30,7 +30,7 @@ def design():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        @device(AIEDevice.npu1)
         def device_body():
             a_ty = np.ndarray[(a_len,), np.dtype[dtype]]
             b_ty = np.ndarray[(b_len,), np.dtype[dtype]]

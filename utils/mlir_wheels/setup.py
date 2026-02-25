@@ -6,9 +6,31 @@ import subprocess
 import sys
 from pathlib import Path
 from pprint import pprint
+from sysconfig import get_paths
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+
+from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
+
+class bdist_wheel(_bdist_wheel):
+    def finalize_options(self):
+        _bdist_wheel.finalize_options(self)
+        self.root_is_pure = False
+
+    def get_tag(self):
+        python, abi, plat = _bdist_wheel.get_tag(self)
+        python, abi = "py3", "none"
+
+        CIBW_ARCHS = os.environ.get("CIBW_ARCHS")
+        if CIBW_ARCHS in {"arm64", "aarch64", "ARM64"}:
+            if "x86_64" in plat:
+                plat = plat.replace("x86_64", "aarch64")
+            elif "AMD64" in plat:
+                plat = plat.replace("AMD64", "aarch64")
+
+        return python, abi, plat
 
 
 def check_env(build, default=0):
@@ -137,6 +159,12 @@ class CMakeBuild(build_ext):
                 "-DLLVM_USE_CRT_RELEASE=MT",
             ]
 
+        # workaround for Could NOT find Python (missing: Python_INCLUDE_DIRS Development on aarch64
+        if platform.system() == "Linux":
+            cmake_args += [
+                f"-DPython_INCLUDE_DIR={get_paths()['include']}",
+            ]
+
         cmake_args_dict = get_cross_cmake_args()
         cmake_args += [f"-D{k}={v}" for k, v in cmake_args_dict.items()]
 
@@ -235,7 +263,10 @@ setup(
     long_description=f"MLIR distribution as wheel. Created at {now} build of [llvm/llvm-project/{commit_hash}]({llvm_url})",
     long_description_content_type="text/markdown",
     ext_modules=[CMakeExtension("mlir", sourcedir="llvm-project/llvm")],
-    cmdclass={"build_ext": CMakeBuild},
+    cmdclass={
+        "build_ext": CMakeBuild,
+        "bdist_wheel": bdist_wheel,
+    },
     zip_safe=False,
     download_url=llvm_url,
 )

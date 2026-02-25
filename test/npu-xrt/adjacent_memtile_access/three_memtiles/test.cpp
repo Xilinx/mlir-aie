@@ -8,7 +8,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -16,24 +15,22 @@
 #include <string>
 #include <vector>
 
+#include "cxxopts.hpp"
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include "test_utils.h"
-
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("three_memtiles");
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
+
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -45,7 +42,7 @@ int main(int argc, const char *argv[]) {
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 

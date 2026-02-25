@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 # 
 ##===----------------------------------------------------------------------===##
 
@@ -22,25 +22,24 @@
 # Since the targets are all the same for all designs, they are defined here.
 # Subdirectories need only include this makefile-common after defining the 
 # following variables:
-# - subdir	  -- subdirectory you are including this from
+# - subdir	    -- subdirectory you are including this from
 # - targetname  -- resulting test host code will be named targetname.exe
-# - kernels	 -- which kernels in kernels folder to compile and link in
+# - kernels	    -- which kernels in kernels folder to compile and link in
 #					  (without file extension)
-# - M, K, N	 -- (optional) dimensions of matrices, may be used by design;
-#					  N=1 for matrix-vector
+# - M, K, N	    -- final dimensions of matrices, set in each makefile separately 
+#				      may be used by design; N=1 for matrix-vector
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 current_dir := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 include ${current_dir}../../makefile-common
 
-# defaults; overwrite if needed
-M?=512	
-K?=512
-N?=512
 dtype_in?=i16
 dtype_out?=i32
 trace_size?=65536
+emulate_bfloat16_mmul_with_bfp16?=0
 
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+colshift ?= $(if $(filter npu,$(devicename)),1,0)
 
 ifeq ($(dtype_in),bf16)
 	dtype_in_cpp=std::bfloat16_t
@@ -81,18 +80,76 @@ insts_target?=build/insts_${target_suffix}.txt
 aie_py_src?=${targetname}.py
 
 runargs?=-v 2 --warmup 1 --iters 1
-aieargs+=-M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
+aieargs+=--dev ${devicename} -M $M -K $K -N $N --dtype_in ${dtype_in} --dtype_out ${dtype_out}
 
-CHESS?=false
+use_chess?=0
 
+# default sequential buffer allocation, if not already defined
+buffer_aloc_flag?=basic-sequential
+
+ifeq ($(devicename),npu2)
+col_shift?=0
+else 
+#shift first column in Phoenix/Hawk, because deosn't have shimTile 
+col_shift?=1
+endif
+
+ifneq (${use_chess}, 1)
+aiecc_peano_flags=--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}
+endif
+
+ifeq ($(devicename),npu2)
+kernels_dir=${srcdir}/../../../../aie_kernels/aie2p
+else 
 kernels_dir=${srcdir}/../../../../aie_kernels/aie2
+endif
+
+# When this flag is set to 1, optimal performance is attained
+# via the usage of chess pragmas (see mm.cc).
+# Instruction memory and compilation time increases in this case.
+# Set to 0 otherwise.
+# Only affects kernel compilation using chess.
+opt_perf?=0
+
+# KERNEL_CC defines the C compiler used to compile the kernel.
+# KERNEL_CFLAGS holds the flags passed to that compiler.
+# By default, we use Peano, a.k.a. llvm-aie.
+KERNEL_CC=${PEANO_INSTALL_DIR}/bin/clang++
+ifeq (${devicename}, npu)
+KERNEL_CFLAGS=${PEANOWRAP2_FLAGS}
+else ifeq (${devicename}, npu2)
+KERNEL_CFLAGS=${PEANOWRAP2P_FLAGS}
+endif
+
+ifeq (${use_chess}, 1)
+KERNEL_CC=xchesscc_wrapper
+ifeq (${devicename}, npu)
+KERNEL_CFLAGS=${CHESSCCWRAP2_FLAGS}
+else ifeq (${devicename}, npu2)
+KERNEL_CFLAGS=${CHESSCCWRAP2P_FLAGS}
+endif
+endif
+
+ifeq ($(emulate_bfloat16_mmul_with_bfp16), 1)
+KERNEL_DEFINES += -DAIE_API_EMULATE_BFLOAT16_MMUL_WITH_BFP16
+aieargs += --emulate-bf16-mmul-with-bfp16 true
+endif
+
+ifeq (${opt_perf}, 1)
+	KERNEL_DEFINES+=-DOPT_PERF_ENABLED
+endif
+
+
+# ##########################################################################
+# Targets
+# ##########################################################################
 
 .PHONY: all
 all: ${xclbin_target} ${targetname}.exe
 
 build/%.o: ${kernels_dir}/%.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
+	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
 
 ${mlir_target}: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
@@ -104,25 +161,21 @@ ${trace_mlir_target}: ${srcdir}/${aie_py_src}
 
 ${xclbin_target}: ${mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				$(if $(shell [ $(CHESS) != true ] && echo true), \
-					--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}, \
-				) \
-				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
+	cd ${@D} && aiecc.py --alloc-scheme=${buffer_aloc_flag} --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+				${aiecc_peano_flags} \
+				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${trace_xclbin_target}: ${trace_mlir_target} ${kernels:%=build/%.o}
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --no-compile-host --xclbin-name=${@F} \
-				$(if $(shell [ $(CHESS) != true ] && echo true), \
-					--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR}, \
-				) \
-				--aie-generate-npu --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
+	cd ${@D} && aiecc.py --alloc-scheme=${buffer_aloc_flag} --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+				${aiecc_peano_flags} \
+				--aie-generate-npu-insts --npu-insts-name=${insts_target:build/%=%} $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp ${srcdir}/../test.cpp ${srcdir}/../common.h
 	rm -rf _build
 	mkdir -p _build
 	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb -DDTYPE_IN=${dtype_in_cpp} -DDTYPE_OUT=${dtype_out_cpp} -DDTYPE_ACC=${dtype_acc_cpp}" \
-		cmake ${srcdir}/.. -D CMAKE_C_COMPILER=gcc-13 -D CMAKE_CXX_COMPILER=g++-13 -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
+		cmake `${getwslpath} ${srcdir}/..` -D CMAKE_C_COMPILER=${CC} -D CMAKE_CXX_COMPILER=${CXX} -DTARGET_NAME=${targetname} -Dsubdir=${subdir}
 	cd _build && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
@@ -143,13 +196,13 @@ run: ${targetname}.exe ${xclbin_target}
 trace: ${targetname}.exe ${trace_xclbin_target} ${insts_target}
 	export XRT_HACK_UNSECURE_LOADING_XCLBIN=1 && \
 	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N ${runargs} -t ${trace_size}
-	../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
+	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir ${trace_mlir_target} --output trace_mm.json
 
 #	${powershell} ./$< -x ${trace_xclbin_target} -i ${insts_target} -k MLIR_AIE -M $M -K $K -N $N -v 1 --warmup 0 --iters 1 -t ${trace_size}
 
 .PHONY: parse_trace
 parse_trace:
-	../../../utils/parse_trace.py --filename trace.txt --mlir ${trace_mlir_target} --colshift 1 > trace_mm.json
+	${srcdir}/../../../../python/utils/trace/parse.py --input trace.txt --mlir ${trace_mlir_target} --output trace_mm.json
 
 .PHONY: clean
 clean: clean_trace

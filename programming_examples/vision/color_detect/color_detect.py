@@ -9,22 +9,15 @@ import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
-
-width = 64
-height = 36
-if len(sys.argv) == 3:
-    width = int(sys.argv[1])
-    height = int(sys.argv[2])
-
-lineWidth = width
-lineWidthInBytes = width * 4
-tensorSize = width * height * 4  # 4 channels
-
-traceSize = 1024
+from aie.iron.device import NPU1Col1, NPU2
 
 
-def color_detect():
+def color_detect(dev, width, height):
+    lineWidth = width
+    lineWidthInBytes = width * 4
+    tensorSize = width * height * 4  # 4 channels
+
+    traceSize = 1024
 
     # Define types
     line_bytes_ty = np.ndarray[(lineWidthInBytes,), np.dtype[np.uint8]]
@@ -68,12 +61,12 @@ def color_detect():
 
     # Intermediate
     OF_2to34 = ObjectFifo(line_ty, name="OF_2to34")
-    OF_3to3 = ObjectFifo(line_ty, name="OF_3to3", default_depth=1)
+    OF_3to3 = ObjectFifo(line_ty, name="OF_3to3", depth=1)
     OF_3to5 = ObjectFifo(line_ty, name="OF_3to5")
-    OF_4to4 = ObjectFifo(line_ty, name="OF_4to4", default_depth=1)
+    OF_4to4 = ObjectFifo(line_ty, name="OF_4to4", depth=1)
     OF_4to5 = ObjectFifo(line_ty, name="OF_4to5")
-    OF_5to5a = ObjectFifo(line_ty, name="OF_5to5a", default_depth=1)
-    OF_5to5b = ObjectFifo(line_bytes_ty, name="OF_5to5b", default_depth=1)
+    OF_5to5a = ObjectFifo(line_ty, name="OF_5to5a", depth=1)
+    OF_5to5b = ObjectFifo(line_bytes_ty, name="OF_5to5b", depth=1)
 
     # Compute task for cores to perform
     def rgba2hue_fn(of_in, of_out, rgba2hueLine_kernel):
@@ -212,8 +205,20 @@ def color_detect():
         rt.drain(outOF_L2L3.cons(), O, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-module = color_detect()
+try:
+    device_name = str(sys.argv[1])
+    if device_name == "npu":
+        dev = NPU1Col1()
+    elif device_name == "npu2":
+        dev = NPU2()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
+    width = 36 if (len(sys.argv) != 4) else int(sys.argv[2])
+    height = 64 if (len(sys.argv) != 4) else int(sys.argv[3])
+except ValueError:
+    print("Argument has inappropriate value")
+module = color_detect(dev, width, height)
 print(module)

@@ -15,10 +15,12 @@ add_mlir_dialect_library(AIE
   MLIRAIEAttrDefsIncGen
   MLIRAIEEnumsIncGen
   MLIRAIEIncGen
+  MLIRAIETypesIncGen
   MLIRAIEInterfacesIncGen
   MLIRAIEOpsIncGen
 
   LINK_LIBS PUBLIC
+  MLIRAIEUtil
   MLIRIR
   MLIRSupport
 )

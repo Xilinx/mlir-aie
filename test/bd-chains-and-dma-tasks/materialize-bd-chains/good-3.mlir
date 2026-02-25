@@ -8,7 +8,7 @@
 // RUN: aie-opt --aie-materialize-bd-chains %s | FileCheck %s
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     // CHECK: %[[buf:.+]] = aie.buffer
@@ -22,7 +22,7 @@ module {
             aie.end
     }
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<12xi16>, %arg2: memref<8xi16>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<12xi16>, %arg2: memref<8xi16>) {
       %t1 = aiex.dma_start_bd_chain @simple_chain(%arg0) : (memref<8xi16>)  
                                     on (%tile_0_2, MM2S, 0) 
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {

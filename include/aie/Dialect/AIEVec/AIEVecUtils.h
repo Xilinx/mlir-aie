@@ -96,7 +96,7 @@ inline mlir::VectorType getVectorOpDestType(mlir::VectorType type, bool AIE2) {
   if (auto ftype = llvm::dyn_cast<mlir::FloatType>(stype)) {
     if (AIE2 && ftype.getWidth() == 16)
       return mlir::VectorType::get(type.getShape(),
-                                   mlir::FloatType::getF32(ftype.getContext()));
+                                   mlir::Float32Type::get(ftype.getContext()));
 
     // Floating point vector types for aie1 are returned as is since the
     // floating point operations write back to registers and not accumulators

@@ -11,11 +11,9 @@
 // RUN: aie-opt --split-input-file --aie-dma-to-npu --verify-diagnostics %s
 
 module  {
-  aie.device(npu1_4col) {
-    memref.global "public" @toMem : memref<16xi32>
-    aiex.runtime_sequence() {
-      // expected-error@+2 {{failed to legalize operation 'aiex.npu.dma_wait' that was explicitly marked illegal}}
-      // expected-error@+1 {{couldn't find shim_dma_allocation op}}
+  aie.device(npu1) {
+    aie.runtime_sequence() {
+      // expected-error@+1 {{couldn't find symbol in parent device}}
       aiex.npu.dma_wait {symbol = @toMem}
     }
   }

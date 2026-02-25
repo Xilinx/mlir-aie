@@ -1,51 +1,85 @@
 #!/bin/bash
-##===- utils/env_setup.sh - Setup mlir-aie env post build to compile mlir-aie designs --*- Script -*-===##
-# 
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+##===- utils/env_setup.sh - Setup mlir-aie env to compile IRON designs --*- Script -*-===##
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
 ##===----------------------------------------------------------------------===##
 #
-# This script sets up the environment to use mlir-aie tools.
-# The script will also download and set up llvm-aie (peano).
-# 
+# This script sets up the environment to compile IRON designs.
+# The script will download and set up mlir-aie and llvm-aie (peano).
 #
-# source env_setup.sh <mlir-aie install dir> 
-#                     <llvm install dir> 
-#                     <llvm-aie/peano install dir>
+# source env_setup.sh [--force-install] <mlir-aie install dir>
+#                                      <llvm-aie/peano install dir>
 #
-# e.g. source env_setup.sh /scratch/mlir-aie/install 
-#                          /scratch/llvm/install
-#                          /scratch/llvm-aie/install
+# e.g. source env_setup.sh /scratch/mlir-aie/install /scratch/llvm-aie/install
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 2 ]; then
-    echo "ERROR: Needs 2 arguments for <mlir-aie install dir> and <llvm install dir>"
-    return 1
+FORCE_INSTALL=0
+if [ "$1" = "--force-install" ]; then
+  FORCE_INSTALL=1
+  shift
 fi
 
-export MLIR_AIE_INSTALL_DIR=`realpath $1`
-export LLVM_INSTALL_DIR=`realpath $2`
-if [ "$#" -eq 3 ]; then
-    export PEANO_INSTALL_DIR=`realpath $3`
+if [ "$#" -ge 1 ]; then
+    export MLIR_AIE_INSTALL_DIR=`realpath $1`
+    export PATH=${MLIR_AIE_INSTALL_DIR}/bin:${PATH}
+    export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
+    export LD_LIBRARY_PATH=${MLIR_AIE_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
+    FORCE_INSTALL=0
+else
+    export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie 2>/dev/null | grep '^Location:' | awk '{print $2}')/mlir_aie"
 fi
 
-if [[ $PEANO_INSTALL_DIR == "" ]]; then
-  mkdir -p my_install
-  if [ ! -d "my_install/llvm-aie" ]; then
-    pushd my_install
-    pip -q download llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-    unzip -q llvm_aie*.whl
-    rm -rf llvm_aie*.whl
-    export PEANO_INSTALL_DIR=`realpath llvm-aie`
-    popd
-  else
-    export PEANO_INSTALL_DIR=`realpath my_install/llvm-aie`
-  fi
+if [ "$#" -ge 2 ]; then
+    export PEANO_INSTALL_DIR=`realpath $2`
+    FORCE_INSTALL=0
+else
+    export PEANO_INSTALL_DIR="$(pip show llvm-aie 2>/dev/null | grep '^Location:' | awk '{print $2}')/llvm-aie"
 fi
 
-export PATH=${PEANO_INSTALL_DIR}/bin:${MLIR_AIE_INSTALL_DIR}/bin:${LLVM_INSTALL_DIR}/bin:${PATH} 
-export PYTHONPATH=${MLIR_AIE_INSTALL_DIR}/python:${PYTHONPATH}
-export LD_LIBRARY_PATH=${PEANO_INSTALL_DIR}/bin:${MLIR_AIE_INSTALL_DIR}/lib:${LLVM_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}
+# If force install or an install dir isn't passed
+if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 1 && -z "$(pip show mlir_aie | grep '^Location:')" ) ]]; then
+  python3 -m pip install -I mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3
+  export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep '^Location:' | awk '{print $2}')/mlir_aie"
+fi
+
+# If force install or an install dir isn't passed
+if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 2 && -z "$(pip show llvm-aie | grep '^Location:')" ) ]]; then
+  python3 -m pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+  export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep '^Location:' | awk '{print $2}')/llvm-aie"
+fi
+
+XRTSMI=`which xrt-smi 2>/dev/null`
+if ! test -f "$XRTSMI"; then
+    XRTSMI=`which xrt-smi.exe 2>/dev/null`
+    if ! test -f "$XRTSMI"; then
+        echo "xrt-smi not found. Is XRT installed?"
+        return 1
+    fi
+fi
+
+NPUPAT='NPU Phoenix|NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[1456]'
+NPU=`xrt-smi examine 2>/dev/null | tr -d '\r' | grep -E "$NPUPAT" || true`
+if test -z "$NPU"; then
+    NPU=`xrt-smi.exe examine 2>/dev/null | tr -d '\r' | grep -E "$NPUPAT" || true`
+fi
+# Check if the current environment is NPU2
+# npu4 => Strix, npu5 => Strix Halo, npu6 => Krackan
+if echo "$NPU" | grep -qiE "NPU Strix|NPU Strix Halo|NPU Krackan|RyzenAI-npu[456]"; then
+    export NPU2=1
+else
+    export NPU2=0
+fi
+
+echo ""
+echo "Note: Peano (llvm-aie) has not been added to PATH to avoid conflict with"
+echo "      system clang/clang++. It can be found in:"
+echo "      $PEANO_INSTALL_DIR/bin"
+echo ""
+echo "PATH              : $PATH"
+echo "LD_LIBRARY_PATH   : $LD_LIBRARY_PATH"
+echo "PYTHONPATH        : $PYTHONPATH"

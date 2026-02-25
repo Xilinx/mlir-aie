@@ -3,15 +3,24 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2025, Advanced Micro Devices, Inc.
 import numpy as np
+import sys
 
-from aie.iron import GlobalBuffer, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col3, Tile
+from aie.iron.device import NPU1Col3, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.taplib import TensorAccessPattern
+
+if len(sys.argv) > 1:
+    if sys.argv[1] == "npu":
+        dev = NPU1Col3()
+    elif sys.argv[1] == "npu2":
+        dev = NPU2()
+    else:
+        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
 
 # tracing definitions
 trace_sz_in_bytes = 8192
@@ -201,7 +210,7 @@ for i in range(3):
     rtp.append([])
     for j in range(2, 6):
         rtp[i].append(
-            GlobalBuffer(
+            Buffer(
                 np.ndarray[(16,), np.dtype[np.int32]],
                 name=f"rtpComputeTile{i}{j}",
                 use_write_rtp=True,
@@ -247,9 +256,7 @@ act3_fifos_2 = []
 
 for i in range(n_cols):
     # 1x1 -> 3x3
-    act2_fifos.append(
-        ObjectFifo(tensorLayer1Out_ty, default_depth=4, name=act2_fifo_names[i])
-    )
+    act2_fifos.append(ObjectFifo(tensorLayer1Out_ty, depth=4, name=act2_fifo_names[i]))
     # 3x3 -> 1x1
     act3_fifos_1.append(ObjectFifo(tensorLayer2Out_ty, name=act3_fifo_names_1[i]))
     act3_fifos_2.append(ObjectFifo(tensorLayer2Out_ty, name=act3_fifo_names_2[i]))
@@ -258,7 +265,7 @@ wts_fifos = []
 wts_sub_fifos = [[], [], []]
 
 for i in range(n_cols):
-    wts_fifos.append(ObjectFifo(wts_sizes[i], name=f"wts_{i}_L3L2", default_depth=1))
+    wts_fifos.append(ObjectFifo(wts_sizes[i], name=f"wts_{i}_L3L2", depth=1))
     wts_offsets = [
         0,
         np.prod(np_ndarray_type_get_shape(layer1_wts_sizes[i])),
@@ -504,6 +511,7 @@ for i in range(n_cols):
             i,
         ],
         placement=placement,
+        stack_size=0xA00,
     )
     workers.append(w)
     w = Worker(
@@ -583,7 +591,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     rt.drain(outOFL2L3.cons(), outputToL3, placement=Tile(1, 0), wait=True)
 
 # Place components (assign them resources on the device) and generate an MLIR module
-module = Program(NPU1Col3(), rt).resolve_program(SequentialPlacer())
+module = Program(dev, rt).resolve_program(SequentialPlacer())
 
 # Print the generated MLIR
 print(module)

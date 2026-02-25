@@ -17,9 +17,14 @@
 // CHECK: test start.
 // CHECK: PASS!
 
+// --no-xchesscc --xbridge does not work
+// XFAIL: *
+
 module {
+aie.device(xcvc1902) { 
+
   %tile13 = aie.tile(1, 3)
-  %tile23 = aie.tile(2, 3)1
+  %tile23 = aie.tile(2, 3)
 
   %buf13 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xi32>
   %buf23 = aie.buffer(%tile23) { sym_name = "c" } : memref<256xi32>
@@ -52,4 +57,5 @@ module {
     aie.end
   }
 
+}
 }

@@ -41,7 +41,7 @@ The components and functionality of a standard bottleneck block:
 ```
 .
 +-- bottleneck.py               # A Python script that defines the AIE array structural design using MLIR-AIE operations.
-+-- bottleneck_alt.py           # A Python script that defines the AIE array structural design using MLIR-AIE operations, with a lower-level version of IRON.
++-- bottleneck_placed.py           # A Python script that defines the AIE array structural design using MLIR-AIE operations, with a lower-level version of IRON.
 +-- bottleneck_block.png        # Figure describing the layers in the bottleneck block after fusing ReLU and batch norm into the convolution layer.
 +-- bottleneck_pipeline.png     # Figure describing our implementation bottleneck block on a single NPU Column.
 +-- Makefile                    # Contains instructions for building and compiling software projects.
@@ -50,7 +50,7 @@ The components and functionality of a standard bottleneck block:
 +-- test.py                     # Python code testbench for the design example.
 ```
 
-## NPU Implementation for Alternative Design
+## NPU Implementation for Placed Design
 
 We map a bottleneck block on a single column of NPU in depth-first manner where the output of one convolutional operation on an AIE core is sent directly to another convolutional operation on a separate AIE core, all without the need to transfer intermediate results off-chip. 
 In our bottleneck pipeline implementation, every adjacent ReLU operation is fused into the convolution operation using the approach described in [conv2d_fused_relu](../conv2d_fused_relu). Fusing adjacent convolution and batch norm layers is another inference-time optimization, which involves updating the weight and bias of the convolution layer. The remaining layers of the bottleneck block are mapped onto a single column of NPU with one `Shim Tile (0,0)` and one `Mem Tile (0,1)`, along with four AIE computer tiles spanning from (0,2) to (0,5), as illustrated in the figure below.
@@ -84,9 +84,9 @@ To compile the design:
 make
 ```
 
-To compile the alternative design:
+To compile the placed design:
 ```shell
-env use_alt=1 make
+env use_placed=1 make
 ```
 
 To run the design:

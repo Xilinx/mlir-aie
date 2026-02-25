@@ -1,4 +1,6 @@
-/build*
+build*
+_build*
+*.exe
 /install*
 /my_install*
 /sandbox*
@@ -25,3 +27,5 @@ lib/**/Makefile
 /platforms/vck190_bare/vivado/vck190_bare_proj
 utils/vitisVariables.config
 runtime_lib/xaiengine/src
+/ironenv
+/.cache

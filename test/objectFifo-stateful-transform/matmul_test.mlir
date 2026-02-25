@@ -13,16 +13,16 @@
 // CHECK:           %[[VAL_1:.*]] = aie.tile(0, 2)
 // CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC_buff_0"} : memref<16x16xi16>
 // CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "outC_buff_1"} : memref<16x16xi16>
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]], 4) {init = 2 : i32, sym_name = "outC_prod_lock"}
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]], 5) {init = 0 : i32, sym_name = "outC_cons_lock"}
+// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_1]], 4) {init = 2 : i32, sym_name = "outC_prod_lock_0"}
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]], 5) {init = 0 : i32, sym_name = "outC_cons_lock_0"}
 // CHECK:           %[[VAL_8:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inB_cons_buff_0"} : memref<8x16xi16>
 // CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inB_cons_buff_1"} : memref<8x16xi16>
-// CHECK:           %[[VAL_10:.*]] = aie.lock(%[[VAL_1]], 2) {init = 2 : i32, sym_name = "inB_cons_prod_lock"}
-// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_1]], 3) {init = 0 : i32, sym_name = "inB_cons_cons_lock"}
+// CHECK:           %[[VAL_10:.*]] = aie.lock(%[[VAL_1]], 2) {init = 2 : i32, sym_name = "inB_cons_prod_lock_0"}
+// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_1]], 3) {init = 0 : i32, sym_name = "inB_cons_cons_lock_0"}
 // CHECK:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inA_cons_buff_0"} : memref<16x8xi16>
 // CHECK:           %[[VAL_15:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "inA_cons_buff_1"} : memref<16x8xi16>
-// CHECK:           %[[VAL_16:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "inA_cons_prod_lock"}
-// CHECK:           %[[VAL_17:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "inA_cons_cons_lock"}
+// CHECK:           %[[VAL_16:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "inA_cons_prod_lock_0"}
+// CHECK:           %[[VAL_17:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "inA_cons_cons_lock_0"}
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
 // CHECK:           aie.flow(%[[VAL_0]], DMA : 1, %[[VAL_1]], DMA : 1)
 // CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_0]], DMA : 0)
@@ -76,7 +76,7 @@
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @inA(MM2S, 0, 0)
+// CHECK:           aie.shim_dma_allocation @inA_shim_alloc(%[[VAL_0]], MM2S, 0)
 // CHECK:           %[[VAL_36:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_37:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
@@ -116,8 +116,8 @@
 // CHECK:           ^bb9:  // pred: ^bb6
 // CHECK:             aie.end
 // CHECK:           }
-// CHECK:           aie.shim_dma_allocation @inB(MM2S, 1, 0)
-// CHECK:           aie.shim_dma_allocation @outC(S2MM, 0, 0)
+// CHECK:           aie.shim_dma_allocation @inB_shim_alloc(%[[VAL_0]], MM2S, 1)
+// CHECK:           aie.shim_dma_allocation @outC_shim_alloc(%[[VAL_0]], S2MM, 0)
 
 module @matmul {
   aie.device(xcve2302) {

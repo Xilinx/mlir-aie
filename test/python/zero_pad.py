@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
-# CHECK: aie.objectfifo @out(%tile_0_1 dimensionsToStream [<size = 5, stride = 5>, <size = 5, stride = 5>], {%tile_0_0}, 1 : i32) {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 0>, <const_pad_before = 3, const_pad_after = 0>]>} : !aie.objectfifo<memref<56xi32>>
+# CHECK: aie.objectfifo @out(%{{.*}}tile_0_1 dimensionsToStream [<size = 5, stride = 5>, <size = 5, stride = 5>], {%{{.*}}tile_0_0}, 1 : i32) {padDimensions = #aie<bd_pad_layout_array[<const_pad_before = 2, const_pad_after = 0>, <const_pad_before = 3, const_pad_after = 0>]>} : !aie.objectfifo<memref<56xi32>>
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.extras.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 N = 56
 dev = AIEDevice.npu1_1col

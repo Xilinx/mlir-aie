@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
+#include "cxxopts.hpp"
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -22,18 +22,15 @@
 
 #include "test_utils.h"
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("Vector Vector Modulo Test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -45,7 +42,7 @@ int main(int argc, const char *argv[]) {
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -143,12 +140,14 @@ int main(int argc, const char *argv[]) {
 
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
     if (*(bufOut + i) != *(bufInA + i) % *(bufInB + i)) {
-      std::cout << "Error in output " << *(bufOut + i)
-                << " != " << *(bufInA + i) << " + " << *(bufInB + i)
-                << std::endl;
+      if (verbosity >= 1) {
+        std::cout << "Error in output " << *(bufOut + i)
+                  << " != " << *(bufInA + i) << " + " << *(bufInB + i)
+                  << std::endl;
+      }
       errors++;
     } else {
-      if (verbosity > 1)
+      if (verbosity >= 1)
         std::cout << "Correct output " << *(bufOut + i)
                   << " == " << *(bufInA + i) + *(bufInB + i) << std::endl;
     }

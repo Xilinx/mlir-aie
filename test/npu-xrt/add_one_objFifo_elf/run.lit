@@ -1,0 +1,14 @@
+// (c) Copyright 2023-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, xrt_python_bindings
+//
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: %python aiecc.py --aie-generate-xclbin --xclbin-name=aie.xclbin --aie-generate-elf --elf-name=insts.elf --no-compile-host ./aie_arch.mlir
+// RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+// RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.elf
+// RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.elf
+// RUN: %run_on_npu1% %python %S/test.py -x aie.xclbin -k MLIR_AIE -i insts.elf
+// RUN: %run_on_npu2% %python %S/test.py -x aie.xclbin -k MLIR_AIE -i insts.elf

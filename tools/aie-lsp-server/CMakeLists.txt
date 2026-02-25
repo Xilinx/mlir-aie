@@ -9,6 +9,7 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 set(AIE_LSP_LIBS
   ${dialect_libs}
   MLIRLspServerLib
+  MLIRRegisterAllDialects
 )
 
 add_llvm_tool(aie-lsp-server

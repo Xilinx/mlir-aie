@@ -9,15 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_4col) {
-    memref.global "public" @ctrlin0 : memref<8xi32>
-    memref.global "public" @ctrlin1 : memref<8xi32>
-    memref.global "public" @out0 : memref<8xi32>
-    memref.global "public" @out1 : memref<8xi32>
-    memref.global "public" @out2 : memref<8xi32>
-    memref.global "public" @out3 : memref<8xi32>
-    memref.global "public" @ctrl0 : memref<8xi32>
-
+  aie.device(NPUDEVICE) {
     %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
     %tile_1_0 = aie.tile(1, 0)
     %tile_2_0 = aie.tile(2, 0)
@@ -60,19 +52,19 @@ module {
 
     aie.packet_flow(0x5) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_2, Ctrl : 0>
+      aie.packet_dest<%tile_0_2, TileControl : 0>
     }
     aie.packet_flow(0x6) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_3, Ctrl : 0>
+      aie.packet_dest<%tile_0_3, TileControl : 0>
     }
     aie.packet_flow(0x7) {
       aie.packet_source<%tile_0_0, DMA : 0>
-      aie.packet_dest<%tile_0_4, Ctrl : 0>
+      aie.packet_dest<%tile_0_4, TileControl : 0>
     }
     aie.packet_flow(0x8) {
       aie.packet_source<%tile_0_0, DMA : 1>
-      aie.packet_dest<%tile_0_5, Ctrl : 0>
+      aie.packet_dest<%tile_0_5, TileControl : 0>
     }
 
     aie.flow(%tile_0_2, DMA : 0, %tile_0_0, DMA : 1)
@@ -336,15 +328,15 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @ctrlin0(MM2S, 0, 0)
-    aie.shim_dma_allocation @ctrlin1(MM2S, 1, 0)
-    aie.shim_dma_allocation @ctrl0(S2MM, 0, 0)
-    aie.shim_dma_allocation @out0(S2MM, 1, 0)
-    aie.shim_dma_allocation @out1(S2MM, 0, 1)
-    aie.shim_dma_allocation @out2(S2MM, 1, 1)
-    aie.shim_dma_allocation @out3(S2MM, 0, 2)
+    aie.shim_dma_allocation @ctrlin0 (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @ctrlin1 (%tile_0_0, MM2S, 1)
+    aie.shim_dma_allocation @ctrl0 (%tile_0_0, S2MM, 0)
+    aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 1)
+    aie.shim_dma_allocation @out1 (%tile_1_0, S2MM, 0)
+    aie.shim_dma_allocation @out2 (%tile_1_0, S2MM, 1)
+    aie.shim_dma_allocation @out3 (%tile_2_0, S2MM, 0)
 
-    aiex.runtime_sequence @seq(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: memref<32xi32>) {
+    aie.runtime_sequence @seq(%arg0: memref<8xi32>, %arg1: memref<8xi32>, %arg2: memref<32xi32>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c2_i64 = arith.constant 2 : i64
@@ -358,24 +350,24 @@ module {
       %c24_i64 = arith.constant 24 : i64
 
       // start reading output
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 1 : i64, issue_token = true, metadata = @ctrl0} : memref<8xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 2 : i64, issue_token = true, metadata = @out0} : memref<32xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c8_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 3 : i64, issue_token = true, metadata = @out1} : memref<32xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c16_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 4 : i64, issue_token = true, metadata = @out2} : memref<32xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[%c0_i64, %c0_i64, %c0_i64, %c24_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 5 : i64, issue_token = true, metadata = @out3} : memref<32xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 1 : i64, issue_token = true, metadata = @ctrl0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 2 : i64, issue_token = true, metadata = @out0} : memref<32xi32>
+      aiex.npu.dma_memcpy_nd(%arg2[%c0_i64, %c0_i64, %c0_i64, %c8_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 3 : i64, issue_token = true, metadata = @out1} : memref<32xi32>
+      aiex.npu.dma_memcpy_nd(%arg2[%c0_i64, %c0_i64, %c0_i64, %c16_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 4 : i64, issue_token = true, metadata = @out2} : memref<32xi32>
+      aiex.npu.dma_memcpy_nd(%arg2[%c0_i64, %c0_i64, %c0_i64, %c24_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 5 : i64, issue_token = true, metadata = @out3} : memref<32xi32>
 
       // write bd0
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 5, pkt_type = 1>) {id = 6 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c4_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 6, pkt_type = 1>) {id = 7 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c8_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 7, pkt_type = 1>) {id = 8 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c12_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 8, pkt_type = 1>) {id = 9 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 5, pkt_type = 1>) {id = 6 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c4_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 6, pkt_type = 1>) {id = 7 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c8_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 7, pkt_type = 1>) {id = 8 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c12_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 8, pkt_type = 1>) {id = 9 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
 
       // patch bd0 address for packet 1, push to mm2s_0_task_queue, wait
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c2_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 5, pkt_type = 1>) {id = 6 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c6_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 6, pkt_type = 1>) {id = 7 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c10_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 7, pkt_type = 1>) {id = 8 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[%c0_i64, %c0_i64, %c0_i64, %c14_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 8, pkt_type = 1>) {id = 9 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c2_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 5, pkt_type = 1>) {id = 6 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c6_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 6, pkt_type = 1>) {id = 7 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c10_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 7, pkt_type = 1>) {id = 8 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c14_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 8, pkt_type = 1>) {id = 9 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
 
       // wait for dma output

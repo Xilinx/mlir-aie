@@ -12,9 +12,10 @@ from ...dialects.aie import TileOp
 class Tile:
     """An object representing a single component denoted by coordinates on a device."""
 
-    def __init__(self, col: int, row: int) -> None:
+    def __init__(self, col: int, row: int, allocation_scheme: str = None) -> None:
         self.col: int = col
         self.row: int = row
+        self.allocation_scheme: str | None = allocation_scheme
         self._op: TileOp | None = None
         # TODO: each tile should probably have a type, e.g., Shim or Mem or Compute
 

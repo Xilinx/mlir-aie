@@ -12,30 +12,38 @@
 #define MLIR_AIEX_DIALECT_H
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include <optional>
+
+#include "mlir/IR/BuiltinAttributes.h"
 
 // Include dialect declarations such as parseAttributes, parseType
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h.inc"
+#include "mlir/IR/Operation.h"
 
 // include TableGen generated Op definitions
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.h.inc"
 
+#define GET_TYPEDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXTypes.h.inc"
+
+#include "llvm/ADT/StringRef.h"
+
+#include <optional>
+
 namespace xilinx {
 namespace AIEX {
 
-uint64_t getBufferDescriptorAddressRegisterAddress(
-    const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col, unsigned row);
 void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
-                             mlir::MemRefType referencedBufType,
+                             mlir::Operation *op,
+                             mlir::BaseMemRefType referencedBufType,
                              llvm::SmallVector<int64_t, 4> inputSizes,
                              llvm::SmallVector<int64_t, 4> inputStrides,
                              llvm::SmallVector<int64_t, 4> &sizes,
                              llvm::SmallVector<int64_t, 4> &strides);
 mlir::LogicalResult
-verifyStridesWraps(mlir::Operation *forOp, mlir::MemRefType referencedBufType,
-                   int tileCol, int tileRow,
-                   llvm::SmallVector<int64_t, 4> inputSizes,
+verifyStridesWraps(mlir::Operation *forOp,
+                   mlir::BaseMemRefType referencedBufType, int tileCol,
+                   int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
                    llvm::SmallVector<int64_t, 4> inputStrides,
                    llvm::SmallVector<int64_t, 4> hardwareSizes,
                    llvm::SmallVector<int64_t, 4> hardwareStrides,

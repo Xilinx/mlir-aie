@@ -8,232 +8,154 @@
 // 
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2g - Runtime Data Movement</ins>
+# <ins>Section 2g - Data Movement Without Object FIFOs</ins>
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
     * [Section 2b - Key Object FIFO Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
-    * [Section 2d - Programming for multiple cores](../section-2d/)
-    * [Section 2e - Practical Examples](../section-2e/)
-    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
-    * Section 2g - Runtime Data Movement
+    * [Section 2d - Runtime Data Movement](../section-2d/)
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * Section 2g - Data Movement Without Object FIFOs
 
 -----
 
-In the preceding sections, we looked at how we can describe data movement between tiles *within* the AIE-array. However, to do anything useful, we need to get data from outside the array, i.e., from the "host", into the AIE-array and back. On NPU devices, we can achieve this with the operations described in this section. 
+Not all data movement patterns can be described with Object FIFOs. This **advanced** section goes into detail about how a user can express data movement using the Direct Memory Access channels (or `DMA`) on AIE tiles. To better understand the code and concepts introduced in this section it is recommended to first read the [Advanced Topic of Section - 2a on DMAs](../section-2a/README.md/#advanced-topic--data-movement-accelerators).
 
-The operations that will be described in this section must be placed in a separate `aie.runtime_sequence` operation. The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array. [Section 3](../../section-3/) contains an example.
+**Please note that this part of the guide is described at the explicitly placed IRON level.**
 
-### Guide to Managing Runtime Data Movement to/from Host Memory
-
-In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize the `npu_dma_memcpy_nd` and `dma_wait` functions to manage data movement at runtime from/to host memory to/from the AIE array (for example, in the Ryzen™ AI NPU).
-
-#### **Efficient Data Movement with `npu_dma_memcpy_nd`**
-
-The `npu_dma_memcpy_nd` function is key for enabling non-blocking, multi-dimensional data transfers between different memory regions between the AI Engine array and external memory. This function is essential in developing real applications like signal processing, machine learning, and video processing.
-
-**Function Signature and Parameters**:
+The AIE architecture currently has three different types of tiles: compute tiles, referred to as "tile", memory tiles referred to as "Mem tiles", and external memory interface tiles referred to as "Shim tiles". Each of these tiles has its own attributes regarding compute capabilities and memory capacity, but the base design of their DMAs is the same. The different types of DMAs can be intialized using the constructors in [aie.py](../../../python/dialects/aie.py):
 ```python
-npu_dma_memcpy_nd(metadata, bd_id, mem, offsets=None, sizes=None, strides=None)
-```
-- **`metadata`**: This is a reference to the object FIFO or the string name of an object FIFO that records a Shim Tile and one of its DMA channels allocated for the host-side memory transfer. In order to associate the memcpy operation with an object FIFO, this metadata string needs to match the object FIFO name string.
-- **`bd_id`**: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below. 
-- **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
-- **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
-- **`offsets`** (optional): Start points for data transfer in each dimension. There is a maximum of four offset dimensions.
-- **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
-- **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
-
-The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c).
-
-**Example Usage**:
-```python
-npu_dma_memcpy_nd(of_in, 0, input_buffer, sizes=[1, 1, 1, 30])
+@mem(tile) # compute tile DMA
+@shim_dma(tile) # Shim tile DMA
+@memtile_dma(tile) # Mem tile DMA
 ```
 
-The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the `input_buffer` in host memory into an object FIFO with matching metadata labeled "of_in". The `size` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
+The DMA hardware component has a certain number of input and output `channels`, and each one has a direction and a port index. Input channels are denoted with the keyword `S2MM` and output ones with `MM2S`. Port indices vary per tile. For example, compute and Shim tiles have two input and two output ports, whereas Mem tiles have six input and six output ports.
 
-
-#### **Advanced Techniques for Multi-dimensional `npu_dma_memcpy_nd`**
-
-For high-performance computing applications on AMD's AI Engine, mastering the `npu_dma_memcpy_nd` function for complex data movements is crucial. Here, we focus on using the `sizes`, `strides`, and `offsets` parameters to effectively manage intricate data transfers.
-
-##### **Tiling a Large Matrix**
-
-A common tasks such as tiling a 2D matrix can be implemented using the `npu_dma_memcpy_nd` operation. Here’s a simplified example that demonstrates the description.
-
-**Scenario**: Tiling a 2D matrix from shape [100, 200] to [20, 20] and the data type `int16`. With the convention [row, col].
-
-**1. Configuration to transfer one tile**:
+A channel in any tile's DMA can be initialized using the unified `dma` constructor:
 ```python
-metadata = of_in
-bd_id = 3
-mem = matrix_memory  # Memory object for the matrix
-
-# Sizes define the extent of the tile to copy
-sizes = [1, 1, 20, 10]
-
-# Strides set to '0' in the higher (unused) dimensions and to '100' (length of a row in 4B or "i32s") in the minor dimension
-strides = [0, 0, 0, 100]  
-
-# Offsets set to zero since we start from the beginning
-offsets = [0, 0, 0, 0]
-
-npu_dma_memcpy_nd(metadata, bd_id, mem, offsets, sizes, strides)
-```
-
-**2. Configuration to tile the whole matrix**:
-```python
-metadata = of_in
-bd_id = 3
-mem = matrix_memory  # Memory object for the matrix
-
-# Sizes define the extent of the tile to copy.
-# Dimension 0 is 10 to transfer 20 int16s for one row of the tile,
-# Dimension 1 repeats that row transfer 20 times to complete a [20, 20] tile,
-# Dimension 2 repeats that tile transfer 10 times along a row,
-# Dimension 3 repeats the row of tiles transfer 5 times to complete.
-sizes = [5, 10, 20, 10]
-
-# Strides set to '0' in the highest (unused) dimension,
-# '2000' for the next row of tile below the last (200 x 20 x 2B / 4B),
-# '10' for the next tile to the 'right' of the last [20, 20] tile,
-# and '100' (length of a row in 4B or "i32s") in dimension 0.
-strides = [0, 2000, 10, 100]  
-
-# Offsets set to zero since we start from the beginning
-offsets = [0, 0, 0, 0]
-
-npu_dma_memcpy_nd(metadata, bd_id, mem, offsets, sizes, strides)
-```
-
-#### **Host Synchronization with `dma_wait` after one or more `npu_dma_memcpy_nd` operations**
-
-Synchronization between DMA channels and the host is facilitated by the `dma_wait` operation, ensuring data consistency and proper execution order. The `dma_wait` operation waits until the BD associated with the ObjectFifo is complete, issuing a task complete token.
-
-**Function Signature**:
-```python
-dma_wait(metadata)
-```
-- **`metadata`: The ObjectFifo python object or the name of the object fifo associated with the DMA option we will wait on.
-
-**Example Usage**:
-
-Waiting on DMAs associated with one object fifo:
-```python
-# Waits for the output data to transfer from the output object fifo to the host
-dma_wait(of_out)  
-```
-
-Waiting on DMAs associated with more than one object fifo:
-```python
-dma_wait(of_in, of_out)  
-```
-
-#### **Best Practices for Data Movement and Synchronization with `npu_dma_memcpy_nd`**
-
-- **Sync to Reuse Buffer Descriptors**: Each `npu_dma_memcpy_nd` is assigned a `bd_id`. There are a maximum of `16` BDs available to use in each Shim Tile. It is "safe" to reuse BDs once all transfers are complete, this can be managed by properly synchronizing taking into account the BDs that must have completed to transfer data into the array to complete a compute operation. And then sync on the BD that receives the data produced by the compute operation to write it back to host memory. 
-- **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `npu_dma_memcpy_nd`.
-- **Minimize Synchronization Overhead**: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.
-
-#### **Efficient Data Movement with `dma_task` Operations**
-
-As an alternative to `npu_dma_memcpy_nd` and `dma_wait`, there is a series of operations around **DMA tasks** that can serve a similar purpose.
-
-There are two advantages of using the DMA task operations over using `npu_dma_memcpy_nd`:
-* The user does not have to specify a BD number
-* DMA task operations are capable of *chaining* BD operations; however, this is an advance use-case beyond the scope of this guide. 
-
-All programming examples have an `*_alt.py` version that is written using DMA task operations.
-
-**Function Signature and Parameters**:
-```python
-def shim_dma_single_bd_task(
-    alloc,
-    mem,
-    tap: TensorAccessPatter | None = None,
-    offset: int | None = None,
-    sizes: MixedValues | None = None,
-    strides: MixedValues | None = None,
-    transfer_len: int | None = None,
-    issue_token: bool = False,
+def dma(
+    channel_dir,
+    channel_index,
+    *,
+    num_blocks=1,
+    loop=None,
+    repeat_count=None,
+    sym_name=None,
+    loc=None,
+    ip=None,
 )
 ```
-- **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFIFO. This argument is called `alloc` becuase the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
-- **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
-- **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
-- **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
-- **`sizes`**: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
-- **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
-- **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
 
-The strides and strides express data transformations analogously to those described in [Section 2C](../section-2c).
+The data movement on each channel is described by a chain of Buffer Descriptors (or "BDs"), where each BD describes what data is being moved and configures its synchornization mechanism. The `dma` constructor already creates space for one such BD as can be seen by its `num_blocks=1` default valued input.
 
-**Example Usage**:
+The code snippet below shows how to configure the DMA on `tile_a` such that data coming in on input channel 0 is written into `buff_in`:
 ```python
-out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
+tile_a = tile(1, 3)
+
+prod_lock = lock(tile_a, lock_id=0, init=1)
+cons_lock = lock(tile_a, lock_id=1, init=0)
+buff_in = buffer(tile=tile_a, datatype=np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
+
+@mem(tile_a)
+def mem_body():
+    @dma(S2MM, 0) # input channel, port 0
+    def dma_in_0():
+        use_lock(prod_lock, AcquireGreaterEqual)
+        dma_bd(buff_in)
+        use_lock(cons_lock, Release)
+```
+The locks `prod_lock` and `cons_lock` follow AIE-ML architecture semantics. Their task is to mark synchronization points in the tile's and its DMA's execution: for example, if the tile is currently using `buff_in`, it will only release the `prod_lock` when it is done, and that is when the DMA will be allowed to overwrite the data in `buff_in` with new input. Similarly, the tile's core can query the `cons_lock` to know when the new data is ready to be read (i.e., when the DMA releases the lock so the core can acquire it).
+
+In the previous code, the channel only had one BD in its chain. To add additional BDs to the chain, users can use the following constructor, which takes as input what would be the previous BD in the chain it should be added to:
+```python
+@another_bd(dma_bd)
 ```
 
-The example above describes a linear transfer of `N` data elements from the `C` buffer in host memory into an object FIFO with matching metadata labeled "of_out". The `sizes` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
-
-#### **Host Synchronization with `dma_await_task`**
-
-Synchronization between DMA channels and the host is facilitated by the `dma_await_task` operations, ensuring data consistency and proper execution order. The `dma_await_task` operation waits until all the BDs associated with a task have completed.
-
-**Function Signature**:
+This next code snippet shows how to extend the previous input channel with a double, or ping-pong, buffer using the previous constructor:
 ```python
-def dma_await_task(*args: DMAConfigureTaskForOp)
+tile_a = tile(1, 3)
+
+prod_lock = lock(tile_a, lock_id=0, init=2) # note that the producer lock now has 2 tokens
+cons_lock = lock(tile_a, lock_id=1, init=0)
+buff_ping = buffer(tile=tile_a, datatype=np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
+buff_pong = buffer(tile=tile_a, datatype=np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
+
+@mem(tile_a)
+def mem_body():
+    @dma(S2MM, 0, num_blocks=2) # note the additional BD
+    def dma_in_0():
+        use_lock(prod_lock, AcquireGreaterEqual)
+        dma_bd(buff_ping)
+        use_lock(cons_lock, Release)
+
+    @another_bd(dma_in_0)
+    def dma_in_1():
+        use_lock(prod_lock, AcquireGreaterEqual)
+        dma_bd(buff_pong)
+        use_lock(cons_lock, Release)
 ```
-- `args`: One or more `dma_task` objects, where `dma_task` objects are the value returned by `shim_dma_single_bd_task`.
+> **NOTE:**  This DMA configuration is equivalent to what the Object FIFO lowering looks like for double buffers.
 
-**Example Usage**:
+The code above can be visualized like in the following figure, where the two BDs ping-pong to each other:
 
-Waiting on task completion of one DMA task:
+<img src="../../assets/DMA_BDs.png" height=300 width="400">
+
+The last step to configure the data movement is to establish its endpoints, similar to how the Object FIFO has producer and consumer tiles. To do this, users should use the `flow` constructor:
 ```python
-# Waits for the output task to complete
-dma_await_task(out_task)  
+def flow(
+    source,
+    source_bundle=None,
+    source_channel=None,
+    dest=None,
+    dest_bundle=None,
+    dest_channel=None,
+)
 ```
+The `flow` is established between channels of two DMAs (other endpoints are available, but they are beyond the scope of this section) and as such it requires:
+* its `source` and `dest` tiles,
+* its `source_bundle` and `dest_bundle`, which represent the type of endpoints (for our scope, these will be `WireBundle.DMA`),
+* and its `source_channel` and `dest_channel`, which represent the index of the channel.
 
-Waiting on task completion of more than one DMA task:
+For example, to create a flow between tile `tile_a` and tile `tile_b`, where `tile_a` is sending data on its output channel 0 to `tile_b`'s input channel 1, the user can write:
 ```python
-# Waits for the input task and then the output task to complete
-dma_await_task(in_task, out_task)  
+aie.flow(tile_a, WireBundle.DMA, 0, tile_b, WireBundle.DMA, 1)
 ```
+Note how the direction of the two channels is not required by the flow, only the indices. This is because the flow lowering can infer the direction based on the `source` and `dest` inputs.
 
-#### **Free BDs without Waiting with `dma_free_task`**
-
-`dma_await_task` can only be called on a task created with `issue_token=True`. If `issue_token=False` (which is default), then `dma_free_task` should be called when the programmer knows that task if complete. `dma_free_task` allows the compiler to reuse the BDs of a task without synchronization. Using `dma_free_task(X)` before task `X` has completed will lead to a race condition and unpredictable behavior. Only use `dma_free_task(X)` in conjunction with some other means of synchronization. For example, you may issue `dma_free_task(X)` after a call to `dma_await_task(Y)` if you can reason that task `Y` can only complete after task `X` has completed.
-
-**Function Signature**:
+The following code snippet shows a full example of two tiles where `tile_a` is sending data to `tile_b`:
 ```python
-def dma_free_task(*args: DMAConfigureTaskForOp)
+tile_a = tile(1, 2)
+tile_b = tile(1, 3)
+
+prod_lock_a = lock(tile_a, lock_id=0, init=1)
+cons_lock_a = lock(tile_a, lock_id=1, init=0)
+buff_a = buffer(tile=tile_a, np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
+
+prod_lock_b = lock(tile_b, lock_id=0, init=1)
+cons_lock_b = lock(tile_b, lock_id=1, init=0)
+buff_b = buffer(tile=tile_b, np.ndarray[(256,), np.dtype[np.int32]]) # 256xi32
+
+aie.flow(tile_a, WireBundle.DMA, 0, tile_b, WireBundle.DMA, 1)
+
+@mem(tile_a)
+def mem_body():
+    @dma(MM2S, 0) # output channel, port 0
+    def dma_in_0():
+        use_lock(cons_lock_a, AcquireGreaterEqual)
+        dma_bd(buff_a)
+        use_lock(prod_lock_a, Release)
+
+@mem(tile_b)
+def mem_body():
+    @dma(SS2M, 1) # input channel, port 1
+    def dma_in_0():
+        use_lock(prod_lock_b, AcquireGreaterEqual)
+        dma_bd(buff_b)
+        use_lock(cons_lock_b, Release)
 ```
-- `args`: One or more `dma_task` objects, where `dma_task` objects are the value returned by `shim_dma_single_bd_task`.
-
-**Example Usage**:
-
-Release BDs belonging to DMAs associated with one task:
-```python
-# Allow compiler to reuse BDs of a a task. Should only be called if the programmer is sure the task is completed.
-dma_free_task(out_task)  
-```
-
-Release BDs belonging to DMAs associated with more than one task:
-```python
-# Allow compiler to reuse BDs of more than one task. Should only be called if the programmer is sure all tasks are completed.
-dma_free_task(in_task, out_task)  
-```
-
-#### **Best Practices for Data Movement and Synchronization with `dma_task` Operations**
-
-- **Await or Free to Reuse Buffer Descriptors**: While the exact buffer descriptor (BD) used for each operation is not visible to the user with the `dma_task` operations, there are still a finite number (maximum of `16` on a Shim Tile). Thus, it is important to use `dma_await_task` or `dma_free_task` before the number of BDs are exhausted so that they may be reused. 
-- **Note Non-blocking Transfers**: Overlap data transfers with computation by leveraging the non-blocking nature of `dma_start_task`.
-- **Minimize Synchronization Overhead**: Synchronize/wait judiciously to avoid excessive overhead that might degrade performance.
-
-#### **Conclusion**
-
-The `npu_dma_memcpy_nd` and `dma_wait` functions are powerful tools for managing data transfers and synchronization with AI Engines in the Ryzen™ AI NPU. By understanding and effectively implementing applications leveraging these functions, developers can enhance the performance, efficiency, and accuracy of their high-performance computing applications.
 
 -----
 [[Prev - Section 2f](../section-2f/)] [[Up](..)] [[Next - Section 3](../../section-3/)]

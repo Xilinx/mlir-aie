@@ -9,7 +9,6 @@
 //===----------------------------------------------------------------------===//
 
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -20,6 +19,8 @@
 #include <sstream>
 #include <stdfloat>
 
+#include "cxxopts.hpp"
+#include "test_utils.h"
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
@@ -38,81 +39,19 @@ constexpr int D_SIZE = (D_VOLUME * sizeof(IN_DATATYPE));
 
 constexpr bool VERIFY = true;
 
-namespace po = boost::program_options;
-
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
-  }
-}
-
-std::vector<uint32_t> load_instr_sequence(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
-  std::string line;
-  std::vector<uint32_t> instr_v;
-  while (std::getline(instr_file, line)) {
-    std::istringstream iss(line);
-    uint32_t a;
-    if (!(iss >> std::hex >> a)) {
-      throw std::runtime_error("Unable to parse instruction file\n");
-    }
-    instr_v.push_back(a);
-  }
-  return instr_v;
-}
-
-void parse_options(int argc, const char *argv[], po::options_description &desc,
-                   po::variables_map &vm) {
-  try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
-
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      std::exit(1);
-    }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
-    std::exit(1);
-  }
-
-  check_arg_file_exists(vm, "xclbin");
-  check_arg_file_exists(vm, "instr");
-}
-
-void add_default_options(po::options_description &desc) {
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions to be sent to the LX6");
-}
-
 int main(int argc, const char *argv[]) {
-
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  add_default_options(desc);
-  parse_options(argc, argv, desc, vm);
+  cxxopts::Options options("dmabd_task_queue");
+  test_utils::add_default_options(options);
+
+  cxxopts::ParseResult vm;
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
 
   srand(time(NULL));
 
   std::vector<uint32_t> instr_v =
-      load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 

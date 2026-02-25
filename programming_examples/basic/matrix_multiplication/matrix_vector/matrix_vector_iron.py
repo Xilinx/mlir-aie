@@ -3,17 +3,18 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
+import argparse
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col4
+from aie.iron.device import NPU1, NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 
 
-def my_matmul():
+def my_matmul(dev):
     M = 288
     K = 288
     m = 32
@@ -80,9 +81,13 @@ def my_matmul():
         workers.append(w)
 
     # Define the tiling access patterns for input and output tensors
-    A_taps = TensorTiler2D.group_tiler((M, K), (m, k), (M_div_m_div_n_cores, K_div_k))
-    C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores))
-    b_tap = TensorTiler2D.simple_tiler((1, K), pattern_repeat=M_div_m_div_n_cores)[0]
+    A_taps = TensorTiler2D.group_tiler(
+        (M, K), (m, k), (M_div_m_div_n_cores, K_div_k), prune_step=False
+    )
+    C_taps = TensorTiler2D.simple_tiler((1, M), (1, M_div_n_cores), prune_step=False)
+    b_tap = TensorTiler2D.simple_tiler(
+        (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
+    )[0]
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
@@ -97,7 +102,11 @@ def my_matmul():
             rt.drain(outC_fifos[i].cons(), c_out, c_tap, wait=True)
 
     # Create the program from the device type and runtime
-    my_program = Program(NPU1Col4(), rt)
+    if dev == "npu":
+        dev_ty = NPU1()
+    else:
+        dev_ty = NPU2()
+    my_program = Program(dev_ty, rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
     module = my_program.resolve_program(SequentialPlacer())
@@ -106,4 +115,11 @@ def my_matmul():
     print(module)
 
 
-my_matmul()
+if __name__ == "__main__":
+    argparser = argparse.ArgumentParser(
+        prog="AIE Matrix Vector Multiplication MLIR Design",
+    )
+    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
+    args, _ = argparser.parse_known_args()  # <- ignore the rest args in makefile-common
+    dev = args.dev
+    my_matmul(dev)

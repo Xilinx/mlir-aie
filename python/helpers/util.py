@@ -1,7 +1,8 @@
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 from collections import defaultdict
 import numpy as np
-import sys
-from typing import Sequence, get_args, get_origin, TypeVar
+from typing import Sequence, get_args, get_origin
+from aie._mlir_libs import _aie as CustomTypes
 
 from ..extras import types as T
 from ..ir import (
@@ -15,6 +16,31 @@ from ..ir import (
     VectorType,
 )
 from ml_dtypes import bfloat16
+
+
+# Custom types
+class v8bfp16ebs8(np.generic):
+    """
+    Custom type to be used in IRON that is translated to a generic blockFloatType.
+    Represents a vector of 8 scalar elements that share exponent with a total
+    bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
+    """
+
+    @staticmethod
+    def get():
+        return CustomTypes.blockFloatType.get("v8bfp16ebs8")
+
+
+class v16bfp16ebs16(np.generic):
+    """
+    Custom type to be used in IRON that is translated to a generic blockFloatType
+    Represents a vector of 16 scalar elements that share exponent with a total
+    bitwidth of 16 bits for each element (8 bits for the exponent and 8 bits for the mantissa).
+    """
+
+    @staticmethod
+    def get():
+        return CustomTypes.blockFloatType.get("v16bfp16ebs16")
 
 
 _np_dtype_to_mlir_type_ctor = defaultdict(
@@ -35,8 +61,10 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         np.float16: T.f16,
         np.float32: T.f32,
         np.float64: T.f64,
-        # Block floating point types
         bfloat16: T.bf16,
+        # Block floating point types
+        v8bfp16ebs8: v8bfp16ebs8.get,
+        v16bfp16ebs16: v16bfp16ebs16.get,
         # Index Types
         # this is technically wrong i guess but numpy by default casts python scalars to this
         # so to support passing lists of ints we map to index type
@@ -61,6 +89,8 @@ NpuDType = (
     | np.longlong
     | np.uintp
     | bfloat16
+    | v8bfp16ebs8
+    | v16bfp16ebs16
 )
 
 _mlir_type_ctor_to_np_dtype = lambda: {
@@ -162,7 +192,9 @@ def np_ndarray_type_get_shape(ndarray_type: type[np.ndarray]) -> tuple[int, ...]
     shape = get_args(ndarray_type)[0]
     assert isinstance(shape, tuple), "np.ndarray shape must be a tuple of integers"
     for elem in shape:
-        assert isinstance(elem, int), "np.ndarray shape must be a tuple of integers"
+        assert isinstance(
+            elem, (int, np.integer)
+        ), "np.ndarray shape must be a tuple of Python or numpy integer types"
     return shape
 
 

@@ -32,7 +32,10 @@ jobs:
         run: sudo apt-get install -y graphviz lld doxygen
 
       - name: Install Python packages
-        run: sudo pip install psutil rich numpy pybind11
+        run: |
+          pip install --upgrade pip
+          pip install -r python/requirements.txt
+          pip install -r python/requirements_dev.txt
 
       - name: Install Ninja
         # https://github.com/llvm/actions/tree/main/install-ninja
@@ -58,7 +61,7 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-          
+
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
@@ -71,10 +74,10 @@ jobs:
       # Build the repo test target in release mode to build and test.
       - name: Build Docs
         run: |
-          
+
           mkdir build_release
           pushd build_release
-          
+
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_ENABLE_ASSERTIONS=OFF \

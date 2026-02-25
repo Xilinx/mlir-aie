@@ -16,11 +16,11 @@
 #include "test_utils.h"
 
 #ifndef XCLBIN
-#define XCLBIN "final.xclbin"
+#define XCLBIN std::string("final.xclbin")
 #endif
 
 #ifndef INSTS_TXT
-#define INSTS_TXT "insts.txt"
+#define INSTS_TXT "insts.bin"
 #endif
 
 #ifndef KERNEL_NAME
@@ -43,7 +43,7 @@ void print_matrix(int32_t *buf, int n_rows, int n_cols) {
 
 int main(int argc, const char *argv[]) {
 
-  std::vector<uint32_t> instr_v = test_utils::load_instr_sequence(INSTS_TXT);
+  std::vector<uint32_t> instr_v = test_utils::load_instr_binary(INSTS_TXT);
   assert(instr_v.size() > 0);
 
   // Get a device handle

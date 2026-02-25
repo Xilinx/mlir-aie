@@ -9,16 +9,16 @@
 # REQUIRES: ryzen_ai
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --alloc-scheme=basic-sequential --xclbin-name=aie.xclbin --npu-insts-name=insts.txt ./aie2.mlir
-# RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.txt
+# RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
 import numpy as np
 import sys
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.extras.context import mlir_mod_ctx
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.dialects import memref
 
 
@@ -27,15 +27,12 @@ def my_vector_add():
     n = 16
     N_div_n = N // n
 
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         # AIE Core Function declarations
         tensor_ty_c = np.ndarray[(N,), np.dtype[np.int32]]
         tensor_ty = np.ndarray[(N // 4,), np.dtype[np.int32]]
         tensor_ty_s = np.ndarray[(n,), np.dtype[np.int32]]
-
-        memref.global_("out", T.memref(16, T.i32()), sym_visibility="public")
-        memref.global_("in1", T.memref(16, T.i32()), sym_visibility="public")
 
         # Tile declarations
         ShimTile = tile(0, 0)
@@ -114,8 +111,8 @@ def my_vector_add():
         flow(ComputeTile2, WireBundle.DMA, 0, ShimTile, WireBundle.DMA, 0)
 
         # AIE-array data movement
-        shim_dma_allocation("in1", DMAChannelDir.MM2S, 0, 0)
-        shim_dma_allocation("out", DMAChannelDir.S2MM, 0, 0)
+        shim_dma_allocation("in1", ShimTile, DMAChannelDir.MM2S, 0)
+        shim_dma_allocation("out", ShimTile, DMAChannelDir.S2MM, 0)
 
         @memtile_dma(MemTile2)
         def m(block):

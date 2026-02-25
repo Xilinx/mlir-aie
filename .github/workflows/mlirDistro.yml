@@ -14,7 +14,7 @@ on:
       DEBUG_OS:
         description: 'which runner os to run the tmate action in (if the tmate action is run)'
         type: string
-        default: 'windows-2019'
+        default: 'windows-2022'
         required: false
       DEBUG_ARCH:
         description: 'which runner arch to run the tmate action in (if the tmate action is run)'
@@ -88,45 +88,29 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          # - OS: macos-12
-          #   ARCH: x86_64
-          #   ENABLE_RTTI: ON
-
-          # - OS: macos-12
-          #   ARCH: arm64
-          #   ENABLE_RTTI: ON
-
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
-
-          # - OS: macos-12
-          #   ARCH: x86_64
-          #   ENABLE_RTTI: OFF
-
-          # - OS: macos-12
-          #   ARCH: arm64
-          #   ENABLE_RTTI: OFF
 
     steps:
 
@@ -140,13 +124,6 @@ jobs:
         fi
         echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
         echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
-
-    - name: set ENV macos
-      if: contains(matrix.OS, 'macos')
-      shell: bash
-      run: |
-        
-        echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
       uses: actions/checkout@v4
@@ -174,6 +151,10 @@ jobs:
         MATRIX_ARCH: ${{ matrix.ARCH }}
         EXTRA_KEY: mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
 
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
     # default workspace is repo root but we're not build mlir-aie here, we're building llvm+mlir
     # and thus llvm-project needs to be adjacent to utils/mlir_wheels/setup.py
     - name: Shift workspace root
@@ -184,7 +165,7 @@ jobs:
         
         ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
         
-        if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+        if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_wheels"
         else
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_wheels"
@@ -208,7 +189,7 @@ jobs:
     # build
 
     - name: cibuildwheel
-      if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
+      if: ${{ matrix.OS != 'ubuntu-22.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
@@ -224,13 +205,15 @@ jobs:
         cibuildwheel --output-dir wheelhouse
 
     - name: build aarch ubuntu wheel
-      if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
+      if: ${{ matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'aarch64' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
         
         export APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }}
         ./scripts/apply_patches.sh
+        
+        pip install --upgrade pip
         
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
@@ -260,12 +243,13 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
+        python -m pip install --upgrade pip
         pip install pkginfo
         WHL=$(ls wheelhouse/mlir*whl)
         echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
-      if: (matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      if: (matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -291,27 +275,6 @@ jobs:
         # Set the timestamp to the beginning of the current hour.
         find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
 
-    # The wheels important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
-    # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
-    # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
-    - name: rename non-windows
-      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-12' || matrix.OS == 'macos-14' }}
-      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
-      shell: bash
-      run: |
-        
-        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir*whl
-        
-        if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
-          rename 's/x86_64/aarch64/' wheelhouse/mlir*whl
-        fi
-
-    - name: rename windows
-      if: ${{ matrix.OS == 'windows-2019' }}
-      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
-      run: |
-        ls wheelhouse/mlir*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
-
     # The "native tools" MLIR utilities that are necessary for cross-compiling MLIR - basically just tblgen.
     # Now if you build a whole distro you naturally do get those utilities but it's easier to just bundle them
     # together here and now and make them also available as a separate, much lighter wheel,
@@ -322,21 +285,19 @@ jobs:
       shell: bash
       id: build_native_tools_wheel
       run: |
-        
+        python -m pip install --upgrade pip
+        pip install setuptools
+
         for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "llvm-config" "FileCheck"; do
-          if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+          if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
             TOOL="$TOOL.exe"
           fi
           unzip -j wheelhouse/mlir*whl "mlir/bin/$TOOL" -d native_tools/
         done
         
-        if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ]; then
+        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ]; then
           PLAT="linux"
-        elif [ x"${{ matrix.OS }}" == x"macos-12" ]; then
-          PLAT="macosx_12_0"
-        elif [ x"${{ matrix.OS }}" == x"macos-14" ]; then
-          PLAT="macosx_14_0"
-        elif [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+        elif [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           PLAT="win"
         fi
         
@@ -352,7 +313,7 @@ jobs:
 
     - name: Upload wheels
       if: github.event_name != 'schedule'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
@@ -370,46 +331,44 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          # - OS: macos-12
-          #   ARCH: x86_64
-          #   ENABLE_RTTI: ON
-
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
-
-          # - OS: macos-12
-          #   ARCH: x86_64
-          #   ENABLE_RTTI: OFF
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: test
         shell: bash
         run: |
-          pip install numpy PyYAML
-          unzip -o -q dist/mlir\*.whl
-          
+          # Validate wheel format
+          for w in dist/mlir*.whl; do
+            python -m zipfile -t "$w"
+          done
+
+          # Unpack zip file and add contents to python path
+          for w in dist/mlir*.whl; do
+            unzip -o -q "$w"
+          done
           PYTHONPATH=$(find . -name mlir_core) python -c 'import mlir.ir'
 
   upload_distro_wheels:
@@ -426,52 +385,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: aarch64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-          # - OS: macos-12
-          #   ARCH: x86_64
-          #   ENABLE_RTTI: ON
-
-          # - OS: macos-12
-          #   ARCH: arm64
-          #   ENABLE_RTTI: ON
-
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: aarch64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
-
-          # - OS: macos-12
-          #   ARCH: x86_64
-          #   ENABLE_RTTI: OFF
-
-          # - OS: macos-12
-          #   ARCH: arm64
-          #   ENABLE_RTTI: OFF
 
     permissions:
       id-token: write
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
@@ -487,5 +430,5 @@ jobs:
           name: ${{ github.event_name == 'workflow_dispatch' && 'mlir-distro' || 'dev-wheels' }}
           removeArtifacts: false
           allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: true
+          replacesArtifacts: false
+          makeLatest: false

@@ -16,6 +16,7 @@
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Transforms/FoldUtils.h"
+#include "llvm/IR/IRBuilder.h"
 
 using namespace mlir;
 using namespace xilinx;

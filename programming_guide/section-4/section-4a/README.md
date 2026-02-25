@@ -81,7 +81,7 @@ In addition, if you have an estimate of the number of MACs each kernel execution
 
 1. Let's set our iterations to 10 and run again with `make run-10` which passes in the argument `--iters 10` to our executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_tutorials/images/answer1.jpg" title="This time, we see a narrower range between 300-400 us" height=25>
 
-1. Finally, let's add a 4 warmup iterations to cut higher outliers when the application is first run by calling `make run-10-warmup`. This passes in the `--warmup 4` to our executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_tutorials/images/answer1.jpg" title="This time, we see an lower average range between 200-300 us" height=25>
+1. Finally, let's add 4 warmup iterations to cut higher outliers when the application is first run by calling `make run-10-warmup`. This passes in the `--warmup 4` to our executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_tutorials/images/answer1.jpg" title="This time, we see an lower average range between 200-300 us" height=25>
 
 -----
 [[Up]](../../section-4) [[Next]](../section-4b)

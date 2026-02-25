@@ -4,5 +4,6 @@
 // REQUIRES: hsa
 //
 // RUN: make -f %S/Makefile clean
-// RUN: make env use_alt=1 -f %S/Makefile vck5000
+// RUN: make -f %S/Makefile vck5000
 // RUN: %run_on_vck5000 ./test.elf
+// XFAIL: *

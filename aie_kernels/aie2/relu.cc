@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <type_traits>
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
@@ -22,12 +23,13 @@ void relu(bfloat16 *restrict a, bfloat16 *restrict c, const int TILE_SIZE) {
   v32bfloat16 zeroes = broadcast_zero_bfloat16();
 
   event0();
-  for (size_t i = 0; i < TILE_SIZE; i += v_factor)
-    chess_prepare_for_pipelining chess_loop_range(32, 32) {
-      v32bfloat16 input = *(v32bfloat16 *)(a + i);
-      v32bfloat16 output = max(input, zeroes);
-      *(v32bfloat16 *)(c + i) = output;
-    }
+  AIE_PREPARE_FOR_PIPELINING
+  AIE_LOOP_RANGE(32, 32)
+  for (size_t i = 0; i < TILE_SIZE; i += v_factor) {
+    v32bfloat16 input = *(v32bfloat16 *)(a + i);
+    v32bfloat16 output = max(input, zeroes);
+    *(v32bfloat16 *)(c + i) = output;
+  }
   event1();
   return;
 }

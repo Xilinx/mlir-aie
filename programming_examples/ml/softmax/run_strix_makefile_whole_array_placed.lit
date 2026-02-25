@@ -1,0 +1,26 @@
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// Test whole array placement with multiple configurations on NPU2 (Strix)
+//
+// RUN: mkdir -p %T/test_stx_whole_array
+// RUN: cd %T/test_stx_whole_array && make -f %S/Makefile clean
+//
+// Test configuration: 1 column x 4 rows (default)
+// RUN: cd %T/test_stx_whole_array && make -f %S/Makefile use_whole_array=1 devicename=npu2
+// RUN: cd %T/test_stx_whole_array && %run_on_npu2% make -f %S/Makefile run use_whole_array=1 devicename=npu2 | FileCheck %s --check-prefix=CHECK-1x4
+// CHECK-1x4: PASS
+//
+// Test configuration: 4 columns x 4 rows
+// RUN: cd %T/test_stx_whole_array && make -f %S/Makefile clean
+// RUN: cd %T/test_stx_whole_array && make -f %S/Makefile use_whole_array=1 whole_array_cols=4 whole_array_rows=4 devicename=npu2
+// RUN: cd %T/test_stx_whole_array && %run_on_npu2% make -f %S/Makefile run use_whole_array=1 whole_array_cols=4 whole_array_rows=4 devicename=npu2 | FileCheck %s --check-prefix=CHECK-4x4
+// CHECK-4x4: PASS
+//
+// Test configuration: 8 columns x 4 rows
+// RUN: cd %T/test_stx_whole_array && make -f %S/Makefile clean
+// RUN: cd %T/test_stx_whole_array && make -f %S/Makefile use_whole_array=1 whole_array_cols=8 whole_array_rows=4 devicename=npu2
+// RUN: cd %T/test_stx_whole_array && %run_on_npu2% make -f %S/Makefile run use_whole_array=1 whole_array_cols=8 whole_array_rows=4 devicename=npu2 | FileCheck %s --check-prefix=CHECK-8x4
+// CHECK-8x4: PASS

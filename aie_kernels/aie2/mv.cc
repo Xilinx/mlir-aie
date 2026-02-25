@@ -18,6 +18,7 @@
 #define REL_WRITE 0
 #define REL_READ 1
 
+#include "../aie_kernel_utils.h"
 #include <aie_api/aie.hpp>
 
 #include "zero.cc"
@@ -73,56 +74,55 @@ void matvec_vectorized(T_in *__restrict a, T_in *__restrict b,
     aie::vector<T_in, 8> b_vec = aie::load_v<8>(b_ptr);
     T_out *__restrict c_ptr = c; // reset to the first row of C output on
                                  // each outer loop tieration
+    AIE_LOOP_MIN_ITERATION_COUNT(m / r)
+    for (int row = 0; row < m; row += r) {
+      aie::accum<T_acc, r> c_acc_in;
+      c_acc_in.from_vector(aie::load_v<r>(c_ptr));
 
-    for (int row = 0; row < m; row += r)
-      chess_loop_range(m / r, ) {
-        aie::accum<T_acc, r> c_acc_in;
-        c_acc_in.from_vector(aie::load_v<r>(c_ptr));
+      const aie::vector<T_in, 2 * r> a_vec_0 = aie::load_v<2 * r>(a_ptr);
+      const aie::vector<T_in, 2 * r> a_vec_1 =
+          aie::load_v<2 * r>(a_ptr + 2 * m);
+      const aie::vector<T_in, 2 * r> a_vec_2 =
+          aie::load_v<2 * r>(a_ptr + 4 * m);
+      const aie::vector<T_in, 2 * r> a_vec_3 =
+          aie::load_v<2 * r>(a_ptr + 6 * m);
 
-        const aie::vector<T_in, 2 * r> a_vec_0 = aie::load_v<2 * r>(a_ptr);
-        const aie::vector<T_in, 2 * r> a_vec_1 =
-            aie::load_v<2 * r>(a_ptr + 2 * m);
-        const aie::vector<T_in, 2 * r> a_vec_2 =
-            aie::load_v<2 * r>(a_ptr + 4 * m);
-        const aie::vector<T_in, 2 * r> a_vec_3 =
-            aie::load_v<2 * r>(a_ptr + 6 * m);
+      // The even/odd calls below extract the interleaved columns of A.
+      // We need to do this since A is only transposed (column-major) at
+      // a granularity of 4 bytes, but bf16 are two bytes; therefore, we
+      // end up with two interleaved columns at each 2*m interval.
+      // After this, each of a_vec_0_0 contains rows row..row+r of some
+      // column of A. The columns are col..col+8.
+      const aie::vector<T_in, r> a_vec_0_0 = aie::filter_even(a_vec_0);
+      const aie::vector<T_in, r> a_vec_0_1 = aie::filter_odd(a_vec_0);
+      const aie::vector<T_in, r> a_vec_1_0 = aie::filter_even(a_vec_1);
+      const aie::vector<T_in, r> a_vec_1_1 = aie::filter_odd(a_vec_1);
+      const aie::vector<T_in, r> a_vec_2_0 = aie::filter_even(a_vec_2);
+      const aie::vector<T_in, r> a_vec_2_1 = aie::filter_odd(a_vec_2);
+      const aie::vector<T_in, r> a_vec_3_0 = aie::filter_even(a_vec_3);
+      const aie::vector<T_in, r> a_vec_3_1 = aie::filter_odd(a_vec_3);
 
-        // The even/odd calls below extract the interleaved columns of A.
-        // We need to do this since A is only transposed (column-major) at
-        // a granularity of 4 bytes, but bf16 are two bytes; therefore, we
-        // end up with two interleaved columns at each 2*m interval.
-        // After this, each of a_vec_0_0 contains rows row..row+r of some
-        // column of A. The columns are col..col+8.
-        const aie::vector<T_in, r> a_vec_0_0 = aie::filter_even(a_vec_0);
-        const aie::vector<T_in, r> a_vec_0_1 = aie::filter_odd(a_vec_0);
-        const aie::vector<T_in, r> a_vec_1_0 = aie::filter_even(a_vec_1);
-        const aie::vector<T_in, r> a_vec_1_1 = aie::filter_odd(a_vec_1);
-        const aie::vector<T_in, r> a_vec_2_0 = aie::filter_even(a_vec_2);
-        const aie::vector<T_in, r> a_vec_2_1 = aie::filter_odd(a_vec_2);
-        const aie::vector<T_in, r> a_vec_3_0 = aie::filter_even(a_vec_3);
-        const aie::vector<T_in, r> a_vec_3_1 = aie::filter_odd(a_vec_3);
+      // The accumulate call below produces the following output:
+      // c_acc_out[i] = c_acc_in + b_vec[0]*a_vec_0_0[i]
+      //                         + b_vec[1]*a_vec_0_1[i]
+      //                         + ...
+      //                         + b_vec[7]*a_vec_3_1[i]
+      // i.e., the dot product of vector b_vec with one row (row+i)
+      // (recall that the different a_vecs are columns, thus we are
+      // indexing into the same row i for each column).
+      // The same could be implemented with a sequence of aie::muls (one
+      // aie::mac to add the accumulator c_in), and then aie::adding all
+      // the resulting vectors together.
+      auto c_acc_out = aie::accumulate<r>(
+          c_acc_in, b_vec, 0, a_vec_0_0, a_vec_0_1, a_vec_1_0, a_vec_1_1,
+          a_vec_2_0, a_vec_2_1, a_vec_3_0, a_vec_3_1);
 
-        // The accumulate call below produces the following output:
-        // c_acc_out[i] = c_acc_in + b_vec[0]*a_vec_0_0[i]
-        //                         + b_vec[1]*a_vec_0_1[i]
-        //                         + ...
-        //                         + b_vec[7]*a_vec_3_1[i]
-        // i.e., the dot product of vector b_vec with one row (row+i)
-        // (recall that the different a_vecs are columns, thus we are
-        // indexing into the same row i for each column).
-        // The same could be implemented with a sequence of aie::muls (one
-        // aie::mac to add the accumulator c_in), and then aie::adding all
-        // the resulting vectors together.
-        auto c_acc_out = aie::accumulate<r>(
-            c_acc_in, b_vec, 0, a_vec_0_0, a_vec_0_1, a_vec_1_0, a_vec_1_1,
-            a_vec_2_0, a_vec_2_1, a_vec_3_0, a_vec_3_1);
-
-        aie::store_v(c_ptr, c_acc_out.template to_vector<T_out>());
-        a_ptr += 2 * r; // On last iteration, this advances to next column.
-                        // This is why we only iterate by 6*m in the outer
-                        // loop, for a total of 8*m, i.e. 8 columns.
-        c_ptr += r;     // Move to next r rows of the same columns in A.
-      }
+      aie::store_v(c_ptr, c_acc_out.template to_vector<T_out>());
+      a_ptr += 2 * r; // On last iteration, this advances to next column.
+                      // This is why we only iterate by 6*m in the outer
+                      // loop, for a total of 8*m, i.e. 8 columns.
+      c_ptr += r;     // Move to next r rows of the same columns in A.
+    }
 
     a_ptr += 6 * m; // Move to next 8 columns of A.
     b_ptr += s;     // Move to next s (==8) rows of b.

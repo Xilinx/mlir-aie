@@ -9,7 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(NPUDEVICE) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_1_0 = aie.tile(1, 0)
     %tile_2_0 = aie.tile(2, 0)
@@ -105,7 +105,7 @@ module {
       }
       aie.use_lock(%lock_0_2_7, Release, 1)
       cf.br ^bb1
-    } {elf_file = "segment_0_core_0_2.elf"}
+    }
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_1_0, DMA : 0, %tile_1_1, DMA : 0)
     aie.flow(%tile_2_1, DMA : 0, %tile_2_0, DMA : 0)
@@ -177,19 +177,16 @@ module {
       aie.use_lock(%lock_1_1, Release, 1)
       aie.next_bd ^bb4
     }
-    aie.shim_dma_allocation @airMemcpyId12(S2MM, 0, 2)
-    memref.global "public" @airMemcpyId12 : memref<256xbf16, 1 : i32>
-    aie.shim_dma_allocation @airMemcpyId4(MM2S, 0, 0)
-    memref.global "public" @airMemcpyId4 : memref<1x48xbf16, 1 : i32>
-    aie.shim_dma_allocation @airMemcpyId5(MM2S, 0, 1)
-    memref.global "public" @airMemcpyId5 : memref<1x48xbf16, 1 : i32>
-    aiex.runtime_sequence @six(%arg0: memref<5xi32>, %arg1: memref<96xi32>, %arg2: memref<96xi32>, %arg3: memref<9xi32>) {
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 5][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<5xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg1[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<96xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg2[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId5} : memref<96xi32>
-      aiex.npu.dma_memcpy_nd(0, 0, %arg3[0, 0, 0, 0][1, 1, 1, 9][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<9xi32>
+    aie.shim_dma_allocation @airMemcpyId12 (%tile_2_0, S2MM, 0)
+    aie.shim_dma_allocation @airMemcpyId4 (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @airMemcpyId5 (%tile_1_0, MM2S, 0)
+    aie.runtime_sequence @six(%arg0: memref<5xi32>, %arg1: memref<96xi32>, %arg2: memref<96xi32>, %arg3: memref<9xi32>) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 5][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<5xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<96xi32>
+      aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId5} : memref<96xi32>
+      aiex.npu.dma_memcpy_nd(%arg3[0, 0, 0, 0][1, 1, 1, 9][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<9xi32>
       aiex.npu.sync {channel = 0 : i32, column = 2 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     }
-  } {sym_name = "segment_0"}
+  }
 }
 

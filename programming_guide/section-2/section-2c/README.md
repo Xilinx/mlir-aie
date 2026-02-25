@@ -14,14 +14,14 @@
     * [Section 2a - Introduction](../section-2a/)
     * [Section 2b - Key Object FIFO Patterns](../section-2b/)
     * Section 2c - Data Layout Transformations
-    * [Section 2d - Programming for multiple cores](../section-2d/)
-    * [Section 2e - Practical Examples](../section-2e/)
-    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
-    * [Section 2g - Runtime Data Movement](../section-2g/)
+    * [Section 2d - Runtime Data Movement](../section-2d/)
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
 
 -----
 
-While the Object FIFO primitive aims to reduce the complexity tied to data movement configuration on the AI Engine array, it also gives the user control over some advanced features of the underlying architecture. One such feature is the ability to do data layout transformations on the fly using the tile's dedicated hardware: the Data Movement Accelerators (DMAs). **This is available on AIE-ML devices.**
+While the Object FIFO primitive aims to reduce the complexity tied to data movement configuration on the AI Engine array, it also gives the user control over some advanced features of the underlying architecture. One such feature is the ability to do data layout transformations on the fly using the tile's dedicated hardware: the Direct Memory Access channels (DMAs). **This is available on AIE-ML devices.**
 
 Tile DMAs interact directly with the memory modules of their tiles and are responsible for pushing and retrieving data to and from the AXI stream interconnect. When data is pushed onto the stream, the user can program the DMA's n-dimensional address generation scheme such that the data's layout when pushed may be different than how it is stored in the tile's local memory. In the same way, a user can also specify in what layout a DMA should store the data retrieved from the AXI stream.
 
@@ -61,6 +61,10 @@ for(int i = 0; i < size_2; i++)
             //                                   + k * stride_0]
 ```
 
+It is important to note that data layout transformations are interpreted differently depending on whether data is pushed onto or read from the AXI stream:
+- when data are pushed to the AXI stream, the layout describes from where in memory the DMA reads the elements to push to the stream (where to ``get items from'');
+- when data are read from the AXI stream, the data layout describes where in memory the DMA writes the elements that are arriving over the stream in-sequence (where to ``put arriving items'').
+
 As a practical example, here is an access pattern that corresponds to alternating between even and odd elements every 8 elements in a 128 element buffer/stream:
 ```mlir
 aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
@@ -97,6 +101,8 @@ class object_fifo:
 
 Our compiler directly lowers Object FIFOs that make use of the aforementioned data layout transformations to `AIE_DMABDOp`. You can use the `dimensionsToStream` input to describe in which order the `producerTile`'s DMA should push the objects onto the stream. Similarly, the `dimensionsFromStreamPerConsumer` input describes to the DMAs of each individual tile in the `consumerTiles` in what layout to retrieve the objects from the stream.
 
+> **NOTE:**  Data layout transformations are applied to individual ObjectFIFO objects and cannot act across object boundaries.
+
 As an example, the Object FIFO in the code below contains objects with datatype `<4x8xi8>`. Using the `dimensionsToStream` input it performs a data layout transformation on the producer tile side that pushes elements from memory onto the stream as follows: For every even length-8 row, select the first three even-indexed elements.
 ```python
 A = tile(1, 1)
@@ -128,7 +134,19 @@ and further represented as in the image below:
 
 <img height="300" src="./../../assets/DataLayoutTransformation.svg">
 
+Please see the [`to_stream_transformations`](./to_stream_transformations/) and [`from_stream_transformations`](./from_stream_transformations/) designs for end-to-end IRON examples of each pattern.
+
 Other examples containing data layout transformations are available in the [programming_examples](../../../programming_examples/). A few notable ones are [matrix_vector_multiplication](../../../programming_examples/basic/matrix_multiplication/matrix_vector/) and [matrix_multiplication_whole_array](../../../programming_examples/basic/matrix_multiplication/whole_array/).
+
+When using the implicit copy feature of the Object FIFO for a join or distribute data movement pattern, data layout transformations are not supported on the output of a join pattern or on the input of a distribute one. The reasoning behind this decision is largely due to the complexity of the DMA program that is required to achieve a data layout transformation across the larger data tensor while ensuring race-free execution of the DMA buffer descriptor logic. Users may however program the DMA buffer descriptors themselves for specific designs; this is further detailed in [this](https://github.com/Xilinx/mlir-aie/discussions/2748) discussion.
+
+### Data Layout Transformations with the Runtime Sequence
+
+The runtime sequence uses another representation of data layout transformations named `Tensor Access Pattern`, or `tap`, which is available in the `taplib` library on AIEs with IRON. An in-depth introduction to `taplib` is available [here](../../../programming_examples/basic/tiling_exploration/README.md).
+
+Runtime sequence operations such as `fill()` and `drain()` at the highest IRON abstraction level, or `dma_wait` and `npu_dma_memcpy_nd` at the placed level, can optionally take a `tap` as input to change the access pattern to/from external memory on-the-fly. For more details on programming the runtime sequence please see the corresponding [section](../section-2d/README.md).
+
+Examples containing `tap`s are available in the [programming_examples](../../../programming_examples/). A few notable ones are [dma_transpose](../../../programming_examples/basic/dma_transpose/) and [row_wise_bias_add](../../../programming_examples/basic/row_wise_bias_add/).
 
 -----
 [[Prev - Section 2b](../section-2b/)] [[Up](..)] [[Next - Section 2d](../section-2d/)]

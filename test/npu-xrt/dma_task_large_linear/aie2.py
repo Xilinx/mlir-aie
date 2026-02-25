@@ -5,18 +5,18 @@
 #
 # (c) Copyright 2024 AMD Inc.
 
-# REQUIRES: ryzen_ai, peano
+# REQUIRES: ryzen_ai_npu1, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --no-xchesscc --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
-# RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test
+# RUN: %python aiecc.py --no-aiesim --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: clang %S/test.cpp -o test -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %run_on_npu1% ./test
 import numpy as np
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 dtype = np.int32  # TODO: change to int8
 BUFFER_LEN = 65536
@@ -27,7 +27,7 @@ def design():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        @device(AIEDevice.npu1)
         def device_body():
             buff_ty = np.ndarray[(BUFFER_LEN,), np.dtype[dtype]]
             buff_tile_ty = np.ndarray[(BUFFER_TILE_LEN,), np.dtype[dtype]]

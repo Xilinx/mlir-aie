@@ -6,7 +6,7 @@
 
 # RUN: %python %s | FileCheck %s
 import numpy as np
-from aie.extras.dialects.ext import memref
+from aie.extras.dialects import memref
 import aie.extras.types as T
 from aie.dialects.aie import (
     AIEDevice,
@@ -22,7 +22,7 @@ from aie.dialects.aie import (
     tile,
 )
 from aie.dialects.aiex import dma_wait, npu_dma_memcpy_nd, runtime_sequence
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from util import construct_and_print_module
 
 DMA = WireBundle.DMA
@@ -42,7 +42,7 @@ def my_vector_scalar(module):
 
     buffer_depth = 2
 
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         n_ty = np.ndarray[(n,), np.dtype[np.int32]]
         N_ty = np.ndarray[(N,), np.dtype[np.int32]]
@@ -113,7 +113,7 @@ def my_matmul(module):
 
     vectorized = True
 
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         func_type = "" if vectorized else "scalar_"
         zero = external_func(
@@ -206,7 +206,7 @@ def my_matmul(module):
 # CHECK-LABEL: edge_detect
 @construct_and_print_module
 def edge_detect(module):
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         vec64_ty = np.ndarray[(64,), np.dtype[np.uint8]]
         vec256_ty = np.ndarray[(256,), np.dtype[np.uint8]]
@@ -401,7 +401,7 @@ def edge_detect(module):
 # CHECK-LABEL: my_add_one_objFifo
 @construct_and_print_module
 def my_add_one_objFifo(module):
-    @device(AIEDevice.npu1_4col)
+    @device(AIEDevice.npu1)
     def device_body():
         shim_tile = tile(0, 0)
         mem_tile = tile(0, 1)

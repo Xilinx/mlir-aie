@@ -4,12 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -21,6 +20,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "cxxopts.hpp"
 #include "test_utils.h"
 
 #ifndef DATATYPES_USING_DEFINED
@@ -29,8 +29,6 @@ using INOUT0_DATATYPE = std::bfloat16_t;
 using INOUT1_DATATYPE = std::bfloat16_t;
 using INOUT2_DATATYPE = std::bfloat16_t;
 #endif
-
-namespace po = boost::program_options;
 
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
@@ -42,8 +40,13 @@ int verify(int size, std::vector<T> A, std::vector<T> B, std::vector<T> C,
   for (uint32_t i = 0; i < size; i++) {
     T ref = A[i] + B[i];
     if (!test_utils::nearly_equal(ref, C[i], 0.00390625)) {
-      std::cout << "Error in output " << C[i] << " != " << ref << " from "
-                << A[i] << " + " << B[i] << std::endl;
+      if (errors < 100) {
+        std::cout << "Error in output " << C[i] << " != " << ref << " from "
+                  << A[i] << " * " << B[i] << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
+      }
       errors++;
     } else {
       if (verbosity > 1)
@@ -61,11 +64,11 @@ int main(int argc, const char *argv[]) {
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("Eltwise Add Test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -90,7 +93,7 @@ int main(int argc, const char *argv[]) {
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -247,7 +250,7 @@ int main(int argc, const char *argv[]) {
                                   vm["trace_file"].as<std::string>());
     }
 
-    // Accumulate run times
+    // Accuaddate run times
     float npu_time =
         std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
             .count();

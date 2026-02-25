@@ -10,7 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_1col) {
+  aie.device(NPUDEVICE) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
     %tile_0_2 = aie.tile(0, 2)
@@ -97,14 +97,11 @@ module {
       aie.end
     }
 
-    // the absolutely only thing that's relevant here is (MM2S, 0, 0) and (S2MM, 0, 0)
-    memref.global "public" @data_in : memref<1xi32>
-    memref.global "public" @data_out : memref<1xi32>
-    aie.shim_dma_allocation @data_in(MM2S, 0, 0)
-    aie.shim_dma_allocation @data_out(S2MM, 0, 0)
-    aiex.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @data_in} : memref<64xi32>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg2[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 1 : i64, metadata = @data_out, issue_token = true} : memref<64xi32>
+    aie.shim_dma_allocation @data_in (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @data_out (%tile_0_0, S2MM, 0)
+    aie.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @data_in} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 1 : i64, metadata = @data_out, issue_token = true} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @data_out}
     }
   }

@@ -1,4 +1,4 @@
-cmake==3.27.9
+cmake>=3.30
 dataclasses
 importlib-metadata
 ninja
@@ -6,5 +6,6 @@ numpy
 pip
 pybind11[global]>=2.10.4
 rich
-setuptools>=42
+setuptools>=61.0
 wheel
+nanobind>=2.5

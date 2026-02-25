@@ -11,15 +11,27 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
 #include "mlir/Transforms/InliningUtils.h"
 
-#include <algorithm>
+#include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/TypeSize.h"
+
+#include <cstdint>
+#include <numeric>
 
 using namespace mlir;
 using namespace xilinx;
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.cpp.inc"
+
+#define GET_TYPEDEF_CLASSES
+#include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
 
 namespace xilinx::AIEX {
 
@@ -29,19 +41,16 @@ void AIEXDialect::initialize() {
 #define GET_OP_LIST
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
       >();
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "aie/Dialect/AIEX/IR/AIEXTypes.cpp.inc"
+      >();
 }
 
 } // namespace xilinx::AIEX
 
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIEX/IR/AIEX.cpp.inc"
-
-uint64_t AIEX::getBufferDescriptorAddressRegisterAddress(
-    const AIE::AIETargetModel &tm, unsigned bd_id, unsigned col, unsigned row) {
-  assert(bd_id < tm.getNumBDs(col, row));
-  return ((col & 0xff) << tm.getColumnShift()) |
-         ((row & 0xff) << tm.getRowShift()) | (0x1D004 + bd_id * 0x20);
-}
 
 /* Return the correct values to write to the hardware registers to configure
   strides and wraps given the input user-facing strides and wraps.
@@ -77,7 +86,8 @@ uint64_t AIEX::getBufferDescriptorAddressRegisterAddress(
   hardware does not support a 0 stride (repeat).
   */
 void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
-                                   mlir::MemRefType referencedBufType,
+                                   mlir::Operation *op,
+                                   mlir::BaseMemRefType referencedBufType,
                                    llvm::SmallVector<int64_t, 4> inputSizes,
                                    llvm::SmallVector<int64_t, 4> inputStrides,
                                    llvm::SmallVector<int64_t, 4> &sizes,
@@ -86,7 +96,9 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   assert(sizes.size() == 4);
   assert(strides.size() == 4);
 
-  auto elemWidth = referencedBufType.getElementTypeBitWidth();
+  DataLayout dataLayout = DataLayout::closest(op);
+  auto elemWidth =
+      dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
   // Output strides and sizes are default-initialized to 0
@@ -101,7 +113,9 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
 
   // d0_size, d0_stride
   sizes[0] = inputSizes[0] * elemWidth / addressGranularity;
-  if (inputStrides[0] * elemWidth < addressGranularity) {
+  if (inputStrides[0] * elemWidth < addressGranularity ||
+      (elemWidth > addressGranularity)) {
+    // First check:
     // While the hardware cannot transfer less than addressGranularity bits at
     // a time, the user may expresses a contiguous transfer of multiple
     // elements with a stride smaller than addressGranularity. We can thus set
@@ -109,6 +123,16 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
     // The verification function should ensure that
     //    inputStrides[0] * elemWidth < addressGranularity
     //    iff. inputSize[0] * elemWidth > addressGranularity.
+    // Second check:
+    // If the element width is larger than addressGranularity, we need to make
+    // sure that all bytes are properly copied and therefore the stride must be
+    // set to 1 (encoded in hardware as 0).
+    // The verification function should ensure that
+    //     inputStrides[0] * elemWidth % addressGranularity == 0
+    //     && inputStrides[0] == 1 if elemWidth > addressGranularity
+    // This makes it impossible to have a stride greater than 1 for
+    // elemWidths bigger than addressGranularity, even if they are a multiple of
+    // it. Such operations should make use of an additional dimension instead.
     strides[0] = 0;
   } else {
     strides[0] = inputStrides[0] * elemWidth / addressGranularity - 1;
@@ -146,7 +170,7 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
 
 mlir::LogicalResult
 AIEX::verifyStridesWraps(mlir::Operation *forOp,
-                         mlir::MemRefType referencedBufType, int tileCol,
+                         mlir::BaseMemRefType referencedBufType, int tileCol,
                          int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
                          llvm::SmallVector<int64_t, 4> inputStrides,
                          llvm::SmallVector<int64_t, 4> hardwareSizes,
@@ -154,7 +178,9 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
                          bool skipTransformationChecks) {
   const auto &targetModel = AIE::getTargetModel(forOp);
   auto addressGranularity = targetModel.getAddressGenGranularity();
-  auto elemWidth = referencedBufType.getElementTypeBitWidth();
+  DataLayout dataLayout = DataLayout::closest(forOp);
+  auto elemWidth =
+      dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
 
   uint32_t wrap_bits = 0;
   uint32_t step_bits = 0;
@@ -307,9 +333,8 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
         return getConstantIntValue(s).value();
       });
   size_t offset = 0;
-  MemRefType my_memref = getMemref().getType();
   size_t R = offsets.size();
-  size_t el_bit_width = my_memref.getElementTypeBitWidth();
+  size_t el_bit_width = getElementTypeBitwidth();
   assert(el_bit_width % 8 == 0 &&
          "Expected Memref element bitwidth to be multiple of 8.");
   size_t S = el_bit_width / 8;
@@ -335,17 +360,49 @@ bool AIEX::NpuDmaMemcpyNdOp::isLinearTransferWithoutTransformation() {
           inputStrides[1] == 0 && inputStrides[2] == 0);
 }
 
+// Helper method to check if a requested burst length is supported by the target
+// model. Returns an error message if the burst length is not supported or an
+// empty option otherwise.
+static std::optional<std::string>
+checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
+                 uint32_t requestedBurstLength) {
+  if (requestedBurstLength != 0) {
+    auto bel = targetModel.getShimBurstEncodingsAndLengths();
+    auto pair = std::find_if(bel.begin(), bel.end(),
+                             [=](const std::pair<uint32_t, uint32_t> &p) {
+                               return p.second == requestedBurstLength;
+                             });
+
+    if (pair == bel.end()) {
+      std::string errorMessage =
+          "Requested burst length is not supported by the target. "
+          "Supported burst lengths:";
+
+      errorMessage =
+          std::accumulate(bel.begin(), bel.end(), errorMessage,
+                          [](const std::string &a, auto b) {
+                            return a + " " + std::to_string(b.second);
+                          });
+
+      return errorMessage;
+    }
+  }
+
+  return std::nullopt;
+}
+
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
-  MemRefType buffer = getMemref().getType();
+  BaseMemRefType buffer = getMemref().getType();
   const auto &targetModel = AIE::getTargetModel(*this);
   auto addressGranularity = targetModel.getAddressGenGranularity();
 
-  if (buffer.getElementTypeBitWidth() > addressGranularity) {
+  if (getElementTypeBitwidth() > addressGranularity) {
     return emitOpError("Maximum element bit width allowed is ")
            << addressGranularity << "bits. ";
-  } else if (buffer.hasStaticShape() &&
-             (buffer.getNumElements() * buffer.getElementTypeBitWidth()) <
-                 addressGranularity) {
+  }
+  if (buffer.hasStaticShape() &&
+      (buffer.getNumElements() * getElementTypeBitwidth()) <
+          addressGranularity) {
     return emitOpError("Minimum data transfer size required is ")
            << addressGranularity << "bits. ";
   }
@@ -372,9 +429,14 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       });
   llvm::SmallVector<int64_t, 4> hardwareSizes(4);
   llvm::SmallVector<int64_t, 4> hardwareStrides(4);
-  getHardwareStridesWraps(targetModel, buffer, inputSizes, inputStrides,
-                          hardwareSizes, hardwareStrides);
+  getHardwareStridesWraps(targetModel, getOperation(), buffer, inputSizes,
+                          inputStrides, hardwareSizes, hardwareStrides);
   int64_t offset = getOffsetInBytes();
+
+  auto errorMessage = checkBurstLength(targetModel, getBurstLength());
+  if (errorMessage.has_value()) {
+    return emitOpError(errorMessage.value());
+  }
 
   // The experimental HSA target uses this op on AIE1, skip all the AIE2
   // specific checks
@@ -391,11 +453,21 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   // even if it exceeds the maximum stride/wrap size of any one dimension,
   // and simply do not lower any data layout transformations, since there is
   // no other way to express this at the dma_memcpy_nd interface otherwise.
-  bool skipTransformationChecks = isLinearTransferWithoutTransformation();
-  if (failed(verifyStridesWraps(*this, buffer, getX(), getY(), inputSizes,
-                                inputStrides, hardwareSizes, hardwareStrides,
-                                skipTransformationChecks))) {
-    return failure();
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+          dev, getMetadata().getRootReference())) {
+    AIE::TileOp tile = allocOp.getTileOp();
+    if (!tile) {
+      return emitOpError("shim DMA allocation must reference a valid TileOp");
+    }
+    int col = tile.getCol();
+    int row = tile.getRow();
+    bool skipTransformationChecks = isLinearTransferWithoutTransformation();
+    if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
+                                  inputStrides, hardwareSizes, hardwareStrides,
+                                  skipTransformationChecks))) {
+      return failure();
+    }
   }
 
   // packet header
@@ -447,6 +519,10 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
       (getD0Size() >= 1) && (getD1Size() == 1) && (getIterationSize() == 0);
   if (getBdId() > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
+  if (getPacketId() > 31)
+    return emitOpError("Packet ID exceeds the maximum supported by 5 bits.");
+  if (getPacketType() > 7)
+    return emitOpError("Packet Type exceeds the maximum supported by 3 bits.");
   if (!isLinearTransfer && getD0Size() > 0x3FF)
     return emitOpError("D0 Size exceeds the [0:1023] range.");
   if (getD0Stride() > 0xFFFFF)
@@ -468,77 +544,128 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
        getD1ZeroBefore() != 0 || getD1ZeroAfter() != 0 ||
        getD2ZeroBefore() != 0 || getD2ZeroAfter() != 0))
     return emitOpError("ShimTile doesn't support zero padding.");
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// RuntimeSequenceOp
-//===----------------------------------------------------------------------===//
-
-ParseResult AIEX::RuntimeSequenceOp::parse(OpAsmParser &parser,
-                                           OperationState &result) {
-
-  StringAttr nameAttr;
-  (void)parser.parseOptionalSymbolName(
-      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
-
-  SmallVector<OpAsmParser::Argument> entryArgs;
-
-  // Entry arguments,  e.g. (%addr: memref<1xi32>)
-  ParseResult argParseResult = parser.parseCommaSeparatedList(
-      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
-        OpAsmParser::Argument argument;
-        if (parser.parseArgument(argument, true, true)) {
-          return failure();
-        }
-        entryArgs.push_back(argument);
-        return success();
-      });
-  if (argParseResult) {
-    return argParseResult;
-  }
-
-  // Body
-  auto *body = result.addRegion();
-  ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
-  if (bodyParseResult) {
-    return bodyParseResult;
+  if (!targetModel.isShimNOCTile(getColumn(), getRow()) &&
+      getBurstLength() != 0)
+    return emitOpError("Only ShimTiles support burst length.");
+  auto errorMessage = checkBurstLength(targetModel, getBurstLength());
+  if (errorMessage.has_value()) {
+    return emitOpError(errorMessage.value());
   }
 
   return success();
 }
 
-void AIEX::RuntimeSequenceOp::print(OpAsmPrinter &printer) {
-  Region &body = getRegion();
+//===----------------------------------------------------------------------===//
+// NpuWrite32Op
+//===----------------------------------------------------------------------===//
 
-  auto nameAttr = (*this)->getAttrOfType<StringAttr>(
-      mlir::SymbolTable::getSymbolAttrName());
-  if (nameAttr) {
-    printer << ' ';
-    printer.printSymbolName(nameAttr);
-  }
-
-  printer << '(';
-  for (unsigned i = 0, n = body.getNumArguments(); i < n; i++) {
-    if (i > 0) {
-      printer << ", ";
-    }
-    printer.printRegionArgument(body.getArgument(i));
-  }
-  printer << ')';
-
-  printer << ' ';
-  printer.printRegion(body, false, true);
-}
-
-LogicalResult AIEX::RuntimeSequenceOp::verify() {
-  AIE::DeviceOp device = (*this)->getParentOfType<AIE::DeviceOp>();
+template <typename T>
+static std::optional<uint32_t> getAbsoluteAddress(T *op) {
+  AIE::DeviceOp device =
+      op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
-    // this check is redudnant with the HasParent trait, but can't hurt
-    (*this)->emitOpError() << "must be inside AIE device operation.";
-    return failure();
+    op->emitError("Must be inside a device.");
+    return std::nullopt;
   }
-  return success();
+  const AIE::AIETargetModel &tm = device.getTargetModel();
+
+  uint32_t address = 0;
+
+  // If blockwrite references a buffer, the given address is understood to be
+  // relative to the buffer's start address.
+  if (op->getBuffer()) {
+    AIE::BufferOp buffer = device.lookupSymbol<AIE::BufferOp>(*op->getBuffer());
+    if (!buffer) {
+      op->emitError() << "buffer '" << *op->getBuffer()
+                      << "' not found in device";
+      return std::nullopt;
+    }
+
+    if (!buffer.getAddress()) {
+      mlir::InFlightDiagnostic err =
+          op->emitError("referenced buffer must have address assigned");
+      err.attachNote(buffer.getLoc()) << "This buffer must have an address.";
+      return std::nullopt;
+    }
+
+    uint32_t col = buffer.getTileOp().getCol();
+    uint32_t row = buffer.getTileOp().getRow();
+    address = static_cast<uint32_t>(*buffer.getAddress()) +
+              op->getAddress() * sizeof(uint32_t);
+    address = ((col & 0xff) << tm.getColumnShift()) |
+              ((row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
+  } else { // otherwise, the given address is absolute
+    address = op->getAddress();
+    std::optional<uint32_t> col = op->getColumn();
+    std::optional<uint32_t> row = op->getRow();
+    if (col && row) {
+      // If col and row are set, only the lower 20 bits of the address are
+      // used, and col and row dictate the upper bits (ignored)
+      address = ((*col & 0xff) << tm.getColumnShift()) |
+                ((*row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
+    }
+  }
+
+  return address;
+}
+
+std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuMaskWrite32Op
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuBlockWriteOp
+//===----------------------------------------------------------------------===//
+
+std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
+  return ::getAbsoluteAddress(this);
+}
+
+DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
+  Value memref = this->getData();
+  DataLayout dataLayout = DataLayout::closest(*this);
+  int64_t width = dataLayout.getTypeSizeInBits(
+      cast<MemRefType>(memref.getType()).getElementType());
+  if (width != 32) {
+    emitWarning("Only 32-bit data type is supported for now");
+    return nullptr;
+  }
+
+  memref::GetGlobalOp getGlobal = memref.getDefiningOp<memref::GetGlobalOp>();
+  if (!getGlobal) {
+    emitError("Only MemRefs from memref.get_global are supported");
+    return nullptr;
+  }
+
+  auto global = dyn_cast_if_present<memref::GlobalOp>(
+      (*this)->getParentOfType<AIE::DeviceOp>().lookupSymbol(
+          getGlobal.getName()));
+  if (!global) {
+    emitError("Global symbol not found");
+    return nullptr;
+  }
+
+  auto initVal = global.getInitialValue();
+  if (!initVal) {
+    emitError("Global symbol has no initial value");
+    return nullptr;
+  }
+
+  auto data = dyn_cast<DenseIntElementsAttr>(*initVal);
+  if (!data) {
+    emitError("Global symbol initial value is not a dense int array");
+    return nullptr;
+  }
+
+  return data;
 }
 
 //===----------------------------------------------------------------------===//
@@ -604,6 +731,26 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
           "entry block.");
       return failure();
     }
+
+    const AIE::AIETargetModel &targetModel =
+        AIE::getTargetModel(getOperation());
+
+    // This is a layering violation on the DMABDOps, but they are never verified
+    // otherwise Because DMAConfigureTaskOps are not yet merged into the AIE
+    // dialect. The normal DMABDOp verify operation will skip over any BD inside
+    // a DMAConfigureTaskOp
+    LogicalResult result = success();
+    block.walk([&](AIE::DMABDOp bd) {
+      if (bd.getBurstLength() != 0 &&
+          !targetModel.isShimNOCTile(getTileID().col, getTileID().row)) {
+        bd.emitOpError("Burst length is only supported in Shim NOC tiles that "
+                       "are connected to the memory-mapped NOC.");
+        result = failure();
+      }
+    });
+    if (failed(result)) {
+      return result;
+    }
   }
   return success();
 }
@@ -655,4 +802,240 @@ uint32_t AIEX::NpuControlPacketOp::getColumnFromAddr() {
   uint32_t addr = getAddress();
   uint32_t colInt = (addr >> targetModel.getColumnShift()) & 0x1f;
   return colInt;
+}
+
+//===----------------------------------------------------------------------===//
+// SetLockOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::SetLockOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return emitOpError("SetLockOp is not supported on AIE1.");
+
+  if (getValue() > targetModel.getMaxLockValue())
+    return emitOpError("Lock value exceeds the maximum value of " +
+                       std::to_string(targetModel.getMaxLockValue()));
+
+  auto lockOp = getLockOp();
+  auto lockIDOpt = getLockOp().getLockID();
+  // Note that the lockID may not be assigned initially, so lets wait until it
+  // is to verify the lockID dependent conditions
+  if (!lockIDOpt) {
+    return success();
+  }
+
+  auto col = lockOp.colIndex();
+  auto row = lockOp.rowIndex();
+  uint32_t lockID = lockOp.getLockIDValue();
+
+  if (lockID >= targetModel.getNumLocks(col, row)) {
+    return emitOpError("Lock ID out of range for given tile. Max ID: " +
+                       std::to_string(targetModel.getNumLocks(col, row) - 1));
+  }
+
+  if (!targetModel.getLocalLockAddress(lockID, lockOp.getTileID())) {
+    return emitOpError("Invalid lock ID and tile combination when trying to "
+                       "retrieve the local lock address.");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// BlockFloatingPointType
+//===----------------------------------------------------------------------===//
+uint64_t AIEX::BlockFloatType::getTotalSizeInBits() const {
+  return getBlockSize() * getMantissaBits() + getExponentBits() +
+         getSubtileShiftBits();
+}
+
+llvm::TypeSize AIEX::BlockFloatType::getTypeSizeInBits(
+    const mlir::DataLayout &dataLayout,
+    mlir::DataLayoutEntryListRef params) const {
+  return llvm::TypeSize::getFixed(getTotalSizeInBits());
+}
+
+uint64_t AIEX::BlockFloatType::getABIAlignment(
+    const mlir::DataLayout &dataLayout,
+    mlir::DataLayoutEntryListRef params) const {
+  // For the purposes of the data movement operations, we want all types to be
+  // packed <=> ABI alignment is 1.
+  return 1;
+}
+
+std::optional<AIEX::BlockFloatType::BlockFormat>
+AIEX::BlockFloatType::getBlockFormat(StringRef blockType) {
+  static const llvm::StringMap<AIEX::BlockFloatType::BlockFormat>
+      blockFormatsMap = {
+          {"v8bfp16ebs8", {8, 8, 8, 0}},
+          {"v16bfp16ebs16", {16, 8, 8, 0}},
+      };
+
+  auto it = blockFormatsMap.find(blockType);
+  if (it != blockFormatsMap.end()) {
+    return it->second;
+  }
+
+  return std::nullopt;
+}
+
+LogicalResult
+AIEX::BlockFloatType::verify(function_ref<InFlightDiagnostic()> emitError,
+                             StringRef block_type) {
+  if (!getBlockFormat(block_type))
+    return emitError() << "Invalid block type: " << block_type
+                       << ". Known types are: v8bfp16ebs8, v16bfp16ebs16.";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ConfigureOp
+//===----------------------------------------------------------------------===//
+
+AIE::DeviceOp AIEX::ConfigureOp::getReferencedDeviceOp() {
+  ModuleOp moduleOp = this->getOperation()->getParentOfType<ModuleOp>();
+  if (!moduleOp) {
+    emitError("aiex.configure must be inside of a module");
+    return nullptr;
+  }
+  Operation *maybeReferencedDevice =
+      SymbolTable::lookupSymbolIn(moduleOp.getOperation(), getSymbolAttr());
+  if (!maybeReferencedDevice) {
+    emitError("No such device: '") << getSymbolAttr() << "'";
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice =
+      llvm::dyn_cast<AIE::DeviceOp>(maybeReferencedDevice);
+  if (!referencedDevice) {
+    emitError("Not a device: '") << getSymbolAttr() << "'";
+    return nullptr;
+  }
+  return referencedDevice;
+}
+
+LogicalResult AIEX::ConfigureOp::verify() {
+  AIE::DeviceOp parentDev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  AIE::DeviceOp referencedDev = getReferencedDeviceOp();
+  if (!referencedDev) {
+    return failure();
+  }
+  if (parentDev.getDevice() != referencedDev.getDevice()) {
+    emitError("Device types do not match: '")
+        << AIE::stringifyAIEDevice(parentDev.getDevice()) << "' vs. '"
+        << AIE::stringifyAIEDevice(referencedDev.getDevice()) << "'";
+    return failure();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// RunOp
+//===----------------------------------------------------------------------===//
+
+AIE::DeviceOp AIEX::RunOp::getCalleeDeviceOp() {
+  AIEX::ConfigureOp configureOp =
+      getOperation()->getParentOfType<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  return referencedDevice;
+}
+
+AIE::RuntimeSequenceOp AIEX::RunOp::getCalleeRuntimeSequenceOp() {
+  AIEX::ConfigureOp configureOp =
+      getOperation()->getParentOfType<AIEX::ConfigureOp>();
+  if (!configureOp) {
+    return nullptr;
+  }
+  AIE::DeviceOp referencedDevice = configureOp.getReferencedDeviceOp();
+  if (!referencedDevice) {
+    return nullptr;
+  }
+
+  Operation *maybeRuntimeSequence =
+      SymbolTable::lookupSymbolIn(referencedDevice, getRuntimeSequenceSymbol());
+
+  if (!maybeRuntimeSequence) {
+    return nullptr;
+  }
+  AIE::RuntimeSequenceOp runtimeSequence =
+      llvm::dyn_cast<AIE::RuntimeSequenceOp>(maybeRuntimeSequence);
+  if (!runtimeSequence) {
+    return nullptr;
+  }
+
+  return runtimeSequence;
+}
+
+LogicalResult AIEX::RunOp::verify() {
+  AIE::DeviceOp calleeDevice = getCalleeDeviceOp();
+  if (!calleeDevice) {
+    return emitOpError() << "No such device: '" << getRuntimeSequenceSymbol()
+                         << "'";
+  }
+
+  AIE::RuntimeSequenceOp calleeRuntimeSequence = getCalleeRuntimeSequenceOp();
+  if (!calleeRuntimeSequence) {
+    auto err = emitError() << "No such runtime sequence for device '"
+                           << calleeDevice.getSymName() << "': '"
+                           << getRuntimeSequenceSymbol() << "'";
+    err.attachNote(calleeDevice.getLoc())
+        << "This device does not have a '" << getRuntimeSequenceSymbol()
+        << "' runtime sequence";
+    return err;
+  }
+
+  // Validate argument types match the callee's parameters
+  Block &calleeBody = calleeRuntimeSequence.getBody().front();
+  ValueRange values = getArgs();
+
+  if (calleeBody.getNumArguments() != values.size()) {
+    return emitOpError() << "argument count mismatch";
+  }
+
+  for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
+    BlockArgument arg = calleeBody.getArgument(i);
+    Value val = values[i];
+
+    if (arg.getType() != val.getType()) {
+      return emitOpError() << "argument " << i << " type mismatch: "
+                           << "expected " << arg.getType() << " but got "
+                           << val.getType();
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuLoadPdiOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuLoadPdiOp::canonicalize(AIEX::NpuLoadPdiOp op,
+                                               PatternRewriter &rewriter) {
+  // Check for back-to-back identical load_pdi ops and remove duplicates
+  Operation *nextOp = op->getNextNode();
+  if (!nextOp)
+    return failure();
+
+  // Check if next op is also a NpuLoadPdiOp
+  auto nextLoadPdi = dyn_cast<AIEX::NpuLoadPdiOp>(nextOp);
+  if (!nextLoadPdi)
+    return failure();
+
+  // Check if they are identical (all attributes match)
+  if (op.getDeviceRefAttr() == nextLoadPdi.getDeviceRefAttr() &&
+      op.getId() == nextLoadPdi.getId() &&
+      op.getSize() == nextLoadPdi.getSize() &&
+      op.getAddress() == nextLoadPdi.getAddress()) {
+    // Erase the first one, keeping the second
+    rewriter.eraseOp(op);
+    return success();
+  }
+
+  return failure();
 }

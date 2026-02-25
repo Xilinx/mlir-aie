@@ -14,18 +14,16 @@
 #ifndef MATRIX_MULTIPLICATION_H
 #define MATRIX_MULTIPLICATION_H
 
-#include <boost/program_options.hpp>
+#include "cxxopts.hpp"
 #include <cmath>
 
 namespace matmul_common {
-
-namespace po = boost::program_options;
 
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
 
-void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
+void check_arg_file_exists(cxxopts::ParseResult &vm_in, std::string name) {
   if (!vm_in.count(name)) {
     throw std::runtime_error("Error: no " + name + " file was provided\n");
   } else {
@@ -38,38 +36,39 @@ void check_arg_file_exists(po::variables_map &vm_in, std::string name) {
   }
 }
 
-void add_default_options(po::options_description &desc) {
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions sent to the NPU")(
-      "verify", po::value<bool>()->default_value(true),
-      "whether to verify the AIE computed output")(
-      "iters", po::value<int>()->default_value(1))(
-      "warmup", po::value<int>()->default_value(0))(
-      "trace_sz,t", po::value<int>()->default_value(0))(
-      "trace_file", po::value<std::string>()->default_value("trace.txt"),
-      "where to store trace output");
+void add_default_options(cxxopts::Options &options) {
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i",
+      "path of file containing userspace instructions sent to the NPU",
+      cxxopts::value<std::string>())(
+      "verify", "whether to verify the AIE computed output",
+      cxxopts::value<bool>()->default_value("true"))(
+      "iters", "number of iterations",
+      cxxopts::value<int>()->default_value("1"))(
+      "warmup", "number of warmup iterations",
+      cxxopts::value<int>()->default_value("0"))(
+      "trace_sz,t", "trace size", cxxopts::value<int>()->default_value("0"))(
+      "trace_file", "where to store trace output",
+      cxxopts::value<std::string>()->default_value("trace.txt"));
 }
 
-void parse_options(int argc, const char *argv[], po::options_description &desc,
-                   po::variables_map &vm) {
+void parse_options(int argc, const char *argv[], cxxopts::Options &options,
+                   cxxopts::ParseResult &vm) {
   try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
+    vm = options.parse(argc, argv);
 
     if (vm.count("help")) {
-      std::cout << desc << "\n";
+      std::cout << options.help() << "\n";
       std::exit(1);
     }
   } catch (const std::exception &ex) {
     std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
+    std::cerr << "Usage:\n" << options.help() << "\n";
     std::exit(1);
   }
 

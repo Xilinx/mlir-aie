@@ -14,7 +14,7 @@ on:
       DEBUG_OS:
         description: 'which runner os to run the tmate action in (if the tmate action is run)'
         type: string
-        default: 'windows-2019'
+        default: 'windows-2022'
         required: false
       DEBUG_ARCH:
         description: 'which runner arch to run the tmate action in (if the tmate action is run)'
@@ -51,7 +51,12 @@ jobs:
         run: |
           if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
             sudo apt install jq
-            AIE_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/Xilinx/mlir-aie/commits/${{ github.head_ref || github.ref_name }} | jq -r '.sha[:8]')
+            if [ x"${{ github.event_name }}" == x"pull_request" ]; then
+              AIE_PROJECT_COMMIT="${{ github.event.pull_request.head.sha }}"
+              AIE_PROJECT_COMMIT="${AIE_PROJECT_COMMIT:0:8}"
+            else
+              AIE_PROJECT_COMMIT=$(curl -s https://api.github.com/repos/Xilinx/mlir-aie/commits/${{ github.ref_name }} | jq -r '.sha[:8]')
+            fi
           else
             AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
           fi
@@ -76,11 +81,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
@@ -95,15 +100,15 @@ jobs:
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
-#          - OS: ubuntu-20.04
+#          - OS: ubuntu-22.04
 #            ARCH: aarch64
 #            ENABLE_RTTI: ON
 
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
 
@@ -118,7 +123,7 @@ jobs:
 
 # disabled because openssl dep isn't being compiled from source
 # (and hence system openssl can't be linked against during cross-compile)
-#          - OS: ubuntu-20.04
+#          - OS: ubuntu-22.04
 #            ARCH: aarch64
 #            ENABLE_RTTI: OFF
 
@@ -127,7 +132,7 @@ jobs:
     - name: set ENV
       shell: bash
       run: |
-        
+
         PIP_FIND_LINKS_URL="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
         if [ x"${{ github.event_name }}" == x"pull_request" ]; then
           PIP_FIND_LINKS_URL="$PIP_FIND_LINKS_URL https://github.com/Xilinx/mlir-aie/releases/expanded_assets/dev-wheels"
@@ -139,7 +144,7 @@ jobs:
       if: contains(matrix.OS, 'macos')
       shell: bash
       run: |
-        
+
         echo "OSX_VERSION=$(sw_vers -productVersion)" | tee -a $GITHUB_ENV
 
     - name: Checkout actions
@@ -173,15 +178,15 @@ jobs:
       shell: bash
       working-directory: ${{ env.TEMP }}
       run: |
-        
+
         ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
-        
-        if [ x"${{ matrix.OS }}" == x"windows-2019" ]; then
+
+        if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_aie_wheels"
         else
           WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
         fi
-        
+
         echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
 
     - name: Get AIE
@@ -189,34 +194,41 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
-        git clone --recursive https://github.com/${{ github.repository }}.git
+
+        AIE_REPO="${{ github.event.pull_request.head.repo.full_name || github.repository }}"
+        git clone --recursive https://github.com/${AIE_REPO}.git
         pushd mlir-aie
         git reset --hard ${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }}
         git submodule update
         popd
 
+    - name: Copy clone-llvm.sh for wheel build
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: cp ../clone-llvm.sh .
+
     # build
 
     - name: build distro wheels
-      if: ${{ matrix.OS != 'ubuntu-20.04' || matrix.ARCH != 'aarch64' }}
+      if: ${{ matrix.OS != 'ubuntu-22.04' || matrix.ARCH != 'aarch64' }}
       shell: bash
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
-        
+
         export PIP_NO_BUILD_ISOLATION=false
-        
+
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
         HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+        CIBW_CONTAINER_ENGINE_ARGS="-v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:/host${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}" \
         AIE_PROJECT_COMMIT=${{ needs.get_aie_project_commit.outputs.AIE_PROJECT_COMMIT }} \
         MATRIX_OS=${{ matrix.OS }} \
         PARALLEL_LEVEL=2 \
         cibuildwheel --output-dir wheelhouse
 
     - name: build aarch ubuntu wheel
-      if: ${{ matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'aarch64' }}
+      if: ${{ matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'aarch64' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
@@ -224,14 +236,15 @@ jobs:
         pushd /usr/include/openssl
         sudo ln -s /usr/include/x86_64-linux-gnu/openssl/opensslconf.h opensslconf.h
         popd
-        
+
         export PIP_NO_BUILD_ISOLATION=false
-        
+
+        pip install --upgrade pip
         pip install -r requirements.txt
-        HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+        pip install -r python/requirements_dev.txt
         pip install importlib-metadata
         CIBW_ARCHS=${{ matrix.ARCH }} MATRIX_OS=${{ matrix.OS }} ./scripts/download_mlir.sh
-        
+
         CIBW_ARCHS=${{ matrix.ARCH }} \
         CMAKE_GENERATOR=Ninja \
         DATETIME=${{ needs.get_aie_project_commit.outputs.DATETIME }} \
@@ -244,7 +257,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
+
         rm -rf mlir-aie
         rm -rf build
 
@@ -252,7 +265,7 @@ jobs:
       if: contains(inputs.MATRIX_OS, 'ubuntu')
       shell: bash
       run: |
-        
+
         docker system prune -a -f
 
     - name: Get wheel version
@@ -260,16 +273,17 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
+        python -m pip install --upgrade pip
         pip install pkginfo
         WHL=$(ls wheelhouse/mlir_aie*whl)
         echo "MLIR_AIE_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
 
     - name: Download cache from container ubuntu
-      if: (matrix.OS == 'ubuntu-20.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      if: (matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'x86_64') && (success() || failure())
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
+
         ccache -s
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
         rm -rf $HOST_CCACHE_DIR
@@ -285,7 +299,7 @@ jobs:
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
+
         ccache --print-stats
         HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
         # Set the timestamp to the beginning of the current hour.
@@ -293,27 +307,27 @@ jobs:
 
     # The important parts of the wheels (all the LLVM/MLIR archives) have nothing to do with the
     # python version. With py3-none you can pip install them in any python venv. Unfortunately though this does
-    # mean that the python bindings themselves will confusingly not work in other envs (!=3.10)
+    # mean that the python bindings themselves will confusingly not work in other envs (!=3.12)
     - name: rename non-windows
-      if: ${{ matrix.OS == 'ubuntu-20.04' || matrix.OS == 'macos-12' || matrix.OS == 'macos-14' }}
+      if: ${{ matrix.OS == 'ubuntu-22.04' || matrix.OS == 'macos-12' || matrix.OS == 'macos-14' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       shell: bash
       run: |
-        
-        rename 's/cp310-cp310/py3-none/' wheelhouse/mlir_aie*whl
-        
-        if [ x"${{ matrix.OS }}" == x"ubuntu-20.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
+
+        rename 's/cp312-cp312/py3-none/' wheelhouse/mlir_aie*whl
+
+        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ] && [ x"${{ matrix.ARCH }}" == x"aarch64" ]; then
           rename 's/x86_64/aarch64/' wheelhouse/mlir_aie*whl
         fi
 
     - name: rename windows
-      if: ${{ matrix.OS == 'windows-2019' }}
+      if: ${{ matrix.OS == 'windows-2022' }}
       working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
       run: |
-        ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp310-cp310', 'py3-none' }
+        ls wheelhouse/mlir_aie*whl | Rename-Item -NewName {$_ -replace 'cp312-cp312', 'py3-none' }
 
     - name: Upload distro wheels
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
         name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
@@ -329,31 +343,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-# Disabled because macos mlir wheels are out of date, and we don't currently build for them
-#          - OS: macos-12
-#            ARCH: x86_64
-#            ENABLE_RTTI: ON
-
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
-
-# Disabled because macos mlir wheels are out of date, and we don't currently build for them
-#          - OS: macos-12
-#            ARCH: x86_64
-#            ENABLE_RTTI: OFF
 
     steps:
       - name: Checkout reqs
@@ -361,30 +365,27 @@ jobs:
         with:
           sparse-checkout: |
             python/requirements.txt
-            python/requirements_extras.txt
+            python/requirements_dev.txt
 
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
           path: dist
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: '3.12'
 
       - name: test
         shell: bash
         run: |
+          python -m pip install --upgrade pip
           pip install -r python/requirements.txt
-          HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+          pip install -r python/requirements_dev.txt
           unzip -o -q dist/mlir_aie\*.whl
-          
-          if [ x"${{ matrix.ENABLE_RTTI }}" == x"ON" ]; then
-            export PYTHONPATH=mlir_aie/python
-          else
-            export PYTHONPATH=mlir_aie_no_rtti/python
-          fi
-          
+
+          export PYTHONPATH=mlir_aie/python
+
           python -c 'import aie.ir'
           python -c 'import aie.extras'
           python -c 'import aie.helpers'
@@ -403,50 +404,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: ON
 
-#          - OS: ubuntu-20.04
+#          - OS: ubuntu-22.04
 #            ARCH: aarch64
 #            ENABLE_RTTI: ON
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: ON
 
-# Disabled because macos mlir wheels are out of date, and we don't currently build for them
-#          - OS: macos-12
-#            ARCH: x86_64
-#            ENABLE_RTTI: ON
-
-#          - OS: macos-14
-#            ARCH: arm64
-#            ENABLE_RTTI: ON
-
-          - OS: ubuntu-20.04
+          - OS: ubuntu-22.04
             ARCH: x86_64
             ENABLE_RTTI: OFF
 
-#          - OS: ubuntu-20.04
+#          - OS: ubuntu-22.04
 #            ARCH: aarch64
 #            ENABLE_RTTI: OFF
 
-          - OS: windows-2019
+          - OS: windows-2022
             ARCH: AMD64
             ENABLE_RTTI: OFF
-
-# Disabled because macos mlir wheels are out of date, and we don't currently build for them
-#          - OS: macos-12
-#            ARCH: x86_64
-#            ENABLE_RTTI: OFF
-
-#          - OS: macos-14
-#            ARCH: arm64
-#            ENABLE_RTTI: OFF
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           # unpacks default artifact into dist/
           # if `name: artifact` is omitted, the action will create extra parent dir
@@ -463,4 +446,4 @@ jobs:
           removeArtifacts: false
           allowUpdates: true
           replacesArtifacts: true
-          makeLatest: true
+          makeLatest: false

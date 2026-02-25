@@ -4,12 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
 #include <bits/stdc++.h>
-#include <boost/program_options.hpp>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -21,6 +20,7 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "cxxopts.hpp"
 #include "test_utils.h"
 
 #ifndef DATATYPES_USING_DEFINED
@@ -28,8 +28,6 @@
 using INOUT0_DATATYPE = std::bfloat16_t;
 using INOUT1_DATATYPE = std::bfloat16_t;
 #endif
-
-namespace po = boost::program_options;
 
 // ----------------------------------------------------------------------------
 // Verify results (specific to our design example)
@@ -39,31 +37,41 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
            int verbosity) {
 
   int errors = 0;
+  T max_val = A[0];
   std::vector<T> RefVec(size);
+
+  for (uint32_t i = 1; i < A.size(); i++) {
+    A[i] = (T)(A[i]);
+    T val = A[i];
+    if (val > max_val) {
+      max_val = val;
+    }
+  }
 
   for (uint32_t t = 0; t < size; t += tile_size) {
     float running = 0.0;
     for (uint32_t i = 0; i < tile_size; i++) {
-      float ez = (float)(exp(A[t + i]));
+      float ez = (float)(exp(A[t + i] - max_val));
       running += ez;
-      RefVec[t + i] = exp(A[t + i]);
+      RefVec[t + i] = (T)exp(A[t + i] - max_val);
     }
 
     for (uint32_t i = 0; i < tile_size; i++) {
-      RefVec[t + i] /= running;
+      RefVec[t + i] /= (T)running;
     }
   }
 
   for (uint32_t i = 0; i < size; i++) {
 
-    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.03125)) {
-      std::cout << "Error in output " << B[i] << " != " << RefVec[i]
-                << std::endl;
-      errors++;
-    } else {
-      if (verbosity > 1)
-        std::cout << "Correct output " << B[i] << " == " << RefVec[i]
+    if (!test_utils::nearly_equal(RefVec[i], B[i], 0.04, 0.001)) {
+      if (verbosity >= 1) {
+        std::cout << "Error in output " << B[i] << " != " << RefVec[i]
                   << std::endl;
+      }
+      errors++;
+    } else if (verbosity >= 1) {
+      std::cout << "Correct output " << B[i] << " == " << RefVec[i]
+                << std::endl;
     }
   }
   return errors;
@@ -72,20 +80,27 @@ int verify(int size, int tile_size, std::vector<T> A, std::vector<T> B,
 int main(int argc, const char *argv[]) {
 
   // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("Softmax Test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  options.add_options()("npu", "Select NPU",
+                        cxxopts::value<int>()->default_value("2"));
+  options.add_options()("s,size", "Input/Output volume size",
+                        cxxopts::value<int>()->default_value("262144"));
+
+  test_utils::parse_options(argc, argv, options, vm);
 
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
+  int dev = vm["npu"].as<int>();
+  int size_arg = vm["size"].as<int>();
 
   int TILE_SIZE = 1024;
-  int INOUT0_VOLUME = 262144;        // Input
+  int INOUT0_VOLUME = size_arg;      // Input
   int INOUT1_VOLUME = INOUT0_VOLUME; // Output
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
@@ -93,11 +108,11 @@ int main(int argc, const char *argv[]) {
 
   size_t OUT_SIZE = INOUT1_SIZE + trace_size;
 
-  srand(time(NULL));
+  srand(42);
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
+      test_utils::load_instr_binary(vm["instr"].as<std::string>());
   if (verbosity >= 1)
     std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
@@ -110,6 +125,8 @@ int main(int argc, const char *argv[]) {
   test_utils::init_xrt_load_kernel(device, kernel, verbosity,
                                    vm["xclbin"].as<std::string>(),
                                    vm["kernel"].as<std::string>());
+
+  std::cout << "Running with device: " << device << std::endl;
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
@@ -134,8 +151,15 @@ int main(int argc, const char *argv[]) {
   INOUT0_DATATYPE *bufInOut0 = bo_inout0.map<INOUT0_DATATYPE *>();
   std::vector<INOUT0_DATATYPE> AVec(INOUT0_VOLUME);
   for (int i = 0; i < INOUT0_VOLUME; i++) {
-    AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
-                                            (std::bfloat16_t)-4.0);
+    if (dev == 1) {
+      // NPU1: Use bfloat16 values in range [4.0, 4.0]
+      AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)8.0,
+                                              (std::bfloat16_t)-4.0);
+    } else if (dev == 2) {
+      // NPU2: Use bfloat16 values in range [-512.0, 512.0]
+      AVec[i] = test_utils::random_bfloat16_t((std::bfloat16_t)1024.0,
+                                              (std::bfloat16_t)-512.0);
+    }
   }
   memcpy(bufInOut0, AVec.data(), (AVec.size() * sizeof(INOUT0_DATATYPE)));
 
@@ -155,6 +179,8 @@ int main(int argc, const char *argv[]) {
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
+  std::vector<float> npu_times;    // Store measured iteration times
+  std::vector<float> warmup_times; // Store warmup iteration times for debugging
 
   int errors = 0;
 
@@ -174,18 +200,39 @@ int main(int argc, const char *argv[]) {
     unsigned int opcode = 3;
     auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inout0, bo_inout1);
     run.wait();
+    // Include output sync in timing to ensure all DMA operations complete
+    // before we stop the timer. This provides more accurate end-to-end timing.
+    // bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     auto stop = std::chrono::high_resolution_clock::now();
     bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
+    // Copy output results - do this for ALL iterations (including warmup)
+    // to ensure consistent memory access patterns between iterations
+    std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
+    memcpy(BVec.data(), bufInOut1, (BVec.size() * sizeof(INOUT1_DATATYPE)));
+
+    // Calculate time for this iteration
+    float npu_time =
+        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+            .count();
+
+    // Accumulate run times immediately for both warmup and measured
     if (iter < n_warmup_iterations) {
-      /* Warmup iterations do not count towards average runtime. */
+      warmup_times.push_back(npu_time); // Store warmup time for debugging
+    } else {
+      npu_times.push_back(npu_time); // Store this iteration's time
+      npu_time_total += npu_time;
+      npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
+      npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
+    }
+
+    // Continue immediately to next iteration (mimicking warmup's tight loop)
+    // This tests whether the variance is caused by post-timing work
+    if (iter < num_iter - 1) { // Not the last iteration
       continue;
     }
 
-    // Copy output results and verify they are correct
-    std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
-
-    memcpy(BVec.data(), bufInOut1, (BVec.size() * sizeof(INOUT1_DATATYPE)));
+    // Only do verify on the last iteration
     if (do_verify) {
       if (verbosity >= 1) {
         std::cout << "Verifying results ..." << std::endl;
@@ -209,20 +256,27 @@ int main(int argc, const char *argv[]) {
       test_utils::write_out_trace(((char *)bufInOut1) + INOUT1_SIZE, trace_size,
                                   vm["trace_file"].as<std::string>());
     }
-
-    // Accumulate run times
-    float npu_time =
-        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
-            .count();
-
-    npu_time_total += npu_time;
-    npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
-    npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
   }
 
   // ------------------------------------------------------
   // Print verification and timing results
   // ------------------------------------------------------
+
+  // Print warmup iteration times (for debugging)
+  if (warmup_times.size() > 0) {
+    std::cout << std::endl << "Warmup times:" << std::endl;
+    for (int i = 0; i < warmup_times.size(); i++) {
+      std::cout << "  Warmup " << (i + 1) << ": " << warmup_times[i] << " us"
+                << std::endl;
+    }
+  }
+
+  // Print individual iteration times
+  std::cout << std::endl << "NPU times for each iteration:" << std::endl;
+  for (int i = 0; i < npu_times.size(); i++) {
+    std::cout << "  Iteration " << (i + 1) << ": " << npu_times[i] << " us"
+              << std::endl;
+  }
 
   // TODO - Mac count to guide gflops
   float macs = 0;

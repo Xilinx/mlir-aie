@@ -5,19 +5,19 @@
 #
 # (c) Copyright 2024 AMD Inc.
 
-# REQUIRES: ryzen_ai, valid_xchess_license
+# REQUIRES: ryzen_ai_npu1, valid_xchess_license
 #
 # RUN: xchesscc_wrapper aie2 -I %aietools/include -c %S/kernel.cc -o ./kernel.o
 # RUN: %python %S/aie2.py > ./aie2.mlir
 # RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
-# RUN: %run_on_npu ./test.exe -x final.xclbin -k MLIR_AIE -i insts.txt
+# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --dynamic-objFifos --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: %run_on_npu1% ./test.exe -x final.xclbin -k MLIR_AIE -i insts.bin
 
 import numpy as np
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.extras.context import mlir_mod_ctx
 
 N = 50

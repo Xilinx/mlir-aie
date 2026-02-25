@@ -22,11 +22,11 @@ from aie.dialects.aie import (
     WireBundle,
     packetflow,
     get_target_model,
+    dma_bd,
 )
 from aie.ir import InsertionPoint, Block
 from aie.extras.context import mlir_mod_ctx
 from aie.extras import types as T
-
 from util import construct_and_print_module
 
 
@@ -35,6 +35,13 @@ from util import construct_and_print_module
 @construct_and_print_module
 def tileOp():
     t = tile(col=0, row=0)
+
+
+# CHECK-LABEL: tileOpAllocationScheme
+# CHECK: aie.tile(2, 2) {allocation_scheme = "basic-sequential"}
+@construct_and_print_module
+def tileOpAllocationScheme():
+    t = tile(col=2, row=2, allocation_scheme="basic-sequential")
 
 
 # CHECK-LABEL: coreOp
@@ -46,6 +53,20 @@ def tileOp():
 def coreOp():
     t = tile(col=1, row=1)
     c = Core(t)
+    bb = Block.create_at_start(c.body)
+    with InsertionPoint(bb):
+        end()
+
+
+# CHECK-LABEL: coreOpParameters
+# CHECK: %[[VAL1:.*]] = aie.tile(1, 1)
+# CHECK: %[[VAL2:.*]] = aie.core(%[[VAL1]]) {
+# CHECK:   aie.end
+# CHECK: } {dynamic_objfifo_lowering = false, link_with = "test.elf", stack_size = 2048 : i32}
+@construct_and_print_module
+def coreOpParameters():
+    t = tile(col=1, row=1)
+    c = Core(t, link_with="test.elf", dynamic_objfifo_lowering=False, stack_size=2048)
     bb = Block.create_at_start(c.body)
     with InsertionPoint(bb):
         end()
@@ -80,6 +101,7 @@ def deviceOp():
 # CHECK: %[[VAL_0:.*]] = aie.tile(0, 3)
 # CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
 # CHECK: %[[VAL_2:.*]] = aie.buffer(%[[VAL_0]]) : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
+# CHECK: %[[VAL_3:.*]] = aie.buffer(%[[VAL_0]]) {address = 48879 : i32} : memref<42xi8>
 @construct_and_print_module
 def bufferOp():
     t = tile(col=0, row=3)
@@ -89,13 +111,16 @@ def bufferOp():
         T.memref(2, 2, T.i32()),
         initial_value=np.arange(2 * 2, dtype=np.int32).reshape(2, 2),
     )
+    b = buffer(t, np.ndarray[(42,), np.dtype[np.int8]], address=0xBEEF)
 
 
 # CHECK-LABEL: externalBufferOp
 # CHECK: %[[VAL_0:.*]] = aie.external_buffer : memref<12xi32>
+# CHECK: %[[VAL_1:.*]] = aie.external_buffer {address = 209934011881080 : i64} : memref<13xi8>
 @construct_and_print_module
 def externalBufferOp():
     b = external_buffer(T.memref(12, T.i32()))
+    c = external_buffer(T.memref(13, T.i8()), address=0xBEEF12345678)
 
 
 # CHECK-LABEL: objFifo
@@ -235,11 +260,45 @@ def packetFlowOp():
         source=t0,
         source_port=WireBundle.Core,
         source_channel=0,
-        dest=t0,
-        dest_port=WireBundle.Core,
-        dest_channel=0,
+        dests={"dest": t0, "port": WireBundle.Core, "channel": 0},
         keep_pkt_header=True,
     )
+
+
+# CHECK-LABEL: packetMultiFlowOp
+# CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
+# CHECK: %[[VAL_1:.*]] = aie.tile(2, 4)
+# CHECK: aie.packet_flow(16) {
+# CHECK:   aie.packet_source<%[[VAL_0]], DMA : 0>
+# CHECK:   aie.packet_dest<%[[VAL_0]], DMA : 1>
+# CHECK:   aie.packet_dest<%[[VAL_1]], DMA : 1>
+# CHECK: } {keep_pkt_header = true}
+@construct_and_print_module
+def packetMultiFlowOp():
+    t0 = tile(col=1, row=3)
+    t1 = tile(col=2, row=4)
+    packetflow(
+        pkt_id=0x10,
+        source=t0,
+        source_port=WireBundle.DMA,
+        source_channel=0,
+        dests=[
+            {"dest": t0, "port": WireBundle.DMA, "channel": 1},
+            {"dest": t1, "port": WireBundle.DMA, "channel": 1},
+        ],
+        keep_pkt_header=True,
+    )
+
+
+# CHECK-LABEL: dmaBDOp
+# CHECK: %[[VAL_0:.*]] = aie.tile(1, 3)
+# CHECK: %[[VAL_1:.*]] = aie.buffer(%[[VAL_0]]) : memref<12xi32>
+# CHECK: aie.dma_bd(%[[VAL_1]] : memref<12xi32>) {packet = #aie.packet_info<pkt_type = 0, pkt_id = 4>}
+@construct_and_print_module
+def dmaBDOp():
+    t0 = tile(col=1, row=3)
+    b = buffer(t0, np.ndarray[(12,), np.dtype[np.int32]])
+    dma_bd(b, packet=(0, 4))
 
 
 # CHECK-LABEL: test_module_context
@@ -270,7 +329,7 @@ test_module_context()
 # CHECK: xcvc1902 cols 50
 # CHECK: xcvc1902 npu False
 # CHECK: npu1 rows 6
-# CHECK: npu1 cols 5
+# CHECK: npu1 cols 4
 # CHECK: npu1 npu True
 # CHECK: npu1_1col rows 6
 # CHECK: npu1_1col cols 1

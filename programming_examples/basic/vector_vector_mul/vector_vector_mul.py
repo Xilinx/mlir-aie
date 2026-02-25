@@ -10,7 +10,7 @@ import sys
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, XCVC1902
+from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
 from aie.iron.controlflow import range_
 
 
@@ -24,6 +24,8 @@ def my_vector_mul():
 
     if sys.argv[1] == "npu":
         dev = NPU1Col1()
+    elif sys.argv[1] == "npu2":
+        dev = NPU2Col1()
     elif sys.argv[1] == "xcvc1902":
         dev = XCVC1902()
     else:
@@ -63,7 +65,7 @@ def my_vector_mul():
         rt.drain(of_out.cons(), C, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
 module = my_vector_mul()

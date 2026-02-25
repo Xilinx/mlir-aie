@@ -11,9 +11,9 @@
 // RUN: aie-opt --aie-assign-buffer-addresses="alloc-scheme=basic-sequential" %s 2>&1 | FileCheck %s
 // CHECK:   module @test {
 // CHECK:   aie.device(xcve2302) {
-// CHECK:     %tile_3_1 = aie.tile(3, 1)
-// CHECK:     %a = aie.buffer(%tile_3_1) {address = 0 : i32, sym_name = "a"} : memref<65536xi32> 
-// CHECK:     %memtile_dma_3_1 = aie.memtile_dma(%tile_3_1) {
+// CHECK:     %mem_tile_3_1 = aie.tile(3, 1)
+// CHECK:     %a = aie.buffer(%mem_tile_3_1) {address = 0 : i32, sym_name = "a"} : memref<65536xi32>
+// CHECK:     %memtile_dma_3_1 = aie.memtile_dma(%mem_tile_3_1) {
 // CHECK:       aie.end
 // CHECK:     }
 // CHECK:   }

@@ -96,7 +96,7 @@ void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
                     std::to_string(destinationCounts[{col, row}]) + ",\n";
 
     // write routing demand info
-    uint32_t connectCounts[10];
+    std::vector<uint32_t> connectCounts(getMaxEnumValForWireBundle() + 1, 0);
     for (auto &connectCount : connectCounts)
       connectCount = 0;
 
@@ -422,13 +422,14 @@ void translatePacketFlows(DeviceOp targetOp, int &flowCount,
   }
 }
 
-mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output) {
-  output << "{\n";
-  if (module.getOps<DeviceOp>().empty()) {
+mlir::LogicalResult AIEFlowsToJSON(ModuleOp module, raw_ostream &output,
+                                   llvm::StringRef deviceName) {
+  DeviceOp targetOp = AIE::DeviceOp::getForSymbolInModule(module, deviceName);
+  if (!targetOp) {
     module.emitOpError("expected AIE.device operation at toplevel");
   }
 
-  DeviceOp targetOp = *(module.getOps<DeviceOp>().begin());
+  output << "{\n";
   int flowCount = 0;
 
   translateSwitchboxes(targetOp, output);

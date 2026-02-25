@@ -1,48 +1,35 @@
 # Windows Setup and Build Instructions
 
-These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15. 
+These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15 among other Phoenix and Strix equipped machines.
 
-You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will be used for building NPU device code. For building the host (x86) code, you will use MS Visual Code Community.
+You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will be used for building NPU device code. For building the host (x86) code, you will use MS Visual Code Community but this can be invoked from within WSL so you should be able to compile and run code entirely within WSL. 
 
-- Rely on WSL Ubuntu 22.04 LTS for Vitis tool install and to build and run our mlir-aie tools
-- Rely on MS Visual Studio 17 2022 to natively build the host code (aka test.cpp)
-
-## Initial Setup
-
-#### Update BIOS:
-
-Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
-
-  ```Advanced → CPU Configuration → IPU```
-
-> **NOTE:** Some manufacturers only provide Windows executables to update the BIOS. 
-
-#### BIOS Settings:
-1. Turn off SecureBoot (Allows for unsigned drivers to be installed)
-
-   ```BIOS → Security → Secure boot → Disable```
-
-1. Turn Ac Power Loss to "Always On" (Can be used for PDU reset, turns computer back on after power loss)
-
-   ```BIOS → Advanced → AMD CBS →  FCH Common Options → Ac Power Loss Options → Set Ac Power Loss to "Always On"```
+- Rely on WSL Ubuntu 24.04 LTS for tool install and to build and run our mlir-aie tools
+- Rely on MS Visual Studio 17 2022 to natively build the host code (aka test.cpp) but this can be invoked from within WSL
 
 
-## Prerequisites
-### mlir-aie tools: WSL Ubuntu 22.04
+## Setup and Build Steps
+1. [Preparing WSL Side](#preparing-wsl-side) - Prepare WSL, clone and install mlir-aie, prepare XRT dll, clone and build XRT 
+1. [Prepare Host Side: Natively on Win11](#prepare-host-side:-natively-on-win11) - Update NPU driver, complete XRT ddl def, install visual studio, cmake, clone XRT and mlir-aie
+1. [Setup up your environment](#set-up-your-environment)
+1. [Build a Design](#build-a-design)
+* [Optional: Install AIETools](#optinal:-install-aietools)
+* [Troubleshooting](#Troubleshooting)
+
+
+## Preparing WSL Side
+### mlir-aie tools: WSL Ubuntu 24.04
 All steps in WSL Ubuntu terminal.
-1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules: 
-   ```
-   git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
-   ````
-1. Prepare WSL2 with Ubuntu 22.04:
+
+1. Prepare WSL2 with Ubuntu 24.04:
     - Install packages (after apt-get update):
-      ``` 
+      ```
         sudo apt install \
         build-essential clang clang-14 lld lld-14 cmake \
-        libboost-all-dev \
         python3-venv python3-pip \
         libxrender1 libxtst6 libxi6 \
-        mingw-w64-tools
+        mingw-w64-tools \
+        gcc-13 g++-13
       ```
     - generate locales
       ```
@@ -50,109 +37,123 @@ All steps in WSL Ubuntu terminal.
       locale-gen en_US.UTF-8
       ```
 
-1. Install AIETools under WSL Ubuntu
-
-    1. Option A -  Supporting AMD Ryzen™ AI with AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P): Install AMD Vitis™ AIE Essentials under WSL Ubuntu from [Ryzen AI Software 1.3 Early Accesss](https://account.amd.com/en/member/ryzenai-sw-ea.html#tabs-a5e122f973-item-4757898120-tab). 
-
-
-      > This is an early access lounge, you must register and be granted access at this time.
-
-      - Install Vitis™ AIE Essentials in WSL Ubuntu. We will assume you use the installation directory, `/tools/ryzen_ai-1.3.0/vitis_aie_essentials`.
-      - Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
-      - Extract the required tools:
-         ``` bash
-            tar -xzvf ryzen_ai-1.3.0ea1.tgz
-            cd ryzen_ai-1.3.0
-            mkdir vitis_aie_essentials
-            mv vitis_aie_essentials*.whl vitis_aie_essentials
-            cd vitis_aie_essentials
-            unzip vitis_aie_essentials*.whl
-         ```
-      - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`) 
-      - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
-        ```
-        export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
-        ip link add vmnic0 type dummy
-        ip link set vmnic0 addr <yourMACaddress>
-        ```
-      - Setup your environment using the following script for Vitis for aietools:
-         ```bash
-         #!/bin/bash
-          #################################################################################
-          # Setup Vitis AIE Essentials
-          #################################################################################
-          export AIETOOLS_ROOT=/tools/ryzen_ai-1.3.0/vitis_aie_essentials
-          export PATH=$PATH:${AIETOOLS_ROOT}/bin
-          export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
-         ```
-    1. Option B - Supporting AMD Ryzen™ AI and AMD Versal™ with AIE and AIE-ML/XDNA™ (AIE2): Install Vitis under WSL Ubuntu from [Xilinx Downloads](https://www.xilinx.com/support/download/index.html/content/xilinx/en/downloadNav/vitis.html) and setup a AI Engine license:
-
-
-      - Install Vitis in WSL Ubuntu. We will assume you use the default installation directory, `/tools/Xilinx`.
-      - Get local license for AIE Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`) 
-      - copy license file (Xilinx.lic) to your preferred location (licenseFilePath) and update your setup configuration accordingly, for instance
-        ```
-        export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
-        ip link add vmnic0 type dummy
-        ip link set vmnic0 addr <yourMACaddress>
-        ```
-      - Setup your environment using the following script for Vitis for aietools:
-         ```bash
-         #!/bin/bash
-          #################################################################################
-          # Setup Vitis (which is just for aietools)
-          #################################################################################
-          export MYXILINX_VER=2023.2
-          export MYXILINX_BASE=/tools/Xilinx
-          export XILINX_LOC=$MYXILINX_BASE/Vitis/$MYXILINX_VER
-          export AIETOOLS_ROOT=$XILINX_LOC/aietools
-          export PATH=$PATH:${AIETOOLS_ROOT}/bin
-          export LM_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
-         ```
-
+1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules:
+   ```
+   git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
+   ````
+   This github repo will be used for building the IRON tools as cloning/ updating/ building in WSL is much faster for files stored in WSL drive space. A separate clone of the mlir-aie repo will be used for working with example designs so that powershell can find the diretory path. See [below](#prepare-host-side:-natively-on-win11)
+   
 1. Install or Build mlir-aie tools under WSL2:
 
    * Use quick setup script to install from whls:
 
-     >  NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P), it does NOT support Versal™ devices with AIE. 
+     >  NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P), it does NOT support Versal™ devices with AIE.
 
      ```
      source utils/quick_setup.sh
      # NOTE: this will install mlir-aie in my_install/mlir_aie
-     # and llvm in my_install/mlir. Be sure to account for this
-     # using utils/env_setup.sh later on.
+     # Be sure to account for this using utils/env_setup.sh later on.
      ```
 
    * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
 
-1. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the symbols:
+1. Build XRT dll definition file to be used to create .lib needed for host code compilation with Visual Studio C/C++ compiler. After installing the updated Ryzen™ AI driver (see next subsection), use the gendef tool (from the mingw-w64-tools package) to create a .def file with the required link symbols. This step is needed to create an XRT dll def file that we can link against when we compile. 
     ```
     mkdir /mnt/c/Technical/xrtNPUfromDLL; cd /mnt/c/Technical/xrtNPUfromDLL
-    cp /mnt/c/Windows/System32/AMD/xrt_coreutil.dll .
+    cp /mnt/c/Windows/System32/xrt_coreutil.dll .
     gendef xrt_coreutil.dll
     ```
 
-### Prepare Host Side: Natively on Win11
+1. Clone XRT under `C:\Technical\XRT` and build XRT to for tools like `xclbinutil`. This can be done within WSL but requires some XRT dependent packages to be installed first.
+   ```bash
+   sudo apt-get install \
+      cmake \
+      cppcheck \
+      curl \
+      dkms \
+      file \
+      g++ \
+      gcc \
+      gdb \
+      git \
+      gnuplot \
+      graphviz \
+      libboost-dev \
+      libboost-filesystem-dev \
+      libboost-program-options-dev \
+      libcurl4-openssl-dev \
+      libdrm-dev \
+      libdw-dev \
+      libelf-dev \
+      libffi-dev \
+      libgtest-dev \
+      libjpeg-dev \
+      libjson-glib-dev \
+      libncurses5-dev \
+      libopencv-core-dev \
+      libpng-dev \
+      libprotoc-dev \
+      libssl-dev \
+      libsystemd-dev \
+      libtiff5-dev \
+      libudev-dev \
+      libyaml-dev \
+      linux-libc-dev \
+      lm-sensors \
+      lsb-release \
+      make \
+      ocl-icd-dev \
+      ocl-icd-libopencl1 \
+      ocl-icd-opencl-dev \
+      opencl-headers \
+      pciutils \
+      perl \
+      pybind11-dev \
+      rapidjson-dev \
+      pkg-config \
+      protobuf-compiler \
+      pybind11-dev \
+      python3 \
+      libpython3-dev \
+      python3-breathe \
+      python3-pip \
+      python3-sphinx \
+      python3-sphinx-rtd-theme \
+      sphinx-common \
+      strace \
+      systemtap-sdt-dev \
+      unzip \
+      uuid-dev
+   ```
+   Then build XRT (which will take about 30 min depending on your machine).
+   ```bash
+   cd /mnt/c/Technical/XRT/build
+   ./build.sh -noert
+   ```
+
+## Prepare Host Side: Natively on Win11
 
 All steps in Win11 (powershell where needed).
 
-1. Upgrade the NPU driver to version 10.106.8.62 [download here](https://account.amd.com/en/forms/downloads/ryzen-ai-software-platform-xef.html?filename=ipu_stack_rel_silicon_2308.zip), following the [instructions](href="https://ryzenai.docs.amd.com/en/latest/inst.html) on setting up the driver.
-1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
+1. Upgrade the NPU driver to the latest version. Navigate to [here](https://ryzenai.docs.amd.com/en/latest/inst.html#install-npu-drivers) under `NPU Driver` to download and install the driver. Optionally, you can find the latest driver version under the Ryzen AI SW site [here](https://account.amd.com/en/member/ryzenai-sw-ea.html) under "Downloads" tab. Here, the latest NPU Driver can be found at the top of the page (for example, for version 1.4.1, that would be NPU_RAI1.4.1_259_WHQL.zip). Follow the same [instructions](https://ryzenai.docs.amd.com/en/latest/inst.html) to set up the driver. 
 
-1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/))
-    - [Download](https://boostorg.jfrog.io/artifactory/main/release/1.83.0/source/boost_1_83_0.zip) and [compile](https://www.boost.org/doc/libs/1_83_0/more/getting_started/windows.html) boost (current version 1.83). 
-    - Extract zip file into `C:\Technical\thirdParty`
-    - Run `bootstrap.bat` and after that `b2.exe`
-1. Optional (only needed for vision examples): install [opencv](https://docs.opencv.org/4.x/d3/d52/tutorial_windows_install.html) and add this install to your PATH environmental variable, for instance `C:\Technical\thirdParty\opencv\build\x64\vc16\bin`
+   Note that we currently have two steps for setting up the driver for host compilation and linking. The driver installation provides the `xrt_coreutil.dll` under `C:\Windows\System32\` or `C:\Windows\System32\AMD` which is needed to generate the `xrt_coreutil.lib` that Visual Studio uses to compile against. 
 
-1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical` and `git checkout 2023.2`
-1. Create a .lib file from the .dll shipping with the driver
+1. Create visual studio XRT lib file for host code linking. This is done by creating a .lib file from the .dll shipped with the driver (along with generated .def file above).
     - In wsl, generate a .def file (see above)
-    - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtNPUfromDLL` and run command: 
+    - Start a x86 Native Tools Command Prompt (installed as part of VS17), go to the folder `C:\Technical\xrtNPUfromDLL` and run command:
       ```
       lib /def:xrt_coreutil.def /machine:x64 /out:xrt_coreutil.lib
       ```
-1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) for instance under C:\Technical to be used to build designs (yourPathToDesignsWithMLIR-AIE) 
+1. Install [Microsoft Visual Studio 17 2022 Community Edition](https://visualstudio.microsoft.com/vs/community/) with package for C++ development.
+
+1. Install CMake on windows ([https://cmake.org/download/](https://cmake.org/download/)) which should include adding CMake to your PATH environment variable (e.g. `C:\Program Files\CMake\bin`)
+
+1. *OPTIONAL* (only needed for vision examples): install [opencv](https://docs.opencv.org/4.x/d3/d52/tutorial_windows_install.html) so the `opencv` folder is under `C:\Technical\thirdParty\opencv`. Then add the following path to your PATH environmental variable - `C:\Technical\thirdParty\opencv\build\x64\vc16\bin`. Be sure this is added under "System Variables" and not just user variables.
+
+1. Clone [https://github.com/Xilinx/XRT](https://github.com/Xilinx/XRT) for instance under `C:\Technical`. This is referenced during host code compilation to pick up XRT include files.
+
+1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) for instance under `C:\Technical` to be used to build your designs (yourPathToDesignsWithMLIR-AIE). This is needed because Visual Studio Compiler needs standard Windows directory paths rather than WSL mounted paths to work properly. You will be building your desings with this copy of the repo, whereas the one in your WSL is used to build and run the mlir-aie binaries and scripts from.
 
 ## Set up your environment
 
@@ -167,7 +168,7 @@ If you used the quick setup script (precompiled mlir-aie binaries), use this set
 cd <yourPathToDesignsWithMLIR-AIE>
 source <yourPathToBuildMLIR-AIE>/ironenv/bin/activate
 source yourVitisSetupScript (example shown above)
-source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my_install/mlir_aie <yourPathToBuildMLIR-AIE>/my_install/mlir
+source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh
 ```
 
 ### `setup.sh` - Option B - Built from Source
@@ -176,33 +177,84 @@ source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/my
 cd <yourPathToDesignsWithMLIR-AIE>
 source <yourPathToBuildMLIR-AIE>/sandbox/bin/activate
 source yourVitisSetupScript (example shown above)
-source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install <yourPathToBuildMLIR-AIE>/llvm/install
+source <yourPathToBuildMLIR-AIE>/utils/env_setup.sh <yourPathToBuildMLIR-AIE>/install
 ```
 
 
 ## Build a Design
 
-For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell.
+For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE desgin in WSL and then (ii) build the host code in powershell. The host code build step can be invoked from within WSL, leveraging Makefile variables `$powershell` and `$getwslpath` from [programming_examples/makefile-common](../programming_examples/makefile-common). See [Makefile](../programming_examples/basic/vector_scalar_mul/Makefile) for an example of how it is used.
 
 ### Build device AIE part: WSL Ubuntu terminal
 1. Prepare your enviroment with the mlir-aie tools (built during Prerequisites part of this guide). See [Set up your environment](#set-up-your-environment) above.
 
-1. Goto the design of interest and run `make`.
+1. Goto the design of interest such as [vector_scalar_mul](../programming_examples/basic/vector_scalar_mul/) and run `make run`.
 
-### Build and run host part: PowerShell
 
-Note that your design of interest might need an adapted CMakelists.txt file. Also pay attention to accurately set the paths CMake parameters BOOST_ROOT, XRT_INC_DIR and XRT_LIB_DIR used in the CMakelists.txt, either in the file or as CMake command line parameters.
+## Optional: Install AIETools
 
-1. Build: Goto the same design of interest folder where the AIE design just got build (see above)
-    ```
-    mkdir buildMSVS
-    cd buildMSVS
-    cmake .. -G "Visual Studio 17 2022"
-    cmake --build . --config Release
-    ```
-    
-1. Run (program arguments are just an example for add_one design)
+> You may skip the Vitis™ installation step if you intend to only target AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P) using our open-source single-core compiler [Peano](https://github.com/Xilinx/llvm-aie). Compiling with `xchesscc` is not supported without installing AMD Vitis™ AIE Essentials. 
+
+1. Install Vitis™ AIE Essentials from [Ryzen AI Software 1.3.1](https://account.amd.com/en/forms/downloads/ryzenai-eula-public-xef.html?filename=ryzen_ai_1.3.1-ea-lnx64-20250116.tgz). We will assume you use the installation directory, `/tools/ryzen_ai-1.3.1/vitis_aie_essentials` from within WSL. 
+
+   NOTE that while this is not the latest version of the Ryzen AI software package, the vitis essentials wheel is easily identifiable in the tarball. Later versions of the packages extracts these files in different location as part of the installation but you are welcome to find that wheel file and extract it as per the instructions below.
+
+   > This is an early access lounge, you must register and be granted access at this time.
+
+    1. Download VAIML Installer for Linux based compilation: `ryzen_ai_1.3.1-ea-lnx64-20250116.tgz`
+ 
+    1. Extract the required tools:
+
+       ``` bash
+          tar -xzvf ryzen_ai_1.3.1-ea-lnx64-20250116.tgz
+          cd ryzen_ai-1.3.1
+          mkdir vitis_aie_essentials
+          mv vitis_aie_essentials*.whl vitis_aie_essentials
+          cd vitis_aie_essentials
+          unzip vitis_aie_essentials*.whl
+       ```
+
+1. Set up an AI Engine license.
+
+    1. Get a local license for AI Engine tools from [https://www.xilinx.com/getlicense](https://www.xilinx.com/getlicense) providing your machine's MAC address (`ip -brief link show eth0`). Be sure to select License Type of `Node` instead of `Floating`.
+
+    1. Copy your license file (Xilinx.lic) to your preferred location, e.g. `/mnt/c/Technical/Xilinx.lic` where `<licenseFilePath>` is `/mnt/c/Technical`, then update your setup configuration accordingly, for instrance:
+        ```
+        export XILINXD_LICENSE_FILE=<licenseFilePath>/Xilinx.lic
+        ip link add vmnic0 type dummy
+        ip link set vmnic0 addr <yourMACaddress>
+        ```
+       
+1. Setup your environment using the following script for Vitis™ for AIETools:
+
+   ```bash
+   #!/bin/bash
+    #################################################################################
+    # Setup Vitis AIE Essentials
+    #################################################################################
+    export AIETOOLS_ROOT=/tools/ryzen_ai-1.3.1/vitis_aie_essentials
+    export PATH=$PATH:${AIETOOLS_ROOT}/bin
+    export LM_LICENSE_FILE=/mnt/c/Technical/Xilinx.lic
    ```
-    cd Release
-    .\<testName>.exe -x ..\..\build\final.xclbin -k MLIR_AIE -i ..\..\build\insts.txt -v 1
-    ```
+
+## Troubleshooting:
+
+### Update BIOS:
+
+Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
+   ```Advanced → CPU Configuration → IPU``` 
+
+#### Other Helpful BIOS Settings:
+1. Turn off SecureBoot (Allows for unsigned drivers to be installed)
+
+   ```BIOS → Security → Secure boot → Disable```
+
+1. Turn Ac Power Loss to "Always On" (Can be used for PDU reset, turns computer back on after power loss)
+
+   ```BIOS → Advanced → AMD CBS →  FCH Common Options → Ac Power Loss Options → Set Ac Power Loss to "Always On"```
+
+> **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
+
+-----
+
+<p align="center">Copyright&copy; 2019-2024 Advanced Micro Devices, Inc</p>

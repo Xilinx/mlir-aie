@@ -4,8 +4,7 @@
 #
 # (c) Copyright 2023 Advanced Micro Devices, Inc.
 
-cmake_minimum_required(VERSION 3.21)
-
+cmake_minimum_required(VERSION 3.30)
 project("test lib for ${AIE_RUNTIME_TARGET}")
 
 # test_lib library
@@ -14,6 +13,7 @@ set(TEST_LIB_PUBLIC_HEADERS
     test_library.h
     target.h
     hsa_ext_air.h
+    cxxopts.hpp
 )
 set_target_properties(test_lib PROPERTIES PUBLIC_HEADER "${TEST_LIB_PUBLIC_HEADERS}")
 target_compile_options(test_lib PRIVATE -fPIC)
@@ -42,14 +42,17 @@ if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 endif()
 
 find_package(XRT)
-set(BUILD_TEST_UTILS ${XRT_FOUND} AND NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
+set(BUILD_TEST_UTILS NOT ${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 
 # test_utils library
 if (${BUILD_TEST_UTILS})
   add_library(test_utils STATIC test_utils.cpp)
-  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER test_utils.h)
+  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;xrt_test_wrapper.h;cxxopts.hpp")
   target_compile_options(test_utils PRIVATE -fPIC)
 
+  if (${XRT_FOUND})
+    target_compile_options(test_utils PRIVATE -DTEST_UTILS_USE_XRT)
+  endif()
   target_include_directories(test_utils PRIVATE
       ${LibXAIE_INC_DIR}
       ${XRT_INCLUDE_DIR}
@@ -57,7 +60,7 @@ if (${BUILD_TEST_UTILS})
 endif()
 
 # copy test_library and test_utils header files into build area
-set(headers target.h test_library.h test_utils.h memory_allocator.h hsa_ext_air.h)
+set(headers target.h test_library.h test_utils.h xrt_test_wrapper.h memory_allocator.h hsa_ext_air.h cxxopts.hpp)
 foreach(basefile ${headers})
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/../include/${basefile})
     add_custom_target(aie-copy-runtime-libs-${basefile} ALL DEPENDS ${dest})
@@ -89,8 +92,6 @@ if (${BUILD_TEST_UTILS})
   )
 endif()
 install(FILES test_library.cpp DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/src)
-
-set(xaienginePath ${VITIS_AIETOOLS_DIR}/include/drivers/aiengine)
 
 #
 # Memory Allocator libraries
@@ -142,15 +143,11 @@ if (${AIE_RUNTIME_TARGET} STREQUAL "x86_64-hsa")
 endif()
 
 # simulation memory allocator library
-if (VITIS_ROOT)
-    add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
-    target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
-    target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
-    target_include_directories(memory_allocator_sim_aie PRIVATE ${xaienginePath})
+add_library(memory_allocator_sim_aie STATIC memory_allocator.cpp)
+target_compile_options(memory_allocator_sim_aie PRIVATE -fPIC)
+target_compile_definitions(memory_allocator_sim_aie PRIVATE __AIESIM__)
+target_include_directories(memory_allocator_sim_aie PRIVATE ${LibXAIE_INC_DIR})
 
-    install(TARGETS memory_allocator_sim_aie
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
-    )
-else()
-    message(STATUS "Vitis not found, simulation memory allocator will not be built.")
-endif()
+install(TARGETS memory_allocator_sim_aie
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
+)

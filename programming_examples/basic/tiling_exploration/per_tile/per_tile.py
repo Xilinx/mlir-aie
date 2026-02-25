@@ -7,9 +7,8 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 import argparse
 import numpy as np
-import sys
 
-from aie.iron import LocalBuffer, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 from aie.iron.controlflow import range_
@@ -39,21 +38,18 @@ def generate_module(
 
     # Use an ObjectFifo for dataflow
     of_out = ObjectFifo(flattened_tile)
+    access_counter = Buffer(initial_value=np.array([0], dtype=dtype))
 
     # The task a core will run
-    def access_order(of_out):
-        access_counter = LocalBuffer(initial_value=np.array([0], dtype=dtype))
-
-        for _ in range_(sys.maxsize):
-            elemOut = of_out.acquire(1)
-            for i in range_(tile_size):
-                elemOut[i] = access_counter[0]
-                access_counter[0] += 1
-            of_out.release(1)
-        pass
+    def access_order(of_out, counter_buf):
+        elemOut = of_out.acquire(1)
+        for i in range_(tile_size):
+            elemOut[i] = counter_buf[0]
+            counter_buf[0] += 1
+        of_out.release(1)
 
     # Create a worker (which will be placed on a core) to run the task
-    worker = Worker(access_order, [of_out.prod()], while_true=False)
+    worker = Worker(access_order, [of_out.prod(), access_counter])
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()

@@ -1,5 +1,5 @@
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     func.func private @matmul_scalar_4x2x4_4x8x4_i32_i32(memref<2x4x4x8xi32, 2 : i32>, memref<4x2x8x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>)
     // <trace>
     func.func private @event_0()
@@ -88,7 +88,7 @@ module {
       func.call @flush_trace() : () -> ()
       // </trace>
       cf.br ^bb1
-    } {elf_file = "segment_0_core_0_2.elf", link_with = "mm.o"}
+    } {link_with = "mm.o"}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_1, DMA : 0)
     aie.flow(%tile_0_0, DMA : 1, %tile_1_1, DMA : 0)
     aie.flow(%tile_2_1, DMA : 0, %tile_0_0, DMA : 0)
@@ -156,13 +156,10 @@ module {
       aie.use_lock(%lock_1_1, Release, 1)
       aie.next_bd ^bb4
     }
-    aie.shim_dma_allocation @airMemcpyId12(S2MM, 0, 0)
-    memref.global "public" @airMemcpyId12 : memref<16x16xi32, 1 : i32>
-    aie.shim_dma_allocation @airMemcpyId4(MM2S, 0, 0)
-    memref.global "public" @airMemcpyId4 : memref<16x16xi32, 1 : i32>
-    aie.shim_dma_allocation @airMemcpyId5(MM2S, 1, 0)
-    memref.global "public" @airMemcpyId5 : memref<16x16xi32, 1 : i32>
-    aiex.runtime_sequence(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {     
+    aie.shim_dma_allocation @airMemcpyId12 (%tile_0_0, S2MM, 0)
+    aie.shim_dma_allocation @airMemcpyId4 (%tile_0_0, MM2S, 0)
+    aie.shim_dma_allocation @airMemcpyId5 (%tile_0_0, MM2S, 1)
+    aie.runtime_sequence(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {     
       // <trace>
       aiex.npu.write32 {address = 212992 : ui32, column = 0 : i32, row = 2 : i32, value = 31232 : ui32} // [14:8] reset event: 122(BROADCAST_15)
       aiex.npu.write32 {address = 213200 : ui32, column = 0 : i32, row = 2 : i32, value = 7995392 : ui32} // [22:16] start event: 122(BROADCAST_15)
@@ -191,9 +188,9 @@ module {
       memref.assume_alignment %arg0, 64 : memref<16x16xi32>
       memref.assume_alignment %arg1, 64 : memref<16x16xi32>
       memref.assume_alignment %arg2, 64 : memref<16x16xi32>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<16x16xi32>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg1[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 1 : i64, metadata = @airMemcpyId5} : memref<16x16xi32>
-      aiex.npu.dma_memcpy_nd (0, 0, %arg2[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 2 : i64, metadata = @airMemcpyId12, issue_token = true} : memref<16x16xi32>
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<16x16xi32>
+      aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 1 : i64, metadata = @airMemcpyId5} : memref<16x16xi32>
+      aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 16, 16][0, 0, 16, 1]) {id = 2 : i64, metadata = @airMemcpyId12, issue_token = true} : memref<16x16xi32>
       aiex.npu.dma_wait { symbol = @airMemcpyId12}
     }
   } {sym_name = "segment_0"}

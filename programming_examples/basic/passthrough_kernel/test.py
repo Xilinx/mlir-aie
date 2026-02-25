@@ -4,53 +4,59 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 import numpy as np
 import sys
-from aie.utils.xrt import setup_aie, execute as execute_on_aie
 import aie.utils.test as test_utils
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime
 
 
 def main(opts):
+    in1_size = int(opts.in1_size)  # in bytes
+    out_size = int(opts.out_size)  # in bytes
+
+    # --------------------------------------------------------------------------
+    # ----- Edit your data types -----------------------------------------------
+    # --------------------------------------------------------------------------
+
+    in1_dtype = np.uint8
+    out_dtype = in1_dtype
+
+    # --------------------------------------------------------------------------
+
+    in1_volume = in1_size // np.dtype(in1_dtype).itemsize
+    out_volume = out_size // np.dtype(out_dtype).itemsize
+
+    # --------------------------------------------------------------------------
+    # ----- Edit your data init and reference data here ------------------------
+    # --------------------------------------------------------------------------
+
+    # check buffer sizes
+    assert out_size == in1_size
+
+    # Initialize data
+    ref = np.arange(0, in1_volume, dtype=in1_dtype)
+    in1 = iron.tensor(ref, dtype=in1_dtype)
+    out = iron.zeros([out_volume], dtype=out_dtype)
+
+    # --------------------------------------------------------------------------
+
     print("Running...\n")
-
-    data_size = int(opts.size)
-    dtype = np.uint8
-
-    app = setup_aie(
-        opts.xclbin,
-        opts.instr,
-        data_size,
-        dtype,
-        None,
-        None,
-        data_size,
-        dtype,
+    npu_opts = test_utils.create_npu_kernel(opts)
+    res = DefaultNPURuntime.run_test(
+        npu_opts.npu_kernel,
+        [in1, out],
+        {1: ref},
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     )
-    input = np.arange(1, data_size + 1, dtype=dtype)
-    aie_output = execute_on_aie(app, input)
-
-    # Copy output results and verify they are correct
-    errors = 0
-    if opts.verify:
-        if opts.verbosity >= 1:
-            print("Verifying results ...")
-        e = np.equal(input, aie_output)
-        errors = np.size(e) - np.count_nonzero(e)
-
-    if not errors:
+    if res == 0:
         print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
-        sys.exit(1)
+    sys.exit(res)
 
 
 if __name__ == "__main__":
     p = test_utils.create_default_argparser()
-    p.add_argument(
-        "-s", "--size", required=True, dest="size", help="Passthrough kernel size"
-    )
     opts = p.parse_args(sys.argv[1:])
     main(opts)

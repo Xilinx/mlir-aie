@@ -5,8 +5,7 @@
 #
 # Copyright (C) 2022, Advanced Micro Devices, Inc.
 
-cmake_minimum_required(VERSION 3.10)
-
+cmake_minimum_required(VERSION 3.30)
 if(POLICY CMP0074)
   cmake_policy(SET CMP0074 NEW)
 endif()
@@ -99,7 +98,6 @@ set(LLVM_LIT_ARGS "${LIT_ARGS_DEFAULT}" CACHE STRING "Default options for lit")
 list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 
-include(TableGen)
 include(AddLLVM)
 include(AddMLIR)
 include(HandleLLVMOptions)

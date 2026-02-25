@@ -13,17 +13,19 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
-#include <pybind11/numpy.h>
-#include <pybind11/pybind11.h>
-#include <pybind11/pytypes.h>
-#include <pybind11/stl.h>
+#include <nanobind/nanobind.h>
+#include <nanobind/ndarray.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
 
 #include <algorithm>
+#include <numeric>
+#include <optional>
 #include <string>
 #include <vector>
 
-namespace py = pybind11;
-using namespace py::literals;
+namespace nb = nanobind;
+using namespace nb::literals;
 
 // group_id 0 is for npu instructions
 // group_id 1 is for number of npu instructions
@@ -55,16 +57,16 @@ public:
   }
 
   template <typename ElementT>
-  std::vector<py::memoryview>
-  mmapBuffers(std::vector<std::vector<int>> shapes) {
+  std::vector<nb::ndarray<>>
+  mmapBuffers(std::vector<std::vector<size_t>> shapes) {
     this->buffers.reserve(shapes.size());
-    std::vector<py::memoryview> views;
+    std::vector<nb::ndarray<>> views;
     views.reserve(shapes.size());
 
     auto initAndViewBuffer = [this](
-                                 std::vector<int> shape, int groupId,
+                                 std::vector<size_t> shape, int groupId,
                                  std::vector<std::unique_ptr<xrt::bo>> &buffers,
-                                 std::vector<py::memoryview> &views) {
+                                 std::vector<nb::ndarray<>> &views) {
       int nElements =
           std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<>());
       int nBytes = nElements * sizeof(ElementT);
@@ -79,12 +81,13 @@ public:
       std::vector strides_{1};
       for (int i = shape.size() - 1; i > 0; i--)
         strides_.push_back(strides_.back() * shape[i]);
-      std::vector<int> strides;
+      std::vector<int64_t> strides;
       // stride in bytes
       std::transform(strides_.rbegin(), strides_.rend(),
                      std::back_inserter(strides),
                      [](int s) { return s * sizeof(ElementT); });
-      views.push_back(py::memoryview::from_buffer(buf, shape, strides));
+      views.push_back(nb::ndarray(buf, shape.size(), shape.data(), nb::handle(),
+                                  strides.data()));
     };
 
     for (size_t i = 0; i < shapes.size(); ++i)
@@ -140,22 +143,22 @@ public:
   std::unique_ptr<xrt::run> run_;
 };
 
-PYBIND11_MODULE(_xrt, m) {
+NB_MODULE(_xrt, m) {
 
-  py::class_<PyXCLBin>(m, "XCLBin", py::module_local())
-      .def(py::init<const std::string &, const std::string &, int>(),
+  nb::class_<PyXCLBin>(m, "XCLBin")
+      .def(nb::init<const std::string &, const std::string &, int>(),
            "xclbin_path"_a, "kernel_name"_a, "device_index"_a = 0)
       .def("load_npu_instructions", &PyXCLBin::loadNPUInstructions, "insts"_a)
       .def("sync_buffers_to_device", &PyXCLBin::syncBuffersToDevice)
       .def("sync_buffers_from_device", &PyXCLBin::syncBuffersFromDevice)
       .def("run", &PyXCLBin::run)
       .def("_run_only_npu_instructions", &PyXCLBin::_runOnlyNpuInstructions)
-      .def("wait", &PyXCLBin::wait, "timeout"_a = py::none())
+      .def("wait", &PyXCLBin::wait, "timeout"_a = nb::none())
       .def(
           "mmap_buffers",
-          [](PyXCLBin &self, const std::vector<std::vector<int>> &shapes,
-             const py::object &npFormat) {
-            auto npy = py::module_::import("numpy");
+          [](PyXCLBin &self, const std::vector<std::vector<size_t>> &shapes,
+             const nb::object &npFormat) {
+            auto npy = nb::module_::import_("numpy");
             if (npFormat.is(npy.attr("int16")))
               return self.mmapBuffers<int16_t>(shapes);
             if (npFormat.is(npy.attr("int32")))
@@ -167,7 +170,7 @@ PYBIND11_MODULE(_xrt, m) {
             if (npFormat.is(npy.attr("float64")))
               return self.mmapBuffers<double>(shapes);
             throw std::runtime_error("unsupported np format: " +
-                                     py::repr(npFormat).cast<std::string>());
+                                     nb::cast<std::string>(nb::repr(npFormat)));
           },
           "shapes"_a, "np_format"_a)
       .def("_get_buffer_host_address", [](PyXCLBin &self, size_t idx) {

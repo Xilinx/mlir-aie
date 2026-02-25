@@ -12,6 +12,8 @@
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test {
+aie.device(xcvc1902) {
+
   %tile13 = aie.tile(1, 3)
 
   %buf13_0 = aie.buffer(%tile13) { sym_name = "a" } : memref<256xf32>
@@ -32,11 +34,13 @@ module @test {
     memref.store %val3,%buf13_0[%idx3] : memref<256xf32>
     scf.for %arg0 = %c0 to %c64 step %c8 {
       %cst = arith.constant 0.000000e+00 : f32
-      %59 = vector.transfer_read %buf13_0[%arg0], %cst : memref<256xf32>, vector<8xf32>
-      %60 = vector.transfer_read %buf13_0[%arg0], %cst : memref<256xf32>, vector<8xf32>
+      %59 = vector.transfer_read %buf13_0[%arg0], %cst {in_bounds = [true]} : memref<256xf32>, vector<8xf32>
+      %60 = vector.transfer_read %buf13_0[%arg0], %cst {in_bounds = [true]} : memref<256xf32>, vector<8xf32>
       %61 = arith.mulf %59, %60 : vector<8xf32>
-      vector.transfer_write %61, %buf13_0[%arg0] : vector<8xf32>, memref<256xf32>
+      vector.transfer_write %61, %buf13_0[%arg0] {in_bounds = [true]} : vector<8xf32>, memref<256xf32>
     }
     aie.end
   }
+  
+}
 }

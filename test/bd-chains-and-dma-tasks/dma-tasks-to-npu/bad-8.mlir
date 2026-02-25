@@ -11,11 +11,11 @@
 // contains multiple `aie.dma_bd` operations -- only one such operation is allowed per basic block.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aiex.runtime_sequence(%arg0: memref<32xi8>) {
+    aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           aie.dma_bd(%arg0 : memref<32xi8>, 3, 4)
           // expected-note@+1 {{Extra}}

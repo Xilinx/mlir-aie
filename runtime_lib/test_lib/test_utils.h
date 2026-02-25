@@ -13,7 +13,7 @@
 #ifndef _TEST_UTILS_H_
 #define _TEST_UTILS_H_
 
-#include <boost/program_options.hpp>
+#include "cxxopts.hpp"
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
@@ -27,19 +27,20 @@
 #include <string>
 #include <vector>
 
-#include "xrt/xrt_device.h"
-#include "xrt/xrt_kernel.h"
-
-namespace po = boost::program_options;
+namespace xrt {
+class device;
+class kernel;
+} // namespace xrt
 
 namespace test_utils {
 
-void check_arg_file_exists(po::variables_map &vm_in, std::string name);
+void check_arg_file_exists(const cxxopts::ParseResult &result,
+                           std::string name);
 
-void add_default_options(po::options_description &desc);
+void add_default_options(cxxopts::Options &options);
 
-void parse_options(int argc, const char *argv[], po::options_description &desc,
-                   po::variables_map &vm);
+void parse_options(int argc, const char *argv[], cxxopts::Options &options,
+                   cxxopts::ParseResult &result);
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path);
 std::vector<uint32_t> load_instr_binary(std::string instr_path);

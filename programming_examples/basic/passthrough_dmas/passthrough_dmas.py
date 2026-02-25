@@ -10,7 +10,7 @@ import sys
 
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1, XCVC1902
+from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
 
 N = 4096
 line_size = 1024
@@ -22,6 +22,8 @@ if len(sys.argv) > 1:
 if len(sys.argv) > 2:
     if sys.argv[2] == "npu":
         dev = NPU1Col1()
+    elif sys.argv[2] == "npu2":
+        dev = NPU2Col1()
     elif sys.argv[2] == "xcvc1902":
         dev = XCVC1902()
     else:

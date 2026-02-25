@@ -8,15 +8,15 @@
 # REQUIRES: ryzen_ai
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %python aiecc.py --no-aiesim --aie-generate-cdo --aie-generate-npu --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.txt ./aie2.mlir
-# RUN: clang %S/test.cpp -o test -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %run_on_npu ./test
+# RUN: %python aiecc.py --no-aiesim --aie-generate-npu-insts --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
+# RUN: clang %S/test.cpp -o test -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+# RUN: %run_on_npu1% ./test
 
 from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 
 
 dtype = T.i32
@@ -33,7 +33,7 @@ def design():
 
     with mlir_mod_ctx() as ctx:
 
-        @device(AIEDevice.npu1_4col)
+        @device(AIEDevice.npu1)
         def device_body():
             memref_t = T.memref(1, dtype())
 
@@ -123,7 +123,7 @@ def design():
                         row=0,
                         direction=1,
                         channel=0,
-                        issue_token=1,
+                        issue_token=True,
                         repeat_count=0,
                     )
                     # Wait for the task completion token of the previously set off chain of BDs

@@ -12,12 +12,13 @@
 #include <iterator>
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 using namespace mlir;
@@ -126,13 +127,14 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
 
   LogicalResult verifyOptionalLocksInBlock(Block &block) {
     auto lock_ops = block.getOps<AIE::UseLockOp>();
-    // Exactly 0 or 2 lock ops
     int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
-    if (n_lock_ops > 0) {
-      // TODO: Not yet implemented
+    // Allow exactly 0 or 2 lock ops (acquire and release)
+    if (n_lock_ops != 0 && n_lock_ops != 2) {
       AIE::UseLockOp lock_op = *lock_ops.begin();
-      lock_op.emitOpError("Lowering for lock operations in NPU runtime "
-                          "configuration is not yet implemented.");
+      lock_op.emitOpError(
+          "BD blocks must have either 0 or 2 lock operations (acquire and "
+          "release). Found ")
+          << n_lock_ops << " lock operations.";
       return failure();
     }
     return success();
@@ -171,10 +173,30 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     return bd_op;
   }
 
+  // Returns pair of (acquire_lock_op, release_lock_op) if present
   std::optional<std::pair<AIE::UseLockOp, AIE::UseLockOp>>
   getOptionalLockOpsForBlock(Block &block) {
-    // auto lock_ops = block.getOps<AIE::UseLockOp>();
-    return std::nullopt; // Not yet implemented
+    auto lock_ops = block.getOps<AIE::UseLockOp>();
+    int n_lock_ops = std::distance(lock_ops.begin(), lock_ops.end());
+    if (n_lock_ops != 2) {
+      return std::nullopt;
+    }
+
+    AIE::UseLockOp acquire_op = nullptr;
+    AIE::UseLockOp release_op = nullptr;
+
+    for (auto lock_op : lock_ops) {
+      if (lock_op.acquire() || lock_op.acquireGE()) {
+        acquire_op = lock_op;
+      } else if (lock_op.release()) {
+        release_op = lock_op;
+      }
+    }
+
+    if (acquire_op && release_op) {
+      return std::make_pair(acquire_op, release_op);
+    }
+    return std::nullopt;
   }
 
   LogicalResult setAddressForSingleBD(OpBuilder &builder, AIE::DMABDOp &bd_op,
@@ -182,19 +204,38 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     uint32_t bd_id = bd_op.getBdId().value();
     const AIE::AIETargetModel &target_model = AIE::getTargetModel(bd_op);
     auto buf = bd_op.getBuffer();
-    uint64_t register_addr = getBufferDescriptorAddressRegisterAddress(
-        target_model, bd_id, tile.getCol(), tile.getRow());
-    if (mlir::BlockArgument buf_arg =
-            llvm::dyn_cast<mlir::BlockArgument>(buf)) {
+    auto col = tile.getCol();
+    auto row = tile.getRow();
+    uint64_t register_addr = target_model.getDmaBdAddress(col, row, bd_id) +
+                             target_model.getDmaBdAddressOffset(col, row);
+
+    // A buffer descriptor can refer to a statically allocated aie.buffer, or to
+    // a DDR buffer which will be passed as a runtime argument (block
+    // argument). Try to find the root block argument, either directly or
+    // through subviews/casts.
+    mlir::BlockArgument buf_arg = nullptr;
+    int64_t offset = 0;
+
+    if (auto directArg = llvm::dyn_cast<mlir::BlockArgument>(buf)) {
+      buf_arg = directArg;
+      offset = 0;
+    } else if (auto traceResult = traceSubviewToBlockArgument(buf)) {
+      buf_arg = traceResult->rootArg;
+      offset = traceResult->offsetInBytes;
+    }
+
+    if (buf_arg) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow())) {
         return bd_op->emitOpError("DDR memory (runtime input arguments) can "
                                   "only be referred to on shim tiles.");
       }
+
       unsigned arg_idx = buf_arg.getArgNumber();
-      int64_t offset = bd_op.getOffsetInBytes();
-      builder.create<NpuAddressPatchOp>(bd_op.getLoc(), /*addr*/ register_addr,
-                                        /*arg_idx*/ arg_idx,
-                                        /*arg_plus*/ offset);
+      offset += bd_op.getOffsetInBytes();
+      NpuAddressPatchOp::create(builder, bd_op.getLoc(),
+                                /*addr*/ register_addr,
+                                /*arg_idx*/ arg_idx,
+                                /*arg_plus*/ offset);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -205,22 +246,35 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
             "address.");
       }
       buf_addr = *buffer.getAddress();
-      builder.create<NpuWrite32Op>(bd_op.getLoc(), register_addr, buf_addr,
-                                   nullptr, nullptr, nullptr);
+      buf_addr += bd_op.getOffsetInBytes();
+      if (target_model.isCoreTile(col, row)) {
+        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
+                                 (buf_addr / 4) << 14, 0x0fffc000, nullptr,
+                                 nullptr, nullptr);
+      } else if (target_model.isMemTile(col, row)) {
+        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
+                                 buf_addr / 4, 0x0007FFFF, nullptr, nullptr,
+                                 nullptr);
+      } else {
+        NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
+                             nullptr, nullptr, nullptr);
+      }
     } else {
       return bd_op->emitOpError(
-          "Buffer argument must be either a constant aie.buffer or a runtime "
-          "sequence input argument.");
+          "Buffer argument must be a constant aie.buffer, a runtime sequence "
+          "input argument, or a (chain of) subview(s) or cast(s) of a block "
+          "argument with constant offsets and strides equal to one.");
     }
     return success();
   }
 
-  LogicalResult rewriteSingleBD(OpBuilder &builder, Block &block,
-                                AIE::TileOp &tile,
-                                AIE::DMAChannelDir channelDir) {
+  LogicalResult
+  rewriteSingleBD(OpBuilder &builder, Block &block, AIE::TileOp &tile,
+                  AIE::DMAChannelDir channelDir,
+                  std::optional<xilinx::AIE::PacketInfoAttr> packet) {
     AIE::DMABDOp bd_op = getBdForBlock(block);
     const auto &target_model = AIE::getTargetModel(bd_op);
-    MemRefType buffer_type = bd_op.getBuffer().getType();
+    auto buffer_type = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
     uint32_t addr_granularity = target_model.getAddressGenGranularity();
 
     uint32_t bd_id = bd_op.getBdId().value();
@@ -254,6 +308,10 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     std::fill(padBefore.begin(), padBefore.end(), 0);
     std::fill(padAfter.begin(), padAfter.end(), 0);
 
+    auto enable_packet = 0;
+    auto out_of_order_id = 0;
+    auto packet_id = 0;
+    auto packet_type = 0;
     auto d0size = 0;
     auto d0stride = 0;
     auto d1size = 0;
@@ -314,7 +372,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
           return bd_op->emitOpError()
                  << "supports padding only for MM2S direction on MemTiles.";
       }
-      getHardwareStridesWraps(target_model, buffer_type, input_sizes,
+      getHardwareStridesWraps(target_model, bd_op, buffer_type, input_sizes,
                               input_strides, sizes, strides);
 
       if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
@@ -389,26 +447,82 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       use_next_bd = 1;
     }
 
-    builder.create<NpuWriteBdOp>(
-        bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity, offset, 0,
-        0, 0, 0,
-        /* TODO: Strides/Wraps */
+    // enable_packet
+    // auto info = bd_op.getPacket() ? bd_op.getPacket() : packet;
+    auto info = bd_op.getPacket().value_or(packet.value_or(nullptr));
+    if (info) {
+      enable_packet = 1;
+      packet_type = info.getPktType();
+      packet_id = info.getPktId();
+    }
+
+    // Extract lock information if present
+    int32_t lock_rel_val = 0;
+    int32_t lock_rel_id = 0;
+    int32_t lock_acq_enable = 0;
+    int32_t lock_acq_val = 0;
+    int32_t lock_acq_id = 0;
+
+    auto lock_ops = getOptionalLockOpsForBlock(block);
+    if (lock_ops) {
+      auto [acquire_op, release_op] = *lock_ops;
+
+      // Get lock IDs from the lock operations
+      AIE::LockOp acq_lock = acquire_op.getLockOp();
+      AIE::LockOp rel_lock = release_op.getLockOp();
+
+      if (acq_lock.getLockID().has_value()) {
+        lock_acq_id = acq_lock.getLockID().value();
+        lock_acq_val = acquire_op.getLockValue();
+        // For AcquireGreaterEqual, negate the value to signal the hardware
+        // to use >= comparison instead of == comparison.
+        if (acquire_op.acquireGE())
+          lock_acq_val = -lock_acq_val;
+        lock_acq_enable = 1;
+      }
+
+      if (rel_lock.getLockID().has_value()) {
+        lock_rel_id = rel_lock.getLockID().value();
+        lock_rel_val = release_op.getLockValue();
+      }
+
+      // For memtile, add lock offset using getLockLocalBaseIndex.
+      // This matches AIERT.cpp implementation.
+      if (target_model.isMemTile(tile.getCol(), tile.getRow())) {
+        auto lockOffset = target_model.getLockLocalBaseIndex(
+            tile.getCol(), tile.getRow(), acq_lock.colIndex(),
+            acq_lock.rowIndex());
+        if (lockOffset && acq_lock.getLockID().has_value())
+          lock_acq_id += lockOffset.value();
+        if (lockOffset && rel_lock.getLockID().has_value())
+          lock_rel_id += lockOffset.value();
+      }
+    }
+
+    NpuWriteBdOp::create(
+        builder, bd_op.getLoc(), tile.getCol(), bd_id, len_addr_granularity,
+        offset,
+        /*enable_packet=*/enable_packet,
+        /*out_of_order_id=*/out_of_order_id,
+        /*packet_id=*/packet_id,
+        /*packet_type=*/packet_type,
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
         /*iteration_current=*/0, /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
-        /* TODO: Next BD */
         /*next_bd=*/next_bd_id,
         /*row=*/tile.getRow(),
         /*use_next_bd=*/use_next_bd,
         /*valid_bd=*/1,
-        /* TODO: Locks */
-        /*lock_rel_val=*/0, /*lock_rel_id=*/0, /*lock_acq_enable=*/0,
-        /*lock_acq_val=*/0, /*lock_ackq_id=*/0, /*d0_zero_before=*/padBefore[0],
+        /*lock_rel_val=*/lock_rel_val, /*lock_rel_id=*/lock_rel_id,
+        /*lock_acq_enable=*/lock_acq_enable,
+        /*lock_acq_val=*/lock_acq_val, /*lock_acq_id=*/lock_acq_id,
+        /*d0_zero_before=*/padBefore[0],
         /*d1_zero_before=*/padBefore[1], /*d2_zero_before=*/padBefore[2],
         /*d0_zero_after=*/padAfter[0], /*d1_zero_after=*/padAfter[1],
-        /*d2_zero_after=*/padAfter[2]);
+        /*d2_zero_after=*/padAfter[2],
+        /*burst_length=*/bd_op.getBurstLength());
     return setAddressForSingleBD(builder, bd_op, tile);
   }
 
@@ -439,7 +553,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
                                   // verifyBdInBlock() call
         bd_op.setNextBdId(next_dma_bd_op.getBdId().value());
         OpBuilder builder(next_bd_op);
-        builder.create<AIE::EndOp>(next_bd_op.getLoc());
+        AIE::EndOp::create(builder, next_bd_op.getLoc());
         next_bd_op.erase();
       }
     }
@@ -484,6 +598,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
     }
 
     auto channelDir = op.getDirection();
+    auto packet = op.getPacket();
 
     // Lower all BDs
     for (auto it = body.begin(); it != body.end(); ++it) {
@@ -491,7 +606,7 @@ struct AIEDMATasksToNPUPass : AIEDMATasksToNPUBase<AIEDMATasksToNPUPass> {
       if (shouldSkipBlock(block)) {
         continue;
       }
-      if (failed(rewriteSingleBD(builder, block, tile, channelDir))) {
+      if (failed(rewriteSingleBD(builder, block, tile, channelDir, packet))) {
         return failure();
       }
     }

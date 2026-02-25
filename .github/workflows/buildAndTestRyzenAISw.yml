@@ -89,10 +89,11 @@ jobs:
               git reset --hard ${{ inputs.AIE_COMMIT }}
             fi
 
+            pip install --upgrade pip
             pip install onnxruntime==1.17.0
             pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
-            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+            pip install -r python/requirements_dev.txt
 
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
 
@@ -124,6 +125,8 @@ jobs:
                 -DMLIR_DIR=/workspace/mlir/lib/cmake/mlir
 
             ninja install
+            # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
+            export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
             ninja check-aie
 
             popd

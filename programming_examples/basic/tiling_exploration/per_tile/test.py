@@ -4,12 +4,15 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 import argparse
 import numpy as np
 
 from aie.helpers.taplib import TensorTiler2D
-from aie.utils.xrt import setup_aie, execute as execute_on_aie
+import aie.utils.test as test_utils
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime
+import sys
 
 
 def main(opts):
@@ -23,57 +26,23 @@ def main(opts):
     )
     reference_access_order = reference_tiler.access_order()
 
-    app = setup_aie(
-        opts.xclbin,
-        opts.instr,
-        None,
-        None,
-        None,
-        None,
-        data_size,
-        dtype,
+    out = iron.zeros(data_size, dtype=dtype)
+
+    npu_opts = test_utils.create_npu_kernel(opts)
+    res = DefaultNPURuntime.run_test(
+        npu_opts.npu_kernel,
+        [out],
+        {0: reference_access_order.flatten()},
+        verify=npu_opts.verify,
+        verbosity=npu_opts.verbosity,
     )
-    aie_output = execute_on_aie(app)
-    aie_output = aie_output.reshape((opts.tensor_height, opts.tensor_width))
-
-    # Copy output results and verify they are correct
-    errors = 0
-    if opts.verbosity >= 1:
-        print("Verifying results ...")
-    e = np.equal(reference_access_order, aie_output)
-    errors = np.size(e) - np.count_nonzero(e)
-
-    if not errors:
+    if res == 0:
         print("\nPASS!\n")
-        exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
-        exit(-1)
+    sys.exit(res)
 
 
 def get_arg_parser():
-    p = argparse.ArgumentParser()
-    p.add_argument(
-        "-x", "--xclbin", default="final.xclbin", dest="xclbin", help="the xclbin path"
-    )
-    p.add_argument(
-        "-k",
-        "--kernel",
-        dest="kernel",
-        default="MLIR_AIE",
-        help="the kernel name in the XCLBIN (for instance MLIR_AIE)",
-    )
-    p.add_argument(
-        "-v", "--verbosity", default=0, type=int, help="the verbosity of the output"
-    )
-    p.add_argument(
-        "-i",
-        "--instr",
-        dest="instr",
-        default="instr.txt",
-        help="path of file containing userspace instructions sent to the NPU",
-    )
+    p = test_utils.create_default_argparser()
     p.add_argument("--tensor-height", required=True, help="Tensor height", type=int)
     p.add_argument("--tensor-width", required=True, help="Tensor width", type=int)
     p.add_argument("--tile-height", required=True, help="Tile height", type=int)

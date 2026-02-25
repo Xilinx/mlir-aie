@@ -44,30 +44,30 @@ module {
 
 // -----
 
-// CHECK:  %tile_2_1 = aie.tile(2, 1)
-// CHECK:  %tile_2_0 = aie.tile(2, 0)
+// CHECK:  %{{.*}}tile_2_1 = aie.tile(2, 1)
+// CHECK:  %{{.*}}tile_2_0 = aie.tile(2, 0)
 // CHECK:  %core_2_1 = aie.core(%tile_2_1) {
 // CHECK:    aie.end
 // CHECK:  }
-// CHECK:  %switchbox_2_1 = aie.switchbox(%tile_2_1) {
+// CHECK:  %switchbox_2_1 = aie.switchbox(%{{.*}}tile_2_1) {
 // CHECK:    aie.connect<Core : 0, South : 0>
 // CHECK:  }
-// CHECK:  %switchbox_2_0 = aie.switchbox(%tile_2_0) {
+// CHECK:  %switchbox_2_0 = aie.switchbox(%{{.*}}tile_2_0) {
 // CHECK:    aie.connect<North : 0, South : 2>
 // CHECK:  }
-// CHECK:  %shim_mux_2_0 = aie.shim_mux(%tile_2_0) {
+// CHECK:  %shim_mux_2_0 = aie.shim_mux(%{{.*}}tile_2_0) {
 // CHECK:    aie.connect<North : 2, DMA : 0>
 // CHECK:  }
-// CHECK:  %shim_dma_2_0 = aie.shim_dma(%tile_2_0) {
+// CHECK:  %shim_dma_2_0 = aie.shim_dma(%{{.*}}tile_2_0) {
 // CHECK:    aie.end
 // CHECK:  }
 // CHECK:  aie.wire(%switchbox_2_1 : South, %switchbox_2_0 : North)
 // CHECK:  aie.wire(%switchbox_2_0 : South, %shim_mux_2_0 : North)
 // CHECK:  aie.wire(%shim_mux_2_0 : DMA, %shim_dma_2_0 : DMA)
-// CHECK:  aie.wire(%shim_mux_2_0 : South, %tile_2_0 : DMA)
+// CHECK:  aie.wire(%shim_mux_2_0 : South, %{{.*}}tile_2_0 : DMA)
 // CHECK:  aie.wire(%switchbox_2_1 : Core, %core_2_1 : Core)
-// CHECK:  aie.wire(%switchbox_2_1 : Core, %tile_2_1 : Core)
-// CHECK:  aie.flow(%tile_2_1, Core : 0, %shim_dma_2_0, DMA : 0)
+// CHECK:  aie.wire(%switchbox_2_1 : Core, %{{.*}}tile_2_1 : Core)
+// CHECK:  aie.flow(%{{.*}}tile_2_1, Core : 0, %shim_dma_2_0, DMA : 0)
 
 module {
   aie.device(xcvc1902) {

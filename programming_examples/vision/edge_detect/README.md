@@ -12,7 +12,7 @@
 
 The Edge Detect pipeline design consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images : `rgba2gray`, `filter2D`, `threshold`, `gray2rgba`, `addWeighted`.
 
-In the alternative design, [`edge_detect_alt.py`](./edge_detect_alt.py), placement values above are explicitly set as described below. This is because this alternative design uses a lower-level version of IRON. The primary design, [`edge_detect.py`](./edge_detect.py), uses a higher-level form of IRON and relies on the `SequentialPlacer()` to assign components of the design to tiles on the device.
+In the placed design, [`edge_detect_placed.py`](./edge_detect_placed.py), placement values above are explicitly set as described below. This is because this placed design uses a lower-level version of IRON. The primary design, [`edge_detect.py`](./edge_detect.py), uses a higher-level form of IRON and relies on the `SequentialPlacer()` to assign components of the design to tiles on the device.
 
 The pipeline is mapped onto a single column of the npu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). As shown in the image below, the `rgba2gray`, `filter2D` and `threshold` kernels are each mapped onto one compute tile, while `gray2rgba` and `addWeighted` are mapped together on AIE tile (0, 5). 
 
@@ -32,9 +32,9 @@ make
 make edge_detect.exe
 ```
 
-To compile the alternative design:
+To compile the placed design:
 ```shell
-env use_alt=1 make
+env use_placed=1 make
 make edge_detect.exe
 ```
 

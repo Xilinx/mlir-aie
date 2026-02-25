@@ -1,0 +1,35 @@
+//===- local_locks_aie2p.mlir ----------------------------------*- MLIR -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// (c) Copyright 2025, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+// RUN: aie-opt --aie-standard-lowering="tilecol=3 tilerow=3" %s | FileCheck --check-prefix=CHECK33 %s
+
+// CHECK33:  func.func @core_3_3() {
+// CHECK33:    %c56 = arith.constant 56 : index
+// CHECK33:    %0 = arith.index_cast %c56 : index to i32
+// CHECK33:    %c0_i32 = arith.constant 0 : i32
+// CHECK33:    call @llvm.aie2p.acquire(%0, %c0_i32) : (i32, i32) -> ()
+// CHECK33:    %1 = arith.index_cast %c56 : index to i32
+// CHECK33:    %c1_i32 = arith.constant 1 : i32
+// CHECK33:    call @llvm.aie2p.release(%1, %c1_i32) : (i32, i32) -> ()
+// CHECK33:    return
+// CHECK33:  }
+
+module @local_locks {
+ aie.device(npu2) {
+  %3 = aie.tile(3, 3)
+  %11 = aie.core(%3)  {
+    %c56 = arith.constant 56 : index
+    aie.use_lock(%c56, Acquire, 0)
+    aie.use_lock(%c56, Release, 1)
+    aie.end
+  }
+ }
+}
+

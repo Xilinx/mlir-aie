@@ -1,9 +1,9 @@
 name: Build and Test with AIE tools with HSA backend and build only tests
 
 on:
-  push:
-    branches:
-      - main
+#  push:
+#    branches:
+#      - main
 #  pull_request:
   workflow_dispatch:
     inputs:
@@ -83,7 +83,7 @@ jobs:
                 | tee /etc/apt/preferences.d/rocm-pin-600
             apt update
             apt install -y rocm-hip-runtime-dev5.6.0 python3.10-venv \
-                           libboost-all-dev pkg-config libelf-dev elfutils \
+                           pkg-config libelf-dev elfutils \
                            libdwarf-dev libsysfs-dev clang libssl-dev uuid-dev
             apt-get clean
 
@@ -109,8 +109,10 @@ jobs:
             apt install python3.10-venv
             python -m venv aie-venv
             source aie-venv/bin/activate
+            pip install --upgrade pip
             pip install -r python/requirements.txt
-            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+            pip install -r python/requirements_notebook.txt
+            pip install -r python/requirements_dev.txt
 
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir==$VERSION \
@@ -129,6 +131,7 @@ jobs:
             mkdir build && cd build
             export PATH=/opt/Xilinx/Vitis/2023.2/bin:/opt/Xilinx/Vitis/2023.2/aietools/bin:`pwd`/../install/bin/:$PATH
             cmake .. -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
               -DLibXAIE_x86_64-hsa_DIR=/install/aie-rt \
               -Dhsakmt_DIR=`pwd`/../rocm/lib/cmake/hsakmt/ \
               -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
@@ -160,4 +163,3 @@ jobs:
             export LIT_OPTS="-sv --timeout 600 -j1 --filter-out Targets/AIEGenerateCDODirect"
             ninja check-aie
             ninja check-reference-designs
-            

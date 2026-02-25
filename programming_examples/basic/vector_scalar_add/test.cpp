@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-#include <boost/program_options.hpp>
+#include "cxxopts.hpp"
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -20,20 +20,21 @@
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
 
+#include "xrt/experimental/xrt_elf.h"
+#include "xrt/experimental/xrt_ext.h"
+#include "xrt/experimental/xrt_module.h"
+
 #include "test_utils.h"
 
-namespace po = boost::program_options;
-
 int main(int argc, const char *argv[]) {
-
   // ------------------------------------------------------
   // Parse program arguments
   // ------------------------------------------------------
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
+  cxxopts::Options options("Vector Scalar Add Test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
 
-  test_utils::parse_options(argc, argv, desc, vm);
+  test_utils::parse_options(argc, argv, options, vm);
   int verbosity = vm["verbosity"].as<int>();
   int do_verify = vm["verify"].as<bool>();
   int n_iterations = vm["iters"].as<int>();
@@ -42,12 +43,6 @@ int main(int argc, const char *argv[]) {
 
   constexpr int IN_SIZE = 1024;
   constexpr int OUT_SIZE = 1024;
-
-  // Load instruction sequence
-  std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
 
   // ------------------------------------------------------
   // Get device, load the xclbin & kernel and register them
@@ -89,21 +84,21 @@ int main(int argc, const char *argv[]) {
     std::cout << "Getting hardware context.\n";
   xrt::hw_context context(device, xclbin.get_uuid());
 
+  // Load instr ELF
+  xrt::elf elf(vm["instr"].as<std::string>());
+  xrt::module mod{elf};
+
   // Get a kernel handle
   if (verbosity >= 1)
     std::cout << "Getting handle to kernel:" << kernelName << "\n";
-  auto kernel = xrt::kernel(context, kernelName);
+  auto kernel = xrt::ext::kernel(context, mod, kernelName);
 
   // ------------------------------------------------------
   // Initialize input/ output buffer sizes and sync them
   // ------------------------------------------------------
 
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
+  xrt::bo bo_inA = xrt::ext::bo{device, IN_SIZE * sizeof(int32_t)};
+  xrt::bo bo_out = xrt::ext::bo{device, OUT_SIZE * sizeof(int32_t)};
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -114,16 +109,12 @@ int main(int argc, const char *argv[]) {
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
-  void *bufInstr = bo_instr.map<void *>();
-  memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
-
-  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
+  auto run = kernel(opcode, 0, 0, bo_inA, bo_out);
   run.wait();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -135,8 +126,13 @@ int main(int argc, const char *argv[]) {
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
     uint32_t ref = i + 2;
     if (*(bufOut + i) != ref) {
-      std::cout << "Error in output " << *(bufOut + i) << " != " << ref
-                << std::endl;
+      if (errors < 100) {
+        std::cout << "Error in output " << *(bufOut + i) << " != " << ref
+                  << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
+      }
       errors++;
     } else {
       std::cout << "Correct output " << *(bufOut + i) << " == " << ref

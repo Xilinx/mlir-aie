@@ -7,15 +7,15 @@
 from ml_dtypes import bfloat16
 import numpy as np
 import sys
+import argparse
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU1Col1
+from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
 
-def vector_softmax(trace_size):
-    N = 262144  # *1024
+def vector_softmax(dev, trace_size, N):
 
     # Tile sizes
     n = 1024
@@ -32,7 +32,9 @@ def vector_softmax(trace_size):
     C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
 
     # AIE Core Function declarations
-    softmax_bf16_vector = Kernel("softmax_bf16_vector", "kernels.a", [tile_ty, tile_ty])
+    softmax_bf16_vector = Kernel(
+        "softmax_bf16", "kernels.a", [tile_ty, tile_ty, np.int32]
+    )
 
     # AIE-array data movement with object fifos
     # Input A and Output C
@@ -60,7 +62,7 @@ def vector_softmax(trace_size):
         for _ in range_(tiles):
             elem_out = of_out.acquire(1)
             elem_in_a = of_in.acquire(1)
-            softmax_kernel(elem_in_a, elem_out)
+            softmax_kernel(elem_in_a, elem_out, n)
             of_in.release(1)
             of_out.release(1)
 
@@ -86,13 +88,54 @@ def vector_softmax(trace_size):
         rt.drain(outC.cons(), C, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU1Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program(SequentialPlacer())
 
 
-try:
-    trace_size = 0 if (len(sys.argv) != 2) else int(sys.argv[1])
-except ValueError:
-    print("Argument is not an integer")
+def main():
+    parser = argparse.ArgumentParser(prog="softmax")
+    parser.add_argument(
+        "device_name",
+        choices=["npu", "npu2"],
+        default="npu",
+        help="Device name (npu or npu2)",
+    )
+    parser.add_argument(
+        "trace_size_pos",
+        nargs="?",
+        type=int,
+        default=0,
+        help="Trace size (optional positional, default: 0)",
+    )
+    parser.add_argument(
+        "--trace_size",
+        dest="trace_size_flag",
+        type=int,
+        default=0,
+        help="Trace size (optional flag, default: 0)",
+    )
+    parser.add_argument(
+        "--size",
+        type=int,
+        default=262144,
+        help="Size of the input vector (default: 262144)",
+    )
 
-module = vector_softmax(trace_size)
-print(module)
+    args = parser.parse_args()
+
+    trace_size = (
+        args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
+    )
+
+    if args.device_name == "npu":
+        dev = NPU1Col1()
+    elif args.device_name == "npu2":
+        dev = NPU2Col1()
+    else:
+        raise ValueError(f"[ERROR] Device name {args.device_name} is unknown")
+
+    module = vector_softmax(dev, trace_size, args.size)
+    print(module)
+
+
+if __name__ == "__main__":
+    main()

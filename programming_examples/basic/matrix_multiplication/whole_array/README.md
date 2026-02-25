@@ -22,7 +22,7 @@ At a high level, the code does the following (in order):
 
 1. [**Defining Core Computations:**](#4-defining-core-computations) The `core_body()` function contains the code that will be loaded onto each AIE core. This code describes the matrix multiplication using the input submatrices `a` and `b` acquired through the ObjectFIFOs. The results are accumulated in the output submatrix `c`.
 
-1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `aie.runtime_sequence()` op sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Data Movement Accelerator (DMA) transfers, sets memory access patterns, and performs synchronization.
+1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `aie.runtime_sequence()` op sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Direct Memory Access (DMA) transfers, sets memory access patterns, and performs synchronization.
 
 1. **Generating the Design:** The `my_matmul()` function triggers the code generation process and represents the main entry point of the design. The final print statement outputs the MLIR representation of the AIE array configuration.
 
@@ -42,15 +42,15 @@ make whole_array.exe
 make run
 ```
 
-To compile and run the alternative design with tiling:
+To compile and run the placed design with tiling:
 
 ```shell
-env use_alt=1 make
-env use_alt=1 make whole_array.exe
-env use_alt=1 make run
+env use_placed=1 make
+env use_placed=1 make whole_array.exe
+env use_placed=1 make run
 ```
 
-To compile and run the alternative design with higher-level IRON:
+To compile and run the placed design with higher-level IRON:
 
 ```shell
 env use_iron=1 make
@@ -60,8 +60,8 @@ env use_iron=1 make run
 
 ## Detailed Design Explanation
 
-The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two alternative versions of this design:
-* [`whole_array_alt.py`](./whole_array_alt.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of alternative instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
+The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two placed versions of this design:
+* [`whole_array_placed.py`](./whole_array_placed.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of placed instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
 * [`whole_array_iron.py`](./whole_array_iron.py): This design uses a higher-level version of IRON but is also intended to be functionally equivalent. Note that this design does not support tracing at this time.
 
 It is linked against a compute microkernel which is implemented in C++.
@@ -181,7 +181,7 @@ make run
 
 ##### Tiling to Vector Intrinsic Size
 
-The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, alternatively, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
+The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, placedly, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
 
 For matrix A (`memA_fifos`), this transformation is expressed using the following wraps and strides as a list of tuples `(wrap, stride)`, given as arguments to the `object_fifo()` operation:
 (Note that `//` denotes integer floor-division in Python.)
@@ -258,9 +258,9 @@ This C++ code demonstrates how to implement matrix multiplication for different 
 
 1. `matmul_scalar`: A scalar function that performs matrix multiplication for input matrices `a` and `b` and adds the result to matrix `c`. This function iterates through each row in matrix `a` and each column in matrix `b`, performing the multiplication of the corresponding elements and accumulating their sum to populate matrix `c`.
 
-1. `matmul_vectorized` and `matmul_vectorized_2x2`: Vectorized matrix multiplication functions for different block sizes and input/output types for the AI Engine. These functions use the AIE API for efficient vectorized matrix multiplication, with support for various input and output tensor data types (e.g., int16, bfloat16).
+1. `matmul_vectorized` and `matmul_vectorized_XxX`: Vectorized matrix multiplication functions for different block sizes and input/output types for the AI Engine. These functions use the AIE API for efficient vectorized matrix multiplication, with support for various input and output tensor data types (e.g., int16, bfloat16). These functions expand the vectorized matrix multiplications to different shapes (4x4, 2x2, 4x4) to achieve higher kernel efficiency through higher accumulator register usage.
 
-1. `matmul_vectorized_4x4x4_i16_i16`, `matmul_vectorized_4x8x4_bf16_bf16`, and `matmul_vectorized_4x8x4_bf16_f32`: Helper functions for calling the corresponding `matmul_vectorized` functions with specific input and output types and block sizes.
+1. `matmul_vectorized_4x4x4_i16_i16`, `matmul_vectorized_4x8x4_bf16_bf16`, `matmul_vectorized_4x8x4_bf16_f32`, ... : Helper functions for calling the corresponding `matmul_vectorized` functions with specific input and output types and block sizes. The shapes of the intrinsic calls (ex: `4x8x4`) have been selected among the available ones for their higher performance. The full list of available matrix multiplication modes can be found [here](https://xilinx.github.io/aie_api/group__group__mmul.html).
 
 1. Extern "C" interface functions: These functions provide a C-compatible interface to the main matrix multiplication functions, making it easier to call these functions from other languages or environments.
 

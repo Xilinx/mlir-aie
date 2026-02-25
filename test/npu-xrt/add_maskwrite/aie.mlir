@@ -9,9 +9,7 @@
 //===----------------------------------------------------------------------===//
 
 module {
-  aie.device(npu1_1col) {
-    memref.global "public" @out0 : memref<64xi32>
-
+  aie.device(NPUDEVICE) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
@@ -61,9 +59,9 @@ module {
       aie.end
     }
 
-    aie.shim_dma_allocation @out0(S2MM, 0, 0)
+    aie.shim_dma_allocation @out0 (%tile_0_0, S2MM, 0)
 
-    aiex.runtime_sequence @seq(%arg0: memref<8xi32>) {
+    aie.runtime_sequence @seq(%arg0: memref<8xi32>) {
       %c0_i64 = arith.constant 0 : i64
       %c1_i64 = arith.constant 1 : i64
       %c8_i64 = arith.constant 8 : i64
@@ -71,7 +69,7 @@ module {
       aiex.npu.maskwrite32 {row = 2 : i32, column = 0 : i32, address = 1024 : ui32, value = 0x12345678 : ui32, mask = 0xF0F0F0F0 : ui32}
       aiex.npu.maskwrite32 {buffer = @input_buffer, address = 1 : ui32, value = 0x9ABCDEF0 : ui32, mask = 0x0F0F0F0F : ui32}
 
-      aiex.npu.dma_memcpy_nd(0, 0, %arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<8xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<8xi32>
       aiex.npu.write32 { row = 2 : i32, column = 0 : i32, address = 0x0001F000 : ui32, value = 1 : ui32 }
       aiex.npu.dma_wait {symbol = @out0}
     }

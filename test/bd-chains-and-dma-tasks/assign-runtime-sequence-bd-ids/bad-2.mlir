@@ -11,11 +11,11 @@
 // are availalbe in the current device.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aiex.runtime_sequence(%arg0: memref<8xi16>) {
+    aie.runtime_sequence(%arg0: memref<8xi16>) {
       // Allocate more than there are available BD IDs
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)

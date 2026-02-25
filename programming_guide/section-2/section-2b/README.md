@@ -14,14 +14,15 @@
     * [Section 2a - Introduction](../section-2a/)
     * Section 2b - Key Object FIFO Patterns
     * [Section 2c - Data Layout Transformations](../section-2c/)
-    * [Section 2d - Programming for multiple cores](../section-2d/)
-    * [Section 2e - Practical Examples](../section-2e/)
-    * [Section 2f - Data Movement Without Object FIFOs](../section-2f/)
-    * [Section 2g - Runtime Data Movement](../section-2g/)
+    * [Section 2d - Runtime Data Movement](../section-2d/)
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
+
 
 -----
 
-The Object FIFO primitive supports several data movement patterns. We will now describe each of the currently supported patterns in three subsections and provide links to more in-depth practical code examples that showcase each of them.
+The Object FIFO primitive supports several data movement patterns. We will now describe each of the currently supported patterns in four subsections and provide links to more in-depth practical code examples that showcase each of them.
 
 <details><summary><a href="./01_Reuse/">Object FIFO Reuse Pattern</a></summary>
 
@@ -31,11 +32,11 @@ The Object FIFO primitive supports several data movement patterns. We will now d
 
 * Broadcast data from one producer to multiple consumers
 </details>
-<details><summary><a href="./03_Link_Distribute_Join/">Object FIFO Distribute &amp; Join Patterns with Object FIFO Link</a></summary>
+<details><summary><a href="./03_Implicit_Copy/">Implicit Copy Across Object FIFOs: Distribute &amp; Join Patterns</a></summary>
 
-* Implicit copy of data from one Object FIFO to another via an Object FIFO Link
+* Implicit copy of data from one Object FIFO to another
 * Distribute different pieces of the input data to multiple consumers 
-* Join outputs from different consumers into a bigger data tensor
+* Join outputs from different producers into a bigger data tensor
 </details>
 <details><summary><a href="./04_Repeat/">Object FIFO Repeat Pattern</a></summary>
 

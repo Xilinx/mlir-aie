@@ -15,7 +15,7 @@ from aie.dialects.aie import (
     tile,
     end,
 )
-from aie.helpers.dialects.ext.scf import _for as range_
+from aie.iron.controlflow import range_
 from aie.ir import Block, InsertionPoint
 
 from util import construct_and_print_module
@@ -24,13 +24,13 @@ from util import construct_and_print_module
 # CHECK:  module {
 # CHECK:    aie.device(xcve2802) {
 # CHECK:      func.func private @test_func(memref<8x8xi32>, i32) -> i32
-# CHECK:      %tile_0_2 = aie.tile(0, 2)
-# CHECK:      %tile_1_2 = aie.tile(1, 2)
-# CHECK:      %tile_3_3 = aie.tile(3, 3)
-# CHECK:      aie.objectfifo @of0(%tile_0_2, {%tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-# CHECK:      aie.objectfifo @of1(%tile_1_2, {%tile_3_3}, 2 : i32) : !aie.objectfifo<memref<8x8xi32>>
+# CHECK:      %{{.*}}tile_0_2 = aie.tile(0, 2)
+# CHECK:      %{{.*}}tile_1_2 = aie.tile(1, 2)
+# CHECK:      %{{.*}}tile_3_3 = aie.tile(3, 3)
+# CHECK:      aie.objectfifo @of0(%{{.*}}tile_0_2, {%{{.*}}tile_1_2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
+# CHECK:      aie.objectfifo @of1(%{{.*}}tile_1_2, {%{{.*}}tile_3_3}, 2 : i32) : !aie.objectfifo<memref<8x8xi32>>
 # CHECK:      aie.objectfifo.link [@of0] -> [@of1]([] [])
-# CHECK:      %core_3_3 = aie.core(%tile_3_3) {
+# CHECK:      %core_3_3 = aie.core(%{{.*}}tile_3_3) {
 # CHECK:        %c0 = arith.constant 0 : index
 # CHECK:        %c10 = arith.constant 10 : index
 # CHECK:        %c1 = arith.constant 1 : index

@@ -23,11 +23,33 @@ class ModuleOp;
 
 namespace xilinx {
 namespace aievec {
-void populateAIEVecToLLVMConversionPatterns(mlir::LLVMTypeConverter &converter,
-                                            mlir::RewritePatternSet &patterns);
+
+enum class Aie2Fp32Emulation : uint32_t;
+
+void populateAIEVecToLLVMConversionPatterns(
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns,
+    Aie2Fp32Emulation aie2Fp32EmulationOption, llvm::StringRef aieTarget);
+
+void populateAIEVecToLLVMCommonConversionPatterns(
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns);
+
+void populateAIEVecToLLVMAIE2ConversionPatterns(
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns);
+
+void populateAIEVecToLLVMAIE2pConversionPatterns(
+    mlir::LLVMTypeConverter &converter, mlir::RewritePatternSet &patterns);
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertAIEVecToLLVMPass();
+} // namespace aievec
+
+// Forward declare options struct from generated code (in xilinx:: namespace)
+struct ConvertAIEVecToLLVMOptions;
+
+namespace aievec {
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertAIEVecToLLVMPass(
+    const xilinx::ConvertAIEVecToLLVMOptions &options);
 } // namespace aievec
 } // namespace xilinx
 

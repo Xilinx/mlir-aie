@@ -3,16 +3,25 @@ name: Build wheels for Ryzen AI
 on:
   pull_request:
   workflow_dispatch:
+    inputs:
+      AIE_COMMIT:
+        description: 'AIE commit to build'
+        type: string
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*.*.*'
   merge_group:
 
   schedule:
     # At 04:00. (see https://crontab.guru)
     - cron: '0 4 * * *'
-    
+
 defaults:
   run:
     shell: bash
-    
+
 concurrency:
   # A PR number if a pull request and otherwise the commit hash. This cancels
   # queued and in-progress runs for the same PR (presubmit) or commit
@@ -36,6 +45,40 @@ jobs:
       contents: write
       packages: read
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python_version: "3.10"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.10"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.11"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.11"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.12"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.12"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.13"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.13"
+            ENABLE_RTTI: OFF
+
+          - python_version: "3.14"
+            ENABLE_RTTI: ON
+
+          - python_version: "3.14"
+            ENABLE_RTTI: OFF
+
     steps:
       - name: Free disk space
         uses: descriptinc/free-disk-space@main
@@ -57,19 +100,29 @@ jobs:
         with:
           distro: none
           arch: none
-          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.1
+          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.2
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --mac-address 02:42:ac:11:00:02
           env: |
             VITIS: ${{ env.VITIS }}
             XILINXD_LICENSE_FILE: ${{ env.XILINXD_LICENSE_FILE }}
+            AIE_WHEEL_VERSION: ${{ (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')) && github.ref_name || '""' }}
           run: |
             git config --global --add safe.directory $PWD
             MLIR_VERSION=$(git rev-parse --short HEAD)
             echo "Building mlir-aie version $MLIR_VERSION"
 
-            python -m venv ${{ github.workspace }}/aie-venv
+            if ! command -v python${{ matrix.python_version }} &> /dev/null; then
+              echo "Python ${{ matrix.python_version }} not found, installing..."
+              apt-get update
+              apt-get install -y software-properties-common
+              add-apt-repository -y ppa:deadsnakes/ppa
+              apt-get update
+              apt-get install -y python${{ matrix.python_version }} python${{ matrix.python_version }}-venv python${{ matrix.python_version }}-dev
+            fi
+
+            python${{ matrix.python_version }} -m venv ${{ github.workspace }}/aie-venv
             source ${{ github.workspace }}/aie-venv/bin/activate
 
             echo "Installing vitis_aie_essentials ..."
@@ -77,26 +130,40 @@ jobs:
             tar xfz /workspace/vaie.tgz
             popd
 
+            pip install --upgrade pip
             pip install -r python/requirements.txt
             pip install -r python/requirements_ml.txt
-            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
+            pip install -r python/requirements_dev.txt
 
+            export ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}
+
+            NO_RTTI=""  # Set a default value
+            NO_RTTI_UNDERSCORE=""  # Set a default value
+            if [ x"$ENABLE_RTTI" == x"OFF" ]; then
+              NO_RTTI="-no-rtti"
+              NO_RTTI_UNDERSCORE="_no_rtti"
+            fi
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-            pip -q download mlir==$VERSION \
+            pip -q download mlir$NO_RTTI==$VERSION \
               -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-            unzip -q mlir-*.whl
+            unzip -q mlir*.whl
             # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
             # That means wheels have file with time stamps in the future which makes ninja loop
             # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-            find mlir -exec touch -a -m -t 201108231405.14 {} \;
+            find mlir$NO_RTTI_UNDERSCORE -exec touch -a -m -t 201108231405.14 {} \;
 
             export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-            export MLIR_INSTALL_ABS_PATH=$PWD/mlir
+            export MLIR_INSTALL_ABS_PATH=$PWD/mlir$NO_RTTI_UNDERSCORE
             export MLIR_AIE_SOURCE_DIR=$PWD
             export WHEELHOUSE_DIR=$PWD/wheelhouse
             export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
             export XRT_ROOT=/opt/xilinx/xrt
-            export AIE_PROJECT_COMMIT=$MLIR_VERSION
+            if [ x"${{ inputs.AIE_COMMIT }}" == x"" ]; then
+              export AIE_PROJECT_COMMIT=$MLIR_VERSION
+            else
+              MLIR_VERSION = "${{ inputs.AIE_COMMIT }}"
+              export AIE_PROJECT_COMMIT=${MLIR_VERSION:0:7}
+            fi
             export AIE_VITIS_COMPONENTS='AIE2;AIE2P'
             export DATETIME=$(date +"%Y%m%d%H")
 
@@ -107,141 +174,25 @@ jobs:
 
             popd
 
-            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie-*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_float16_utils.so
-            WHL_FN=$(ls $WHEELHOUSE_DIR/repaired_wheel/mlir_aie*whl)
-            mv "$WHL_FN" "`echo $WHL_FN | sed "s/cp310-cp310/py3-none/"`"
+            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/mlir_aie*.whl --plat manylinux_2_35_x86_64 --exclude libcdo_driver.so --exclude libmlir_async_runtime.so --exclude libmlir_c_runner_utils.so --exclude libmlir_float16_utils.so --exclude libmlir_runner_utils.so --exclude libmlir_apfloat_wrappers.so
 
       - name: Upload mlir_aie
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
-          name: mlir_aie
+          name: mlir_aie_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
 
-      - name: Release current commit
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+      - name: Release
+        if: |
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'schedule' ||
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
         uses: ncipollo/release-action@v1.12.0
         with:
           artifacts: wheelhouse/repaired_wheel/mlir_aie*whl
           token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: 'latest-wheels'
-          name: 'latest-wheels'
-          removeArtifacts: false
+          tag: ${{ github.event_name == 'push' && github.ref_name || (matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-3' || 'latest-wheels-no-rtti') }}
+          name: ${{ github.event_name == 'push' && github.ref_name || (matrix.ENABLE_RTTI == 'ON' && 'latest-wheels-3' || 'latest-wheels-no-rtti') }}
           allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: true
-
-  build-wheel:
-    name: Build wheel
-    runs-on: ubuntu-latest
-    needs: build-repo
-
-    permissions:
-      id-token: write
-      contents: write
-      packages: read
-
-    strategy:
-      fail-fast: false
-      matrix:
-        python_version: [
-          "3.10", "3.12",
-        ]
-
-    steps:
-      - name: Get the project repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-          submodules: "true"
-
-      - uses: actions/download-artifact@v3
-        with:
-          # unpacks default artifact into dist/
-          # if `name: artifact` is omitted, the action will create extra parent dir
-          name: mlir_aie
-          path: .
-
-      - uses: uraimo/run-on-arch-action@v2.7.0
-        name: Build mlir-aie python bindings
-        id: runcmd
-        with:
-          distro: none
-          arch: none
-          base_image: ghcr.io/xilinx/mlir-aie/ubuntu22-ryzenai-1.3.0ea:1.1
-          githubToken: ${{ github.token }}
-          dockerRunArgs: |
-            --mac-address 02:42:ac:11:00:02
-          env: |
-            VITIS: ${{ env.VITIS }}
-            XILINXD_LICENSE_FILE: ${{ env.XILINXD_LICENSE_FILE }}
-          run: |
-            git config --global --add safe.directory $PWD
-            MLIR_VERSION=$(git rev-parse --short HEAD)
-            echo "Building mlir-aie version $MLIR_VERSION ..."
-
-            # faster to do this twice instead of upload the directory with ~4000 files in it...
-            VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-            pip -q download mlir==$VERSION \
-              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-            unzip -q mlir-*.whl
-            # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
-            # That means wheels have file with time stamps in the future which makes ninja loop
-            # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-            find mlir -exec touch -a -m -t 201108231405.14 {} \;
-
-            unzip -q mlir_aie-*.whl
-            find mlir_aie -exec touch -a -m -t 201108231405.14 {} \;
-
-            python${{ matrix.python_version }} -m venv aie-venv
-            source aie-venv/bin/activate
-
-            pip install -r python/requirements.txt
-            HOST_MLIR_PYTHON_PACKAGE_PREFIX=aie pip install -r python/requirements_extras.txt
-            source aie-venv/bin/activate
-
-            export MLIR_INSTALL_ABS_PATH=$PWD/mlir
-            export MLIR_AIE_INSTALL_ABS_PATH=$PWD/mlir_aie
-            export WHEELHOUSE_DIR=$PWD/wheelhouse
-            export CMAKE_MODULE_PATH=$PWD/cmake/modulesXilinx
-
-            export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-            export XRT_ROOT=/opt/xilinx/xrt
-            export AIE_PROJECT_COMMIT=$MLIR_VERSION
-            export DATETIME=$(date +"%Y%m%d%H")
-
-            cp python/requirements.txt utils/mlir_aie_wheels/python_bindings
-
-            pushd utils/mlir_aie_wheels/python_bindings
-
-            pip install wheel auditwheel patchelf
-            CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-            DEBUG=1 CIBW_ARCHS=x86_64 pip wheel . -v -w $WHEELHOUSE_DIR --no-build-isolation
-
-            popd
-
-            auditwheel repair -w $WHEELHOUSE_DIR/repaired_wheel $WHEELHOUSE_DIR/aie_python_bindings*whl --plat manylinux_2_35_x86_64
-
-      - uses: geekyeggo/delete-artifact@v4
-        if: github.event_name == 'pull_request'
-        with:
-          name: mlir_aie
-
-      - name: Upload wheels
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-        uses: actions/upload-artifact@v3
-        with:
-          path: wheelhouse/repaired_wheel/aie_python_bindings*.whl
-          name: ryzen_ai_wheel
-
-      - name: Release current commit
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-        uses: ncipollo/release-action@v1.12.0
-        with:
-          artifacts: wheelhouse/repaired_wheel/aie_python_bindings*.whl
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: 'latest-wheels'
-          name: 'latest-wheels'
-          removeArtifacts: false
-          allowUpdates: true
-          replacesArtifacts: true
-          makeLatest: true
+          replacesArtifacts: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
+          makeLatest: ${{ github.event_name == 'push' }}

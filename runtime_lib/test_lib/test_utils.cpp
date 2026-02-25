@@ -11,58 +11,63 @@
 // This file contains common helper functions for the generic host code
 
 #include "test_utils.h"
+#include <cassert>
+#include <filesystem>
+
+#ifdef TEST_UTILS_USE_XRT
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_kernel.h"
+#endif
 
 // --------------------------------------------------------------------------
 // Command Line Argument Handling
 // --------------------------------------------------------------------------
 
-void test_utils::check_arg_file_exists(po::variables_map &vm_in,
+void test_utils::check_arg_file_exists(const cxxopts::ParseResult &result,
                                        std::string name) {
-  if (!vm_in.count(name)) {
-    throw std::runtime_error("Error: no " + name + " file was provided\n");
-  } else {
-    std::ifstream test(vm_in[name].as<std::string>());
-    if (!test) {
-      throw std::runtime_error("The " + name + " file " +
-                               vm_in[name].as<std::string>() +
-                               " does not exist.\n");
-    }
+  if (!result.count(name)) {
+    throw std::runtime_error("Missing required argument: " + name);
+  }
+  std::string path = result[name].as<std::string>();
+  if (!std::filesystem::exists(path)) {
+    throw std::runtime_error("File does not exist: " + path);
   }
 }
 
-void test_utils::add_default_options(po::options_description &desc) {
-  desc.add_options()("help,h", "produce help message")(
-      "xclbin,x", po::value<std::string>()->required(),
-      "the input xclbin path")(
-      "kernel,k", po::value<std::string>()->required(),
-      "the kernel name in the XCLBIN (for instance PP_PRE_FD)")(
-      "verbosity,v", po::value<int>()->default_value(0),
-      "the verbosity of the output")(
-      "instr,i", po::value<std::string>()->required(),
-      "path of file containing userspace instructions sent to the NPU")(
-      "verify", po::value<bool>()->default_value(true),
-      "whether to verify the AIE computed output")(
-      "iters", po::value<int>()->default_value(1))(
-      "warmup", po::value<int>()->default_value(0))(
-      "trace_sz,t", po::value<int>()->default_value(0))(
-      "trace_file", po::value<std::string>()->default_value("trace.txt"),
-      "where to store trace output");
+void test_utils::add_default_options(cxxopts::Options &options) {
+  options.add_options()("help,h", "produce help message")(
+      "xclbin,x", "the input xclbin path", cxxopts::value<std::string>())(
+      "kernel,k", "the kernel name in the XCLBIN (for instance PP_PRE_FD)",
+      cxxopts::value<std::string>())("verbosity,v",
+                                     "the verbosity of the output",
+                                     cxxopts::value<int>()->default_value("0"))(
+      "instr,i",
+      "path of file containing userspace instructions sent to the NPU",
+      cxxopts::value<std::string>())(
+      "verify", "whether to verify the AIE computed output",
+      cxxopts::value<bool>()->default_value("true"))(
+      "iters", "number of iterations",
+      cxxopts::value<int>()->default_value("1"))(
+      "warmup", "number of warmup iterations",
+      cxxopts::value<int>()->default_value("0"))(
+      "trace_sz,t", "trace size", cxxopts::value<int>()->default_value("0"))(
+      "trace_file", "where to store trace output",
+      cxxopts::value<std::string>()->default_value("trace.txt"));
 }
 
 void test_utils::parse_options(int argc, const char *argv[],
-                               po::options_description &desc,
-                               po::variables_map &vm) {
+                               cxxopts::Options &options,
+                               cxxopts::ParseResult &vm) {
   try {
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);
+    vm = options.parse(argc, argv);
 
     if (vm.count("help")) {
-      std::cout << desc << "\n";
+      std::cout << options.help() << "\n";
       std::exit(1);
     }
-  } catch (const std::exception &ex) {
-    std::cerr << ex.what() << "\n\n";
-    std::cerr << "Usage:\n" << desc << "\n";
+  } catch (const cxxopts::exceptions::parsing &e) {
+    std::cerr << e.what() << "\n\n";
+    std::cerr << "Usage:\n" << options.help() << "\n";
     std::exit(1);
   }
 
@@ -94,19 +99,31 @@ std::vector<uint32_t> test_utils::load_instr_sequence(std::string instr_path) {
 }
 
 std::vector<uint32_t> test_utils::load_instr_binary(std::string instr_path) {
-  std::ifstream instr_file(instr_path);
+  // Open file in binary mode
+  std::ifstream instr_file(instr_path, std::ios::binary);
   if (!instr_file.is_open()) {
     throw std::runtime_error("Unable to open instruction file\n");
   }
-  // read size of file, reserve space in  instr_v, then read the file into
-  // instr_v
-  instr_file.seekg(0, instr_file.end);
-  int size = instr_file.tellg();
-  instr_file.seekg(0, instr_file.beg);
+
+  // Get the size of the file
+  instr_file.seekg(0, std::ios::end);
+  std::streamsize size = instr_file.tellg();
+  instr_file.seekg(0, std::ios::beg);
+
+  // Check that the file size is a multiple of 4 bytes (size of uint32_t)
+  if (size % 4 != 0) {
+    throw std::runtime_error("File size is not a multiple of 4 bytes\n");
+  }
+
+  // Allocate vector and read the binary data
   std::vector<uint32_t> instr_v(size / 4);
-  instr_file.read(reinterpret_cast<char *>(instr_v.data()), size);
+  if (!instr_file.read(reinterpret_cast<char *>(instr_v.data()), size)) {
+    throw std::runtime_error("Failed to read instruction file\n");
+  }
   return instr_v;
 }
+
+#ifdef TEST_UTILS_USE_XRT
 
 // --------------------------------------------------------------------------
 // XRT
@@ -138,7 +155,6 @@ void test_utils::init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
                       return name.rfind(kernelNameInXclbin, 0) == 0;
                     });
   auto kernelName = xkernel.get_name();
-
   // Register xclbin
   if (verbosity >= 1)
     std::cout << "Registering xclbin: " << xclbinFileName << "\n";
@@ -157,6 +173,8 @@ void test_utils::init_xrt_load_kernel(xrt::device &device, xrt::kernel &kernel,
 
   return;
 }
+
+#endif // TEST_UTILS_USE_XRT
 
 // --------------------------------------------------------------------------
 // Matrix / Float / Math

@@ -7,13 +7,14 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from ..extras.context import mlir_mod_ctx  # type: ignore
-from ..helpers.dialects.ext.func import FuncBase
+from ..helpers.dialects.func import FuncBase
 from ..dialects.aie import device
 
 from .device import Device
 from .runtime import Runtime
 from .placers import Placer
 from .resolvable import Resolvable
+from ..utils import trace as trace_utils
 
 
 class Program:
@@ -34,7 +35,7 @@ class Program:
         self._device = device
         self._rt = rt
 
-    def resolve_program(self, placer: Placer | None = None):
+    def resolve_program(self, placer: Placer | None = None, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
 
         Args:
@@ -45,14 +46,22 @@ class Program:
             module (Module): The module containing the MLIR context information.
         """
         with mlir_mod_ctx() as ctx:
+            # Create a fresh device instance of the same type to avoid stale MLIR operations
+            # This preserves the device configuration while ensuring clean state
+            device_type = type(self._device)
+            # For dynamically created device classes, the constructor takes no arguments
+            self._device = device_type()
 
-            @device(self._device.resolve())
+            @device(self._device.resolve(), sym_name=device_name)
             def device_body():
                 # Collect all fifos
                 all_fifos = set()
                 all_fifos.update(self._rt.fifos)
                 for w in self._rt.workers:
                     all_fifos.update(w.fifos)
+
+                # Sort fifos for deterministic resolve
+                all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
 
                 if placer:
                     # TODO: should maybe just take runtime?
@@ -86,6 +95,26 @@ class Program:
                 # Generate core programs
                 for w in self._rt.workers:
                     w.resolve()
+
+                # Generate trace routes
+                # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
+                #      Alternatively, we merge the mechanism for packet routed objfifos so we use unique
+                #      route IDs for trace as well
+
+                # Scan workers and build list of tiles to trace
+                tiles_to_trace = []
+                if self._rt._trace_workers is not None:
+                    for w in self._rt._trace_workers:
+                        tiles_to_trace.append(w.tile.op)
+                else:
+                    for w in self._rt._workers:
+                        if w.trace is not None:
+                            tiles_to_trace.append(w.tile.op)
+                if self._rt._trace_size is not None:
+                    trace_shim_tile = self._rt.get_first_cons_shimtile()
+                    trace_utils.configure_packet_tracing_flow(
+                        tiles_to_trace, trace_shim_tile
+                    )
 
                 # In/Out Sequence
                 self._rt.resolve()

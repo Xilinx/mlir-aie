@@ -140,8 +140,20 @@ aieTargetModelGetMemTileSize(AieTargetModel targetModel);
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetNumBanks(AieTargetModel targetModel, int col, int row);
 
-/// Returns true if this is an NPU target model.
-MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetMaxChannelNumForAdjacentTile(
+    AieTargetModel targetModel, int col, int row);
+
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumDestSwitchboxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle);
+
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumSourceSwitchboxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle);
+
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumDestShimMuxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle);
+
+MLIR_CAPI_EXPORTED uint32_t aieTargetModelGetNumSourceShimMuxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle);
 
 MLIR_CAPI_EXPORTED uint32_t
 aieTargetModelGetColumnShift(AieTargetModel targetModel);

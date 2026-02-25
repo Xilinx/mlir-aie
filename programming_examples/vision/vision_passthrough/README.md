@@ -18,9 +18,9 @@ make
 make vision_passthrough.exe
 ```
 
-To compile the alternative design:
+To compile the placed design:
 ```shell
-env use_alt=1 make
+env use_placed=1 make
 make vision_passthrough.exe
 ```
 

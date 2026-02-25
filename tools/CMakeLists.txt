@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
 
 add_subdirectory(aie-opt)
 if(NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
@@ -13,4 +14,5 @@ add_subdirectory(aie-lsp-server)
 add_subdirectory(aie-translate)
 add_subdirectory(aie-visualize)
 add_subdirectory(bootgen)
+add_subdirectory(aiecc)
 add_subdirectory(chess-clang)

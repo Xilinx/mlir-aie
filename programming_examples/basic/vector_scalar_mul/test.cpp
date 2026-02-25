@@ -8,115 +8,53 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "xrt_test_wrapper.h"
 #include <cstdint>
-#include <fstream>
-#include <iostream>
-#include <sstream>
 
-#include "test_utils.h"
-#include "xrt/xrt_bo.h"
+//*****************************************************************************
+// Modify this section to customize buffer datatypes, initialization functions,
+// and verify function. The other place to reconfigure your design is the
+// Makefile.
+//*****************************************************************************
 
 #ifndef DATATYPES_USING_DEFINED
 #define DATATYPES_USING_DEFINED
 // ------------------------------------------------------
 // Configure this to match your buffer data type
 // ------------------------------------------------------
-// using DATATYPE = std::uint8_t;
-// using DATATYPE = std::uint32_t;
-using DATATYPE = std::uint16_t;
+#if INT_BIT_WIDTH == 16
+using DATATYPE_IN1 = std::int16_t;
+using DATATYPE_OUT = std::int16_t;
+#else
+using DATATYPE_IN1 = std::int32_t;
+using DATATYPE_OUT = std::int32_t;
+#endif
+using DATATYPE_IN2 = std::int32_t;
 #endif
 
-const int scaleFactor = 3;
+// Initialize Input buffer 1
+void initialize_bufIn1(DATATYPE_IN1 *bufIn1, int SIZE) {
+  for (int i = 0; i < SIZE; i++)
+    bufIn1[i] = i + 1;
+}
 
-namespace po = boost::program_options;
+// Initialize Input buffer 2
+void initialize_bufIn2(DATATYPE_IN2 *bufIn2, int SIZE) {
+  bufIn2[0] = 3; // scaleFactor
+}
 
-int main(int argc, const char *argv[]) {
+// Initialize Output buffer
+void initialize_bufOut(DATATYPE_OUT *bufOut, int SIZE) {
+  memset(bufOut, 0, SIZE);
+}
 
-  // Program arguments parsing
-  po::options_description desc("Allowed options");
-  po::variables_map vm;
-  test_utils::add_default_options(desc);
-
-  test_utils::parse_options(argc, argv, desc, vm);
-  int verbosity = vm["verbosity"].as<int>();
-  int trace_size = vm["trace_sz"].as<int>();
-
-  constexpr bool VERIFY = true;
-  constexpr int IN_VOLUME = VECTORSCALARMUL_SIZE;
-  constexpr int OUT_VOLUME = IN_VOLUME;
-
-  int IN_SIZE = IN_VOLUME * sizeof(DATATYPE);
-  int OUT_SIZE = OUT_VOLUME * sizeof(DATATYPE) + trace_size;
-
-  // Load instruction sequence
-  std::vector<uint32_t> instr_v =
-      test_utils::load_instr_sequence(vm["instr"].as<std::string>());
-
-  if (verbosity >= 1)
-    std::cout << "Sequence instr count: " << instr_v.size() << "\n";
-
-  // Start the XRT context and load the kernel
-  xrt::device device;
-  xrt::kernel kernel;
-
-  test_utils::init_xrt_load_kernel(device, kernel, verbosity,
-                                   vm["xclbin"].as<std::string>(),
-                                   vm["kernel"].as<std::string>());
-
-  // set up the buffer objects
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
-                          XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_inA =
-      xrt::bo(device, IN_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_inFactor = xrt::bo(device, 1 * sizeof(int32_t),
-                             XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
-  auto bo_outC =
-      xrt::bo(device, OUT_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
-
-  if (verbosity >= 1)
-    std::cout << "Writing data into buffer objects.\n";
-
-  // Copy instruction stream to xrt buffer object
-  void *bufInstr = bo_instr.map<void *>();
-  memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
-
-  // Initialize buffer bo_inA
-  DATATYPE *bufInA = bo_inA.map<DATATYPE *>();
-  for (int i = 0; i < IN_VOLUME; i++)
-    bufInA[i] = i + 1;
-
-  // Initialize buffer bo_inFactor
-  int32_t *bufInFactor = bo_inFactor.map<int32_t *>();
-  *bufInFactor = (DATATYPE)scaleFactor;
-
-  // Zero out buffer bo_outC
-  DATATYPE *bufOut = bo_outC.map<DATATYPE *>();
-  memset(bufOut, 0, OUT_SIZE);
-
-  // sync host to device memories
-  bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inFactor.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_outC.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-  // Execute the kernel and wait to finish
-  if (verbosity >= 1)
-    std::cout << "Running Kernel.\n";
-  unsigned int opcode = 3;
-  auto run =
-      kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inFactor, bo_outC);
-  run.wait();
-
-  // Sync device to host memories
-  bo_outC.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-
-  // Compare out to golden
+// Functional correctness verifyer
+int verify_vector_scalar_mul(DATATYPE_IN1 *bufIn1, DATATYPE_IN2 *bufIn2,
+                             DATATYPE_OUT *bufOut, int SIZE, int verbosity) {
   int errors = 0;
-  if (verbosity >= 1) {
-    std::cout << "Verifying results ..." << std::endl;
-  }
-  for (uint32_t i = 0; i < IN_VOLUME; i++) {
-    int32_t ref = bufInA[i] * scaleFactor;
+
+  for (int i = 0; i < SIZE; i++) {
+    int32_t ref = bufIn1[i] * bufIn2[0];
     int32_t test = bufOut[i];
     if (test != ref) {
       if (verbosity >= 1)
@@ -127,21 +65,24 @@ int main(int argc, const char *argv[]) {
         std::cout << "Correct output " << test << " == " << ref << std::endl;
     }
   }
+  return errors;
+}
 
-  if (trace_size > 0) {
-    test_utils::write_out_trace(((char *)bufOut) + IN_SIZE, trace_size,
-                                vm["trace_file"].as<std::string>());
-  }
+//*****************************************************************************
+// Should not need to modify below section
+//*****************************************************************************
 
-  // Print Pass/Fail result of our test
-  if (!errors) {
-    std::cout << std::endl << "PASS!" << std::endl << std::endl;
-    return 0;
-  } else {
-    std::cout << std::endl
-              << errors << " mismatches." << std::endl
-              << std::endl;
-    std::cout << std::endl << "fail." << std::endl << std::endl;
-    return 1;
-  }
+int main(int argc, const char *argv[]) {
+
+  constexpr int IN1_VOLUME = IN1_SIZE / sizeof(DATATYPE_IN1);
+  constexpr int IN2_VOLUME = IN2_SIZE / sizeof(DATATYPE_IN2);
+  constexpr int OUT_VOLUME = OUT_SIZE / sizeof(DATATYPE_OUT);
+
+  args myargs = parse_args(argc, argv);
+
+  int res = setup_and_run_aie<DATATYPE_IN1, DATATYPE_IN2, DATATYPE_OUT,
+                              initialize_bufIn1, initialize_bufIn2,
+                              initialize_bufOut, verify_vector_scalar_mul>(
+      IN1_VOLUME, IN2_VOLUME, OUT_VOLUME, myargs, true);
+  return res;
 }

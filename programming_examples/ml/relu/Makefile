@@ -1,54 +1,59 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2025, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-all: build/final.xclbin
+aie2_runtime_dir = ${MLIR_AIE_DIR}/aie_runtime_lib/AIE2
 
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = relu
-trace_size = 8192
+length ?= 16384
+cols ?= 4
+chans ?= 2
 
-aie_py_src=relu.py
-use_alt?=0
+# Input and output sizes in bytes is length * 2
+in1_size = ${length} * 2
+out_size = ${length} * 2
 
-ifeq (${use_alt}, 1)
-aie_py_src=relu_alt.py
+ifeq ($(devicename),npu2)
+VPATH :=${srcdir}/../../../aie_kernels/aie2
+else
+VPATH :=${srcdir}/../../../aie_kernels/aie2
 endif
 
-VPATH := ${srcdir}/../../../aie_kernels/aie2
+aie_py_src=relu.py
 
-build/%.o: %.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
+.PHONY all: build/${targetname}.mlir build/final.xclbin
 
-build/aie.mlir: ${srcdir}/${aie_py_src}
+build/%.cc.o: %.cc
 	mkdir -p ${@D}
-	python3 $< > $@
+ifeq ($(devicename),npu)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -I. -I${aie2_runtime_dir} -c $< -o ${@F}
+else ifeq ($(devicename),npu2)
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+else
+	echo "Device type not supported"
+endif
 
-build/aie_trace.mlir: ${srcdir}/${aie_py_src}
+build/${targetname}.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${trace_size} > $@
+	python3 $< -d ${devicename} -l ${length} -co ${cols} -ch ${chans} > $@
 
-build/final.xclbin: build/aie.mlir build/relu.o
+build/final.xclbin: build/${targetname}.mlir build/${targetname}.cc.o
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-	--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
-
-build/final_trace.xclbin: build/aie_trace.mlir build/relu.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-cdo --aie-generate-npu --no-compile-host \
-	--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.txt ${<F}
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host \
+	            --xclbin-name=${@F} \
+				--no-xchesscc --no-xbridge \
+				--aie-generate-elf --elf-name=insts.elf $(<:%=../%)
 
 ${targetname}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -58,15 +63,11 @@ ${targetname}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
 run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.txt -k MLIR_AIE
-
-trace: ${targetname}.exe build/final_trace.xclbin
-	${powershell} ./$< -x build/final_trace.xclbin -i build/insts.txt -k MLIR_AIE -t ${trace_size}
-	../../utils/parse_eventIR.py --filename trace.txt --mlir build/aie_trace.mlir --colshift 1 > parse_eventIR_vs.json
+	${powershell} ./$< -x build/final.xclbin -i build/insts.elf -k MLIR_AIE -l ${length}
 
 clean:
-	rm -rf build _build ${targetname}.exe
+	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

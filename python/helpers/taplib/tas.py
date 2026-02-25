@@ -1,7 +1,6 @@
 from __future__ import annotations
 from collections import abc
 from copy import deepcopy
-import matplotlib.animation as animation
 import numpy as np
 from typing import Callable, Sequence
 
@@ -11,7 +10,6 @@ from .utils import (
     validate_offset,
     validate_tensor_dims,
 )
-from .visualization2d import animate_from_accesses, visualize_from_accesses
 
 
 class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
@@ -245,9 +243,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
             combined_access_order_tensor -= 1
         return (combined_access_order_tensor, combined_access_count_tensor)
 
-    def animate(
-        self, title: str | None = None, animate_access_count: bool = False
-    ) -> animation.FuncAnimation:
+    def animate(self, title: str | None = None, animate_access_count: bool = False):
         """
         Creates and returns a handle to a TensorAccessSequence animation. Each frame
         in the animation represents one TensorAccessPattern in the sequence.
@@ -262,6 +258,8 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         Returns:
             animation.FuncAnimation: A handle to the animation, produced by the matplotlib.animation module.
         """
+        from .visualization2d import animate_from_accesses
+
         if len(self._tensor_dims) != 2:
             raise NotImplementedError(
                 "Visualization is only currently supported for 1- or 2-dimensional tensors"
@@ -317,6 +315,8 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
         Raises:
             NotImplementedError: Not all dimensions of tensor may be visualized.
         """
+        from .visualization2d import visualize_from_accesses
+
         if len(self._tensor_dims) != 2:
             raise NotImplementedError(
                 "Visualization is only currently supported for 1- or 2-dimensional tensors"

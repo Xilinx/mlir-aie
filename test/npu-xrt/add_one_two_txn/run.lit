@@ -1,10 +1,14 @@
 // (c) Copyright 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai
+// REQUIRES: ryzen_ai_npu2
 //
-// RUN: clang %S/test.cpp -o test.exe -std=c++11 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-// RUN: %python aiecc.py --xclbin-kernel-name=ADDONE --xclbin-kernel-id=0x901 --xclbin-instance-name=ADDONEINST --no-aiesim --aie-generate-cdo --aie-generate-npu --no-compile-host --xclbin-name=add_one.xclbin --npu-insts-name=add_one_insts.txt %S/aie1.mlir
-// RUN: %python aiecc.py --no-aiesim --aie-generate-txn --aie-generate-npu --no-compile-host --npu-insts-name=add_two_insts.txt %S/aie2.mlir
-// RUN: aie-translate -aie-npu-instgen -aie-output-binary=true -aie-sequence-name=configure aie2.mlir.prj/txn.mlir -o add_two_cfg.bin
-// RUN: %run_on_npu ./test.exe -x add_one.xclbin -i add_one_insts.txt -c add_two_cfg.bin -j add_two_insts.txt
+// RUN: cp %S/aie.mlir aie_arch.mlir
+// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
+// RUN: %python aiecc.py --tmpdir=project1 --device-name=add_one --xclbin-kernel-name=ADDONE --xclbin-kernel-id=0x901 --xclbin-instance-name=ADDONEINST --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=add_one.xclbin --npu-insts-name=add_one_insts.bin aie_arch.mlir
+// RUN: %python aiecc.py --tmpdir=project2 --device-name=add_two --aie-generate-txn --txn-name=transaction.mlir --aie-generate-npu-insts --no-compile-host --npu-insts-name=add_two_insts.bin aie_arch.mlir
+// RUN: aie-translate --aie-device-name=add_two -aie-npu-to-binary -aie-sequence-name=configure transaction.mlir -o add_two_cfg.bin
+// RUN: %run_on_npu1% ./test.exe -x add_one.xclbin --instr0 add_one_insts.bin -c add_two_cfg.bin --instr1 add_two_insts.bin
+// RUN: %run_on_npu2% ./test.exe -x add_one.xclbin --instr0 add_one_insts.bin -c add_two_cfg.bin --instr1 add_two_insts.bin

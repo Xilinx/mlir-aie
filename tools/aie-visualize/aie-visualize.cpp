@@ -11,15 +11,13 @@
 // This tool generates a simple visualization of a design, showing the
 // device layout and highlighting which device tiles are being used.
 
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 #include "aie/InitialAllDialect.h"
 #include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
-#include "aie/Targets/AIETargets.h"
 
-#include "mlir/Dialect/Affine/Passes.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -28,28 +26,19 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
 
-#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/JSON.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Program.h"
 #include "llvm/Support/SourceMgr.h"
 
 #include <iostream>
-#include <regex>
-#include <stdlib.h>
-#include <string>
 
 using namespace llvm;
 using namespace mlir;
 using namespace xilinx;
 
-cl::opt<std::string> FileName(cl::Positional, cl::desc("<input mlir>"),
-                              cl::Required);
+static cl::opt<std::string> fileName(cl::Positional, cl::desc("<input mlir>"),
+                                     cl::Required);
 
 const std::string bold("\033[0;1m");
 const std::string dim("\033[0;2m");
@@ -84,7 +73,7 @@ int main(int argc, char *argv[]) {
   ctx.appendDialectRegistry(registry);
 
   OwningOpRef<ModuleOp> owning =
-      parseSourceFile<ModuleOp>(FileName, srcMgr, pcfg);
+      parseSourceFile<ModuleOp>(fileName, srcMgr, pcfg);
 
   if (!owning)
     return 1;

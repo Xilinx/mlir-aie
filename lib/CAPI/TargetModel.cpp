@@ -154,6 +154,44 @@ uint32_t aieTargetModelGetNumBanks(AieTargetModel targetModel, int col,
   return unwrap(targetModel).getNumBanks(col, row);
 }
 
+uint32_t
+aieTargetModelGetMaxChannelNumForAdjacentMemTile(AieTargetModel targetModel,
+                                                 int col, int row) {
+  return unwrap(targetModel).getMaxChannelNumForAdjacentMemTile(col, row);
+}
+
+uint32_t aieTargetModelGetNumDestSwitchboxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle) {
+  xilinx::AIE::WireBundle wireBundle =
+      static_cast<xilinx::AIE::WireBundle>(bundle);
+  return unwrap(targetModel)
+      .getNumDestSwitchboxConnections(col, row, wireBundle);
+}
+
+uint32_t aieTargetModelGetNumSourceSwitchboxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle) {
+  xilinx::AIE::WireBundle wireBundle =
+      static_cast<xilinx::AIE::WireBundle>(bundle);
+  return unwrap(targetModel)
+      .getNumSourceSwitchboxConnections(col, row, wireBundle);
+}
+
+uint32_t aieTargetModelGetNumDestShimMuxConnections(AieTargetModel targetModel,
+                                                    int col, int row,
+                                                    uint32_t bundle) {
+  xilinx::AIE::WireBundle wireBundle =
+      static_cast<xilinx::AIE::WireBundle>(bundle);
+  return unwrap(targetModel).getNumDestShimMuxConnections(col, row, wireBundle);
+}
+
+uint32_t aieTargetModelGetNumSourceShimMuxConnections(
+    AieTargetModel targetModel, int col, int row, uint32_t bundle) {
+  xilinx::AIE::WireBundle wireBundle =
+      static_cast<xilinx::AIE::WireBundle>(bundle);
+  return unwrap(targetModel)
+      .getNumSourceShimMuxConnections(col, row, wireBundle);
+}
+
 bool aieTargetModelIsNPU(AieTargetModel targetModel) {
   return unwrap(targetModel).hasProperty(xilinx::AIE::AIETargetModel::IsNPU);
 }

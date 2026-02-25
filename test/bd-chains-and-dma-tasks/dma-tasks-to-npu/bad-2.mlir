@@ -12,11 +12,11 @@
 // operation inside the runtime sequence.
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    aiex.runtime_sequence(%arg0: memref<32xi8>) {
+    aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-error@+1 {{At most four data layout transformation dimensions may be provided}}
           aie.dma_bd(%arg0 : memref<32xi8>, 4, 32,

@@ -10,7 +10,7 @@
 // Referencing locks inside sequence function not yet implemented
 
 module {
-  aie.device(npu1_4col) {
+  aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
@@ -35,7 +35,7 @@ module {
             aie.end
     }
 
-    aiex.runtime_sequence(%buf: memref<8xi16>) {
+    aie.runtime_sequence(%buf: memref<8xi16>) {
       %t1 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_0, %lock_1, %lock_2) : (memref<8xi16>, index, index, index)  
                                     on (%tile_0_0, MM2S, 0) 
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
