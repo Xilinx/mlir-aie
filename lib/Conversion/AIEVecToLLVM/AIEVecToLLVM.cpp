@@ -1968,9 +1968,10 @@ public:
     // Integer types
     Value srsIntrOp = nullptr;
     if (llvm::isa<IntegerType>(resultScaTy)) {
-      // create constant for sign
-      auto signCst = LLVM::ConstantOp::create(
-          rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+      // create constant for sign from the op's sign attribute
+      auto signCst =
+          LLVM::ConstantOp::create(rewriter, loc, rewriter.getI32Type(),
+                                   rewriter.getI32IntegerAttr(op.getSign()));
 
       // create xllvm intrinsic
       SmallVector<Value> operands(
@@ -2110,9 +2111,10 @@ public:
     // Integer types
     Value srsIntrOp = nullptr;
     if (llvm::isa<IntegerType>(resultScaTy)) {
-      // create constant for sign
-      auto signCst = LLVM::ConstantOp::create(
-          rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+      // create constant for sign from the op's sign attribute
+      auto signCst =
+          LLVM::ConstantOp::create(rewriter, loc, rewriter.getI32Type(),
+                                   rewriter.getI32IntegerAttr(op.getSign()));
 
       // create xllvm intrinsic
       SmallVector<Value> operands(
