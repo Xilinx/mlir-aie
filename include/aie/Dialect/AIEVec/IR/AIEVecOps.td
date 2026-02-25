@@ -208,7 +208,8 @@ def AIEVec_SRSOp:
     Pure
   ]>,
   Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift,
-          DefaultValuedAttr<AIEI32Attr, "1">:$sign)>,
+          DefaultValuedAttr<ConfinedAttr<AIEI32Attr,
+                 [IntMinValue<0>, IntMaxValue<1>]>, "1">:$sign)>,
   Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE srs";
   let description = [{

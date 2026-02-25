@@ -267,9 +267,11 @@ void SRSOp::print(OpAsmPrinter &p) {
   // Print the shift
   p << getShift();
 
-  // Print the sign attribute only when non-default (default is 1 = signed).
-  // Elide it when sign == 1 to avoid breaking existing tests.
-  if (getSign() != 1) {
+  // Always print the attribute dict, but elide the sign attribute when it
+  // has the default value (1 = signed) to avoid breaking existing tests.
+  if (getSign() == 1) {
+    p.printOptionalAttrDict((*this)->getAttrs(), {"sign"});
+  } else {
     p.printOptionalAttrDict((*this)->getAttrs());
   }
 

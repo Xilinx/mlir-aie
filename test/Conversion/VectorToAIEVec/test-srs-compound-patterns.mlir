@@ -35,7 +35,7 @@
 // AIE2P: %[[CAST:.*]] = aievec.cast %{{.*}} {isResAcc = true} : vector<32xi32>, vector<32xi32>
 // AIE2P: %[[SRS:.*]] = aievec.srs %[[CAST]], %[[SHIFT]] {sign = 0 : i32} : vector<32xi32>, i32, vector<32xi8>
 // AIE2P: return %[[SRS]]
-func.func @test_srs_clamp_unsigned(%arg0: vector<32xi32>, %shift: i32) -> vector<32xi8> {
+func.func @test_srs_clamp_unsigned(%arg0: vector<32xi32>) -> vector<32xi8> {
   %c0 = arith.constant dense<0> : vector<32xi32>
   %c255 = arith.constant dense<255> : vector<32xi32>
   %shift_splat = arith.constant dense<4> : vector<32xi32>

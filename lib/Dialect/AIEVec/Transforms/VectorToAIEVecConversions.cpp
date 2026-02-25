@@ -62,16 +62,37 @@ static bool isNarrowingOp(Operation *op) {
 }
 
 // Check if a TruncIOp is part of a shrsi+[clamp]+trunc chain that can be
-// lowered to a compound SRS pattern.
+// lowered to a compound SRS pattern. Only returns true for chains that the
+// ShiftClampTruncToSRSPattern rewrite will actually match:
+// - shrsi → trunci (no clamp)
+// - shrsi → maxsi → minsi → trunci (full clamp pair)
+// - shrsi → minsi → maxsi → trunci (reversed clamp pair)
+// Does NOT return true for a single min or max without a matching pair,
+// to avoid marking trunci illegal when no rewrite can handle it.
 static bool isSRSCompoundCandidate(arith::TruncIOp trunciOp) {
   Value source = trunciOp.getIn();
-  // Walk through optional clamp chain (minsi/maxsi)
-  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>())
-    source = minsiOp.getLhs();
-  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>())
-    source = maxsiOp.getLhs();
-  // Check if the source is a shrsi
-  return source.getDefiningOp<arith::ShRSIOp>() != nullptr;
+
+  // Case 1: direct shrsi → trunci
+  if (source.getDefiningOp<arith::ShRSIOp>())
+    return true;
+
+  // Case 2: minsi(maxsi(shrsi(...))) → trunci
+  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+    if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
+      if (maxsiOp.getLhs().getDefiningOp<arith::ShRSIOp>())
+        return true;
+    }
+  }
+
+  // Case 3: maxsi(minsi(shrsi(...))) → trunci (reversed order)
+  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+    if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
+      if (minsiOp.getLhs().getDefiningOp<arith::ShRSIOp>())
+        return true;
+    }
+  }
+
+  return false;
 }
 
 // Check if a ShRSIOp's result feeds into a trunci (possibly through
@@ -3808,10 +3829,14 @@ struct ShiftClampTruncToSRSPattern : OpConversionPattern<arith::TruncIOp> {
         return failure();
 
       unsigned dstBits = dstScalarType.getIntOrFloatBitWidth();
+      // Guard against UB from shifting into or past the sign bit.
+      if (dstBits == 0 || dstBits > 63)
+        return failure();
+      uint64_t one = 1ULL;
       int64_t unsignedLo = 0;
-      int64_t unsignedHi = (1LL << dstBits) - 1;
-      int64_t signedLo = -(1LL << (dstBits - 1));
-      int64_t signedHi = (1LL << (dstBits - 1)) - 1;
+      int64_t unsignedHi = static_cast<int64_t>((one << dstBits) - 1);
+      int64_t signedLo = -static_cast<int64_t>(one << (dstBits - 1));
+      int64_t signedHi = static_cast<int64_t>((one << (dstBits - 1)) - 1);
 
       if (*loVal == unsignedLo && *hiVal == unsignedHi) {
         sign = 0; // unsigned saturation
@@ -3907,8 +3932,20 @@ struct ShiftClampTruncToSRSPattern : OpConversionPattern<arith::TruncIOp> {
                    .getResult();
     }
 
-    // Erase the intermediate ops if they have no other uses
     rewriter.replaceOp(truncOp, result);
+
+    // Erase the intermediate clamp/shift ops if they have no other uses.
+    // These must be cleaned up because shrsi on 512-bit vectors is marked
+    // illegal and would cause conversion failure if left as dead ops.
+    SmallVector<Operation *, 3> opsToErase;
+    if (minOp && minOp->use_empty())
+      opsToErase.push_back(minOp);
+    if (maxOp && maxOp->use_empty())
+      opsToErase.push_back(maxOp);
+    if (shrsiOp->use_empty())
+      opsToErase.push_back(shrsiOp);
+    for (Operation *op : opsToErase)
+      rewriter.eraseOp(op);
 
     return success();
   }
