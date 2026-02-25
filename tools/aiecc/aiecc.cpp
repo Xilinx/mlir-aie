@@ -3058,7 +3058,6 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
           }
           return success();
         }
-        return success();
       }
       // Fall through to subprocess on library failure
       if (verbose) {
