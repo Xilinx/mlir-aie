@@ -261,6 +261,12 @@ void SRSOp::print(OpAsmPrinter &p) {
   // Print the shift
   p << getShift();
 
+  // Print the sign attribute only when non-default (default is 1 = signed).
+  // Elide it when sign == 1 to avoid breaking existing tests.
+  if (getSign() != 1) {
+    p.printOptionalAttrDict((*this)->getAttrs());
+  }
+
   // And now print the types
   p << " : " << getSource().getType() << ", " << getShift().getType() << ", "
     << getResult().getType();
@@ -309,6 +315,10 @@ ParseResult SRSOp::parse(OpAsmParser &parser, OperationState &result) {
   // Parse the source accumulator
   if (parser.parseOperand(source) || parser.parseComma() ||
       parser.parseOperand(shift))
+    return failure();
+
+  // Parse optional attributes (e.g., {sign = 0 : i32})
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   // Parse types

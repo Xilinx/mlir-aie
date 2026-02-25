@@ -61,6 +61,44 @@ static bool isNarrowingOp(Operation *op) {
   return false;
 }
 
+// Check if a TruncIOp is part of a shrsi+[clamp]+trunc chain that can be
+// lowered to a compound SRS pattern.
+static bool isSRSCompoundCandidate(arith::TruncIOp trunciOp) {
+  Value source = trunciOp.getIn();
+  // Walk through optional clamp chain (minsi/maxsi)
+  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>())
+    source = minsiOp.getLhs();
+  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>())
+    source = maxsiOp.getLhs();
+  // Check if the source is a shrsi
+  return source.getDefiningOp<arith::ShRSIOp>() != nullptr;
+}
+
+// Check if a ShRSIOp's result feeds into a trunci (possibly through
+// clamp ops), meaning the compound pattern will consume it.
+static bool shrsiUsedByCompoundSRS(arith::ShRSIOp rsOp) {
+  for (Operation *user : rsOp->getUsers()) {
+    // Direct: shrsi → trunci
+    if (isa<arith::TruncIOp>(user))
+      return true;
+    // Through clamp: shrsi → maxsi → minsi → trunci
+    //            or: shrsi → minsi → maxsi → trunci
+    if (isa<arith::MaxSIOp, arith::MinSIOp>(user)) {
+      for (Operation *user2 : user->getUsers()) {
+        if (isa<arith::TruncIOp>(user2))
+          return true;
+        if (isa<arith::MaxSIOp, arith::MinSIOp>(user2)) {
+          for (Operation *user3 : user2->getUsers()) {
+            if (isa<arith::TruncIOp>(user3))
+              return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 // Given a Value, if it is defined by a widening op (arith:ExtSIOp,
 // arith::ExtUIOp, arith::ExtFOp, aievec::UPSOp + aievec::SRSOp,
 // aievec::UPSOp + aievec::CastOp), return the source of the widening op.
@@ -3617,6 +3655,214 @@ struct ComputeSignedIntRightShiftOpPattern
   }
 };
 
+// Recognize the compound shift+clamp+truncate pattern and lower it to
+// aievec.ups + aievec.srs. This maps the standard quantized neural network
+// "shift-round-saturate + clamp" idiom to the AIE2 SRS hardware unit.
+//
+// Pattern A (with clamp):
+//   %shifted  = arith.shrsi %wide, %shift_splat
+//   %clamped0 = arith.maxsi %shifted, %c_lo
+//   %clamped  = arith.minsi %clamped0, %c_hi
+//   %result   = arith.trunci %clamped
+//
+// Pattern B (without clamp):
+//   %shifted  = arith.shrsi %wide, %shift_splat
+//   %result   = arith.trunci %shifted
+//
+// Both lower to: aievec.ups + aievec.srs
+struct ShiftClampTruncToSRSPattern : OpConversionPattern<arith::TruncIOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  ShiftClampTruncToSRSPattern(MLIRContext *context, PatternBenefit benefit = 2)
+      : OpConversionPattern(context, benefit) {}
+
+  // Try to extract a scalar integer splat value from a Value.
+  // Returns std::nullopt if the value is not a constant splat.
+  static std::optional<int64_t> getConstantSplatValue(Value val) {
+    auto defOp = val.getDefiningOp<arith::ConstantOp>();
+    if (!defOp)
+      return std::nullopt;
+    auto denseAttr = dyn_cast<DenseIntElementsAttr>(defOp.getValue());
+    if (!denseAttr || !denseAttr.isSplat())
+      return std::nullopt;
+    return denseAttr.getSplatValue<APInt>().getSExtValue();
+  }
+
+  // Try to extract the shift amount from the right operand of shrsi.
+  // Accepts either a constant splat vector or an aievec.broadcast of a
+  // constant.
+  static std::optional<Value>
+  getShiftValue(Value rhs, ConversionPatternRewriter &rewriter, Location loc) {
+    // Case 1: constant splat vector
+    if (auto constOp = rhs.getDefiningOp<arith::ConstantOp>()) {
+      auto denseAttr = dyn_cast<DenseIntElementsAttr>(constOp.getValue());
+      if (denseAttr && denseAttr.isSplat()) {
+        int64_t shiftVal = denseAttr.getSplatValue<APInt>().getSExtValue();
+        return arith::ConstantOp::create(rewriter, loc,
+                                         rewriter.getI32IntegerAttr(shiftVal))
+            .getResult();
+      }
+    }
+    // Case 2: aievec.broadcast
+    if (auto bcastOp = dyn_cast<aievec::BroadcastOp>(rhs.getDefiningOp())) {
+      auto constOp = arith::ConstantOp::create(
+          rewriter, bcastOp.getLoc(),
+          rewriter.getI32IntegerAttr(bcastOp.getIdx()));
+      return aievec::ExtElemOp::create(rewriter, bcastOp.getLoc(),
+                                       rewriter.getI32Type(), bcastOp,
+                                       constOp.getResult())
+          .getResult();
+    }
+    return std::nullopt;
+  }
+
+  LogicalResult
+  matchAndRewrite(arith::TruncIOp truncOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto dstType = dyn_cast<VectorType>(truncOp.getOut().getType());
+    if (!dstType)
+      return failure();
+
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<IntegerType>(dstScalarType))
+      return failure();
+
+    // Walk backward through optional clamp chain
+    Value source = adaptor.getIn();
+    int32_t sign = 1; // default: signed
+
+    // Check for minsi(maxsi(...), hi) or maxsi(minsi(...), lo) clamp pattern
+    arith::MinSIOp minOp = nullptr;
+    arith::MaxSIOp maxOp = nullptr;
+
+    if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+      if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
+        minOp = minsiOp;
+        maxOp = maxsiOp;
+        source = maxOp.getLhs();
+      }
+    } else if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+      if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
+        maxOp = maxsiOp;
+        minOp = minsiOp;
+        source = minOp.getLhs();
+      }
+    }
+
+    // If we found a clamp, verify it's a valid saturation range
+    if (minOp && maxOp) {
+      auto loVal = getConstantSplatValue(maxOp.getRhs());
+      auto hiVal = getConstantSplatValue(minOp.getRhs());
+      if (!loVal || !hiVal)
+        return failure();
+
+      unsigned dstBits = dstScalarType.getIntOrFloatBitWidth();
+      int64_t unsignedLo = 0;
+      int64_t unsignedHi = (1LL << dstBits) - 1;
+      int64_t signedLo = -(1LL << (dstBits - 1));
+      int64_t signedHi = (1LL << (dstBits - 1)) - 1;
+
+      if (*loVal == unsignedLo && *hiVal == unsignedHi) {
+        sign = 0; // unsigned saturation
+      } else if (*loVal == signedLo && *hiVal == signedHi) {
+        sign = 1; // signed saturation
+      } else {
+        // Clamp range doesn't match standard saturation — don't match
+        return failure();
+      }
+    }
+
+    // Now source should be the shrsi result
+    auto shrsiOp = source.getDefiningOp<arith::ShRSIOp>();
+    if (!shrsiOp)
+      return failure();
+
+    auto srcType = dyn_cast<VectorType>(shrsiOp.getLhs().getType());
+    if (!srcType)
+      return failure();
+
+    Type srcScalarType = srcType.getElementType();
+    if (!isa<IntegerType>(srcScalarType))
+      return failure();
+
+    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
+    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
+    if (dstElWidth >= srcElWidth)
+      return failure();
+
+    Location loc = truncOp.getLoc();
+
+    // Extract the shift amount
+    auto shiftVal = getShiftValue(shrsiOp.getRhs(), rewriter, loc);
+    if (!shiftVal)
+      return failure();
+
+    // Get the wide input (pre-shift)
+    Value wideInput = shrsiOp.getLhs();
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    bool needsPadding = (laneSize % 16 != 0);
+
+    VectorType paddedSrcType = srcType;
+    VectorType paddedDstType = dstType;
+    unsigned paddedLanes = laneSize;
+
+    if (needsPadding) {
+      // Round up to nearest multiple of 16
+      paddedLanes = ((laneSize + 15) / 16) * 16;
+      paddedSrcType = createVectorType(paddedLanes, srcScalarType);
+      paddedDstType = createVectorType(paddedLanes, dstScalarType);
+
+      // Zero-pad the input using insert_strided_slice
+      auto zeroAttr = rewriter.getZeroAttr(paddedSrcType);
+      auto zeroPad =
+          arith::ConstantOp::create(rewriter, loc, zeroAttr).getResult();
+      SmallVector<int64_t> offsets(1, 0);
+      SmallVector<int64_t> strides(1, 1);
+      wideInput = vector::InsertStridedSliceOp::create(
+                      rewriter, loc, wideInput, zeroPad, offsets, strides)
+                      .getResult();
+    }
+
+    // Determine accumulator type and create the accumulator value.
+    // For i16 source: use UPS to widen to accumulator type.
+    // For i32/i64 source: use CastOp (marks as accumulator without widening),
+    // matching the approach in LowerTruncOpPattern.
+    Type accScalarType = paddedSrcType.getElementType();
+    unsigned accElWidth = accScalarType.getIntOrFloatBitWidth();
+    Value accValue;
+    if (accElWidth == 16) {
+      Type accType = getVectorOpDestType(paddedSrcType, /*AIE2=*/true);
+      accValue =
+          aievec::UPSOp::create(rewriter, loc, accType, wideInput).getResult();
+    } else {
+      // For i32/i64: CastOp with isResAcc=true marks as accumulator
+      accValue = aievec::CastOp::create(rewriter, loc, paddedSrcType, wideInput,
+                                        /*isResAcc=*/true)
+                     .getResult();
+    }
+    auto srsOp = aievec::SRSOp::create(rewriter, loc, paddedDstType, accValue,
+                                       *shiftVal, sign);
+
+    Value result = srsOp.getResult();
+
+    if (needsPadding) {
+      // Extract original lanes from the padded result
+      SmallVector<int64_t> offsets(1, 0);
+      SmallVector<int64_t> sizes = {static_cast<int64_t>(laneSize)};
+      SmallVector<int64_t> strides(1, 1);
+      result = vector::ExtractStridedSliceOp::create(rewriter, loc, result,
+                                                     offsets, sizes, strides)
+                   .getResult();
+    }
+
+    // Erase the intermediate ops if they have no other uses
+    rewriter.replaceOp(truncOp, result);
+
+    return success();
+  }
+};
+
 // Convert a `vector.contract` op to an `aievec.matmul` op for AIE2 or
 // `aievec.matmul_aie2p` for AIE2P
 template <typename MatMulOpTy>
@@ -3844,6 +4090,10 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       LowerVectorSubFOpToAIEVecSubElemOp
       >(patterns.getContext());
   }
+  // Add the compound shift+clamp+trunc→SRS pattern with higher benefit
+  // so it takes priority over the individual shrsi and trunci patterns.
+  patterns.add<ShiftClampTruncToSRSPattern>(patterns.getContext(),
+                                            /*benefit=*/2);
   patterns.add<
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpAIE2Pattern,
@@ -4283,8 +4533,13 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     auto srcType = dyn_cast<VectorType>(rsOp.getLhs().getType());
     if (!srcType)
       return true;
-    Type scalarType = srcType.getElementType();
 
+    // If the shrsi feeds into a compound SRS pattern (shrsi+clamp+trunc),
+    // keep it legal — the compound pattern will consume it via the trunci.
+    if (shrsiUsedByCompoundSRS(rsOp))
+      return true;
+
+    Type scalarType = srcType.getElementType();
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
@@ -4502,6 +4757,11 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     Type dstScalarType = dstType.getElementType();
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
+
+    // Also mark as illegal if it's part of a shrsi+clamp+trunc SRS pattern,
+    // even for sub-AIE-width vectors
+    if (isSRSCompoundCandidate(trunciOp))
+      return false;
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
@@ -4879,6 +5139,11 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     Type dstScalarType = dstType.getElementType();
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
+
+    // Also mark as illegal if it's part of a shrsi+clamp+trunc SRS pattern,
+    // even for sub-AIE-width vectors
+    if (isSRSCompoundCandidate(trunciOp))
+      return false;
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
