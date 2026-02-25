@@ -89,9 +89,10 @@
 #include <aiebu/aiebu.h>
 #endif
 
-// NOTE: bootgen library integration is not enabled because bootgen uses
-// C++ exceptions but LLVM is built with -fno-exceptions. The bootgen
-// subprocess fallback is always used instead.
+#ifdef AIECC_HAS_BOOTGEN_LIBRARY
+// Use C API wrapper that handles exceptions internally
+#include "bootgen_c_api.h"
+#endif
 
 #include <cstdint>
 #include <cstdlib>
@@ -3214,32 +3215,56 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     bifFile << "}\n";
     bifFile.close();
 
-    // Generate PDI using bootgen subprocess
-    // NOTE: bootgen library integration is not supported because bootgen uses
-    // C++ exceptions but LLVM is built with -fno-exceptions.
-    std::string bootgenPath = findAieTool("bootgen");
-    if (bootgenPath.empty()) {
-      llvm::errs() << "Error: bootgen not found, cannot generate requested "
-                      "PDI/xclbin\n";
-      return failure();
-    }
+    bool pdiGenerated = false;
 
-    SmallVector<std::string, 8> bootgenCmd = {bootgenPath,
-                                              "-arch",
-                                              "versal",
-                                              "-image",
-                                              std::string(bifPath),
-                                              "-o",
-                                              std::string(pdiPath),
-                                              "-w"};
-
-    if (!executeCommand(bootgenCmd)) {
-      llvm::errs() << "Error generating PDI\n";
-      return failure();
-    }
-
+#ifdef AIECC_HAS_BOOTGEN_LIBRARY
+    // Try using bootgen library directly via C API
     if (verbose) {
-      llvm::outs() << "Generated PDI: " << pdiPath << "\n";
+      llvm::outs() << "Using bootgen library for PDI generation\n";
+    }
+    char errorMsg[256] = {0};
+    int result = bootgen_generate_pdi(
+        std::string(bifPath).c_str(), std::string(pdiPath).c_str(),
+        BOOTGEN_ARCH_VERSAL, /*overwrite=*/1, errorMsg, sizeof(errorMsg));
+    if (result == BOOTGEN_SUCCESS) {
+      if (verbose) {
+        llvm::outs() << "Generated PDI via library: " << pdiPath << "\n";
+      }
+      pdiGenerated = true;
+    } else {
+      if (verbose) {
+        llvm::outs() << "bootgen library failed (" << errorMsg
+                     << "), falling back to subprocess\n";
+      }
+    }
+#endif // AIECC_HAS_BOOTGEN_LIBRARY
+
+    // Subprocess fallback if library not available or failed
+    if (!pdiGenerated) {
+      std::string bootgenPath = findAieTool("bootgen");
+      if (bootgenPath.empty()) {
+        llvm::errs() << "Error: bootgen not found, cannot generate requested "
+                        "PDI/xclbin\n";
+        return failure();
+      }
+
+      SmallVector<std::string, 8> bootgenCmd = {bootgenPath,
+                                                "-arch",
+                                                "versal",
+                                                "-image",
+                                                std::string(bifPath),
+                                                "-o",
+                                                std::string(pdiPath),
+                                                "-w"};
+
+      if (!executeCommand(bootgenCmd)) {
+        llvm::errs() << "Error generating PDI\n";
+        return failure();
+      }
+
+      if (verbose) {
+        llvm::outs() << "Generated PDI: " << pdiPath << "\n";
+      }
     }
 
     // Generate xclbin if requested
