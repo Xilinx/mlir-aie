@@ -247,6 +247,12 @@ OpFoldResult SRSOp::fold(FoldAdaptor adaptor) {
   if (!constOp)
     return nullptr;
 
+  // Only fold srs(ups(x), 0) → x. Non-zero shift performs actual
+  // shift-round-saturate and must not be folded away.
+  auto intAttr = dyn_cast<IntegerAttr>(constOp.getValue());
+  if (!intAttr || intAttr.getInt() != 0)
+    return nullptr;
+
   if (upsOp.getSource().getType() != getResult().getType())
     return nullptr;
 
