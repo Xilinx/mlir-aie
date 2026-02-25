@@ -5,7 +5,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===-------------------------------------------------- --------===//
 
@@ -57,15 +57,16 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
 
   log2e_vec = aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)log2e);
 
-  // First pass
+  // First pass - Optimized: element-wise max + single final reduce_max
+  // Use vector max accumulation, then reduce once at the end
+  aie::vector<bfloat16, SM_VEC_LEN> max_accum_vec =
+      aie::broadcast<bfloat16, SM_VEC_LEN>((bfloat16)-32768.0f);
   for (int i = 0; i < elem_iters; i++) {
     input_bf16 = *it_log_in++;
     scaled_accum = aie::mul(input_bf16, log2e_vec);
-    running_max = aie::reduce_max(scaled_accum.to_vector<bfloat16>());
-    if (running_max > max_val) {
-      max_val = running_max;
-    }
+    max_accum_vec = aie::max(max_accum_vec, scaled_accum.to_vector<bfloat16>());
   }
+  max_val = aie::reduce_max(max_accum_vec);
   max_val_vec = aie::broadcast<bfloat16, SM_VEC_LEN>(max_val);
 
   // Second pass
@@ -81,7 +82,7 @@ void softmax_simple_bf16(bfloat16 *restrict input_vector,
     *it_exp_out++ = exp_val;
   }
 
-  // Final pass
+  // Final reduction after loop
   aie::vector<float, SM_VEC_LEN> reduce = exp_val_accum.to_vector<float>();
   accum_exp_val = aie::reduce_add(reduce);
   col_sum_inv = (bfloat16)aie::inv(accum_exp_val);

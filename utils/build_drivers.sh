@@ -93,7 +93,8 @@ fi
 
 echo "Setting up XDNA driver repository..."
 # Clone or update the XDNA driver repository and initialize submodules
-XDNA_TAG=f3293dc901d733438468cd8b055adb250fa6ced0
+XDNA_TAG=beb9e450fe123ecdf395453971576179cedcf1dd
+# (1.7 tag as of 2026/02/17) 
 if [ -d "xdna-driver" ]; then
     echo "xdna-driver directory already exists. Removing and re-cloning to ensure clean state..."
     rm -rf xdna-driver

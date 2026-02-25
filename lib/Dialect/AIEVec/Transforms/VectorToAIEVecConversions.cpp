@@ -61,6 +61,65 @@ static bool isNarrowingOp(Operation *op) {
   return false;
 }
 
+// Check if a TruncIOp is part of a shrsi+[clamp]+trunc chain that can be
+// lowered to a compound SRS pattern. Only returns true for chains that the
+// ShiftClampTruncToSRSPattern rewrite will actually match:
+// - shrsi → trunci (no clamp)
+// - shrsi → maxsi → minsi → trunci (full clamp pair)
+// - shrsi → minsi → maxsi → trunci (reversed clamp pair)
+// Does NOT return true for a single min or max without a matching pair,
+// to avoid marking trunci illegal when no rewrite can handle it.
+static bool isSRSCompoundCandidate(arith::TruncIOp trunciOp) {
+  Value source = trunciOp.getIn();
+
+  // Case 1: direct shrsi → trunci
+  if (source.getDefiningOp<arith::ShRSIOp>())
+    return true;
+
+  // Case 2: minsi(maxsi(shrsi(...))) → trunci
+  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+    if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
+      if (maxsiOp.getLhs().getDefiningOp<arith::ShRSIOp>())
+        return true;
+    }
+  }
+
+  // Case 3: maxsi(minsi(shrsi(...))) → trunci (reversed order)
+  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+    if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
+      if (minsiOp.getLhs().getDefiningOp<arith::ShRSIOp>())
+        return true;
+    }
+  }
+
+  return false;
+}
+
+// Check if a ShRSIOp's result feeds into a trunci (possibly through
+// clamp ops), meaning the compound pattern will consume it.
+static bool shrsiUsedByCompoundSRS(arith::ShRSIOp rsOp) {
+  for (Operation *user : rsOp->getUsers()) {
+    // Direct: shrsi → trunci
+    if (isa<arith::TruncIOp>(user))
+      return true;
+    // Through clamp: shrsi → maxsi → minsi → trunci
+    //            or: shrsi → minsi → maxsi → trunci
+    if (isa<arith::MaxSIOp, arith::MinSIOp>(user)) {
+      for (Operation *user2 : user->getUsers()) {
+        if (isa<arith::TruncIOp>(user2))
+          return true;
+        if (isa<arith::MaxSIOp, arith::MinSIOp>(user2)) {
+          for (Operation *user3 : user2->getUsers()) {
+            if (isa<arith::TruncIOp>(user3))
+              return true;
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
+
 // Given a Value, if it is defined by a widening op (arith:ExtSIOp,
 // arith::ExtUIOp, arith::ExtFOp, aievec::UPSOp + aievec::SRSOp,
 // aievec::UPSOp + aievec::CastOp), return the source of the widening op.
@@ -552,6 +611,36 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
                                    zeroConstOp.getResult());
 }
 
+// Helper to pad a v16bf16 vector to v32bf16 by concatenating with a splat of
+// the given infinity value. Used by min/max reduction patterns.
+// Returns {paddedVector, newLaneSize}.
+static std::pair<Value, unsigned>
+padV16ToV32WithInfinity(ConversionPatternRewriter &rewriter, Location loc,
+                        Value inputVec, Type scalarType, bool negativeInf) {
+  VectorType v32bf16Type = createVectorType(32, scalarType);
+  VectorType v16bf16Type = createVectorType(16, scalarType);
+
+  // Create a scalar infinity constant
+  auto infAttr = rewriter.getFloatAttr(
+      scalarType,
+      APFloat::getInf(cast<FloatType>(scalarType).getFloatSemantics(),
+                      negativeInf));
+  auto splatInf = arith::ConstantOp::create(rewriter, loc, infAttr).getResult();
+
+  // Broadcast to v32bf16, then extract upper half (which is also infinity)
+  auto infVec =
+      aievec::BroadcastScalarOp::create(rewriter, loc, v32bf16Type, splatInf);
+  auto infUpperHalf =
+      aievec::ExtOp::create(rewriter, loc, v16bf16Type, infVec, 1);
+
+  // Concatenate input with infinity padding
+  Value paddedVec =
+      aievec::ConcatOp::create(rewriter, loc, v32bf16Type,
+                               ValueRange{inputVec, infUpperHalf.getResult()});
+
+  return {paddedVec, 32};
+}
+
 static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
                                         Operation *parentSymbolTableOp,
                                         StringRef funcName, TypeRange inTypes,
@@ -579,6 +668,101 @@ static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
   return fnOp;
 }
 
+//===----------------------------------------------------------------------===//
+// Wide vector splitting utility
+//===----------------------------------------------------------------------===//
+
+// Utility function to split a wide vector operation (e.g., v32bf16) into two
+// half-width operations (e.g., v16bf16) and concatenate the results.
+// This pattern is common for AIE2 when hardware only supports 16-lane
+// operations but we need to process 32-lane vectors.
+//
+// Template parameters:
+//   SrcOpTy - The source operation type (e.g., arith::MulFOp, math::ExpOp)
+//
+// Parameters:
+//   srcOp - The source operation to replace
+//   wideInputs - The wide input values (e.g., lhs and rhs for binary ops)
+//   halfType - The half-width vector type (e.g., vector<16xbf16>)
+//   wideType - The wide vector type (e.g., vector<32xbf16>)
+//   rewriter - The pattern rewriter
+//   processHalves - Callback that processes the lower and upper halves
+//                   and returns a pair of half-width results to be concatenated
+//
+// The callback signature is:
+//   std::pair<Value, Value>(ArrayRef<std::pair<Value, Value>> halfInputs,
+//                           Location loc, ConversionPatternRewriter &rewriter)
+// where halfInputs[i] is {lowerHalf, upperHalf} for each wideInput
+template <typename SrcOpTy, typename Func>
+static void splitWideVectorOp(SrcOpTy srcOp, ArrayRef<Value> wideInputs,
+                              VectorType halfType, VectorType wideType,
+                              ConversionPatternRewriter &rewriter,
+                              Func &&processHalves) {
+
+  Location loc = srcOp.getLoc();
+
+  // Extract lower and upper halves for each wide input
+  SmallVector<std::pair<Value, Value>> halfInputs;
+  halfInputs.reserve(wideInputs.size());
+  for (Value wideInput : wideInputs) {
+    auto lowerHalf =
+        aievec::ExtOp::create(rewriter, loc, halfType, wideInput, 0);
+    auto upperHalf =
+        aievec::ExtOp::create(rewriter, loc, halfType, wideInput, 1);
+    halfInputs.emplace_back(lowerHalf.getResult(), upperHalf.getResult());
+  }
+
+  // Process halves using the callback
+  auto [lowResult, highResult] = processHalves(halfInputs, loc, rewriter);
+
+  // Concatenate results
+  SmallVector<Value> concatSources = {lowResult, highResult};
+  rewriter.replaceOpWithNewOp<aievec::ConcatOp>(srcOp, wideType, concatSources);
+}
+
+// Simplified version for unary operations
+template <typename SrcOpTy>
+static void splitWideUnaryVectorOp(
+    SrcOpTy srcOp, Value wideInput, VectorType halfType, VectorType wideType,
+    ConversionPatternRewriter &rewriter,
+    std::function<Value(Value, Location, ConversionPatternRewriter &)>
+        processHalf) {
+
+  splitWideVectorOp<SrcOpTy>(
+      srcOp, {wideInput}, halfType, wideType, rewriter,
+      [&processHalf](ArrayRef<std::pair<Value, Value>> halfInputs, Location loc,
+                     ConversionPatternRewriter &rewriter) {
+        auto [lowerHalf, upperHalf] = halfInputs[0];
+        Value lowResult = processHalf(lowerHalf, loc, rewriter);
+        Value highResult = processHalf(upperHalf, loc, rewriter);
+        return std::make_pair(lowResult, highResult);
+      });
+}
+
+// Simplified version for binary operations
+template <typename SrcOpTy>
+static void splitWideBinaryVectorOp(
+    SrcOpTy srcOp, Value lhs, Value rhs, VectorType halfType,
+    VectorType wideType, ConversionPatternRewriter &rewriter,
+    std::function<Value(Value, Value, Location, ConversionPatternRewriter &)>
+        processHalf) {
+
+  splitWideVectorOp<SrcOpTy>(
+      srcOp, {lhs, rhs}, halfType, wideType, rewriter,
+      [&processHalf](ArrayRef<std::pair<Value, Value>> halfInputs, Location loc,
+                     ConversionPatternRewriter &rewriter) {
+        auto [lhsLow, lhsHigh] = halfInputs[0];
+        auto [rhsLow, rhsHigh] = halfInputs[1];
+        Value lowResult = processHalf(lhsLow, rhsLow, loc, rewriter);
+        Value highResult = processHalf(lhsHigh, rhsHigh, loc, rewriter);
+        return std::make_pair(lowResult, highResult);
+      });
+}
+
+//===----------------------------------------------------------------------===//
+// Math operation matching utilities
+//===----------------------------------------------------------------------===//
+
 // Check if math.exp op matches AIE2 LUT-based exp constraints
 static bool matchExpOpForAIE2LUT(math::ExpOp::Adaptor adaptor) {
   auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
@@ -589,8 +773,9 @@ static bool matchExpOpForAIE2LUT(math::ExpOp::Adaptor adaptor) {
   Type scalarType = srcType.getElementType();
   unsigned elWidth = scalarType.getIntOrFloatBitWidth();
   unsigned laneSize = getVectorLaneSize(srcType);
-  // AIE2 LUT-based exp: only supports v16bf16
-  return isa<FloatType>(scalarType) && laneSize == 16 && elWidth == 16;
+  // AIE2 LUT-based exp: supports v16bf16 and v32bf16
+  return isa<FloatType>(scalarType) && (laneSize == 16 || laneSize == 32) &&
+         elWidth == 16;
 }
 
 // Check if math.exp op matches AIE2P exp constraints
@@ -889,7 +1074,31 @@ struct ConvertMulFToAIEVecMulElemOpPattern
 
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    // bfloat16 and float type
+    // Handle vector<32xbf16> by splitting into two vector<16xbf16> operations
+    if (laneSize == 32 && resultElWidth == 16) {
+      VectorType halfType = createVectorType(16, resultType.getElementType());
+      unsigned localShiftParam = shiftParam;
+
+      splitWideBinaryVectorOp<arith::MulFOp>(
+          mulOp, adaptor.getLhs(), adaptor.getRhs(), halfType, resultType,
+          rewriter,
+          [localShiftParam](Value lhsHalf, Value rhsHalf, Location loc,
+                            ConversionPatternRewriter &rewriter) -> Value {
+            Type accType = getVectorOpDestType(
+                cast<VectorType>(lhsHalf.getType()), /*AIE2 =*/true);
+            auto mulElemOp = aievec::MulElemOp::create(rewriter, loc, accType,
+                                                       lhsHalf, rhsHalf);
+            auto shiftParamOp = arith::ConstantOp::create(
+                rewriter, loc, rewriter.getI32IntegerAttr(localShiftParam));
+            auto srsOp = aievec::SRSOp::create(
+                rewriter, loc, cast<VectorType>(lhsHalf.getType()),
+                mulElemOp.getResult(), shiftParamOp.getResult());
+            return srsOp.getResult();
+          });
+      return success();
+    }
+
+    // bfloat16 and float type (laneSize == 16)
     if (laneSize != 16 || (resultElWidth != 16 && resultElWidth != 32))
       return failure();
 
@@ -1467,6 +1676,59 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
       if (laneSize != 16 && laneSize != 32)
         return failure();
 
+      // v32f32: split into two v16f32 ops
+      if (laneSize == 32 && resultElWidth == 32) {
+        VectorType halfType = createVectorType(16, scalarType);
+
+        splitWideBinaryVectorOp<SrcOpTy>(
+            srcOp, lhs, rhs, halfType, resultType, rewriter,
+            [](Value lhsHalf, Value rhsHalf, Location loc,
+               ConversionPatternRewriter &rewriter) -> Value {
+              VectorType halfVecType = cast<VectorType>(lhsHalf.getType());
+              // For f32, use cast to acc, add_elem/sub_elem, cast back
+              auto lCastOp = aievec::CastOp::create(rewriter, loc, halfVecType,
+                                                    lhsHalf, /*isResAcc*/ true);
+              auto rCastOp = aievec::CastOp::create(rewriter, loc, halfVecType,
+                                                    rhsHalf, /*isResAcc*/ true);
+              auto elemOp = DstOpTy::create(
+                  rewriter, loc, lCastOp->getResult(0).getType(),
+                  lCastOp->getResult(0), rCastOp->getResult(0));
+              auto resCastOp = aievec::CastOp::create(
+                  rewriter, loc, halfVecType, elemOp.getResult(),
+                  /*isResAcc*/ false);
+              return resCastOp.getResult();
+            });
+        return success();
+      }
+
+      // v32bf16: split into two v16bf16 ops
+      if (laneSize == 32 && resultElWidth == 16) {
+        VectorType halfType = createVectorType(16, scalarType);
+
+        splitWideBinaryVectorOp<SrcOpTy>(
+            srcOp, lhs, rhs, halfType, resultType, rewriter,
+            [](Value lhsHalf, Value rhsHalf, Location loc,
+               ConversionPatternRewriter &rewriter) -> Value {
+              VectorType halfVecType = cast<VectorType>(lhsHalf.getType());
+              Type accType = getVectorOpDestType(halfVecType, /*AIE2 =*/true);
+              auto lUpsOp =
+                  aievec::UPSOp::create(rewriter, loc, accType, lhsHalf);
+              auto rUpsOp =
+                  aievec::UPSOp::create(rewriter, loc, accType, rhsHalf);
+              auto elemOp =
+                  DstOpTy::create(rewriter, loc, lUpsOp->getResult(0).getType(),
+                                  lUpsOp->getResult(0), rUpsOp->getResult(0));
+              auto shiftParamOp = arith::ConstantOp::create(
+                  rewriter, loc, rewriter.getI32IntegerAttr(0));
+              auto srsOp = aievec::SRSOp::create(rewriter, loc, halfVecType,
+                                                 elemOp.getResult(),
+                                                 shiftParamOp.getResult());
+              return srsOp.getResult();
+            });
+        return success();
+      }
+
+      // Now we know laneSize == 16 for remaining float cases
       // v16float or v16bf16 with extension op case
       if (resultElWidth == 32) {
         if (!lhsDefOp && !rhsDefOp) {
@@ -1605,6 +1867,57 @@ using LowerVectorMinSIOpToAIEVecMinOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
 using LowerVectorMaxSIOpToAIEVecMaxOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
+// Promote scalar arith.maxsi/arith.minsi to vector aievec.max/aievec.min
+// to avoid the AIE2 G_SELECT legalizer crash on scalar i32 select.
+template <typename SrcOpTy, typename DstOpTy>
+struct LowerScalarMinMaxToAIEVecMinMaxOp : OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Only match scalar integer types (reject vectors)
+    Type resultType = srcOp.getType();
+    if (isa<VectorType>(resultType))
+      return failure();
+
+    auto intType = dyn_cast<IntegerType>(resultType);
+    if (!intType)
+      return failure();
+
+    unsigned elWidth = intType.getWidth();
+    if (elWidth != 8 && elWidth != 16 && elWidth != 32)
+      return failure();
+
+    unsigned numLanes = 512 / elWidth;
+    VectorType vecType = createVectorType(numLanes, intType);
+    Location loc = srcOp.getLoc();
+
+    // Broadcast both scalars to 512-bit vectors
+    auto lhsBcast = aievec::BroadcastScalarOp::create(rewriter, loc, vecType,
+                                                      adaptor.getLhs());
+    auto rhsBcast = aievec::BroadcastScalarOp::create(rewriter, loc, vecType,
+                                                      adaptor.getRhs());
+
+    // Apply vector min/max
+    auto vecOp = DstOpTy::create(rewriter, loc, vecType, lhsBcast.getResult(),
+                                 rhsBcast.getResult());
+
+    // Extract element 0 back to scalar
+    auto zeroIdx =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(
+        srcOp, intType, vecOp.getResult(), zeroIdx.getResult());
+    return success();
+  }
+};
+
+using LowerScalarMinSIOpToAIEVecMinOp =
+    LowerScalarMinMaxToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
+using LowerScalarMaxSIOpToAIEVecMaxOp =
+    LowerScalarMinMaxToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
+
 using LowerVectorMinimumFOpToAIEVecMinOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinimumFOp, aievec::MinOp>;
 using LowerVectorMaximumFOpToAIEVecMaxOp =
@@ -1714,20 +2027,32 @@ struct LowerVectorReductionMinOp : OpConversionPattern<vector::ReductionOp> {
                   ConversionPatternRewriter &rewriter) const override {
     if (auto kind = srcOp.getKind(); kind != vector::CombiningKind::MINSI &&
                                      kind != vector::CombiningKind::MINUI &&
-                                     kind != vector::CombiningKind::MINIMUMF)
+                                     kind != vector::CombiningKind::MINIMUMF &&
+                                     kind != vector::CombiningKind::MINNUMF)
       return failure();
 
     auto vType = cast<VectorType>(srcOp.getVector().getType());
     Type scalarType = vType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
+    unsigned vectorSize = laneSize * elWidth;
 
-    if (laneSize * elWidth != 512)
+    // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
+    if (vectorSize != 512 && !(vectorSize == 256 && scalarType.isBF16()))
       return failure();
+
+    Location loc = srcOp.getLoc();
+    Value inputVec = srcOp.getVector();
+
+    // For 256-bit bf16 (v16bf16), pad to 512-bit (v32bf16) with +inf
+    if (vectorSize == 256) {
+      std::tie(inputVec, laneSize) = padV16ToV32WithInfinity(
+          rewriter, loc, srcOp.getVector(), scalarType, /*negativeInf=*/false);
+    }
 
     int shiftIndex = laneSize / 2;
     auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MinOp>(
-        rewriter, srcOp, shiftIndex, srcOp.getVector());
+        rewriter, srcOp, shiftIndex, inputVec);
 
     if (srcOp.getAcc()) {
       Value reduceResult = reduceResultOp.getResult();
@@ -1778,13 +2103,25 @@ struct LowerVectorReductionMaxOp : OpConversionPattern<vector::ReductionOp> {
     Type scalarType = vType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(vType);
+    unsigned vectorSize = laneSize * elWidth;
 
-    if (laneSize * elWidth != 512)
+    // Support 512-bit vectors directly, and 256-bit bf16 vectors by padding
+    // Only bf16 is supported for the 256-bit padding path (not f16)
+    if (vectorSize != 512 && !(vectorSize == 256 && scalarType.isBF16()))
       return failure();
+
+    Location loc = srcOp.getLoc();
+    Value inputVec = srcOp.getVector();
+
+    // For 256-bit bf16 (v16bf16), pad to 512-bit (v32bf16) with -inf
+    if (vectorSize == 256) {
+      std::tie(inputVec, laneSize) = padV16ToV32WithInfinity(
+          rewriter, loc, srcOp.getVector(), scalarType, /*negativeInf=*/true);
+    }
 
     int shiftIndex = laneSize / 2;
     auto reduceResultOp = generateAIEVecOpsForReductionOp<aievec::MaxOp>(
-        rewriter, srcOp, shiftIndex, srcOp.getVector());
+        rewriter, srcOp, shiftIndex, inputVec);
 
     if (srcOp.getAcc()) {
       Value reduceResult = reduceResultOp.getResult();
@@ -2306,6 +2643,8 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
       return failure();
 
     auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    unsigned laneSize = getVectorLaneSize(srcType);
+    Location loc = expOp.getLoc();
     StringRef funcName = "getExpBf16";
 
     VectorType v16bf16Ty = mlir::VectorType::get({16}, rewriter.getBF16Type());
@@ -2314,15 +2653,38 @@ struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
         rewriter, expOp->getParentWithTrait<OpTrait::SymbolTable>(), funcName,
         TypeRange{v16bf16Ty}, TypeRange{v8i64Ty});
 
+    // Handle v32bf16 by splitting into two v16bf16 operations
+    if (laneSize == 32) {
+      splitWideUnaryVectorOp<math::ExpOp>(
+          expOp, adaptor.getOperand(), v16bf16Ty, srcType, rewriter,
+          [&fnOp](Value halfInput, Location loc,
+                  ConversionPatternRewriter &rewriter) -> Value {
+            VectorType v16bf16Ty =
+                mlir::VectorType::get({16}, rewriter.getBF16Type());
+            auto callOp = func::CallOp::create(rewriter, loc, fnOp,
+                                               SmallVector<Value>{halfInput});
+            Type accType = getVectorOpDestType(v16bf16Ty, /*AIE2 =*/true);
+            auto resCastOp = vector::BitCastOp::create(rewriter, loc, accType,
+                                                       callOp.getResults());
+            auto shiftParamOp = arith::ConstantOp::create(
+                rewriter, loc, rewriter.getI32IntegerAttr(0));
+            auto srsOp = aievec::SRSOp::create(rewriter, loc, v16bf16Ty,
+                                               resCastOp.getResult(),
+                                               shiftParamOp.getResult());
+            return srsOp.getResult();
+          });
+      return success();
+    }
+
+    // Handle v16bf16 directly
     SmallVector<Value> expOperands = {adaptor.getOperand()};
 
     Type accTypeNative = getVectorOpDestType(srcType, /*AIE2 =*/true);
-    auto callOp =
-        func::CallOp::create(rewriter, expOp.getLoc(), fnOp, expOperands);
-    auto resCastOp = vector::BitCastOp::create(
-        rewriter, expOp.getLoc(), accTypeNative, callOp.getResults());
-    auto shiftParamOp = arith::ConstantOp::create(
-        rewriter, expOp.getLoc(), rewriter.getI32IntegerAttr(0));
+    auto callOp = func::CallOp::create(rewriter, loc, fnOp, expOperands);
+    auto resCastOp = vector::BitCastOp::create(rewriter, loc, accTypeNative,
+                                               callOp.getResults());
+    auto shiftParamOp =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
     rewriter.replaceOpWithNewOp<aievec::SRSOp>(
         expOp, srcType, resCastOp.getResult(), shiftParamOp.getResult());
 
@@ -3365,6 +3727,273 @@ struct ComputeSignedIntRightShiftOpPattern
   }
 };
 
+// Recognize the compound shift+clamp+truncate pattern and lower it to
+// aievec.ups + aievec.srs. This maps the standard quantized neural network
+// "shift-round-saturate + clamp" idiom to the AIE2 SRS hardware unit.
+//
+// Pattern A (with clamp):
+//   %shifted  = arith.shrsi %wide, %shift_splat
+//   %clamped0 = arith.maxsi %shifted, %c_lo
+//   %clamped  = arith.minsi %clamped0, %c_hi
+//   %result   = arith.trunci %clamped
+//
+// Pattern B (without clamp):
+//   %shifted  = arith.shrsi %wide, %shift_splat
+//   %result   = arith.trunci %shifted
+//
+// Both lower to: aievec.ups + aievec.srs
+struct ShiftClampTruncToSRSPattern : OpConversionPattern<arith::TruncIOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  ShiftClampTruncToSRSPattern(MLIRContext *context, PatternBenefit benefit = 2)
+      : OpConversionPattern(context, benefit) {}
+
+  // Try to extract a scalar integer splat value from a Value.
+  // Returns std::nullopt if the value is not a constant splat.
+  static std::optional<int64_t> getConstantSplatValue(Value val) {
+    auto defOp = val.getDefiningOp<arith::ConstantOp>();
+    if (!defOp)
+      return std::nullopt;
+    auto denseAttr = dyn_cast<DenseIntElementsAttr>(defOp.getValue());
+    if (!denseAttr || !denseAttr.isSplat())
+      return std::nullopt;
+    return denseAttr.getSplatValue<APInt>().getSExtValue();
+  }
+
+  // Try to extract the shift amount from the right operand of shrsi.
+  // Accepts either a constant splat vector or an aievec.broadcast of a
+  // constant.
+  static std::optional<Value>
+  getShiftValue(Value rhs, ConversionPatternRewriter &rewriter, Location loc) {
+    // Case 1: constant splat vector
+    if (auto constOp = rhs.getDefiningOp<arith::ConstantOp>()) {
+      auto denseAttr = dyn_cast<DenseIntElementsAttr>(constOp.getValue());
+      if (denseAttr && denseAttr.isSplat()) {
+        int64_t shiftVal = denseAttr.getSplatValue<APInt>().getSExtValue();
+        return arith::ConstantOp::create(rewriter, loc,
+                                         rewriter.getI32IntegerAttr(shiftVal))
+            .getResult();
+      }
+    }
+    // Case 2: aievec.broadcast
+    if (auto bcastOp = dyn_cast<aievec::BroadcastOp>(rhs.getDefiningOp())) {
+      auto constOp = arith::ConstantOp::create(
+          rewriter, bcastOp.getLoc(),
+          rewriter.getI32IntegerAttr(bcastOp.getIdx()));
+      return aievec::ExtElemOp::create(rewriter, bcastOp.getLoc(),
+                                       rewriter.getI32Type(), bcastOp,
+                                       constOp.getResult())
+          .getResult();
+    }
+    return std::nullopt;
+  }
+
+  LogicalResult
+  matchAndRewrite(arith::TruncIOp truncOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto dstType = dyn_cast<VectorType>(truncOp.getOut().getType());
+    if (!dstType)
+      return failure();
+
+    Type dstScalarType = dstType.getElementType();
+    if (!isa<IntegerType>(dstScalarType))
+      return failure();
+
+    // Walk backward through optional clamp chain
+    Value source = adaptor.getIn();
+    int32_t sign = 1; // default: signed
+
+    // Check for minsi(maxsi(...), hi) or maxsi(minsi(...), lo) clamp pattern
+    arith::MinSIOp minOp = nullptr;
+    arith::MaxSIOp maxOp = nullptr;
+
+    if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+      if (auto maxsiOp = minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>()) {
+        minOp = minsiOp;
+        maxOp = maxsiOp;
+        source = maxOp.getLhs();
+      }
+    } else if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+      if (auto minsiOp = maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>()) {
+        maxOp = maxsiOp;
+        minOp = minsiOp;
+        source = minOp.getLhs();
+      }
+    }
+
+    // If we found a clamp, verify it's a valid saturation range
+    if (minOp && maxOp) {
+      auto loVal = getConstantSplatValue(maxOp.getRhs());
+      auto hiVal = getConstantSplatValue(minOp.getRhs());
+      if (!loVal || !hiVal)
+        return failure();
+
+      unsigned dstBits = dstScalarType.getIntOrFloatBitWidth();
+      // Guard against UB from shifting into or past the sign bit.
+      if (dstBits == 0 || dstBits > 63)
+        return failure();
+      uint64_t one = 1ULL;
+      int64_t unsignedLo = 0;
+      int64_t unsignedHi = static_cast<int64_t>((one << dstBits) - 1);
+      int64_t signedLo = -static_cast<int64_t>(one << (dstBits - 1));
+      int64_t signedHi = static_cast<int64_t>((one << (dstBits - 1)) - 1);
+
+      if (*loVal == unsignedLo && *hiVal == unsignedHi) {
+        sign = 0; // unsigned saturation
+      } else if (*loVal == signedLo && *hiVal == signedHi) {
+        sign = 1; // signed saturation
+      } else {
+        // Clamp range doesn't match standard saturation — don't match
+        return failure();
+      }
+    }
+
+    // Now source should be the shrsi result
+    auto shrsiOp = source.getDefiningOp<arith::ShRSIOp>();
+    if (!shrsiOp)
+      return failure();
+
+    auto srcType = dyn_cast<VectorType>(shrsiOp.getLhs().getType());
+    if (!srcType)
+      return failure();
+
+    Type srcScalarType = srcType.getElementType();
+    if (!isa<IntegerType>(srcScalarType))
+      return failure();
+
+    unsigned srcElWidth = srcScalarType.getIntOrFloatBitWidth();
+    unsigned dstElWidth = dstScalarType.getIntOrFloatBitWidth();
+    if (dstElWidth >= srcElWidth)
+      return failure();
+
+    Location loc = truncOp.getLoc();
+
+    // Extract the shift amount
+    auto shiftVal = getShiftValue(shrsiOp.getRhs(), rewriter, loc);
+    if (!shiftVal)
+      return failure();
+
+    // Get the wide input (pre-shift)
+    Value wideInput = shrsiOp.getLhs();
+
+    unsigned laneSize = getVectorLaneSize(srcType);
+    bool needsPadding = (laneSize % 16 != 0);
+
+    VectorType paddedSrcType = srcType;
+    VectorType paddedDstType = dstType;
+    unsigned paddedLanes = laneSize;
+
+    if (needsPadding) {
+      // Round up to nearest multiple of 16
+      paddedLanes = ((laneSize + 15) / 16) * 16;
+      paddedSrcType = createVectorType(paddedLanes, srcScalarType);
+      paddedDstType = createVectorType(paddedLanes, dstScalarType);
+
+      // Zero-pad the input using insert_strided_slice
+      auto zeroAttr = rewriter.getZeroAttr(paddedSrcType);
+      auto zeroPad =
+          arith::ConstantOp::create(rewriter, loc, zeroAttr).getResult();
+      SmallVector<int64_t> offsets(1, 0);
+      SmallVector<int64_t> strides(1, 1);
+      wideInput = vector::InsertStridedSliceOp::create(
+                      rewriter, loc, wideInput, zeroPad, offsets, strides)
+                      .getResult();
+    }
+
+    // Determine accumulator type and create the accumulator value.
+    // For i16 source: use UPS to widen to accumulator type.
+    // For i32/i64 source: use CastOp (marks as accumulator without widening),
+    // matching the approach in LowerTruncOpPattern.
+    Type accScalarType = paddedSrcType.getElementType();
+    unsigned accElWidth = accScalarType.getIntOrFloatBitWidth();
+    Value accValue;
+    if (accElWidth == 16) {
+      Type accType = getVectorOpDestType(paddedSrcType, /*AIE2=*/true);
+      accValue =
+          aievec::UPSOp::create(rewriter, loc, accType, wideInput).getResult();
+    } else {
+      // For i32/i64: CastOp with isResAcc=true marks as accumulator
+      accValue = aievec::CastOp::create(rewriter, loc, paddedSrcType, wideInput,
+                                        /*isResAcc=*/true)
+                     .getResult();
+    }
+    auto srsOp = aievec::SRSOp::create(rewriter, loc, paddedDstType, accValue,
+                                       *shiftVal, sign);
+
+    Value result = srsOp.getResult();
+
+    if (needsPadding) {
+      // Extract original lanes from the padded result
+      SmallVector<int64_t> offsets(1, 0);
+      SmallVector<int64_t> sizes = {static_cast<int64_t>(laneSize)};
+      SmallVector<int64_t> strides(1, 1);
+      result = vector::ExtractStridedSliceOp::create(rewriter, loc, result,
+                                                     offsets, sizes, strides)
+                   .getResult();
+    }
+
+    rewriter.replaceOp(truncOp, result);
+
+    // Erase the intermediate clamp/shift ops if they have no other uses.
+    // These must be cleaned up because shrsi on 512-bit vectors is marked
+    // illegal and would cause conversion failure if left as dead ops.
+    SmallVector<Operation *, 3> opsToErase;
+    if (minOp && minOp->use_empty())
+      opsToErase.push_back(minOp);
+    if (maxOp && maxOp->use_empty())
+      opsToErase.push_back(maxOp);
+    if (shrsiOp->use_empty())
+      opsToErase.push_back(shrsiOp);
+    for (Operation *op : opsToErase)
+      rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+// Promote scalar arith.shrsi to vector aievec.ups + aievec.srs to prevent
+// LLVM's SLP vectorizer from creating sub-512-bit vector shifts that the
+// AIE2 backend cannot legalize (G_LSHR on <4 x s32>).
+struct LowerScalarShRSIToAIEVecUPSSRS : OpConversionPattern<arith::ShRSIOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ShRSIOp rsOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Only match scalar i32
+    Type resultType = rsOp.getType();
+    if (isa<VectorType>(resultType))
+      return failure();
+
+    auto intType = dyn_cast<IntegerType>(resultType);
+    if (!intType || intType.getWidth() != 32)
+      return failure();
+
+    Location loc = rsOp.getLoc();
+    VectorType vecType = createVectorType(16, intType); // vector<16xi32>
+
+    // Broadcast scalar value to 512-bit vector
+    auto lhsBcast = aievec::BroadcastScalarOp::create(rewriter, loc, vecType,
+                                                      adaptor.getLhs());
+
+    // UPS: vector<16xi32> -> accumulator type (vector<16xi64>)
+    Type accType = getVectorOpDestType(vecType, /*AIE2=*/true);
+    auto upsOp =
+        aievec::UPSOp::create(rewriter, loc, accType, lhsBcast.getResult());
+
+    // SRS: accumulator + i32 shift -> vector<16xi32>
+    auto srsOp = aievec::SRSOp::create(rewriter, loc, vecType,
+                                       upsOp.getResult(), adaptor.getRhs());
+
+    // Extract element 0 back to scalar
+    auto zeroIdx =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(
+        rsOp, intType, srsOp.getResult(), zeroIdx.getResult());
+    return success();
+  }
+};
+
 // Convert a `vector.contract` op to an `aievec.matmul` op for AIE2 or
 // `aievec.matmul_aie2p` for AIE2P
 template <typename MatMulOpTy>
@@ -3592,6 +4221,10 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       LowerVectorSubFOpToAIEVecSubElemOp
       >(patterns.getContext());
   }
+  // Add the compound shift+clamp+trunc→SRS pattern with higher benefit
+  // so it takes priority over the individual shrsi and trunci patterns.
+  patterns.add<ShiftClampTruncToSRSPattern>(patterns.getContext(),
+                                            /*benefit=*/2);
   patterns.add<
       ComputeTanhOpByLUTPattern,
       ComputeSqrtOpAIE2Pattern,
@@ -3606,11 +4239,14 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       ComputeBorOpPattern,
       ComputeBandOpPattern,
       ComputeSignedIntRightShiftOpPattern,
+      LowerScalarShRSIToAIEVecUPSSRS,
       ConvertMulIToAIEVecMulElemOpPattern,
       ConvertMulFToAIEVecMulElemOpPattern,
       LowerVectorMinSIOpToAIEVecMinOp,
+      LowerScalarMinSIOpToAIEVecMinOp,
       LowerVectorMinimumFOpToAIEVecMinOp,
       LowerVectorMaxSIOpToAIEVecMaxOp,
+      LowerScalarMaxSIOpToAIEVecMaxOp,
       LowerVectorMaximumFOpToAIEVecMaxOp,
       LowerVectorMaxNumFFOpToAIEVecMaxOp,
       LowerVectorCmpIOpToAIEVecCmpOp,
@@ -3920,43 +4556,47 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
     return elWidth * laneSize != 512 && elWidth * laneSize != 256;
   });
 
-  target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
-    if (auto srcType = dyn_cast<VectorType>(divfOp.getLhs().getType());
-        !srcType) {
-      Type scalarType = divfOp.getLhs().getType();
-      if (!divfOp->hasOneUse() || !isa<FloatType>(scalarType))
-        return true;
-      if (!isNarrowingOp(*divfOp->getUsers().begin()))
-        return true;
+  // CPP backend: Mark 1/x pattern as illegal for conversion to inv() via LUT
+  // LLVMIR backend: Keep scalar divf legal (handled by downstream passes)
+  if (backend == TargetBackend::CPP) {
+    target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
+      if (auto srcType = dyn_cast<VectorType>(divfOp.getLhs().getType());
+          !srcType) {
+        Type scalarType = divfOp.getLhs().getType();
+        if (!divfOp->hasOneUse() || !isa<FloatType>(scalarType))
+          return true;
+        if (!isNarrowingOp(*divfOp->getUsers().begin()))
+          return true;
 
-      auto fType = cast<FloatType>(scalarType);
-      if (fType.getWidth() != 32)
-        return true;
+        auto fType = cast<FloatType>(scalarType);
+        if (fType.getWidth() != 32)
+          return true;
 
-      auto constOp =
-          dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
-      if (!constOp ||
-          cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
-              1.0f)
-        return true;
-    } else {
-      Type scalarType = srcType.getElementType();
-      if (!isa<FloatType>(scalarType))
-        return true;
+        auto constOp =
+            dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
+        if (!constOp ||
+            cast<FloatAttr>(constOp.getValue()).getValue().convertToDouble() !=
+                1.0f)
+          return true;
+      } else {
+        Type scalarType = srcType.getElementType();
+        if (!isa<FloatType>(scalarType))
+          return true;
 
-      unsigned laneSize = getVectorLaneSize(srcType);
-      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+        unsigned laneSize = getVectorLaneSize(srcType);
+        unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
-      if (elWidth != 16 || (laneSize != 16 && laneSize != 32))
-        return true;
+        if (elWidth != 16 || (laneSize != 16 && laneSize != 32))
+          return true;
 
-      arith::NegFOp negOp = nullptr;
-      if (!hasSigmoidComputationChain(divfOp, negOp))
-        return true;
-    }
+        arith::NegFOp negOp = nullptr;
+        if (!hasSigmoidComputationChain(divfOp, negOp))
+          return true;
+      }
 
-    return false;
-  });
+      return false;
+    });
+  }
 
   target.addDynamicallyLegalOp<math::CeilOp>([](math::CeilOp ceilOp) {
     auto srcType = dyn_cast<VectorType>(ceilOp.getOperand().getType());
@@ -4025,10 +4665,20 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<arith::ShRSIOp>([](arith::ShRSIOp rsOp) {
     auto srcType = dyn_cast<VectorType>(rsOp.getLhs().getType());
-    if (!srcType)
+    if (!srcType) {
+      // Scalar i32 shrsi is illegal — will be promoted to vector
+      if (auto intType = dyn_cast<IntegerType>(rsOp.getLhs().getType()))
+        if (intType.getWidth() == 32)
+          return false;
       return true;
-    Type scalarType = srcType.getElementType();
+    }
 
+    // If the shrsi feeds into a compound SRS pattern (shrsi+clamp+trunc),
+    // keep it legal — the compound pattern will consume it via the trunci.
+    if (shrsiUsedByCompoundSRS(rsOp))
+      return true;
+
+    Type scalarType = srcType.getElementType();
     unsigned laneSize = getVectorLaneSize(srcType);
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
 
@@ -4247,6 +4897,11 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
+    // Also mark as illegal if it's part of a shrsi+clamp+trunc SRS pattern,
+    // even for sub-AIE-width vectors
+    if (isSRSCompoundCandidate(trunciOp))
+      return false;
+
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
     if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
@@ -4340,8 +4995,21 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     if (!resultType)
       return true;
 
+    Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
-    return laneSize != 16;
+    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
+
+    // Support laneSize == 16 for f32/bf16
+    if (laneSize == 16)
+      return false; // illegal - will be converted
+    // Support laneSize == 32 for bf16 (split into two v16bf16 ops)
+    if (laneSize == 32 && resultElWidth == 16)
+      return false; // illegal - will be split
+    // Support laneSize == 32 for f32 (split into two v16f32 ops)
+    if (laneSize == 32 && resultElWidth == 32)
+      return false; // illegal - will be split into two v16f32 ops
+
+    return true; // legal - not supported
   });
 
   target.addDynamicallyLegalOp<arith::SubFOp>([](arith::SubFOp op) {
@@ -4349,8 +5017,21 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     if (!resultType)
       return true;
 
+    Type scalarType = resultType.getElementType();
     unsigned laneSize = getVectorLaneSize(resultType);
-    return laneSize != 16;
+    unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
+
+    // Support laneSize == 16 for f32/bf16
+    if (laneSize == 16)
+      return false; // illegal - will be converted
+    // Support laneSize == 32 for bf16 (split into two v16bf16 ops)
+    if (laneSize == 32 && resultElWidth == 16)
+      return false; // illegal - will be split
+    // Support laneSize == 32 for f32 (split into two v16f32 ops)
+    if (laneSize == 32 && resultElWidth == 32)
+      return false; // illegal - will be split into two v16f32 ops
+
+    return true; // legal - not supported
   });
 
   target.addDynamicallyLegalOp<arith::MulIOp>([](arith::MulIOp op) {
@@ -4382,13 +5063,26 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    return laneSize != 16 || (resultElWidth != 16 && resultElWidth != 32);
+    // Support laneSize == 16 for bf16/f32, and laneSize == 32 for bf16 (split)
+    if (laneSize == 16 && (resultElWidth == 16 || resultElWidth == 32))
+      return false; // illegal - will be converted
+    if (laneSize == 32 && resultElWidth == 16)
+      return false; // illegal - will be split into two v16bf16 ops
+
+    return true; // legal - not supported
   });
 
   target.addDynamicallyLegalOp<arith::MinSIOp>([=](arith::MinSIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType)
+    if (!resultType) {
+      // Scalar i8/i16/i32 minsi is illegal — will be promoted to vector
+      if (auto intType = dyn_cast<IntegerType>(op.getType())) {
+        unsigned w = intType.getWidth();
+        if (w == 8 || w == 16 || w == 32)
+          return false;
+      }
       return true;
+    }
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
@@ -4398,8 +5092,15 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<arith::MaxSIOp>([=](arith::MaxSIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType)
+    if (!resultType) {
+      // Scalar i8/i16/i32 maxsi is illegal — will be promoted to vector
+      if (auto intType = dyn_cast<IntegerType>(op.getType())) {
+        unsigned w = intType.getWidth();
+        if (w == 8 || w == 16 || w == 32)
+          return false;
+      }
       return true;
+    }
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
@@ -4490,6 +5191,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
                                       kind != vector::CombiningKind::MINSI &&
                                       kind != vector::CombiningKind::MINUI &&
                                       kind != vector::CombiningKind::MINIMUMF &&
+                                      kind != vector::CombiningKind::MINNUMF &&
                                       kind != vector::CombiningKind::MAXSI &&
                                       kind != vector::CombiningKind::MAXUI &&
                                       kind != vector::CombiningKind::MAXIMUMF &&
@@ -4591,6 +5293,11 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
 
+    // Also mark as illegal if it's part of a shrsi+clamp+trunc SRS pattern,
+    // even for sub-AIE-width vectors
+    if (isSRSCompoundCandidate(trunciOp))
+      return false;
+
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
     if ((srcLaneSize % 16 == 0) && (dstLaneSize % 16 == 0))
@@ -4602,7 +5309,8 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
   target.addIllegalOp<vector::ContractionOp, vector::TransposeOp,
                       vector::FMAOp>();
 
-  // AIE2-specific legalization: math.exp for v16bf16 is illegal (uses LUT)
+  // AIE2-specific legalization: math.exp for v16bf16 and v32bf16 is illegal
+  // (uses LUT)
   target.addDynamicallyLegalOp<math::ExpOp>([](math::ExpOp expOp) {
     auto srcType = dyn_cast<VectorType>(expOp.getOperand().getType());
     if (!srcType)
@@ -4611,8 +5319,9 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     Type scalarType = srcType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(srcType);
-    // AIE2: only v16bf16 is illegal (uses LUT-based lowering)
-    if (!isa<FloatType>(scalarType) || laneSize != 16 || elWidth != 16)
+    // AIE2: v16bf16 and v32bf16 are illegal (uses LUT-based lowering)
+    if (!isa<FloatType>(scalarType) || (laneSize != 16 && laneSize != 32) ||
+        elWidth != 16)
       return true;
     if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp))
       return true;

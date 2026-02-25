@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 import hashlib
 import numpy as np
@@ -89,6 +89,7 @@ class ExternalFunction(Kernel):
         arg_types: list[type[np.ndarray] | np.dtype] = [],
         include_dirs: list[str] = [],
         compile_flags: list[str] = [],
+        debug: bool = False,
     ) -> None:
         """An ExternalFunction is a C/C++ source file that gets compiled to an object file and eventually resolves to a FuncOp.
         If it is called, a CallOp will be generated.
@@ -101,6 +102,7 @@ class ExternalFunction(Kernel):
             arg_types (list[type[np.ndarray] | np.dtype], optional): The type signature of the function. Defaults to [].
             include_dirs (list[str], optional): Additional include directories. Defaults to [].
             compile_flags (list[str], optional): Additional compilation flags. Defaults to [].
+            debug (bool, optional): Enable debug logging. Defaults to True.
         """
         if not object_file_name:
             object_file_name = f"{name}.o"
@@ -110,6 +112,15 @@ class ExternalFunction(Kernel):
         self._include_dirs = include_dirs
         self._compile_flags = compile_flags
         self._compiled = False
+        self._arg_types = arg_types
+        self._op: FuncOp | None = None
+        self._debug = debug
+
+        if self._debug:
+            print(f"Initializing ExternalFunction: {name}")
+            print(f"Source file: {source_file}")
+            print(f"Include dirs: {include_dirs}")
+            print(f"Compile flags: {compile_flags}")
 
         # Track this instance for JIT compilation
         ExternalFunction._instances.add(self)
@@ -173,6 +184,37 @@ class ExternalFunction(Kernel):
     def arg_types(self) -> list:
         """Get the argument types of the ExternalFunction."""
         return self._arg_types.copy()
+
+    def __call__(self, *args, **kwargs):
+        """Call the ExternalFunction with argument validation."""
+        if len(args) != len(self._arg_types):
+            raise ValueError(
+                f"ExternalFunction '{self._name}' expects {len(self._arg_types)} argument(s), "
+                f"but {len(args)} were provided."
+            )
+        for i, (arg, expected_ty) in enumerate(zip(args, self._arg_types)):
+            self._validate_arg(i, arg, expected_ty)
+        super().__call__(*args, **kwargs)
+
+    def _validate_arg(self, index: int, arg, expected_ty) -> None:
+        """Validate a single argument against its expected type."""
+        # Scalar types (np.int32, np.float32, etc.)
+        if isinstance(expected_ty, type) and issubclass(expected_ty, np.generic):
+            if not isinstance(arg, (int, float, np.integer, np.floating)):
+                raise ValueError(
+                    f"Argument {index}: expected scalar, got {type(arg).__name__}"
+                )
+            return
+
+        # Array types - check shape and dtype
+        if hasattr(expected_ty, "__args__") and hasattr(arg, "shape"):
+            expected_shape = expected_ty.__args__[0]
+            expected_dtype = expected_ty.__args__[1].__args__[0]
+            if arg.shape != expected_shape or arg.dtype != expected_dtype:
+                raise ValueError(
+                    f"Argument {index}: expected {expected_shape}/{expected_dtype}, "
+                    f"got {arg.shape}/{arg.dtype}"
+                )
 
     def __hash__(self):
         """
