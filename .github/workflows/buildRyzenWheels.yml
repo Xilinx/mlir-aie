@@ -14,8 +14,6 @@ on:
       - 'v*.*.*'
   merge_group:
   schedule:
-    # Runs at midnight (00:00) every day
-    - cron: '0 0 * * *'
     # At 04:00. (see https://crontab.guru)
     - cron: '0 4 * * *'
 
