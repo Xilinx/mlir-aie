@@ -83,6 +83,16 @@
 
 #include "llvm/IR/Module.h"
 
+// Optional library integrations for direct calls instead of subprocess
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+// Use C API to avoid exception handling issues with LLVM's -fno-exceptions
+#include <aiebu/aiebu.h>
+#endif
+
+// NOTE: bootgen library integration is not enabled because bootgen uses
+// C++ exceptions but LLVM is built with -fno-exceptions. The bootgen
+// subprocess fallback is always used instead.
+
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -330,6 +340,17 @@ static cl::opt<bool> dumpIntermediates(
 
 // Forward declarations
 static std::string findAiebuAsm();
+
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+static std::optional<std::vector<char>> readBinaryFile(StringRef path);
+static std::optional<std::vector<char>> generateElfViaAiebuLibrary(
+    aiebu_assembler_buffer_type type, const std::vector<char> &buffer1,
+    const std::vector<char> &buffer2, const std::vector<char> &patchJson);
+static std::optional<std::vector<char>>
+generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson);
+static LogicalResult writeElfFile(StringRef path,
+                                  const std::vector<char> &elfData);
+#endif
 
 static void printVersion(raw_ostream &os) {
   os << "aiecc (C++ version) " << AIE_GIT_COMMIT << "\n";
@@ -2477,16 +2498,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
                  << " DMA sequence instructions to: " << dmaSeqBinPath << "\n";
   }
 
-  // Step 3: Generate combined ELF using aiebu-asm (if available)
-  std::string aiebuAsmPath = findAiebuAsm();
-  if (aiebuAsmPath.empty()) {
-    if (verbose) {
-      llvm::outs() << "aiebu-asm not found, skipping control packet ELF "
-                      "generation\n";
-    }
-    return success();
-  }
-
+  // Step 3: Generate combined ELF using aiebu library or aiebu-asm subprocess
   std::string elfFileName = formatString(ctrlPktElfName, devName);
   SmallString<128> elfPath;
   if (sys::path::is_absolute(elfFileName)) {
@@ -2512,18 +2524,80 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     break;
   }
 
-  // Generate external_buffers.json for aiebu-asm
-  SmallString<128> extBufJsonPath(tmpDirName);
-  sys::path::append(extBufJsonPath, "external_buffers.json");
+  // Build external_buffers JSON string
+  uint64_t ctrlPktSize = ctrlPktInstructions.size() * sizeof(uint32_t);
+  std::string extBufJsonStr;
+  {
+    llvm::json::Object bufferCtrl;
+    bufferCtrl["xrt_id"] = ctrlIdx;
+    bufferCtrl["logical_id"] = -1;
+    bufferCtrl["size_in_bytes"] = static_cast<int64_t>(ctrlPktSize);
+    bufferCtrl["ctrl_pkt_buffer"] = 1;
+    bufferCtrl["name"] = "runtime_control_packet";
 
-  // Get control packet file size
-  uint64_t ctrlPktSize = 0;
-  if (auto status = sys::fs::file_size(ctrlPktBinPath, ctrlPktSize)) {
-    llvm::errs() << "Error getting control packet file size: "
-                 << status.message() << "\n";
-    return failure();
+    llvm::json::Object externalBuffers;
+    externalBuffers["buffer_ctrl"] = std::move(bufferCtrl);
+
+    llvm::json::Object root;
+    root["external_buffers"] = std::move(externalBuffers);
+
+    llvm::raw_string_ostream os(extBufJsonStr);
+    os << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)));
   }
 
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+  // Try using aiebu library directly
+  {
+    // Convert instructions to char buffers
+    std::vector<char> instrBuffer(
+        reinterpret_cast<const char *>(dmaSeqInstructions.data()),
+        reinterpret_cast<const char *>(dmaSeqInstructions.data()) +
+            dmaSeqInstructions.size() * sizeof(uint32_t));
+
+    std::vector<char> ctrlPktBuffer(
+        reinterpret_cast<const char *>(ctrlPktInstructions.data()),
+        reinterpret_cast<const char *>(ctrlPktInstructions.data()) +
+            ctrlPktInstructions.size() * sizeof(uint32_t));
+
+    std::vector<char> patchJson(extBufJsonStr.begin(), extBufJsonStr.end());
+
+    if (verbose) {
+      llvm::outs() << "Using aiebu library for control packet ELF generation\n";
+    }
+
+    auto elfData = generateElfViaAiebuLibrary(
+        aiebu_assembler_buffer_type_blob_instr_transaction, instrBuffer,
+        ctrlPktBuffer, patchJson);
+    if (elfData && !elfData->empty()) {
+      if (succeeded(writeElfFile(elfPath, *elfData))) {
+        if (verbose) {
+          llvm::outs() << "Generated control packet ELF via library: "
+                       << elfPath << "\n";
+        }
+        return success();
+      }
+    }
+    // Fall through to subprocess on library failure
+    if (verbose) {
+      llvm::outs()
+          << "aiebu library failed for control packet ELF, falling back\n";
+    }
+  }
+#endif // AIECC_HAS_AIEBU_LIBRARY
+
+  // Subprocess fallback: find aiebu-asm
+  std::string aiebuAsmPath = findAiebuAsm();
+  if (aiebuAsmPath.empty()) {
+    if (verbose) {
+      llvm::outs() << "aiebu-asm not found, skipping control packet ELF "
+                      "generation\n";
+    }
+    return success();
+  }
+
+  // Generate external_buffers.json for aiebu-asm subprocess
+  SmallString<128> extBufJsonPath(tmpDirName);
+  sys::path::append(extBufJsonPath, "external_buffers.json");
   {
     std::error_code ec;
     raw_fd_ostream jsonFile(extBufJsonPath, ec, sys::fs::OpenFlags::OF_None);
@@ -2532,17 +2606,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
                    << "\n";
       return failure();
     }
-    jsonFile << "{\n";
-    jsonFile << "  \"external_buffers\": {\n";
-    jsonFile << "    \"buffer_ctrl\": {\n";
-    jsonFile << "      \"xrt_id\": " << ctrlIdx << ",\n";
-    jsonFile << "      \"logical_id\": -1,\n";
-    jsonFile << "      \"size_in_bytes\": " << ctrlPktSize << ",\n";
-    jsonFile << "      \"ctrl_pkt_buffer\": 1,\n";
-    jsonFile << "      \"name\": \"runtime_control_packet\"\n";
-    jsonFile << "    }\n";
-    jsonFile << "  }\n";
-    jsonFile << "}\n";
+    jsonFile << extBufJsonStr;
   }
 
   // Run aiebu-asm to generate combined ELF
@@ -2611,6 +2675,104 @@ static std::string findAiebuAsm() {
   return "";
 }
 
+//===----------------------------------------------------------------------===//
+// AIEBU Library Integration (optional, compile-time enabled)
+// Uses the C API to avoid exception handling issues with LLVM's -fno-exceptions
+//===----------------------------------------------------------------------===//
+
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+/// Helper to read a binary file into a vector of chars.
+static std::optional<std::vector<char>> readBinaryFile(StringRef path) {
+  auto bufferOrErr = llvm::MemoryBuffer::getFile(path);
+  if (!bufferOrErr) {
+    return std::nullopt;
+  }
+  auto &buffer = *bufferOrErr;
+  const char *data = buffer->getBufferStart();
+  size_t size = buffer->getBufferSize();
+  return std::vector<char>(data, data + size);
+}
+
+/// Generate ELF using aiebu C API with transaction instructions.
+/// Returns the ELF data or nullopt on failure.
+static std::optional<std::vector<char>>
+generateElfViaAiebuLibrary(aiebu_assembler_buffer_type type,
+                           const std::vector<char> &buffer1,
+                           const std::vector<char> &buffer2 = {},
+                           const std::vector<char> &patchJson = {}) {
+  void *elfBuf = nullptr;
+  int result = aiebu_assembler_get_elf(
+      type, buffer1.data(), buffer1.size(),
+      buffer2.empty() ? nullptr : buffer2.data(), buffer2.size(), &elfBuf,
+      patchJson.empty() ? nullptr : patchJson.data(), patchJson.size(),
+      nullptr, // libs
+      nullptr, // libpaths
+      nullptr, // pm_ctrlpkts
+      0);      // pm_ctrlpkt_size
+
+  if (result <= 0 || elfBuf == nullptr) {
+    if (verbose) {
+      llvm::errs() << "aiebu library error: returned " << result << "\n";
+    }
+    if (elfBuf) {
+      free(elfBuf);
+    }
+    return std::nullopt;
+  }
+
+  // Copy data and free the allocated buffer
+  std::vector<char> elfData(static_cast<char *>(elfBuf),
+                            static_cast<char *>(elfBuf) + result);
+  free(elfBuf);
+  return elfData;
+}
+
+/// Generate ELF using aiebu C API with config JSON (for aie2_config type).
+/// Returns the ELF data or nullopt on failure.
+static std::optional<std::vector<char>>
+generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson) {
+  void *elfBuf = nullptr;
+  int result = aiebu_assembler_get_elf(aiebu_assembler_buffer_type_aie2_config,
+                                       configJson.data(), configJson.size(),
+                                       nullptr, 0,          // buffer2
+                                       &elfBuf, nullptr, 0, // patch_json
+                                       nullptr,             // libs
+                                       nullptr,             // libpaths
+                                       nullptr,             // pm_ctrlpkts
+                                       0);                  // pm_ctrlpkt_size
+
+  if (result <= 0 || elfBuf == nullptr) {
+    if (verbose) {
+      llvm::errs() << "aiebu library error (config): returned " << result
+                   << "\n";
+    }
+    if (elfBuf) {
+      free(elfBuf);
+    }
+    return std::nullopt;
+  }
+
+  std::vector<char> elfData(static_cast<char *>(elfBuf),
+                            static_cast<char *>(elfBuf) + result);
+  free(elfBuf);
+  return elfData;
+}
+
+/// Write ELF data to a file.
+static LogicalResult writeElfFile(StringRef path,
+                                  const std::vector<char> &elfData) {
+  std::error_code ec;
+  raw_fd_ostream elfFile(path, ec, sys::fs::OpenFlags::OF_None);
+  if (ec) {
+    llvm::errs() << "Error writing ELF file " << path << ": " << ec.message()
+                 << "\n";
+    return failure();
+  }
+  elfFile.write(elfData.data(), elfData.size());
+  return success();
+}
+#endif // AIECC_HAS_AIEBU_LIBRARY
+
 /// Generate ELF file from NPU instruction binary using aiebu-asm.
 /// This generates an ELF that can be loaded using xrt::elf API.
 static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
@@ -2629,18 +2791,6 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
       llvm::outs() << "Would generate ELF for device: " << devName << "\n";
     }
     return success();
-  }
-
-  // Find aiebu-asm
-  std::string aiebuAsmBin = findAiebuAsm();
-  if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found in PATH or at "
-                    "/opt/xilinx/aiebu/bin/aiebu-asm\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Found aiebu-asm: " << aiebuAsmBin << "\n";
   }
 
   // Clone and run NPU lowering (same as generateNpuInstructions)
@@ -2693,7 +2843,41 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     return success();
   }
 
-  // Write combined instructions to temporary binary file
+  // Determine output ELF path
+  std::string outputElfPath = formatString(elfName, devName.str(), "");
+
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+  // Try using aiebu library directly (avoids subprocess overhead)
+  {
+    // Convert instructions to char buffer
+    std::vector<char> instrBuffer(
+        reinterpret_cast<const char *>(allInstructions.data()),
+        reinterpret_cast<const char *>(allInstructions.data()) +
+            allInstructions.size() * sizeof(uint32_t));
+
+    if (verbose) {
+      llvm::outs() << "Using aiebu library for ELF generation\n";
+    }
+
+    auto elfData = generateElfViaAiebuLibrary(
+        aiebu_assembler_buffer_type_blob_instr_transaction, instrBuffer);
+    if (elfData && !elfData->empty()) {
+      if (succeeded(writeElfFile(outputElfPath, *elfData))) {
+        if (verbose) {
+          llvm::outs() << "Generated ELF via library: " << outputElfPath
+                       << "\n";
+        }
+        return success();
+      }
+    }
+    // Fall through to subprocess on library failure
+    if (verbose) {
+      llvm::outs() << "aiebu library failed, falling back to subprocess\n";
+    }
+  }
+#endif // AIECC_HAS_AIEBU_LIBRARY
+
+  // Write combined instructions to temporary binary file for subprocess
   SmallString<128> tempBinPath(tmpDirName);
   sys::path::append(tempBinPath, devName.str() + "_elf_insts.bin");
 
@@ -2714,8 +2898,13 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
                  << " instructions to temp file: " << tempBinPath << "\n";
   }
 
-  // Determine output ELF path
-  std::string outputElfPath = formatString(elfName, devName.str(), "");
+  // Find aiebu-asm binary for subprocess fallback
+  std::string aiebuAsmBin = findAiebuAsm();
+  if (aiebuAsmBin.empty()) {
+    llvm::errs() << "Error: aiebu-asm not found in PATH or at "
+                    "/opt/xilinx/aiebu/bin/aiebu-asm\n";
+    return failure();
+  }
 
   // Run aiebu-asm to convert binary to ELF
   // aiebu-asm -t aie2txn -c <input.bin> -o <output.elf>
@@ -2771,13 +2960,6 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
       llvm::outs() << "Would generate full ELF\n";
     }
     return success();
-  }
-
-  // Find aiebu-asm
-  std::string aiebuAsmBin = findAiebuAsm();
-  if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found for full ELF generation\n";
-    return failure();
   }
 
   // Build config.json structure using LLVM JSON API for proper escaping
@@ -2853,6 +3035,42 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
   if (verbose) {
     llvm::outs() << "Generated config.json: " << configPath << "\n";
     llvm::outs().flush();
+  }
+
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+  // Try using aiebu library directly
+  {
+    // Read the config JSON file we just wrote
+    auto configData = readBinaryFile(configPath);
+    if (configData && !configData->empty()) {
+      if (verbose) {
+        llvm::outs() << "Using aiebu library for full ELF generation\n";
+      }
+
+      auto elfData = generateElfViaAiebuLibraryConfig(*configData);
+      if (elfData && !elfData->empty()) {
+        if (succeeded(writeElfFile(fullElfName.getValue(), *elfData))) {
+          if (verbose) {
+            llvm::outs() << "Generated full ELF via library: " << fullElfName
+                         << "\n";
+            llvm::outs().flush();
+          }
+          return success();
+        }
+      }
+      // Fall through to subprocess on library failure
+      if (verbose) {
+        llvm::outs() << "aiebu library failed for full ELF, falling back\n";
+      }
+    }
+  }
+#endif // AIECC_HAS_AIEBU_LIBRARY
+
+  // Subprocess fallback: find aiebu-asm
+  std::string aiebuAsmBin = findAiebuAsm();
+  if (aiebuAsmBin.empty()) {
+    llvm::errs() << "Error: aiebu-asm not found for full ELF generation\n";
+    return failure();
   }
 
   // Run aiebu-asm -t aie2_config -j config.json -o output.elf
@@ -2965,13 +3183,6 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 
   // Generate PDI if requested (also required for full ELF)
   if (needPdi || generateXclbin) {
-    std::string bootgenPath = findAieTool("bootgen");
-    if (bootgenPath.empty()) {
-      llvm::errs()
-          << "Error: bootgen not found, cannot generate requested PDI/xclbin\n";
-      return failure();
-    }
-
     std::string pdiFileName = formatString(pdiName, devName);
     SmallString<128> pdiPath(tmpDirName);
     sys::path::append(pdiPath, pdiFileName);
@@ -3002,6 +3213,16 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     bifFile << "  }\n";
     bifFile << "}\n";
     bifFile.close();
+
+    // Generate PDI using bootgen subprocess
+    // NOTE: bootgen library integration is not supported because bootgen uses
+    // C++ exceptions but LLVM is built with -fno-exceptions.
+    std::string bootgenPath = findAieTool("bootgen");
+    if (bootgenPath.empty()) {
+      llvm::errs() << "Error: bootgen not found, cannot generate requested "
+                      "PDI/xclbin\n";
+      return failure();
+    }
 
     SmallVector<std::string, 8> bootgenCmd = {bootgenPath,
                                               "-arch",
