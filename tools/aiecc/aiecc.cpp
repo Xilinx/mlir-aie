@@ -3734,7 +3734,7 @@ int main(int argc, char **argv) {
 
   // Validate: aiesim requires xbridge
   if (aiesim && !xbridge) {
-    llvm::errs() << "Error: AIE Simulation (--aiesim) requires --xbridge\n";
+    llvm::errs() << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
     return 1;
   }
 
