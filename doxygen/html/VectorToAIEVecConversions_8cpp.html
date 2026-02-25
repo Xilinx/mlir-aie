@@ -226,6 +226,8 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerVectorMinMaxOpToAIEVecMinMaxOp.html">LowerVectorMinMaxOpToAIEVecMinMaxOp&lt; SrcOpTy, DstOpTy &gt;</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerScalarMinMaxToAIEVecMinMaxOp.html">LowerScalarMinMaxToAIEVecMinMaxOp&lt; SrcOpTy, DstOpTy &gt;</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerVectorCmpOpToAIEVecCmpOp.html">LowerVectorCmpOpToAIEVecCmpOp&lt; SrcOpTy, CmpTy &gt;</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerVectorSelectOpToAIEVecSelOp.html">LowerVectorSelectOpToAIEVecSelOp</a></td></tr>
@@ -290,6 +292,10 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structComputeSignedIntRightShiftOpPattern.html">ComputeSignedIntRightShiftOpPattern</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structShiftClampTruncToSRSPattern.html">ShiftClampTruncToSRSPattern</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerScalarShRSIToAIEVecUPSSRS.html">LowerScalarShRSIToAIEVecUPSSRS</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerVectorContractionOpToAIEVecMatMulPattern.html">LowerVectorContractionOpToAIEVecMatMulPattern&lt; MatMulOpTy &gt;</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structLowerVectorTransposeOpToAIEVecShuffleOpPattern.html">LowerVectorTransposeOpToAIEVecShuffleOpPattern</a></td></tr>
@@ -338,6 +344,10 @@ Typedefs</h2></td></tr>
 <tr class="separator:ab5a78cf7b474ebaf0f4b0a058c605b25"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a76c4745301fdcc8ed2996390e253bd49" id="r_a76c4745301fdcc8ed2996390e253bd49"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="VectorToAIEVecConversions_8cpp.html#a76c4745301fdcc8ed2996390e253bd49">LowerVectorMaxSIOpToAIEVecMaxOp</a> = <a class="el" href="structLowerVectorMinMaxOpToAIEVecMinMaxOp.html">LowerVectorMinMaxOpToAIEVecMinMaxOp</a>&lt; arith::MaxSIOp, aievec::MaxOp &gt;</td></tr>
 <tr class="separator:a76c4745301fdcc8ed2996390e253bd49"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a690c95d424cb5cebaac5000ed299daf0" id="r_a690c95d424cb5cebaac5000ed299daf0"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="VectorToAIEVecConversions_8cpp.html#a690c95d424cb5cebaac5000ed299daf0">LowerScalarMinSIOpToAIEVecMinOp</a> = <a class="el" href="structLowerScalarMinMaxToAIEVecMinMaxOp.html">LowerScalarMinMaxToAIEVecMinMaxOp</a>&lt; arith::MinSIOp, aievec::MinOp &gt;</td></tr>
+<tr class="separator:a690c95d424cb5cebaac5000ed299daf0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a07642db1c9f9ff7bbea819787b19f7b2" id="r_a07642db1c9f9ff7bbea819787b19f7b2"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="VectorToAIEVecConversions_8cpp.html#a07642db1c9f9ff7bbea819787b19f7b2">LowerScalarMaxSIOpToAIEVecMaxOp</a> = <a class="el" href="structLowerScalarMinMaxToAIEVecMinMaxOp.html">LowerScalarMinMaxToAIEVecMinMaxOp</a>&lt; arith::MaxSIOp, aievec::MaxOp &gt;</td></tr>
+<tr class="separator:a07642db1c9f9ff7bbea819787b19f7b2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae80c11bc7c318a83871047a3608b3314" id="r_ae80c11bc7c318a83871047a3608b3314"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="VectorToAIEVecConversions_8cpp.html#ae80c11bc7c318a83871047a3608b3314">LowerVectorMinimumFOpToAIEVecMinOp</a> = <a class="el" href="structLowerVectorMinMaxOpToAIEVecMinMaxOp.html">LowerVectorMinMaxOpToAIEVecMinMaxOp</a>&lt; arith::MinimumFOp, aievec::MinOp &gt;</td></tr>
 <tr class="separator:ae80c11bc7c318a83871047a3608b3314"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0a111fafa36d2d1daefe86d515b8fe1a" id="r_a0a111fafa36d2d1daefe86d515b8fe1a"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="VectorToAIEVecConversions_8cpp.html#a0a111fafa36d2d1daefe86d515b8fe1a">LowerVectorMaximumFOpToAIEVecMaxOp</a> = <a class="el" href="structLowerVectorMinMaxOpToAIEVecMinMaxOp.html">LowerVectorMinMaxOpToAIEVecMinMaxOp</a>&lt; arith::MaximumFOp, aievec::MaxOp &gt;</td></tr>
@@ -404,7 +414,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03040">3040</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03150">3150</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -420,7 +430,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03041">3041</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03151">3151</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -436,7 +446,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03550">3550</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03660">3660</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -452,7 +462,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03548">3548</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03658">3658</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -468,7 +478,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03076">3076</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03186">3186</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -484,7 +494,39 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03077">3077</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03187">3187</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a07642db1c9f9ff7bbea819787b19f7b2" name="a07642db1c9f9ff7bbea819787b19f7b2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a07642db1c9f9ff7bbea819787b19f7b2">&#9670;&#160;</a></span>LowerScalarMaxSIOpToAIEVecMaxOp</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">using <a class="el" href="VectorToAIEVecConversions_8cpp.html#a07642db1c9f9ff7bbea819787b19f7b2">LowerScalarMaxSIOpToAIEVecMaxOp</a> =  <a class="el" href="structLowerScalarMinMaxToAIEVecMinMaxOp.html">LowerScalarMinMaxToAIEVecMinMaxOp</a>&lt;arith::MaxSIOp, aievec::MaxOp&gt;</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01918">1918</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+
+</div>
+</div>
+<a id="a690c95d424cb5cebaac5000ed299daf0" name="a690c95d424cb5cebaac5000ed299daf0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a690c95d424cb5cebaac5000ed299daf0">&#9670;&#160;</a></span>LowerScalarMinSIOpToAIEVecMinOp</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">using <a class="el" href="VectorToAIEVecConversions_8cpp.html#a690c95d424cb5cebaac5000ed299daf0">LowerScalarMinSIOpToAIEVecMinOp</a> =  <a class="el" href="structLowerScalarMinMaxToAIEVecMinMaxOp.html">LowerScalarMinMaxToAIEVecMinMaxOp</a>&lt;arith::MinSIOp, aievec::MinOp&gt;</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01916">1916</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -500,7 +542,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03114">3114</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03224">3224</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -516,7 +558,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03115">3115</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03225">3225</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -532,7 +574,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01769">1769</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01828">1828</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -548,7 +590,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01426">1426</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01485">1485</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -564,7 +606,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01763">1763</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01822">1822</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -580,7 +622,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01872">1872</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01982">1982</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -596,7 +638,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01870">1870</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01980">1980</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -612,7 +654,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03707">3707</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04084">4084</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -628,7 +670,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03709">3709</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04086">4086</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -644,7 +686,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01813">1813</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01923">1923</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -660,7 +702,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01815">1815</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01925">1925</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -676,7 +718,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01809">1809</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01868">1868</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -692,7 +734,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01811">1811</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01921">1921</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -708,7 +750,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01807">1807</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01866">1866</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -724,7 +766,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01428">1428</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01487">1487</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -740,7 +782,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01772">1772</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01831">1831</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -756,7 +798,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01432">1432</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01491">1491</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -772,7 +814,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01766">1766</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01825">1825</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -788,14 +830,14 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01430">1430</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01489">1489</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Feb 24 2026 23:31:04 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Feb 25 2026 06:57:37 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

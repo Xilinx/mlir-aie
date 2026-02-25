@@ -1172,14 +1172,22 @@ _AIE srs_
 
 AMD-specific shift-round-saturate intrinsic. Moves values from
 accumulator data type to AIE vector data types. The adjustment in
-precision is controlled by the shift parameter.
-`$result = srs($source, $shift)`
+precision is controlled by the shift parameter. The sign parameter
+controls signed (1) vs unsigned (0) saturation.
+`$result = srs($source, $shift, $sign)`
 
 Traits: `AlwaysSpeculatableImplTrait`
 
 Interfaces: `ConditionallySpeculatable`, `NoMemoryEffect (MemoryEffectOpInterface)`
 
 Effects: `MemoryEffects::Effect{}`
+
+#### Attributes:
+
+<table>
+<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
+<tr><td><code>sign</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute whose minimum value is 0 whose maximum value is 1</td></tr>
+</table>
 
 #### Operands:
 
