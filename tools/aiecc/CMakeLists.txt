@@ -53,3 +53,15 @@ set(LIBS
   )
 
 target_link_libraries(aiecc PUBLIC ${LIBS})
+
+# Optional: AIEBU library for direct ELF generation (avoids subprocess to aiebu-asm)
+if(aiebu_FOUND)
+  target_link_libraries(aiecc PRIVATE AIEBU::aiebu_static)
+  target_include_directories(aiecc PRIVATE ${AIEBU_INCLUDE_DIRS})
+  target_compile_definitions(aiecc PRIVATE AIECC_HAS_AIEBU_LIBRARY)
+  message(STATUS "aiecc: Enabled AIEBU library integration")
+endif()
+
+# NOTE: bootgen library integration is not currently supported because
+# bootgen uses C++ exceptions for error handling, but LLVM is built with
+# -fno-exceptions. The bootgen subprocess fallback is always used instead.

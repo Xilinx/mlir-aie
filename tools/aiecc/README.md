@@ -16,12 +16,13 @@ This is a high-performance C++ implementation of the AIE compiler driver that pr
 
 The `aiecc` tool orchestrates the complete compilation flow for AIE (AI Engine) devices:
 - **In-memory MLIR transformation** using PassManager C++ API
-- **Core compilation** with Peano LLVM toolchain
+- **Core compilation** with Peano or xchesscc toolchain
 - **Resource allocation and routing** passes
 - **NPU instruction generation** via direct API calls
+- **ELF generation** for NPU instructions (via aiebu-asm)
 - **CDO (Configuration Data Object) generation**
 - **PDI (Partial Device Image) generation**
-- **xclbin packaging**
+- **xclbin packaging** (including extending existing xclbins)
 - **Multi-device and multi-core support**
 - **External object file linking** via `link_with` attribute
 
@@ -54,6 +55,28 @@ aiecc [options] <input.mlir>
   
 - `--aie-generate-xclbin` - Generate xclbin
   - `--xclbin-name <pattern>` - Output xclbin filename pattern (default: `{0}.xclbin`)
+  - `--xclbin-input <file>` - Extend existing xclbin with additional kernel/PDI
+  - `--xclbin-kernel-name <name>` - Kernel name in xclbin (default: `MLIR_AIE`)
+  - `--xclbin-instance-name <name>` - Instance name in xclbin (default: `MLIRAIE`)
+  - `--xclbin-kernel-id <id>` - Kernel ID in xclbin (default: `0x901`)
+
+- `--aie-generate-elf` - Generate ELF for NPU instructions (via aiebu-asm)
+  - `--elf-name <file>` - Output ELF filename (default: `design.elf`)
+
+- `--generate-full-elf` - Generate complete ELF with PDIs and instruction sequences
+  - `--full-elf-name <file>` - Output full ELF filename (default: `aie.elf`)
+
+- `--aie-generate-txn` - Generate transaction binary MLIR for configuration
+  - `--txn-name <pattern>` - Output filename pattern (default: `{0}_transaction.mlir`)
+
+- `--aie-generate-ctrlpkt` - Generate control packets for configuration
+  - `--ctrlpkt-name <pattern>` - Output filename for control packet binary (default: `{0}_ctrlpkt.bin`)
+  - `--ctrlpkt-dma-seq-name <pattern>` - Output filename for DMA sequence (default: `{0}_ctrlpkt_dma_seq.bin`)
+  - `--ctrlpkt-elf-name <pattern>` - Output filename for combined ELF (default: `{0}_ctrlpkt.elf`)
+
+### NPU Pipeline Options
+
+- `--expand-load-pdis` - Expand load_pdi operations to explicit configuration sequences
 
 ### Device and Sequence Selection
 
@@ -180,11 +203,14 @@ xclbinutil → xclbin
 | aie-translate subprocess | None | **None** |
 | Core Compilation | Peano/xchesscc | **Peano/xchesscc** |
 | External Object Linking | ✅ | ✅ |
+| Host Compilation | ✅ | ⏳ Not yet |
+| Parallel Cores (`-j`) | ✅ | ⏳ Not yet |
+| Control Packets | ✅ | ✅ |
 | Performance | Good | **Better** (no Python overhead) |
 
 ### Current Status
 
-The C++ implementation provides **full feature parity**:
+The C++ implementation provides **near-full feature parity**:
 - ✅ Complete command-line argument parsing
 - ✅ MLIR module loading and parsing
 - ✅ Multi-device and multi-core support
@@ -201,10 +227,21 @@ The C++ implementation provides **full feature parity**:
 - ✅ Verbose output and dry-run mode
 
 - ✅ xchesscc compiler support (with xbridge linking)
+- ✅ ELF instruction generation (via aiebu-asm)
+- ✅ Full ELF generation with PDIs
+- ✅ xclbin extension (`--xclbin-input`)
+- ✅ xclbin customization (`--xclbin-kernel-name`, `--xclbin-instance-name`, `--xclbin-kernel-id`)
+- ✅ Transaction generation (`--aie-generate-txn`)
+- ✅ Control packet generation (`--aie-generate-ctrlpkt`)
 
-Planned enhancements:
-- ⏳ Parallel compilation of cores
-- ⏳ AIE simulator support
+### Features not yet ported from Python aiecc.py
+
+- ⏳ Parallel compilation of cores (`-j` option)
+- ⏳ Host compilation (`--compile-host`, `--no-compile-host`, `--host-target`)
+- ⏳ AIE simulator support (`--aiesim` generates folder but not full simulation)
+- ⏳ HSA linking (`--link_against_hsa`)
+- ⏳ Progress bar (`--progress`)
+- ⏳ Vectorization pass (`--vectorize`)
 
 ## Building
 
