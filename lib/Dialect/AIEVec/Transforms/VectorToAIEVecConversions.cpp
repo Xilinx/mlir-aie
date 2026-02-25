@@ -1869,7 +1869,7 @@ struct LowerVectorMinMaxOpToAIEVecMinMaxOp : OpConversionPattern<SrcOpTy> {
 
     unsigned totalBits = laneSize * resultElWidth;
     if (!elWidthSet.count(resultElWidth) ||
-        (totalBits != 512 && totalBits != 256))
+        (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16)))
       return failure();
 
     if (totalBits == 256 && resultElWidth == 16) {
@@ -1976,7 +1976,8 @@ struct LowerVectorCmpOpToAIEVecCmpOp : OpConversionPattern<SrcOpTy> {
     unsigned laneSize = getVectorLaneSize(lhsType);
 
     unsigned totalBits = laneSize * elWidth;
-    if (!elWidthSet.count(elWidth) || (totalBits != 512 && totalBits != 256))
+    if (!elWidthSet.count(elWidth) ||
+        (totalBits != 512 && !(totalBits == 256 && elWidth == 16)))
       return failure();
 
     Location loc = srcOp.getLoc();
@@ -2041,7 +2042,7 @@ struct LowerVectorSelectOpToAIEVecSelOp : OpConversionPattern<arith::SelectOp> {
 
     unsigned totalBits = laneSize * resultElWidth;
     if (!elWidthSet.count(resultElWidth) ||
-        (totalBits != 512 && totalBits != 256))
+        (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16)))
       return failure();
 
     if (totalBits == 256 && resultElWidth == 16) {
@@ -5183,7 +5184,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && totalBits != 256);
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::MaximumFOp>([=](arith::MaximumFOp op) {
@@ -5196,7 +5197,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && totalBits != 256);
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::MaxNumFOp>([=](arith::MaxNumFOp op) {
@@ -5209,7 +5210,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && totalBits != 256);
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::MinNumFOp>([=](arith::MinNumFOp op) {
@@ -5222,7 +5223,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && totalBits != 256);
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::CmpIOp>([=](arith::CmpIOp op) {
@@ -5235,7 +5236,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned totalBits = laneSize * lhsElWidth;
 
     return !elWidthSet.count(lhsElWidth) ||
-           (totalBits != 512 && totalBits != 256);
+           (totalBits != 512 && !(totalBits == 256 && lhsElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::CmpFOp>([=](arith::CmpFOp op) {
@@ -5248,7 +5249,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned totalBits = laneSize * lhsElWidth;
 
     return !elWidthSet.count(lhsElWidth) ||
-           (totalBits != 512 && totalBits != 256);
+           (totalBits != 512 && !(totalBits == 256 && lhsElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::SelectOp>([=](arith::SelectOp op) {
@@ -5261,7 +5262,7 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
     unsigned totalBits = laneSize * resultElWidth;
 
     return !elWidthSet.count(resultElWidth) ||
-           (totalBits != 512 && totalBits != 256);
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<vector::ReductionOp>(
