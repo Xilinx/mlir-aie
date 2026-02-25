@@ -137,6 +137,12 @@ LogicalResult generateAieIncCpp(ModuleOp moduleOp, StringRef tmpDirName,
       return failure();
     }
     moduleOp->print(moduleFile);
+    moduleFile.close();
+    if (moduleFile.has_error()) {
+      errs() << "Error finalizing module file for aie_inc.cpp generation: "
+             << moduleFile.error().message() << "\n";
+      return failure();
+    }
   }
 
   SmallString<128> aieIncPath(tmpDirName);
@@ -185,23 +191,38 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
   // Create sim directory structure
   SmallString<128> simDir(tmpDirName);
   sys::path::append(simDir, "sim");
-  sys::fs::create_directories(simDir);
+  if (std::error_code ec = sys::fs::create_directories(simDir)) {
+    errs() << "Error creating sim directory: " << ec.message() << "\n";
+    return failure();
+  }
 
   SmallString<128> simArchDir(simDir);
   sys::path::append(simArchDir, "arch");
-  sys::fs::create_directories(simArchDir);
+  if (std::error_code ec = sys::fs::create_directories(simArchDir)) {
+    errs() << "Error creating sim/arch directory: " << ec.message() << "\n";
+    return failure();
+  }
 
   SmallString<128> simReportsDir(simDir);
   sys::path::append(simReportsDir, "reports");
-  sys::fs::create_directories(simReportsDir);
+  if (std::error_code ec = sys::fs::create_directories(simReportsDir)) {
+    errs() << "Error creating sim/reports directory: " << ec.message() << "\n";
+    return failure();
+  }
 
   SmallString<128> simConfigDir(simDir);
   sys::path::append(simConfigDir, "config");
-  sys::fs::create_directories(simConfigDir);
+  if (std::error_code ec = sys::fs::create_directories(simConfigDir)) {
+    errs() << "Error creating sim/config directory: " << ec.message() << "\n";
+    return failure();
+  }
 
   SmallString<128> simPsDir(simDir);
   sys::path::append(simPsDir, "ps");
-  sys::fs::create_directories(simPsDir);
+  if (std::error_code ec = sys::fs::create_directories(simPsDir)) {
+    errs() << "Error creating sim/ps directory: " << ec.message() << "\n";
+    return failure();
+  }
 
   std::string aieTranslatePath = findAieTool("aie-translate");
   if (aieTranslatePath.empty()) {
@@ -223,6 +244,12 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
       return failure();
     }
     moduleOp->print(moduleFile);
+    moduleFile.close();
+    if (moduleFile.has_error()) {
+      errs() << "Error finalizing module for aiesim: "
+             << moduleFile.error().message() << "\n";
+      return failure();
+    }
   }
 
   // Generate graph.xpe
@@ -415,8 +442,15 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
   {
     std::error_code ec;
     raw_fd_ostream targetFile(targetFilePath, ec);
-    if (!ec) {
+    if (ec) {
+      errs() << "Error creating .target: " << ec.message() << "\n";
+    } else {
       targetFile << "hw\n";
+      targetFile.close();
+      if (targetFile.has_error()) {
+        errs() << "Error writing .target: " << targetFile.error().message()
+               << "\n";
+      }
     }
   }
 
@@ -440,12 +474,21 @@ fi
 cd $root
 aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
 )";
+    scriptFile.close();
+    if (scriptFile.has_error()) {
+      errs() << "Error writing aiesim.sh: " << scriptFile.error().message()
+             << "\n";
+      return failure();
+    }
   }
 
   // Make script executable
-  sys::fs::setPermissions(simScriptPath, sys::fs::perms::owner_all |
-                                             sys::fs::perms::group_exe |
-                                             sys::fs::perms::others_exe);
+  if (std::error_code ec = sys::fs::setPermissions(
+          simScriptPath, sys::fs::perms::owner_all | sys::fs::perms::group_exe |
+                             sys::fs::perms::others_exe)) {
+    errs() << "Warning: Failed to set executable permissions on aiesim.sh: "
+           << ec.message() << "\n";
+  }
 
   outs() << "Simulation generated...\n";
   outs() << "To run simulation: " << simScriptPath << "\n";
