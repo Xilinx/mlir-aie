@@ -670,13 +670,13 @@ static std::string downgradeIRForChess(StringRef llvmIR) {
   replace("captures(none)", "nocapture");
   replace("getelementptr inbounds nuw", "getelementptr inbounds");
 
-  // Remove nocreateundeforpoison attribute using regex-like logic
-  // Pattern: \bnocreateundeforpoison\s+
-  // We'll do a simple find-and-replace for this attribute
+  // Remove nocreateundeforpoison attribute
+  // This attribute appears in LLVM IR and may be followed by whitespace or EOL
   size_t pos = 0;
   while ((pos = result.find("nocreateundeforpoison", pos)) !=
          std::string::npos) {
-    // Find the end of the attribute (skip trailing whitespace)
+    // Find the end of the attribute (skip trailing whitespace, but not
+    // newlines)
     size_t end = pos + strlen("nocreateundeforpoison");
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t')) {
       end++;
@@ -800,9 +800,9 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
   }
 
   // Run chess-llvm-link
-  SmallVector<std::string, 8> cmd = {chessLlvmLinkPath.str().str(),
+  SmallVector<std::string, 8> cmd = {std::string(chessLlvmLinkPath),
                                      inputLLPath.str(),
-                                     wrapperPath.str().str(),
+                                     std::string(wrapperPath),
                                      "-S",
                                      "-o",
                                      outputPath.str()};
@@ -927,19 +927,28 @@ buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
   std::ostringstream oss;
   oss << "builtin.module("
       << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir}," << "lower-affine,"
-      << "aie-canonicalize-device," << "aie.device(" << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos," << "aie-objectFifo-stateful-transform{"
+      << " target-backend=llvmir},"
+      << "lower-affine,"
+      << "aie-canonicalize-device,"
+      << "aie.device("
+      << "aie-assign-lock-ids,"
+      << "aie-register-objectFifos,"
+      << "aie-objectFifo-stateful-transform{"
       << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
       << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
-      << "aie-assign-bd-ids," << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet," << "aie-lower-multicast,"
+      << "aie-assign-bd-ids,"
+      << "aie-lower-cascade-flows,"
+      << "aie-lower-broadcast-packet,"
+      << "aie-lower-multicast,"
       << "aie-assign-tile-controller-ids,"
       << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
       << (ctrlPktOverlay ? "true" : "false") << "},"
       << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
-      << "}," << "aie-vector-transfer-lowering{max-transfer-rank=1}" << "),"
-      << "convert-scf-to-cf" << ")";
+      << "},"
+      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
+      << "),"
+      << "convert-scf-to-cf"
+      << ")";
   return oss.str();
 }
 
@@ -953,10 +962,17 @@ buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
       << "aie-standard-lowering{device=" << deviceName.str() << "},"
       << "aiex-standard-lowering,"
       << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize," << "cse," << "expand-strided-metadata,"
-      << "lower-affine," << "arith-expand," << "finalize-memref-to-llvm,"
+      << "canonicalize,"
+      << "cse,"
+      << "expand-strided-metadata,"
+      << "lower-affine,"
+      << "arith-expand,"
+      << "finalize-memref-to-llvm,"
       << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
-      << "convert-to-llvm{dynamic=true}," << "canonicalize," << "cse" << ")";
+      << "convert-to-llvm{dynamic=true},"
+      << "canonicalize,"
+      << "cse"
+      << ")";
   return oss.str();
 }
 
@@ -1176,7 +1192,9 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
   devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  // TODO: Add aie-transform-bfp-types if needed
+  // Note: aie-transform-bfp-types pass would go here if the design uses
+  // block floating-point (BFP) types that require normalization before
+  // lowering. Currently not needed for standard designs.
 
   // Step 2: aie-standard-lowering with specific core coordinates
   // This extracts the specified core and removes the aie.device wrapper
@@ -1398,14 +1416,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
                                               aieTargetLower,
                                               "+w",
-                                              workDir.str().str(),
+                                              std::string(workDir),
                                               "-c",
                                               "-d",
                                               "+Wclang,-xir",
                                               "-f",
-                                              chessLinkedPath.str().str(),
+                                              std::string(chessLinkedPath),
                                               "-o",
-                                              objPath.str().str()};
+                                              std::string(objPath)};
 
     if (!executeCommand(xchessCmd)) {
       llvm::errs() << "Error running xchesscc_wrapper\n";
@@ -1438,9 +1456,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                                ">,strip",
                                            "-inline-threshold=10",
                                            "-S",
-                                           llvmIRPath.str().str(),
+                                           std::string(llvmIRPath),
                                            "-o",
-                                           optPath.str().str()};
+                                           std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -1453,13 +1471,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Run llc
     SmallVector<std::string, 10> llcCmd = {peanoLlc,
-                                           optPath.str().str(),
+                                           std::string(optPath),
                                            "-O" + optLevelStr,
                                            "--march=" + aieTarget.lower(),
                                            "--function-sections",
                                            "--filetype=obj",
                                            "-o",
-                                           objPath.str().str()};
+                                           std::string(objPath)};
 
     if (!executeCommand(llcCmd)) {
       llvm::errs() << "Error running Peano llc\n";
@@ -1469,7 +1487,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   // Step 5: Link to ELF
   if (!link) {
-    outElfPath = objPath.str().str();
+    outElfPath = std::string(objPath);
     return success();
   }
 
@@ -1575,20 +1593,20 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::string aieTargetLower = aieTarget.lower();
     SmallVector<std::string, 20> linkCmd = {
         *xchessccWrapperPath, aieTargetLower, "+w",
-        workDir.str().str(),  "-d",           "-f",
-        objPath.str().str()};
+        std::string(workDir), "-d",           "-f",
+        std::string(objPath)};
 
     // Add link_with files if any
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> localPath(tmpDirName);
       sys::path::append(localPath, sys::path::filename(linkWithFile));
-      linkCmd.push_back(localPath.str().str());
+      linkCmd.push_back(std::string(localPath));
     }
 
     linkCmd.push_back("+l");
-    linkCmd.push_back(bcfPath.str().str());
+    linkCmd.push_back(std::string(bcfPath));
     linkCmd.push_back("-o");
-    linkCmd.push_back(elfPath.str().str());
+    linkCmd.push_back(std::string(elfPath));
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking with xbridge\n";
@@ -1629,14 +1647,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Explicitly specify Peano's lld linker to avoid using system ld
     if (sys::fs::can_execute(peanoLld)) {
-      linkCmd.push_back("-fuse-ld=" + peanoLld.str().str());
+      linkCmd.push_back("-fuse-ld=" + std::string(peanoLld));
     } else {
       // Fallback: try to use lld from Peano bin via -B
-      linkCmd.push_back("-B" + peanoBinDir.str().str());
+      linkCmd.push_back("-B" + std::string(peanoBinDir));
       linkCmd.push_back("-fuse-ld=lld");
     }
 
-    linkCmd.push_back(objPath.str().str());
+    linkCmd.push_back(std::string(objPath));
 
     // Handle external object file if link_with attribute is specified
     // The linker script generated by aie-translate will include an INPUT()
@@ -1696,9 +1714,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     linkCmd.push_back("-Wl,--gc-sections");
     linkCmd.push_back("-Wl,--orphan-handling=error");
-    linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+    linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
     linkCmd.push_back("-o");
-    linkCmd.push_back(elfPath.str().str());
+    linkCmd.push_back(std::string(elfPath));
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking ELF file\n";
@@ -1706,7 +1724,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
-  outElfPath = elfPath.str().str();
+  outElfPath = std::string(elfPath);
   if (verbose) {
     llvm::outs() << "Generated ELF: " << outElfPath << "\n";
   }
@@ -1823,134 +1841,171 @@ static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
                  << "\n";
     return failure();
   }
-  jsonFile << "{\n";
-  jsonFile << "  \"mem_topology\": {\n";
-  jsonFile << "    \"m_count\": \"2\",\n";
-  jsonFile << "    \"m_mem_data\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
-  jsonFile << "        \"m_used\": \"1\",\n";
-  jsonFile << "        \"m_sizeKB\": \"0x10000\",\n";
-  jsonFile << "        \"m_tag\": \"HOST\",\n";
-  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
-  jsonFile << "      },\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
-  jsonFile << "        \"m_used\": \"1\",\n";
-  jsonFile << "        \"m_sizeKB\": \"0xc000\",\n";
-  jsonFile << "        \"m_tag\": \"SRAM\",\n";
-  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
+  jsonFile << R"({
+  "mem_topology": {
+    "m_count": "2",
+    "m_mem_data": [
+      {
+        "m_type": "MEM_DRAM",
+        "m_used": "1",
+        "m_sizeKB": "0x10000",
+        "m_tag": "HOST",
+        "m_base_address": "0x4000000"
+      },
+      {
+        "m_type": "MEM_DRAM",
+        "m_used": "1",
+        "m_sizeKB": "0xc000",
+        "m_tag": "SRAM",
+        "m_base_address": "0x4000000"
+      }
+    ]
+  }
+}
+)";
   jsonFile.close();
   return success();
 }
 
 static LogicalResult generateKernelsJson(StringRef jsonPath,
                                          StringRef devName) {
-  std::ofstream jsonFile(jsonPath.str());
-  if (!jsonFile.is_open()) {
+  std::error_code ec;
+  llvm::raw_fd_ostream jsonFile(jsonPath, ec);
+  if (ec) {
     llvm::errs() << "Error: Could not open file for writing: " << jsonPath
-                 << "\n";
+                 << ": " << ec.message() << "\n";
     return failure();
   }
-  jsonFile << "{\n";
-  jsonFile << "  \"ps-kernels\": {\n";
-  jsonFile << "    \"kernels\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"name\": \"" << xclbinKernelName.getValue() << "\",\n";
-  jsonFile << "        \"type\": \"dpu\",\n";
-  jsonFile << "        \"extended-data\": {\n";
-  jsonFile << "          \"subtype\": \"DPU\",\n";
-  jsonFile << "          \"functional\": \"0\",\n";
-  jsonFile << "          \"dpu_kernel_id\": \"" << xclbinKernelId.getValue()
-           << "\"\n";
-  jsonFile << "        },\n";
-  jsonFile << "        \"arguments\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"opcode\",\n";
-  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
-  jsonFile << "            \"type\": \"uint64_t\",\n";
-  jsonFile << "            \"offset\": \"0x00\"\n";
-  jsonFile << "          },\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"instr\",\n";
-  jsonFile << "            \"memory-connection\": \"SRAM\",\n";
-  jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
-  jsonFile << "            \"type\": \"char *\",\n";
-  jsonFile << "            \"offset\": \"0x08\"\n";
-  jsonFile << "          },\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"ninstr\",\n";
-  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
-  jsonFile << "            \"type\": \"uint32_t\",\n";
-  jsonFile << "            \"offset\": \"0x10\"\n";
-  jsonFile << "          },\n";
+
+  // Build JSON using LLVM JSON API for proper escaping of user-provided values
+  llvm::json::Object extendedData;
+  extendedData["subtype"] = "DPU";
+  extendedData["functional"] = "0";
+  extendedData["dpu_kernel_id"] = xclbinKernelId.getValue();
+
+  // Build arguments array
+  llvm::json::Array arguments;
+
+  llvm::json::Object arg0;
+  arg0["name"] = "opcode";
+  arg0["address-qualifier"] = "SCALAR";
+  arg0["type"] = "uint64_t";
+  arg0["offset"] = "0x00";
+  arguments.push_back(std::move(arg0));
+
+  llvm::json::Object arg1;
+  arg1["name"] = "instr";
+  arg1["memory-connection"] = "SRAM";
+  arg1["address-qualifier"] = "GLOBAL";
+  arg1["type"] = "char *";
+  arg1["offset"] = "0x08";
+  arguments.push_back(std::move(arg1));
+
+  llvm::json::Object arg2;
+  arg2["name"] = "ninstr";
+  arg2["address-qualifier"] = "SCALAR";
+  arg2["type"] = "uint32_t";
+  arg2["offset"] = "0x10";
+  arguments.push_back(std::move(arg2));
+
+  // Add buffer object arguments bo0-bo4
   for (int i = 0; i < 5; i++) {
-    jsonFile << "          {\n";
-    jsonFile << "            \"name\": \"bo" << i << "\",\n";
-    jsonFile << "            \"memory-connection\": \"HOST\",\n";
-    jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
-    jsonFile << "            \"type\": \"void*\",\n";
-    jsonFile << "            \"offset\": \"" << std::hex << "0x"
-             << (0x14 + i * 8) << std::dec << "\"\n";
-    jsonFile << "          }" << (i < 4 ? "," : "") << "\n";
+    llvm::json::Object boArg;
+    boArg["name"] = "bo" + std::to_string(i);
+    boArg["memory-connection"] = "HOST";
+    boArg["address-qualifier"] = "GLOBAL";
+    boArg["type"] = "void*";
+    std::ostringstream offsetStr;
+    offsetStr << "0x" << std::hex << (0x14 + i * 8);
+    boArg["offset"] = offsetStr.str();
+    arguments.push_back(std::move(boArg));
   }
-  jsonFile << "        ],\n";
-  jsonFile << "        \"instances\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"" << xclbinInstanceName.getValue()
-           << "\"\n";
-  jsonFile << "          }\n";
-  jsonFile << "        ]\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
-  jsonFile.close();
+
+  // Build instance
+  llvm::json::Object instance;
+  instance["name"] = xclbinInstanceName.getValue();
+
+  llvm::json::Array instances;
+  instances.push_back(std::move(instance));
+
+  // Build kernel
+  llvm::json::Object kernel;
+  kernel["name"] = xclbinKernelName.getValue();
+  kernel["type"] = "dpu";
+  kernel["extended-data"] = std::move(extendedData);
+  kernel["arguments"] = std::move(arguments);
+  kernel["instances"] = std::move(instances);
+
+  llvm::json::Array kernels;
+  kernels.push_back(std::move(kernel));
+
+  llvm::json::Object psKernels;
+  psKernels["kernels"] = std::move(kernels);
+
+  llvm::json::Object root;
+  root["ps-kernels"] = std::move(psKernels);
+
+  jsonFile << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)))
+           << "\n";
   return success();
 }
 
 static LogicalResult generatePartitionJson(StringRef jsonPath,
                                            StringRef devName,
                                            StringRef pdiPath) {
-  std::ofstream jsonFile(jsonPath.str());
-  if (!jsonFile.is_open()) {
+  std::error_code ec;
+  llvm::raw_fd_ostream jsonFile(jsonPath, ec);
+  if (ec) {
     llvm::errs() << "Error: Could not open file for writing: " << jsonPath
-                 << "\n";
+                 << ": " << ec.message() << "\n";
     return failure();
   }
-  jsonFile << "{\n";
-  jsonFile << "  \"aie_partition\": {\n";
-  jsonFile << "    \"name\": \"QoS\",\n";
-  jsonFile << "    \"operations_per_cycle\": \"2048\",\n";
-  jsonFile << "    \"inference_fingerprint\": \"23423\",\n";
-  jsonFile << "    \"pre_post_fingerprint\": \"12345\",\n";
-  jsonFile << "    \"partition\": {\n";
-  jsonFile << "      \"column_width\": 1,\n";
-  jsonFile << "      \"start_columns\": [0]\n";
-  jsonFile << "    },\n";
-  jsonFile << "    \"PDIs\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"uuid\": \"00000000-0000-0000-0000-000000000000\",\n";
-  jsonFile << "        \"file_name\": \"" << pdiPath.str() << "\",\n";
-  jsonFile << "        \"cdo_groups\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"DPU\",\n";
-  jsonFile << "            \"type\": \"PRIMARY\",\n";
-  jsonFile << "            \"pdi_id\": \"0x01\",\n";
-  jsonFile << "            \"dpu_kernel_ids\": [\"" << xclbinKernelId.getValue()
-           << "\"],\n";
-  jsonFile << "            \"pre_cdo_groups\": [\"0xC1\"]\n";
-  jsonFile << "          }\n";
-  jsonFile << "        ]\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
-  jsonFile.close();
+
+  // Build JSON using LLVM JSON API for proper escaping of paths and IDs
+  llvm::json::Object partition;
+  partition["column_width"] = 1;
+  llvm::json::Array startColumns;
+  startColumns.push_back(0);
+  partition["start_columns"] = std::move(startColumns);
+
+  // Build cdo_group
+  llvm::json::Object cdoGroup;
+  cdoGroup["name"] = "DPU";
+  cdoGroup["type"] = "PRIMARY";
+  cdoGroup["pdi_id"] = "0x01";
+  llvm::json::Array dpuKernelIds;
+  dpuKernelIds.push_back(xclbinKernelId.getValue());
+  cdoGroup["dpu_kernel_ids"] = std::move(dpuKernelIds);
+  llvm::json::Array preCdoGroups;
+  preCdoGroups.push_back("0xC1");
+  cdoGroup["pre_cdo_groups"] = std::move(preCdoGroups);
+
+  llvm::json::Array cdoGroups;
+  cdoGroups.push_back(std::move(cdoGroup));
+
+  // Build PDI entry
+  llvm::json::Object pdi;
+  pdi["uuid"] = "00000000-0000-0000-0000-000000000000";
+  pdi["file_name"] = pdiPath.str();
+  pdi["cdo_groups"] = std::move(cdoGroups);
+
+  llvm::json::Array pdis;
+  pdis.push_back(std::move(pdi));
+
+  // Build aie_partition
+  llvm::json::Object aiePartition;
+  aiePartition["name"] = "QoS";
+  aiePartition["operations_per_cycle"] = "2048";
+  aiePartition["inference_fingerprint"] = "23423";
+  aiePartition["pre_post_fingerprint"] = "12345";
+  aiePartition["partition"] = std::move(partition);
+  aiePartition["PDIs"] = std::move(pdis);
+
+  llvm::json::Object root;
+  root["aie_partition"] = std::move(aiePartition);
+
+  jsonFile << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)))
+           << "\n";
   return success();
 }
 
@@ -1971,14 +2026,14 @@ static LogicalResult extractAndMergePartition(StringRef inputXclbin,
   SmallString<128> inputPartitionPath(tmpDirName);
   sys::path::append(inputPartitionPath, "input_aie_partition.json");
 
-  SmallVector<std::string, 10> extractCmd = {*xclbinutilPath,
-                                             "--dump-section",
-                                             "AIE_PARTITION:JSON:" +
-                                                 inputPartitionPath.str().str(),
-                                             "--force",
-                                             "--quiet",
-                                             "--input",
-                                             inputXclbin.str()};
+  SmallVector<std::string, 10> extractCmd = {
+      *xclbinutilPath,
+      "--dump-section",
+      "AIE_PARTITION:JSON:" + std::string(inputPartitionPath),
+      "--force",
+      "--quiet",
+      "--input",
+      inputXclbin.str()};
 
   if (!executeCommand(extractCmd)) {
     llvm::errs() << "Error extracting AIE_PARTITION from input xclbin\n";
@@ -2665,7 +2720,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   // Run aiebu-asm to convert binary to ELF
   // aiebu-asm -t aie2txn -c <input.bin> -o <output.elf>
   SmallVector<std::string, 10> aiebuCmd = {
-      aiebuAsmBin, "-t",         "aie2txn", "-c", tempBinPath.str().str(),
+      aiebuAsmBin, "-t",         "aie2txn", "-c", std::string(tempBinPath),
       "-o",        outputElfPath};
 
   if (!executeCommand(aiebuCmd)) {
@@ -2725,50 +2780,61 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
     return failure();
   }
 
-  // Build config.json structure
+  // Build config.json structure using LLVM JSON API for proper escaping
   // Format: { "xrt-kernels": [ { "name": ..., "PDIs": [...], "instance": [...]
   // } ] }
-  std::string configJson = "{\n  \"xrt-kernels\": [\n";
+  llvm::json::Array xrtKernels;
 
-  for (size_t i = 0; i < deviceInfos.size(); ++i) {
-    const auto &info = deviceInfos[i];
-
-    if (i > 0)
-      configJson += ",\n";
-    configJson += "    {\n";
-    configJson += "      \"name\": \"" + info.deviceName + "\",\n";
+  for (const auto &info : deviceInfos) {
+    llvm::json::Object kernel;
+    kernel["name"] = info.deviceName;
 
     // Arguments - determine max arg count from sequences
     // For now, use a default set of arguments
-    configJson += "      \"arguments\": [\n";
-    configJson += "        {\"name\": \"arg_0\", \"type\": \"char *\", "
-                  "\"offset\": \"0x0\"},\n";
-    configJson += "        {\"name\": \"arg_1\", \"type\": \"char *\", "
-                  "\"offset\": \"0x8\"},\n";
-    configJson += "        {\"name\": \"arg_2\", \"type\": \"char *\", "
-                  "\"offset\": \"0x10\"}\n";
-    configJson += "      ],\n";
+    llvm::json::Array arguments;
+    llvm::json::Object arg0;
+    arg0["name"] = "arg_0";
+    arg0["type"] = "char *";
+    arg0["offset"] = "0x0";
+    arguments.push_back(std::move(arg0));
+
+    llvm::json::Object arg1;
+    arg1["name"] = "arg_1";
+    arg1["type"] = "char *";
+    arg1["offset"] = "0x8";
+    arguments.push_back(std::move(arg1));
+
+    llvm::json::Object arg2;
+    arg2["name"] = "arg_2";
+    arg2["type"] = "char *";
+    arg2["offset"] = "0x10";
+    arguments.push_back(std::move(arg2));
+
+    kernel["arguments"] = std::move(arguments);
 
     // PDIs
-    configJson += "      \"PDIs\": [\n";
-    configJson += "        {\"id\": " + std::to_string(info.pdiId) +
-                  ", \"PDI_file\": \"" + info.pdiPath + "\"}\n";
-    configJson += "      ],\n";
+    llvm::json::Array pdis;
+    llvm::json::Object pdi;
+    pdi["id"] = info.pdiId;
+    pdi["PDI_file"] = info.pdiPath;
+    pdis.push_back(std::move(pdi));
+    kernel["PDIs"] = std::move(pdis);
 
     // Instances (runtime sequences)
-    configJson += "      \"instance\": [\n";
-    for (size_t j = 0; j < info.sequences.size(); ++j) {
-      if (j > 0)
-        configJson += ",\n";
-      configJson += "        {\"id\": \"" + info.sequences[j].first +
-                    "\", \"TXN_ctrl_code_file\": \"" +
-                    info.sequences[j].second + "\"}";
+    llvm::json::Array instances;
+    for (const auto &seq : info.sequences) {
+      llvm::json::Object instance;
+      instance["id"] = seq.first;
+      instance["TXN_ctrl_code_file"] = seq.second;
+      instances.push_back(std::move(instance));
     }
-    configJson += "\n      ]\n";
-    configJson += "    }";
+    kernel["instance"] = std::move(instances);
+
+    xrtKernels.push_back(std::move(kernel));
   }
 
-  configJson += "\n  ]\n}\n";
+  llvm::json::Object root;
+  root["xrt-kernels"] = std::move(xrtKernels);
 
   // Write config.json
   SmallString<128> configPath(tmpDirName);
@@ -2781,7 +2847,7 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
       llvm::errs() << "Error writing config.json: " << ec.message() << "\n";
       return failure();
     }
-    configFile << configJson;
+    configFile << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)));
   }
 
   if (verbose) {
@@ -2794,7 +2860,7 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
                                            "-t",
                                            "aie2_config",
                                            "-j",
-                                           configPath.str().str(),
+                                           std::string(configPath),
                                            "-o",
                                            fullElfName.getValue()};
 
@@ -2941,9 +3007,9 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                               "-arch",
                                               "versal",
                                               "-image",
-                                              bifPath.str().str(),
+                                              std::string(bifPath),
                                               "-o",
-                                              pdiPath.str().str(),
+                                              std::string(pdiPath),
                                               "-w"};
 
     if (!executeCommand(bootgenCmd)) {
@@ -3011,24 +3077,24 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                      "--input",
                      xclbinInput.getValue(),
                      "--add-kernel",
-                     kernelsPath.str().str(),
+                     std::string(kernelsPath),
                      "--add-replace-section",
-                     "AIE_PARTITION:JSON:" + mergedPartitionPath.str().str(),
+                     "AIE_PARTITION:JSON:" + std::string(mergedPartitionPath),
                      "--force",
                      "--output",
-                     xclbinPath.str().str()};
+                     std::string(xclbinPath)};
       } else {
         // Create new xclbin from scratch
         xclbinCmd = {xclbinutilPath,
                      "--add-replace-section",
-                     "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
+                     "MEM_TOPOLOGY:JSON:" + std::string(memTopoPath),
                      "--add-kernel",
-                     kernelsPath.str().str(),
+                     std::string(kernelsPath),
                      "--add-replace-section",
-                     "AIE_PARTITION:JSON:" + partitionPath.str().str(),
+                     "AIE_PARTITION:JSON:" + std::string(partitionPath),
                      "--force",
                      "--output",
-                     xclbinPath.str().str()};
+                     std::string(xclbinPath)};
       }
 
       if (!executeCommand(xclbinCmd)) {
@@ -3232,7 +3298,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       std::string pdiFileName = formatString(pdiName, devName);
       SmallString<256> pdiFullPath(absTmpDir);
       sys::path::append(pdiFullPath, pdiFileName);
-      info.pdiPath = pdiFullPath.str().str();
+      info.pdiPath = std::string(pdiFullPath);
 
       // Collect runtime sequence instruction paths (also absolute)
       for (auto seqOp : deviceOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
@@ -3241,7 +3307,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
             formatString(instsName, devName.str(), seqName);
         SmallString<256> instsFullPath(absTmpDir);
         sys::path::append(instsFullPath, instsFileName);
-        info.sequences.emplace_back(seqName.str(), instsFullPath.str().str());
+        info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
       }
 
       deviceElfInfos.push_back(std::move(info));
