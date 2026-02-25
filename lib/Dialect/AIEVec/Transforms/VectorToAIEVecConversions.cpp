@@ -1846,6 +1846,57 @@ using LowerVectorMinSIOpToAIEVecMinOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
 using LowerVectorMaxSIOpToAIEVecMaxOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
+// Promote scalar arith.maxsi/arith.minsi to vector aievec.max/aievec.min
+// to avoid the AIE2 G_SELECT legalizer crash on scalar i32 select.
+template <typename SrcOpTy, typename DstOpTy>
+struct LowerScalarMinMaxToAIEVecMinMaxOp : OpConversionPattern<SrcOpTy> {
+  using OpConversionPattern<SrcOpTy>::OpConversionPattern;
+  using OpAdaptor = typename SrcOpTy::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(SrcOpTy srcOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Only match scalar integer types (reject vectors)
+    Type resultType = srcOp.getType();
+    if (isa<VectorType>(resultType))
+      return failure();
+
+    auto intType = dyn_cast<IntegerType>(resultType);
+    if (!intType)
+      return failure();
+
+    unsigned elWidth = intType.getWidth();
+    if (elWidth != 8 && elWidth != 16 && elWidth != 32)
+      return failure();
+
+    unsigned numLanes = 512 / elWidth;
+    VectorType vecType = createVectorType(numLanes, intType);
+    Location loc = srcOp.getLoc();
+
+    // Broadcast both scalars to 512-bit vectors
+    auto lhsBcast = aievec::BroadcastScalarOp::create(rewriter, loc, vecType,
+                                                      adaptor.getLhs());
+    auto rhsBcast = aievec::BroadcastScalarOp::create(rewriter, loc, vecType,
+                                                      adaptor.getRhs());
+
+    // Apply vector min/max
+    auto vecOp = DstOpTy::create(rewriter, loc, vecType, lhsBcast.getResult(),
+                                 rhsBcast.getResult());
+
+    // Extract element 0 back to scalar
+    auto zeroIdx =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(
+        srcOp, intType, vecOp.getResult(), zeroIdx.getResult());
+    return success();
+  }
+};
+
+using LowerScalarMinSIOpToAIEVecMinOp =
+    LowerScalarMinMaxToAIEVecMinMaxOp<arith::MinSIOp, aievec::MinOp>;
+using LowerScalarMaxSIOpToAIEVecMaxOp =
+    LowerScalarMinMaxToAIEVecMinMaxOp<arith::MaxSIOp, aievec::MaxOp>;
+
 using LowerVectorMinimumFOpToAIEVecMinOp =
     LowerVectorMinMaxOpToAIEVecMinMaxOp<arith::MinimumFOp, aievec::MinOp>;
 using LowerVectorMaximumFOpToAIEVecMaxOp =
@@ -3863,6 +3914,49 @@ struct ShiftClampTruncToSRSPattern : OpConversionPattern<arith::TruncIOp> {
   }
 };
 
+// Promote scalar arith.shrsi to vector aievec.ups + aievec.srs to prevent
+// LLVM's SLP vectorizer from creating sub-512-bit vector shifts that the
+// AIE2 backend cannot legalize (G_LSHR on <4 x s32>).
+struct LowerScalarShRSIToAIEVecUPSSRS : OpConversionPattern<arith::ShRSIOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::ShRSIOp rsOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Only match scalar i32
+    Type resultType = rsOp.getType();
+    if (isa<VectorType>(resultType))
+      return failure();
+
+    auto intType = dyn_cast<IntegerType>(resultType);
+    if (!intType || intType.getWidth() != 32)
+      return failure();
+
+    Location loc = rsOp.getLoc();
+    VectorType vecType = createVectorType(16, intType); // vector<16xi32>
+
+    // Broadcast scalar value to 512-bit vector
+    auto lhsBcast = aievec::BroadcastScalarOp::create(rewriter, loc, vecType,
+                                                      adaptor.getLhs());
+
+    // UPS: vector<16xi32> -> accumulator type (vector<16xi64>)
+    Type accType = getVectorOpDestType(vecType, /*AIE2=*/true);
+    auto upsOp =
+        aievec::UPSOp::create(rewriter, loc, accType, lhsBcast.getResult());
+
+    // SRS: accumulator + i32 shift -> vector<16xi32>
+    auto srsOp = aievec::SRSOp::create(rewriter, loc, vecType,
+                                       upsOp.getResult(), adaptor.getRhs());
+
+    // Extract element 0 back to scalar
+    auto zeroIdx =
+        arith::ConstantOp::create(rewriter, loc, rewriter.getI32IntegerAttr(0));
+    rewriter.replaceOpWithNewOp<aievec::ExtElemOp>(
+        rsOp, intType, srsOp.getResult(), zeroIdx.getResult());
+    return success();
+  }
+};
+
 // Convert a `vector.contract` op to an `aievec.matmul` op for AIE2 or
 // `aievec.matmul_aie2p` for AIE2P
 template <typename MatMulOpTy>
@@ -4108,11 +4202,14 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       ComputeBorOpPattern,
       ComputeBandOpPattern,
       ComputeSignedIntRightShiftOpPattern,
+      LowerScalarShRSIToAIEVecUPSSRS,
       ConvertMulIToAIEVecMulElemOpPattern,
       ConvertMulFToAIEVecMulElemOpPattern,
       LowerVectorMinSIOpToAIEVecMinOp,
+      LowerScalarMinSIOpToAIEVecMinOp,
       LowerVectorMinimumFOpToAIEVecMinOp,
       LowerVectorMaxSIOpToAIEVecMaxOp,
+      LowerScalarMaxSIOpToAIEVecMaxOp,
       LowerVectorMaximumFOpToAIEVecMaxOp,
       LowerVectorMaxNumFFOpToAIEVecMaxOp,
       LowerVectorCmpIOpToAIEVecCmpOp,
@@ -4531,8 +4628,13 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<arith::ShRSIOp>([](arith::ShRSIOp rsOp) {
     auto srcType = dyn_cast<VectorType>(rsOp.getLhs().getType());
-    if (!srcType)
+    if (!srcType) {
+      // Scalar i32 shrsi is illegal — will be promoted to vector
+      if (auto intType = dyn_cast<IntegerType>(rsOp.getLhs().getType()))
+        if (intType.getWidth() == 32)
+          return false;
       return true;
+    }
 
     // If the shrsi feeds into a compound SRS pattern (shrsi+clamp+trunc),
     // keep it legal — the compound pattern will consume it via the trunci.
@@ -4935,8 +5037,15 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<arith::MinSIOp>([=](arith::MinSIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType)
+    if (!resultType) {
+      // Scalar i8/i16/i32 minsi is illegal — will be promoted to vector
+      if (auto intType = dyn_cast<IntegerType>(op.getType())) {
+        unsigned w = intType.getWidth();
+        if (w == 8 || w == 16 || w == 32)
+          return false;
+      }
       return true;
+    }
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
@@ -4946,8 +5055,15 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
   target.addDynamicallyLegalOp<arith::MaxSIOp>([=](arith::MaxSIOp op) {
     auto resultType = dyn_cast<VectorType>(op.getType());
-    if (!resultType)
+    if (!resultType) {
+      // Scalar i8/i16/i32 maxsi is illegal — will be promoted to vector
+      if (auto intType = dyn_cast<IntegerType>(op.getType())) {
+        unsigned w = intType.getWidth();
+        if (w == 8 || w == 16 || w == 32)
+          return false;
+      }
       return true;
+    }
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);

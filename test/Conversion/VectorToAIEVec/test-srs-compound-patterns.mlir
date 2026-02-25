@@ -102,15 +102,16 @@ func.func @test_srs_clamp_signed(%arg0: vector<32xi32>) -> vector<32xi8> {
   return %result : vector<32xi8>
 }
 
-// Test 4: Scalar passthrough (should not be converted)
+// Test 4: Scalar shrsi is promoted to vector (broadcast + UPS/SRS + extract)
+// The trunci remains scalar since it's i32→i8 scalar narrowing.
 
-// CHECK-LABEL: func.func @test_scalar_passthrough(
-// CHECK: arith.shrsi
+// CHECK-LABEL: func.func @test_scalar_shrsi_promoted(
+// CHECK: aievec.broadcast_scalar
 // CHECK: arith.trunci
-// AIE2P-LABEL: func.func @test_scalar_passthrough(
-// AIE2P: arith.shrsi
+// AIE2P-LABEL: func.func @test_scalar_shrsi_promoted(
+// AIE2P: aievec.broadcast_scalar
 // AIE2P: arith.trunci
-func.func @test_scalar_passthrough(%arg0: i32) -> i8 {
+func.func @test_scalar_shrsi_promoted(%arg0: i32) -> i8 {
   %shift = arith.constant 4 : i32
   %shifted = arith.shrsi %arg0, %shift : i32
   %result = arith.trunci %shifted : i32 to i8
