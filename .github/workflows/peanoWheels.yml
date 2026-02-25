@@ -103,11 +103,8 @@ jobs:
 
       - name: Download Peano (llvm-aie) wheel
         run: |
-          PEANO_VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download llvm-aie==$PEANO_VERSION \
-            -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/llvm-aie-distro || \
           pip -q download llvm-aie \
-            -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/latest-peano
+            -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
           unzip -q llvm_aie*.whl -d peano_install
           # Fix timestamps
           find peano_install -exec touch -a -m -t 201108231405.14 {} \;
