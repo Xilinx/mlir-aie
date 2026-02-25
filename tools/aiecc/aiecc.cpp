@@ -84,6 +84,17 @@
 
 #include "llvm/IR/Module.h"
 
+// Optional library integrations for direct calls instead of subprocess
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+// Use C API to avoid exception handling issues with LLVM's -fno-exceptions
+#include <aiebu/aiebu.h>
+#endif
+
+#ifdef AIECC_HAS_BOOTGEN_LIBRARY
+// Use C API wrapper that handles exceptions internally
+#include "bootgen_c_api.h"
+#endif
+
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -423,6 +434,17 @@ static std::mutex outputMutex;
 
 // Forward declarations
 static std::string findAiebuAsm();
+
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+static std::optional<std::vector<char>> readBinaryFile(StringRef path);
+static std::optional<std::vector<char>> generateElfViaAiebuLibrary(
+    aiebu_assembler_buffer_type type, const std::vector<char> &buffer1,
+    const std::vector<char> &buffer2, const std::vector<char> &patchJson);
+static std::optional<std::vector<char>>
+generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson);
+static LogicalResult writeElfFile(StringRef path,
+                                  const std::vector<char> &elfData);
+#endif
 
 static void printVersion(raw_ostream &os) {
   os << "aiecc (C++ version) " << AIE_GIT_COMMIT << "\n";
@@ -3323,6 +3345,100 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
 // ELF Generation (via aiebu-asm)
 //===----------------------------------------------------------------------===//
 
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+/// Helper to read a binary file into a vector of chars.
+static std::optional<std::vector<char>> readBinaryFile(StringRef path) {
+  auto bufferOrErr = llvm::MemoryBuffer::getFile(path);
+  if (!bufferOrErr) {
+    return std::nullopt;
+  }
+  auto &buffer = *bufferOrErr;
+  const char *data = buffer->getBufferStart();
+  size_t size = buffer->getBufferSize();
+  return std::vector<char>(data, data + size);
+}
+
+/// Generate ELF using aiebu C API with transaction instructions.
+/// Returns the ELF data or nullopt on failure.
+static std::optional<std::vector<char>>
+generateElfViaAiebuLibrary(aiebu_assembler_buffer_type type,
+                           const std::vector<char> &buffer1,
+                           const std::vector<char> &buffer2 = {},
+                           const std::vector<char> &patchJson = {}) {
+  void *elfBuf = nullptr;
+  int result = aiebu_assembler_get_elf(
+      type, buffer1.data(), buffer1.size(),
+      buffer2.empty() ? nullptr : buffer2.data(), buffer2.size(), &elfBuf,
+      patchJson.empty() ? nullptr : patchJson.data(), patchJson.size(),
+      nullptr, // libs
+      nullptr, // libpaths
+      nullptr, // pm_ctrlpkts
+      0);      // pm_ctrlpkt_size
+
+  if (result <= 0 || elfBuf == nullptr) {
+    if (verbose) {
+      llvm::errs() << "aiebu library error: returned " << result << "\n";
+    }
+    if (elfBuf) {
+      free(elfBuf);
+    }
+    return std::nullopt;
+  }
+
+  // Copy data and free the allocated buffer
+  std::vector<char> elfData(static_cast<char *>(elfBuf),
+                            static_cast<char *>(elfBuf) + result);
+  free(elfBuf);
+  return elfData;
+}
+
+/// Generate ELF using aiebu C API with config JSON (for aie2_config type).
+/// Returns the ELF data or nullopt on failure.
+static std::optional<std::vector<char>>
+generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson) {
+  void *elfBuf = nullptr;
+  int result = aiebu_assembler_get_elf(aiebu_assembler_buffer_type_aie2_config,
+                                       configJson.data(), configJson.size(),
+                                       nullptr, 0,          // buffer2
+                                       &elfBuf, nullptr, 0, // patch_json
+                                       nullptr,             // libs
+                                       nullptr,             // libpaths
+                                       nullptr,             // pm_ctrlpkts
+                                       0);                  // pm_ctrlpkt_size
+
+  if (result <= 0 || elfBuf == nullptr) {
+    if (verbose) {
+      llvm::errs() << "aiebu library error (config): returned " << result
+                   << "\n";
+    }
+    if (elfBuf) {
+      free(elfBuf);
+    }
+    return std::nullopt;
+  }
+
+  std::vector<char> elfData(static_cast<char *>(elfBuf),
+                            static_cast<char *>(elfBuf) + result);
+  free(elfBuf);
+  return elfData;
+}
+
+/// Write ELF data to a file.
+static LogicalResult writeElfFile(StringRef path,
+                                  const std::vector<char> &elfData) {
+  std::error_code ec;
+  raw_fd_ostream elfFile(path, ec, sys::fs::OpenFlags::OF_None);
+  if (ec) {
+    llvm::errs() << "Error writing ELF file " << path << ": " << ec.message()
+                 << "\n";
+    return failure();
+  }
+  elfFile.write(elfData.data(), elfData.size());
+  elfFile.close();
+  return success();
+}
+#endif // AIECC_HAS_AIEBU_LIBRARY
+
 /// Find aiebu-asm binary in PATH or at default locations.
 static std::string findAiebuAsm() {
   // First try PATH
@@ -3428,7 +3544,42 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     return success();
   }
 
-  // Write combined instructions to temporary binary file
+  // Determine output ELF path
+  std::string outputElfPath = formatString(elfName, devName.str(), "");
+
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+  // Try using aiebu library directly for ELF generation
+  {
+    // Convert instructions to char buffer
+    std::vector<char> instrBuffer(
+        reinterpret_cast<const char *>(allInstructions.data()),
+        reinterpret_cast<const char *>(allInstructions.data()) +
+            allInstructions.size() * sizeof(uint32_t));
+
+    if (verbose) {
+      llvm::outs() << "Using aiebu library for ELF generation\n";
+    }
+
+    auto elfData = generateElfViaAiebuLibrary(
+        aiebu_assembler_buffer_type_blob_instr_transaction, instrBuffer, {},
+        {});
+    if (elfData && !elfData->empty()) {
+      if (succeeded(writeElfFile(outputElfPath, *elfData))) {
+        if (verbose) {
+          llvm::outs() << "Generated ELF via library: " << outputElfPath
+                       << "\n";
+        }
+        return success();
+      }
+    }
+    // Fall through to subprocess on library failure
+    if (verbose) {
+      llvm::outs() << "aiebu library failed, falling back to subprocess\n";
+    }
+  }
+#endif // AIECC_HAS_AIEBU_LIBRARY
+
+  // Subprocess fallback: write instructions to temp file and run aiebu-asm
   SmallString<128> tempBinPath(tmpDirName);
   sys::path::append(tempBinPath, devName.str() + "_elf_insts.bin");
 
@@ -3442,15 +3593,13 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     }
     binFile.write(reinterpret_cast<const char *>(allInstructions.data()),
                   allInstructions.size() * sizeof(uint32_t));
+    binFile.close();
   }
 
   if (verbose) {
     llvm::outs() << "Wrote " << allInstructions.size()
                  << " instructions to temp file: " << tempBinPath << "\n";
   }
-
-  // Determine output ELF path
-  std::string outputElfPath = formatString(elfName, devName.str(), "");
 
   // Run aiebu-asm to convert binary to ELF
   // aiebu-asm -t aie2txn -c <input.bin> -o <output.elf>
@@ -3719,12 +3868,16 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 
   // Generate PDI if requested (also required for full ELF)
   if (needPdi || generateXclbin) {
+    // Find bootgen (needed for subprocess fallback if library unavailable)
     std::string bootgenPath = findAieTool("bootgen");
+#ifndef AIECC_HAS_BOOTGEN_LIBRARY
+    // Without library, we require bootgen subprocess
     if (bootgenPath.empty()) {
       llvm::errs()
           << "Error: bootgen not found, cannot generate requested PDI/xclbin\n";
       return failure();
     }
+#endif
 
     std::string pdiFileName = formatString(pdiName, devName);
     SmallString<128> pdiPath(tmpDirName);
@@ -3762,28 +3915,68 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
       bifFile.close();
     }
 
-    SmallVector<std::string, 8> bootgenCmd = {bootgenPath,
-                                              "-arch",
-                                              "versal",
-                                              "-image",
-                                              bifPath.str().str(),
-                                              "-o",
-                                              pdiPath.str().str(),
-                                              "-w"};
+    bool pdiGenerated = false;
 
-    // DEBUG: Print bootgen path to verify we reach this point
-    llvm::outs() << bootgenPath << " -arch versal -image " << bifPath << " -o "
-                 << pdiPath << " -w\n";
-    llvm::outs().flush();
+#ifdef AIECC_HAS_BOOTGEN_LIBRARY
+    // Try using bootgen library directly via C API
+    if (!dryRun) {
+      if (verbose) {
+        llvm::outs() << "Using bootgen library for PDI generation\n";
+      }
+      char errorMsg[256] = {0};
+      int result = bootgen_generate_pdi(
+          std::string(bifPath).c_str(), std::string(pdiPath).c_str(),
+          BOOTGEN_ARCH_VERSAL, /*overwrite=*/1, errorMsg, sizeof(errorMsg));
+      if (result == BOOTGEN_SUCCESS) {
+        if (verbose) {
+          llvm::outs() << "Generated PDI via library: " << pdiPath << "\n";
+        }
+        pdiGenerated = true;
+      } else {
+        if (verbose) {
+          llvm::outs() << "bootgen library failed (" << errorMsg
+                       << "), falling back to subprocess\n";
+        }
+      }
+    }
+#endif // AIECC_HAS_BOOTGEN_LIBRARY
 
-    // Execute bootgen command
-    if (!executeCommand(bootgenCmd, /*verboseOutput=*/false)) {
-      llvm::errs() << "Error generating PDI\n";
-      return failure();
+    // Subprocess fallback if library not available or failed
+    if (!pdiGenerated && !dryRun) {
+      if (bootgenPath.empty()) {
+        llvm::errs()
+            << "Error: bootgen not found, cannot generate requested PDI\n";
+        return failure();
+      }
+
+      SmallVector<std::string, 8> bootgenCmd = {bootgenPath,
+                                                "-arch",
+                                                "versal",
+                                                "-image",
+                                                bifPath.str().str(),
+                                                "-o",
+                                                pdiPath.str().str(),
+                                                "-w"};
+
+      if (verbose) {
+        llvm::outs() << bootgenPath << " -arch versal -image " << bifPath
+                     << " -o " << pdiPath << " -w\n";
+        llvm::outs().flush();
+      }
+
+      // Execute bootgen command
+      if (!executeCommand(bootgenCmd, /*verboseOutput=*/false)) {
+        llvm::errs() << "Error generating PDI\n";
+        return failure();
+      }
+
+      if (verbose) {
+        llvm::outs() << "Generated PDI: " << pdiPath << "\n";
+      }
     }
 
-    if (verbose && !dryRun) {
-      llvm::outs() << "Generated PDI: " << pdiPath << "\n";
+    if (dryRun && verbose) {
+      llvm::outs() << "Would generate PDI: " << pdiPath << "\n";
     }
 
     // Generate xclbin if requested

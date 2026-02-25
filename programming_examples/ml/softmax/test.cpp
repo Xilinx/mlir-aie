@@ -86,6 +86,8 @@ int main(int argc, const char *argv[]) {
 
   options.add_options()("npu", "Select NPU",
                         cxxopts::value<int>()->default_value("2"));
+  options.add_options()("s,size", "Input/Output volume size",
+                        cxxopts::value<int>()->default_value("262144"));
 
   test_utils::parse_options(argc, argv, options, vm);
 
@@ -95,9 +97,10 @@ int main(int argc, const char *argv[]) {
   int n_warmup_iterations = vm["warmup"].as<int>();
   int trace_size = vm["trace_sz"].as<int>();
   int dev = vm["npu"].as<int>();
+  int size_arg = vm["size"].as<int>();
 
   int TILE_SIZE = 1024;
-  int INOUT0_VOLUME = 262144;        // Input
+  int INOUT0_VOLUME = size_arg;      // Input
   int INOUT1_VOLUME = INOUT0_VOLUME; // Output
 
   size_t INOUT0_SIZE = INOUT0_VOLUME * sizeof(INOUT0_DATATYPE);
@@ -176,6 +179,8 @@ int main(int argc, const char *argv[]) {
   float npu_time_total = 0;
   float npu_time_min = 9999999;
   float npu_time_max = 0;
+  std::vector<float> npu_times;    // Store measured iteration times
+  std::vector<float> warmup_times; // Store warmup iteration times for debugging
 
   int errors = 0;
 
@@ -195,18 +200,39 @@ int main(int argc, const char *argv[]) {
     unsigned int opcode = 3;
     auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inout0, bo_inout1);
     run.wait();
+    // Include output sync in timing to ensure all DMA operations complete
+    // before we stop the timer. This provides more accurate end-to-end timing.
+    // bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     auto stop = std::chrono::high_resolution_clock::now();
     bo_inout1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
+    // Copy output results - do this for ALL iterations (including warmup)
+    // to ensure consistent memory access patterns between iterations
+    std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
+    memcpy(BVec.data(), bufInOut1, (BVec.size() * sizeof(INOUT1_DATATYPE)));
+
+    // Calculate time for this iteration
+    float npu_time =
+        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
+            .count();
+
+    // Accumulate run times immediately for both warmup and measured
     if (iter < n_warmup_iterations) {
-      /* Warmup iterations do not count towards average runtime. */
+      warmup_times.push_back(npu_time); // Store warmup time for debugging
+    } else {
+      npu_times.push_back(npu_time); // Store this iteration's time
+      npu_time_total += npu_time;
+      npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
+      npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
+    }
+
+    // Continue immediately to next iteration (mimicking warmup's tight loop)
+    // This tests whether the variance is caused by post-timing work
+    if (iter < num_iter - 1) { // Not the last iteration
       continue;
     }
 
-    // Copy output results and verify they are correct
-    std::vector<INOUT1_DATATYPE> BVec(INOUT1_VOLUME);
-
-    memcpy(BVec.data(), bufInOut1, (BVec.size() * sizeof(INOUT1_DATATYPE)));
+    // Only do verify on the last iteration
     if (do_verify) {
       if (verbosity >= 1) {
         std::cout << "Verifying results ..." << std::endl;
@@ -230,20 +256,27 @@ int main(int argc, const char *argv[]) {
       test_utils::write_out_trace(((char *)bufInOut1) + INOUT1_SIZE, trace_size,
                                   vm["trace_file"].as<std::string>());
     }
-
-    // Accumulate run times
-    float npu_time =
-        std::chrono::duration_cast<std::chrono::microseconds>(stop - start)
-            .count();
-
-    npu_time_total += npu_time;
-    npu_time_min = (npu_time < npu_time_min) ? npu_time : npu_time_min;
-    npu_time_max = (npu_time > npu_time_max) ? npu_time : npu_time_max;
   }
 
   // ------------------------------------------------------
   // Print verification and timing results
   // ------------------------------------------------------
+
+  // Print warmup iteration times (for debugging)
+  if (warmup_times.size() > 0) {
+    std::cout << std::endl << "Warmup times:" << std::endl;
+    for (int i = 0; i < warmup_times.size(); i++) {
+      std::cout << "  Warmup " << (i + 1) << ": " << warmup_times[i] << " us"
+                << std::endl;
+    }
+  }
+
+  // Print individual iteration times
+  std::cout << std::endl << "NPU times for each iteration:" << std::endl;
+  for (int i = 0; i < npu_times.size(); i++) {
+    std::cout << "  Iteration " << (i + 1) << ": " << npu_times[i] << " us"
+              << std::endl;
+  }
 
   // TODO - Mac count to guide gflops
   float macs = 0;

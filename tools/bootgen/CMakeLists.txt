@@ -80,7 +80,8 @@ set(libsources
   reginit.tab.cpp
   reginit.yy.cpp
   verifyimage-versal.cpp
-  verifyimage-zynqmp.cpp)
+  verifyimage-zynqmp.cpp
+  bootgen_c_api.cpp)
 list(TRANSFORM libsources PREPEND ${BOOTGEN_SOURCE}/)
 
 # malloc.h is deprecated and should not be used
@@ -139,10 +140,17 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
 endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
 target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+# Make C API header available publicly
+target_include_directories(bootgen-lib PUBLIC
+  $<BUILD_INTERFACE:${BOOTGEN_SOURCE}>
+  $<INSTALL_INTERFACE:include>)
 install(
   TARGETS bootgen-lib
   DESTINATION lib
   EXPORT bootgen-lib)
+install(
+  FILES ${BOOTGEN_SOURCE}/bootgen_c_api.h
+  DESTINATION include)
 
 add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
 target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
