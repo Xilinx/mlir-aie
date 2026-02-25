@@ -1,4 +1,4 @@
-//===- cpp_elf_generation.mlir --------------------------------*- MLIR -*-===//
+//===- library_integration.mlir --------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8,20 +8,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Test ELF generation for NPU instructions via aiebu library or aiebu-asm.
-// This tests --aie-generate-elf and --elf-name options.
+// Test that library integrations (aiebu and bootgen) are used when available.
+// When compiled with AIECC_HAS_AIEBU_LIBRARY and AIECC_HAS_BOOTGEN_LIBRARY,
+// aiecc should use direct library calls instead of subprocess invocations.
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --aie-generate-elf --elf-name=test_insts.elf --verbose %s 2>&1 | FileCheck %s
+// Test ELF generation uses library
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-elf --verbose %s 2>&1 | FileCheck %s --check-prefix=ELF
 
-// CHECK: Successfully parsed input file
-// CHECK: Found 1 AIE device
-// CHECK: Generating ELF for device
-// Library path uses "Using aiebu library", subprocess uses "Found aiebu-asm"
-// CHECK: {{Using aiebu library|Found aiebu-asm}}
-// CHECK: Generated ELF{{( via library)?}}: test_insts.elf
-// CHECK: Compilation completed successfully
+// ELF: Generating ELF for device
+// ELF: Using aiebu library for ELF generation
+// ELF: Generated ELF via library
+
+// Test PDI generation uses library
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-cdo --aie-generate-pdi --verbose %s 2>&1 | FileCheck %s --check-prefix=PDI
+
+// PDI: Generating CDO artifacts for device
+// PDI: Using bootgen library for PDI generation
+// PDI: Generated PDI via library
 
 module {
   aie.device(npu1_1col) {
