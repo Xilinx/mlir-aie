@@ -8,6 +8,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: chess
+
 // RUN: %PYTHON aiecc.py --no-unified %s
 // RUN: %PYTHON aiecc.py --unified    %s
 
