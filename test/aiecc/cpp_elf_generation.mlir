@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Test ELF generation for NPU instructions via aiebu-asm.
+// Test ELF generation for NPU instructions via aiebu library or aiebu-asm.
 // This tests --aie-generate-elf and --elf-name options.
 
 // REQUIRES: peano
@@ -18,8 +18,9 @@
 // CHECK: Successfully parsed input file
 // CHECK: Found 1 AIE device
 // CHECK: Generating ELF for device
-// CHECK: Found aiebu-asm
-// CHECK: Generated ELF: test_insts.elf
+// Library path uses "Using aiebu library", subprocess uses "Found aiebu-asm"
+// CHECK: {{Using aiebu library|Found aiebu-asm}}
+// CHECK: Generated ELF{{( via library)?}}: test_insts.elf
 // CHECK: Compilation completed successfully
 
 module {
