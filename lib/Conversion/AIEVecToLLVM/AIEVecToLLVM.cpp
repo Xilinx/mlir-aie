@@ -1492,6 +1492,97 @@ public:
   }
 };
 
+// AIE2p version of FMAElemOp conversion. Uses native F32 accumulators
+// and AIE2p-specific MAC intrinsics.
+class FMAElemOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::FMAElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::FMAElemOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::FMAElemOp fmaOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = fmaOp.getLoc();
+    auto lhs = adaptor.getLhs();
+    auto rhs = adaptor.getRhs();
+    auto acc = adaptor.getAcc();
+    auto lhsTy = cast<VectorType>(lhs.getType());
+    auto accTy = cast<VectorType>(acc.getType());
+    auto flatLhsTy = getFlattenedVectorType(lhsTy);
+    auto flatAccTy = getFlattenedVectorType(accTy);
+
+    // Flatten operands, if needed
+    if (lhsTy != flatLhsTy)
+      lhs = vector::ShapeCastOp::create(rewriter, loc, flatLhsTy, lhs);
+    if (cast<VectorType>(rhs.getType()) != flatLhsTy)
+      rhs = vector::ShapeCastOp::create(rewriter, loc, flatLhsTy, rhs);
+    if (accTy != flatAccTy)
+      acc = vector::ShapeCastOp::create(rewriter, loc, flatAccTy, acc);
+
+    if (!flatLhsTy.getElementType().isBF16()) {
+      fmaOp.emitWarning()
+          << "aievec.mac_elem AIE2p conversion only supports bf16 inputs.\n";
+      return failure();
+    }
+
+    Type i32ty = rewriter.getI32Type();
+    auto confCst = LLVM::ConstantOp::create(
+        rewriter, loc, i32ty,
+        rewriter.getI32IntegerAttr(aiev2_vmac_compute_control(
+            /*sgn_x=*/0, /*sgn_y=*/0, /*amode=*/2, /*bmode=*/3,
+            /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
+            /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+            /*sub_mask=*/0)));
+
+    unsigned lhsLanes = flatLhsTy.getNumElements();
+    Value macIntrOp = nullptr;
+
+    if (lhsLanes == 16) {
+      // 16-lane bf16: pad to v32bf16, use I512.I512.ACC512 intrinsic
+      SmallVector<int64_t> padMask;
+      for (int i = 0; i < 16; ++i)
+        padMask.push_back(i);
+      for (int i = 16; i < 32; ++i)
+        padMask.push_back(-1); // poison
+
+      auto lhsPadded =
+          vector::ShuffleOp::create(rewriter, loc, lhs, lhs, padMask);
+      auto rhsPadded =
+          vector::ShuffleOp::create(rewriter, loc, rhs, rhs, padMask);
+
+      auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+      auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
+      macIntrOp = xllvm::MacConfBF16I512ACC512AIE2pIntrOp::create(
+          rewriter, loc, v16f32Ty,
+          forceCastOperandsToSignature(
+              rewriter, loc, {lhsPadded, rhsPadded, acc, confCst},
+              {v32bf16Ty, v32bf16Ty, v16f32Ty, i32ty}));
+    } else if (lhsLanes == 32) {
+      // 32-lane bf16: direct, use I512.I512.ACC1024 intrinsic
+      auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+      auto v32f32Ty = VectorType::get({32}, rewriter.getF32Type());
+      macIntrOp = xllvm::MacConfBF16I512ACC1024AIE2pIntrOp::create(
+          rewriter, loc, v32f32Ty,
+          forceCastOperandsToSignature(
+              rewriter, loc, {lhs, rhs, acc, confCst},
+              {v32bf16Ty, v32bf16Ty, v32f32Ty, i32ty}));
+    } else {
+      fmaOp.emitWarning()
+          << "aievec.mac_elem AIE2p conversion: unsupported lane count "
+          << lhsLanes << ".\n";
+      return failure();
+    }
+
+    // Recast/Reshape result
+    auto resVal = forceCastValueToType(rewriter, loc, macIntrOp, flatAccTy);
+    if (flatAccTy != accTy)
+      resVal = vector::ShapeCastOp::create(rewriter, loc, accTy, resVal);
+
+    rewriter.replaceOp(fmaOp, resVal);
+    return success();
+  }
+};
+
 // Enum to represent different AIE target architectures
 enum class AIEArch {
   AIE2,
@@ -2858,6 +2949,29 @@ public:
   }
 };
 
+// Helper to pad a vector from N lanes to dstLanes using vector.shuffle
+// with poison (-1) for the upper portion.
+static Value padVectorWithPoison(ConversionPatternRewriter &rewriter,
+                                 Location loc, Value vec, int srcLanes,
+                                 int dstLanes) {
+  SmallVector<int64_t> padMask;
+  for (int i = 0; i < srcLanes; ++i)
+    padMask.push_back(i);
+  for (int i = srcLanes; i < dstLanes; ++i)
+    padMask.push_back(-1);
+  return vector::ShuffleOp::create(rewriter, loc, vec, vec, padMask);
+}
+
+// Helper to extract the first N lanes from a wider vector using
+// vector.shuffle.
+static Value extractLowerLanes(ConversionPatternRewriter &rewriter,
+                               Location loc, Value vec, int lanes) {
+  SmallVector<int64_t> extractMask;
+  for (int i = 0; i < lanes; ++i)
+    extractMask.push_back(i);
+  return vector::ShuffleOp::create(rewriter, loc, vec, vec, extractMask);
+}
+
 class MaxOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::MaxOp> {
 public:
   using ConvertOpToLLVMPattern<aievec::MaxOp>::ConvertOpToLLVMPattern;
@@ -2874,7 +2988,7 @@ public:
     int resultVectorSize = resultBitWidth * resultLanes;
 
     // aievec.max op has the AllTypesMatch constraint on lhs/rhs/res
-    if (resultVectorSize != 512) {
+    if (resultVectorSize != 512 && resultVectorSize != 256) {
       op.emitWarning() << "aievec.max conversion with " << resultVectorSize
                        << "-bit result is not supported.\n";
       return failure();
@@ -2927,30 +3041,38 @@ public:
       }
     } else {
       if (resultBitWidth == 16) {
+        auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+        Value lhs = adaptor.getLhs(), rhs = adaptor.getRhs();
+
+        // Pad 16-lane to 32-lane if needed
+        if (resultLanes == 16) {
+          lhs = padVectorWithPoison(rewriter, loc, lhs, 16, 32);
+          rhs = padVectorWithPoison(rewriter, loc, rhs, 16, 32);
+        }
+
         maxOp = xllvm::VectorMaxLtBf16IntrOp::create(
             rewriter, loc,
             mlir::LLVM::LLVMStructType::getLiteral(
-                rewriter.getContext(),
-                {VectorType::get({32}, rewriter.getBF16Type()),
-                 rewriter.getI32Type()}),
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs()},
-                {VectorType::get({32}, rewriter.getBF16Type()),
-                 VectorType::get({32}, rewriter.getBF16Type())}));
+                rewriter.getContext(), {v32bf16Ty, rewriter.getI32Type()}),
+            forceCastOperandsToSignature(rewriter, loc, {lhs, rhs},
+                                         {v32bf16Ty, v32bf16Ty}));
       }
     }
 
     if (!maxOp) {
-      // We have checked the lhs/rhs/res to be 512-bit vectors. Hence, a
-      // possible failure here is due to unsupported element datatype.
       op.emitWarning() << "aievec.max conversion fails due to unsupported "
                           "element data type.\n";
       return failure();
     }
 
-    // create llvm.extractvalue for the first element in the LLVMStruct
-    rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(op, maxOp,
-                                                      /*position=*/0);
+    // Extract the vector result from the struct
+    Value resultVec = LLVM::ExtractValueOp::create(rewriter, loc, maxOp,
+                                                   /*position=*/0);
+    // Truncate back to 16 lanes if padded
+    if (resultLanes == 16 && !llvm::isa<IntegerType>(resultScaTy))
+      resultVec = extractLowerLanes(rewriter, loc, resultVec, 16);
+
+    rewriter.replaceOp(op, resultVec);
 
     return success();
   }
@@ -2972,7 +3094,7 @@ public:
     int resultVectorSize = resultBitWidth * resultLanes;
 
     // aievec.min op has the AllTypesMatch constraint on lhs/rhs/res
-    if (resultVectorSize != 512) {
+    if (resultVectorSize != 512 && resultVectorSize != 256) {
       op.emitWarning() << "aievec.min conversion with " << resultVectorSize
                        << "-bit result is not supported.\n";
       return failure();
@@ -3025,30 +3147,38 @@ public:
       }
     } else {
       if (resultBitWidth == 16) {
+        auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+        Value lhs = adaptor.getLhs(), rhs = adaptor.getRhs();
+
+        // Pad 16-lane to 32-lane if needed
+        if (resultLanes == 16) {
+          lhs = padVectorWithPoison(rewriter, loc, lhs, 16, 32);
+          rhs = padVectorWithPoison(rewriter, loc, rhs, 16, 32);
+        }
+
         minOp = xllvm::VectorMinGeBf16IntrOp::create(
             rewriter, loc,
             mlir::LLVM::LLVMStructType::getLiteral(
-                rewriter.getContext(),
-                {VectorType::get({32}, rewriter.getBF16Type()),
-                 rewriter.getI32Type()}),
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs()},
-                {VectorType::get({32}, rewriter.getBF16Type()),
-                 VectorType::get({32}, rewriter.getBF16Type())}));
+                rewriter.getContext(), {v32bf16Ty, rewriter.getI32Type()}),
+            forceCastOperandsToSignature(rewriter, loc, {lhs, rhs},
+                                         {v32bf16Ty, v32bf16Ty}));
       }
     }
 
     if (!minOp) {
-      // We have checked the lhs/rhs/res to be 512-bit vectors. Hence, a
-      // possible failure here is due to unsupported element datatype.
       op.emitWarning() << "aievec.min conversion fails due to unsupported "
                           "element data type.\n";
       return failure();
     }
 
-    // create llvm.extractvalue for the first element in the LLVMStruct
-    rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(op, minOp,
-                                                      /*position=*/0);
+    // Extract the vector result from the struct
+    Value resultVec = LLVM::ExtractValueOp::create(rewriter, loc, minOp,
+                                                   /*position=*/0);
+    // Truncate back to 16 lanes if padded
+    if (resultLanes == 16 && !llvm::isa<IntegerType>(resultScaTy))
+      resultVec = extractLowerLanes(rewriter, loc, resultVec, 16);
+
+    rewriter.replaceOp(op, resultVec);
 
     return success();
   }
@@ -3072,7 +3202,7 @@ public:
     int resultVectorSize = resultBitWidth * resultLanes;
 
     // aievec.max op has the AllTypesMatch constraint on lhs/rhs/res
-    if (resultVectorSize != 512) {
+    if (resultVectorSize != 512 && resultVectorSize != 256) {
       op.emitWarning() << "aievec.max conversion with " << resultVectorSize
                        << "-bit result is not supported.\n";
       return failure();
@@ -3125,30 +3255,35 @@ public:
       }
     } else {
       if (resultBitWidth == 16) {
+        auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+        Value lhs = adaptor.getLhs(), rhs = adaptor.getRhs();
+
+        if (resultLanes == 16) {
+          lhs = padVectorWithPoison(rewriter, loc, lhs, 16, 32);
+          rhs = padVectorWithPoison(rewriter, loc, rhs, 16, 32);
+        }
+
         maxOp = xllvm::VectorMaxLtBf16AIE2pIntrOp::create(
             rewriter, loc,
             mlir::LLVM::LLVMStructType::getLiteral(
-                rewriter.getContext(),
-                {VectorType::get({32}, rewriter.getBF16Type()),
-                 rewriter.getI32Type()}),
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs()},
-                {VectorType::get({32}, rewriter.getBF16Type()),
-                 VectorType::get({32}, rewriter.getBF16Type())}));
+                rewriter.getContext(), {v32bf16Ty, rewriter.getI32Type()}),
+            forceCastOperandsToSignature(rewriter, loc, {lhs, rhs},
+                                         {v32bf16Ty, v32bf16Ty}));
       }
     }
 
     if (!maxOp) {
-      // We have checked the lhs/rhs/res to be 512-bit vectors. Hence, a
-      // possible failure here is due to unsupported element datatype.
       op.emitWarning() << "aievec.max conversion fails due to unsupported "
                           "element data type.\n";
       return failure();
     }
 
-    // create llvm.extractvalue for the first element in the LLVMStruct
-    rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(op, maxOp,
-                                                      /*position=*/0);
+    Value resultVec = LLVM::ExtractValueOp::create(rewriter, loc, maxOp,
+                                                   /*position=*/0);
+    if (resultLanes == 16 && !llvm::isa<IntegerType>(resultScaTy))
+      resultVec = extractLowerLanes(rewriter, loc, resultVec, 16);
+
+    rewriter.replaceOp(op, resultVec);
 
     return success();
   }
@@ -3172,7 +3307,7 @@ public:
     int resultVectorSize = resultBitWidth * resultLanes;
 
     // aievec.min op has the AllTypesMatch constraint on lhs/rhs/res
-    if (resultVectorSize != 512) {
+    if (resultVectorSize != 512 && resultVectorSize != 256) {
       op.emitWarning() << "aievec.min conversion with " << resultVectorSize
                        << "-bit result is not supported.\n";
       return failure();
@@ -3225,34 +3360,393 @@ public:
       }
     } else {
       if (resultBitWidth == 16) {
+        auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+        Value lhs = adaptor.getLhs(), rhs = adaptor.getRhs();
+
+        if (resultLanes == 16) {
+          lhs = padVectorWithPoison(rewriter, loc, lhs, 16, 32);
+          rhs = padVectorWithPoison(rewriter, loc, rhs, 16, 32);
+        }
+
         minOp = xllvm::VectorMinGeBf16AIE2pIntrOp::create(
             rewriter, loc,
             mlir::LLVM::LLVMStructType::getLiteral(
-                rewriter.getContext(),
-                {VectorType::get({32}, rewriter.getBF16Type()),
-                 rewriter.getI32Type()}),
-            forceCastOperandsToSignature(
-                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs()},
-                {VectorType::get({32}, rewriter.getBF16Type()),
-                 VectorType::get({32}, rewriter.getBF16Type())}));
+                rewriter.getContext(), {v32bf16Ty, rewriter.getI32Type()}),
+            forceCastOperandsToSignature(rewriter, loc, {lhs, rhs},
+                                         {v32bf16Ty, v32bf16Ty}));
       }
     }
 
     if (!minOp) {
-      // We have checked the lhs/rhs/res to be 512-bit vectors. Hence, a
-      // possible failure here is due to unsupported element datatype.
       op.emitWarning() << "aievec.min conversion fails due to unsupported "
                           "element data type.\n";
       return failure();
     }
 
-    // create llvm.extractvalue for the first element in the LLVMStruct
-    rewriter.replaceOpWithNewOp<LLVM::ExtractValueOp>(op, minOp,
-                                                      /*position=*/0);
+    Value resultVec = LLVM::ExtractValueOp::create(rewriter, loc, minOp,
+                                                   /*position=*/0);
+    if (resultLanes == 16 && !llvm::isa<IntegerType>(resultScaTy))
+      resultVec = extractLowerLanes(rewriter, loc, resultVec, 16);
+
+    rewriter.replaceOp(op, resultVec);
 
     return success();
   }
 };
+
+// ----- CmpOp conversion for AIE2 -----
+// Implements aievec.cmp using vmax.lt / vmin.ge intrinsics, extracting the
+// comparison bitmask (field 1 of the returned struct).
+template <typename MaxLtBf16IntrOp, typename MinGeBf16IntrOp,
+          typename MaxLt32IntrOp, typename MinGe32IntrOp,
+          typename MaxLt16IntrOp, typename MinGe16IntrOp>
+class CmpOpConversionBase : public mlir::ConvertOpToLLVMPattern<aievec::CmpOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::CmpOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::CmpOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto vecTy = cast<VectorType>(op.getLhs().getType());
+    auto elTy = vecTy.getElementType();
+    unsigned elWidth = elTy.getIntOrFloatBitWidth();
+    unsigned lanes = getVectorLaneSize(vecTy);
+    auto pred = op.getPred();
+
+    // Handle bf16 vectors (16 or 32 lanes)
+    if (elWidth == 16 && isa<FloatType>(elTy)) {
+      auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+      auto structTy = LLVM::LLVMStructType::getLiteral(
+          rewriter.getContext(), {v32bf16Ty, rewriter.getI32Type()});
+
+      Value lhs = adaptor.getLhs(), rhs = adaptor.getRhs();
+      if (lanes == 16) {
+        lhs = padVectorWithPoison(rewriter, loc, lhs, 16, 32);
+        rhs = padVectorWithPoison(rewriter, loc, rhs, 16, 32);
+      } else if (lanes != 32) {
+        return failure();
+      }
+
+      Value bitmask;
+      auto castedLhs =
+          forceCastOperandsToSignature(rewriter, loc, {lhs}, {v32bf16Ty});
+      auto castedRhs =
+          forceCastOperandsToSignature(rewriter, loc, {rhs}, {v32bf16Ty});
+
+      if (pred == "slt" || pred == "ult") {
+        auto intrOp = MaxLtBf16IntrOp::create(
+            rewriter, loc, structTy, ValueRange{castedLhs[0], castedRhs[0]});
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sge" || pred == "uge") {
+        auto intrOp = MinGeBf16IntrOp::create(
+            rewriter, loc, structTy, ValueRange{castedLhs[0], castedRhs[0]});
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sgt" || pred == "ugt") {
+        // gt(a,b) = lt(b,a): swap operands
+        auto intrOp = MaxLtBf16IntrOp::create(
+            rewriter, loc, structTy, ValueRange{castedRhs[0], castedLhs[0]});
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sle" || pred == "ule") {
+        // le(a,b) = ge(b,a): swap operands
+        auto intrOp = MinGeBf16IntrOp::create(
+            rewriter, loc, structTy, ValueRange{castedRhs[0], castedLhs[0]});
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "eq") {
+        // eq(a,b) = ge(a,b) AND ge(b,a)
+        auto geAB = MinGeBf16IntrOp::create(
+            rewriter, loc, structTy, ValueRange{castedLhs[0], castedRhs[0]});
+        auto geBA = MinGeBf16IntrOp::create(
+            rewriter, loc, structTy, ValueRange{castedRhs[0], castedLhs[0]});
+        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, geAB, 1);
+        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, geBA, 1);
+        bitmask = LLVM::AndOp::create(rewriter, loc, maskAB, maskBA);
+      } else if (pred == "ne") {
+        // ne(a,b) = lt(a,b) OR lt(b,a)
+        auto ltAB = MaxLtBf16IntrOp::create(
+            rewriter, loc, structTy, ValueRange{castedLhs[0], castedRhs[0]});
+        auto ltBA = MaxLtBf16IntrOp::create(
+            rewriter, loc, structTy, ValueRange{castedRhs[0], castedLhs[0]});
+        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, ltAB, 1);
+        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, ltBA, 1);
+        bitmask = LLVM::OrOp::create(rewriter, loc, maskAB, maskBA);
+      } else {
+        return failure();
+      }
+
+      // Mask off upper bits for 16-lane inputs
+      if (lanes == 16) {
+        auto mask =
+            LLVM::ConstantOp::create(rewriter, loc, rewriter.getI32Type(),
+                                     rewriter.getI32IntegerAttr(0xFFFF));
+        bitmask = LLVM::AndOp::create(rewriter, loc, bitmask, mask);
+      }
+
+      // Cast i32 bitmask to the op's unsigned integer result type
+      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+          op, op.getResult().getType(), bitmask);
+      return success();
+    }
+
+    // Handle i32 vectors
+    if (elWidth == 32 && isa<IntegerType>(elTy) && lanes == 16) {
+      auto v16i32Ty = VectorType::get({16}, rewriter.getI32Type());
+      auto structTy = LLVM::LLVMStructType::getLiteral(
+          rewriter.getContext(), {v16i32Ty, rewriter.getI32Type()});
+      auto cmpCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+      Value bitmask;
+
+      if (pred == "slt" || pred == "ult") {
+        auto intrOp = MaxLt32IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
+                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sge" || pred == "uge") {
+        auto intrOp = MinGe32IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
+                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sgt" || pred == "ugt") {
+        auto intrOp = MaxLt32IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
+                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sle" || pred == "ule") {
+        auto intrOp = MinGe32IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
+                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "eq") {
+        auto geAB = MinGe32IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
+                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
+        auto geBA = MinGe32IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
+                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
+        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, geAB, 1);
+        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, geBA, 1);
+        bitmask = LLVM::AndOp::create(rewriter, loc, maskAB, maskBA);
+      } else if (pred == "ne") {
+        auto ltAB = MaxLt32IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
+                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
+        auto ltBA = MaxLt32IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
+                {v16i32Ty, v16i32Ty, rewriter.getI32Type()}));
+        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, ltAB, 1);
+        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, ltBA, 1);
+        bitmask = LLVM::OrOp::create(rewriter, loc, maskAB, maskBA);
+      } else {
+        return failure();
+      }
+
+      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+          op, op.getResult().getType(), bitmask);
+      return success();
+    }
+
+    // Handle i16 vectors
+    if (elWidth == 16 && isa<IntegerType>(elTy) && lanes == 32) {
+      auto v32i16Ty = VectorType::get({32}, rewriter.getI16Type());
+      auto structTy = LLVM::LLVMStructType::getLiteral(
+          rewriter.getContext(), {v32i16Ty, rewriter.getI32Type()});
+      auto cmpCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI32Type(), rewriter.getI32IntegerAttr(1));
+      Value bitmask;
+
+      if (pred == "slt" || pred == "ult") {
+        auto intrOp = MaxLt16IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
+                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sge" || pred == "uge") {
+        auto intrOp = MinGe16IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
+                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sgt" || pred == "ugt") {
+        auto intrOp = MaxLt16IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
+                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "sle" || pred == "ule") {
+        auto intrOp = MinGe16IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
+                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
+        bitmask = LLVM::ExtractValueOp::create(rewriter, loc, intrOp, 1);
+      } else if (pred == "eq") {
+        auto geAB = MinGe16IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
+                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
+        auto geBA = MinGe16IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
+                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
+        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, geAB, 1);
+        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, geBA, 1);
+        bitmask = LLVM::AndOp::create(rewriter, loc, maskAB, maskBA);
+      } else if (pred == "ne") {
+        auto ltAB = MaxLt16IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), cmpCst},
+                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
+        auto ltBA = MaxLt16IntrOp::create(
+            rewriter, loc, structTy,
+            forceCastOperandsToSignature(
+                rewriter, loc, {adaptor.getRhs(), adaptor.getLhs(), cmpCst},
+                {v32i16Ty, v32i16Ty, rewriter.getI32Type()}));
+        auto maskAB = LLVM::ExtractValueOp::create(rewriter, loc, ltAB, 1);
+        auto maskBA = LLVM::ExtractValueOp::create(rewriter, loc, ltBA, 1);
+        bitmask = LLVM::OrOp::create(rewriter, loc, maskAB, maskBA);
+      } else {
+        return failure();
+      }
+
+      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+          op, op.getResult().getType(), bitmask);
+      return success();
+    }
+
+    return failure();
+  }
+};
+
+using CmpOpConversion =
+    CmpOpConversionBase<xllvm::VectorMaxLtBf16IntrOp,
+                        xllvm::VectorMinGeBf16IntrOp,
+                        xllvm::VectorMaxLt32IntrOp, xllvm::VectorMinGe32IntrOp,
+                        xllvm::VectorMaxLt16IntrOp, xllvm::VectorMinGe16IntrOp>;
+
+using CmpOpAIE2pConversion = CmpOpConversionBase<
+    xllvm::VectorMaxLtBf16AIE2pIntrOp, xllvm::VectorMinGeBf16AIE2pIntrOp,
+    xllvm::VectorMaxLt32AIE2pIntrOp, xllvm::VectorMinGe32AIE2pIntrOp,
+    xllvm::VectorMaxLt16AIE2pIntrOp, xllvm::VectorMinGe16AIE2pIntrOp>;
+
+// ----- SelOp conversion for AIE2/AIE2p -----
+// Implements aievec.sel using vsel16/vsel32 intrinsics.
+// For bf16 vectors, bitcasts to i16, calls vsel16, bitcasts back.
+template <typename Sel16IntrOp, typename Sel32IntrOp>
+class SelOpConversionBase : public mlir::ConvertOpToLLVMPattern<aievec::SelOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::SelOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::SelOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    auto resultType = cast<VectorType>(op.getResult().getType());
+    auto elTy = resultType.getElementType();
+    unsigned elWidth = elTy.getIntOrFloatBitWidth();
+    unsigned lanes = getVectorLaneSize(resultType);
+    auto i32Ty = rewriter.getI32Type();
+
+    // Cast the sel bitmask from unsigned integer to i32
+    Value selMask = adaptor.getSel();
+    if (selMask.getType() != i32Ty)
+      selMask =
+          UnrealizedConversionCastOp::create(rewriter, loc, i32Ty, selMask)
+              .getResult(0);
+
+    // Handle bf16 vectors (16 or 32 lanes) via bitcast to i16
+    if (elWidth == 16 && isa<FloatType>(elTy)) {
+      auto v32i16Ty = VectorType::get({32}, rewriter.getI16Type());
+      auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+
+      Value lhs = adaptor.getLhs(), rhs = adaptor.getRhs();
+      bool needExtract = false;
+
+      if (lanes == 16) {
+        lhs = padVectorWithPoison(rewriter, loc, lhs, 16, 32);
+        rhs = padVectorWithPoison(rewriter, loc, rhs, 16, 32);
+        needExtract = true;
+      } else if (lanes != 32) {
+        return failure();
+      }
+
+      // Bitcast bf16 -> i16
+      auto lhsCast = forceCastValueToType(rewriter, loc, lhs, v32bf16Ty);
+      auto lhsI16 = LLVM::BitcastOp::create(rewriter, loc, v32i16Ty, lhsCast);
+      auto rhsCast = forceCastValueToType(rewriter, loc, rhs, v32bf16Ty);
+      auto rhsI16 = LLVM::BitcastOp::create(rewriter, loc, v32i16Ty, rhsCast);
+
+      auto selResult = Sel16IntrOp::create(
+          rewriter, loc, v32i16Ty,
+          forceCastOperandsToSignature(rewriter, loc, {lhsI16, rhsI16, selMask},
+                                       {v32i16Ty, v32i16Ty, i32Ty}));
+
+      // Bitcast i16 -> bf16
+      Value result =
+          LLVM::BitcastOp::create(rewriter, loc, v32bf16Ty, selResult);
+
+      if (needExtract)
+        result = extractLowerLanes(rewriter, loc, result, 16);
+
+      rewriter.replaceOp(op, result);
+      return success();
+    }
+
+    // Handle i32 vectors (16 lanes)
+    if (elWidth == 32 && isa<IntegerType>(elTy) && lanes == 16) {
+      auto v16i32Ty = VectorType::get({16}, rewriter.getI32Type());
+      auto selResult = Sel32IntrOp::create(
+          rewriter, loc, v16i32Ty,
+          forceCastOperandsToSignature(
+              rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), selMask},
+              {v16i32Ty, v16i32Ty, i32Ty}));
+      rewriter.replaceOp(op, selResult->getResult(0));
+      return success();
+    }
+
+    // Handle i16 vectors (32 lanes)
+    if (elWidth == 16 && isa<IntegerType>(elTy) && lanes == 32) {
+      auto v32i16Ty = VectorType::get({32}, rewriter.getI16Type());
+      auto selResult = Sel16IntrOp::create(
+          rewriter, loc, v32i16Ty,
+          forceCastOperandsToSignature(
+              rewriter, loc, {adaptor.getLhs(), adaptor.getRhs(), selMask},
+              {v32i16Ty, v32i16Ty, i32Ty}));
+      rewriter.replaceOp(op, selResult->getResult(0));
+      return success();
+    }
+
+    return failure();
+  }
+};
+
+using SelOpConversion =
+    SelOpConversionBase<xllvm::VectorSel16IntrOp, xllvm::VectorSel32IntrOp>;
+
+using SelOpAIE2pConversion = SelOpConversionBase<xllvm::VectorSel16AIE2pIntrOp,
+                                                 xllvm::VectorSel32AIE2pIntrOp>;
 
 class BroadcastScalarOpConversion
     : public mlir::ConvertOpToLLVMPattern<aievec::BroadcastScalarOp> {
@@ -3636,8 +4130,38 @@ public:
             /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
             /*sub_mask=*/0)));
 
-    // Insert vmac intrinsic
+    // Pad 16-lane bf16 operands to 32-lane using set+upd intrinsics.
+    // forceCastOperandsToSignature only does bitwise reinterpretation, which
+    // leaves garbage in the upper lanes. The MAC intrinsic requires properly
+    // zero-padded v32bf16 inputs.
     auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+    if (flatLhsTy.getElementType().isBF16() &&
+        flatLhsTy.getNumElements() < 32) {
+      auto zero32 = LLVM::ConstantOp::create(rewriter, loc, i32ty,
+                                             rewriter.getI32IntegerAttr(0));
+      auto zeros_i16 = xllvm::VectorBroadcast16I512IntrOp::create(
+          rewriter, loc, VectorType::get({32}, rewriter.getI16Type()), zero32);
+      auto zeros_bf16 =
+          LLVM::BitcastOp::create(rewriter, loc, v32bf16Ty, zeros_i16);
+      auto zeroVec = xllvm::ExtBF256BF512IntrOp::create(
+          rewriter, loc, VectorType::get({16}, rewriter.getBF16Type()),
+          zeros_bf16, zero32);
+
+      auto idx1 = LLVM::ConstantOp::create(rewriter, loc, i32ty,
+                                           rewriter.getI32IntegerAttr(1));
+
+      auto lhsSet = xllvm::VectorSetBF512BF256IntrOp::create(
+          rewriter, loc, v32bf16Ty, lhs, zero32);
+      lhs = xllvm::UpdBF512BF256IntrOp::create(rewriter, loc, v32bf16Ty, lhsSet,
+                                               zeroVec, idx1);
+
+      auto rhsSet = xllvm::VectorSetBF512BF256IntrOp::create(
+          rewriter, loc, v32bf16Ty, rhs, zero32);
+      rhs = xllvm::UpdBF512BF256IntrOp::create(rewriter, loc, v32bf16Ty, rhsSet,
+                                               zeroVec, idx1);
+    }
+
+    // Insert vmac intrinsic
     auto v8i64Ty = VectorType::get({8}, rewriter.getI64Type());
     auto macIntrOp = xllvm::MacConfBF16IntrOp::create(
         rewriter, loc, v8i64Ty,
@@ -4883,7 +5407,6 @@ void populateAIEVecToLLVMCommonConversionPatterns(
                UnpackOpConversion,
                BroadcastOpConversion,
                BroadcastScalarOpConversion,
-               FMAElemOpConversion,
                MatMulOpConversion,
                ShuffleOpConversion>(converter);
   // clang-format on
@@ -4898,9 +5421,11 @@ void populateAIEVecToLLVMAIE2ConversionPatterns(
   patterns.add<UPSOpAIE2Conversion, SRSOpAIE2Conversion>(converter);
   patterns.add<ShiftOpConversion>(converter);
   patterns.add<MaxOpConversion, MinOpConversion>(converter);
+  patterns.add<CmpOpConversion, SelOpConversion>(converter);
   patterns.add<ExtOpConversion>(converter);
   patterns.add<ExtractElemOpConversion>(converter);
   patterns.add<ConcatOpConversion>(converter);
+  patterns.add<FMAElemOpConversion>(converter);
   patterns.add<FoldAIECastOps>(converter);
   patterns.add<FdivOpConversion>(converter, "aie2");
 }
@@ -4992,10 +5517,12 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   // Patterns specific to AIE2p backend
   patterns.add<AddElemOpAIE2pConversion, SubElemOpAIE2pConversion>(converter);
   patterns.add<MulElemOpAIE2pConversion>(converter);
+  patterns.add<FMAElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
   patterns.add<MatMulOpAIE2pConversion>(converter);
   patterns.add<ShiftOpAIE2pConversion>(converter);
   patterns.add<MaxOpAIE2pConversion, MinOpAIE2pConversion>(converter);
+  patterns.add<CmpOpAIE2pConversion, SelOpAIE2pConversion>(converter);
   patterns.add<ExtOpAIE2pConversion>(converter);
   patterns.add<ExtractElemOpAIE2pConversion>(converter);
   patterns.add<ConcatOpAIE2pConversion>(converter);

@@ -61,6 +61,8 @@
 #include "aie/Targets/AIETargets.h"
 #include "aie/version.h"
 
+#include "aiecc_aiesim.h"
+
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
@@ -163,8 +165,23 @@ static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
                             cl::init(false), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> noAiesim("no-aiesim",
-                              cl::desc("Disable AIE simulation mode (default)"),
+                              cl::desc("Do not generate aiesim Work folder"),
                               cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    compileHost("compile-host",
+                cl::desc("Enable compiling of the host program"),
+                cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    noCompileHost("no-compile-host",
+                  cl::desc("Disable compiling of the host program"),
+                  cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    hostTarget("host-target",
+               cl::desc("Target architecture of the host program"),
+               cl::init("x86_64-linux-gnu"), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> compile("compile",
                              cl::desc("Enable compiling of AIE cores"),
@@ -173,21 +190,6 @@ static cl::opt<bool> compile("compile",
 static cl::opt<bool> noCompile("no-compile",
                                cl::desc("Disable compiling of AIE cores"),
                                cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> compileHost(
-    "compile-host",
-    cl::desc("Enable host compilation (not supported in C++ aiecc)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> noCompileHost(
-    "no-compile-host",
-    cl::desc("Disable host compilation (host compilation not supported)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    hostTarget("host-target",
-               cl::desc("Host target architecture (deprecated, ignored)"),
-               cl::init(""), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> link("link", cl::desc("Enable linking of AIE code"),
                           cl::init(true), cl::cat(aieCompilerOptions));
@@ -3755,23 +3757,6 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
 }
 
 //===----------------------------------------------------------------------===//
-// AIE Simulation and Host Compilation (delegated to aiecc_aiesim.cpp)
-//===----------------------------------------------------------------------===//
-
-/// Create AiesimConfig from current command-line options
-static xilinx::aiecc::AiesimConfig createAiesimConfig() {
-  xilinx::aiecc::AiesimConfig config;
-  config.enabled = aiesim && !noAiesim;
-  config.compileHost = compileHost && !noCompileHost;
-  config.verbose = verbose;
-  config.dryRun = dryRun;
-  config.hostTarget = hostTarget.getValue();
-  config.aietoolsPath = getAietoolsDir();
-  config.installPath = getInstallPath();
-  return config;
-}
-
-//===----------------------------------------------------------------------===//
 // CDO/PDI/xclbin Generation
 //===----------------------------------------------------------------------===//
 
@@ -4059,6 +4044,23 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// AIE Simulation and Host Compilation (delegated to aiecc_aiesim.cpp)
+//===----------------------------------------------------------------------===//
+
+/// Create AiesimConfig from current command-line options
+static xilinx::aiecc::AiesimConfig createAiesimConfig() {
+  xilinx::aiecc::AiesimConfig config;
+  config.enabled = aiesim && !noAiesim;
+  config.compileHost = compileHost && !noCompileHost;
+  config.verbose = verbose;
+  config.dryRun = dryRun;
+  config.hostTarget = hostTarget.getValue();
+  config.aietoolsPath = getAietoolsDir();
+  config.installPath = getInstallPath();
+  return config;
 }
 
 //===----------------------------------------------------------------------===//

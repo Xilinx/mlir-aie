@@ -286,6 +286,28 @@ extractMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
   return {};
 }
 
+// Given the LHS and RHS of an `arith::AddFOp`, if one of them is defined by an
+// `arith::MulFOp`, return a tuple with the `lhs`, `rhs`, and `acc` of the FMA
+// operation that can replace them.
+static std::optional<std::tuple<Value, Value, Value>>
+extractFMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
+  auto *lhsDefOp = addLhs.getDefiningOp();
+  auto *rhsDefOp = addRhs.getDefiningOp();
+  arith::MulFOp mulOp = nullptr;
+  Value acc;
+  if (lhsDefOp) {
+    mulOp = dyn_cast<arith::MulFOp>(lhsDefOp);
+    acc = addRhs;
+  }
+  if (!mulOp && rhsDefOp) {
+    mulOp = dyn_cast<arith::MulFOp>(rhsDefOp);
+    acc = addLhs;
+  }
+  if (mulOp)
+    return std::make_tuple(mulOp.getLhs(), mulOp.getRhs(), acc);
+  return {};
+}
+
 // Convert a input value to a target vector type. This function can insert
 // multiple aievec ops depending on the combination of input and output vector
 // types.
@@ -639,6 +661,19 @@ padV16ToV32WithInfinity(ConversionPatternRewriter &rewriter, Location loc,
                                ValueRange{inputVec, infUpperHalf.getResult()});
 
   return {paddedVec, 32};
+}
+
+// Helper to pad a v16bf16 vector to v32bf16 by concatenating with zeros.
+// Used by elementwise min/max/cmp/sel patterns for 256-bit bf16 support.
+static Value padV16ToV32WithZeros(ConversionPatternRewriter &rewriter,
+                                  Location loc, Value inputVec,
+                                  Type scalarType) {
+  VectorType v32Type = createVectorType(32, scalarType);
+  VectorType v16Type = createVectorType(16, scalarType);
+  auto zeroAttr = rewriter.getZeroAttr(v16Type);
+  auto zeroVec = arith::ConstantOp::create(rewriter, loc, zeroAttr);
+  return aievec::ConcatOp::create(rewriter, loc, v32Type,
+                                  ValueRange{inputVec, zeroVec.getResult()});
 }
 
 static func::FuncOp getOrInsertFuncDecl(ConversionPatternRewriter &rewriter,
@@ -1046,6 +1081,96 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
   unsigned shiftParam;
 };
 
+// This pattern fuses `arith.mulf` + `arith.addf` on bf16 vectors into
+// `aievec.mac_elem` (float FMA). This pattern works for AIE2.
+struct ConvertMulAddFToAIEVecFMAElemOpPattern
+    : OpConversionPattern<arith::AddFOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  ConvertMulAddFToAIEVecFMAElemOpPattern(MLIRContext *context,
+                                         unsigned shiftParam = 0)
+      : OpConversionPattern(context), shiftParam(shiftParam) {}
+
+  LogicalResult
+  matchAndRewrite(arith::AddFOp addOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Verify it's a vector operation
+    auto resultType = dyn_cast<VectorType>(addOp.getType());
+    if (!resultType)
+      return failure();
+
+    // Only handle bf16 element type
+    auto elemType = resultType.getElementType();
+    if (!elemType.isBF16())
+      return failure();
+
+    // Verify it can be replaced by an FMA
+    auto res =
+        extractFMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
+    if (!res)
+      return failure();
+    auto [lhs, rhs, acc] = *res;
+
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    // Handle vector<32xbf16> by splitting into two vector<16xbf16> FMAs
+    if (laneSize == 32) {
+      VectorType halfType = createVectorType(16, elemType);
+      unsigned localShiftParam = shiftParam;
+
+      splitWideVectorOp<arith::AddFOp>(
+          addOp, {lhs, rhs, acc}, halfType, resultType, rewriter,
+          [localShiftParam](ArrayRef<std::pair<Value, Value>> halfInputs,
+                            Location loc, ConversionPatternRewriter &rewriter) {
+            auto [lhsLow, lhsHigh] = halfInputs[0];
+            auto [rhsLow, rhsHigh] = halfInputs[1];
+            auto [accLow, accHigh] = halfInputs[2];
+
+            auto processHalf = [&](Value lhsH, Value rhsH,
+                                   Value accH) -> Value {
+              auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
+              auto upsOp = aievec::UPSOp::create(rewriter, loc, f32AccType,
+                                                 accH, localShiftParam);
+              auto fmaElemOp = aievec::FMAElemOp::create(
+                  rewriter, loc, f32AccType, lhsH, rhsH, upsOp.getResult(),
+                  /*fmsub=*/false);
+              auto shiftParamOp = arith::ConstantOp::create(
+                  rewriter, loc, rewriter.getI32IntegerAttr(localShiftParam));
+              auto srsOp = aievec::SRSOp::create(
+                  rewriter, loc, cast<VectorType>(lhsH.getType()),
+                  fmaElemOp.getResult(), shiftParamOp.getResult());
+              return srsOp.getResult();
+            };
+
+            Value lowResult = processHalf(lhsLow, rhsLow, accLow);
+            Value highResult = processHalf(lhsHigh, rhsHigh, accHigh);
+            return std::make_pair(lowResult, highResult);
+          });
+      return success();
+    }
+
+    // Handle vector<16xbf16>
+    if (laneSize != 16)
+      return failure();
+
+    auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
+    auto upsOp = aievec::UPSOp::create(rewriter, addOp.getLoc(), f32AccType,
+                                       acc, shiftParam);
+    auto fmaElemOp = aievec::FMAElemOp::create(
+        rewriter, addOp.getLoc(), f32AccType, lhs, rhs, upsOp.getResult(),
+        /*fmsub=*/false);
+
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, addOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        addOp, resultType, fmaElemOp.getResult(), shiftParamOp.getResult());
+
+    return success();
+  }
+
+  unsigned shiftParam;
+};
+
 // This pattern replaces `arith.mulf` on vectors with
 // `aievec.mul_elem`. This pattern works for AIE2.
 struct ConvertMulFToAIEVecMulElemOpPattern
@@ -1064,7 +1189,9 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     if (!resultType)
       return failure();
 
-    // FIXME: Verify it is not a part of FMA
+    // Skip standalone mul conversion when this MulFOp feeds into an AddFOp as
+    // its sole user. ConvertMulAddFToAIEVecFMAElemOpPattern will fuse the
+    // multiply and add into a single aievec.mac_elem.
     auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
     if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
       return failure();
@@ -1854,8 +1981,24 @@ struct LowerVectorMinMaxOpToAIEVecMinMaxOp : OpConversionPattern<SrcOpTy> {
     unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    if (!elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512)
+    unsigned totalBits = laneSize * resultElWidth;
+    if (!elWidthSet.count(resultElWidth) ||
+        (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16)))
       return failure();
+
+    if (totalBits == 256 && resultElWidth == 16) {
+      // Pad v16bf16 to v32bf16, apply max/min, extract lower half
+      Location loc = srcOp.getLoc();
+      VectorType wideType = createVectorType(32, scalarType);
+      Value lhsPad =
+          padV16ToV32WithZeros(rewriter, loc, adaptor.getLhs(), scalarType);
+      Value rhsPad =
+          padV16ToV32WithZeros(rewriter, loc, adaptor.getRhs(), scalarType);
+      auto wideOp = DstOpTy::create(rewriter, loc, wideType, lhsPad, rhsPad);
+      rewriter.replaceOpWithNewOp<aievec::ExtOp>(srcOp, resultType,
+                                                 wideOp.getResult(), 0);
+      return success();
+    }
 
     rewriter.replaceOpWithNewOp<DstOpTy>(srcOp, srcOp.getType(),
                                          adaptor.getLhs(), adaptor.getRhs());
@@ -1946,17 +2089,27 @@ struct LowerVectorCmpOpToAIEVecCmpOp : OpConversionPattern<SrcOpTy> {
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(lhsType);
 
-    if (!elWidthSet.count(elWidth) || laneSize * elWidth != 512)
+    unsigned totalBits = laneSize * elWidth;
+    if (!elWidthSet.count(elWidth) ||
+        (totalBits != 512 && !(totalBits == 256 && elWidth == 16)))
       return failure();
-
-    // Unsigned int and unsigned long long are acceptable type.
-    Type type =
-        mlir::IntegerType::get(srcOp.getContext(), laneSize <= 32 ? 32 : 64,
-                               mlir::IntegerType::Unsigned);
 
     Location loc = srcOp.getLoc();
     Value lhs = srcOp.getLhs();
     Value rhs = srcOp.getRhs();
+    unsigned effectiveLaneSize = laneSize;
+
+    if (totalBits == 256 && elWidth == 16) {
+      lhs = padV16ToV32WithZeros(rewriter, loc, lhs, scalarType);
+      rhs = padV16ToV32WithZeros(rewriter, loc, rhs, scalarType);
+      effectiveLaneSize = 32;
+    }
+
+    // Unsigned int and unsigned long long are acceptable type.
+    Type type = mlir::IntegerType::get(srcOp.getContext(),
+                                       effectiveLaneSize <= 32 ? 32 : 64,
+                                       mlir::IntegerType::Unsigned);
+
     CmpTy pred = srcOp.getPredicate();
 
     arith::CmpIPredicate ipred = convertToIntegerPredicate(pred);
@@ -2001,8 +2154,39 @@ struct LowerVectorSelectOpToAIEVecSelOp : OpConversionPattern<arith::SelectOp> {
     unsigned resultElWidth = scalarType.getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
 
-    if (!elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512)
+    unsigned totalBits = laneSize * resultElWidth;
+    if (!elWidthSet.count(resultElWidth) ||
+        (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16)))
       return failure();
+
+    if (totalBits == 256 && resultElWidth == 16) {
+      // Pad trueValue and falseValue to v32, do sel, extract lower half
+      Location loc = srcOp.getLoc();
+      VectorType wideType = createVectorType(32, scalarType);
+
+      // aievec.sel: bit=0 selects lhs, bit=1 selects rhs.
+      // aievec.cmp: bit=1 where predicate is true.
+      // arith.select: condition=1 returns true_value.
+      // So false_value goes to lhs (bit=0) and true_value goes to rhs (bit=1).
+      Value falsePad = padV16ToV32WithZeros(rewriter, loc,
+                                            srcOp.getFalseValue(), scalarType);
+      Value truePad =
+          padV16ToV32WithZeros(rewriter, loc, srcOp.getTrueValue(), scalarType);
+
+      // The condition bitmask from cmp was produced at 32 lanes (since cmp
+      // was also padded). Use 32-lane integer type for the cast.
+      Type type = mlir::IntegerType::get(srcOp.getContext(), 32,
+                                         mlir::IntegerType::Unsigned);
+      auto convertOp = UnrealizedConversionCastOp::create(
+          rewriter, loc, type, adaptor.getCondition());
+
+      auto wideSelOp = aievec::SelOp::create(rewriter, loc, wideType, falsePad,
+                                             truePad, convertOp.getResult(0));
+
+      rewriter.replaceOpWithNewOp<aievec::ExtOp>(srcOp, resultType,
+                                                 wideSelOp.getResult(), 0);
+      return success();
+    }
 
     Type type =
         mlir::IntegerType::get(srcOp.getContext(), laneSize <= 32 ? 32 : 64,
@@ -2011,9 +2195,13 @@ struct LowerVectorSelectOpToAIEVecSelOp : OpConversionPattern<arith::SelectOp> {
     auto convertOp = UnrealizedConversionCastOp::create(
         rewriter, srcOp.getLoc(), type, adaptor.getCondition());
 
+    // aievec.sel: bit=0 selects lhs, bit=1 selects rhs.
+    // aievec.cmp: bit=1 where predicate is true.
+    // arith.select: condition=1 returns true_value.
+    // So false_value goes to lhs (bit=0) and true_value goes to rhs (bit=1).
     rewriter.replaceOpWithNewOp<aievec::SelOp>(
-        srcOp, srcOp.getResult().getType(), srcOp.getTrueValue(),
-        srcOp.getFalseValue(), convertOp.getResult(0));
+        srcOp, srcOp.getResult().getType(), srcOp.getFalseValue(),
+        srcOp.getTrueValue(), convertOp.getResult(0));
 
     return success();
   }
@@ -4259,6 +4447,7 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       FoldVectorExtractAndSplatToAIEBroadcast,
       ConvertSplatToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
+      ConvertMulAddFToAIEVecFMAElemOpPattern,
       ConvertVectorFMAOpToAIEVecFMAElemOpPattern,
       LowerVectorExtractStridedSliceOpAIE2Pattern,
       LowerVectorTransposeOpToAIEVecShuffleOpPattern
@@ -5115,8 +5304,10 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
 
-    return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::MaximumFOp>([=](arith::MaximumFOp op) {
@@ -5126,8 +5317,10 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
 
-    return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::MaxNumFOp>([=](arith::MaxNumFOp op) {
@@ -5137,8 +5330,10 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
 
-    return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::MinNumFOp>([=](arith::MinNumFOp op) {
@@ -5148,8 +5343,10 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
 
-    return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::CmpIOp>([=](arith::CmpIOp op) {
@@ -5159,8 +5356,10 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     auto lhsElWidth = lhsType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(lhsType);
+    unsigned totalBits = laneSize * lhsElWidth;
 
-    return !elWidthSet.count(lhsElWidth) || laneSize * lhsElWidth != 512;
+    return !elWidthSet.count(lhsElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && lhsElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::CmpFOp>([=](arith::CmpFOp op) {
@@ -5170,8 +5369,10 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     auto lhsElWidth = lhsType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(lhsType);
+    unsigned totalBits = laneSize * lhsElWidth;
 
-    return !elWidthSet.count(lhsElWidth) || laneSize * lhsElWidth != 512;
+    return !elWidthSet.count(lhsElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && lhsElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<arith::SelectOp>([=](arith::SelectOp op) {
@@ -5181,8 +5382,10 @@ static void configureAIEVecV2Legalizations(ConversionTarget &target,
 
     auto resultElWidth = resultType.getElementType().getIntOrFloatBitWidth();
     unsigned laneSize = getVectorLaneSize(resultType);
+    unsigned totalBits = laneSize * resultElWidth;
 
-    return !elWidthSet.count(resultElWidth) || laneSize * resultElWidth != 512;
+    return !elWidthSet.count(resultElWidth) ||
+           (totalBits != 512 && !(totalBits == 256 && resultElWidth == 16));
   });
 
   target.addDynamicallyLegalOp<vector::ReductionOp>(
