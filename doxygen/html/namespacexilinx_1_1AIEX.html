@@ -88,6 +88,10 @@ Functions</h2></td></tr>
 <tr class="separator:aa93e4cbc1c249543475c88a74738cea0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3370ff7ebeeefcfaeeadee0834dbee51" id="r_a3370ff7ebeeefcfaeeadee0834dbee51"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a3370ff7ebeeefcfaeeadee0834dbee51">createAIEDmaToNpuPass</a> ()</td></tr>
 <tr class="separator:a3370ff7ebeeefcfaeeadee0834dbee51"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aca7cbf328240d5f2bd5b1ce9f657b5ae" id="r_aca7cbf328240d5f2bd5b1ce9f657b5ae"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#aca7cbf328240d5f2bd5b1ce9f657b5ae">createAIENpuToCertPass</a> ()</td></tr>
+<tr class="separator:aca7cbf328240d5f2bd5b1ce9f657b5ae"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:adbe6049a408df92075cf2fced15f1dec" id="r_adbe6049a408df92075cf2fced15f1dec"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#adbe6049a408df92075cf2fced15f1dec">createAIECertPagesPass</a> ()</td></tr>
+<tr class="separator:adbe6049a408df92075cf2fced15f1dec"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a73e51897bc846e1c548d5a93fb83a0cb" id="r_a73e51897bc846e1c548d5a93fb83a0cb"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; mlir::ModuleOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a73e51897bc846e1c548d5a93fb83a0cb">createAIEXToStandardPass</a> ()</td></tr>
 <tr class="separator:a73e51897bc846e1c548d5a93fb83a0cb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9359e3adedf5487899641e7abece3aff" id="r_a9359e3adedf5487899641e7abece3aff"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::OperationPass&lt; AIE::DeviceOp &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a9359e3adedf5487899641e7abece3aff">createAIEMaterializeBDChainsPass</a> ()</td></tr>
@@ -151,6 +155,25 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p class="definition">Definition at line <a class="el" href="AIECreateBroadcastPacket_8cpp_source.html#l00102">102</a> of file <a class="el" href="AIECreateBroadcastPacket_8cpp_source.html">AIECreateBroadcastPacket.cpp</a>.</p>
+
+</div>
+</div>
+<a id="adbe6049a408df92075cf2fced15f1dec" name="adbe6049a408df92075cf2fced15f1dec"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#adbe6049a408df92075cf2fced15f1dec">&#9670;&#160;</a></span>createAIECertPagesPass()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; AIE::DeviceOp &gt; &gt; xilinx::AIEX::createAIECertPagesPass </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIENpuToCert_8cpp_source.html#l00598">598</a> of file <a class="el" href="AIENpuToCert_8cpp_source.html">AIENpuToCert.cpp</a>.</p>
 
 </div>
 </div>
@@ -417,6 +440,25 @@ Functions</h2></td></tr>
 </div><div class="memdoc">
 
 <p class="definition">Definition at line <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html#l00625">625</a> of file <a class="el" href="AIEMaterializeRuntimeSequences_8cpp_source.html">AIEMaterializeRuntimeSequences.cpp</a>.</p>
+
+</div>
+</div>
+<a id="aca7cbf328240d5f2bd5b1ce9f657b5ae" name="aca7cbf328240d5f2bd5b1ce9f657b5ae"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aca7cbf328240d5f2bd5b1ce9f657b5ae">&#9670;&#160;</a></span>createAIENpuToCertPass()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">std::unique_ptr&lt; OperationPass&lt; AIE::DeviceOp &gt; &gt; xilinx::AIEX::createAIENpuToCertPass </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p class="definition">Definition at line <a class="el" href="AIENpuToCert_8cpp_source.html#l00594">594</a> of file <a class="el" href="AIENpuToCert_8cpp_source.html">AIENpuToCert.cpp</a>.</p>
 
 </div>
 </div>
@@ -703,7 +745,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Feb 25 2026 23:17:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Feb 26 2026 02:13:07 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

@@ -121,6 +121,15 @@ Inlines calls to other runtime sequences using `aiex.run` into the calling runti
 
 This pass requires ObjectFIFOs to be lowered first; apply the ObjectFIFO stateful transform before applying this pass.
 
+### `-aie-npu-to-cert`
+
+_Transform aiex.npu operations to aiex.cert operations_
+
+This pass transforms low level aiex.npu operations contained in
+aie.runtime_sequence operations into aiex.cert operations enclosed in
+aiex.cert.job operations. The write32, maskwrite32, blockwrite and sync
+operations are supported.
+
 ### `-aie-substitute-shim-dma-allocations`
 
 _Replace symbolic references to `aie.shim_dma_allocation` ops with their `(tile, direction, channel)` triple_
@@ -142,3 +151,11 @@ _Lower AIEX operations_
 
 AIEX Npu Ops are removed.
 
+
+### `-cert-legalize-pages`
+
+_Split cert jobs to fit into 8k pages_
+
+This pass splits cert jobs into smaller jobs that fit into 8k pages.
+It is used to ensure that the generated code does not exceed the page size
+limit of the aiebu tools and cert firmware.
