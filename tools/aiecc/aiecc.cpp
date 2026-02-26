@@ -784,18 +784,20 @@ static std::string discoverAietoolsDir() {
   return "";
 }
 
-// Cached aietools install directory
-static std::optional<std::string> cachedAietoolsDir;
+// Cached aietools install directory (thread-safe via std::call_once)
+static std::string cachedAietoolsDir;
+static std::once_flag aietoolsDirFlag;
 
 static StringRef getAietoolsDir() {
-  if (!cachedAietoolsDir.has_value()) {
+  std::call_once(aietoolsDirFlag, [] {
     cachedAietoolsDir = discoverAietoolsDir();
-    if (verbose && !cachedAietoolsDir->empty()) {
-      llvm::outs() << "Discovered aietools installation: " << *cachedAietoolsDir
+    if (verbose && !cachedAietoolsDir.empty()) {
+      std::lock_guard<std::mutex> lock(outputMutex);
+      llvm::outs() << "Discovered aietools installation: " << cachedAietoolsDir
                    << "\n";
     }
-  }
-  return *cachedAietoolsDir;
+  });
+  return cachedAietoolsDir;
 }
 
 static StringRef getPeanoInstallDir() {
