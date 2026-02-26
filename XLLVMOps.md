@@ -958,6 +958,42 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `xllvm.intr.aie2.vsel16` (::xilinx::xllvm::VectorSel16IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 16-bit signless integer values of length 32 |
+| `rhs` | vector of 16-bit signless integer values of length 32 |
+| `sel` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2.vsel32` (::xilinx::xllvm::VectorSel32IntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 32-bit signless integer values of length 16 |
+| `rhs` | vector of 32-bit signless integer values of length 16 |
+| `sel` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2.vshift.bf512.bf512` (::xilinx::xllvm::VectorShiftBF512BF512IntrOp)
 
 #### Operands:
@@ -1836,6 +1872,42 @@ Effects: `MemoryEffects::Effect{}`
 | :-----: | ----------- |
 | `lhs` | vector of bfloat16 type values of length 32 |
 | `rhs` | vector of bfloat16 type values of length 32 |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.vsel16` (::xilinx::xllvm::VectorSel16AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 16-bit signless integer values of length 32 |
+| `rhs` | vector of 16-bit signless integer values of length 32 |
+| `sel` | 32-bit signless integer |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
+### `xllvm.intr.aie2p.vsel32` (::xilinx::xllvm::VectorSel32AIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `lhs` | vector of 32-bit signless integer values of length 16 |
+| `rhs` | vector of 32-bit signless integer values of length 16 |
+| `sel` | 32-bit signless integer |
 
 #### Results:
 

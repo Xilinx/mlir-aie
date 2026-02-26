@@ -53,6 +53,7 @@ $(function() {
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#namespaces">Namespaces</a> &#124;
+<a href="#typedef-members">Typedefs</a> &#124;
 <a href="#enum-members">Enumerations</a> &#124;
 <a href="#func-members">Functions</a>  </div>
   <div class="headertitle"><div class="title">AIEVecToLLVM.cpp File Reference</div></div>
@@ -271,6 +272,10 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1aievec_1_1MinOpAIE2pConversion.html">xilinx::aievec::MinOpAIE2pConversion</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1aievec_1_1CmpOpConversionBase.html">xilinx::aievec::CmpOpConversionBase&lt; MaxLtBf16IntrOp, MinGeBf16IntrOp, MaxLt32IntrOp, MinGe32IntrOp, MaxLt16IntrOp, MinGe16IntrOp &gt;</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1aievec_1_1SelOpConversionBase.html">xilinx::aievec::SelOpConversionBase&lt; Sel16IntrOp, Sel32IntrOp &gt;</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1aievec_1_1BroadcastScalarOpConversion.html">xilinx::aievec::BroadcastScalarOpConversion</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1aievec_1_1BroadcastScalarOpAIE2pConversion.html">xilinx::aievec::BroadcastScalarOpAIE2pConversion</a></td></tr>
@@ -315,6 +320,17 @@ Namespaces</h2></td></tr>
 <tr class="memitem:namespacexilinx_1_1aievec" id="r_namespacexilinx_1_1aievec"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html">xilinx::aievec</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="typedef-members" name="typedef-members"></a>
+Typedefs</h2></td></tr>
+<tr class="memitem:a18cd1442e9f6d4731b48794a858f42eb" id="r_a18cd1442e9f6d4731b48794a858f42eb"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a18cd1442e9f6d4731b48794a858f42eb">xilinx::aievec::CmpOpConversion</a> = <a class="el" href="classxilinx_1_1aievec_1_1CmpOpConversionBase.html">CmpOpConversionBase</a>&lt; xllvm::VectorMaxLtBf16IntrOp, xllvm::VectorMinGeBf16IntrOp, xllvm::VectorMaxLt32IntrOp, xllvm::VectorMinGe32IntrOp, xllvm::VectorMaxLt16IntrOp, xllvm::VectorMinGe16IntrOp &gt;</td></tr>
+<tr class="separator:a18cd1442e9f6d4731b48794a858f42eb"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac785b160f7a0db9cc3e114a2a9d4ce60" id="r_ac785b160f7a0db9cc3e114a2a9d4ce60"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#ac785b160f7a0db9cc3e114a2a9d4ce60">xilinx::aievec::CmpOpAIE2pConversion</a> = <a class="el" href="classxilinx_1_1aievec_1_1CmpOpConversionBase.html">CmpOpConversionBase</a>&lt; xllvm::VectorMaxLtBf16AIE2pIntrOp, xllvm::VectorMinGeBf16AIE2pIntrOp, xllvm::VectorMaxLt32AIE2pIntrOp, xllvm::VectorMinGe32AIE2pIntrOp, xllvm::VectorMaxLt16AIE2pIntrOp, xllvm::VectorMinGe16AIE2pIntrOp &gt;</td></tr>
+<tr class="separator:ac785b160f7a0db9cc3e114a2a9d4ce60"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a51eebe2bd5b41cf26fa08362fc41b404" id="r_a51eebe2bd5b41cf26fa08362fc41b404"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a51eebe2bd5b41cf26fa08362fc41b404">xilinx::aievec::SelOpConversion</a> = <a class="el" href="classxilinx_1_1aievec_1_1SelOpConversionBase.html">SelOpConversionBase</a>&lt; xllvm::VectorSel16IntrOp, xllvm::VectorSel32IntrOp &gt;</td></tr>
+<tr class="separator:a51eebe2bd5b41cf26fa08362fc41b404"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a48834d306861bc368be64f6a1e25d45e" id="r_a48834d306861bc368be64f6a1e25d45e"><td class="memItemLeft" align="right" valign="top">using&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a48834d306861bc368be64f6a1e25d45e">xilinx::aievec::SelOpAIE2pConversion</a> = <a class="el" href="classxilinx_1_1aievec_1_1SelOpConversionBase.html">SelOpConversionBase</a>&lt; xllvm::VectorSel16AIE2pIntrOp, xllvm::VectorSel32AIE2pIntrOp &gt;</td></tr>
+<tr class="separator:a48834d306861bc368be64f6a1e25d45e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="enum-members" name="enum-members"></a>
 Enumerations</h2></td></tr>
 <tr class="memitem:a99d3cb72f0764f395feb55a379e792c9" id="r_a99d3cb72f0764f395feb55a379e792c9"><td class="memItemLeft" align="right" valign="top">enum class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9">xilinx::aievec::AIEArch</a> { <a class="el" href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5">xilinx::aievec::AIE2</a>
@@ -348,7 +364,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Feb 26 2026 02:13:06 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Feb 26 2026 05:21:50 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
