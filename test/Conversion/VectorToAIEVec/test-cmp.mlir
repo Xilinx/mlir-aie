@@ -99,6 +99,20 @@ func.func @veccmp_bf16(%arg0: vector<32xbf16>, %arg1: vector<32xbf16>) -> vector
   return %0 : vector<32xi1>
 }
 
+// CHECK-LABEL:func @veccmp_bf16_v16
+// CHECK-SAME: %[[LHS:.*]]: vector<16xbf16>,
+// CHECK-SAME: %[[RHS:.*]]: vector<16xbf16>)
+func.func @veccmp_bf16_v16(%arg0: vector<16xbf16>, %arg1: vector<16xbf16>) -> vector<16xi1> {
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant dense<0.000000e+00> : vector<16xbf16>
+  // CHECK-DAG: %[[LPAD:.*]] = aievec.concat %[[LHS]], %[[ZERO]] : vector<16xbf16>, vector<32xbf16>
+  // CHECK-DAG: %[[RPAD:.*]] = aievec.concat %[[RHS]], %[[ZERO]] : vector<16xbf16>, vector<32xbf16>
+  // CHECK: %[[CMP:.*]] = aievec.cmp %[[LPAD]], %[[RPAD]] {pred = "sge"} : vector<32xbf16>, vector<32xbf16>, ui32
+  // CHECK: %[[RES:.*]] = builtin.unrealized_conversion_cast %[[CMP]] : ui32 to vector<16xi1>
+  %0 = arith.cmpf oge, %arg0, %arg1 : vector<16xbf16>
+  // CHECK: return %[[RES]] : vector<16xi1>
+  return %0 : vector<16xi1>
+}
+
 // CHECK-LABEL:func @veccmp_f32
 // CHECK-SAME: %[[LHS:.*]]: vector<16xf32>,
 // CHECK-SAME: %[[RHS:.*]]: vector<16xf32>)
