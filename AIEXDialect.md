@@ -1809,6 +1809,19 @@ _AIE Device_
 | npu2_6col | `14` | npu2_6col |
 | npu2_7col | `15` | npu2_7col |
 
+### AIETileType
+
+_Type of AIE Tile_
+
+#### Cases:
+
+| Symbol | Value | String |
+| :----: | :---: | ------ |
+| CoreTile | `0` | CoreTile |
+| MemTile | `1` | MemTile |
+| ShimNOCTile | `2` | ShimNOCTile |
+| ShimPLTile | `3` | ShimPLTile |
+
 ### CascadeDir
 
 _Directions for cascade_

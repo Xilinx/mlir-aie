@@ -141,7 +141,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>    <span class="comment">// IR mutation: assign locks to all unassigned lock ops.</span></div>
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> [tileOp, locks] : tileToLocks) {</div>
 <div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>      <span class="keyword">const</span> <span class="keyword">auto</span> locksPerTile =</div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>          <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(tileOp).<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8c4ec93f7c39f76e6dbc79a9d952ee41">getNumLocks</a>(tileOp.getCol(), tileOp.getRow());</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>          <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a98d14c817daebc58ad822d608bc73313">getTargetModel</a>(tileOp).<a class="code hl_function" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a3795e8f194a25756f164e4d7dccbab7f">getNumLocks</a>(tileOp.getCol(), tileOp.getRow());</div>
 <div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>      uint32_t nextID = 0;</div>
 <div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> lockOp : locks.unassigned) {</div>
 <div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>        <span class="keywordflow">while</span> (nextID &lt; locksPerTile &amp;&amp;</div>
@@ -172,7 +172,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIEPasses_8h_html"><div class="ttname"><a href="AIEPasses_8h.html">AIEPasses.h</a></div></div>
 <div class="ttc" id="aclassAIEAssignLockIDsBase_html"><div class="ttname"><a href="classAIEAssignLockIDsBase.html">AIEAssignLockIDsBase</a></div></div>
-<div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_a8c4ec93f7c39f76e6dbc79a9d952ee41"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#a8c4ec93f7c39f76e6dbc79a9d952ee41">xilinx::AIE::AIETargetModel::getNumLocks</a></div><div class="ttdeci">virtual uint32_t getNumLocks(int col, int row) const =0</div><div class="ttdoc">Return the number of lock objects.</div></div>
+<div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html_a3795e8f194a25756f164e4d7dccbab7f"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html#a3795e8f194a25756f164e4d7dccbab7f">xilinx::AIE::AIETargetModel::getNumLocks</a></div><div class="ttdeci">virtual uint32_t getNumLocks(AIETileType tileType) const =0</div><div class="ttdoc">Return the number of lock objects for a given tile type.</div></div>
 <div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00018">AIEVecToLLVM.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html"><div class="ttname"><a href="namespacexilinx_1_1AIE.html">xilinx::AIE</a></div><div class="ttdoc">Include the generated interface declarations.</div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a8755a0005b3d9d2ffd10b3a2892c4fda"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a8755a0005b3d9d2ffd10b3a2892c4fda">xilinx::AIE::createAIEAssignLockIDsPass</a></div><div class="ttdeci">std::unique_ptr&lt; mlir::OperationPass&lt; DeviceOp &gt; &gt; createAIEAssignLockIDsPass()</div><div class="ttdef"><b>Definition</b> <a href="AIEAssignLockIDs_8cpp_source.html#l00101">AIEAssignLockIDs.cpp:101</a></div></div>
@@ -184,7 +184,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Thu Feb 26 2026 19:49:21 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Thu Feb 26 2026 22:28:22 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
