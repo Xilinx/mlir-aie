@@ -1,7 +1,6 @@
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.dialects.func import func
@@ -53,7 +52,7 @@ def custom_loop_type(loop_dtype):
     my_program = Program(NPU2(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 

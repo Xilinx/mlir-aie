@@ -4,7 +4,6 @@
 # RUN: %python %s | FileCheck %s
 
 from aie.iron import Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1
 
 # CHECK: {stack_size = 2048 : i32}
@@ -17,7 +16,7 @@ with rt.sequence():
 
 my_program = Program(NPU1(), rt)
 
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 print(module)
 

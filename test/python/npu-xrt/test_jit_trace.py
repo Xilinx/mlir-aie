@@ -18,7 +18,6 @@ from aie.utils.jit import jit
 from aie.utils import tensor
 from aie.utils.trace import TraceConfig, parse_trace
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
@@ -55,7 +54,7 @@ def design(a_in, c_out, trace_config=None):
         rt.fill(of_in.prod(), a)
         rt.start(worker)
         rt.drain(of_out.cons(), c, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @pytest.mark.parametrize("trace_size", [8192])

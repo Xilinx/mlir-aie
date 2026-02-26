@@ -4,15 +4,15 @@
 # RUN: %python %s | FileCheck %s
 import numpy as np
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, Buffer
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2Col1
 
 
 # CHECK:  module {
 # CHECK:    aie.device(npu2_1col) {
-# CHECK:      %tile_0_2 = aie.tile(0, 2)
-# CHECK:      %uninit_local_buf = aie.buffer(%tile_0_2) {sym_name = "uninit_local_buf"} : memref<4096xui8>
-# CHECK:      %init_local_buf = aie.buffer(%tile_0_2) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
+# CHECK:      %[[WORKER:.*]] = aie.logical_tile<CoreTile>(0, 2)
+# CHECK:      %uninit_local_buf = aie.buffer(%[[WORKER]]) {sym_name = "uninit_local_buf"} : memref<4096xui8>
+# CHECK:      %init_local_buf = aie.buffer(%[[WORKER]]) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
+# CHECK:      aie.core(%[[WORKER]])
 def passthrough_local_buff():
     in1_size = 4096
     in1_dtype = np.uint8
@@ -66,7 +66,7 @@ def passthrough_local_buff():
         rt.drain(of_out.cons(), b_out, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU2Col1(), rt).resolve_program(SequentialPlacer())
+    return Program(NPU2Col1(), rt).resolve_program()
 
 
 print(passthrough_local_buff())

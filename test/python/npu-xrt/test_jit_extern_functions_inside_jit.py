@@ -14,7 +14,6 @@ import tempfile
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 
@@ -93,7 +92,7 @@ def transform_with_internal_func_with_options(input, output):
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @jit(is_placed=False)
@@ -177,7 +176,7 @@ def transform_with_internal_func_from_file(input, output):
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 @jit(is_placed=False)
@@ -254,7 +253,7 @@ def transform_with_internal_func(input, output):
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program(SequentialPlacer())
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
 def test_transform_with_internal_func_with_options_inside():

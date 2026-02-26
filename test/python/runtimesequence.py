@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from util import construct_and_print_module
 
@@ -41,7 +40,7 @@ def task_group_drain_sequence(module):
         rt.drain(of_2.cons(), C, task_group=tg, wait=True)
         rt.finish_task_group(tg)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -75,7 +74,7 @@ def default_rt_drain_sequence(module):
         rt.drain(of_1.cons(), B, wait=True)
         rt.drain(of_2.cons(), C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -105,7 +104,7 @@ def default_rt_basic_sequence(module):
         rt.fill(of_0.prod(), A)
         rt.drain(of_1.cons(), B, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -139,7 +138,7 @@ def default_rt_fill_sequence(module):
         rt.fill(of_1.prod(), B)
         rt.drain(of_2.cons(), C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -173,7 +172,7 @@ def rt_drain_then_fill_sequence(module):
         rt.fill(of_0.prod(), A)
         rt.fill(of_1.prod(), B)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -205,7 +204,7 @@ def rt_strict_mixed_sequence(module):
         rt.finish_task_group(tg)
 
     try:
-        Program(NPU2(), rt).resolve_program(SequentialPlacer())
+        Program(NPU2(), rt).resolve_program()
     except Exception as e:
         print("success!")
     return module
@@ -243,7 +242,7 @@ def rt_not_strict_mixed_sequence(module):
         rt.fill(of_1.prod(), B)
         rt.finish_task_group(tg)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -281,5 +280,5 @@ def rt_two_task_group_sequence(module):
         rt.finish_task_group(tg)
         rt.finish_task_group(tg2)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module

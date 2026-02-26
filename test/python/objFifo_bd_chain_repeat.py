@@ -8,7 +8,6 @@
 import sys
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1
 
 
@@ -34,7 +33,7 @@ def test_objectfifo_bd_chain_scenarios():
         rt.drain(of_mem_to_compute.cons(), c_out, wait=True)
 
     my_program = Program(dev, rt)
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
 
     print(module)
 

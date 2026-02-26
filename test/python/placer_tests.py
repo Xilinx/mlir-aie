@@ -3,12 +3,14 @@
 
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
-from aie.iron.device import NPU2, AnyComputeTile, Tile
+from aie.iron.device import NPU2, Tile
 from aie.helpers.util import np_ndarray_type_get_shape
 from util import construct_and_print_module
 
 # RUN: %python %s | FileCheck %s
+
+# NOTE: These tests now emit aie.logical_tile operations instead of aie.tile.
+# Tile placement is handled by the MLIR -aie-place-tiles pass.
 
 
 # CHECK-LABEL: TEST: objectfifo_order
@@ -38,7 +40,7 @@ def objectfifo_order(module):
         rt.fill(of_in_B.prod(), B)
         rt.drain(of_out_C.cons(), C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -72,7 +74,7 @@ def shim_three_in(module):
         rt.fill(of_ins[1].prod(), B)
         rt.fill(of_ins[2].prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -102,7 +104,7 @@ def shim_two_in_one_out(module):
         rt.fill(of_in_B.prod(), B)
         rt.drain(of_out_C.cons(), C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -131,7 +133,7 @@ def compute_three_in(module):
         rt.fill(of_1.prod(), B)
         rt.fill(of_2.prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -147,12 +149,9 @@ def compute_one_in_two_links(module):
     of_0 = ObjectFifo(n_ty, name="of0")
     of_in1 = ObjectFifo(n_ty, name="in1")
     of_in2 = ObjectFifo(n_ty, name="in2")
-    of_out1 = of_in1.cons().forward(
-        obj_type=n_ty, name="out1", placement=AnyComputeTile
-    )
-    of_out2 = of_in2.cons().forward(
-        obj_type=n_ty, name="out_2", placement=AnyComputeTile
-    )
+    # Use default MemTile placement for forward()
+    of_out1 = of_in1.cons().forward(obj_type=n_ty, name="out1")
+    of_out2 = of_in2.cons().forward(obj_type=n_ty, name="out_2")
 
     def core_fn(of_in0):
         pass
@@ -168,7 +167,7 @@ def compute_one_in_two_links(module):
         rt.drain(of_out1.cons(), D, wait=True)
         rt.drain(of_out2.cons(), E, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -184,12 +183,9 @@ def compute_partial_placement(module):
     of_0 = ObjectFifo(n_ty, name="of0")
     of_in1 = ObjectFifo(n_ty, name="in1")
     of_in2 = ObjectFifo(n_ty, name="in2")
-    of_out1 = of_in1.cons().forward(
-        obj_type=n_ty, name="out1", placement=AnyComputeTile
-    )
-    of_out2 = of_in2.cons().forward(
-        obj_type=n_ty, name="out_2", placement=AnyComputeTile
-    )
+    # Use default MemTile placement for forward()
+    of_out1 = of_in1.cons().forward(obj_type=n_ty, name="out1")
+    of_out2 = of_in2.cons().forward(obj_type=n_ty, name="out_2")
 
     def core_fn(of_in0):
         pass
@@ -205,7 +201,7 @@ def compute_partial_placement(module):
         rt.drain(of_out1.cons(), D, wait=True)
         rt.drain(of_out2.cons(), E, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -254,7 +250,7 @@ def mem_eight_in_three_out(module):
         rt.drain(of_out_B.cons(), B, wait=True)
         rt.drain(of_out_C.cons(), C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    module = Program(NPU2(), rt).resolve_program()
     return module
 
 
@@ -289,5 +285,6 @@ def compute_three_in_col_lim(module):
         rt.fill(of_1.prod(), B)
         rt.fill(of_2.prod(), C)
 
-    module = Program(NPU2(), rt).resolve_program(SequentialPlacer(cores_per_col))
+    # NOTE: cores_per_col parameter will be supported by MLIR placement pass
+    module = Program(NPU2(), rt).resolve_program()
     return module
