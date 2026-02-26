@@ -116,6 +116,8 @@ LOWER_TO_LLVM_PIPELINE = (
     .finalize_memref_to_llvm()
     .convert_func_to_llvm(use_bare_ptr_memref_call_conv=True)
     .convert_to_llvm(dynamic=True)
+    .add_pass("convert-vector-to-llvm")
+    .add_pass("convert-ub-to-llvm")
     .canonicalize()
     .cse()
 )
@@ -909,7 +911,10 @@ class FlowRunner:
                 opt_level = opts.opt_level
                 # Disable loop idiom memset for O3 and above.
                 # Rationale: memset is executed as scalar operation, while zeroinitializer will be executed as vector
-                opt_flags = [f"--passes=default<O{opt_level}>"]
+                # Cap opt at O1 to prevent SLP vectorizer from creating sub-512-bit
+                # vector types that crash the AIE2 llc backend.
+                safe_opt = min(int(opt_level), 1)
+                opt_flags = [f"--passes=default<O{safe_opt}>"]
                 if int(opt_level) >= 3:
                     opt_flags.append("-disable-loop-idiom-memset")
                 opt_flags.extend(["-inline-threshold=10", "-S", file_llvmir_hacked, "-o", file_llvmir_opt])
@@ -1034,7 +1039,8 @@ class FlowRunner:
                     opt_level = opts.opt_level
                     # Disable loop idiom memset for O3 and above.
                     # Rationale: memset is executed as scalar operation, while zeroinitializer will be executed as vector
-                    opt_flags = [f"--passes=default<O{opt_level}>,strip"]
+                    safe_opt = min(int(opt_level), 1)
+                    opt_flags = [f"--passes=default<O{safe_opt}>,strip"]
                     if int(opt_level) >= 3:
                         opt_flags.append("-disable-loop-idiom-memset")
                     opt_flags.extend(["-S", file_core_llvmir_peanohacked, "-o", file_core_llvmir_stripped])

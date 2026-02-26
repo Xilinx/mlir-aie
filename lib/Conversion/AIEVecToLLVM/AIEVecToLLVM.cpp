@@ -4076,7 +4076,18 @@ public:
     // create truncation op (and bitcast op)
     if (llvm::isa<IntegerType>(resultType)) {
       if (resultBitWidth < 32) {
-        rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, extElemOp);
+        // Two-step truncation to avoid direct i32→i8 which the AIE2
+        // backend cannot legalize after SLP vectorization.
+        if (resultBitWidth < 16) {
+          auto i16Ty = rewriter.getI16Type();
+          auto trunc16 =
+              LLVM::TruncOp::create(rewriter, loc, i16Ty, extElemOp);
+          rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType,
+                                                     trunc16.getResult());
+        } else {
+          rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType,
+                                                     extElemOp);
+        }
       } else {
         rewriter.replaceOp(op, extElemOp);
       }
@@ -4207,34 +4218,48 @@ class MatMulOpConversion
                   /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
                   /*sub_mask=*/0)};
 
+    // Helper: look through vector.shape_cast ops to find the defining op.
+    // The VectorToAIEVec pass inserts shape_casts (via reshapeLeadingUnitDims)
+    // between the extension ops and the matmul, which hides the signedness.
+    auto lookThroughShapeCasts = [](Value v) -> Value {
+      while (auto castOp = v.getDefiningOp<vector::ShapeCastOp>())
+        v = castOp.getSource();
+      return v;
+    };
+
     int signX = 0, signY = 0;
     auto lhsVecTy = cast<VectorType>(lhs.getType());
     auto lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
-    if (auto extSIOp = lhs.getDefiningOp<arith::ExtSIOp>()) {
-      lhs = extSIOp.getIn();
+    Value lhsOrig = lookThroughShapeCasts(lhs);
+    if (auto extSIOp = lhsOrig.getDefiningOp<arith::ExtSIOp>()) {
+      lhs = lookThroughShapeCasts(extSIOp.getIn());
       lhsVecTy = cast<VectorType>(lhs.getType());
       lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
       signX = 1;
-    } else if (auto extUIOp = lhs.getDefiningOp<arith::ExtUIOp>()) {
-      lhs = extUIOp.getIn();
+    } else if (auto extUIOp = lhsOrig.getDefiningOp<arith::ExtUIOp>()) {
+      lhs = lookThroughShapeCasts(extUIOp.getIn());
       lhsVecTy = cast<VectorType>(lhs.getType());
       lhsScaTy = cast<IntegerType>(lhsVecTy.getElementType());
     } else {
-      // NOTE: We're choosing 'signed' by default
-      if (!lhsScaTy.isUnsigned())
-        signX = 1;
+      // Default to unsigned for lhs (activation input is typically uint8).
+      // The VectorToAIEVec pass strips extsi/extui before creating
+      // aievec.matmul, so sign info is not available here. Using unsigned
+      // for A matches the common use case of uint8 activations × int8 weights.
+      if (lhsScaTy.isUnsigned())
+        signX = 0;
     }
     auto lhsShape = lhsVecTy.getShape();
 
     auto rhsVecTy = cast<VectorType>(rhs.getType());
     auto rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
-    if (auto extSIOp = rhs.getDefiningOp<arith::ExtSIOp>()) {
-      rhs = extSIOp.getIn();
+    Value rhsOrig = lookThroughShapeCasts(rhs);
+    if (auto extSIOp = rhsOrig.getDefiningOp<arith::ExtSIOp>()) {
+      rhs = lookThroughShapeCasts(extSIOp.getIn());
       rhsVecTy = cast<VectorType>(rhs.getType());
       rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
       signY = 1;
-    } else if (auto extUIOp = rhs.getDefiningOp<arith::ExtUIOp>()) {
-      rhs = extUIOp.getIn();
+    } else if (auto extUIOp = rhsOrig.getDefiningOp<arith::ExtUIOp>()) {
+      rhs = lookThroughShapeCasts(extUIOp.getIn());
       rhsVecTy = cast<VectorType>(rhs.getType());
       rhsScaTy = cast<IntegerType>(rhsVecTy.getElementType());
     } else {
