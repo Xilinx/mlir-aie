@@ -23,6 +23,7 @@ namespace xilinx::AIE {
 #define GEN_PASS_CLASSES
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPlaceTilesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferAddressesPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEAssignLockIDsPass();

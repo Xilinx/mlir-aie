@@ -70,6 +70,7 @@ def _create_input_with_addresses_pipeline(
     # Build nested device pipeline with conditional passes
     device_pipeline = (
         Pipeline()
+        .add_pass("aie-place-tiles")
         .add_pass("aie-assign-lock-ids")
         .add_pass("aie-register-objectFifos")
         .add_pass(
