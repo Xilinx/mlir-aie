@@ -13,7 +13,6 @@ import time
 import aie.iron as iron
 from aie.iron import ExternalFunction, jit
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.utils.config import cxx_header_path
 
@@ -168,7 +167,7 @@ def my_memcpy(input0, output):
     # --------------------------------------------------------------------------
 
     my_program = Program(device, rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

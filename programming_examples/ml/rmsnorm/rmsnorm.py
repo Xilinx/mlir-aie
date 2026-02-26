@@ -9,7 +9,6 @@ import argparse
 import sys
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1, NPU2
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
@@ -92,7 +91,7 @@ def rmsnorm(dev, sequence_length, embedding_dim, trace_size):
             rt.fill(of_in[i].prod(), a_in, taps_in[i])
         for i in range(n_cores):
             rt.drain(of_out[i].cons(), c_out, taps_out[i], wait=True)
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 p = argparse.ArgumentParser()

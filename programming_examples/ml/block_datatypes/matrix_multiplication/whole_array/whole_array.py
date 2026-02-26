@@ -8,7 +8,6 @@ import argparse
 import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
@@ -262,7 +261,7 @@ def my_matmul(M, K, N, m, k, n, n_aie_cols):
 
     my_program = Program(dev_ty, rt)
 
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 

@@ -8,7 +8,6 @@ import numpy as np
 import argparse
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
@@ -95,7 +94,7 @@ def shuffle_transpose(dev, M, N, m, n, s, dtype):
         rt.drain(out_fifo.cons(), out, tap_out_L1L3, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 if __name__ == "__main__":

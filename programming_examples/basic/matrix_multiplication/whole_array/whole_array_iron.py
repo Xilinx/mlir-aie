@@ -8,7 +8,6 @@ import argparse
 import numpy as np
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, str_to_dtype
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU1Col2, NPU1, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessSequence, TensorTiler2D
@@ -530,7 +529,7 @@ def my_matmul(
     my_program = Program(dev_ty, rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 

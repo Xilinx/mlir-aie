@@ -16,7 +16,6 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 
@@ -139,7 +138,7 @@ def conv2dk1(dev):
         rt.drain(of_outOFL2L3.cons(), O, wait=True)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 try:

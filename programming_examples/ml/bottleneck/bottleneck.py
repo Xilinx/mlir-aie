@@ -16,7 +16,6 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import AnyMemTile, NPU1Col1, NPU2, Tile
 from aie.iron.controlflow import range_
 
@@ -380,7 +379,7 @@ def bottleneck4AIEs():
         rt.drain(outOFL2L3.cons(), outputToL3, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 module = bottleneck4AIEs()

@@ -8,7 +8,6 @@ import numpy as np
 import sys
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col3, NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -591,7 +590,7 @@ with rt.sequence(activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_t
     rt.drain(outOFL2L3.cons(), outputToL3, placement=Tile(1, 0), wait=True)
 
 # Place components (assign them resources on the device) and generate an MLIR module
-module = Program(dev, rt).resolve_program(SequentialPlacer())
+module = Program(dev, rt).resolve_program()
 
 # Print the generated MLIR
 print(module)

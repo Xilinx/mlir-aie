@@ -12,7 +12,6 @@ from aie.dialects.aiex import v8bfp16ebs8
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.kernel import Kernel
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 
@@ -64,7 +63,7 @@ def bfp_passthrough():
         rt.drain(of_out.cons(), B, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU2(), rt).resolve_program(SequentialPlacer())
+    return Program(NPU2(), rt).resolve_program()
 
 
 module = bfp_passthrough()

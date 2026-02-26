@@ -21,7 +21,6 @@ from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
 )
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2Col1
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -225,7 +224,7 @@ def my_scale_shift(dev, in1_size, in2_size, in3_size, out_size, trace_size):
         rt.finish_task_group(tg2)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 p = argparse.ArgumentParser()
