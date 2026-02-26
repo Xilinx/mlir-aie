@@ -11,6 +11,10 @@ aiecc.py - AIE Compiler Driver (Python wrapper)
 This is a thin wrapper that delegates to the C++ aiecc binary.
 The C++ implementation provides better performance through
 in-memory MLIR pass execution instead of subprocess calls.
+
+All command-line arguments are passed through unchanged to the
+C++ binary, which handles host compilation flags (-I, -L, -l, -o),
+host source files (.cpp), and all other options directly.
 """
 
 import os
@@ -48,122 +52,11 @@ def _find_aiecc_binary():
     )
 
 
-# Features that are deprecated and not supported in C++ aiecc
-# These flags are now accepted by C++ aiecc as no-ops for compatibility,
-# but we still warn users that they have no effect
-_DEPRECATED_HOST_FLAGS = {
-    "--compile-host": "Host compilation is deprecated and not supported in C++ aiecc.",
-    "--no-compile-host": "Host compilation is deprecated and not supported in C++ aiecc.",
-    "--host-target": "Host compilation is deprecated and not supported in C++ aiecc.",
-}
-
-# Flags that should be completely filtered out (not passed to C++ aiecc)
-_FILTERED_FLAGS = set()
-
-# Host compilation arguments that should be filtered out
-# These are compiler/linker flags used for host code compilation
-_HOST_COMPILATION_PREFIXES = ["-I", "-L", "-l"]
-
-
-def _is_host_source_file(arg):
-    """
-    Check if an argument is a host source file (not an MLIR file).
-
-    Host source files are .c, .cpp, .cc, .cxx files that should be
-    compiled with the host compiler, not passed to aiecc.
-    """
-    if arg.startswith("-"):
-        return False
-    host_extensions = (".c", ".cpp", ".cc", ".cxx", ".C")
-    return arg.endswith(host_extensions)
-
-
-def _check_deprecated_flags(args):
-    """
-    Check for deprecated flags and emit warnings.
-
-    Args:
-        args: List of command-line arguments
-
-    Returns:
-        List of arguments with deprecated host compilation flags removed
-    """
-    filtered_args = []
-    skip_next = False
-    warned_host_compilation = False
-
-    for i, arg in enumerate(args):
-        if skip_next:
-            skip_next = False
-            continue
-
-        # Check for deprecated flags and warn, but pass them through to C++ aiecc
-        # (C++ aiecc now accepts these as no-ops for compatibility)
-        for flag, message in _DEPRECATED_HOST_FLAGS.items():
-            if arg == flag or arg.startswith(flag + "="):
-                warnings.warn(
-                    f"{message} This flag will be passed to C++ aiecc but ignored.",
-                    DeprecationWarning,
-                    stacklevel=3,
-                )
-                # Note: we don't skip_next for --host-target anymore since we pass it through
-                break
-
-        # Filter out host compilation flags (-I, -L, -l prefixes)
-        is_host_flag = False
-        for prefix in _HOST_COMPILATION_PREFIXES:
-            if arg.startswith(prefix):
-                is_host_flag = True
-                if not warned_host_compilation:
-                    warnings.warn(
-                        "Host compilation flags (-I, -L, -l) are deprecated and "
-                        "not supported in C++ aiecc. These flags will be ignored.",
-                        DeprecationWarning,
-                        stacklevel=3,
-                    )
-                    warned_host_compilation = True
-                break
-
-        if is_host_flag:
-            continue
-
-        # Filter out -o flag and its argument (output file for host compilation)
-        if arg == "-o":
-            if not warned_host_compilation:
-                warnings.warn(
-                    "Host compilation output flag (-o) is deprecated and "
-                    "not supported in C++ aiecc. This flag will be ignored.",
-                    DeprecationWarning,
-                    stacklevel=3,
-                )
-                warned_host_compilation = True
-            skip_next = True
-            continue
-
-        # Filter out host source files (.c, .cpp, .cc, .cxx)
-        if _is_host_source_file(arg):
-            if not warned_host_compilation:
-                warnings.warn(
-                    "Host source files are deprecated and not supported in "
-                    "C++ aiecc. These files will be ignored.",
-                    DeprecationWarning,
-                    stacklevel=3,
-                )
-                warned_host_compilation = True
-            continue
-
-        filtered_args.append(arg)
-
-    return filtered_args
-
-
 def main():
     """
     Main entry point - delegates to C++ aiecc.
 
-    All command-line arguments are passed directly to the C++ binary,
-    except for deprecated host compilation flags which are filtered out
-    with a warning.
+    All command-line arguments are passed directly to the C++ binary unchanged.
     """
     try:
         aiecc_bin = _find_aiecc_binary()
@@ -171,11 +64,8 @@ def main():
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Check for deprecated flags and filter them out
-    filtered_args = _check_deprecated_flags(sys.argv[1:])
-
-    # Pass filtered arguments to C++ binary
-    result = subprocess.run([aiecc_bin, *filtered_args])
+    # Pass all arguments directly to C++ binary unchanged
+    result = subprocess.run([aiecc_bin, *sys.argv[1:]])
     sys.exit(result.returncode)
 
 

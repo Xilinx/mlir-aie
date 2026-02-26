@@ -88,6 +88,10 @@ aiecc [options] <input.mlir>
 - `--aiesim` / `--no-aiesim` - Generate aiesim work folder (requires xbridge)
 - `--compile-host` / `--no-compile-host` - Enable/disable host program compilation
 - `--host-target <target>` - Target architecture for host compilation (default: x86_64-linux-gnu)
+- `-I<dir>` - Add include directory for host compilation
+- `-L<dir>` - Add library search directory for host compilation
+- `-l<lib>` - Link library for host compilation
+- `-o <file>` - Output filename for host compilation
 - `--dynamic-objFifos` - Use dynamic object FIFOs
 - `--packet-sw-objFifos` - Use packet-switched flows
 - `--generate-ctrl-pkt-overlay` - Generate control packet overlay
@@ -320,13 +324,11 @@ Tools are automatically found in PATH or relative to the aiecc installation dire
 
 ## Python Wrapper
 
-The Python `aiecc.py` is a thin wrapper (~180 lines) that delegates all work to
+The Python `aiecc.py` is a thin wrapper (~130 lines) that delegates all work to
 the C++ `aiecc` binary. It:
 
 - Locates the `aiecc` binary relative to its own install location
-- Filters deprecated flags (`-I`, `-L`, `-l`, `-o`, host source files)
-- Emits deprecation warnings for host compilation flags
-- Passes all remaining arguments through to the C++ binary
+- Passes all arguments through to the C++ binary unchanged
 - Preserves the `run()` API for backward compatibility
 
 ## See Also

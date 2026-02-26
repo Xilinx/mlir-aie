@@ -13,8 +13,14 @@
 
 // REQUIRES: peano
 
+// Test: aie_inc.cpp generation is triggered by --compile-host
 // RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s 2>&1 | FileCheck %s
 // RUN: aiecc --no-xchesscc --no-xbridge --compile-host --host-target=aarch64-linux-gnu -n --verbose %s 2>&1 | FileCheck %s --check-prefix=AARCH64
+
+// Test: full host compilation with -I/-L/-l/-o and host source file
+// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose \
+// RUN:   -I/some/include -L/some/lib -lsomelib %s /tmp/host_test.cpp -o host_out 2>&1 \
+// RUN:   | FileCheck %s --check-prefix=HOSTFULL
 
 // CHECK: Generating aie_inc.cpp for device
 // CHECK: aie-translate
@@ -23,6 +29,14 @@
 // AARCH64: Generating aie_inc.cpp for device
 // AARCH64: aie-translate
 // AARCH64: --aie-generate-xaie
+
+// HOSTFULL: clang++
+// HOSTFULL-SAME: -std=c++17
+// HOSTFULL: -I/some/include
+// HOSTFULL: -L/some/lib
+// HOSTFULL: -lsomelib
+// HOSTFULL: /tmp/host_test.cpp
+// HOSTFULL: -o host_out
 
 module {
   aie.device(npu1_1col) {

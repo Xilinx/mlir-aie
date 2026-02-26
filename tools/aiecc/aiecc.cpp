@@ -124,10 +124,10 @@ using namespace mlir;
 
 static cl::OptionCategory aieCompilerOptions("AIE Compiler Options");
 
-static cl::opt<std::string> inputFilename(cl::Positional,
-                                          cl::desc("<input file>"),
-                                          cl::init(""),
-                                          cl::cat(aieCompilerOptions));
+static cl::list<std::string>
+    positionalArgs(cl::Positional,
+                   cl::desc("<input file> [host source files...]"),
+                   cl::ZeroOrMore, cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> showVersion("aie-version",
                                  cl::desc("Show version information"),
@@ -423,6 +423,25 @@ static cl::opt<bool> noMaterialize(
     cl::desc("Skip aie-materialize-runtime-sequences pass in NPU lowering"),
     cl::init(false), cl::cat(aieCompilerOptions));
 
+// Host compilation options
+static cl::list<std::string> hostIncludeDirs("I", cl::Prefix,
+                                             cl::desc("Include directory"),
+                                             cl::cat(aieCompilerOptions));
+
+static cl::list<std::string> hostLibDirs("L", cl::Prefix,
+                                         cl::desc("Library search directory"),
+                                         cl::cat(aieCompilerOptions));
+
+static cl::list<std::string> hostLibs("l", cl::Prefix, cl::desc("Link library"),
+                                      cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    outputFilename("o", cl::desc("Output filename for host compilation"),
+                   cl::init(""), cl::cat(aieCompilerOptions));
+
+// Sink for unrecognized host compilation flags (e.g. -Wl,... -lstdc++)
+static cl::list<std::string> sinkArgs(cl::Sink, cl::desc("Additional flags"));
+
 //===----------------------------------------------------------------------===//
 // Thread-safe output
 //===----------------------------------------------------------------------===//
@@ -450,6 +469,44 @@ static LogicalResult writeElfFile(StringRef path,
 
 static void printVersion(raw_ostream &os) {
   os << "aiecc (C++ version) " << AIE_GIT_COMMIT << "\n";
+}
+
+// Check if a filename is a host source file (C/C++)
+static bool isHostSourceFile(StringRef filename) {
+  return filename.ends_with(".c") || filename.ends_with(".cpp") ||
+         filename.ends_with(".cc") || filename.ends_with(".cxx") ||
+         filename.ends_with(".C");
+}
+
+// Get the MLIR input filename from positional arguments.
+// The MLIR file is identified by .mlir extension or as the first positional
+// arg.
+static std::string getInputFilename() {
+  // First pass: look for .mlir file
+  for (const auto &arg : positionalArgs) {
+    if (StringRef(arg).ends_with(".mlir"))
+      return arg;
+  }
+  // Fallback: first positional arg that isn't a host source file
+  for (const auto &arg : positionalArgs) {
+    if (!isHostSourceFile(arg))
+      return arg;
+  }
+  // Last resort: first positional arg
+  if (!positionalArgs.empty())
+    return positionalArgs[0];
+  return "";
+}
+
+// Get host source files from positional arguments.
+static std::vector<std::string> getHostSourceFiles() {
+  std::string mlirFile = getInputFilename();
+  std::vector<std::string> hostFiles;
+  for (const auto &arg : positionalArgs) {
+    if (arg != mlirFile && isHostSourceFile(arg))
+      hostFiles.push_back(arg);
+  }
+  return hostFiles;
 }
 
 /// Dump an MLIR module to a file if --dump-intermediates is enabled.
@@ -1704,7 +1761,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
           srcPath = cwdPath;
         } else {
           // Fall back to input file directory
-          SmallString<256> inputDir = sys::path::parent_path(inputFilename);
+          SmallString<256> inputDir =
+              sys::path::parent_path(getInputFilename());
           if (inputDir.empty()) {
             sys::fs::current_path(inputDir);
           }
@@ -1839,7 +1897,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
           srcLinkWith = cwdPath;
         } else {
           // Fall back to input file directory
-          SmallString<256> inputDir = sys::path::parent_path(inputFilename);
+          SmallString<256> inputDir =
+              sys::path::parent_path(getInputFilename());
           if (inputDir.empty()) {
             sys::fs::current_path(inputDir);
           }
@@ -2378,7 +2437,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
             srcPath = cwdPath;
           } else {
             // Fall back to input file directory
-            SmallString<256> inputDir = sys::path::parent_path(inputFilename);
+            SmallString<256> inputDir =
+                sys::path::parent_path(getInputFilename());
             if (inputDir.empty()) {
               sys::fs::current_path(inputDir);
             }
@@ -2489,7 +2549,8 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
             srcLinkWith = cwdPath;
           } else {
             // Fall back to input file directory
-            SmallString<256> inputDir = sys::path::parent_path(inputFilename);
+            SmallString<256> inputDir =
+                sys::path::parent_path(getInputFilename());
             if (inputDir.empty()) {
               sys::fs::current_path(inputDir);
             }
@@ -3791,15 +3852,21 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     SmallString<128> partitionPath(tmpDirName);
     sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
     std::string pdiFileName = formatString(pdiName, devName);
-    // PDI path is CWD-relative (matching Python aiecc.py behavior)
-    SmallString<128> pdiPath(pdiFileName);
-    // Make pdiPath absolute for partition JSON
+    // When user explicitly requests PDI, it goes to CWD; otherwise tmpDir.
+    SmallString<128> pdiPathForJson;
+    if (generatePdi) {
+      pdiPathForJson = pdiFileName;
+    } else {
+      pdiPathForJson = tmpDirName;
+      sys::path::append(pdiPathForJson, pdiFileName);
+    }
+    // Make absolute for partition JSON
     SmallString<128> absPdiPath;
-    if (sys::path::is_absolute(pdiPath)) {
-      absPdiPath = pdiPath;
+    if (sys::path::is_absolute(pdiPathForJson)) {
+      absPdiPath = pdiPathForJson;
     } else {
       sys::fs::current_path(absPdiPath);
-      sys::path::append(absPdiPath, pdiFileName);
+      sys::path::append(absPdiPath, pdiPathForJson);
     }
     if (failed(generatePartitionJson(partitionPath, devName, absPdiPath)))
       return failure();
@@ -3848,8 +3915,15 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 #endif
 
     std::string pdiFileName = formatString(pdiName, devName);
-    // Write PDI to user-specified path (CWD-relative), not inside tmpDir
-    SmallString<128> pdiPath(pdiFileName);
+    // When user explicitly requests PDI (--aie-generate-pdi), write to CWD.
+    // Otherwise write to tmpDir for isolation (matches Python aiecc.py).
+    SmallString<128> pdiPath;
+    if (generatePdi) {
+      pdiPath = pdiFileName;
+    } else {
+      pdiPath = tmpDirName;
+      sys::path::append(pdiPath, pdiFileName);
+    }
 
     // Create BIF file (skip in dry-run)
     SmallString<128> bifPath(tmpDirName);
@@ -4064,6 +4138,148 @@ static xilinx::aiecc::AiesimConfig createAiesimConfig() {
 }
 
 //===----------------------------------------------------------------------===//
+// Host Compilation
+//===----------------------------------------------------------------------===//
+
+/// Compile host program using clang++.
+/// This matches the behavior of the old Python process_host_cgen() function.
+static LogicalResult compileHostProgram(StringRef tmpDirName,
+                                        StringRef aieTarget) {
+  if (!compileHost) {
+    return success();
+  }
+
+  std::vector<std::string> hostSourceFiles = getHostSourceFiles();
+  if (hostSourceFiles.empty()) {
+    if (verbose) {
+      llvm::outs() << "Host compilation enabled but no host source files "
+                      "provided, skipping\n";
+    }
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Compiling host program\n";
+  }
+
+  // Find clang++ in PATH
+  auto clangppPath = sys::findProgramByName("clang++");
+  if (!clangppPath) {
+    llvm::errs() << "Error: Could not find clang++ in PATH for host "
+                    "compilation\n";
+    return failure();
+  }
+
+  SmallVector<std::string, 32> cmd;
+  cmd.push_back(*clangppPath);
+  cmd.push_back("-std=c++17");
+
+  // Set host target
+  if (!hostTarget.empty()) {
+    cmd.push_back("--target=" + hostTarget.getValue());
+  }
+
+  // Set sysroot
+  if (!sysroot.empty()) {
+    cmd.push_back("--sysroot=" + sysroot.getValue());
+    if (hostTarget.getValue() == "aarch64-linux-gnu") {
+      cmd.push_back("--gcc-toolchain=" + sysroot.getValue() + "/usr");
+    }
+  }
+
+  // Auto-discover runtime library paths
+  std::string installPath = getInstallPath();
+  std::string archName;
+
+  if (linkAgainstHsa) {
+    archName = StringRef(hostTarget.getValue()).split('-').first.str() + "-hsa";
+  } else {
+    archName = StringRef(hostTarget.getValue()).split('-').first.str();
+  }
+
+  // xaiengine include and library paths
+  SmallString<256> xaiengineInclude(installPath);
+  sys::path::append(xaiengineInclude, "runtime_lib", archName, "xaiengine",
+                    "include");
+
+  SmallString<256> xaiengineLib(installPath);
+  sys::path::append(xaiengineLib, "runtime_lib", archName, "xaiengine", "lib");
+
+  // Memory allocator library
+  SmallString<256> testLibPath(installPath);
+  sys::path::append(testLibPath, "runtime_lib", archName, "test_lib", "lib");
+  SmallString<256> memAllocator(testLibPath);
+  if (linkAgainstHsa) {
+    sys::path::append(memAllocator, "libmemory_allocator_hsa.a");
+  } else {
+    sys::path::append(memAllocator, "libmemory_allocator_ion.a");
+  }
+
+  // Add auto-discovered paths
+  cmd.push_back(memAllocator.str().str());
+  cmd.push_back("-I" + xaiengineInclude.str().str());
+  cmd.push_back("-L" + xaiengineLib.str().str());
+  cmd.push_back("-Wl,-R" + xaiengineLib.str().str());
+  cmd.push_back("-I" + tmpDirName.str());
+  cmd.push_back("-fuse-ld=lld");
+  cmd.push_back("-lm");
+  cmd.push_back("-lxaienginecdo");
+
+  // HSA-specific flags
+  if (linkAgainstHsa) {
+    cmd.push_back("-DHSA_RUNTIME");
+  }
+
+  // AIE target defines
+  auto targetDefines = xilinx::aiecc::getAieTargetDefines(aieTarget);
+  for (const auto &def : targetDefines) {
+    cmd.push_back(def);
+  }
+
+  // User-provided include directories
+  for (const auto &dir : hostIncludeDirs) {
+    cmd.push_back("-I" + dir);
+  }
+
+  // User-provided library directories
+  for (const auto &dir : hostLibDirs) {
+    cmd.push_back("-L" + dir);
+  }
+
+  // User-provided libraries
+  for (const auto &lib : hostLibs) {
+    cmd.push_back("-l" + lib);
+  }
+
+  // Any additional unrecognized flags (e.g. -Wl,... -lstdc++)
+  for (const auto &arg : sinkArgs) {
+    cmd.push_back(arg);
+  }
+
+  // Host source files
+  for (const auto &src : hostSourceFiles) {
+    cmd.push_back(src);
+  }
+
+  // Output filename
+  if (!outputFilename.empty()) {
+    cmd.push_back("-o");
+    cmd.push_back(outputFilename.getValue());
+  }
+
+  if (!executeCommand(cmd)) {
+    llvm::errs() << "Error: Host compilation failed\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Host compilation completed successfully\n";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // Main Compilation Flow
 //===----------------------------------------------------------------------===//
 
@@ -4267,9 +4483,22 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       }
 
       // PDI path (must match generateCdoArtifacts output)
+      // When --aie-generate-pdi is set, PDI is in CWD; otherwise in tmpDir.
       std::string pdiFileName = formatString(pdiName, devName);
-      SmallString<256> pdiFullPath(absTmpDir);
-      sys::path::append(pdiFullPath, pdiFileName);
+      SmallString<256> pdiFullPath;
+      if (generatePdi) {
+        // CWD-relative
+        if (sys::path::is_absolute(pdiFileName)) {
+          pdiFullPath = pdiFileName;
+        } else {
+          sys::fs::current_path(pdiFullPath);
+          sys::path::append(pdiFullPath, pdiFileName);
+        }
+      } else {
+        // Inside tmpDir
+        pdiFullPath = absTmpDir;
+        sys::path::append(pdiFullPath, pdiFileName);
+      }
       info.pdiPath = pdiFullPath.str().str();
 
       // Collect runtime sequence instruction paths (also absolute)
@@ -4288,6 +4517,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
 
   // Generate full ELF after all devices are processed
   if (failed(generateFullElfArtifact(deviceElfInfos, tmpDirName))) {
+    return failure();
+  }
+
+  // Host compilation (after all device processing, since host code may
+  // #include "aie_inc.cpp" which is generated by generateAieIncCpp above)
+  if (failed(compileHostProgram(tmpDirName, aieTarget))) {
     return failure();
   }
 
@@ -4420,5 +4655,5 @@ int main(int argc, char **argv) {
   }
 
   // Process the input file
-  return processInputFile(inputFilename, tmpDir);
+  return processInputFile(getInputFilename(), tmpDir);
 }
