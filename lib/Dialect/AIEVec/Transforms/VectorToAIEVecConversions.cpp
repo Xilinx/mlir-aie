@@ -286,6 +286,28 @@ extractMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
   return {};
 }
 
+// Given the LHS and RHS of an `arith::AddFOp`, if one of them is defined by an
+// `arith::MulFOp`, return a tuple with the `lhs`, `rhs`, and `acc` of the FMA
+// operation that can replace them.
+static std::optional<std::tuple<Value, Value, Value>>
+extractFMACOperandsFromAddOperands(Value addLhs, Value addRhs) {
+  auto *lhsDefOp = addLhs.getDefiningOp();
+  auto *rhsDefOp = addRhs.getDefiningOp();
+  arith::MulFOp mulOp = nullptr;
+  Value acc;
+  if (lhsDefOp) {
+    mulOp = dyn_cast<arith::MulFOp>(lhsDefOp);
+    acc = addRhs;
+  }
+  if (!mulOp && rhsDefOp) {
+    mulOp = dyn_cast<arith::MulFOp>(rhsDefOp);
+    acc = addLhs;
+  }
+  if (mulOp)
+    return std::make_tuple(mulOp.getLhs(), mulOp.getRhs(), acc);
+  return {};
+}
+
 // Convert a input value to a target vector type. This function can insert
 // multiple aievec ops depending on the combination of input and output vector
 // types.
@@ -1046,6 +1068,98 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
   unsigned shiftParam;
 };
 
+// This pattern fuses `arith.mulf` + `arith.addf` on bf16 vectors into
+// `aievec.mac_elem` (float FMA). This pattern works for AIE2.
+struct ConvertMulAddFToAIEVecFMAElemOpPattern
+    : OpConversionPattern<arith::AddFOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  ConvertMulAddFToAIEVecFMAElemOpPattern(MLIRContext *context,
+                                         unsigned shiftParam = 0)
+      : OpConversionPattern(context), shiftParam(shiftParam) {}
+
+  LogicalResult
+  matchAndRewrite(arith::AddFOp addOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    // Verify it's a vector operation
+    auto resultType = dyn_cast<VectorType>(addOp.getType());
+    if (!resultType)
+      return failure();
+
+    // Only handle bf16 element type
+    auto elemType = resultType.getElementType();
+    if (!elemType.isBF16())
+      return failure();
+
+    // Verify it can be replaced by an FMA
+    auto res =
+        extractFMACOperandsFromAddOperands(adaptor.getLhs(), adaptor.getRhs());
+    if (!res)
+      return failure();
+    auto [lhs, rhs, acc] = *res;
+
+    unsigned laneSize = getVectorLaneSize(resultType);
+
+    // Handle vector<32xbf16> by splitting into two vector<16xbf16> FMAs
+    if (laneSize == 32) {
+      VectorType halfType = createVectorType(16, elemType);
+      unsigned localShiftParam = shiftParam;
+
+      splitWideVectorOp<arith::AddFOp>(
+          addOp, {lhs, rhs, acc}, halfType, resultType, rewriter,
+          [localShiftParam](ArrayRef<std::pair<Value, Value>> halfInputs,
+                            Location loc,
+                            ConversionPatternRewriter &rewriter) {
+            auto [lhsLow, lhsHigh] = halfInputs[0];
+            auto [rhsLow, rhsHigh] = halfInputs[1];
+            auto [accLow, accHigh] = halfInputs[2];
+
+            auto processHalf = [&](Value lhsH, Value rhsH,
+                                   Value accH) -> Value {
+              auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
+              auto upsOp = aievec::UPSOp::create(rewriter, loc, f32AccType,
+                                                  accH, localShiftParam);
+              auto fmaElemOp = aievec::FMAElemOp::create(
+                  rewriter, loc, f32AccType, lhsH, rhsH, upsOp.getResult(),
+                  /*fmsub=*/false);
+              auto shiftParamOp = arith::ConstantOp::create(
+                  rewriter, loc,
+                  rewriter.getI32IntegerAttr(localShiftParam));
+              auto srsOp = aievec::SRSOp::create(
+                  rewriter, loc, cast<VectorType>(lhsH.getType()),
+                  fmaElemOp.getResult(), shiftParamOp.getResult());
+              return srsOp.getResult();
+            };
+
+            Value lowResult = processHalf(lhsLow, rhsLow, accLow);
+            Value highResult = processHalf(lhsHigh, rhsHigh, accHigh);
+            return std::make_pair(lowResult, highResult);
+          });
+      return success();
+    }
+
+    // Handle vector<16xbf16>
+    if (laneSize != 16)
+      return failure();
+
+    auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
+    auto upsOp = aievec::UPSOp::create(rewriter, addOp.getLoc(), f32AccType,
+                                        acc, shiftParam);
+    auto fmaElemOp = aievec::FMAElemOp::create(
+        rewriter, addOp.getLoc(), f32AccType, lhs, rhs, upsOp.getResult(),
+        /*fmsub=*/false);
+
+    auto shiftParamOp = arith::ConstantOp::create(
+        rewriter, addOp.getLoc(), rewriter.getI32IntegerAttr(shiftParam));
+    rewriter.replaceOpWithNewOp<aievec::SRSOp>(
+        addOp, resultType, fmaElemOp.getResult(), shiftParamOp.getResult());
+
+    return success();
+  }
+
+  unsigned shiftParam;
+};
+
 // This pattern replaces `arith.mulf` on vectors with
 // `aievec.mul_elem`. This pattern works for AIE2.
 struct ConvertMulFToAIEVecMulElemOpPattern
@@ -1064,7 +1178,9 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     if (!resultType)
       return failure();
 
-    // FIXME: Verify it is not a part of FMA
+    // Skip standalone mul conversion when this MulFOp feeds into an AddFOp as
+    // its sole user. ConvertMulAddFToAIEVecFMAElemOpPattern will fuse the
+    // multiply and add into a single aievec.mac_elem.
     auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
     if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
       return failure();
@@ -4259,6 +4375,7 @@ populateAIEVecV2CommonConversionPatterns(RewritePatternSet &patterns,
       FoldVectorExtractAndSplatToAIEBroadcast,
       ConvertSplatToAIEBroadcast,
       ConvertMulAddToAIEVecFMAElemOpPattern,
+      ConvertMulAddFToAIEVecFMAElemOpPattern,
       ConvertVectorFMAOpToAIEVecFMAElemOpPattern,
       LowerVectorExtractStridedSliceOpAIE2Pattern,
       LowerVectorTransposeOpToAIEVecShuffleOpPattern

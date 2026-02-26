@@ -1492,6 +1492,97 @@ public:
   }
 };
 
+// AIE2p version of FMAElemOp conversion. Uses native F32 accumulators
+// and AIE2p-specific MAC intrinsics.
+class FMAElemOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::FMAElemOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::FMAElemOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::FMAElemOp fmaOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = fmaOp.getLoc();
+    auto lhs = adaptor.getLhs();
+    auto rhs = adaptor.getRhs();
+    auto acc = adaptor.getAcc();
+    auto lhsTy = cast<VectorType>(lhs.getType());
+    auto accTy = cast<VectorType>(acc.getType());
+    auto flatLhsTy = getFlattenedVectorType(lhsTy);
+    auto flatAccTy = getFlattenedVectorType(accTy);
+
+    // Flatten operands, if needed
+    if (lhsTy != flatLhsTy)
+      lhs = vector::ShapeCastOp::create(rewriter, loc, flatLhsTy, lhs);
+    if (cast<VectorType>(rhs.getType()) != flatLhsTy)
+      rhs = vector::ShapeCastOp::create(rewriter, loc, flatLhsTy, rhs);
+    if (accTy != flatAccTy)
+      acc = vector::ShapeCastOp::create(rewriter, loc, flatAccTy, acc);
+
+    if (!flatLhsTy.getElementType().isBF16()) {
+      fmaOp.emitWarning()
+          << "aievec.mac_elem AIE2p conversion only supports bf16 inputs.\n";
+      return failure();
+    }
+
+    Type i32ty = rewriter.getI32Type();
+    auto confCst = LLVM::ConstantOp::create(
+        rewriter, loc, i32ty,
+        rewriter.getI32IntegerAttr(aiev2_vmac_compute_control(
+            /*sgn_x=*/0, /*sgn_y=*/0, /*amode=*/2, /*bmode=*/3,
+            /*variant=*/1, /*zero_acc=*/0, /*shift16=*/0,
+            /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
+            /*sub_mask=*/0)));
+
+    unsigned lhsLanes = flatLhsTy.getNumElements();
+    Value macIntrOp = nullptr;
+
+    if (lhsLanes == 16) {
+      // 16-lane bf16: pad to v32bf16, use I512.I512.ACC512 intrinsic
+      SmallVector<int64_t> padMask;
+      for (int i = 0; i < 16; ++i)
+        padMask.push_back(i);
+      for (int i = 16; i < 32; ++i)
+        padMask.push_back(-1); // poison
+
+      auto lhsPadded =
+          vector::ShuffleOp::create(rewriter, loc, lhs, lhs, padMask);
+      auto rhsPadded =
+          vector::ShuffleOp::create(rewriter, loc, rhs, rhs, padMask);
+
+      auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+      auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
+      macIntrOp = xllvm::MacConfBF16I512ACC512AIE2pIntrOp::create(
+          rewriter, loc, v16f32Ty,
+          forceCastOperandsToSignature(
+              rewriter, loc, {lhsPadded, rhsPadded, acc, confCst},
+              {v32bf16Ty, v32bf16Ty, v16f32Ty, i32ty}));
+    } else if (lhsLanes == 32) {
+      // 32-lane bf16: direct, use I512.I512.ACC1024 intrinsic
+      auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+      auto v32f32Ty = VectorType::get({32}, rewriter.getF32Type());
+      macIntrOp = xllvm::MacConfBF16I512ACC1024AIE2pIntrOp::create(
+          rewriter, loc, v32f32Ty,
+          forceCastOperandsToSignature(
+              rewriter, loc, {lhs, rhs, acc, confCst},
+              {v32bf16Ty, v32bf16Ty, v32f32Ty, i32ty}));
+    } else {
+      fmaOp.emitWarning()
+          << "aievec.mac_elem AIE2p conversion: unsupported lane count "
+          << lhsLanes << ".\n";
+      return failure();
+    }
+
+    // Recast/Reshape result
+    auto resVal = forceCastValueToType(rewriter, loc, macIntrOp, flatAccTy);
+    if (flatAccTy != accTy)
+      resVal = vector::ShapeCastOp::create(rewriter, loc, accTy, resVal);
+
+    rewriter.replaceOp(fmaOp, resVal);
+    return success();
+  }
+};
+
 // Enum to represent different AIE target architectures
 enum class AIEArch {
   AIE2,
@@ -3636,8 +3727,38 @@ public:
             /*sub_mul=*/0, /*sub_acc1=*/0, /*sub_acc2=*/0,
             /*sub_mask=*/0)));
 
-    // Insert vmac intrinsic
+    // Pad 16-lane bf16 operands to 32-lane using set+upd intrinsics.
+    // forceCastOperandsToSignature only does bitwise reinterpretation, which
+    // leaves garbage in the upper lanes. The MAC intrinsic requires properly
+    // zero-padded v32bf16 inputs.
     auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
+    if (flatLhsTy.getElementType().isBF16() &&
+        flatLhsTy.getNumElements() < 32) {
+      auto zero32 = LLVM::ConstantOp::create(
+          rewriter, loc, i32ty, rewriter.getI32IntegerAttr(0));
+      auto zeros_i16 = xllvm::VectorBroadcast16I512IntrOp::create(
+          rewriter, loc, VectorType::get({32}, rewriter.getI16Type()), zero32);
+      auto zeros_bf16 = LLVM::BitcastOp::create(
+          rewriter, loc, v32bf16Ty, zeros_i16);
+      auto zeroVec = xllvm::ExtBF256BF512IntrOp::create(
+          rewriter, loc, VectorType::get({16}, rewriter.getBF16Type()),
+          zeros_bf16, zero32);
+
+      auto idx1 = LLVM::ConstantOp::create(
+          rewriter, loc, i32ty, rewriter.getI32IntegerAttr(1));
+
+      auto lhsSet = xllvm::VectorSetBF512BF256IntrOp::create(
+          rewriter, loc, v32bf16Ty, lhs, zero32);
+      lhs = xllvm::UpdBF512BF256IntrOp::create(
+          rewriter, loc, v32bf16Ty, lhsSet, zeroVec, idx1);
+
+      auto rhsSet = xllvm::VectorSetBF512BF256IntrOp::create(
+          rewriter, loc, v32bf16Ty, rhs, zero32);
+      rhs = xllvm::UpdBF512BF256IntrOp::create(
+          rewriter, loc, v32bf16Ty, rhsSet, zeroVec, idx1);
+    }
+
+    // Insert vmac intrinsic
     auto v8i64Ty = VectorType::get({8}, rewriter.getI64Type());
     auto macIntrOp = xllvm::MacConfBF16IntrOp::create(
         rewriter, loc, v8i64Ty,
@@ -4883,7 +5004,6 @@ void populateAIEVecToLLVMCommonConversionPatterns(
                UnpackOpConversion,
                BroadcastOpConversion,
                BroadcastScalarOpConversion,
-               FMAElemOpConversion,
                MatMulOpConversion,
                ShuffleOpConversion>(converter);
   // clang-format on
@@ -4901,6 +5021,7 @@ void populateAIEVecToLLVMAIE2ConversionPatterns(
   patterns.add<ExtOpConversion>(converter);
   patterns.add<ExtractElemOpConversion>(converter);
   patterns.add<ConcatOpConversion>(converter);
+  patterns.add<FMAElemOpConversion>(converter);
   patterns.add<FoldAIECastOps>(converter);
   patterns.add<FdivOpConversion>(converter, "aie2");
 }
@@ -4992,6 +5113,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   // Patterns specific to AIE2p backend
   patterns.add<AddElemOpAIE2pConversion, SubElemOpAIE2pConversion>(converter);
   patterns.add<MulElemOpAIE2pConversion>(converter);
+  patterns.add<FMAElemOpAIE2pConversion>(converter);
   patterns.add<UPSOpAIE2pConversion, SRSOpAIE2pConversion>(converter);
   patterns.add<MatMulOpAIE2pConversion>(converter);
   patterns.add<ShiftOpAIE2pConversion>(converter);
