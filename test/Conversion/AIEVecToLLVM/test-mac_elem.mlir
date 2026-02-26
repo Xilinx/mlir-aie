@@ -9,21 +9,23 @@ func.func @mac_flat_vec(%v0 : vector<16xbf16>,
                         %v2 : vector<16xf32>) -> vector<16xf32> {
   // CHECK: %[[C60:.*]] = llvm.mlir.constant(60 : i32) : i32
 
-  // CHECK: %[[C0_0:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK: %[[BV0:.*]] = llvm.bitcast %[[V0]]
-  // CHECK-SAME:                        : vector<16xbf16> to vector<8xi32>
-  // CHECK: %[[BV02C:.*]] = "xllvm.intr.aie2.set.I512.I256"(%[[BV0]], %[[C0_0]])
-  // CHECK-SAME:                        : (vector<8xi32>, i32) -> vector<16xi32>
-  // CHECK: %[[V02C:.*]] = llvm.bitcast %[[BV02C]]
-  // CHECK-SAME:                        : vector<16xi32> to vector<32xbf16>
-
-  // CHECK: %[[C0_1:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK: %[[BV1:.*]] = llvm.bitcast %[[V1]]
-  // CHECK-SAME:                        : vector<16xbf16> to vector<8xi32>
-  // CHECK: %[[BV12C:.*]] = "xllvm.intr.aie2.set.I512.I256"(%[[BV1]], %[[C0_1]])
-  // CHECK-SAME:                        : (vector<8xi32>, i32) -> vector<16xi32>
-  // CHECK: %[[V12C:.*]] = llvm.bitcast %[[BV12C]]
-  // CHECK-SAME:                        : vector<16xi32> to vector<32xbf16>
+  // Zero-pad 16-lane bf16 operands to 32-lane using set+upd intrinsics
+  // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : i32) : i32
+  // CHECK: %[[BCAST:.*]] = "xllvm.intr.aie2.vbroadcast16.I512"(%[[C0]])
+  // CHECK-SAME:                        : (i32) -> vector<32xi16>
+  // CHECK: %[[BCAST_BF:.*]] = llvm.bitcast %[[BCAST]]
+  // CHECK-SAME:                        : vector<32xi16> to vector<32xbf16>
+  // CHECK: %[[ZEROVEC:.*]] = "xllvm.intr.aie2.ext.bf256.bf512"(%[[BCAST_BF]], %[[C0]])
+  // CHECK-SAME:                        : (vector<32xbf16>, i32) -> vector<16xbf16>
+  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i32) : i32
+  // CHECK: %[[SET0:.*]] = "xllvm.intr.aie2.set.bf512.bf256"(%[[V0]], %[[C0]])
+  // CHECK-SAME:                        : (vector<16xbf16>, i32) -> vector<32xbf16>
+  // CHECK: %[[V02C:.*]] = "xllvm.intr.aie2.upd.bf512.bf256"(%[[SET0]], %[[ZEROVEC]], %[[C1]])
+  // CHECK-SAME:                        : (vector<32xbf16>, vector<16xbf16>, i32) -> vector<32xbf16>
+  // CHECK: %[[SET1:.*]] = "xllvm.intr.aie2.set.bf512.bf256"(%[[V1]], %[[C0]])
+  // CHECK-SAME:                        : (vector<16xbf16>, i32) -> vector<32xbf16>
+  // CHECK: %[[V12C:.*]] = "xllvm.intr.aie2.upd.bf512.bf256"(%[[SET1]], %[[ZEROVEC]], %[[C1]])
+  // CHECK-SAME:                        : (vector<32xbf16>, vector<16xbf16>, i32) -> vector<32xbf16>
 
   // CHECK: %[[BV2:.*]] = llvm.bitcast %[[V2]]
   // CHECK-SAME:                        : vector<16xf32> to vector<8xi64>
@@ -56,21 +58,23 @@ func.func @mac_2d_vec(%v0 : vector<4x4xbf16>,
 
   // CHECK: %[[C60:.*]] = llvm.mlir.constant(60 : i32) : i32
 
-  // CHECK: %[[C0_0:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK: %[[BV0:.*]] = llvm.bitcast %[[V0]]
-  // CHECK-SAME:                        : vector<16xbf16> to vector<8xi32>
-  // CHECK: %[[BV02C:.*]] = "xllvm.intr.aie2.set.I512.I256"(%[[BV0]], %[[C0_0]])
-  // CHECK-SAME:                        : (vector<8xi32>, i32) -> vector<16xi32>
-  // CHECK: %[[V02C:.*]] = llvm.bitcast %[[BV02C]]
-  // CHECK-SAME:                        : vector<16xi32> to vector<32xbf16>
-
-  // CHECK: %[[C0_1:.*]] = llvm.mlir.constant(0 : i32) : i32
-  // CHECK: %[[BV1:.*]] = llvm.bitcast %[[V1]]
-  // CHECK-SAME:                        : vector<16xbf16> to vector<8xi32>
-  // CHECK: %[[BV12C:.*]] = "xllvm.intr.aie2.set.I512.I256"(%[[BV1]], %[[C0_1]])
-  // CHECK-SAME:                        : (vector<8xi32>, i32) -> vector<16xi32>
-  // CHECK: %[[V12C:.*]] = llvm.bitcast %[[BV12C]]
-  // CHECK-SAME:                        : vector<16xi32> to vector<32xbf16>
+  // Zero-pad 16-lane bf16 operands to 32-lane using set+upd intrinsics
+  // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : i32) : i32
+  // CHECK: %[[BCAST:.*]] = "xllvm.intr.aie2.vbroadcast16.I512"(%[[C0]])
+  // CHECK-SAME:                        : (i32) -> vector<32xi16>
+  // CHECK: %[[BCAST_BF:.*]] = llvm.bitcast %[[BCAST]]
+  // CHECK-SAME:                        : vector<32xi16> to vector<32xbf16>
+  // CHECK: %[[ZEROVEC:.*]] = "xllvm.intr.aie2.ext.bf256.bf512"(%[[BCAST_BF]], %[[C0]])
+  // CHECK-SAME:                        : (vector<32xbf16>, i32) -> vector<16xbf16>
+  // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i32) : i32
+  // CHECK: %[[SET0:.*]] = "xllvm.intr.aie2.set.bf512.bf256"(%[[V0]], %[[C0]])
+  // CHECK-SAME:                        : (vector<16xbf16>, i32) -> vector<32xbf16>
+  // CHECK: %[[V02C:.*]] = "xllvm.intr.aie2.upd.bf512.bf256"(%[[SET0]], %[[ZEROVEC]], %[[C1]])
+  // CHECK-SAME:                        : (vector<32xbf16>, vector<16xbf16>, i32) -> vector<32xbf16>
+  // CHECK: %[[SET1:.*]] = "xllvm.intr.aie2.set.bf512.bf256"(%[[V1]], %[[C0]])
+  // CHECK-SAME:                        : (vector<16xbf16>, i32) -> vector<32xbf16>
+  // CHECK: %[[V12C:.*]] = "xllvm.intr.aie2.upd.bf512.bf256"(%[[SET1]], %[[ZEROVEC]], %[[C1]])
+  // CHECK-SAME:                        : (vector<32xbf16>, vector<16xbf16>, i32) -> vector<32xbf16>
 
   // CHECK: %[[BV2:.*]] = llvm.bitcast %[[V2]]
   // CHECK-SAME:                        : vector<16xf32> to vector<8xi64>

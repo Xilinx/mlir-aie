@@ -207,14 +207,17 @@ def AIEVec_SRSOp:
   AIEVec_Op<"srs", [
     Pure
   ]>,
-  Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift)>,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source, AnyInteger:$shift,
+          DefaultValuedAttr<ConfinedAttr<AIEI32Attr,
+                 [IntMinValue<0>, IntMaxValue<1>]>, "1">:$sign)>,
   Results<(outs AnyVectorOfNonZeroRank:$result)> {
   let summary = "AIE srs";
   let description = [{
     AMD-specific shift-round-saturate intrinsic. Moves values from
     accumulator data type to AIE vector data types. The adjustment in
-    precision is controlled by the shift parameter.
-    `$result = srs($source, $shift)`
+    precision is controlled by the shift parameter. The sign parameter
+    controls signed (1) vs unsigned (0) saturation.
+    `$result = srs($source, $shift, $sign)`
   }];
   let hasFolder = 1;
 }

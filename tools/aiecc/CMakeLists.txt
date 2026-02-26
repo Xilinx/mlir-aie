@@ -53,3 +53,20 @@ set(LIBS
   )
 
 target_link_libraries(aiecc PUBLIC ${LIBS})
+
+# Optional: AIEBU library for direct ELF generation (avoids subprocess to aiebu-asm)
+if(aiebu_FOUND)
+  target_link_libraries(aiecc PRIVATE AIEBU::aiebu_static)
+  target_include_directories(aiecc PRIVATE ${AIEBU_INCLUDE_DIRS})
+  target_compile_definitions(aiecc PRIVATE AIECC_HAS_AIEBU_LIBRARY)
+  message(STATUS "aiecc: Enabled AIEBU library integration")
+endif()
+
+# bootgen library for direct PDI generation (avoids subprocess to bootgen)
+# Uses C API wrapper that handles exceptions internally
+if(TARGET bootgen-lib)
+  find_package(OpenSSL REQUIRED)
+  target_link_libraries(aiecc PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::Crypto)
+  target_compile_definitions(aiecc PRIVATE AIECC_HAS_BOOTGEN_LIBRARY)
+  message(STATUS "aiecc: Enabled bootgen library integration")
+endif()
