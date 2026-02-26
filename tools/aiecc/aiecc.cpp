@@ -60,6 +60,8 @@
 #include "aie/Targets/AIETargets.h"
 #include "aie/version.h"
 
+#include "aiecc_aiesim.h"
+
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
@@ -155,6 +157,25 @@ static cl::opt<bool> noXchesscc("no-xchesscc", cl::desc("Compile using peano"),
 
 static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
                             cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> noAiesim("no-aiesim",
+                              cl::desc("Do not generate aiesim Work folder"),
+                              cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    compileHost("compile-host",
+                cl::desc("Enable compiling of the host program"),
+                cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    noCompileHost("no-compile-host",
+                  cl::desc("Disable compiling of the host program"),
+                  cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    hostTarget("host-target",
+               cl::desc("Target architecture of the host program"),
+               cl::init("x86_64-linux-gnu"), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> compile("compile",
                              cl::desc("Enable compiling of AIE cores"),
@@ -3358,6 +3379,23 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 }
 
 //===----------------------------------------------------------------------===//
+// AIE Simulation and Host Compilation (delegated to aiecc_aiesim.cpp)
+//===----------------------------------------------------------------------===//
+
+/// Create AiesimConfig from current command-line options
+static xilinx::aiecc::AiesimConfig createAiesimConfig() {
+  xilinx::aiecc::AiesimConfig config;
+  config.enabled = aiesim && !noAiesim;
+  config.compileHost = compileHost && !noCompileHost;
+  config.verbose = verbose;
+  config.dryRun = dryRun;
+  config.hostTarget = hostTarget.getValue();
+  config.aietoolsPath = getAietoolsDir();
+  config.installPath = getInstallPath();
+  return config;
+}
+
+//===----------------------------------------------------------------------===//
 // Main Compilation Flow
 //===----------------------------------------------------------------------===//
 
@@ -3526,6 +3564,17 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
+    // Generate aie_inc.cpp and aiesim work folder if requested
+    auto aiesimConfig = createAiesimConfig();
+    if (failed(xilinx::aiecc::generateAieIncCpp(moduleOp, tmpDirName, devName,
+                                                aiesimConfig))) {
+      return failure();
+    }
+    if (failed(xilinx::aiecc::generateAiesim(moduleOp, tmpDirName, devName,
+                                             aieTarget, aiesimConfig))) {
+      return failure();
+    }
+
     // Collect info for full ELF generation
     if (generateFullElf) {
       DeviceElfInfo info;
@@ -3675,6 +3724,19 @@ int main(int argc, char **argv) {
   }
   if (noLink) {
     link = false;
+  }
+  if (noAiesim) {
+    aiesim = false;
+  }
+  if (noCompileHost) {
+    compileHost = false;
+  }
+
+  // Validate: aiesim requires xbridge
+  if (aiesim && !xbridge) {
+    llvm::errs()
+        << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
+    return 1;
   }
 
   // Process the input file
