@@ -2386,6 +2386,82 @@ struct AIEObjectFifoStatefulTransformPass
       });
       if (res.wasInterrupted())
         return signalPassFailure();
+
+      //===----------------------------------------------------------------===//
+      // Replace ObjectFifoGetLockOps with actual lock SSA values
+      //===----------------------------------------------------------------===//
+      res = coreOp.walk([&](ObjectFifoGetLockOp getLockOp) {
+        ObjectFifoCreateOp op = getLockOp.getObjectFifo();
+        if (!op) {
+          getLockOp->emitOpError("cannot retrieve associated object FIFO");
+          return WalkResult::interrupt();
+        }
+
+        ObjectFifoCreateOp target = op;
+        if (auto linkOp = getOptionalLinkOp(op))
+          if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
+            target = objFifoLinks[*linkOp];
+
+        if (locksPerFifo[target].empty()) {
+          getLockOp->emitOpError(
+              "objectFifo has no locks (synchronization disabled?)");
+          return WalkResult::interrupt();
+        }
+
+        auto port = getLockOp.getPort();
+        auto dev = op->getParentOfType<DeviceOp>();
+        LockOp acqLock, relLock;
+
+        if (!dev.getTargetModel().hasProperty(
+                AIETargetModel::UsesSemaphoreLocks)) {
+          // AIE1: single lock per element, both acq and rel use the same lock
+          acqLock = locksPerFifo[target][0];
+          relLock = locksPerFifo[target][0];
+        } else {
+          // AIE2/AIE2P: dual-lock semantics
+          if (port == ObjectFifoPort::Produce) {
+            acqLock = locksPerFifo[target][0]; // prod_lock
+            relLock = locksPerFifo[target][1]; // cons_lock
+          } else {
+            acqLock = locksPerFifo[target][1]; // cons_lock
+            relLock = locksPerFifo[target][0]; // prod_lock
+          }
+        }
+
+        getLockOp.getAcqLock().replaceAllUsesWith(acqLock.getResult());
+        getLockOp.getRelLock().replaceAllUsesWith(relLock.getResult());
+        return WalkResult::advance();
+      });
+      if (res.wasInterrupted())
+        return signalPassFailure();
+
+      //===----------------------------------------------------------------===//
+      // Replace ObjectFifoGetBufferOps with actual buffer references
+      //===----------------------------------------------------------------===//
+      res = coreOp.walk([&](ObjectFifoGetBufferOp getBufferOp) {
+        ObjectFifoCreateOp op = getBufferOp.getObjectFifo();
+        if (!op) {
+          getBufferOp->emitOpError("cannot retrieve associated object FIFO");
+          return WalkResult::interrupt();
+        }
+
+        ObjectFifoCreateOp target = op;
+        if (auto linkOp = getOptionalLinkOp(op))
+          if (objFifoLinks.find(*linkOp) != objFifoLinks.end())
+            target = objFifoLinks[*linkOp];
+
+        int index = getBufferOp.getIndex();
+        if (index >= static_cast<int>(buffersPerFifo[target].size())) {
+          getBufferOp->emitOpError("buffer index out of bounds");
+          return WalkResult::interrupt();
+        }
+
+        getBufferOp.getOutput().replaceAllUsesWith(
+            buffersPerFifo[target][index].getBuffer());
+        return WalkResult::advance();
+      });
+      if (res.wasInterrupted())
+        return signalPassFailure();
     }
 
     //===------------------------------------------------------------------===//
@@ -2395,7 +2471,8 @@ struct AIEObjectFifoStatefulTransformPass
     device.walk([&](Operation *op) {
       if (isa<ObjectFifoLinkOp, ObjectFifoRegisterExternalBuffersOp,
               ObjectFifoAcquireOp, ObjectFifoSubviewAccessOp,
-              ObjectFifoReleaseOp, ObjectFifoAllocateOp>(op))
+              ObjectFifoReleaseOp, ObjectFifoAllocateOp, ObjectFifoGetLockOp,
+              ObjectFifoGetBufferOp>(op))
         opsToErase.insert(op);
     });
     SmallVector<Operation *> sorted{opsToErase.begin(), opsToErase.end()};

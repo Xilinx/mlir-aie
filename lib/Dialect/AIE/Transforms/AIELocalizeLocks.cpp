@@ -58,7 +58,7 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
             // it suffices to check if the parent of a UseLockOp is coreOp.
             if (llvm::none_of(lock.getResult().getUsers(),
                               [&](Operation *user) {
-                                return user->getParentOp() == coreOp;
+                                return coreOp->isProperAncestor(user);
                               }))
               continue;
 
@@ -77,7 +77,7 @@ struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
                 builder, builder.getUnknownLoc(), localLockIndex);
             lock.getResult().replaceUsesWithIf(
                 coreLockIDValue, [&](OpOperand &opOperand) {
-                  return opOperand.getOwner()->getParentOp() == coreOp;
+                  return coreOp->isProperAncestor(opOperand.getOwner());
                 });
           }
       }

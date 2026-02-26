@@ -1045,6 +1045,91 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// ObjectFifoGetLockOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ObjectFifoGetLockOp::verify() {
+  auto parent = getOperation()->getParentOfType<CoreOp>();
+  if (parent == nullptr)
+    return emitOpError("must be called from inside a CoreOp");
+
+  auto coreTile = parent.getTile();
+  auto objFifo = getObjectFifo();
+  if (!objFifo)
+    return emitError("cannot retrieve associated object FIFO");
+  if (getPort() == ObjectFifoPort::Produce) {
+    if (coreTile != objFifo.getProducerTile())
+      return parent.emitOpError(
+          "producer port of objectFifo accessed by core running "
+          "on non-producer tile");
+  } else if (getPort() == ObjectFifoPort::Consume) {
+    bool found = false;
+    for (auto consumerTile : objFifo.getConsumerTiles()) {
+      if (coreTile == consumerTile) {
+        found = true;
+        break;
+      }
+    }
+    if (!found)
+      return parent.emitOpError(
+          "consumer port of objectFifo accessed by core running "
+          "on non-consumer tile");
+  }
+
+  return success();
+}
+
+ObjectFifoCreateOp ObjectFifoGetLockOp::getObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
+    }
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// ObjectFifoGetBufferOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ObjectFifoGetBufferOp::verify() {
+  auto parent = getOperation()->getParentOfType<CoreOp>();
+  if (parent == nullptr)
+    return emitOpError("must be called from inside a CoreOp");
+
+  auto objFifo = getObjectFifo();
+  if (!objFifo)
+    return emitError("cannot retrieve associated object FIFO");
+
+  auto objFifoElem =
+      llvm::cast<AIEObjectFifoType>(objFifo.getElemType()).getElementType();
+  if (objFifoElem != getOutput().getType())
+    return emitOpError("output memref type must match ObjectFifo element type");
+
+  int index = getIndex();
+  if (index >= objFifo.size())
+    return emitOpError("buffer index ")
+           << index << " exceeds ObjectFifo depth " << objFifo.size();
+
+  return success();
+}
+
+ObjectFifoCreateOp ObjectFifoGetBufferOp::getObjectFifo() {
+  Operation *parent = getOperation();
+  while ((parent = parent->getParentOp())) {
+    if (parent->hasTrait<OpTrait::SymbolTable>()) {
+      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
+          isa_and_nonnull<ObjectFifoCreateOp>(st))
+        return dyn_cast<ObjectFifoCreateOp>(st);
+    }
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // ObjectFifoRegisterProcessOp
 //===----------------------------------------------------------------------===//
 

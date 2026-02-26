@@ -2038,6 +2038,78 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   }];
 }
 
+def AIE_ObjectFifoGetLockOp : AIE_Op<"objectfifo.lock", []> {
+  let summary = "Get acquire and release lock IDs for an ObjectFIFO port";
+  let description = [{
+    Returns the acquire and release lock IDs for the given ObjectFIFO port.
+    These lock IDs can be passed to precompiled C kernels that call
+    `acquire_equal()` / `release()` directly.
+
+    On AIE2 (semaphore locks), each ObjectFIFO element has two locks
+    (producer + consumer). The acquire lock differs from the release lock:
+      - Producer port: acquire = prod_lock, release = cons_lock
+      - Consumer port: acquire = cons_lock, release = prod_lock
+
+    Example:
+    ```
+      %acq_lock, %rel_lock = aie.objectfifo.lock @of1 (Produce) : (index, index)
+    ```
+    The returned `index` values are the localized lock IDs, suitable for passing
+    to external C functions as integer arguments.
+  }];
+
+  let arguments = (
+    ins ObjectFifoPort:$port,
+        FlatSymbolRefAttr:$objFifo_name
+  );
+
+  let results = (outs Index:$acq_lock, Index:$rel_lock);
+
+  let assemblyFormat = [{
+    attr-dict $objFifo_name `(` $port `)` `:` `(` type($acq_lock) `,` type($rel_lock) `)`
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    ObjectFifoCreateOp getObjectFifo();
+  }];
+}
+
+def AIE_ObjectFifoGetBufferOp : AIE_Op<"objectfifo.buffer", []> {
+  let summary = "Get a buffer reference from an ObjectFIFO without acquiring";
+  let description = [{
+    Returns a memref to the ObjectFIFO buffer at the given element index,
+    without performing any lock acquisition. This is intended for use with
+    precompiled C kernels that manage their own locking via
+    `aie.objectfifo.lock`.
+
+    Example:
+    ```
+      %buf = aie.objectfifo.buffer @of1 (0) : memref<256xi32>
+    ```
+    The returned memref can be passed to an external C function along with
+    lock IDs from `aie.objectfifo.lock`.
+  }];
+
+  let arguments = (
+    ins FlatSymbolRefAttr:$objFifo_name,
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$index
+  );
+
+  let results = (outs AnyMemRef:$output);
+
+  let assemblyFormat = [{
+    attr-dict $objFifo_name `(` $index `)` `:` qualified(type($output))
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    ObjectFifoCreateOp getObjectFifo();
+  }];
+}
+
 def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
   let summary = "Operation that produces the acquire/release patterns for a process registered to an objectFifo";
   let description = [{
