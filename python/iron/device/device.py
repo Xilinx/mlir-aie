@@ -4,64 +4,25 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+import re
 from typing import Generator
 
 from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import WireBundle  # type: ignore
-from ...dialects.aie import AIEDevice, tile, TileOp, get_target_model  # type: ignore
+from ...dialects.aie import (  # type: ignore
+    AIEDevice,
+    AIETileType,
+    logical_tile,
+    LogicalTileOp,
+    get_target_model,
+)
 from ..resolvable import Resolvable
 from .tile import Tile
 
-import re
-
 
 class Device(Resolvable):
-    """
-    A base class for representations of a device of a specific type.
-
-    Note: this class is abstract because it does not implement Resolve
-    """
-
-    class __DeviceTile(Resolvable):
-        """
-        Interior class for tiles objects owned by a particular device.
-        This is needed to ensure we don't generate more than one MLIR operation corresponding
-        to the same logical tile within a device.
-        """
-
-        def __init__(self, col: int, row: int) -> None:
-            self._col: int = col
-            self._row: int = row
-            self._op: TileOp | None = None
-            super().__init__()
-
-        def resolve(
-            self,
-            loc: ir.Location | None = None,
-            ip: ir.InsertionPoint | None = None,
-            allocation_scheme: str | None = None,
-        ) -> None:
-            if self._op == None:
-                self._op = tile(
-                    self._col,
-                    self._row,
-                    loc=loc,
-                    ip=ip,
-                    allocation_scheme=allocation_scheme,
-                )
-
-        @property
-        def op(self) -> TileOp:
-            if not self._op:
-                raise ValueError("Cannot get operation before it is set.")
-            return self._op
-
-        @op.setter
-        def op(self, op: TileOp):
-            if self._op:
-                raise ValueError("Cannot set operation more than once.")
-            self._op = op
+    """A base class for representations of a device of a specific type."""
 
     def __init__(self, device: AIEDevice) -> None:
         """Initialize a representation of a device.
@@ -70,20 +31,31 @@ class Device(Resolvable):
             device (AIEDevice): aie device
         """
         self._device = device
-        self._tiles: list[list[Device.__DeviceTile]] = []
         self._tm = get_target_model(device)
-        for c in range(self._tm.columns()):
-            self._tiles.append([])
-            for r in range(self._tm.rows()):
-                self._tiles[c].append(Device.__DeviceTile(c, r))
+        self._allocated_compute_tiles: set[tuple[int, int]] = set()
+
+    def _get_tile_type_from_coords(self, col: int, row: int) -> str:
+        """Query device target model for IRON tile type at coordinates.
+
+        Returns:
+            Tile type string (Tile.COMPUTE, Tile.MEMORY, or Tile.SHIM)
+        """
+        if self._tm.is_core_tile(col, row):
+            return Tile.COMPUTE
+        elif self._tm.is_mem_tile(col, row):
+            return Tile.MEMORY
+        elif self._tm.is_shim_noc_tile(col, row):
+            return Tile.SHIM
+        elif self._tm.is_shim_pl_tile(col, row):
+            return Tile.SHIM
+        else:
+            raise ValueError(f"Unknown tile type for coordinates ({col}, {row})")
 
     def tile_iterator(self) -> Generator[Tile, None, None]:
-        """
-        Iterates over the device tiles deterministically
-        """
+        """Iterates over the device tiles deterministically."""
         for c in range(self._tm.columns()):
             for r in range(self._tm.rows()):
-                yield self._tiles[c][r]
+                yield Tile(c, r)
         return None
 
     @property
@@ -101,9 +73,10 @@ class Device(Resolvable):
             list[Tile]: A list of shim tiles.
         """
         return [
-            Tile(t._col, t._row)
-            for t in self.tile_iterator()
-            if self._tm.is_shim_noc_or_pl_tile(t._col, t._row)
+            Tile(c, r)
+            for c in range(self._tm.columns())
+            for r in range(self._tm.rows())
+            if self._tm.is_shim_noc_or_pl_tile(c, r)
         ]
 
     def get_mem_tiles(self) -> list[Tile]:
@@ -113,9 +86,10 @@ class Device(Resolvable):
             list[Tile]: A list of mem tiles.
         """
         return [
-            Tile(t._col, t._row)
-            for t in self.tile_iterator()
-            if self._tm.is_mem_tile(t._col, t._row)
+            Tile(c, r)
+            for c in range(self._tm.columns())
+            for r in range(self._tm.rows())
+            if self._tm.is_mem_tile(c, r)
         ]
 
     def get_compute_tiles(self) -> list[Tile]:
@@ -125,9 +99,10 @@ class Device(Resolvable):
             list[Tile]: A list of compute tiles.
         """
         return [
-            Tile(t._col, t._row)
-            for t in self.tile_iterator()
-            if self._tm.is_core_tile(t._col, t._row)
+            Tile(c, r)
+            for c in range(self._tm.columns())
+            for r in range(self._tm.rows())
+            if self._tm.is_core_tile(c, r)
         ]
 
     def get_num_source_switchbox_connections(self, t: Tile) -> int:
@@ -136,10 +111,13 @@ class Device(Resolvable):
         Returns:
             int: Number of DMA source ports.
         """
-        col = t.col
-        row = t.row
+        if t.col is None or t.row is None:
+            raise ValueError(
+                f"get_num_source_switchbox_connections requires Tile with concrete coordinates, "
+                f"got Tile(col={t.col}, row={t.row})"
+            )
         bundle = WireBundle.DMA
-        return self._tm.get_num_source_switchbox_connections(col, row, bundle)
+        return self._tm.get_num_source_switchbox_connections(t.col, t.row, bundle)
 
     def get_num_dest_switchbox_connections(self, t: Tile) -> int:
         """Returns number of DMA dest ports in the switchbox for the given tile on the device.
@@ -147,10 +125,13 @@ class Device(Resolvable):
         Returns:
             int: Number of DMA dest ports.
         """
-        col = t.col
-        row = t.row
+        if t.col is None or t.row is None:
+            raise ValueError(
+                f"get_num_dest_switchbox_connections requires Tile with concrete coordinates, "
+                f"got Tile(col={t.col}, row={t.row})"
+            )
         bundle = WireBundle.DMA
-        return self._tm.get_num_dest_switchbox_connections(col, row, bundle)
+        return self._tm.get_num_dest_switchbox_connections(t.col, t.row, bundle)
 
     def get_num_source_shim_mux_connections(self, t: Tile) -> int:
         """Returns number of DMA source ports in the shim mux for the given tile on the device.
@@ -158,10 +139,13 @@ class Device(Resolvable):
         Returns:
             int: Number of DMA source ports.
         """
-        col = t.col
-        row = t.row
+        if t.col is None or t.row is None:
+            raise ValueError(
+                f"get_num_source_shim_mux_connections requires Tile with concrete coordinates, "
+                f"got Tile(col={t.col}, row={t.row})"
+            )
         bundle = WireBundle.DMA
-        return self._tm.get_num_source_shim_mux_connections(col, row, bundle)
+        return self._tm.get_num_source_shim_mux_connections(t.col, t.row, bundle)
 
     def get_num_dest_shim_mux_connections(self, t: Tile) -> int:
         """Returns number of DMA dest ports in the shim mux for the given tile on the device.
@@ -169,16 +153,25 @@ class Device(Resolvable):
         Returns:
             int: Number of DMA dest ports.
         """
-        col = t.col
-        row = t.row
+        if t.col is None or t.row is None:
+            raise ValueError(
+                f"get_num_dest_shim_mux_connections requires Tile with concrete coordinates, "
+                f"got Tile(col={t.col}, row={t.row})"
+            )
         bundle = WireBundle.DMA
-        return self._tm.get_num_dest_shim_mux_connections(col, row, bundle)
+        return self._tm.get_num_dest_shim_mux_connections(t.col, t.row, bundle)
 
     def get_num_connections(self, tile: Tile, output: bool) -> int:
         """Returns number of DMA input or output "channels" available on the tile.
+
         Returns:
             int: Number of connections (channels) available on the tile
         """
+        if tile.col is None or tile.row is None:
+            raise ValueError(
+                f"get_num_connections requires Tile with concrete coordinates, "
+                f"got Tile(col={tile.col}, row={tile.row})"
+            )
         if tile.row == 0:
             if output:
                 return self.get_num_source_shim_mux_connections(tile)
@@ -189,57 +182,95 @@ class Device(Resolvable):
         else:
             return self.get_num_dest_switchbox_connections(tile)
 
-    def is_mem_accessible(self, source_tile: Tile, tiles: list[Tile]) -> bool:
-        """Returns whether there exists a memory region on source_tile which all destination tiles can access.
-        Returns:
-            int: Number of connections (channels) available on the tile
-        """
-        if not isinstance(source_tile, Tile):
-            raise ValueError(f"Expected a source Tile, but got {source_tile}")
-        for t in tiles:
-            if not isinstance(t, Tile):
-                raise ValueError(f"Expected a Tile, but got {t}")
-        if not tiles:
-            return True
-
-        source_is_compute = self._tm.is_core_tile(source_tile.col, source_tile.row)
-        source_is_mem = self._tm.is_mem_tile(source_tile.col, source_tile.row)
-        source_is_shim = self._tm.is_shim_noc_or_pl_tile(
-            source_tile.col, source_tile.row
-        )
-
-        if source_is_compute and not all(
-            [self._tm.is_core_tile(dst_tile.col, dst_tile.row) for dst_tile in tiles]
-        ):
-            return False
-        if source_is_mem and not all(
-            [self._tm.is_mem_tile(dst_tile.col, dst_tile.row) for dst_tile in tiles]
-        ):
-            return False
-        if source_is_shim or any(
-            [
-                self._tm.is_shim_noc_or_pl_tile(dst_tile.col, dst_tile.row)
-                for dst_tile in tiles
-            ]
-        ):
-            # No neighbor sharing from shim tiles.
-            return False
-
-        for t in tiles:
-            if not self._tm.is_legal_mem_affinity(
-                source_tile.col, source_tile.row, t.col, t.row
-            ):
-                return False
-        return True
-
     def resolve_tile(
         self,
-        tile: Tile,
+        placement_tile: Tile,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
-    ) -> None:
-        self._tiles[tile.col][tile.row].resolve(loc, ip, tile.allocation_scheme)
-        tile.op = self._tiles[tile.col][tile.row].op
+    ) -> LogicalTileOp:
+        """Resolve a Tile to a LogicalTileOp.
+
+        Tile can be fully constrained, partially constrained, or unconstrained.
+        Tile type is inferred from coordinates if not explicitly specified.
+
+        Args:
+            placement_tile: A Tile object (possibly with partial/no coordinates)
+            loc: MLIR location
+            ip: Insertion point
+
+        Returns:
+            LogicalTileOp: The created logical tile operation
+        """
+        if not isinstance(placement_tile, Tile):
+            raise ValueError(
+                f"resolve_tile expects Tile object, got {type(placement_tile)}"
+            )
+
+        iron_to_mlir = {
+            Tile.COMPUTE: AIETileType.CoreTile,
+            Tile.MEMORY: AIETileType.MemTile,
+            Tile.SHIM: AIETileType.ShimNOCTile,
+        }
+
+        # Determine IRON tile type
+        iron_tile_type = placement_tile.tile_type
+
+        # Infer tile type if not set
+        if iron_tile_type is None:
+            if placement_tile.col is not None and placement_tile.row is not None:
+                iron_tile_type = self._get_tile_type_from_coords(
+                    placement_tile.col, placement_tile.row
+                )
+            else:
+                # tile_type should have been set by Worker/RuntimeEndpoint/ObjectFifoLink
+                raise ValueError(
+                    f"Tile type not set by context and cannot be inferred from coordinates. "
+                    f"Tile(col={placement_tile.col}, row={placement_tile.row}) must have "
+                    f"tile_type set by the context (Worker, RuntimeEndpoint, ObjectFifoLink)."
+                )
+
+        # If user specified both tile_type AND coordinates, check they match
+        if (
+            placement_tile.tile_type is not None
+            and placement_tile.col is not None
+            and placement_tile.row is not None
+        ):
+            actual_iron_type = self._get_tile_type_from_coords(
+                placement_tile.col, placement_tile.row
+            )
+
+            if placement_tile.tile_type != actual_iron_type:
+                raise ValueError(
+                    f"Tile type mismatch: specified tile_type='{placement_tile.tile_type}' "
+                    f"but coordinates ({placement_tile.col}, {placement_tile.row}) "
+                    f"correspond to '{actual_iron_type}' on this device"
+                )
+
+        # Compute tiles cannot be shared, check for duplicates
+        if iron_tile_type == Tile.COMPUTE:
+            if placement_tile.col is not None and placement_tile.row is not None:
+                coord_tuple = (placement_tile.col, placement_tile.row)
+                if coord_tuple in self._allocated_compute_tiles:
+                    raise ValueError(
+                        f"Compute tile ({placement_tile.col}, {placement_tile.row}) "
+                        f"already allocated. Each Worker requires a unique compute tile. "
+                        f"Compute tiles cannot be shared between Workers."
+                    )
+                self._allocated_compute_tiles.add(coord_tuple)
+
+        mlir_tile_type = iron_to_mlir[iron_tile_type]
+
+        logical_tile_op = logical_tile(
+            mlir_tile_type,
+            col=placement_tile.col,
+            row=placement_tile.row,
+            loc=loc,
+            ip=ip,
+            allocation_scheme=placement_tile.allocation_scheme,
+        )
+
+        placement_tile._op = logical_tile_op
+        return logical_tile_op
 
 
 def create_class(class_name, device):

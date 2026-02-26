@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.func import FuncBase
@@ -12,7 +12,6 @@ from ..dialects.aie import device
 
 from .device import Device
 from .runtime import Runtime
-from .placers import Placer
 from .resolvable import Resolvable
 from ..utils import trace as trace_utils
 
@@ -35,12 +34,11 @@ class Program:
         self._device = device
         self._rt = rt
 
-    def resolve_program(self, placer: Placer | None = None, device_name="main"):
+    def resolve_program(self, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
 
         Args:
-            placer (Placer | None, optional): The placer that will assign placement to unplaced components.
-                If a placer is not given, all components must be fully placed. Defaults to None.
+            device_name (str, optional): Symbol name for the device operation. Defaults to "main".
 
         Returns:
             module (Module): The module containing the MLIR context information.
@@ -62,12 +60,6 @@ class Program:
 
                 # Sort fifos for deterministic resolve
                 all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
-
-                if placer:
-                    # TODO: should maybe just take runtime?
-                    placer.make_placement(
-                        self._device, self._rt, self._rt.workers, all_fifos
-                    )
 
                 # Collect all tiles
                 all_tiles = []
