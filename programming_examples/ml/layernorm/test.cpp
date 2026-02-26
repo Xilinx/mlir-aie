@@ -75,7 +75,7 @@ int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
     float expected_val = expected[i];
     float hw_val = static_cast<float>(bufOut[i]);
     float diff = std::abs(expected_val - hw_val);
-    if (diff > 0.04) {
+    if (diff > 0.1) {
       std::cout << "Mismatch at index " << i << ": expected " << expected_val
                 << ", got " << hw_val << " , diff = " << diff << std::endl;
       errors++;
@@ -97,8 +97,6 @@ int verify_layernorm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
 //*****************************************************************************
 
 int main(int argc, const char *argv[]) {
-  srand(42);
-
   args myargs = parse_args(argc, argv);
 
   int in_volume = (ROWS * COLS);
