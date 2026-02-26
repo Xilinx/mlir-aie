@@ -201,3 +201,36 @@ func.func @test_scalar_srs_clamp_signed(%arg0: i32) -> i8 {
   %result = arith.trunci %clamped : i32 to i8
   return %result : i8
 }
+
+// Test 7: Scalar clamp+trunci WITHOUT shrsi (clamp-only, unsigned, shift=0)
+// Handles the pattern after skip-add where skip_scale=0 means no shift.
+// broadcast → concat → cast → srs(shift=0, sign=0) → concat → ext_elem
+
+// CHECK-LABEL: func.func @test_scalar_clamp_only_unsigned(
+// CHECK-NOT: arith.maxsi
+// CHECK-NOT: arith.minsi
+// CHECK-NOT: arith.trunci
+// CHECK: aievec.broadcast_scalar %{{.*}} : i32, vector<16xi32>
+// CHECK: aievec.concat
+// CHECK: aievec.cast %{{.*}} {isResAcc = true} : vector<32xi32>, vector<32xi32>
+// CHECK: aievec.srs %{{.*}} {sign = 0 : i32} : vector<32xi32>, i32, vector<32xi8>
+// CHECK: aievec.concat
+// CHECK: aievec.ext_elem
+// AIE2P-LABEL: func.func @test_scalar_clamp_only_unsigned(
+// AIE2P-NOT: arith.maxsi
+// AIE2P-NOT: arith.minsi
+// AIE2P-NOT: arith.trunci
+// AIE2P: aievec.broadcast_scalar %{{.*}} : i32, vector<16xi32>
+// AIE2P: aievec.concat
+// AIE2P: aievec.cast %{{.*}} {isResAcc = true} : vector<32xi32>, vector<32xi32>
+// AIE2P: aievec.srs %{{.*}} {sign = 0 : i32} : vector<32xi32>, i32, vector<32xi8>
+// AIE2P: aievec.concat
+// AIE2P: aievec.ext_elem
+func.func @test_scalar_clamp_only_unsigned(%arg0: i32) -> i8 {
+  %c0 = arith.constant 0 : i32
+  %c255 = arith.constant 255 : i32
+  %clamped0 = arith.maxsi %arg0, %c0 : i32
+  %clamped = arith.minsi %clamped0, %c255 : i32
+  %result = arith.trunci %clamped : i32 to i8
+  return %result : i8
+}

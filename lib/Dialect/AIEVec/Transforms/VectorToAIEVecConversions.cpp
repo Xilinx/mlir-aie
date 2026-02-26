@@ -92,6 +92,19 @@ static bool isSRSCompoundCandidate(arith::TruncIOp trunciOp) {
     }
   }
 
+  // Case 4: minsi(maxsi(x)) → trunci (clamp-only, no shrsi)
+  // Used for saturating clamp after skip-add (e.g., skip_scale=0).
+  if (auto minsiOp = source.getDefiningOp<arith::MinSIOp>()) {
+    if (minsiOp.getLhs().getDefiningOp<arith::MaxSIOp>())
+      return true;
+  }
+
+  // Case 5: maxsi(minsi(x)) → trunci (reversed clamp-only, no shrsi)
+  if (auto maxsiOp = source.getDefiningOp<arith::MaxSIOp>()) {
+    if (maxsiOp.getLhs().getDefiningOp<arith::MinSIOp>())
+      return true;
+  }
+
   return false;
 }
 
@@ -4065,20 +4078,25 @@ struct LowerScalarShiftClampTruncToSRS : OpConversionPattern<arith::TruncIOp> {
       }
     }
 
-    // Now source should be the shrsi result
-    auto shrsiOp = source.getDefiningOp<arith::ShRSIOp>();
-    if (!shrsiOp)
-      return failure();
-
-    // Verify shrsi operand types
-    if (!isa<IntegerType>(shrsiOp.getLhs().getType()))
-      return failure();
-
+    // Now source should be the shrsi result, or any i32 value for clamp-only
     Location loc = truncOp.getLoc();
-
-    // Get the pre-shift value and shift amount
-    Value preShiftVal = shrsiOp.getLhs();
-    Value shiftVal = shrsiOp.getRhs();
+    Value preShiftVal;
+    Value shiftVal;
+    arith::ShRSIOp shrsiOp = source.getDefiningOp<arith::ShRSIOp>();
+    if (shrsiOp) {
+      // Verify shrsi operand types
+      if (!isa<IntegerType>(shrsiOp.getLhs().getType()))
+        return failure();
+      preShiftVal = shrsiOp.getLhs();
+      shiftVal = shrsiOp.getRhs();
+    } else {
+      // No shrsi found: treat as identity shift (shift=0).
+      // This handles clamp+trunci patterns without a preceding shift,
+      // e.g., after skip-add with skip_scale=0.
+      preShiftVal = source;
+      shiftVal = arith::ConstantOp::create(rewriter, loc,
+                                            rewriter.getI32IntegerAttr(0));
+    }
 
     // Create 512-bit vector type: vector<16xi32>
     unsigned srcLanes = 512 / srcIntType.getWidth(); // 16 for i32
@@ -4139,7 +4157,7 @@ struct LowerScalarShiftClampTruncToSRS : OpConversionPattern<arith::TruncIOp> {
       opsToErase.push_back(minOp);
     if (maxOp && maxOp->use_empty())
       opsToErase.push_back(maxOp);
-    if (shrsiOp->use_empty())
+    if (shrsiOp && shrsiOp->use_empty())
       opsToErase.push_back(shrsiOp);
     for (Operation *op : opsToErase)
       rewriter.eraseOp(op);
@@ -4675,13 +4693,22 @@ static void configureAIEVecCommonLegalizations(ConversionTarget &target,
   target.addDynamicallyLegalOp<arith::TruncIOp>([](arith::TruncIOp trunciOp) {
     auto srcType = dyn_cast<VectorType>(trunciOp.getIn().getType());
     auto dstType = dyn_cast<VectorType>(trunciOp.getOut().getType());
-    if (!srcType || !dstType)
+    if (!srcType || !dstType) {
+      // Scalar trunci: mark illegal if part of compound SRS chain
+      // so the LowerScalarShiftClampTruncToSRS pattern can convert it.
+      if (!srcType && !dstType && isSRSCompoundCandidate(trunciOp))
+        return false;
       return true;
+    }
 
     Type srcScalarType = srcType.getElementType();
     Type dstScalarType = dstType.getElementType();
     if (!isa<IntegerType>(srcScalarType) || !isa<IntegerType>(dstScalarType))
       return true;
+
+    // Also mark vector trunci as illegal if it's part of a compound SRS chain
+    if (isSRSCompoundCandidate(trunciOp))
+      return false;
 
     unsigned srcLaneSize = getVectorLaneSize(srcType);
     unsigned dstLaneSize = getVectorLaneSize(dstType);
