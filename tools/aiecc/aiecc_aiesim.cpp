@@ -1,389 +1,493 @@
-//===- aiecc_aiesim.cpp -----------------------------------------*- C++ -*-===//
+//===- aiecc_aiesim.cpp - AIE Simulation support for aiecc ------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
-// AIE Simulation work folder generation for aiecc.
+// AIE simulation work folder generation for the C++ aiecc compiler driver.
 //
 //===----------------------------------------------------------------------===//
 
 #include "aiecc_aiesim.h"
 
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Targets/AIETargets.h"
-
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Parser/Parser.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Support/FileUtilities.h"
-
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
-#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-
-#include <string>
-#include <vector>
 
 using namespace mlir;
 using namespace llvm;
 
+namespace xilinx {
 namespace aiecc {
 
-/// Execute an external command and return true on success.
-static bool executeCommand(ArrayRef<std::string> args, bool verbose) {
-  if (args.empty())
-    return false;
+//===----------------------------------------------------------------------===//
+// Helper Functions
+//===----------------------------------------------------------------------===//
 
+/// Find an AIE tool in PATH or relative to the executable.
+static std::string findAieTool(StringRef toolName) {
+  auto result = sys::findProgramByName(toolName);
+  if (result) {
+    return *result;
+  }
+
+  // Try relative to this executable
+  auto mainExecutable = sys::fs::getMainExecutable(
+      nullptr, reinterpret_cast<void *>(&findAieTool));
+  SmallString<128> toolPath(sys::path::parent_path(mainExecutable));
+  sys::path::append(toolPath, toolName);
+
+  if (sys::fs::can_execute(toolPath)) {
+    return std::string(toolPath);
+  }
+
+  return "";
+}
+
+/// Execute a command with optional verbose output and dry-run support.
+static bool executeCommand(ArrayRef<std::string> command, bool verbose,
+                           bool dryRun) {
   if (verbose) {
     outs() << "Executing:";
-    for (const auto &arg : args) {
+    for (const auto &arg : command) {
       outs() << " " << arg;
     }
     outs() << "\n";
+    outs().flush();
   }
 
-  SmallVector<StringRef, 16> argsRef;
-  for (const auto &arg : args) {
-    argsRef.push_back(arg);
+  if (dryRun) {
+    if (verbose) {
+      outs() << "Dry run - command not executed\n";
+      outs().flush();
+    }
+    return true;
+  }
+
+  SmallVector<StringRef, 16> cmdRefs;
+  cmdRefs.reserve(command.size());
+  for (const auto &arg : command) {
+    cmdRefs.push_back(arg);
   }
 
   std::string errMsg;
-  int result =
-      sys::ExecuteAndWait(argsRef[0], argsRef, std::nullopt, {}, 0, 0, &errMsg);
+  int result = sys::ExecuteAndWait(cmdRefs[0], cmdRefs, /*Env=*/std::nullopt,
+                                   /*Redirects=*/{},
+                                   /*secondsToWait=*/0,
+                                   /*memoryLimit=*/0, &errMsg);
 
   if (result != 0) {
-    errs() << "Command failed";
+    errs() << "Error: Command failed with exit code " << result << "\n";
     if (!errMsg.empty()) {
-      errs() << ": " << errMsg;
+      errs() << "Error message: " << errMsg << "\n";
     }
-    errs() << "\n";
     return false;
   }
 
   return true;
 }
 
-LogicalResult generateAiesimWorkFolder(ModuleOp moduleOp, StringRef tmpDirName,
-                                       StringRef devName, StringRef aieTarget,
-                                       StringRef aietoolsPath,
-                                       StringRef installPath,
-                                       const AiesimConfig &config) {
+//===----------------------------------------------------------------------===//
+// Public API
+//===----------------------------------------------------------------------===//
+
+SmallVector<std::string> getAieTargetDefines(StringRef aieTarget) {
+  SmallVector<std::string> defines;
+  std::string target = aieTarget.lower();
+  if (target == "aie2" || target == "aieml") {
+    defines.push_back("-D__AIEARCH__=20");
+  } else if (target == "aie2p") {
+    defines.push_back("-D__AIEARCH__=21");
+  } else {
+    defines.push_back("-D__AIEARCH__=10");
+  }
+  return defines;
+}
+
+LogicalResult generateAieIncCpp(ModuleOp moduleOp, StringRef tmpDirName,
+                                StringRef devName, const AiesimConfig &config) {
+  if (!config.compileHost && !config.enabled) {
+    return success();
+  }
+
+  std::string aieTranslatePath = findAieTool("aie-translate");
+  if (aieTranslatePath.empty()) {
+    errs() << "Error: aie-translate not found in PATH\n";
+    return failure();
+  }
+
+  // We need to write the module to disk for aie-translate
+  SmallString<128> physicalWithElfsPath(tmpDirName);
+  sys::path::append(physicalWithElfsPath,
+                    devName.str() + "_physical_with_elfs.mlir");
+
+  // Write the module to disk if it doesn't exist
+  if (!sys::fs::exists(physicalWithElfsPath)) {
+    std::error_code ec;
+    raw_fd_ostream moduleFile(physicalWithElfsPath, ec);
+    if (ec) {
+      errs() << "Error writing module for aie_inc.cpp generation: "
+             << ec.message() << "\n";
+      return failure();
+    }
+    moduleOp->print(moduleFile);
+    moduleFile.close();
+    if (moduleFile.has_error()) {
+      errs() << "Error finalizing module file for aie_inc.cpp generation: "
+             << moduleFile.error().message() << "\n";
+      return failure();
+    }
+  }
+
+  SmallString<128> aieIncPath(tmpDirName);
+  sys::path::append(aieIncPath, "aie_inc.cpp");
+
+  if (config.verbose) {
+    outs() << "Generating aie_inc.cpp for device: " << devName << "\n";
+  }
+
+  SmallVector<std::string, 8> cmd = {aieTranslatePath,
+                                     "--aie-generate-xaie",
+                                     "--aie-device-name",
+                                     devName.str(),
+                                     physicalWithElfsPath.str().str(),
+                                     "-o",
+                                     aieIncPath.str().str()};
+
+  if (!executeCommand(cmd, config.verbose, config.dryRun)) {
+    errs() << "Error generating aie_inc.cpp\n";
+    return failure();
+  }
+
+  if (config.verbose) {
+    outs() << "Generated: " << aieIncPath << "\n";
+  }
+
+  return success();
+}
+
+LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
+                             StringRef devName, StringRef aieTarget,
+                             const AiesimConfig &config) {
   if (!config.enabled) {
     return success();
   }
 
   if (config.verbose) {
-    outs() << "Generating AIE simulation work folder for device: " << devName
-           << "\n";
+    outs() << "Generating aiesim work folder for device: " << devName << "\n";
   }
 
-  // Validate aietools path
-  if (aietoolsPath.empty()) {
-    errs() << "Error: --aiesim requires aietools installation. "
-           << "Set AIETOOLS_ROOT or ensure xchesscc is in PATH.\n";
+  if (config.aietoolsPath.empty()) {
+    errs() << "Error: aietools not found, cannot generate aiesim\n";
     return failure();
   }
 
   // Create sim directory structure
-  SmallString<256> simDir(tmpDirName);
+  SmallString<128> simDir(tmpDirName);
   sys::path::append(simDir, "sim");
-
-  // Remove existing sim directory if present
-  if (sys::fs::exists(simDir)) {
-    if (auto ec = sys::fs::remove_directories(simDir)) {
-      errs() << "Warning: Could not remove existing sim directory: "
-             << ec.message() << "\n";
-    }
+  if (std::error_code ec = sys::fs::create_directories(simDir)) {
+    errs() << "Error creating sim directory: " << ec.message() << "\n";
+    return failure();
   }
 
-  // Create subdirectories
-  SmallString<256> archDir(simDir);
-  sys::path::append(archDir, "arch");
-  SmallString<256> reportsDir(simDir);
-  sys::path::append(reportsDir, "reports");
-  SmallString<256> configDir(simDir);
-  sys::path::append(configDir, "config");
-  SmallString<256> psDir(simDir);
-  sys::path::append(psDir, "ps");
+  SmallString<128> simArchDir(simDir);
+  sys::path::append(simArchDir, "arch");
+  if (std::error_code ec = sys::fs::create_directories(simArchDir)) {
+    errs() << "Error creating sim/arch directory: " << ec.message() << "\n";
+    return failure();
+  }
 
-  for (const auto &dir : {simDir, archDir, reportsDir, configDir, psDir}) {
-    if (auto ec = sys::fs::create_directories(dir)) {
-      errs() << "Error creating directory " << dir << ": " << ec.message()
-             << "\n";
+  SmallString<128> simReportsDir(simDir);
+  sys::path::append(simReportsDir, "reports");
+  if (std::error_code ec = sys::fs::create_directories(simReportsDir)) {
+    errs() << "Error creating sim/reports directory: " << ec.message() << "\n";
+    return failure();
+  }
+
+  SmallString<128> simConfigDir(simDir);
+  sys::path::append(simConfigDir, "config");
+  if (std::error_code ec = sys::fs::create_directories(simConfigDir)) {
+    errs() << "Error creating sim/config directory: " << ec.message() << "\n";
+    return failure();
+  }
+
+  SmallString<128> simPsDir(simDir);
+  sys::path::append(simPsDir, "ps");
+  if (std::error_code ec = sys::fs::create_directories(simPsDir)) {
+    errs() << "Error creating sim/ps directory: " << ec.message() << "\n";
+    return failure();
+  }
+
+  std::string aieTranslatePath = findAieTool("aie-translate");
+  if (aieTranslatePath.empty()) {
+    errs() << "Error: aie-translate not found\n";
+    return failure();
+  }
+
+  // Get path to physical module with ELFs
+  SmallString<128> physicalWithElfsPath(tmpDirName);
+  sys::path::append(physicalWithElfsPath,
+                    devName.str() + "_physical_with_elfs.mlir");
+
+  // Write the module to disk if it doesn't exist
+  if (!sys::fs::exists(physicalWithElfsPath)) {
+    std::error_code ec;
+    raw_fd_ostream moduleFile(physicalWithElfsPath, ec);
+    if (ec) {
+      errs() << "Error writing module for aiesim: " << ec.message() << "\n";
       return failure();
     }
-  }
-
-  if (config.dryRun) {
-    if (config.verbose) {
-      outs() << "Would generate AIE simulation files in: " << simDir << "\n";
+    moduleOp->print(moduleFile);
+    moduleFile.close();
+    if (moduleFile.has_error()) {
+      errs() << "Error finalizing module for aiesim: "
+             << moduleFile.error().message() << "\n";
+      return failure();
     }
-    return success();
   }
 
   // Generate graph.xpe
-  SmallString<256> graphXpePath(reportsDir);
-  sys::path::append(graphXpePath, "graph.xpe");
-  {
-    std::error_code ec;
-    raw_fd_ostream outFile(graphXpePath, ec);
-    if (ec) {
-      errs() << "Error creating graph.xpe: " << ec.message() << "\n";
-      return failure();
-    }
-    if (failed(xilinx::AIE::AIETranslateGraphXPE(moduleOp, outFile, devName))) {
-      errs() << "Error generating graph.xpe\n";
-      return failure();
-    }
-  }
-  if (config.verbose) {
-    outs() << "Generated: " << graphXpePath << "\n";
+  SmallString<128> xpePath(simReportsDir);
+  sys::path::append(xpePath, "graph.xpe");
+  SmallVector<std::string, 8> xpeCmd = {aieTranslatePath,
+                                        "--aie-mlir-to-xpe",
+                                        "--aie-device-name",
+                                        devName.str(),
+                                        physicalWithElfsPath.str().str(),
+                                        "-o",
+                                        xpePath.str().str()};
+  if (!executeCommand(xpeCmd, config.verbose, config.dryRun)) {
+    errs() << "Error generating graph.xpe\n";
+    return failure();
   }
 
   // Generate aieshim_solution.aiesol
-  SmallString<256> shimSolutionPath(archDir);
-  sys::path::append(shimSolutionPath, "aieshim_solution.aiesol");
-  {
-    std::error_code ec;
-    raw_fd_ostream outFile(shimSolutionPath, ec);
-    if (ec) {
-      errs() << "Error creating aieshim_solution.aiesol: " << ec.message()
-             << "\n";
-      return failure();
-    }
-    if (failed(xilinx::AIE::AIETranslateShimSolution(moduleOp, outFile,
-                                                     devName))) {
-      errs() << "Error generating aieshim_solution.aiesol\n";
-      return failure();
-    }
-  }
-  if (config.verbose) {
-    outs() << "Generated: " << shimSolutionPath << "\n";
+  SmallString<128> aiesolPath(simArchDir);
+  sys::path::append(aiesolPath, "aieshim_solution.aiesol");
+  SmallVector<std::string, 8> aiesolCmd = {aieTranslatePath,
+                                           "--aie-mlir-to-shim-solution",
+                                           "--aie-device-name",
+                                           devName.str(),
+                                           physicalWithElfsPath.str().str(),
+                                           "-o",
+                                           aiesolPath.str().str()};
+  if (!executeCommand(aiesolCmd, config.verbose, config.dryRun)) {
+    errs() << "Error generating aieshim_solution.aiesol\n";
+    return failure();
   }
 
   // Generate scsim_config.json
-  SmallString<256> scsimConfigPath(configDir);
+  SmallString<128> scsimConfigPath(simConfigDir);
   sys::path::append(scsimConfigPath, "scsim_config.json");
-  {
-    std::error_code ec;
-    raw_fd_ostream outFile(scsimConfigPath, ec);
-    if (ec) {
-      errs() << "Error creating scsim_config.json: " << ec.message() << "\n";
-      return failure();
-    }
-    if (failed(
-            xilinx::AIE::AIETranslateSCSimConfig(moduleOp, outFile, devName))) {
-      errs() << "Error generating scsim_config.json\n";
-      return failure();
-    }
-  }
-  if (config.verbose) {
-    outs() << "Generated: " << scsimConfigPath << "\n";
+  SmallVector<std::string, 8> scsimCmd = {aieTranslatePath,
+                                          "--aie-mlir-to-scsim-config",
+                                          "--aie-device-name",
+                                          devName.str(),
+                                          physicalWithElfsPath.str().str(),
+                                          "-o",
+                                          scsimConfigPath.str().str()};
+  if (!executeCommand(scsimCmd, config.verbose, config.dryRun)) {
+    errs() << "Error generating scsim_config.json\n";
+    return failure();
   }
 
-  // Run aie-find-flows pass and output to flows_physical.mlir
-  SmallString<256> flowsPath(simDir);
+  // Run aie-find-flows pass and generate flows_physical.mlir
+  SmallString<128> flowsPath(simDir);
   sys::path::append(flowsPath, "flows_physical.mlir");
-  {
-    // Clone the module for the find-flows pass
-    OwningOpRef<ModuleOp> flowsModule = moduleOp.clone();
-    MLIRContext *ctx = flowsModule->getContext();
 
-    PassManager pm(ctx);
-    OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-    devicePm.addPass(xilinx::AIE::createAIEFindFlowsPass());
-
-    if (failed(pm.run(*flowsModule))) {
-      errs() << "Error running aie-find-flows pass\n";
-      return failure();
-    }
-
-    // Write the module with flows
-    std::error_code ec;
-    raw_fd_ostream outFile(flowsPath, ec);
-    if (ec) {
-      errs() << "Error creating flows_physical.mlir: " << ec.message() << "\n";
-      return failure();
-    }
-    flowsModule->print(outFile);
-  }
-  if (config.verbose) {
-    outs() << "Generated: " << flowsPath << "\n";
-  }
-
-  // Generate flows_physical.json from the flows MLIR
-  SmallString<256> flowsJsonPath(simDir);
-  sys::path::append(flowsJsonPath, "flows_physical.json");
-  {
-    // Parse the flows MLIR file we just wrote
-    ParserConfig parseConfig(moduleOp.getContext());
-    SourceMgr sourceMgr;
-    OwningOpRef<ModuleOp> flowsModule =
-        parseSourceFile<ModuleOp>(flowsPath.str(), sourceMgr, parseConfig);
-    if (!flowsModule) {
-      errs() << "Error parsing flows_physical.mlir\n";
-      return failure();
-    }
-
-    std::error_code ec;
-    raw_fd_ostream outFile(flowsJsonPath, ec);
-    if (ec) {
-      errs() << "Error creating flows_physical.json: " << ec.message() << "\n";
-      return failure();
-    }
-    if (failed(xilinx::AIE::AIEFlowsToJSON(*flowsModule, outFile, devName))) {
-      errs() << "Error generating flows_physical.json\n";
-      return failure();
+  std::string aieOptPath = findAieTool("aie-opt");
+  if (!aieOptPath.empty()) {
+    SmallVector<std::string, 8> flowsCmd = {
+        aieOptPath,
+        "--pass-pipeline=builtin.module(aie.device(aie-find-flows))",
+        physicalWithElfsPath.str().str(), "-o", flowsPath.str().str()};
+    if (!executeCommand(flowsCmd, config.verbose, config.dryRun)) {
+      errs() << "Warning: aie-find-flows pass failed\n";
+      // Non-fatal, continue
     }
   }
-  if (config.verbose) {
-    outs() << "Generated: " << flowsJsonPath << "\n";
+
+  // Generate flows_physical.json
+  if (sys::fs::exists(flowsPath)) {
+    SmallString<128> flowsJsonPath(simDir);
+    sys::path::append(flowsJsonPath, "flows_physical.json");
+    SmallVector<std::string, 8> flowsJsonCmd = {
+        aieTranslatePath,         "--aie-flows-to-json",
+        "--aie-device-name",      devName.str(),
+        flowsPath.str().str(),    "-o",
+        flowsJsonPath.str().str()};
+    if (!executeCommand(flowsJsonCmd, config.verbose, config.dryRun)) {
+      errs() << "Warning: Failed to generate flows_physical.json\n";
+      // Non-fatal
+    }
   }
 
-  // Compile genwrapper_for_ps.cpp to ps.so
-  std::string aieTargetUpper = aieTarget.upper();
-  SmallString<256> genwrapperPath(installPath);
-  sys::path::append(genwrapperPath, "aie_runtime_lib", aieTargetUpper, "aiesim",
-                    "genwrapper_for_ps.cpp");
+  // Build ps.so
+  // Find genwrapper_for_ps.cpp
+  SmallString<256> genwrapperPath(config.installPath);
+  sys::path::append(genwrapperPath, "aie_runtime_lib", aieTarget.upper(),
+                    "aiesim", "genwrapper_for_ps.cpp");
 
   if (!sys::fs::exists(genwrapperPath)) {
     errs() << "Warning: genwrapper_for_ps.cpp not found at " << genwrapperPath
            << ", skipping ps.so generation\n";
   } else {
-    // Find clang++
+    // Get paths for includes and libraries
+    std::string archName = config.hostTarget;
+    size_t dashPos = archName.find('-');
+    if (dashPos != std::string::npos) {
+      archName = archName.substr(0, dashPos);
+    }
+
+    SmallString<256> xaiengineInclude(config.installPath);
+    sys::path::append(xaiengineInclude, "runtime_lib", archName, "xaiengine",
+                      "include");
+
+    SmallString<256> xaiengineLib(config.installPath);
+    sys::path::append(xaiengineLib, "runtime_lib", archName, "xaiengine",
+                      "lib");
+
+    SmallString<256> testLibInclude(config.installPath);
+    sys::path::append(testLibInclude, "runtime_lib", archName, "test_lib",
+                      "include");
+
+    SmallString<256> testLibPath(config.installPath);
+    sys::path::append(testLibPath, "runtime_lib", archName, "test_lib", "lib");
+
+    SmallString<256> memAllocator(testLibPath);
+    sys::path::append(memAllocator, "libmemory_allocator_sim_aie.a");
+
+    SmallString<128> psSoPath(simPsDir);
+    sys::path::append(psSoPath, "ps.so");
+
+    // Find clang++ in PATH
     auto clangPath = sys::findProgramByName("clang++");
     if (!clangPath) {
-      errs() << "Warning: clang++ not found, skipping ps.so generation\n";
+      errs() << "Warning: clang++ not found in PATH, skipping ps.so "
+                "generation\n";
     } else {
-      // Build paths for includes and libraries
-      SmallString<256> xaiengineIncludePath(installPath);
-      sys::path::append(xaiengineIncludePath, "runtime_lib", "x86_64",
-                        "xaiengine", "include");
-      SmallString<256> xaiengineLibPath(installPath);
-      sys::path::append(xaiengineLibPath, "runtime_lib", "x86_64", "xaiengine",
-                        "lib");
-      SmallString<256> testLibIncludePath(installPath);
-      sys::path::append(testLibIncludePath, "runtime_lib", "x86_64", "test_lib",
-                        "include");
-      SmallString<256> testLibPath(installPath);
-      sys::path::append(testLibPath, "runtime_lib", "x86_64", "test_lib",
-                        "lib");
-      SmallString<256> memAllocatorPath(testLibPath);
-      sys::path::append(memAllocatorPath, "libmemory_allocator_sim_aie.a");
+      // Build clang++ command
+      SmallVector<std::string, 32> clangCmd;
+      clangCmd.push_back(*clangPath);
+      clangCmd.push_back("-O2");
+      clangCmd.push_back("-fuse-ld=lld");
+      clangCmd.push_back("-shared");
+      clangCmd.push_back("-o");
+      clangCmd.push_back(psSoPath.str().str());
+      clangCmd.push_back(genwrapperPath.str().str());
 
-      SmallString<256> psOutputPath(psDir);
-      sys::path::append(psOutputPath, "ps.so");
+      // Add compilation flags
+      clangCmd.push_back("-fPIC");
+      clangCmd.push_back("-flto");
+      clangCmd.push_back("-fpermissive");
+      clangCmd.push_back("-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR");
+      clangCmd.push_back("-Wno-deprecated-declarations");
+      clangCmd.push_back("-Wno-enum-constexpr-conversion");
+      clangCmd.push_back("-Wno-format-security");
+      clangCmd.push_back("-DSC_INCLUDE_DYNAMIC_PROCESSES");
+      clangCmd.push_back("-D__AIESIM__");
+      clangCmd.push_back("-D__PS_INIT_AIE__");
+      clangCmd.push_back("-Og");
+      clangCmd.push_back("-Dmain(...)=ps_main(...)");
 
-      // Build AIE target define
-      std::string aieTargetDefine = "-D__AIEARCH__=";
-      if (aieTarget == "aie2" || aieTarget == "aie2p") {
-        aieTargetDefine += "20";
-      } else {
-        aieTargetDefine += "10";
+      // Include paths
+      clangCmd.push_back("-I" + tmpDirName.str());
+      clangCmd.push_back("-I" + config.aietoolsPath + "/include");
+      clangCmd.push_back("-I" + xaiengineInclude.str().str());
+      clangCmd.push_back("-I" + config.aietoolsPath +
+                         "/data/osci_systemc/include");
+      clangCmd.push_back("-I" + config.aietoolsPath + "/include/xtlm/include");
+      clangCmd.push_back("-I" + config.aietoolsPath +
+                         "/include/common_cpp/common_cpp_v1_0/include");
+      clangCmd.push_back("-I" + testLibInclude.str().str());
+
+      // Memory allocator library
+      if (sys::fs::exists(memAllocator)) {
+        clangCmd.push_back(memAllocator.str().str());
       }
 
-      std::vector<std::string> compileCmd = {
-          *clangPath,
-          "-O2",
-          "-fuse-ld=lld",
-          "-shared",
-          "-o",
-          psOutputPath.str().str(),
-          genwrapperPath.str().str(),
-          aieTargetDefine,
-          "-fPIC",
-          "-flto",
-          "-fpermissive",
-          "-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR",
-          "-Wno-deprecated-declarations",
-          "-Wno-enum-constexpr-conversion",
-          "-Wno-format-security",
-          "-DSC_INCLUDE_DYNAMIC_PROCESSES",
-          "-D__AIESIM__",
-          "-D__PS_INIT_AIE__",
-          "-Og",
-          "-Dmain(...)=ps_main(...)",
-          "-I" + tmpDirName.str(),
-          "-I" + aietoolsPath.str() + "/include",
-          "-I" + xaiengineIncludePath.str().str(),
-          "-I" + aietoolsPath.str() + "/data/osci_systemc/include",
-          "-I" + aietoolsPath.str() + "/include/xtlm/include",
-          "-I" + aietoolsPath.str() +
-              "/include/common_cpp/common_cpp_v1_0/include",
-          "-I" + testLibIncludePath.str().str(),
-          memAllocatorPath.str().str(),
-          "-L" + xaiengineLibPath.str().str(),
-          "-lxaienginecdo",
-          "-L" + aietoolsPath.str() + "/lib/lnx64.o",
-          "-L" + aietoolsPath.str() + "/lib/lnx64.o/Ubuntu",
-          "-L" + aietoolsPath.str() + "/data/osci_systemc/lib/lnx64",
-          "-Wl,--as-needed",
-          "-lsystemc",
-          "-lxtlm"};
+      // Link libraries
+      clangCmd.push_back("-L" + xaiengineLib.str().str());
+      clangCmd.push_back("-lxaienginecdo");
+      clangCmd.push_back("-L" + config.aietoolsPath + "/lib/lnx64.o");
+      clangCmd.push_back("-L" + config.aietoolsPath + "/lib/lnx64.o/Ubuntu");
+      clangCmd.push_back("-L" + config.aietoolsPath +
+                         "/data/osci_systemc/lib/lnx64");
+      clangCmd.push_back("-Wl,--as-needed");
+      clangCmd.push_back("-lsystemc");
+      clangCmd.push_back("-lxtlm");
 
-      if (!executeCommand(compileCmd, config.verbose)) {
-        errs() << "Warning: Failed to compile ps.so\n";
-      } else if (config.verbose) {
-        outs() << "Generated: " << psOutputPath << "\n";
+      // Add AIE target defines
+      auto defines = getAieTargetDefines(aieTarget);
+      for (const auto &def : defines) {
+        clangCmd.push_back(def);
+      }
+
+      if (!executeCommand(clangCmd, config.verbose, config.dryRun)) {
+        errs() << "Warning: Failed to build ps.so\n";
+        // Non-fatal - aiesim folder is still partially generated
       }
     }
   }
 
-  // Write aiesim.sh script
-  SmallString<256> simScriptPath(tmpDirName);
+  // Create .target file
+  SmallString<128> targetFilePath(simDir);
+  sys::path::append(targetFilePath, ".target");
+  {
+    std::error_code ec;
+    raw_fd_ostream targetFile(targetFilePath, ec);
+    if (ec) {
+      errs() << "Error creating .target: " << ec.message() << "\n";
+    } else {
+      targetFile << "hw\n";
+      targetFile.close();
+      if (targetFile.has_error()) {
+        errs() << "Error writing .target: " << targetFile.error().message()
+               << "\n";
+      }
+    }
+  }
+
+  // Generate aiesim.sh script
+  SmallString<128> simScriptPath(tmpDirName);
   sys::path::append(simScriptPath, "aiesim.sh");
   {
     std::error_code ec;
-    raw_fd_ostream outFile(simScriptPath, ec);
+    raw_fd_ostream scriptFile(simScriptPath, ec);
     if (ec) {
       errs() << "Error creating aiesim.sh: " << ec.message() << "\n";
       return failure();
     }
-    outFile << "#!/bin/sh\n";
-    outFile << "prj_name=$(basename $(dirname $(realpath $0)))\n";
-    outFile << "root=$(dirname $(dirname $(realpath $0)))\n";
-    outFile << "vcd_filename=foo\n";
-    outFile << "if [ -n \"$1\" ]; then\n";
-    outFile << "  vcd_filename=$1\n";
-    outFile << "fi\n";
-    outFile << "cd $root\n";
-    outFile << "aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd "
-               "${vcd_filename}\n";
-  }
-  // Make script executable
-  if (auto ec = sys::fs::setPermissions(
-          simScriptPath,
-          sys::fs::perms::owner_all | sys::fs::perms::group_read |
-              sys::fs::perms::group_exe | sys::fs::perms::others_read |
-              sys::fs::perms::others_exe)) {
-    errs() << "Warning: Could not set execute permission on aiesim.sh: "
-           << ec.message() << "\n";
-  }
-  if (config.verbose) {
-    outs() << "Generated: " << simScriptPath << "\n";
-  }
-
-  // Write .target file
-  SmallString<256> targetFilePath(simDir);
-  sys::path::append(targetFilePath, ".target");
-  {
-    std::error_code ec;
-    raw_fd_ostream outFile(targetFilePath, ec);
-    if (ec) {
-      errs() << "Error creating .target file: " << ec.message() << "\n";
+    scriptFile << R"(#!/bin/sh
+prj_name=$(basename $(dirname $(realpath $0)))
+root=$(dirname $(dirname $(realpath $0)))
+vcd_filename=foo
+if [ -n "$1" ]; then
+  vcd_filename=$1
+fi
+cd $root
+aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
+)";
+    scriptFile.close();
+    if (scriptFile.has_error()) {
+      errs() << "Error writing aiesim.sh: " << scriptFile.error().message()
+             << "\n";
       return failure();
     }
-    outFile << "hw\n";
+  }
+
+  // Make script executable
+  if (std::error_code ec = sys::fs::setPermissions(
+          simScriptPath, sys::fs::perms::owner_all | sys::fs::perms::group_exe |
+                             sys::fs::perms::others_exe)) {
+    errs() << "Warning: Failed to set executable permissions on aiesim.sh: "
+           << ec.message() << "\n";
   }
 
   outs() << "Simulation generated...\n";
@@ -393,3 +497,4 @@ LogicalResult generateAiesimWorkFolder(ModuleOp moduleOp, StringRef tmpDirName,
 }
 
 } // namespace aiecc
+} // namespace xilinx

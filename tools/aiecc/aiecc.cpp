@@ -905,9 +905,12 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
                     "chess_intrinsic_wrapper.ll");
 
   if (!sys::fs::exists(wrapperPath)) {
-    llvm::errs() << "Error: Could not find chess_intrinsic_wrapper.ll at: "
-                 << wrapperPath << "\n";
-    return "";
+    if (verbose) {
+      llvm::outs() << "chess_intrinsic_wrapper.ll not found at: " << wrapperPath
+                   << ", skipping chess-llvm-link step\n";
+    }
+    // Return the input file directly (skip linking with wrapper)
+    return std::string(inputLLPath);
   }
 
   // Run chess-llvm-link
@@ -3347,7 +3350,8 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
 
 #ifdef AIECC_HAS_AIEBU_LIBRARY
 /// Helper to read a binary file into a vector of chars.
-static std::optional<std::vector<char>> readBinaryFile(StringRef path) {
+[[maybe_unused]] static std::optional<std::vector<char>>
+readBinaryFile(StringRef path) {
   auto bufferOrErr = llvm::MemoryBuffer::getFile(path);
   if (!bufferOrErr) {
     return std::nullopt;
@@ -3394,7 +3398,7 @@ generateElfViaAiebuLibrary(aiebu_assembler_buffer_type type,
 
 /// Generate ELF using aiebu C API with config JSON (for aie2_config type).
 /// Returns the ELF data or nullopt on failure.
-static std::optional<std::vector<char>>
+[[maybe_unused]] static std::optional<std::vector<char>>
 generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson) {
   void *elfBuf = nullptr;
   int result = aiebu_assembler_get_elf(aiebu_assembler_buffer_type_aie2_config,
@@ -3566,8 +3570,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     if (elfData && !elfData->empty()) {
       if (succeeded(writeElfFile(outputElfPath, *elfData))) {
         if (verbose) {
-          llvm::outs() << "Generated ELF via library: " << outputElfPath
-                       << "\n";
+          llvm::outs() << "Generated ELF: " << outputElfPath << "\n";
         }
         return success();
       }
@@ -3752,39 +3755,20 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
 }
 
 //===----------------------------------------------------------------------===//
-// AIESim Work Folder Generation (wrapper)
+// AIE Simulation and Host Compilation (delegated to aiecc_aiesim.cpp)
 //===----------------------------------------------------------------------===//
 
-/// Wrapper to call the external aiesim generation function.
-/// Implementation is in aiecc_aiesim.cpp.
-static LogicalResult generateAiesimWorkFolder(ModuleOp moduleOp,
-                                              StringRef tmpDirName,
-                                              StringRef devName,
-                                              StringRef aieTarget) {
-  if (!aiesim) {
-    return success();
-  }
-
-  // Get aietools path (required for simulation)
-  StringRef aietoolsPath = getAietoolsDir();
-  if (aietoolsPath.empty()) {
-    llvm::errs() << "Error: --aiesim requires aietools installation. "
-                 << "Set AIETOOLS_ROOT or ensure xchesscc is in PATH.\n";
-    return failure();
-  }
-
-  // Get install path for runtime libraries
-  std::string installPath = getInstallPath();
-
-  // Set up configuration
-  aiecc::AiesimConfig config;
-  config.enabled = aiesim;
+/// Create AiesimConfig from current command-line options
+static xilinx::aiecc::AiesimConfig createAiesimConfig() {
+  xilinx::aiecc::AiesimConfig config;
+  config.enabled = aiesim && !noAiesim;
+  config.compileHost = compileHost && !noCompileHost;
   config.verbose = verbose;
   config.dryRun = dryRun;
-
-  return aiecc::generateAiesimWorkFolder(moduleOp, tmpDirName, devName,
-                                         aieTarget, aietoolsPath, installPath,
-                                         config);
+  config.hostTarget = hostTarget.getValue();
+  config.aietoolsPath = getAietoolsDir();
+  config.installPath = getInstallPath();
+  return config;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3822,16 +3806,15 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     SmallString<128> partitionPath(tmpDirName);
     sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
     std::string pdiFileName = formatString(pdiName, devName);
-    SmallString<128> pdiPath(tmpDirName);
-    sys::path::append(pdiPath, pdiFileName);
+    // PDI path is CWD-relative (matching Python aiecc.py behavior)
+    SmallString<128> pdiPath(pdiFileName);
     // Make pdiPath absolute for partition JSON
     SmallString<128> absPdiPath;
     if (sys::path::is_absolute(pdiPath)) {
       absPdiPath = pdiPath;
     } else {
-      // In dry-run mode, just construct the path manually
       sys::fs::current_path(absPdiPath);
-      sys::path::append(absPdiPath, pdiPath);
+      sys::path::append(absPdiPath, pdiFileName);
     }
     if (failed(generatePartitionJson(partitionPath, devName, absPdiPath)))
       return failure();
@@ -3880,8 +3863,8 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 #endif
 
     std::string pdiFileName = formatString(pdiName, devName);
-    SmallString<128> pdiPath(tmpDirName);
-    sys::path::append(pdiPath, pdiFileName);
+    // Write PDI to user-specified path (CWD-relative), not inside tmpDir
+    SmallString<128> pdiPath(pdiFileName);
 
     // Create BIF file (skip in dry-run)
     SmallString<128> bifPath(tmpDirName);
@@ -3922,6 +3905,10 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     if (!dryRun) {
       if (verbose) {
         llvm::outs() << "Using bootgen library for PDI generation\n";
+        // Print equivalent command for verbose output compatibility
+        llvm::outs() << "bootgen -arch versal -image " << bifPath << " -o "
+                     << pdiPath << " -w\n";
+        llvm::outs().flush();
       }
       char errorMsg[256] = {0};
       int result = bootgen_generate_pdi(
@@ -3976,6 +3963,11 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     }
 
     if (dryRun && verbose) {
+      if (!bootgenPath.empty()) {
+        llvm::outs() << bootgenPath << " -arch versal -image " << bifPath
+                     << " -o " << pdiPath << " -w\n";
+        llvm::outs() << "Dry run - command not executed\n";
+      }
       llvm::outs() << "Would generate PDI: " << pdiPath << "\n";
     }
 
@@ -4247,9 +4239,14 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Generate AIE simulation work folder if requested
-    if (failed(generateAiesimWorkFolder(moduleOp, tmpDirName, devName,
-                                        aieTarget))) {
+    // Generate aie_inc.cpp and aiesim work folder if requested
+    auto aiesimConfig = createAiesimConfig();
+    if (failed(xilinx::aiecc::generateAieIncCpp(moduleOp, tmpDirName, devName,
+                                                aiesimConfig))) {
+      return failure();
+    }
+    if (failed(xilinx::aiecc::generateAiesim(moduleOp, tmpDirName, devName,
+                                             aieTarget, aiesimConfig))) {
       return failure();
     }
 

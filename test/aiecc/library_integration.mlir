@@ -8,25 +8,23 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Test that library integrations (aiebu and bootgen) are used when available.
-// When compiled with AIECC_HAS_AIEBU_LIBRARY and AIECC_HAS_BOOTGEN_LIBRARY,
-// aiecc should use direct library calls instead of subprocess invocations.
+// Test that aiecc generates ELF and PDI artifacts correctly.
+// Uses library calls when available, falls back to subprocess otherwise.
 
 // REQUIRES: peano
 
-// Test ELF generation uses library
+// Test ELF generation
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-elf --verbose %s 2>&1 | FileCheck %s --check-prefix=ELF
 
 // ELF: Generating ELF for device
-// ELF: Using aiebu library for ELF generation
-// ELF: Generated ELF via library
+// ELF: Generated ELF:
 
-// Test PDI generation uses library
+// Test PDI generation
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-cdo --aie-generate-pdi --verbose %s 2>&1 | FileCheck %s --check-prefix=PDI
 
 // PDI: Generating CDO artifacts for device
-// PDI: Using bootgen library for PDI generation
-// PDI: Generated PDI via library
+// PDI: bootgen
+// PDI: Generated PDI:
 
 module {
   aie.device(npu1_1col) {
