@@ -8,6 +8,9 @@ on:
     types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
   merge_group:
+  schedule:
+    # Runs at midnight (00:00) every day
+    - cron: '0 0 * * *'
 
 env:
   # Run apt package manager in the CI in non-interactive mode.
