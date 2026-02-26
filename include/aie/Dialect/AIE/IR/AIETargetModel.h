@@ -399,6 +399,10 @@ public:
   /// Return Value shifted to correct bit position
   uint32_t encodeFieldValue(const BitFieldInfo &field, uint32_t value) const;
 
+  /// Compute a 32-bit mask for a register field.
+  /// Return nullopt if the field does not fit in a 32-bit register.
+  std::optional<uint32_t> getFieldMask(const BitFieldInfo &field) const;
+
   /// Resolve stream switch port specification to port index.
   /// Return Port index for stream switch register, or nullopt if invalid
   std::optional<uint32_t> resolvePortValue(llvm::StringRef value, TileID tile,

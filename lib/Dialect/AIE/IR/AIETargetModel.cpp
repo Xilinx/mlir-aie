@@ -83,6 +83,20 @@ uint32_t AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
   return db->encodeFieldValue(field, value);
 }
 
+std::optional<uint32_t> AIETargetModel::getFieldMask(
+    const BitFieldInfo &field) const {
+  uint32_t width = field.getWidth();
+  if (width == 0 || width > 32 || field.bit_end >= 32)
+    return std::nullopt;
+
+  uint64_t mask = (width == 32) ? 0xFFFFFFFFULL : ((1ULL << width) - 1ULL);
+  mask <<= field.bit_start;
+  if (mask > UINT32_MAX)
+    return std::nullopt;
+
+  return static_cast<uint32_t>(mask);
+}
+
 std::optional<uint32_t> AIETargetModel::resolvePortValue(llvm::StringRef value,
                                                          TileID tile,
                                                          bool master) const {

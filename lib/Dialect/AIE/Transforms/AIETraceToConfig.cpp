@@ -518,15 +518,21 @@ struct AIETraceRegPackWritesPass
         }
 
         // Compute mask and shifted value
-        uint32_t mask = ((1u << fieldInfo->getWidth()) - 1)
-                        << fieldInfo->bit_start;
+        auto mask = targetModel.getFieldMask(*fieldInfo);
+        if (!mask) {
+          regOp.emitError("Invalid field bit range for register write: ")
+              << regOp.getRegName() << "." << fieldInfo->name << " ["
+              << fieldInfo->bit_start << ":" << fieldInfo->bit_end
+              << "], width=" << fieldInfo->getWidth();
+          return signalPassFailure();
+        }
         uint32_t shiftedValue = targetModel.encodeFieldValue(*fieldInfo, value);
         // Create new operation with mask
         builder.setInsertionPoint(regOp);
         builder.create<TraceRegOp>(regOp.getLoc(), regOp.getRegNameAttr(),
                                    nullptr, // no field
                                    builder.getI32IntegerAttr(shiftedValue),
-                                   builder.getI32IntegerAttr(mask),
+                                   builder.getI32IntegerAttr(*mask),
                                    regOp.getCommentAttr());
 
         // Remove old operation
@@ -573,8 +579,15 @@ struct AIETraceRegPackWritesPass
             }
 
             // Merge the two writes
-            uint32_t value1 = dyn_cast<IntegerAttr>(reg1.getValue()).getInt();
-            uint32_t value2 = dyn_cast<IntegerAttr>(reg2.getValue()).getInt();
+            auto value1Attr = dyn_cast<IntegerAttr>(reg1.getValue());
+            auto value2Attr = dyn_cast<IntegerAttr>(reg2.getValue());
+            if (!value1Attr || !value2Attr) {
+              reg1.emitError(
+                  "Expected integer values for packed register writes");
+              return signalPassFailure();
+            }
+            uint32_t value1 = value1Attr.getInt();
+            uint32_t value2 = value2Attr.getInt();
             uint32_t mergedValue = value1 | value2;
             uint32_t mergedMask = mask1 | mask2;
 
