@@ -211,7 +211,7 @@ xclbinutil → xclbin
 | External Object Linking | ✅ | ✅ |
 | Parallel Cores (`-j`) | ✅ | **✅** |
 | Unified Compilation | ✅ | **✅** |
-| Host Compilation | ✅ | ❌ (deprecated) |
+| Host Compilation (`aie_inc.cpp`) | ✅ | **✅** |
 | Control Packets | ✅ | **✅** |
 | Performance | Good | **Better** (no Python overhead) |
 
@@ -243,24 +243,24 @@ The C++ implementation provides **near-full feature parity**:
 
 ### Features Not Yet Implemented
 
-The following flags are accepted for backward compatibility but functionality is not yet ported:
-
 | Flag | Status | Notes |
 |------|--------|-------|
 | `--profile` | TODO | Command execution timing |
 | `--progress` | No-op | Rich progress bar (not planned for C++) |
-| `--enable-repeater-scripts` | No-op | Failure reproduction scripts (not planned) |
-| `--compile-host` / `--host-target` | Deprecated | Host compilation removed |
+| `--enable-repeater-scripts` | TODO | Failure reproduction scripts |
 
-### Recently Implemented Features
+### Optional Library Integration
 
-| Flag | Status | Notes |
-|------|--------|-------|
-| `--link_against_hsa` | ✅ Implemented | Links against HSA runtime for ROCm |
-| `--no-materialize` | ✅ Implemented | Skip `aie-materialize-runtime-sequences` pass |
-| `--expand-load-pdis` | ✅ Implemented | Controls PDI expansion in NPU lowering |
-| `--aiesim` | ✅ Implemented | Full AIE simulator work folder generation |
-| `--no-aiesim` | ✅ Works | Sets aiesim=false (default behavior)
+When built with the appropriate libraries, aiecc uses direct library calls
+instead of subprocess invocations for improved performance:
+
+| Library | Compile Flag | Effect |
+|---------|-------------|--------|
+| AIEBU | `AIECC_HAS_AIEBU_LIBRARY` | Direct ELF generation via `aiebu_assembler_get_elf()` C API |
+| bootgen | `AIECC_HAS_BOOTGEN_LIBRARY` | Direct PDI generation via `bootgen_generate_pdi()` C API |
+
+Both fall back to subprocess calls (`aiebu-asm`, `bootgen`) when the library is
+not available or the library call fails.
 
 ## Building
 
@@ -313,7 +313,18 @@ The tool respects standard MLIR/AIE environment variables:
 
 Tools are automatically found in PATH or relative to the aiecc installation directory.
 
+## Python Wrapper
+
+The Python `aiecc.py` is a thin wrapper (~180 lines) that delegates all work to
+the C++ `aiecc` binary. It:
+
+- Locates the `aiecc` binary relative to its own install location
+- Filters deprecated flags (`-I`, `-L`, `-l`, `-o`, host source files)
+- Emits deprecation warnings for host compilation flags
+- Passes all remaining arguments through to the C++ binary
+- Preserves the `run()` API for backward compatibility
+
 ## See Also
 
-- Python aiecc: `python/compiler/aiecc/main.py`
+- Python aiecc wrapper: `python/compiler/aiecc/main.py`
 - AIE dialect documentation: `docs/`
