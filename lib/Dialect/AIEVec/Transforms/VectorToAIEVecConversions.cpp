@@ -1038,13 +1038,51 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
     auto resElemTy = resVecTy.getElementType();
     unsigned numElems = getVectorLaneSize(resVecTy);
 
-    if (numElems != 16 || (!resElemTy.isF32() && !resElemTy.isBF16()))
+    if ((!resElemTy.isF32() && !resElemTy.isBF16()) ||
+        (numElems != 16 && numElems != 32))
       return rewriter.notifyMatchFailure(
           fmaOp, "Unsupported operand types in vector.fma lowering.");
 
     Value lhs = adaptor.getLhs();
     Value rhs = adaptor.getRhs();
     Value acc = adaptor.getAcc();
+
+    // Handle vector<32xbf16> by splitting into two vector<16xbf16> FMAs
+    if (numElems == 32 && resElemTy.isBF16()) {
+      VectorType halfType = createVectorType(16, resElemTy);
+      unsigned localShiftParam = shiftParam;
+
+      splitWideVectorOp<vector::FMAOp>(
+          fmaOp, {lhs, rhs, acc}, halfType, resVecTy, rewriter,
+          [localShiftParam](ArrayRef<std::pair<Value, Value>> halfInputs,
+                            Location loc, ConversionPatternRewriter &rewriter) {
+            auto [lhsLow, lhsHigh] = halfInputs[0];
+            auto [rhsLow, rhsHigh] = halfInputs[1];
+            auto [accLow, accHigh] = halfInputs[2];
+
+            auto processHalf = [&](Value lhsH, Value rhsH,
+                                   Value accH) -> Value {
+              auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
+              auto upsOp = aievec::UPSOp::create(rewriter, loc, f32AccType,
+                                                 accH, localShiftParam);
+              auto fmaElemOp = aievec::FMAElemOp::create(
+                  rewriter, loc, f32AccType, lhsH, rhsH, upsOp.getResult(),
+                  /*fmsub=*/false);
+              auto shiftParamOp = arith::ConstantOp::create(
+                  rewriter, loc, rewriter.getI32IntegerAttr(localShiftParam));
+              auto srsOp = aievec::SRSOp::create(
+                  rewriter, loc, cast<VectorType>(lhsH.getType()),
+                  fmaElemOp.getResult(), shiftParamOp.getResult());
+              return srsOp.getResult();
+            };
+
+            Value lowResult = processHalf(lhsLow, rhsLow, accLow);
+            Value highResult = processHalf(lhsHigh, rhsHigh, accHigh);
+            return std::make_pair(lowResult, highResult);
+          });
+      return success();
+    }
+
     if (resElemTy.isBF16())
       acc = aievec::UPSOp::create(rewriter, fmaOp.getLoc(),
                                   VectorType::get({16}, rewriter.getF32Type()),

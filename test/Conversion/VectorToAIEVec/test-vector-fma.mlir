@@ -35,3 +35,23 @@ func.func @test_fma_f32(%v0: vector<16xbf16>,
   %0 = vector.fma %v0f32, %v1f32, %v2 : vector<16xf32>
   return %0 : vector<16xf32>
 }
+
+// -----
+
+// Test 32-lane bf16 vector.fma (split into two 16-lane FMAs)
+// CHECK-LABEL: test_fma_bf16_v32
+func.func @test_fma_bf16_v32(%v0: vector<32xbf16>,
+                              %v1: vector<32xbf16>,
+                              %v2: vector<32xbf16>) -> vector<32xbf16> {
+  // CHECK-DAG: aievec.ext %{{.*}} {index = 0 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK-DAG: aievec.ext %{{.*}} {index = 1 : i8} : vector<32xbf16>, vector<16xbf16>
+  // CHECK: aievec.ups %{{.*}} {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // CHECK: aievec.mac_elem %{{.*}}, %{{.*}}, %{{.*}} : vector<16xbf16>, vector<16xbf16>, vector<16xf32>
+  // CHECK: aievec.srs %{{.*}}, %{{.*}} : vector<16xf32>, i32, vector<16xbf16>
+  // CHECK: aievec.ups %{{.*}} {shift = 0 : i8} : vector<16xbf16>, vector<16xf32>
+  // CHECK: aievec.mac_elem %{{.*}}, %{{.*}}, %{{.*}} : vector<16xbf16>, vector<16xbf16>, vector<16xf32>
+  // CHECK: aievec.srs %{{.*}}, %{{.*}} : vector<16xf32>, i32, vector<16xbf16>
+  // CHECK: aievec.concat %{{.*}}, %{{.*}} : vector<16xbf16>, vector<32xbf16>
+  %0 = vector.fma %v0, %v1, %v2 : vector<32xbf16>
+  return %0 : vector<32xbf16>
+}
