@@ -2050,10 +2050,14 @@ struct LowerVectorSelectOpToAIEVecSelOp : OpConversionPattern<arith::SelectOp> {
       Location loc = srcOp.getLoc();
       VectorType wideType = createVectorType(32, scalarType);
 
-      Value truePad =
-          padV16ToV32WithZeros(rewriter, loc, srcOp.getTrueValue(), scalarType);
+      // aievec.sel: bit=0 selects lhs, bit=1 selects rhs.
+      // aievec.cmp: bit=1 where predicate is true.
+      // arith.select: condition=1 returns true_value.
+      // So false_value goes to lhs (bit=0) and true_value goes to rhs (bit=1).
       Value falsePad = padV16ToV32WithZeros(rewriter, loc,
                                             srcOp.getFalseValue(), scalarType);
+      Value truePad =
+          padV16ToV32WithZeros(rewriter, loc, srcOp.getTrueValue(), scalarType);
 
       // The condition bitmask from cmp was produced at 32 lanes (since cmp
       // was also padded). Use 32-lane integer type for the cast.
@@ -2062,8 +2066,8 @@ struct LowerVectorSelectOpToAIEVecSelOp : OpConversionPattern<arith::SelectOp> {
       auto convertOp = UnrealizedConversionCastOp::create(
           rewriter, loc, type, adaptor.getCondition());
 
-      auto wideSelOp = aievec::SelOp::create(rewriter, loc, wideType, truePad,
-                                             falsePad, convertOp.getResult(0));
+      auto wideSelOp = aievec::SelOp::create(rewriter, loc, wideType, falsePad,
+                                             truePad, convertOp.getResult(0));
 
       rewriter.replaceOpWithNewOp<aievec::ExtOp>(srcOp, resultType,
                                                  wideSelOp.getResult(), 0);
@@ -2077,9 +2081,13 @@ struct LowerVectorSelectOpToAIEVecSelOp : OpConversionPattern<arith::SelectOp> {
     auto convertOp = UnrealizedConversionCastOp::create(
         rewriter, srcOp.getLoc(), type, adaptor.getCondition());
 
+    // aievec.sel: bit=0 selects lhs, bit=1 selects rhs.
+    // aievec.cmp: bit=1 where predicate is true.
+    // arith.select: condition=1 returns true_value.
+    // So false_value goes to lhs (bit=0) and true_value goes to rhs (bit=1).
     rewriter.replaceOpWithNewOp<aievec::SelOp>(
-        srcOp, srcOp.getResult().getType(), srcOp.getTrueValue(),
-        srcOp.getFalseValue(), convertOp.getResult(0));
+        srcOp, srcOp.getResult().getType(), srcOp.getFalseValue(),
+        srcOp.getTrueValue(), convertOp.getResult(0));
 
     return success();
   }
