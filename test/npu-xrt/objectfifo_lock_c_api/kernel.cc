@@ -8,8 +8,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Demonstrates ObjectFIFO C API usage with the aie_objectfifo.h header.
-// Lock IDs and values are passed from MLIR and used via the struct-based API.
+// Demonstrates ObjectFIFO C API usage with depth-2 ping-pong buffering.
+// The kernel receives both buffer pointers and lock IDs, manages the
+// acquire/release and buffer rotation in C using aie_objectfifo.h.
 
 #include <stdint.h>
 
@@ -17,28 +18,31 @@
 
 extern "C" {
 
-void scale_kernel(int32_t *in, int32_t *out, uint32_t in_acq_lock,
-                  uint32_t in_rel_lock, uint32_t out_acq_lock,
-                  uint32_t out_rel_lock) {
-  // Construct port handles from lock IDs
-  // For AIE2 semaphore locks, acq_value and rel_value are both 1
-  objectfifo_port_t port_in = {(int32_t)in_acq_lock, (int32_t)in_rel_lock, 1,
+void scale_kernel(int32_t *in_buf0, int32_t *in_buf1, int32_t *out_buf0,
+                  int32_t *out_buf1, int64_t in_acq_lock, int64_t in_rel_lock,
+                  int64_t out_acq_lock, int64_t out_rel_lock) {
+  objectfifo_port_t port_in = {(int32_t)in_acq_lock, (int32_t)in_rel_lock, -1,
                                1};
-  objectfifo_port_t port_out = {(int32_t)out_acq_lock, (int32_t)out_rel_lock, 1,
-                                1};
+  objectfifo_port_t port_out = {(int32_t)out_acq_lock, (int32_t)out_rel_lock,
+                                -1, 1};
 
-  // Acquire both ports
-  objectfifo_acquire(&port_in);
-  objectfifo_acquire(&port_out);
+  int32_t *in_bufs[2] = {in_buf0, in_buf1};
+  int32_t *out_bufs[2] = {out_buf0, out_buf1};
 
-  // Scale each element by 3
-  for (int i = 0; i < 1024; i++) {
-    out[i] = in[i] * 3;
+  for (int iter = 0; iter < 8; iter++) {
+    objectfifo_acquire(&port_in);
+    objectfifo_acquire(&port_out);
+
+    int32_t *in = in_bufs[iter % 2];
+    int32_t *out = out_bufs[iter % 2];
+
+    for (int i = 0; i < 1024; i++) {
+      out[i] = in[i] * 3;
+    }
+
+    objectfifo_release(&port_in);
+    objectfifo_release(&port_out);
   }
-
-  // Release both ports
-  objectfifo_release(&port_in);
-  objectfifo_release(&port_out);
 }
 
 } // extern "C"

@@ -20,7 +20,6 @@ from aie.extras.context import mlir_mod_ctx
 
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-from aie.iron.controlflow import range_
 
 N = 1024
 tile_ty = np.ndarray[(N,), np.dtype[np.int32]]
@@ -36,16 +35,18 @@ def design():
             shim_tile = tile(0, 0)
             compute_tile = tile(0, 2)
 
-            # Define ObjectFIFOs
+            # Define ObjectFIFOs with depth 2 for ping-pong buffering
             of_in = object_fifo("of_in", shim_tile, compute_tile, 2, tile_ty)
             of_out = object_fifo("of_out", compute_tile, shim_tile, 2, tile_ty)
 
-            # External C function: buffers + lock IDs
+            # External C function: ping-pong buffer pointers + lock IDs
             scale_fn = external_func(
                 "scale_kernel",
                 inputs=[
-                    tile_ty,  # in buffer
-                    tile_ty,  # out buffer
+                    tile_ty,  # in buffer 0
+                    tile_ty,  # in buffer 1
+                    tile_ty,  # out buffer 0
+                    tile_ty,  # out buffer 1
                     T.index(),  # in acq_lock
                     T.index(),  # in rel_lock
                     T.index(),  # out acq_lock
@@ -55,17 +56,26 @@ def design():
 
             @core(compute_tile, "kernel.o")
             def core_body():
-                for _ in range_(8):
-                    # Get lock IDs and buffer for input ObjectFIFO (consume side)
-                    in_buf = of_in.get_buffer(0)
-                    in_acq, in_rel = of_in.get_lock(ObjectFifoPort.Consume)
+                # Pass both ping-pong buffers and lock IDs to C kernel
+                in_buf0 = of_in.get_buffer(0)
+                in_buf1 = of_in.get_buffer(1)
+                in_acq, in_rel = of_in.get_lock(ObjectFifoPort.Consume)
 
-                    # Get lock IDs and buffer for output ObjectFIFO (produce side)
-                    out_buf = of_out.get_buffer(0)
-                    out_acq, out_rel = of_out.get_lock(ObjectFifoPort.Produce)
+                out_buf0 = of_out.get_buffer(0)
+                out_buf1 = of_out.get_buffer(1)
+                out_acq, out_rel = of_out.get_lock(ObjectFifoPort.Produce)
 
-                    # Call C kernel with all lock IDs
-                    scale_fn(in_buf, out_buf, in_acq, in_rel, out_acq, out_rel)
+                # C kernel owns the compute loop and buffer rotation
+                scale_fn(
+                    in_buf0,
+                    in_buf1,
+                    out_buf0,
+                    out_buf1,
+                    in_acq,
+                    in_rel,
+                    out_acq,
+                    out_rel,
+                )
 
             @runtime_sequence(
                 np.ndarray[(N * 8,), np.dtype[np.int32]],

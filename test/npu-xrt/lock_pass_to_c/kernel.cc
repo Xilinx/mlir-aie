@@ -16,14 +16,14 @@
 
 extern "C" {
 
-void scale_with_locks(int32_t *in, int32_t *out, uint32_t in_cons_lock,
-                      uint32_t in_prod_lock, uint32_t out_prod_lock,
-                      uint32_t out_cons_lock) {
+void scale_with_locks(int32_t *in, int32_t *out, int64_t in_cons_lock,
+                      int64_t in_prod_lock, int64_t out_prod_lock,
+                      int64_t out_cons_lock) {
   // Acquire input consumer lock — wait for input data ready
-  acquire_equal(in_cons_lock, 1);
+  acquire_equal(in_cons_lock, -1);
 
   // Acquire output producer lock — wait for output buffer free
-  acquire_equal(out_prod_lock, 1);
+  acquire_equal(out_prod_lock, -1);
 
   // Scale each element by 3
   for (int i = 0; i < 1024; i++) {

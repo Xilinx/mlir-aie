@@ -20,22 +20,32 @@
 
 extern "C" {
 
-void passThroughLine(uint8_t *in, uint8_t *out, int32_t lineWidth,
-                     int64_t in_acq, int64_t in_rel, int64_t out_acq,
-                     int64_t out_rel) {
-  // acq_value = -1 selects AcquireGreaterEqual semantics on AIE2/AIE2P:
-  // wait until lock value >= 1, then decrement by 1.
-  objectfifo_port_t port_in = {(int32_t)in_acq, (int32_t)in_rel, -1, 1};
-  objectfifo_port_t port_out = {(int32_t)out_acq, (int32_t)out_rel, -1, 1};
+void passThroughLine(int32_t *in_buf0, int32_t *in_buf1, int32_t *out_buf0,
+                     int32_t *out_buf1, int64_t in_acq_lock,
+                     int64_t in_rel_lock, int64_t out_acq_lock,
+                     int64_t out_rel_lock) {
+  objectfifo_port_t port_in = {(int32_t)in_acq_lock, (int32_t)in_rel_lock, -1,
+                               1};
+  objectfifo_port_t port_out = {(int32_t)out_acq_lock, (int32_t)out_rel_lock,
+                                -1, 1};
 
-  objectfifo_acquire(&port_in);
-  objectfifo_acquire(&port_out);
+  int32_t *in_bufs[2] = {in_buf0, in_buf1};
+  int32_t *out_bufs[2] = {out_buf0, out_buf1};
 
-  for (int i = 0; i < lineWidth; i++)
-    out[i] = in[i];
+  for (int iter = 0; iter < 8; iter++) {
+    objectfifo_acquire(&port_in);
+    objectfifo_acquire(&port_out);
 
-  objectfifo_release(&port_in);
-  objectfifo_release(&port_out);
+    int32_t *in = in_bufs[iter % 2];
+    int32_t *out = out_bufs[iter % 2];
+
+    for (int i = 0; i < 1024; i++) {
+      out[i] = in[i];
+    }
+
+    objectfifo_release(&port_in);
+    objectfifo_release(&port_out);
+  }
 }
 
 } // extern "C"

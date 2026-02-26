@@ -40,17 +40,17 @@ def my_passthrough_kernel(dev, in1_size, out_size):
         line_ty = np.ndarray[(lineWidthInBytes,), np.dtype[in1_dtype]]
 
         # AIE Core Function declarations
-        # 4 extra T.index() params for lock IDs: in_acq, in_rel, out_acq, out_rel
         passThroughLine = external_func(
             "passThroughLine",
             inputs=[
-                line_ty,
-                line_ty,
-                np.int32,
-                T.index(),
-                T.index(),
-                T.index(),
-                T.index(),
+                line_ty,  # in buffer 0
+                line_ty,  # in buffer 1
+                line_ty,  # out buffer 0
+                line_ty,  # out buffer 1
+                T.index(),  # in acq_lock
+                T.index(),  # in rel_lock
+                T.index(),  # out acq_lock
+                T.index(),  # out rel_lock
             ],
         )
 
@@ -59,22 +59,34 @@ def my_passthrough_kernel(dev, in1_size, out_size):
         ComputeTile2 = tile(0, 2)
 
         # AIE-array data movement with object fifos
-        of_in = object_fifo("in", ShimTile, ComputeTile2, 1, line_ty)
-        of_out = object_fifo("out", ComputeTile2, ShimTile, 1, line_ty)
+        of_in = object_fifo("in", ShimTile, ComputeTile2, 2, line_ty)
+        of_out = object_fifo("out", ComputeTile2, ShimTile, 2, line_ty)
 
         # Set up compute tiles
 
         # Compute tile 2
         @core(ComputeTile2, "kernel.o")
         def core_body():
-            for _ in range_(sys.maxsize):
-                in_buf = of_in.get_buffer(0)
-                in_acq, in_rel = of_in.get_lock(ObjectFifoPort.Consume)
-                out_buf = of_out.get_buffer(0)
-                out_acq, out_rel = of_out.get_lock(ObjectFifoPort.Produce)
-                passThroughLine(
-                    in_buf, out_buf, lineWidthInBytes, in_acq, in_rel, out_acq, out_rel
-                )
+            # Pass both ping-pong buffers and lock IDs to C kernel
+            in_buf0 = of_in.get_buffer(0)
+            in_buf1 = of_in.get_buffer(1)
+            in_acq, in_rel = of_in.get_lock(ObjectFifoPort.Consume)
+
+            out_buf0 = of_out.get_buffer(0)
+            out_buf1 = of_out.get_buffer(1)
+            out_acq, out_rel = of_out.get_lock(ObjectFifoPort.Produce)
+
+            # C kernel owns the compute loop and buffer rotation
+            passThroughLine(
+                in_buf0,
+                in_buf1,
+                out_buf0,
+                out_buf1,
+                in_acq,
+                in_rel,
+                out_acq,
+                out_rel,
+            )
 
         @runtime_sequence(vector_ty, vector_ty, vector_ty)
         def sequence(inTensor, outTensor, notUsed):
