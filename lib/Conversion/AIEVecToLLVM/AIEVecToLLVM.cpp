@@ -3734,28 +3734,28 @@ public:
     auto v32bf16Ty = VectorType::get({32}, rewriter.getBF16Type());
     if (flatLhsTy.getElementType().isBF16() &&
         flatLhsTy.getNumElements() < 32) {
-      auto zero32 = LLVM::ConstantOp::create(
-          rewriter, loc, i32ty, rewriter.getI32IntegerAttr(0));
+      auto zero32 = LLVM::ConstantOp::create(rewriter, loc, i32ty,
+                                             rewriter.getI32IntegerAttr(0));
       auto zeros_i16 = xllvm::VectorBroadcast16I512IntrOp::create(
           rewriter, loc, VectorType::get({32}, rewriter.getI16Type()), zero32);
-      auto zeros_bf16 = LLVM::BitcastOp::create(
-          rewriter, loc, v32bf16Ty, zeros_i16);
+      auto zeros_bf16 =
+          LLVM::BitcastOp::create(rewriter, loc, v32bf16Ty, zeros_i16);
       auto zeroVec = xllvm::ExtBF256BF512IntrOp::create(
           rewriter, loc, VectorType::get({16}, rewriter.getBF16Type()),
           zeros_bf16, zero32);
 
-      auto idx1 = LLVM::ConstantOp::create(
-          rewriter, loc, i32ty, rewriter.getI32IntegerAttr(1));
+      auto idx1 = LLVM::ConstantOp::create(rewriter, loc, i32ty,
+                                           rewriter.getI32IntegerAttr(1));
 
       auto lhsSet = xllvm::VectorSetBF512BF256IntrOp::create(
           rewriter, loc, v32bf16Ty, lhs, zero32);
-      lhs = xllvm::UpdBF512BF256IntrOp::create(
-          rewriter, loc, v32bf16Ty, lhsSet, zeroVec, idx1);
+      lhs = xllvm::UpdBF512BF256IntrOp::create(rewriter, loc, v32bf16Ty, lhsSet,
+                                               zeroVec, idx1);
 
       auto rhsSet = xllvm::VectorSetBF512BF256IntrOp::create(
           rewriter, loc, v32bf16Ty, rhs, zero32);
-      rhs = xllvm::UpdBF512BF256IntrOp::create(
-          rewriter, loc, v32bf16Ty, rhsSet, zeroVec, idx1);
+      rhs = xllvm::UpdBF512BF256IntrOp::create(rewriter, loc, v32bf16Ty, rhsSet,
+                                               zeroVec, idx1);
     }
 
     // Insert vmac intrinsic

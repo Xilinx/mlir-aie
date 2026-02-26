@@ -1108,8 +1108,7 @@ struct ConvertMulAddFToAIEVecFMAElemOpPattern
       splitWideVectorOp<arith::AddFOp>(
           addOp, {lhs, rhs, acc}, halfType, resultType, rewriter,
           [localShiftParam](ArrayRef<std::pair<Value, Value>> halfInputs,
-                            Location loc,
-                            ConversionPatternRewriter &rewriter) {
+                            Location loc, ConversionPatternRewriter &rewriter) {
             auto [lhsLow, lhsHigh] = halfInputs[0];
             auto [rhsLow, rhsHigh] = halfInputs[1];
             auto [accLow, accHigh] = halfInputs[2];
@@ -1118,13 +1117,12 @@ struct ConvertMulAddFToAIEVecFMAElemOpPattern
                                    Value accH) -> Value {
               auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
               auto upsOp = aievec::UPSOp::create(rewriter, loc, f32AccType,
-                                                  accH, localShiftParam);
+                                                 accH, localShiftParam);
               auto fmaElemOp = aievec::FMAElemOp::create(
                   rewriter, loc, f32AccType, lhsH, rhsH, upsOp.getResult(),
                   /*fmsub=*/false);
               auto shiftParamOp = arith::ConstantOp::create(
-                  rewriter, loc,
-                  rewriter.getI32IntegerAttr(localShiftParam));
+                  rewriter, loc, rewriter.getI32IntegerAttr(localShiftParam));
               auto srsOp = aievec::SRSOp::create(
                   rewriter, loc, cast<VectorType>(lhsH.getType()),
                   fmaElemOp.getResult(), shiftParamOp.getResult());
@@ -1144,7 +1142,7 @@ struct ConvertMulAddFToAIEVecFMAElemOpPattern
 
     auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
     auto upsOp = aievec::UPSOp::create(rewriter, addOp.getLoc(), f32AccType,
-                                        acc, shiftParam);
+                                       acc, shiftParam);
     auto fmaElemOp = aievec::FMAElemOp::create(
         rewriter, addOp.getLoc(), f32AccType, lhs, rhs, upsOp.getResult(),
         /*fmsub=*/false);
