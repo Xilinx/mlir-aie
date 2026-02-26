@@ -1335,6 +1335,8 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
       ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
   // convert-to-llvm - use the generic conversion pass
   pm.addPass(createConvertToLLVMPass());
+  pm.addPass(createConvertVectorToLLVMPass());
+  pm.addPass(createUBToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
 
