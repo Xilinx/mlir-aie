@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 from __future__ import annotations
 import numpy as np
 from typing import Sequence
@@ -22,7 +22,7 @@ from ...util import single_elem_or_list_to_list
 
 from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint
-from ..device import Device, PlacementTile, AnyMemTile, Tile
+from ..device import Tile
 
 
 class ObjectFifo(Resolvable):
@@ -204,7 +204,7 @@ class ObjectFifo(Resolvable):
         )
         return self._cons[-1]
 
-    def tiles(self, cons_only: bool = False) -> list[PlacementTile]:
+    def tiles(self, cons_only: bool = False) -> list[Tile]:
         """The list of placement tiles corresponding to the endpoints of all handles of this ObjectFifo
 
         Raises:
@@ -212,7 +212,7 @@ class ObjectFifo(Resolvable):
             ValueError: At least one consumer handle must be constructed.
 
         Returns:
-            list[PlacementTile]: A list of tiles of the endpoints of this ObjectFifo.
+            list[Tile]: A list of tiles of the endpoints of this ObjectFifo.
         """
         tiles = []
         if not cons_only:
@@ -225,14 +225,6 @@ class ObjectFifo(Resolvable):
             raise ValueError("Cannot return cons tiles because cons were not created.")
         tiles += [cons.endpoint.tile for cons in self._cons]
         return tiles
-
-    def can_used_shared_mem(self, device: Device, cons_only: bool = False) -> bool:
-        """Checks if all endpoints of the object fifo have a legal memory affinity."""
-        tiles = self.tiles(cons_only=cons_only)
-        for t in tiles:
-            if device.is_mem_accessible(t, tiles):
-                return True
-        return False
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:
@@ -480,7 +472,7 @@ class ObjectFifoHandle(Resolvable):
     def join(
         self,
         offsets: list[int],
-        placement: PlacementTile = AnyMemTile,
+        placement: Tile | None = None,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] = None,
         names: list[str] | None = None,
@@ -493,7 +485,7 @@ class ObjectFifoHandle(Resolvable):
 
         Args:
             offsets (list[int]): Offsets into the current producer, each corresponding to a new consumer.
-            placement (PlacementTile, optional): The placement where the Join operation occurs. Defaults to AnyMemTile.
+            placement (Tile, optional): The placement where the Join operation occurs. Defaults to None (unconstrained MemTile).
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The type of the buffers corresponding to each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, unique names will be generated. Defaults to None.
@@ -562,7 +554,7 @@ class ObjectFifoHandle(Resolvable):
     def split(
         self,
         offsets: list[int],
-        placement: PlacementTile = AnyMemTile,
+        placement: Tile | None = None,
         depths: list[int] | None = None,
         obj_types: list[type[np.ndarray]] = None,
         names: list[str] | None = None,
@@ -575,7 +567,7 @@ class ObjectFifoHandle(Resolvable):
 
         Args:
             offsets (list[int]): The offset into the current consumer for each new ObjectFifo producer.
-            placement (PlacementTile, optional): The placement tile where the Split operation takes place. Defaults to AnyMemTile.
+            placement (Tile, optional): The placement tile where the Split operation takes place. Defaults to None (unconstrained MemTile).
             depths (list[int] | None, optional): The depth of each new ObjectFifo. Defaults to None.
             obj_types (list[type[np.ndarray]], optional): The buffer type of each new ObjectFifo. Defaults to None.
             names (list[str] | None, optional): The name of each new ObjectFifo. If not given, a unique name will be generated. Defaults to None.
@@ -642,7 +634,7 @@ class ObjectFifoHandle(Resolvable):
 
     def forward(
         self,
-        placement: PlacementTile = AnyMemTile,
+        placement: Tile | None = None,
         obj_type: type[np.ndarray] | None = None,
         depth: int | None = None,
         name: str | None = None,
@@ -654,7 +646,7 @@ class ObjectFifoHandle(Resolvable):
         is forwarded to the producer of a newly-constructed ObjectFifo.
 
         Args:
-            placement (PlacementTile, optional): The placement of the Forward operation. Defaults to AnyMemTile.
+            placement (Tile, optional): The placement of the Forward operation. Defaults to None (unconstrained MemTile).
             obj_type (type[np.ndarray] | None, optional): The object type of the new ObjectFifo. Defaults to None.
             depth (int | None, optional): The depth of the new ObjectFifo. Defaults to None.
             name (str | None, optional): The name of the new ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
@@ -710,7 +702,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         self,
         srcs: list[ObjectFifoHandle] | ObjectFifoHandle,
         dsts: list[ObjectFifoHandle] | ObjectFifoHandle,
-        placement: PlacementTile = AnyMemTile,
+        placement: Tile | None = None,
         src_offsets: list[int] = [],
         dst_offsets: list[int] = [],
     ):
@@ -719,7 +711,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         Args:
             srcs (list[ObjectFifoHandle] | ObjectFifoHandle): A list of consumer ObjectFifoHandles to link.
             dsts (list[ObjectFifoHandle] | ObjectFifoHandle): A list of producer ObjectFifoHandles to link.
-            placement (PlacementTile, optional): The place the link occurs. Defaults to AnyMemTile.
+            placement (Tile, optional): The place the link occurs. Defaults to Memory Tile.
             src_offsets (list[int], optional): If many sources, one offset per source is required to split the destination. Defaults to [].
             dst_offsets (list[int], optional): If many destinations, one offset per destination is required to split the source. Defaults to [].
 
@@ -753,6 +745,23 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             s.endpoint = self
         for d in self._dsts:
             d.endpoint = self
+
+        # ObjectFifoLink allows Memory or Compute Tiles
+        if placement is None:
+            placement = Tile(tile_type=Tile.MEMORY)
+        else:
+            # Validate tile_type if user specified it
+            if placement.tile_type is not None:
+                if placement.tile_type not in [Tile.MEMORY, Tile.COMPUTE]:
+                    raise ValueError(
+                        f"ObjectFifoLink requires Tile.MEMORY or Tile.COMPUTE, "
+                        f"got tile_type='{placement.tile_type}'"
+                    )
+            elif placement.col is None and placement.row is None:
+                # Unconstrained tile, default to MEMORY
+                placement.tile_type = Tile.MEMORY
+            # else: has coordinates, type will be inferred and validated in device resolve_tile()
+
         ObjectFifoEndpoint.__init__(self, placement)
 
     def resolve(

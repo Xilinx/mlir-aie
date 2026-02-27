@@ -1,4 +1,4 @@
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
@@ -14,19 +14,18 @@ from aie.iron.device import (
     Tile,
     NPU2Col1,
 )
-from aie.iron.placers import SequentialPlacer
 
 
 # CHECK: module {
 # CHECK:   aie.device(npu2_1col) {
-# CHECK:     %tile_0_2 = aie.tile(0, 2)
-# CHECK:     %lock_0_2 = aie.lock(%tile_0_2)
-# CHECK:     %core_0_2 = aie.core(%tile_0_2) {
-# CHECK:         aie.use_lock(%lock_0_2, Acquire, 1)
-# CHECK:         aie.use_lock(%lock_0_2, Release, 1)
+# CHECK:     %[[WORKER:.*]] = aie.logical_tile<CoreTile>
+# CHECK:     %[[LOCK:.*]] = aie.lock(%[[WORKER]])
+# CHECK:     %{{.*}} = aie.core(%[[WORKER]]) {
+# CHECK:         aie.use_lock(%[[LOCK]], Acquire, 1)
+# CHECK:         aie.use_lock(%[[LOCK]], Release, 1)
 # CHECK:     }
 # CHECK:     aie.runtime_sequence(%arg0: memref<16xi32>) {
-# CHECK:       aiex.set_lock(%lock_0_2, 1)
+# CHECK:       aiex.set_lock(%[[LOCK]], 1)
 # CHECK:     }
 # CHECK:   }
 # CHECK: }
@@ -54,7 +53,7 @@ def my_barrier():
         rt.set_barrier(workerBarrier, 1)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return print(Program(NPU2Col1(), rt).resolve_program(SequentialPlacer()))
+    return print(Program(NPU2Col1(), rt).resolve_program())
 
 
 my_barrier()

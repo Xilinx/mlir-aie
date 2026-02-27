@@ -1,7 +1,6 @@
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
 from aie.helpers.dialects.func import func
@@ -53,12 +52,12 @@ def custom_loop_type(loop_dtype):
     my_program = Program(NPU2(), rt)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    module = my_program.resolve_program(SequentialPlacer())
+    module = my_program.resolve_program()
     return module
 
 
 # CHECK-LABEL: range_with_int32
-# CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
+# CHECK: scf.for %arg1 = %c0_{{.*}} to %c4 step %c1_{{.*}} {
 def range_with_int32():
     print("range_with_int32")
     print(custom_loop_type(np.int32))
@@ -68,7 +67,7 @@ range_with_int32()
 
 
 # CHECK-LABEL: range_with_int64
-# CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
+# CHECK: scf.for %arg1 = %c0_{{.*}} to %c4 step %c1_{{.*}} {
 def range_with_int64():
     print("range_with_int64")
     print(custom_loop_type(np.int64))

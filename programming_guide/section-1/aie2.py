@@ -9,7 +9,6 @@
 import numpy as np
 
 from aie.iron import Program, Runtime, Worker, Buffer
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, Tile
 from aie.iron.controlflow import range_
 
@@ -40,7 +39,7 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
 my_program = Program(NPU1Col1(), rt)
 
 # Place components (assign them resources on the device) and generate an MLIR module
-module = my_program.resolve_program(SequentialPlacer())
+module = my_program.resolve_program()
 
 # Print the generated MLIR
 print(module)

@@ -10,7 +10,6 @@ import numpy as np
 import sys
 
 from aie.iron import Program, Runtime, Worker, ObjectFifo
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 
 import aie.iron as iron
@@ -80,7 +79,7 @@ def aie2p(input0, output):
     # information to be lowered to its MLIR equivalent.
     # At this point, the program is also verified and will report underlying MLIR errors, if any.
     # You can see a list of available placers in python/iron/placers.py
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

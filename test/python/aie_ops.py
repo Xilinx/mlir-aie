@@ -7,6 +7,7 @@ import numpy as np
 
 from aie.dialects.aie import (
     AIEDevice,
+    AIETileType,
     Core,
     Device,
     MemOp,
@@ -18,6 +19,7 @@ from aie.dialects.aie import (
     object_fifo,
     object_fifo_link,
     tile,
+    logical_tile,
     cascade_flow,
     WireBundle,
     packetflow,
@@ -42,6 +44,20 @@ def tileOp():
 @construct_and_print_module
 def tileOpAllocationScheme():
     t = tile(col=2, row=2, allocation_scheme="basic-sequential")
+
+
+# CHECK-LABEL: logicalTileOpUnconstrained
+# CHECK: %[[CORE:.*]] = aie.logical_tile<CoreTile>(?, ?)
+@construct_and_print_module
+def logicalTileOpUnconstrained():
+    t = logical_tile(AIETileType.CoreTile)
+
+
+# CHECK-LABEL: logicalTileOpPartialPlaced
+# CHECK: %[[MEM:.*]] = aie.logical_tile<MemTile>(1, ?)
+@construct_and_print_module
+def logicalTileOpPartialPlaced():
+    t = logical_tile(AIETileType.MemTile, col=1)
 
 
 # CHECK-LABEL: coreOp

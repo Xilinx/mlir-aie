@@ -1,4 +1,4 @@
-# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# Copyright (C) 2022-2026, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
@@ -946,6 +946,32 @@ class TileOp(TileOp):
 
 def tile(col, row, *, loc=None, ip=None, allocation_scheme=None):
     return TileOp(col=col, row=row, loc=loc, ip=ip, allocation_scheme=allocation_scheme)
+
+
+def logical_tile(
+    tile_type, col=None, row=None, *, loc=None, ip=None, allocation_scheme=None
+):
+    """Create a logical tile operation.
+
+    Args:
+        tile_type: AIETileType enum value (CoreTile, MemTile, ShimNOCTile, ShimPLTile)
+        col: Optional column coordinate (None for unconstrained)
+        row: Optional row coordinate (None for unconstrained)
+        loc: Optional location
+        ip: Optional insertion point
+        allocation_scheme: Optional allocation scheme string
+
+    Returns:
+        LogicalTileOp instance
+    """
+    return LogicalTileOp(
+        tile_type=tile_type,
+        col=col,
+        row=row,
+        loc=loc,
+        ip=ip,
+        allocation_scheme=allocation_scheme,
+    )
 
 
 # BDChainOp

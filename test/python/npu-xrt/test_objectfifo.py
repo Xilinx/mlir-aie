@@ -16,9 +16,6 @@ from aie.iron.device import (
     NPU1,
     NPU2,
     Tile,
-    AnyMemTile,
-    AnyComputeTile,
-    AnyShimTile,
 )
 from aie.iron.dataflow.objectfifo import ObjectFifo
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
@@ -30,14 +27,22 @@ def device(request):
 
 
 def test_can_used_shared_mem(device):
+    """NOTE: can_used_shared_mem() has been removed.
+
+    Memory affinity validation now happens in MLIR placement pass after
+    tiles have concrete coordinates. This test is deprecated."""
+    pytest.skip(
+        "can_used_shared_mem() removed - validation moved to MLIR placement pass"
+    )
+
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
 
     # Legal affinity
     of_legal = ObjectFifo(n_ty)
     of_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
     of_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    assert of_legal.can_used_shared_mem(device)
-    assert of_legal.can_used_shared_mem(device, cons_only=True)
+    # assert of_legal.can_used_shared_mem(device)
+    # assert of_legal.can_used_shared_mem(device, cons_only=True)
 
     # Illegal affinity
     of_illegal = ObjectFifo(n_ty)
@@ -72,16 +77,18 @@ def test_can_used_shared_mem(device):
     # Forwarded ObjectFifo
     of_forward = ObjectFifo(n_ty)
     of_forward.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    forwarded = of_forward.cons().forward(placement=AnyMemTile)
+    forwarded = of_forward.cons().forward()  # Default MemTile placement
     forwarded.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     with pytest.raises(ValueError):
         of_forward.can_used_shared_mem(device)
     with pytest.raises(ValueError):
         forwarded.can_used_shared_mem(device)
 
-    # AnyComputeTile
+    # Unconstrained Tile (would need type set by context)
+    # This test is deprecated - can't validate without placement
+    pytest.skip("Any*Tile removed - validation moved to MLIR placement pass")
     of_any_compute = ObjectFifo(n_ty)
-    of_any_compute.prod().endpoint = ObjectFifoEndpoint(AnyComputeTile)
+    of_any_compute.prod().endpoint = ObjectFifoEndpoint(Tile())
     of_any_compute.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
     with pytest.raises(ValueError):
         of_any_compute.can_used_shared_mem(device)

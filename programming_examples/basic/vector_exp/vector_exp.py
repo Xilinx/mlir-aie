@@ -10,7 +10,6 @@ import sys
 from ml_dtypes import bfloat16
 
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.placers import SequentialPlacer
 from aie.iron.device import NPU1Col1, NPU2
 from aie.iron.controlflow import range_
 
@@ -78,7 +77,7 @@ def my_eltwise_exp():
         rt.drain(C_fifo.cons(), c_out, wait=True)
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program(SequentialPlacer())
+    return Program(dev, rt).resolve_program()
 
 
 print(my_eltwise_exp())

@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 import sys
 from typing import Callable
 
@@ -12,7 +12,7 @@ from .. import ir  # type: ignore
 from ..dialects.aie import core, lock, use_lock
 from ..dialects.aiex import set_lock_value, LockAction
 from ..helpers.dialects.scf import _for as range_
-from .device import PlacementTile, AnyComputeTile, Tile
+from .device import Tile
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .kernel import Kernel, ExternalFunction
@@ -32,7 +32,7 @@ class Worker(ObjectFifoEndpoint):
         self,
         core_fn: Callable | None,
         fn_args: list = [],
-        placement: PlacementTile | None = AnyComputeTile,
+        placement: Tile | None = None,
         while_true: bool = True,
         stack_size: int = None,
         allocation_scheme: str = None,
@@ -44,7 +44,7 @@ class Worker(ObjectFifoEndpoint):
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
             fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
-            placement (PlacementTile | None, optional): The placement for the Worker. Defaults to AnyComputeTile.
+            placement (Tile | None, optional): The placement for the Worker. Defaults to compute tile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
@@ -54,11 +54,21 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
-        self._tile = placement
+        # Setup and validate placement for Worker (must be COMPUTE tile)
+        self._tile = placement if placement else Tile()
+        if not isinstance(self._tile, Tile):
+            raise ValueError(f"Worker requires Tile, got {type(self._tile)}")
+        if self._tile.tile_type and self._tile.tile_type != Tile.COMPUTE:
+            raise ValueError(
+                f"Worker requires Tile.COMPUTE, got tile_type='{self._tile.tile_type}'"
+            )
+        self._tile.tile_type = Tile.COMPUTE  # Always set to COMPUTE
+
         self._while_true = while_true
         self.stack_size = stack_size
         self.allocation_scheme = allocation_scheme
-        if allocation_scheme:
+        # Set allocation_scheme on the tile if specified
+        if allocation_scheme and self._tile is not None:
             self._tile.allocation_scheme = allocation_scheme
         self.trace = trace
         self.trace_events = trace_events
@@ -89,6 +99,8 @@ class Worker(ObjectFifoEndpoint):
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
                 self._buffers.append(arg)
+                # Buffers are placed on the same tile as the Worker
+                arg._tile = self._tile
             elif isinstance(arg, ObjectFifo):
                 # This is an easy error to make, so we catch it early
                 raise ValueError(

@@ -12,7 +12,6 @@ import os
 import aie.iron as iron
 from aie.iron import ExternalFunction
 from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer
-from aie.iron.placers import SequentialPlacer
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.dialects.scf import if_, else_
@@ -169,7 +168,7 @@ def vector_reduce_max(input0, output):
     # --------------------------------------------------------------------------
 
     my_program = Program(iron.get_current_device(), rt)
-    return my_program.resolve_program(SequentialPlacer())
+    return my_program.resolve_program()
 
 
 def main():

@@ -4,12 +4,12 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
 
 from ..dataflow.endpoint import ObjectFifoEndpoint
-from ..device import PlacementTile
+from ..device import Tile
 
 
 class RuntimeEndpoint(ObjectFifoEndpoint):
@@ -17,7 +17,7 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     The placement of this Endpoint should be a Shim Tile.
     """
 
-    def __init__(self, placement: PlacementTile) -> RuntimeEndpoint:
+    def __init__(self, placement: Tile) -> RuntimeEndpoint:
         super().__init__(placement)
 
     def __eq__(self, other: object) -> bool:

@@ -4,29 +4,65 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
-from ...dialects.aie import TileOp
+from ...dialects.aie import LogicalTileOp
 
 
 class Tile:
-    """An object representing a single component denoted by coordinates on a device."""
+    """An object representing a component to be placed on a device, optionally denoted by coordinates."""
 
-    def __init__(self, col: int, row: int, allocation_scheme: str = None) -> None:
-        self.col: int = col
-        self.row: int = row
+    # Tile type constants
+    COMPUTE = "compute"  # Compute tiles
+    MEMORY = "memory"  # Memory tiles
+    SHIM = "shim"  # Shim tiles
+
+    def __init__(
+        self,
+        col: int | None = None,
+        row: int | None = None,
+        *,
+        tile_type: str | None = None,
+        allocation_scheme: str | None = None,
+    ) -> None:
+        """Initialize a Tile with full, partial, or no coordinates.
+
+        Args:
+            col: Column coordinate (None for unconstrained)
+            row: Row coordinate (None for unconstrained)
+            tile_type: Tile type - use Tile.COMPUTE, Tile.MEMORY, or Tile.SHIM.
+                       Can be inferred from context or coordinates.
+            allocation_scheme: Optional allocation scheme string
+
+        Examples:
+            Tile(2, 3)                           # Full coords, type inferred
+            Tile(col=2)                          # Partial, type from context
+            Tile()                               # Unconstrained, type from context
+            Tile(2, 3, tile_type=Tile.COMPUTE)   # Explicit validation
+        """
+        self.col: int | None = col
+        self.row: int | None = row
+        self.tile_type: str | None = tile_type
         self.allocation_scheme: str | None = allocation_scheme
-        self._op: TileOp | None = None
-        # TODO: each tile should probably have a type, e.g., Shim or Mem or Compute
+        self._op: LogicalTileOp | None = None
+
+        # Validate tile_type if specified
+        if tile_type is not None:
+            valid_types = [Tile.COMPUTE, Tile.MEMORY, Tile.SHIM]
+            if tile_type not in valid_types:
+                raise ValueError(
+                    f"Invalid tile_type '{tile_type}'. Must be one of: "
+                    f"Tile.COMPUTE, Tile.MEMORY, Tile.SHIM"
+                )
 
     @property
-    def op(self) -> TileOp:
+    def op(self) -> LogicalTileOp:
         if not self._op:
             raise ValueError("Cannot get op before it is set.")
         return self._op
 
     @op.setter
-    def op(self, op: TileOp):
+    def op(self, op: LogicalTileOp):
         if self._op and self._op != op:
             raise ValueError("Cannot change operation once it is set.")
         self._op = op
@@ -41,24 +77,3 @@ class Tile:
 
     def __hash__(self):
         return hash(str(self))
-
-
-class AnyShimTile:
-    """A placeholder that should be replaced with a concrete Tile() representing a Shim tile on a device."""
-
-    pass
-
-
-class AnyMemTile:
-    """A placeholder that should be replaced with a concrete Tile() representing a Mem tile on a device."""
-
-    pass
-
-
-class AnyComputeTile:
-    """A placeholder that should be replaced with a concrete Tile() representing a Compute tile on a device."""
-
-    pass
-
-
-PlacementTile = Tile | AnyShimTile | AnyMemTile | AnyComputeTile
