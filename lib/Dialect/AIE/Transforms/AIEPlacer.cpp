@@ -304,7 +304,8 @@ PlacementAnalysis::getPlacement(Operation *logicalTile) const {
 // simultaneously. For unidirectional tiles, pass 0 for the unused direction:
 //   - Input-only:  findTileWithCapacity(..., numInputChannels, 0, type)
 //   - Output-only: findTileWithCapacity(..., 0, numOutputChannels, type)
-//   - Both: findTileWithCapacity(..., numInputChannels, numOutputChannels, type)
+//   - Both: findTileWithCapacity(..., numInputChannels, numOutputChannels,
+//   type)
 // The requestedType parameter filters tiles to only consider matching types
 // (e.g., only MemTiles for MemTile logical tiles, only ShimNOCTiles for shims).
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(

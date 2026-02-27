@@ -81,7 +81,8 @@ struct AIEPlaceTilesPass : AIEPlaceTilesBase<AIEPlaceTilesPass> {
     target.addIllegalOp<LogicalTileOp>();
 
     // Mark all other AIE dialect operations as legal
-    // They will have their operands automatically updated when LogicalTileOp -> TileOp
+    // They will have their operands automatically updated when LogicalTileOp ->
+    // TileOp
     target.addLegalDialect<AIEDialect>();
 
     RewritePatternSet patterns(&getContext());
