@@ -577,16 +577,18 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
                                                 rewriter.getI32IntegerAttr(1));
             func::CallOp::create(rewriter, loc, ctrlRegFunc,
                                  ValueRange{c9, c1});
-            // rounding_mode::floor (register 6 = 0)
-            // Use floor (truncation) to avoid double-rounding when user
-            // code already performs explicit rounding via arith.addi
-            // before shrsi.
+            // rounding_mode::positive_inf (register 6 = 9)
+            // Match C++ kernel behavior (aie::rounding_mode::positive_inf).
+            // aievec.srs ops handle rounding internally; scalar arith.shrsi
+            // is unaffected by this register (uses floor inherently).
+            // User code with manual rounding (arith.addi before shrsi)
+            // still works because arith.shrsi ignores ctrl_reg.
             auto c6 = arith::ConstantOp::create(rewriter, loc,
                                                 rewriter.getI32IntegerAttr(6));
-            auto c0 = arith::ConstantOp::create(rewriter, loc,
-                                                rewriter.getI32IntegerAttr(0));
+            auto cPositiveInf = arith::ConstantOp::create(
+                rewriter, loc, rewriter.getI32IntegerAttr(9));
             func::CallOp::create(rewriter, loc, ctrlRegFunc,
-                                 ValueRange{c6, c0});
+                                 ValueRange{c6, cPositiveInf});
           }
         }
       }
