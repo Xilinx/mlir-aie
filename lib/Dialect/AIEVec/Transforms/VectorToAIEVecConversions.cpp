@@ -3496,7 +3496,10 @@ getUnOpaquedOperandOfEmitCOpaqueCallOp(Operation *op, StringRef funcName) {
 // sigmoid value for v16bfloat16 and v32bfloat16 types
 template <typename DivFOpTy>
 static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
-  auto constOp = dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
+  auto *lhsDefOp = divfOp.getLhs().getDefiningOp();
+  if (!lhsDefOp)
+    return false;
+  auto constOp = dyn_cast<arith::ConstantOp>(lhsDefOp);
   if (!constOp)
     return false;
 
@@ -3514,9 +3517,12 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
   // %2 = aievec.ups %b;
   // %3 = aievec.add_elem %1, %2
   // %4 = aievec.srs %3;
-  auto addOp = dyn_cast<arith::AddFOp>(divfOp.getRhs().getDefiningOp());
+  auto *rhsDefOp = divfOp.getRhs().getDefiningOp();
+  if (!rhsDefOp)
+    return false;
+  auto addOp = dyn_cast<arith::AddFOp>(rhsDefOp);
   if (!addOp) {
-    auto srsOp = dyn_cast<aievec::SRSOp>(divfOp.getRhs().getDefiningOp());
+    auto srsOp = dyn_cast<aievec::SRSOp>(rhsDefOp);
     if (!srsOp)
       return false;
 
