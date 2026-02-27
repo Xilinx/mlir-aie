@@ -66,7 +66,7 @@ module @multi_consumer {
     %shim = aie.logical_tile<ShimNOCTile>(?, ?)
     // CHECK-DAG: %[[CORE1:.*]] = aie.tile(0, 2)
     %core1 = aie.logical_tile<CoreTile>(?, ?)
-    // CHECK-DAG: %[[CORE2:.*]] = aie.tile(1, 2)
+    // CHECK-DAG: %[[CORE2:.*]] = aie.tile(0, 3)
     %core2 = aie.logical_tile<CoreTile>(?, ?)
 
     // One producer, multiple consumers (needs 2 output channels from shim)
