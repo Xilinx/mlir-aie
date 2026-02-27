@@ -953,9 +953,12 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
   sys::path::append(chessLlvmLinkPath, "LNa64bin", "chess-llvm-link");
 
   if (!sys::fs::can_execute(chessLlvmLinkPath)) {
-    llvm::errs() << "Error: Could not find chess-llvm-link at: "
-                 << chessLlvmLinkPath << "\n";
-    return "";
+    if (verbose) {
+      llvm::outs() << "chess-llvm-link not found at: " << chessLlvmLinkPath
+                   << ", skipping chess-llvm-link step\n";
+    }
+    // Return the input file directly (skip linking)
+    return std::string(inputLLPath);
   }
 
   // Build chess_intrinsic_wrapper.ll path
