@@ -3089,6 +3089,40 @@ struct ConvertDivFToAIEVecInvOpPattern : OpConversionPattern<arith::DivFOp> {
   }
 };
 
+// Convert bf16 vector arith.divf a/b to extf + const(1.0)/b + a*inv(b) +
+// truncf. Peano cannot legalize G_FDIV on bf16 vectors directly. The
+// const(1.0)/b is caught by ConvertDivFToAIEVecInvOpPattern to become
+// aievec.inv. The remaining arith.mulf stays legal for f32 vectors.
+struct ConvertBF16DivFToMulInvPattern : OpConversionPattern<arith::DivFOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::DivFOp divOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType = dyn_cast<VectorType>(divOp.getType());
+    if (!resultType || !resultType.getElementType().isBF16())
+      return failure();
+
+    auto loc = divOp.getLoc();
+    unsigned laneSize = getVectorLaneSize(resultType);
+    if (laneSize != 16 && laneSize != 32)
+      return failure();
+
+    auto f32VecType =
+        VectorType::get(resultType.getShape(), rewriter.getF32Type());
+    auto lhsF32 =
+        arith::ExtFOp::create(rewriter, loc, f32VecType, adaptor.getLhs());
+    auto rhsF32 =
+        arith::ExtFOp::create(rewriter, loc, f32VecType, adaptor.getRhs());
+    auto oneAttr = DenseFPElementsAttr::get(f32VecType, 1.0f);
+    auto oneConst = arith::ConstantOp::create(rewriter, loc, oneAttr);
+    auto invRhs = arith::DivFOp::create(rewriter, loc, oneConst, rhsF32);
+    auto mulResult = arith::MulFOp::create(rewriter, loc, lhsF32, invRhs);
+    rewriter.replaceOpWithNewOp<arith::TruncFOp>(divOp, resultType, mulResult);
+    return success();
+  }
+};
+
 // Convert math.tanh to a function call to compute tanh(x) by look up tables
 struct ComputeTanhOpByLUTPattern : OpConversionPattern<math::TanhOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -3496,7 +3530,10 @@ getUnOpaquedOperandOfEmitCOpaqueCallOp(Operation *op, StringRef funcName) {
 // sigmoid value for v16bfloat16 and v32bfloat16 types
 template <typename DivFOpTy>
 static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
-  auto constOp = dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
+  auto *lhsDefOp = divfOp.getLhs().getDefiningOp();
+  if (!lhsDefOp)
+    return false;
+  auto constOp = dyn_cast<arith::ConstantOp>(lhsDefOp);
   if (!constOp)
     return false;
 
@@ -3514,9 +3551,12 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
   // %2 = aievec.ups %b;
   // %3 = aievec.add_elem %1, %2
   // %4 = aievec.srs %3;
-  auto addOp = dyn_cast<arith::AddFOp>(divfOp.getRhs().getDefiningOp());
+  auto *rhsDefOp = divfOp.getRhs().getDefiningOp();
+  if (!rhsDefOp)
+    return false;
+  auto addOp = dyn_cast<arith::AddFOp>(rhsDefOp);
   if (!addOp) {
-    auto srsOp = dyn_cast<aievec::SRSOp>(divfOp.getRhs().getDefiningOp());
+    auto srsOp = dyn_cast<aievec::SRSOp>(rhsDefOp);
     if (!srsOp)
       return false;
 
@@ -4746,8 +4786,10 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
   // For AIE2P with LLVMIR backend, use aievec.exp and aievec.inv
   // math.rsqrt is kept legal and will be lowered in AIEVecToLLVM pass
   if (backend == TargetBackend::LLVMIR) {
-    patterns.add<ConvertMathExpToAIEVecExpOpPattern,
-                 ConvertDivFToAIEVecInvOpPattern>(patterns.getContext());
+    patterns
+        .add<ConvertMathExpToAIEVecExpOpPattern,
+             ConvertDivFToAIEVecInvOpPattern, ConvertBF16DivFToMulInvPattern>(
+            patterns.getContext());
   }
 }
 
@@ -5209,10 +5251,21 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
       return false;
     });
 
-    // AIE2P-specific legalization for divf 1.0/x pattern with LLVMIR backend
-    // Scalar f32 or vector<Nxf32> divf with constant 1.0 LHS is illegal
+    // AIE2P-specific legalization for divf patterns with LLVMIR backend:
+    // 1. bf16 vector divf is always illegal (converted via mul+inv pattern)
+    // 2. Scalar f32 or vector<Nxf32> divf with constant 1.0 LHS is illegal
+    //    (converted to aievec.inv)
     target.addDynamicallyLegalOp<arith::DivFOp>([](arith::DivFOp divfOp) {
       Type srcType = divfOp.getLhs().getType();
+
+      // bf16 vector divf is always illegal - will be converted via mul+inv
+      if (auto vecType = dyn_cast<VectorType>(srcType)) {
+        if (vecType.getElementType().isBF16()) {
+          unsigned laneSize = getVectorLaneSize(vecType);
+          if (laneSize == 16 || laneSize == 32)
+            return false;
+        }
+      }
 
       // Check if LHS is defined by a constant operation
       auto constOp =

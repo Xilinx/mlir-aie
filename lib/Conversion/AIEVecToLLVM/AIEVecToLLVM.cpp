@@ -5201,6 +5201,48 @@ public:
   }
 };
 
+// Convert aievec.neg to scalar fneg operations via extract/insert unrolling.
+// Peano doesn't support vector fneg/fsub on f32, so we unroll to scalar
+// operations (same pattern as InvOpAIE2pConversion).
+class NegOpConversion : public mlir::ConvertOpToLLVMPattern<aievec::NegOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::NegOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::NegOp negOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = negOp.getLoc();
+    auto srcType = adaptor.getSource().getType();
+
+    auto vecType = dyn_cast<VectorType>(srcType);
+    if (!vecType)
+      return failure();
+
+    auto elemType = vecType.getElementType();
+    if (!isa<FloatType>(elemType))
+      return failure();
+
+    int numElements = getVectorLaneSize(vecType);
+    Value result = LLVM::PoisonOp::create(rewriter, loc, vecType);
+
+    for (int i = 0; i < numElements; ++i) {
+      auto indexCst = LLVM::ConstantOp::create(
+          rewriter, loc, rewriter.getI64Type(), rewriter.getI64IntegerAttr(i));
+      auto extractedElem = LLVM::ExtractElementOp::create(
+          rewriter, loc, adaptor.getSource(), indexCst);
+
+      auto negResult =
+          LLVM::FNegOp::create(rewriter, loc, elemType, extractedElem);
+
+      result = LLVM::InsertElementOp::create(rewriter, loc, vecType, result,
+                                             negResult, indexCst);
+    }
+
+    rewriter.replaceOp(negOp, result);
+    return success();
+  }
+};
+
 // Convert aievec.exp to xllvm.exp2 intrinsic for AIE2P
 // Uses the identity: exp(x) = exp2(x * log2(e))
 // Supports both lane-16 and lane-32 bf16 vectors
@@ -5453,6 +5495,7 @@ void populateAIEVecToLLVMAIE2ConversionPatterns(
   patterns.add<FMAElemOpConversion>(converter);
   patterns.add<FoldAIECastOps>(converter);
   patterns.add<FdivOpConversion>(converter, "aie2");
+  patterns.add<NegOpConversion>(converter);
 }
 
 // AIE2p version of ExtractElemOp conversion using LLVM extractelement
@@ -5553,6 +5596,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ConcatOpAIE2pConversion>(converter);
   patterns.add<ExpOpAIE2pConversion>(converter);
   patterns.add<InvOpAIE2pConversion>(converter);
+  patterns.add<NegOpConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
   patterns.add<RsqrtOpAIE2pConversion>(converter);
   patterns.add<FdivOpConversion>(converter, "aie2p");
