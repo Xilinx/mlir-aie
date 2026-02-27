@@ -11,9 +11,9 @@ llvm_map_components_to_libnames(llvm_libs support core irreader)
 add_llvm_executable(aiecc aiecc.cpp aiecc_aiesim.cpp)
 llvm_update_compile_flags(aiecc)
 install(TARGETS aiecc
-  EXPORT AIETargets
-  RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
-  COMPONENT aiecc)
+EXPORT AIETargets
+RUNTIME DESTINATION ${LLVM_TOOLS_INSTALL_DIR}
+COMPONENT aiecc)
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
@@ -51,7 +51,6 @@ set(LIBS
   MLIRXLLVMDialect
   ${llvm_libs}
   )
-
 target_link_libraries(aiecc PUBLIC ${LIBS})
 
 # Optional: AIEBU library for direct ELF generation (avoids subprocess to aiebu-asm)
