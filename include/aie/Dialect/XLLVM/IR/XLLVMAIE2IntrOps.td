@@ -619,6 +619,13 @@ def Exp2AIE2pIntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
 
+// ----- TANH -----
+
+def TanhAIE2pIntrOp :
+    AIEVec2p_IntrOp<"tanh",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
+
 // ----- INVSQRT (Reciprocal Square Root) -----
 
 def InvsqrtAIE2pIntrOp :
