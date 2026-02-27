@@ -4141,6 +4141,18 @@ static xilinx::aiecc::AiesimConfig createAiesimConfig() {
   config.hostTarget = hostTarget.getValue();
   config.aietoolsPath = getAietoolsDir();
   config.installPath = getInstallPath();
+
+  // Populate host args for aiesim ps.so compilation.
+  // Matches Python's strip_host_args_for_aiesim(): all host args except -o.
+  for (const auto &dir : hostIncludeDirs)
+    config.hostArgs.push_back("-I" + dir);
+  for (const auto &dir : hostLibDirs)
+    config.hostArgs.push_back("-L" + dir);
+  for (const auto &lib : hostLibs)
+    config.hostArgs.push_back("-l" + lib);
+  for (const auto &src : getHostSourceFiles())
+    config.hostArgs.push_back(src);
+
   return config;
 }
 
