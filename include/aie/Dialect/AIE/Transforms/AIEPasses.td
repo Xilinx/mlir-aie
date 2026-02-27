@@ -13,6 +13,26 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
+  let summary = "Place logical tiles onto physical AIE tiles";
+  let description = [{
+    Sequential placer algorithm places core tiles in a
+    column-major order and places fifo-connected Shim/Mem tiles 
+    near its core tiles. One or more aie.logical_tile operation is mapped 
+    to one aie.tile.
+  }];
+
+  let constructor = "xilinx::AIE::createAIEPlaceTilesPass()";
+
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+
+  let options = [
+    Option<"clPlacerName", "placer", "std::string",
+           /*default=*/"\"sequential_placer\"",
+           "Placement algorithm to use (currently only 'sequential_placer')">
+  ];
+}
+
 def AIEAssignBufferAddresses : Pass<"aie-assign-buffer-addresses", "DeviceOp"> {
   let summary = "Assign memory locations for buffers in each tile";
   let description = [{
