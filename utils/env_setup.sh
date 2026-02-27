@@ -75,6 +75,22 @@ else
     export NPU2=0
 fi
 
+# Ensure pyxrt is discoverable in the current Python environment.
+# Legacy XRT installs put it under $XILINX_XRT/python (handled by setup.sh).
+# Ubuntu packages install it to /usr/lib/python3/dist-packages/.
+if ! python3 -c "import pyxrt" 2>/dev/null; then
+    PYXRT_DIR=$(python3 -c "
+import glob, sys, os
+for p in glob.glob('/usr/lib/python3*/dist-packages/pyxrt*.so'):
+    print(os.path.dirname(p)); sys.exit(0)
+for p in glob.glob('/usr/lib/python3/dist-packages/pyxrt*.so'):
+    print(os.path.dirname(p)); sys.exit(0)
+" 2>/dev/null)
+    if [ -n "$PYXRT_DIR" ]; then
+        export PYTHONPATH=${PYXRT_DIR}:${PYTHONPATH}
+    fi
+fi
+
 echo ""
 echo "Note: Peano (llvm-aie) has not been added to PATH to avoid conflict with"
 echo "      system clang/clang++. It can be found in:"
