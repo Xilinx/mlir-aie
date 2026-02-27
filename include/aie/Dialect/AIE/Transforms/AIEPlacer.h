@@ -86,7 +86,8 @@ private:
   std::optional<TileID> findTileWithCapacity(int targetCol,
                                              std::vector<TileID> &tiles,
                                              int requiredInputChannels,
-                                             int requiredOutputChannels);
+                                             int requiredOutputChannels,
+                                             AIETileType requestedType);
 
   void updateChannelUsage(TileID tile, bool isOutput, int numChannels);
 

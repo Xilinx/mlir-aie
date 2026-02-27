@@ -37,11 +37,11 @@ module @mixed_constraints {
     // CHECK-DAG: %[[C1:.*]] = aie.tile(1, 2)
     %c1 = aie.logical_tile<CoreTile>(1, 2)
 
-    // First available should be (0, 2)
+    // First available should be (0, 2) - sequential placement starts at column 0
     // CHECK-DAG: %[[C2:.*]] = aie.tile(0, 2)
     %c2 = aie.logical_tile<CoreTile>(?, ?)
-    // Second available should be (2, 2) (skipping already used (1, 2))
-    // CHECK-DAG: %[[C3:.*]] = aie.tile(2, 2)
+    // Second available should be (0, 3) - column-major sequential (fill column 0 first)
+    // CHECK-DAG: %[[C3:.*]] = aie.tile(0, 3)
     %c3 = aie.logical_tile<CoreTile>(?, ?)
 
     // CHECK: aie.core(%[[C1]])
@@ -61,7 +61,7 @@ module @mixed_constraints {
 // CHECK-LABEL: @constrained_memtile_shimtile
 module @constrained_memtile_shimtile {
   aie.device(npu1) {
-    // CHECK-DAG: %[[CORE:.*]] = aie.tile(1, 2)
+    // CHECK-DAG: %[[CORE:.*]] = aie.tile(0, 2)
     %core = aie.logical_tile<CoreTile>(?, ?)
 
     // MemTile fully constrained to (1, 1)

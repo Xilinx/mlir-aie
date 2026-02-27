@@ -189,8 +189,10 @@ LogicalResult SequentialPlacer::place(ArrayRef<Operation *> logicalTiles,
     }
 
     // Find tile with capacity near common column
+    // Pass tile type to ensure we only search for matching tile types
     auto maybeTile = findTileWithCapacity(commonCol, availability.nonCompTiles,
-                                          numInputChannels, numOutputChannels);
+                                          numInputChannels, numOutputChannels,
+                                          logicalTile.getTileType());
     if (!maybeTile)
       return logicalTile.emitError("no tile with sufficient DMA capacity");
 
@@ -300,12 +302,14 @@ PlacementAnalysis::getPlacement(Operation *logicalTile) const {
 // Find tile with available DMA capacity near target column
 // This function checks capacity for BOTH input and output channels
 // simultaneously. For unidirectional tiles, pass 0 for the unused direction:
-//   - Input-only:  findTileWithCapacity(..., numInputChannels, 0)
-//   - Output-only: findTileWithCapacity(..., 0, numOutputChannels)
-//   - Both: findTileWithCapacity(..., numInputChannels, numOutputChannels)
+//   - Input-only:  findTileWithCapacity(..., numInputChannels, 0, type)
+//   - Output-only: findTileWithCapacity(..., 0, numOutputChannels, type)
+//   - Both: findTileWithCapacity(..., numInputChannels, numOutputChannels, type)
+// The requestedType parameter filters tiles to only consider matching types
+// (e.g., only MemTiles for MemTile logical tiles, only ShimNOCTiles for shims).
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
     int targetCol, std::vector<TileID> &tiles, int requiredInputChannels,
-    int requiredOutputChannels) {
+    int requiredOutputChannels, AIETileType requestedType) {
   // Search starting from target column, expanding outward
   int maxCol = targetModel->columns();
 
@@ -315,6 +319,11 @@ std::optional<TileID> SequentialPlacer::findTileWithCapacity(
       continue;
 
     for (auto &tile : tiles) {
+      // Filter by tile type - only consider tiles of the requested type
+      AIETileType tileType = targetModel->getTileType(tile.col, tile.row);
+      if (tileType != requestedType)
+        continue;
+
       if (tile.col == searchCol) {
         // Check if tile has capacity for both input and output channels
         if (hasAvailableChannels(tile, requiredInputChannels,
