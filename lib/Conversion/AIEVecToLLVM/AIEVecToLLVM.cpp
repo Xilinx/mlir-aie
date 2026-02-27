@@ -4080,13 +4080,11 @@ public:
         // backend cannot legalize after SLP vectorization.
         if (resultBitWidth < 16) {
           auto i16Ty = rewriter.getI16Type();
-          auto trunc16 =
-              LLVM::TruncOp::create(rewriter, loc, i16Ty, extElemOp);
+          auto trunc16 = LLVM::TruncOp::create(rewriter, loc, i16Ty, extElemOp);
           rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType,
                                                      trunc16.getResult());
         } else {
-          rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType,
-                                                     extElemOp);
+          rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, extElemOp);
         }
       } else {
         rewriter.replaceOp(op, extElemOp);
@@ -5375,26 +5373,42 @@ public:
     if (!rhsVecType || rhsVecType != vecType)
       return failure();
 
-    // Get or create the noinline scalar fdiv helper function using utility
+    // For AIE2P, implement a/b as a * inv(b) using the hardware reciprocal
+    // intrinsic. For AIE2, use scalar fdiv helper function.
     auto module = divOp->getParentOfType<ModuleOp>();
     auto f32Ty = rewriter.getF32Type();
 
-    auto helperFunc = getOrCreateScalarHelperFunc(
-        module, rewriter, "fdiv", deviceName,
-        /*argTypes=*/{f32Ty, f32Ty},
-        /*resultType=*/f32Ty,
-        /*bodyBuilder=*/[](OpBuilder &builder, Location loc, ValueRange args) {
-          auto divResult =
-              arith::DivFOp::create(builder, loc, args[0], args[1]);
-          LLVM::ReturnOp::create(builder, loc, ValueRange{divResult});
-        });
+    // Select device-specific body for the scalar helper function.
+    // AIE2P: use inv(b) * a (hardware reciprocal intrinsic is reliable).
+    // AIE2: use scalar fdiv directly.
+    std::function<void(OpBuilder &, Location, ValueRange)> bodyBuilder;
+    if (deviceName == "aie2p") {
+      bodyBuilder = [](OpBuilder &builder, Location loc, ValueRange args) {
+        auto invResult = xllvm::InvAIE2pIntrOp::create(
+            builder, loc, builder.getF32Type(), args[1]);
+        auto mulResult =
+            arith::MulFOp::create(builder, loc, args[0], invResult);
+        LLVM::ReturnOp::create(builder, loc, ValueRange{mulResult});
+      };
+    } else {
+      bodyBuilder = [](OpBuilder &builder, Location loc, ValueRange args) {
+        auto divResult = arith::DivFOp::create(builder, loc, args[0], args[1]);
+        LLVM::ReturnOp::create(builder, loc, ValueRange{divResult});
+      };
+    }
 
-    // Unroll vector fdiv into scalar helper function calls
+    // Get or create the noinline scalar helper (acts as barrier to prevent
+    // LLVM from re-vectorizing the scalar ops).
+    auto helperFunc =
+        getOrCreateScalarHelperFunc(module, rewriter, "fdiv", deviceName,
+                                    /*argTypes=*/{f32Ty, f32Ty},
+                                    /*resultType=*/f32Ty, bodyBuilder);
+
+    // Unroll vector fdiv into scalar helper function calls.
     int numElements = getVectorLaneSize(vecType);
     Value result = LLVM::PoisonOp::create(rewriter, loc, vecType);
 
     for (int i = 0; i < numElements; ++i) {
-      // Extract element i from both lhs and rhs
       auto indexCst = LLVM::ConstantOp::create(
           rewriter, loc, rewriter.getI64Type(), rewriter.getI64IntegerAttr(i));
       auto lhsElem = LLVM::ExtractElementOp::create(rewriter, loc,
@@ -5402,13 +5416,10 @@ public:
       auto rhsElem = LLVM::ExtractElementOp::create(rewriter, loc,
                                                     adaptor.getRhs(), indexCst);
 
-      // Call noinline helper function (acts as barrier to prevent
-      // re-vectorization)
       auto divResult = LLVM::CallOp::create(rewriter, loc, helperFunc,
                                             ValueRange{lhsElem, rhsElem})
                            ->getResult(0);
 
-      // Insert result back into vector
       result = LLVM::InsertElementOp::create(rewriter, loc, vecType, result,
                                              divResult, indexCst);
     }
