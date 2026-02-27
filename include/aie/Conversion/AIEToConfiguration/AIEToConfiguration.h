@@ -46,7 +46,8 @@ mlir::LogicalResult generateAndInsertConfigOps(
     llvm::StringRef clElfDir = "",
     AIEToConfigurationOutputType outputType =
         AIEToConfigurationOutputType::Transaction,
-    std::string blockwrite_prefix = "config_blockwrite_data_");
+    std::string blockwrite_prefix = "config_blockwrite_data_",
+    bool enableElfs = true);
 
 // --------------------------------------------------------------------------
 // Device reset

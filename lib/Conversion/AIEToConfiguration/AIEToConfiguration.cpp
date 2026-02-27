@@ -728,8 +728,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
-    AIE::AIEToConfigurationOutputType outputType,
-    std::string blockwrite_prefix) {
+    AIE::AIEToConfigurationOutputType outputType, std::string blockwrite_prefix,
+    bool enableElfs) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -746,8 +746,7 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
   // start collecting transactions
   ctl.startTransaction();
 
-  bool generateElfs = true;
-  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
+  if (failed(generateTransactions(ctl, clElfDir, device, aieSim, enableElfs,
                                   true, true)))
     return failure();
 

@@ -82,11 +82,15 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
                        loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
                        loadPdiOp.getAddressAttr());
 
-  // Generate and insert configuration operations
+  // Generate and insert configuration operations.
+  // If skip_elfs is set, generate the full device configuration (including
+  // init config such as locks, DMA BDs, switches, cascade, etc. and core
+  // enables), but omit loading core ELF binaries themselves.
+  bool enableElfs = !loadPdiOp.getSkipElfs();
   if (failed(xilinx::AIE::generateAndInsertConfigOps(
           builder, referencedDevice, "",
           AIEToConfigurationOutputType::Transaction,
-          "loadpdi_" + std::to_string(i)))) {
+          "loadpdi_" + std::to_string(i), enableElfs))) {
     loadPdiOp.emitError("Failed to generate configuration operations");
     return failure();
   }

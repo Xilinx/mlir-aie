@@ -1003,7 +1003,8 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
         DefaultValuedOptionalAttr<I32Attr, "0">:$id,
         DefaultValuedOptionalAttr<I32Attr, "0">:$size,
-        DefaultValuedOptionalAttr<UI64Attr, "0">:$address
+        DefaultValuedOptionalAttr<UI64Attr, "0">:$address,
+        DefaultValuedOptionalAttr<BoolAttr, "false">:$skip_elfs
   );
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
@@ -1013,6 +1014,12 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     runtime by the driver or host program.
 
     If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
+
+    If `skip_elfs` is set to `true`, the PDI expansion skips loading core ELF
+    binaries. The rest of the initialization sequence (including buffer
+    initialization, DMA buffer descriptor and lock programming, switch/cascade
+    configuration, and core enables) is still generated. This is useful for
+    between-iteration resets where the ELFs do not change.
   }];
   let hasCanonicalizeMethod = 1;
 }
