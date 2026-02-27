@@ -488,6 +488,35 @@ class object_fifo(ObjectFifoCreateOp):
         self.attributes["aie_stream"] = int_stream_end
         self.attributes["aie_stream_port"] = int_stream_port
 
+    def get_lock(self, port):
+        """Get acquire and release lock IDs for this ObjectFIFO port.
+
+        Returns the two lock IDs needed for C-side acquire/release operations.
+        On AIE2, these correspond to different physical locks.
+
+        Args:
+            port: ObjectFifoPort.Produce or ObjectFifoPort.Consume
+
+        Returns:
+            Tuple of (acq_lock, rel_lock) as index SSA values.
+        """
+        op = ObjectFifoGetLockOp(port, self.sym_name.value)
+        return op.acq_lock, op.rel_lock
+
+    def get_buffer(self, index=0):
+        """Get a buffer reference from this ObjectFIFO without acquiring.
+
+        Returns a memref to the buffer at the given element index.
+        Use with get_lock() for C-side locking.
+
+        Args:
+            index: Element index within the ObjectFIFO depth. Defaults to 0.
+
+        Returns:
+            memref SSA value for the buffer.
+        """
+        return ObjectFifoGetBufferOp(self.datatype, self.sym_name.value, index).output
+
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):

@@ -407,6 +407,34 @@ class ObjectFifoHandle(Resolvable):
             )
         self._object_fifo._release(self._port, num_elem)
 
+    def get_lock(self):
+        """Get acquire and release lock IDs for this ObjectFIFO port.
+
+        Returns the two lock IDs needed for C-side acquire/release operations.
+        On AIE2, these correspond to different physical locks (producer and
+        consumer locks). The returned values can be passed as index arguments
+        to precompiled C kernels.
+
+        Returns:
+            Tuple of (acq_lock, rel_lock) as index SSA values.
+        """
+        return self._object_fifo.op.get_lock(self._port)
+
+    def get_buffer(self, index: int = 0):
+        """Get a buffer reference from this ObjectFIFO without acquiring.
+
+        Returns a memref to the buffer at the given element index, without
+        performing lock acquisition. Use together with get_lock() for C-side
+        locking.
+
+        Args:
+            index: Element index within the ObjectFIFO depth. Defaults to 0.
+
+        Returns:
+            memref SSA value for the buffer.
+        """
+        return self._object_fifo.op.get_buffer(index)
+
     @property
     def name(self) -> str:
         """The name of the ObjectFifo"""
