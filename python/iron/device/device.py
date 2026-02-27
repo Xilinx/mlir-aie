@@ -193,18 +193,25 @@ class Device(Resolvable):
         Tile can be fully constrained, partially constrained, or unconstrained.
         Tile type is inferred from coordinates if not explicitly specified.
 
+        If the tile already has a LogicalTileOp stored, it is returned directly
+        without creating a new one. This ensures tile reuse.
+
         Args:
             placement_tile: A Tile object (possibly with partial/no coordinates)
             loc: MLIR location
             ip: Insertion point
 
         Returns:
-            LogicalTileOp: The created logical tile operation
+            LogicalTileOp: The created (or existing) logical tile operation
         """
         if not isinstance(placement_tile, Tile):
             raise ValueError(
                 f"resolve_tile expects Tile object, got {type(placement_tile)}"
             )
+
+        # If tile already has an op, return it (tile reuse)
+        if placement_tile._op is not None:
+            return placement_tile._op
 
         iron_to_mlir = {
             Tile.COMPUTE: AIETileType.CoreTile,

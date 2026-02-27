@@ -68,8 +68,17 @@ class Program:
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
 
-                # Resolve tiles
+                # Deduplicate tiles by object ID to avoid creating LogicalTileOp multiple times
+                # for the same Tile object. Use dict to preserve order (first occurrence).
+                seen_tile_ids = {}
                 for t in all_tiles:
+                    tile_id = id(t)
+                    if tile_id not in seen_tile_ids:
+                        seen_tile_ids[tile_id] = t
+                unique_tiles = list(seen_tile_ids.values())
+
+                # Resolve tiles
+                for t in unique_tiles:
                     self._device.resolve_tile(t)
 
                 # Generate fifos

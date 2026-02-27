@@ -5,7 +5,7 @@
 
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU2, NPU1Col1, Tile
+from aie.iron.device import NPU2, Tile
 from util import construct_and_print_module
 
 
@@ -19,7 +19,7 @@ from util import construct_and_print_module
 # CHECK:   aie.core(%[[WORKER]])
 @construct_and_print_module
 def logical_tile_worker_unconstrained(module):
-    """Test unconstrained Worker - ObjectFifos and core consume LogicalTileOp."""
+    """Test unconstrained Worker, ObjectFifos and core consume LogicalTileOp."""
     n = 1024
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
@@ -52,7 +52,7 @@ def logical_tile_worker_unconstrained(module):
 # CHECK:   aie.core(%[[WORKER]])
 @construct_and_print_module
 def logical_tile_worker_constrained(module):
-    """Test constrained Worker - ObjectFifos and core consume same LogicalTileOp."""
+    """Test constrained Worker, ObjectFifos and core consume same LogicalTileOp."""
     n = 1024
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
 

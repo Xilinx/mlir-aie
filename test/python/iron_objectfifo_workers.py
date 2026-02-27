@@ -4,7 +4,8 @@
 # RUN: %python %s | FileCheck %s
 
 """
-Test IRON patterns with Workers and ObjectFifos.
+Test IRON patterns with Workers and ObjectFifos generate
+separate shim mem tiles but reuse compute tiles.
 """
 
 import numpy as np
@@ -30,7 +31,6 @@ def passthrough_dma_forward(module):
     vector_ty = np.ndarray[(N,), np.dtype[np.int32]]
     line_ty = np.ndarray[(line_size,), np.dtype[np.int32]]
 
-    # Pattern: forward() creates intermediate endpoint
     of_in = ObjectFifo(line_ty, name="in")
     of_out = of_in.cons().forward()
 

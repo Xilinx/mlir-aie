@@ -4,7 +4,7 @@
 # RUN: %python %s | FileCheck %s
 
 """
-Test tile placement patterns - partial coordinates, full coordinates, and mixed placement.
+Test tile placement patterns: partial coordinates, full coordinates, and mixed placement.
 """
 
 import numpy as np
