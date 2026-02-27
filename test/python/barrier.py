@@ -1,4 +1,4 @@
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
@@ -18,14 +18,14 @@ from aie.iron.device import (
 
 # CHECK: module {
 # CHECK:   aie.device(npu2_1col) {
-# CHECK:     %{{.*}} = aie.logical_tile<CoreTile>(0, 2)
-# CHECK:     %lock_{{.*}} = aie.lock(%{{.*}})
-# CHECK:     %core_{{.*}} = aie.core(%{{.*}}) {
-# CHECK:         aie.use_lock(%lock_{{.*}}, Acquire, 1)
-# CHECK:         aie.use_lock(%lock_{{.*}}, Release, 1)
+# CHECK:     %[[WORKER:.*]] = aie.logical_tile<CoreTile>
+# CHECK:     %[[LOCK:.*]] = aie.lock(%[[WORKER]])
+# CHECK:     %{{.*}} = aie.core(%[[WORKER]]) {
+# CHECK:         aie.use_lock(%[[LOCK]], Acquire, 1)
+# CHECK:         aie.use_lock(%[[LOCK]], Release, 1)
 # CHECK:     }
 # CHECK:     aie.runtime_sequence(%arg0: memref<16xi32>) {
-# CHECK:       aiex.set_lock(%lock_{{.*}}, 1)
+# CHECK:       aiex.set_lock(%[[LOCK]], 1)
 # CHECK:     }
 # CHECK:   }
 # CHECK: }

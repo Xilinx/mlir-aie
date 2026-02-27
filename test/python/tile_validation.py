@@ -83,6 +83,7 @@ def test_duplicate_compute_tile_error():
             with pytest.raises(ValueError, match="already allocated"):
                 dev.resolve_tile(worker2.tile)
 
+
 def test_invalid_tile_type_string():
     """Invalid tile_type string should be rejected."""
 

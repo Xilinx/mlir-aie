@@ -1,4 +1,4 @@
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
@@ -9,12 +9,12 @@ from util import construct_and_print_module
 
 
 # CHECK-LABEL: TEST: task_group_drain_sequence
-# CHECK: aiex.dma_start_task(%0)
 # CHECK: aiex.dma_start_task(%1)
 # CHECK: aiex.dma_start_task(%2)
-# CHECK: aiex.dma_await_task(%1)
+# CHECK: aiex.dma_start_task(%3)
 # CHECK: aiex.dma_await_task(%2)
-# CHECK: aiex.dma_free_task(%0)
+# CHECK: aiex.dma_await_task(%3)
+# CHECK: aiex.dma_free_task(%1)
 @construct_and_print_module
 def task_group_drain_sequence(module):
     n = 1024
@@ -45,12 +45,12 @@ def task_group_drain_sequence(module):
 
 
 # CHECK-LABEL: TEST: default_rt_drain_sequence
-# CHECK: aiex.dma_start_task(%0)
 # CHECK: aiex.dma_start_task(%1)
 # CHECK: aiex.dma_start_task(%2)
-# CHECK: aiex.dma_await_task(%1)
+# CHECK: aiex.dma_start_task(%3)
 # CHECK: aiex.dma_await_task(%2)
-# CHECK: aiex.dma_free_task(%0)
+# CHECK: aiex.dma_await_task(%3)
+# CHECK: aiex.dma_free_task(%1)
 @construct_and_print_module
 def default_rt_drain_sequence(module):
     n = 1024
@@ -79,10 +79,10 @@ def default_rt_drain_sequence(module):
 
 
 # CHECK-LABEL: TEST: default_rt_basic_sequence
-# CHECK: aiex.dma_start_task(%0)
 # CHECK: aiex.dma_start_task(%1)
-# CHECK: aiex.dma_await_task(%1)
-# CHECK: aiex.dma_free_task(%0)
+# CHECK: aiex.dma_start_task(%2)
+# CHECK: aiex.dma_await_task(%2)
+# CHECK: aiex.dma_free_task(%1)
 @construct_and_print_module
 def default_rt_basic_sequence(module):
     n = 1024
@@ -109,12 +109,12 @@ def default_rt_basic_sequence(module):
 
 
 # CHECK-LABEL: TEST: default_rt_fill_sequence
-# CHECK: aiex.dma_start_task(%0)
 # CHECK: aiex.dma_start_task(%1)
 # CHECK: aiex.dma_start_task(%2)
-# CHECK: aiex.dma_await_task(%2)
-# CHECK: aiex.dma_free_task(%0)
+# CHECK: aiex.dma_start_task(%3)
+# CHECK: aiex.dma_await_task(%3)
 # CHECK: aiex.dma_free_task(%1)
+# CHECK: aiex.dma_free_task(%2)
 @construct_and_print_module
 def default_rt_fill_sequence(module):
     n = 1024
@@ -143,12 +143,12 @@ def default_rt_fill_sequence(module):
 
 
 # CHECK-LABEL: TEST: rt_drain_then_fill_sequence
-# CHECK: aiex.dma_start_task(%0)
 # CHECK: aiex.dma_start_task(%1)
 # CHECK: aiex.dma_start_task(%2)
-# CHECK: aiex.dma_await_task(%0)
-# CHECK: aiex.dma_free_task(%1)
+# CHECK: aiex.dma_start_task(%3)
+# CHECK: aiex.dma_await_task(%1)
 # CHECK: aiex.dma_free_task(%2)
+# CHECK: aiex.dma_free_task(%3)
 @construct_and_print_module
 def rt_drain_then_fill_sequence(module):
     n = 1024
@@ -211,12 +211,12 @@ def rt_strict_mixed_sequence(module):
 
 
 # CHECK-LABEL: TEST: rt_not_strict_mixed_sequence
-# CHECK: aiex.dma_start_task(%0)
 # CHECK: aiex.dma_start_task(%1)
 # CHECK: aiex.dma_start_task(%2)
-# CHECK: aiex.dma_await_task(%0)
-# CHECK: aiex.dma_free_task(%1)
+# CHECK: aiex.dma_start_task(%3)
+# CHECK: aiex.dma_await_task(%1)
 # CHECK: aiex.dma_free_task(%2)
+# CHECK: aiex.dma_free_task(%3)
 @construct_and_print_module
 def rt_not_strict_mixed_sequence(module):
     n = 1024
@@ -247,12 +247,12 @@ def rt_not_strict_mixed_sequence(module):
 
 
 # CHECK-LABEL: TEST: rt_two_task_group_sequence
-# CHECK: aiex.dma_start_task(%0)
 # CHECK: aiex.dma_start_task(%1)
 # CHECK: aiex.dma_start_task(%2)
-# CHECK: aiex.dma_await_task(%0)
-# CHECK: aiex.dma_free_task(%1)
+# CHECK: aiex.dma_start_task(%3)
+# CHECK: aiex.dma_await_task(%1)
 # CHECK: aiex.dma_free_task(%2)
+# CHECK: aiex.dma_free_task(%3)
 @construct_and_print_module
 def rt_two_task_group_sequence(module):
     n = 1024

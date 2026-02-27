@@ -57,7 +57,7 @@ def custom_loop_type(loop_dtype):
 
 
 # CHECK-LABEL: range_with_int32
-# CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
+# CHECK: scf.for %arg1 = %c0_{{.*}} to %c4 step %c1_{{.*}} {
 def range_with_int32():
     print("range_with_int32")
     print(custom_loop_type(np.int32))
@@ -67,7 +67,7 @@ range_with_int32()
 
 
 # CHECK-LABEL: range_with_int64
-# CHECK: scf.for %arg1 = %c0_0 to %c4 step %c1_1 {
+# CHECK: scf.for %arg1 = %c0_{{.*}} to %c4 step %c1_{{.*}} {
 def range_with_int64():
     print("range_with_int64")
     print(custom_loop_type(np.int64))

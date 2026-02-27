@@ -1,4 +1,4 @@
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
@@ -9,7 +9,9 @@ from aie.iron.device import NPU2Col1
 
 # CHECK:  module {
 # CHECK:    aie.device(npu2_1col) {
-# CHECK:      %[[WORKER:.*]] = aie.logical_tile<CoreTile>(0, 2)
+# CHECK:      %[[WORKER:.*]] = aie.logical_tile<CoreTile>
+# CHECK:      %{{.*}} = aie.logical_tile<ShimNOCTile>
+# CHECK:      %{{.*}} = aie.logical_tile<ShimNOCTile>
 # CHECK:      %uninit_local_buf = aie.buffer(%[[WORKER]]) {sym_name = "uninit_local_buf"} : memref<4096xui8>
 # CHECK:      %init_local_buf = aie.buffer(%[[WORKER]]) {sym_name = "init_local_buf"} : memref<4096xui8> = dense<0>
 # CHECK:      aie.core(%[[WORKER]])
