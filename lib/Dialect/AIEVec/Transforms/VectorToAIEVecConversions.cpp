@@ -1234,8 +1234,10 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     // Skip standalone mul conversion when this MulFOp feeds into an AddFOp as
     // its sole user. ConvertMulAddFToAIEVecFMAElemOpPattern will fuse the
     // multiply and add into a single aievec.mac_elem.
+    // Only defer to FMA for bf16 where the FMA pattern is registered.
     auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
-    if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
+    if (resultType.getElementType().isBF16() && mulOp->hasOneUse() &&
+        llvm::any_of(mulOp->getUsers(), isAddOp))
       return failure();
 
     unsigned resultElWidth =
@@ -1715,9 +1717,11 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     bool lhsIsConst = lhsDefOp && isa<arith::ConstantOp>(lhsDefOp);
     bool rhsIsConst = rhsDefOp && isa<arith::ConstantOp>(rhsDefOp);
 
-    // Only fail if we have a multiply that could be part of FMA, and the other
-    // operand is NOT a constant
-    if ((lhsIsMul && !rhsIsConst) || (rhsIsMul && !lhsIsConst))
+    // Defer to FMA/MAC patterns when a multiply feeds into add, UNLESS the
+    // element type is f32 (where no FMA pattern exists). For bf16 and integer
+    // types, FMA/MAC patterns handle the fusion.
+    if (!resultType.getElementType().isF32() &&
+        ((lhsIsMul && !rhsIsConst) || (rhsIsMul && !lhsIsConst)))
       return failure();
 
     Type scalarType = resultType.getElementType();
@@ -4283,7 +4287,7 @@ struct LowerScalarShiftClampTruncToSRS : OpConversionPattern<arith::TruncIOp> {
       // e.g., after skip-add with skip_scale=0.
       preShiftVal = source;
       shiftVal = arith::ConstantOp::create(rewriter, loc,
-                                            rewriter.getI32IntegerAttr(0));
+                                           rewriter.getI32IntegerAttr(0));
     }
 
     // Create 512-bit vector type: vector<16xi32>
