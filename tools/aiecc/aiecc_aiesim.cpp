@@ -429,6 +429,12 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
         clangCmd.push_back(def);
       }
 
+      // Add host args (source files, -I, -L, -l flags)
+      // This matches Python's: *host_opts from strip_host_args_for_aiesim()
+      for (const auto &arg : config.hostArgs) {
+        clangCmd.push_back(arg);
+      }
+
       if (!executeCommand(clangCmd, config.verbose, config.dryRun)) {
         errs() << "Warning: Failed to build ps.so\n";
         // Non-fatal - aiesim folder is still partially generated

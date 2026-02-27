@@ -74,10 +74,6 @@ aiecc [options] <input.mlir>
   - `--ctrlpkt-dma-seq-name <pattern>` - Output filename for DMA sequence (default: `{0}_ctrlpkt_dma_seq.bin`)
   - `--ctrlpkt-elf-name <pattern>` - Output filename for combined ELF (default: `{0}_ctrlpkt.elf`)
 
-### NPU Pipeline Options
-
-- `--expand-load-pdis` - Expand load_pdi operations to explicit configuration sequences
-
 ### Device and Sequence Selection
 
 - `--device-name <name>` - Compile only the specified device
@@ -92,10 +88,24 @@ aiecc [options] <input.mlir>
 - `--aiesim` / `--no-aiesim` - Generate aiesim work folder (requires xbridge)
 - `--compile-host` / `--no-compile-host` - Enable/disable host program compilation
 - `--host-target <target>` - Target architecture for host compilation (default: x86_64-linux-gnu)
+- `-I<dir>` - Add include directory for host compilation
+- `-L<dir>` - Add library search directory for host compilation
+- `-l<lib>` - Link library for host compilation
+- `-o <file>` - Output filename for host compilation
 - `--dynamic-objFifos` - Use dynamic object FIFOs
 - `--packet-sw-objFifos` - Use packet-switched flows
 - `--generate-ctrl-pkt-overlay` - Generate control packet overlay
 - `--dump-intermediates` - Dump intermediate MLIR files for debugging
+
+### Compilation Mode Options
+
+- `-j <n>` / `--nthreads <n>` - Number of parallel threads for core compilation
+  - `-j 0` - Auto-detect based on CPU count
+  - `-j 1` - Sequential compilation (default)
+  - `-j 4` - Use 4 parallel threads
+- `--unified` / `--no-unified` - Unified compilation mode
+  - `--unified` - Compile all cores together into one object file, then link each separately
+  - `--no-unified` - Compile cores independently (default, can use with `-j` for parallelism)
 
 ## Examples
 
@@ -205,10 +215,11 @@ xclbinutil → xclbin
 | aie-translate subprocess | None | **None** |
 | Core Compilation | Peano/xchesscc | **Peano/xchesscc** |
 | External Object Linking | ✅ | ✅ |
-| Host Compilation | ✅ | ✅ |
-| AIE Simulator | ✅ | ✅ |
-| Parallel Cores (`-j`) | ✅ | ⏳ Not yet |
-| Control Packets | ✅ | ✅ |
+| Parallel Cores (`-j`) | ✅ | **✅** |
+| Unified Compilation | ✅ | **✅** |
+| Host Compilation (`aie_inc.cpp`) | ✅ | **✅** |
+| AIE Simulator | ✅ | **✅** |
+| Control Packets | ✅ | **✅** |
 | Performance | Good | **Better** (no Python overhead) |
 
 ### Current Status
@@ -239,12 +250,26 @@ The C++ implementation provides **near-full feature parity**:
 - ✅ AIE simulation (`--aiesim`)
 - ✅ Host compilation (`--compile-host`, `--host-target`)
 
-### Features not yet ported from Python aiecc.py
+### Features Not Yet Implemented
 
-- ⏳ Parallel compilation of cores (`-j` option)
-- ⏳ HSA linking (`--link_against_hsa`)
-- ⏳ Progress bar (`--progress`)
-- ⏳ Vectorization pass (`--vectorize`)
+| Flag | Status | Notes |
+|------|--------|-------|
+| `--profile` | TODO | Command execution timing |
+| `--progress` | No-op | Rich progress bar (not planned for C++) |
+| `--enable-repeater-scripts` | TODO | Failure reproduction scripts |
+
+### Optional Library Integration
+
+When built with the appropriate libraries, aiecc uses direct library calls
+instead of subprocess invocations for improved performance:
+
+| Library | Compile Flag | Effect |
+|---------|-------------|--------|
+| AIEBU | `AIECC_HAS_AIEBU_LIBRARY` | Direct ELF generation via `aiebu_assembler_get_elf()` C API |
+| bootgen | `AIECC_HAS_BOOTGEN_LIBRARY` | Direct PDI generation via `bootgen_generate_pdi()` C API |
+
+Both fall back to subprocess calls (`aiebu-asm`, `bootgen`) when the library is
+not available or the library call fails.
 
 ## Building
 
@@ -297,7 +322,16 @@ The tool respects standard MLIR/AIE environment variables:
 
 Tools are automatically found in PATH or relative to the aiecc installation directory.
 
+## Python Wrapper
+
+The Python `aiecc.py` is a thin wrapper (~130 lines) that delegates all work to
+the C++ `aiecc` binary. It:
+
+- Locates the `aiecc` binary relative to its own install location
+- Passes all arguments through to the C++ binary unchanged
+- Preserves the `run()` API for backward compatibility
+
 ## See Also
 
-- Python aiecc: `python/compiler/aiecc/main.py`
+- Python aiecc wrapper: `python/compiler/aiecc/main.py`
 - AIE dialect documentation: `docs/`

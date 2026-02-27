@@ -10,7 +10,7 @@
 
 // check that 'aiecc.py -v' prints pass diagnotics
 
-// RUN: %python aiecc.py --no-compile -v %s | FileCheck %s
+// RUN: %python aiecc.py --no-compile -v %s 2>&1 | FileCheck %s
 
 // CHECK: warning: Failed to allocate buffer: "a" with size: 16384 bytes.
 // CHECK: warning: Not all requested buffers fit in the available memory.

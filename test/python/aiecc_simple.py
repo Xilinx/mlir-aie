@@ -12,6 +12,10 @@ import sys
 import aie.compiler.aiecc.main as aiecc
 from aie.ir import Context, Location, Module
 
+# Import dialects to ensure they are registered before parsing
+import aie.dialects.aie  # noqa: F401
+import aie.dialects.aiex  # noqa: F401
+
 module = """
 module {
   aie.device(xcvc1902) {
@@ -30,4 +34,6 @@ module {
 with Context() as ctx, Location.unknown():
     mlir_module = Module.parse(module)
 
-aiecc.run(mlir_module, sys.argv[1:])
+output = aiecc.run(mlir_module, sys.argv[1:])
+if output:
+    print(output)

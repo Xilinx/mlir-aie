@@ -35,6 +35,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/FileUtilities.h"
+#include "mlir/Support/ToolUtilities.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -96,18 +97,23 @@
 #include "bootgen_c_api.h"
 #endif
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <future>
 #include <iomanip>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
+
+#include "aiecc_aiesim.h"
 
 using namespace llvm;
 using namespace mlir;
@@ -118,10 +124,10 @@ using namespace mlir;
 
 static cl::OptionCategory aieCompilerOptions("AIE Compiler Options");
 
-static cl::opt<std::string> inputFilename(cl::Positional,
-                                          cl::desc("<input file>"),
-                                          cl::init(""),
-                                          cl::cat(aieCompilerOptions));
+static cl::list<std::string>
+    positionalArgs(cl::Positional,
+                   cl::desc("<input file> [host source files...]"),
+                   cl::ZeroOrMore, cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> showVersion("aie-version",
                                  cl::desc("Show version information"),
@@ -356,6 +362,93 @@ static cl::opt<bool> dumpIntermediates(
     cl::desc("Dump intermediate MLIR files for debugging (default: off)"),
     cl::init(false), cl::cat(aieCompilerOptions));
 
+static cl::opt<unsigned> numThreads(
+    "j", cl::Prefix,
+    cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
+             "based on CPU count, default: 1 for sequential)"),
+    cl::init(1), cl::cat(aieCompilerOptions));
+
+static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
+                                cl::aliasopt(numThreads),
+                                cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> unified(
+    "unified",
+    cl::desc("Compile all cores together in a single process (default: off)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> noUnified(
+    "no-unified",
+    cl::desc("Compile cores independently in separate processes (default)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+// Backward compatibility flags (no-ops in C++ aiecc)
+// These flags existed in Python aiecc.py but are not used in the core
+// compilation flow. They are kept for backward compatibility so that
+// existing scripts and test cases don't fail with "unknown argument" errors.
+
+// Note: --vectorize was removed - it was defined but never used in Python
+// aiecc.py
+
+static cl::opt<bool> profile("profile",
+                             cl::desc("Enable profiling (deprecated, ignored)"),
+                             cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool>
+    progress("progress", cl::desc("Show progress output (deprecated, ignored)"),
+             cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> enableRepeaterScripts(
+    "enable-repeater-scripts",
+    cl::desc("Enable repeater scripts (deprecated, ignored)"), cl::init(false),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> disableRepeaterScripts(
+    "disable-repeater-scripts",
+    cl::desc("Disable repeater scripts (deprecated, ignored)"), cl::init(false),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string> repeaterOutputDir(
+    "repeater-output-dir",
+    cl::desc("Repeater output directory (deprecated, ignored)"), cl::init(""),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> linkAgainstHsa(
+    "link_against_hsa",
+    cl::desc("Link against HSA runtime (-lhsa-runtime64 from ROCm)"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+static cl::opt<bool> noMaterialize(
+    "no-materialize",
+    cl::desc("Skip aie-materialize-runtime-sequences pass in NPU lowering"),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
+// Host compilation options
+static cl::list<std::string> hostIncludeDirs("I", cl::Prefix,
+                                             cl::desc("Include directory"),
+                                             cl::cat(aieCompilerOptions));
+
+static cl::list<std::string> hostLibDirs("L", cl::Prefix,
+                                         cl::desc("Library search directory"),
+                                         cl::cat(aieCompilerOptions));
+
+static cl::list<std::string> hostLibs("l", cl::Prefix, cl::desc("Link library"),
+                                      cl::cat(aieCompilerOptions));
+
+static cl::opt<std::string>
+    outputFilename("o", cl::desc("Output filename for host compilation"),
+                   cl::init(""), cl::cat(aieCompilerOptions));
+
+// Sink for unrecognized host compilation flags (e.g. -Wl,... -lstdc++)
+static cl::list<std::string> sinkArgs(cl::Sink, cl::desc("Additional flags"));
+
+//===----------------------------------------------------------------------===//
+// Thread-safe output
+//===----------------------------------------------------------------------===//
+
+// Global mutex for thread-safe verbose output during parallel compilation
+static std::mutex outputMutex;
+
 //===----------------------------------------------------------------------===//
 // Helper Functions
 //===----------------------------------------------------------------------===//
@@ -376,6 +469,44 @@ static LogicalResult writeElfFile(StringRef path,
 
 static void printVersion(raw_ostream &os) {
   os << "aiecc (C++ version) " << AIE_GIT_COMMIT << "\n";
+}
+
+// Check if a filename is a host source file (C/C++)
+static bool isHostSourceFile(StringRef filename) {
+  return filename.ends_with(".c") || filename.ends_with(".cpp") ||
+         filename.ends_with(".cc") || filename.ends_with(".cxx") ||
+         filename.ends_with(".C");
+}
+
+// Get the MLIR input filename from positional arguments.
+// The MLIR file is identified by .mlir extension or as the first positional
+// arg.
+static std::string getInputFilename() {
+  // First pass: look for .mlir file
+  for (const auto &arg : positionalArgs) {
+    if (StringRef(arg).ends_with(".mlir"))
+      return arg;
+  }
+  // Fallback: first positional arg that isn't a host source file
+  for (const auto &arg : positionalArgs) {
+    if (!isHostSourceFile(arg))
+      return arg;
+  }
+  // Last resort: first positional arg
+  if (!positionalArgs.empty())
+    return positionalArgs[0];
+  return "";
+}
+
+// Get host source files from positional arguments.
+static std::vector<std::string> getHostSourceFiles() {
+  std::string mlirFile = getInputFilename();
+  std::vector<std::string> hostFiles;
+  for (const auto &arg : positionalArgs) {
+    if (arg != mlirFile && isHostSourceFile(arg))
+      hostFiles.push_back(arg);
+  }
+  return hostFiles;
 }
 
 /// Dump an MLIR module to a file if --dump-intermediates is enabled.
@@ -424,9 +555,15 @@ static std::string findAieTool(StringRef toolName) {
 static bool executeCommand(ArrayRef<StringRef> command,
                            bool verboseOutput = true) {
   if (verbose && verboseOutput) {
-    llvm::outs() << "Executing:";
+    // Print command without prefix to match Python aiecc.py output format
+    // (tests check for command patterns like "llc" or "xchesscc_wrapper" at
+    // line start)
+    bool first = true;
     for (const auto &arg : command) {
-      llvm::outs() << " " << arg;
+      if (!first)
+        llvm::outs() << " ";
+      llvm::outs() << arg;
+      first = false;
     }
     llvm::outs() << "\n";
     llvm::outs().flush();
@@ -617,14 +754,7 @@ static std::string discoverAietoolsDir() {
     }
   }
 
-  // 2. Check AIETOOLS_ROOT environment variable
-  if (const char *aietoolsEnv = std::getenv("AIETOOLS_ROOT")) {
-    if (sys::fs::is_directory(aietoolsEnv)) {
-      return aietoolsEnv;
-    }
-  }
-
-  // 3. Find xchesscc in PATH and derive aietools from it
+  // 2. Find xchesscc in PATH and derive aietools from it
   auto xchessccPath = sys::findProgramByName("xchesscc");
   if (xchessccPath) {
     // xchesscc is typically at <aietools>/bin/xchesscc or
@@ -654,18 +784,20 @@ static std::string discoverAietoolsDir() {
   return "";
 }
 
-// Cached aietools install directory
-static std::optional<std::string> cachedAietoolsDir;
+// Cached aietools install directory (thread-safe via std::call_once)
+static std::string cachedAietoolsDir;
+static std::once_flag aietoolsDirFlag;
 
 static StringRef getAietoolsDir() {
-  if (!cachedAietoolsDir.has_value()) {
+  std::call_once(aietoolsDirFlag, [] {
     cachedAietoolsDir = discoverAietoolsDir();
-    if (verbose && !cachedAietoolsDir->empty()) {
-      llvm::outs() << "Discovered aietools installation: " << *cachedAietoolsDir
+    if (verbose && !cachedAietoolsDir.empty()) {
+      std::lock_guard<std::mutex> lock(outputMutex);
+      llvm::outs() << "Discovered aietools installation: " << cachedAietoolsDir
                    << "\n";
     }
-  }
-  return *cachedAietoolsDir;
+  });
+  return cachedAietoolsDir;
 }
 
 static StringRef getPeanoInstallDir() {
@@ -713,13 +845,13 @@ static std::string downgradeIRForChess(StringRef llvmIR) {
   replace("captures(none)", "nocapture");
   replace("getelementptr inbounds nuw", "getelementptr inbounds");
 
-  // Remove nocreateundeforpoison attribute
-  // This attribute appears in LLVM IR and may be followed by whitespace or EOL
+  // Remove nocreateundeforpoison attribute using regex-like logic
+  // Pattern: \bnocreateundeforpoison\s+
+  // We'll do a simple find-and-replace for this attribute
   size_t pos = 0;
   while ((pos = result.find("nocreateundeforpoison", pos)) !=
          std::string::npos) {
-    // Find the end of the attribute (skip trailing whitespace, but not
-    // newlines)
+    // Find the end of the attribute (skip trailing whitespace)
     size_t end = pos + strlen("nocreateundeforpoison");
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t')) {
       end++;
@@ -806,7 +938,7 @@ static std::string findPeanoTool(StringRef toolName) {
 // Run chess-llvm-link to link LLVM IR with chess_intrinsic_wrapper.ll
 // Returns the path to the linked .ll file, or empty string on failure.
 static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
-                                    StringRef aieTarget) {
+                                    StringRef aieTarget, StringRef tmpDirName) {
   StringRef aietoolsPath = getAietoolsDir();
   if (aietoolsPath.empty()) {
     llvm::errs() << "Error: Could not find aietools (xchesscc not in PATH)\n";
@@ -816,17 +948,17 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
   // Build chess-llvm-link path
   // Path: <aietools>/tps/lnx64/<target>/bin/LNa64bin/chess-llvm-link
   std::string chessTarget = getChessTarget(aieTarget);
-  if (chessTarget.empty()) {
-    return "";
-  }
   SmallString<256> chessLlvmLinkPath(aietoolsPath);
   sys::path::append(chessLlvmLinkPath, "tps", "lnx64", chessTarget, "bin");
   sys::path::append(chessLlvmLinkPath, "LNa64bin", "chess-llvm-link");
 
   if (!sys::fs::can_execute(chessLlvmLinkPath)) {
-    llvm::errs() << "Error: Could not find chess-llvm-link at: "
-                 << chessLlvmLinkPath << "\n";
-    return "";
+    if (verbose) {
+      llvm::outs() << "chess-llvm-link not found at: " << chessLlvmLinkPath
+                   << ", skipping chess-llvm-link step\n";
+    }
+    // Return the input file directly (skip linking)
+    return std::string(inputLLPath);
   }
 
   // Build chess_intrinsic_wrapper.ll path
@@ -837,15 +969,18 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
                     "chess_intrinsic_wrapper.ll");
 
   if (!sys::fs::exists(wrapperPath)) {
-    llvm::errs() << "Error: Could not find chess_intrinsic_wrapper.ll at: "
-                 << wrapperPath << "\n";
-    return "";
+    if (verbose) {
+      llvm::outs() << "chess_intrinsic_wrapper.ll not found at: " << wrapperPath
+                   << ", skipping chess-llvm-link step\n";
+    }
+    // Return the input file directly (skip linking with wrapper)
+    return std::string(inputLLPath);
   }
 
   // Run chess-llvm-link
-  SmallVector<std::string, 8> cmd = {std::string(chessLlvmLinkPath),
+  SmallVector<std::string, 8> cmd = {chessLlvmLinkPath.str().str(),
                                      inputLLPath.str(),
-                                     std::string(wrapperPath),
+                                     wrapperPath.str().str(),
                                      "-S",
                                      "-o",
                                      outputPath.str()};
@@ -957,71 +1092,6 @@ static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
   }
 
   return info;
-}
-
-//===----------------------------------------------------------------------===//
-// Pass Pipeline Construction (for subprocess calls)
-//===----------------------------------------------------------------------===//
-
-// Pipeline strings kept for reference - subprocess calls have been replaced
-// with in-memory PassManager execution in runResourceAllocationPipeline()
-[[maybe_unused]] static std::string
-buildInputWithAddressesPipeline(StringRef aieTarget = "aie2") {
-  std::ostringstream oss;
-  oss << "builtin.module("
-      << "convert-vector-to-aievec{aie-target=" << aieTarget.lower()
-      << " target-backend=llvmir},"
-      << "lower-affine,"
-      << "aie-canonicalize-device,"
-      << "aie.device("
-      << "aie-assign-lock-ids,"
-      << "aie-register-objectFifos,"
-      << "aie-objectFifo-stateful-transform{"
-      << "dynamic-objFifos=" << (dynamicObjFifos ? "true" : "false")
-      << " packet-sw-objFifos=" << (packetSwObjFifos ? "true" : "false") << "},"
-      << "aie-assign-bd-ids,"
-      << "aie-lower-cascade-flows,"
-      << "aie-lower-broadcast-packet,"
-      << "aie-lower-multicast,"
-      << "aie-assign-tile-controller-ids,"
-      << "aie-generate-column-control-overlay{route-shim-to-tile-ctrl="
-      << (ctrlPktOverlay ? "true" : "false") << "},"
-      << "aie-assign-buffer-addresses{alloc-scheme=" << allocScheme.getValue()
-      << "},"
-      << "aie-vector-transfer-lowering{max-transfer-rank=1}"
-      << "),"
-      << "convert-scf-to-cf"
-      << ")";
-  return oss.str();
-}
-
-// Pipeline string kept for reference - replaced by runLLVMLoweringPipeline()
-[[maybe_unused]] static std::string
-buildLLVMLoweringPipeline(StringRef deviceName, StringRef aieTarget = "aie2") {
-  std::ostringstream oss;
-  oss << "builtin.module("
-      << "aie.device(aie-localize-locks,aie-normalize-address-spaces,"
-      << "aie-transform-bfp-types),"
-      << "aie-standard-lowering{device=" << deviceName.str() << "},"
-      << "aiex-standard-lowering,"
-      << "convert-aievec-to-llvm{aie-target=" << aieTarget.lower() << "},"
-      << "canonicalize,"
-      << "cse,"
-      << "expand-strided-metadata,"
-      << "lower-affine,"
-      << "arith-expand,"
-      << "finalize-memref-to-llvm,"
-      << "convert-func-to-llvm{use-bare-ptr-memref-call-conv=true},"
-      << "convert-to-llvm{dynamic=true},"
-      << "canonicalize,"
-      << "cse"
-      << ")";
-  return oss.str();
-}
-
-// Pipeline string kept for reference - replaced by runNpuLoweringPipeline()
-[[maybe_unused]] static std::string buildNpuLoweringPipeline() {
-  return R"(builtin.module(aie.device(aie-materialize-bd-chains,aie-substitute-shim-dma-allocations,aie-assign-runtime-sequence-bd-ids,aie-dma-tasks-to-npu,aie-dma-to-npu,aie-lower-set-lock)))";
 }
 
 //===----------------------------------------------------------------------===//
@@ -1140,13 +1210,13 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp) {
     pm.enableVerifier(true);
   }
 
-  // Add expand-load-pdi pass at module level (after device nesting)
-  // if --expand-load-pdis is specified
-  if (expandLoadPdis) {
-    pm.addPass(xilinx::AIEX::createAIEExpandLoadPdiPass());
+  // Add materialize runtime sequences pass at module level (before device
+  // nesting) unless --no-materialize is specified
+  if (!noMaterialize) {
+    pm.addPass(xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass());
   }
 
-  // All NPU lowering passes are device-level
+  // Device-level passes
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
   devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
@@ -1154,6 +1224,12 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp) {
   devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
   devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
   devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
+
+  // Add expand-load-pdi pass at module level (after device nesting)
+  // if --expand-load-pdis is specified
+  if (expandLoadPdis) {
+    pm.addPass(xilinx::AIEX::createAIEExpandLoadPdiPass());
+  }
 
   if (verbose) {
     llvm::outs() << "Running NPU lowering pipeline in-memory\n";
@@ -1235,9 +1311,7 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
   devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  // Note: aie-transform-bfp-types pass would go here if the design uses
-  // block floating-point (BFP) types that require normalization before
-  // lowering. Currently not needed for standard designs.
+  // TODO: Add aie-transform-bfp-types if needed
 
   // Step 2: aie-standard-lowering with specific core coordinates
   // This extracts the specified core and removes the aie.device wrapper
@@ -1266,10 +1340,13 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
       ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
   // convert-to-llvm - use the generic conversion pass
   pm.addPass(createConvertToLLVMPass());
+  pm.addPass(createConvertVectorToLLVMPass());
+  pm.addPass(createUBToLLVMConversionPass());
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
 
   if (verbose) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "Running LLVM lowering pipeline in-memory for core (" << col
                  << ", " << row << ")\n";
   }
@@ -1281,8 +1358,75 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   }
 
   if (verbose) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "LLVM lowering pipeline completed successfully for core ("
                  << col << ", " << row << ")\n";
+  }
+
+  return success();
+}
+
+/// Run the LLVM lowering pipeline for unified compilation (all cores together).
+/// Unlike runLLVMLoweringPipeline, this does not filter to a specific core.
+/// All cores are lowered together into a single module.
+///
+/// NOTE: This function modifies moduleOp destructively. Caller should pass a
+/// cloned module.
+static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
+                                                    StringRef deviceName,
+                                                    StringRef aieTarget) {
+  MLIRContext *ctx = moduleOp.getContext();
+  PassManager pm(ctx);
+
+  if (verbose) {
+    pm.enableVerifier(true);
+  }
+
+  // Step 1: Nested passes inside aie.device
+  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
+  devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
+  devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
+
+  // Step 2: aie-standard-lowering WITHOUT specific core coordinates
+  // This exports ALL cores by using default values (-1, -1)
+  xilinx::AIE::AIECoreToStandardOptions coreOpts;
+  coreOpts.deviceName = deviceName.str();
+  // tileCol and tileRow default to -1 (process all cores)
+  pm.addPass(xilinx::AIE::createAIECoreToStandardPass(coreOpts));
+
+  // Step 3: AIEX to standard lowering
+  pm.addPass(xilinx::AIEX::createAIEXToStandardPass());
+
+  // Step 4: AIEVec to LLVM conversion
+  xilinx::ConvertAIEVecToLLVMOptions aievecOpts;
+  aievecOpts.aieTarget = aieTarget.lower();
+  pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass(aievecOpts));
+
+  // Step 5: Standard LLVM lowering passes
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+  pm.addPass(memref::createExpandStridedMetadataPass());
+  pm.addPass(createLowerAffinePass());
+  pm.addPass(arith::createArithExpandOpsPass());
+  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(createConvertFuncToLLVMPass(
+      ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
+  pm.addPass(createConvertToLLVMPass());
+  pm.addPass(createCanonicalizerPass());
+  pm.addPass(createCSEPass());
+
+  if (verbose) {
+    llvm::outs() << "Running unified LLVM lowering pipeline in-memory for all "
+                    "cores\n";
+  }
+
+  if (failed(pm.run(moduleOp))) {
+    llvm::errs() << "Error: Unified LLVM lowering pipeline failed\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Unified LLVM lowering pipeline completed successfully\n";
   }
 
   return success();
@@ -1311,7 +1455,22 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     return success(); // Skip compilation
   }
 
+  // When --no-unified is explicitly set with xchesscc, compile and link are
+  // combined into one step. If --no-link is also set, skip compilation entirely
+  // since xchesscc cannot produce object files without linking in this mode.
+  // Note: This optimization only applies when --no-unified is explicitly
+  // passed, not when unified is just false by default.
+  if (noUnified && xchesscc && !link) {
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
+      llvm::outs() << "Skipping core (" << core.col << ", " << core.row
+                   << ") compilation: xchesscc requires linking\n";
+    }
+    return success();
+  }
+
   if (verbose) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "Compiling core (" << core.col << ", " << core.row << ")\n";
   }
 
@@ -1354,6 +1513,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
     llvmModule->print(llvmIRFile, nullptr);
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Generated LLVM IR: " << llvmIRPath << "\n";
     }
   }
@@ -1382,6 +1542,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Generated linker script: " << ldScriptPath << "\n";
     }
   }
@@ -1421,6 +1582,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Applied IR downgrade for Chess: " << chessHackPath
                    << "\n";
     }
@@ -1432,12 +1594,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                           "_" + std::to_string(core.row) + ".chesslinked.ll");
 
     std::string linkedResult =
-        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget);
+        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget, tmpDirName);
     if (linkedResult.empty()) {
       return failure();
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Linked with chess intrinsic wrapper: " << chessLinkedPath
                    << "\n";
     }
@@ -1459,14 +1622,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
                                               aieTargetLower,
                                               "+w",
-                                              std::string(workDir),
+                                              workDir.str().str(),
                                               "-c",
                                               "-d",
                                               "+Wclang,-xir",
                                               "-f",
-                                              std::string(chessLinkedPath),
+                                              chessLinkedPath.str().str(),
                                               "-o",
-                                              std::string(objPath)};
+                                              objPath.str().str()};
 
     if (!executeCommand(xchessCmd)) {
       llvm::errs() << "Error running xchesscc_wrapper\n";
@@ -1474,6 +1637,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Compiled with xchesscc: " << objPath << "\n";
     }
   } else {
@@ -1499,9 +1663,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                                ">,strip",
                                            "-inline-threshold=10",
                                            "-S",
-                                           std::string(llvmIRPath),
+                                           llvmIRPath.str().str(),
                                            "-o",
-                                           std::string(optPath)};
+                                           optPath.str().str()};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -1514,13 +1678,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Run llc
     SmallVector<std::string, 10> llcCmd = {peanoLlc,
-                                           std::string(optPath),
+                                           optPath.str().str(),
                                            "-O" + optLevelStr,
                                            "--march=" + aieTarget.lower(),
                                            "--function-sections",
                                            "--filetype=obj",
                                            "-o",
-                                           std::string(objPath)};
+                                           objPath.str().str()};
 
     if (!executeCommand(llcCmd)) {
       llvm::errs() << "Error running Peano llc\n";
@@ -1530,7 +1694,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   // Step 5: Link to ELF
   if (!link) {
-    outElfPath = std::string(objPath);
+    outElfPath = objPath.str().str();
     return success();
   }
 
@@ -1581,6 +1745,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Generated BCF: " << bcfPath << "\n";
     }
 
@@ -1588,18 +1753,30 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::vector<std::string> linkWithFiles = extractInputFilesFromBCF(bcfPath);
 
     // Handle link_with files: copy to .prj directory if needed
+    // Search order: current working directory, then input file directory
+    std::string linkWithArgs;
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> srcPath;
       if (sys::path::is_absolute(linkWithFile)) {
         srcPath = linkWithFile;
       } else {
-        SmallString<256> inputDir = sys::path::parent_path(inputFilename);
-        if (inputDir.empty()) {
-          sys::fs::current_path(inputDir);
+        // First try current working directory
+        SmallString<256> cwdPath;
+        sys::fs::current_path(cwdPath);
+        sys::path::append(cwdPath, linkWithFile);
+        if (sys::fs::exists(cwdPath)) {
+          srcPath = cwdPath;
+        } else {
+          // Fall back to input file directory
+          SmallString<256> inputDir =
+              sys::path::parent_path(getInputFilename());
+          if (inputDir.empty()) {
+            sys::fs::current_path(inputDir);
+          }
+          srcPath = inputDir;
+          sys::path::append(srcPath, linkWithFile);
+          sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
         }
-        srcPath = inputDir;
-        sys::path::append(srcPath, linkWithFile);
-        sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
       }
 
       // Copy to .prj directory
@@ -1615,9 +1792,15 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       }
 
       if (verbose) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         llvm::outs() << "Copied link_with: " << srcPath << " -> " << destPath
                      << "\n";
       }
+
+      if (!linkWithArgs.empty()) {
+        linkWithArgs += " ";
+      }
+      linkWithArgs += destPath.str().str();
     }
 
     // Find xchesscc_wrapper
@@ -1636,20 +1819,20 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::string aieTargetLower = aieTarget.lower();
     SmallVector<std::string, 20> linkCmd = {
         *xchessccWrapperPath, aieTargetLower, "+w",
-        std::string(workDir), "-d",           "-f",
-        std::string(objPath)};
+        workDir.str().str(),  "-d",           "-f",
+        objPath.str().str()};
 
     // Add link_with files if any
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> localPath(tmpDirName);
       sys::path::append(localPath, sys::path::filename(linkWithFile));
-      linkCmd.push_back(std::string(localPath));
+      linkCmd.push_back(localPath.str().str());
     }
 
     linkCmd.push_back("+l");
-    linkCmd.push_back(std::string(bcfPath));
+    linkCmd.push_back(bcfPath.str().str());
     linkCmd.push_back("-o");
-    linkCmd.push_back(std::string(elfPath));
+    linkCmd.push_back(elfPath.str().str());
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking with xbridge\n";
@@ -1657,6 +1840,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
       llvm::outs() << "Linked with xbridge: " << elfPath << "\n";
     }
   } else {
@@ -1690,32 +1874,45 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Explicitly specify Peano's lld linker to avoid using system ld
     if (sys::fs::can_execute(peanoLld)) {
-      linkCmd.push_back("-fuse-ld=" + std::string(peanoLld));
+      linkCmd.push_back("-fuse-ld=" + peanoLld.str().str());
     } else {
       // Fallback: try to use lld from Peano bin via -B
-      linkCmd.push_back("-B" + std::string(peanoBinDir));
+      linkCmd.push_back("-B" + peanoBinDir.str().str());
       linkCmd.push_back("-fuse-ld=lld");
     }
 
-    linkCmd.push_back(std::string(objPath));
+    linkCmd.push_back(objPath.str().str());
 
     // Handle external object file if link_with attribute is specified
     // The linker script generated by aie-translate will include an INPUT()
     // directive for the link_with file, but it uses a relative path.
     // We need to copy the file to the .prj directory so the linker can find it.
     if (!core.linkWith.empty()) {
-      // Resolve the link_with path relative to the input file
+      // Resolve the link_with path - check multiple locations:
+      // 1. If absolute, use as-is
+      // 2. Relative to current working directory (common for test cases)
+      // 3. Relative to input file directory (common for installed examples)
       SmallString<256> srcLinkWith;
       if (sys::path::is_absolute(core.linkWith)) {
         srcLinkWith = core.linkWith;
       } else {
-        SmallString<256> inputDir = sys::path::parent_path(inputFilename);
-        if (inputDir.empty()) {
-          sys::fs::current_path(inputDir);
+        // First try current working directory
+        SmallString<256> cwdPath;
+        sys::fs::current_path(cwdPath);
+        sys::path::append(cwdPath, core.linkWith);
+        if (sys::fs::exists(cwdPath)) {
+          srcLinkWith = cwdPath;
+        } else {
+          // Fall back to input file directory
+          SmallString<256> inputDir =
+              sys::path::parent_path(getInputFilename());
+          if (inputDir.empty()) {
+            sys::fs::current_path(inputDir);
+          }
+          srcLinkWith = inputDir;
+          sys::path::append(srcLinkWith, core.linkWith);
+          sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
         }
-        srcLinkWith = inputDir;
-        sys::path::append(srcLinkWith, core.linkWith);
-        sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
       }
 
       // Copy the object file to the .prj directory so the linker script's
@@ -1735,6 +1932,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       }
 
       if (verbose) {
+        std::lock_guard<std::mutex> lock(outputMutex);
         llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
                      << destLinkWith << "\n";
       }
@@ -1757,9 +1955,22 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     linkCmd.push_back("-Wl,--gc-sections");
     linkCmd.push_back("-Wl,--orphan-handling=error");
-    linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
+    linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+
+    // Add HSA runtime linking if requested
+    if (linkAgainstHsa) {
+      if (!sysroot.empty()) {
+        SmallString<256> rocmLibPath(sysroot);
+        sys::path::append(rocmLibPath, "opt", "rocm", "lib");
+        linkCmd.push_back("-L" + rocmLibPath.str().str());
+      } else {
+        linkCmd.push_back("-L/opt/rocm/lib");
+      }
+      linkCmd.push_back("-lhsa-runtime64");
+    }
+
     linkCmd.push_back("-o");
-    linkCmd.push_back(std::string(elfPath));
+    linkCmd.push_back(elfPath.str().str());
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking ELF file\n";
@@ -1767,14 +1978,18 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
-  outElfPath = std::string(elfPath);
+  outElfPath = elfPath.str().str();
   if (verbose) {
+    std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "Generated ELF: " << outElfPath << "\n";
   }
 
   return success();
 }
 
+/// Compile all cores in a device, optionally in parallel.
+/// When numThreads > 1, cores are compiled in parallel using std::async.
+/// Each parallel task gets its own MLIRContext to avoid threading issues.
 static LogicalResult
 compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
              StringRef deviceName, StringRef tmpDirName, StringRef aieTarget,
@@ -1792,19 +2007,628 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
     return success();
   }
 
-  if (verbose) {
-    llvm::outs() << "Compiling " << cores.size() << " core(s)\n";
+  // Determine number of threads to use
+  unsigned nThreads = numThreads;
+  if (nThreads == 0) {
+    nThreads = std::thread::hardware_concurrency();
+    if (nThreads == 0) {
+      nThreads = 4; // Reasonable default if hardware_concurrency() fails
+    }
   }
 
+  // Cap threads at number of cores
+  nThreads = std::min(nThreads, static_cast<unsigned>(cores.size()));
+
+  if (verbose) {
+    if (nThreads > 1) {
+      llvm::outs() << "Compiling " << cores.size() << " core(s) in parallel ("
+                   << nThreads << " threads)\n";
+    } else {
+      llvm::outs() << "Compiling " << cores.size() << " core(s) sequentially\n";
+    }
+  }
+
+  // Sequential compilation (default, nThreads == 1)
+  if (nThreads <= 1) {
+    for (const auto &core : cores) {
+      std::string elfPath;
+      if (failed(compileCore(context, moduleOp, deviceName, core, tmpDirName,
+                             aieTarget, elfPath))) {
+        return failure();
+      }
+
+      if (!elfPath.empty()) {
+        elfPaths[{core.col, core.row}] = elfPath;
+      }
+    }
+    return success();
+  }
+
+  // Parallel compilation using std::async
+  // We need to serialize the module to string and deserialize in each thread
+  // because MLIRContext is not thread-safe for multi-threaded mutation.
+
+  // First, serialize the module to string for parallel workers
+  std::string moduleStr;
+  {
+    llvm::raw_string_ostream os(moduleStr);
+    moduleOp->print(os);
+  }
+
+  // Get the dialect registry to use for parallel contexts
+  DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  xilinx::registerAllDialects(registry);
+  mlir::registerAllExtensions(registry);
+
+  // Thread-safe results storage
+  std::mutex resultsMutex;
+  std::atomic<bool> hasFailure{false};
+
+  // Create futures for parallel tasks
+  std::vector<std::future<void>> futures;
+  futures.reserve(cores.size());
+
+  // Use a semaphore-like pattern with atomic counter for thread limiting
+  std::atomic<unsigned> activeThreads{0};
+
   for (const auto &core : cores) {
-    std::string elfPath;
-    if (failed(compileCore(context, moduleOp, deviceName, core, tmpDirName,
-                           aieTarget, elfPath))) {
+    // Wait if we've reached the thread limit
+    while (activeThreads.load() >= nThreads) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // Check if any thread has failed
+    if (hasFailure.load()) {
+      break;
+    }
+
+    activeThreads++;
+
+    // Create task for this core
+    futures.push_back(std::async(
+        std::launch::async,
+        [&registry, &moduleStr, deviceName = deviceName.str(),
+         tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(), core,
+         &resultsMutex, &elfPaths, &hasFailure, &activeThreads]() {
+          // Each thread creates its own MLIRContext
+          MLIRContext threadContext;
+          threadContext.appendDialectRegistry(registry);
+          threadContext.loadAllAvailableDialects();
+
+          // Register LLVM IR translation dialects
+          mlir::registerBuiltinDialectTranslation(threadContext);
+          mlir::registerLLVMDialectTranslation(threadContext);
+
+          // Parse the module in this thread's context
+          ParserConfig parseConfig(&threadContext);
+          OwningOpRef<ModuleOp> threadModule =
+              parseSourceString<ModuleOp>(moduleStr, parseConfig);
+
+          if (!threadModule) {
+            llvm::errs() << "Error: Failed to parse module for core ("
+                         << core.col << ", " << core.row << ")\n";
+            hasFailure.store(true);
+            activeThreads--;
+            return;
+          }
+
+          // Compile the core
+          std::string elfPath;
+          if (failed(compileCore(threadContext, *threadModule, deviceName, core,
+                                 tmpDirName, aieTarget, elfPath))) {
+            hasFailure.store(true);
+            activeThreads--;
+            return;
+          }
+
+          // Store result
+          if (!elfPath.empty()) {
+            std::lock_guard<std::mutex> lock(resultsMutex);
+            elfPaths[{core.col, core.row}] = elfPath;
+          }
+
+          activeThreads--;
+        }));
+  }
+
+  // Wait for all tasks to complete
+  for (auto &future : futures) {
+    future.wait();
+  }
+
+  if (hasFailure.load()) {
+    return failure();
+  }
+
+  return success();
+}
+
+/// Compile all cores using unified compilation mode.
+/// In unified mode:
+/// 1. All cores are lowered together to a single LLVM IR file
+/// 2. That IR is compiled to a single object file
+/// 3. Each core is linked separately using its own linker script/BCF
+/// This can be faster than per-core compilation when cores share code.
+static LogicalResult
+compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
+                    Operation *deviceOp, StringRef deviceName,
+                    StringRef tmpDirName, StringRef aieTarget,
+                    std::map<std::pair<int, int>, std::string> &elfPaths) {
+
+  SmallVector<CoreInfo> cores;
+  deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
+    cores.push_back(getCoreInfo(coreOp));
+  });
+
+  if (cores.empty()) {
+    if (verbose) {
+      llvm::outs() << "No cores to compile in device " << deviceName << "\n";
+    }
+    return success();
+  }
+
+  if (!compile) {
+    // If we're not compiling, just collect existing ELF paths
+    for (const auto &core : cores) {
+      if (!core.elfFile.empty()) {
+        elfPaths[{core.col, core.row}] = core.elfFile;
+      }
+    }
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Compiling " << cores.size()
+                 << " core(s) using unified compilation\n";
+  }
+
+  // Step 1: Clone module and run unified LLVM lowering pipeline
+  OwningOpRef<ModuleOp> unifiedModule = moduleOp.clone();
+
+  // Register LLVM IR translation dialects
+  mlir::registerBuiltinDialectTranslation(context);
+  mlir::registerLLVMDialectTranslation(context);
+
+  if (failed(runUnifiedLLVMLoweringPipeline(*unifiedModule, deviceName,
+                                            aieTarget))) {
+    llvm::errs() << "Error: Unified LLVM lowering failed\n";
+    return failure();
+  }
+
+  // Step 2: Translate to LLVM IR
+  SmallString<128> llvmIRPath(tmpDirName);
+  sys::path::append(llvmIRPath, deviceName.str() + "_input.ll");
+
+  llvm::LLVMContext llvmCtx;
+  std::unique_ptr<llvm::Module> llvmModule =
+      translateModuleToLLVMIR(*unifiedModule, llvmCtx);
+  if (!llvmModule) {
+    llvm::errs() << "Error translating unified module to LLVM IR\n";
+    return failure();
+  }
+
+  // Write LLVM IR to file
+  {
+    std::error_code ec;
+    raw_fd_ostream llvmIRFile(llvmIRPath, ec);
+    if (ec) {
+      llvm::errs() << "Error opening unified LLVM IR file: " << ec.message()
+                   << "\n";
+      return failure();
+    }
+    llvmModule->print(llvmIRFile, nullptr);
+    if (verbose) {
+      llvm::outs() << "Generated unified LLVM IR: " << llvmIRPath << "\n";
+    }
+  }
+
+  // Step 3: Compile to single object file
+  SmallString<128> objPath(tmpDirName);
+  sys::path::append(objPath, deviceName.str() + "_input.o");
+
+  if (xchesscc) {
+    // xchesscc compilation
+    auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
+    if (!bufOrErr) {
+      llvm::errs() << "Error reading unified LLVM IR: "
+                   << bufOrErr.getError().message() << "\n";
+      return failure();
+    }
+    std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
+
+    SmallString<128> chessHackPath(tmpDirName);
+    sys::path::append(chessHackPath, deviceName.str() + "_input.chesshack.ll");
+    {
+      std::error_code ec;
+      raw_fd_ostream chessHackFile(chessHackPath, ec);
+      if (ec) {
+        llvm::errs() << "Error writing chesshack file: " << ec.message()
+                     << "\n";
+        return failure();
+      }
+      chessHackFile << downgradedIR;
+    }
+
+    SmallString<128> chessLinkedPath(tmpDirName);
+    sys::path::append(chessLinkedPath,
+                      deviceName.str() + "_input.chesslinked.ll");
+
+    std::string linkedResult =
+        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget, tmpDirName);
+    if (linkedResult.empty()) {
       return failure();
     }
 
-    if (!elfPath.empty()) {
-      elfPaths[{core.col, core.row}] = elfPath;
+    auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
+    if (!xchessccWrapperPath) {
+      llvm::errs() << "Error: Could not find xchesscc_wrapper in PATH\n";
+      return failure();
+    }
+
+    SmallString<128> workDir(tmpDirName);
+    sys::path::append(workDir, "work");
+
+    std::string aieTargetLower = aieTarget.lower();
+    SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
+                                              aieTargetLower,
+                                              "+w",
+                                              workDir.str().str(),
+                                              "-c",
+                                              "-d",
+                                              "+Wclang,-xir",
+                                              "-f",
+                                              chessLinkedPath.str().str(),
+                                              "-o",
+                                              objPath.str().str()};
+
+    if (!executeCommand(xchessCmd)) {
+      llvm::errs()
+          << "Error running xchesscc_wrapper for unified compilation\n";
+      return failure();
+    }
+
+    if (verbose) {
+      llvm::outs() << "Compiled unified object with xchesscc: " << objPath
+                   << "\n";
+    }
+  } else {
+    // Peano compilation
+    std::string peanoOpt = findPeanoTool("opt");
+    std::string peanoLlc = findPeanoTool("llc");
+
+    if (peanoOpt.empty() || peanoLlc.empty()) {
+      llvm::errs() << "Error: Could not find Peano compiler tools\n";
+      return failure();
+    }
+
+    // Apply peanohack (strip debug info for compatibility)
+    auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
+    if (!bufOrErr) {
+      llvm::errs() << "Error reading unified LLVM IR: "
+                   << bufOrErr.getError().message() << "\n";
+      return failure();
+    }
+
+    // Write peanohacked version
+    SmallString<128> peanohackPath(tmpDirName);
+    sys::path::append(peanohackPath,
+                      deviceName.str() + "_input.llpeanohack.ll");
+    {
+      std::error_code ec;
+      raw_fd_ostream peanohackFile(peanohackPath, ec);
+      if (ec) {
+        llvm::errs() << "Error writing peanohack file: " << ec.message()
+                     << "\n";
+        return failure();
+      }
+      // Simple peanohack: just copy for now (could add attribute stripping)
+      peanohackFile << (*bufOrErr)->getBuffer();
+    }
+
+    // Run opt
+    SmallString<128> optPath(tmpDirName);
+    sys::path::append(optPath, deviceName.str() + "_input.opt.ll");
+
+    std::string optLevelStr = std::to_string(optLevel);
+    SmallVector<std::string, 12> optCmd = {peanoOpt,
+                                           "--passes=default<O" + optLevelStr +
+                                               ">,strip",
+                                           "-inline-threshold=10",
+                                           "-S",
+                                           peanohackPath.str().str(),
+                                           "-o",
+                                           optPath.str().str()};
+
+    if (optLevel >= 3) {
+      optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
+    }
+
+    if (!executeCommand(optCmd)) {
+      llvm::errs() << "Error running Peano opt for unified compilation\n";
+      return failure();
+    }
+
+    // Run llc
+    SmallVector<std::string, 10> llcCmd = {peanoLlc,
+                                           optPath.str().str(),
+                                           "-O" + optLevelStr,
+                                           "--march=" + aieTarget.lower(),
+                                           "--function-sections",
+                                           "--filetype=obj",
+                                           "-o",
+                                           objPath.str().str()};
+
+    if (!executeCommand(llcCmd)) {
+      llvm::errs() << "Error running Peano llc for unified compilation\n";
+      return failure();
+    }
+
+    if (verbose) {
+      llvm::outs() << "Compiled unified object with Peano: " << objPath << "\n";
+    }
+  }
+
+  // Step 4: Link each core separately using the shared object file
+  if (!link) {
+    // If not linking, just return the object path for all cores
+    for (const auto &core : cores) {
+      elfPaths[{core.col, core.row}] = objPath.str().str();
+    }
+    return success();
+  }
+
+  for (const auto &core : cores) {
+    if (verbose) {
+      llvm::outs() << "Linking core (" << core.col << ", " << core.row
+                   << ") from unified object\n";
+    }
+
+    SmallString<128> elfPath(tmpDirName);
+    sys::path::append(elfPath, deviceName.str() + "_core_" +
+                                   std::to_string(core.col) + "_" +
+                                   std::to_string(core.row) + ".elf");
+
+    // Make ELF path absolute
+    SmallString<256> absElfPath;
+    std::error_code ec = sys::fs::real_path(elfPath, absElfPath);
+    if (ec) {
+      if (sys::path::is_absolute(elfPath)) {
+        absElfPath = elfPath;
+      } else {
+        sys::fs::current_path(absElfPath);
+        sys::path::append(absElfPath, elfPath);
+        sys::path::remove_dots(absElfPath, /*remove_dot_dot=*/true);
+      }
+    }
+    elfPath = absElfPath;
+
+    if (xbridge) {
+      // xbridge linking with BCF
+      SmallString<128> bcfPath(tmpDirName);
+      sys::path::append(bcfPath, deviceName.str() + "_core_" +
+                                     std::to_string(core.col) + "_" +
+                                     std::to_string(core.row) + ".bcf");
+
+      {
+        std::error_code ec;
+        raw_fd_ostream bcfFile(bcfPath, ec);
+        if (ec) {
+          llvm::errs() << "Error opening BCF file: " << ec.message() << "\n";
+          return failure();
+        }
+
+        if (failed(xilinx::AIE::AIETranslateToBCF(moduleOp, bcfFile, core.col,
+                                                  core.row, deviceName))) {
+          llvm::errs() << "Error generating BCF file for core (" << core.col
+                       << ", " << core.row << ")\n";
+          return failure();
+        }
+      }
+
+      std::vector<std::string> linkWithFiles =
+          extractInputFilesFromBCF(bcfPath);
+
+      // Copy link_with files to .prj directory
+      // Search order: current working directory, then input file directory
+      for (const auto &linkWithFile : linkWithFiles) {
+        SmallString<256> srcPath;
+        if (sys::path::is_absolute(linkWithFile)) {
+          srcPath = linkWithFile;
+        } else {
+          // First try current working directory
+          SmallString<256> cwdPath;
+          sys::fs::current_path(cwdPath);
+          sys::path::append(cwdPath, linkWithFile);
+          if (sys::fs::exists(cwdPath)) {
+            srcPath = cwdPath;
+          } else {
+            // Fall back to input file directory
+            SmallString<256> inputDir =
+                sys::path::parent_path(getInputFilename());
+            if (inputDir.empty()) {
+              sys::fs::current_path(inputDir);
+            }
+            srcPath = inputDir;
+            sys::path::append(srcPath, linkWithFile);
+            sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
+          }
+        }
+
+        SmallString<256> destPath(tmpDirName);
+        sys::path::append(destPath, sys::path::filename(linkWithFile));
+        sys::fs::remove(destPath);
+        std::error_code ec = sys::fs::copy_file(srcPath, destPath);
+        if (ec) {
+          llvm::errs() << "Error copying link_with file: " << srcPath << "\n";
+          return failure();
+        }
+      }
+
+      auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
+      if (!xchessccWrapperPath) {
+        llvm::errs() << "Error: Could not find xchesscc_wrapper for xbridge\n";
+        return failure();
+      }
+
+      SmallString<128> workDir(tmpDirName);
+      sys::path::append(workDir, "work");
+
+      std::string aieTargetLower = aieTarget.lower();
+      SmallVector<std::string, 20> linkCmd = {
+          *xchessccWrapperPath, aieTargetLower, "+w",
+          workDir.str().str(),  "-d",           "-f",
+          objPath.str().str()};
+
+      for (const auto &linkWithFile : linkWithFiles) {
+        SmallString<256> localPath(tmpDirName);
+        sys::path::append(localPath, sys::path::filename(linkWithFile));
+        linkCmd.push_back(localPath.str().str());
+      }
+
+      linkCmd.push_back("+l");
+      linkCmd.push_back(bcfPath.str().str());
+      linkCmd.push_back("-o");
+      linkCmd.push_back(elfPath.str().str());
+
+      if (!executeCommand(linkCmd)) {
+        llvm::errs() << "Error linking core (" << core.col << ", " << core.row
+                     << ") with xbridge\n";
+        return failure();
+      }
+    } else {
+      // Peano linking with linker script
+      SmallString<128> ldScriptPath(tmpDirName);
+      sys::path::append(ldScriptPath,
+                        deviceName.str() + "_core_" + std::to_string(core.col) +
+                            "_" + std::to_string(core.row) + ".ld.script");
+
+      {
+        std::error_code ec;
+        raw_fd_ostream ldScriptFile(ldScriptPath, ec);
+        if (ec) {
+          llvm::errs() << "Error opening linker script file: " << ec.message()
+                       << "\n";
+          return failure();
+        }
+
+        if (failed(xilinx::AIE::AIETranslateToLdScript(
+                moduleOp, ldScriptFile, core.col, core.row, deviceName))) {
+          llvm::errs() << "Error generating linker script for core ("
+                       << core.col << ", " << core.row << ")\n";
+          return failure();
+        }
+      }
+
+      std::string peanoClang = findPeanoTool("clang");
+      if (peanoClang.empty()) {
+        llvm::errs() << "Error: Could not find Peano clang\n";
+        return failure();
+      }
+
+      std::string peanoTarget = getPeanoTarget(aieTarget);
+      std::string optLevelStr = std::to_string(optLevel);
+
+      StringRef peanoDir = getPeanoInstallDir();
+      SmallString<128> peanoBinDir;
+      if (!peanoDir.empty()) {
+        peanoBinDir = peanoDir;
+        sys::path::append(peanoBinDir, "bin");
+      } else {
+        peanoBinDir = sys::path::parent_path(peanoClang);
+      }
+
+      SmallString<256> peanoLld(peanoBinDir);
+      sys::path::append(peanoLld, "ld.lld");
+
+      // Handle link_with if specified
+      // Search order: current working directory, then input file directory
+      if (!core.linkWith.empty()) {
+        SmallString<256> srcLinkWith;
+        if (sys::path::is_absolute(core.linkWith)) {
+          srcLinkWith = core.linkWith;
+        } else {
+          // First try current working directory
+          SmallString<256> cwdPath;
+          sys::fs::current_path(cwdPath);
+          sys::path::append(cwdPath, core.linkWith);
+          if (sys::fs::exists(cwdPath)) {
+            srcLinkWith = cwdPath;
+          } else {
+            // Fall back to input file directory
+            SmallString<256> inputDir =
+                sys::path::parent_path(getInputFilename());
+            if (inputDir.empty()) {
+              sys::fs::current_path(inputDir);
+            }
+            srcLinkWith = inputDir;
+            sys::path::append(srcLinkWith, core.linkWith);
+            sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
+          }
+        }
+
+        SmallString<256> destLinkWith(tmpDirName);
+        sys::path::append(destLinkWith, sys::path::filename(core.linkWith));
+        sys::fs::remove(destLinkWith);
+        std::error_code ec = sys::fs::copy_file(srcLinkWith, destLinkWith);
+        if (ec) {
+          llvm::errs() << "Error copying link_with file: " << srcLinkWith
+                       << "\n";
+          return failure();
+        }
+      }
+
+      SmallString<128> absLdScriptPath;
+      if (sys::path::is_absolute(ldScriptPath)) {
+        absLdScriptPath = ldScriptPath;
+      } else {
+        std::error_code ec = sys::fs::real_path(ldScriptPath, absLdScriptPath);
+        if (ec) {
+          sys::fs::current_path(absLdScriptPath);
+          sys::path::append(absLdScriptPath, ldScriptPath);
+        }
+      }
+
+      SmallVector<std::string, 20> linkCmd = {peanoClang, "-O" + optLevelStr,
+                                              "--target=" + peanoTarget};
+
+      if (sys::fs::can_execute(peanoLld)) {
+        linkCmd.push_back("-fuse-ld=" + peanoLld.str().str());
+      } else {
+        linkCmd.push_back("-B" + peanoBinDir.str().str());
+        linkCmd.push_back("-fuse-ld=lld");
+      }
+
+      linkCmd.push_back(objPath.str().str());
+      linkCmd.push_back("-Wl,--gc-sections");
+      linkCmd.push_back("-Wl,--orphan-handling=error");
+      linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+
+      // Add HSA runtime linking if requested
+      if (linkAgainstHsa) {
+        if (!sysroot.empty()) {
+          SmallString<256> rocmLibPath(sysroot);
+          sys::path::append(rocmLibPath, "opt", "rocm", "lib");
+          linkCmd.push_back("-L" + rocmLibPath.str().str());
+        } else {
+          linkCmd.push_back("-L/opt/rocm/lib");
+        }
+        linkCmd.push_back("-lhsa-runtime64");
+      }
+
+      linkCmd.push_back("-o");
+      linkCmd.push_back(elfPath.str().str());
+
+      if (!executeCommand(linkCmd)) {
+        llvm::errs() << "Error linking core (" << core.col << ", " << core.row
+                     << ")\n";
+        return failure();
+      }
+    }
+
+    elfPaths[{core.col, core.row}] = elfPath.str().str();
+    if (verbose) {
+      llvm::outs() << "Generated ELF: " << elfPath << "\n";
     }
   }
 
@@ -1884,171 +2708,134 @@ static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
                  << "\n";
     return failure();
   }
-  jsonFile << R"({
-  "mem_topology": {
-    "m_count": "2",
-    "m_mem_data": [
-      {
-        "m_type": "MEM_DRAM",
-        "m_used": "1",
-        "m_sizeKB": "0x10000",
-        "m_tag": "HOST",
-        "m_base_address": "0x4000000"
-      },
-      {
-        "m_type": "MEM_DRAM",
-        "m_used": "1",
-        "m_sizeKB": "0xc000",
-        "m_tag": "SRAM",
-        "m_base_address": "0x4000000"
-      }
-    ]
-  }
-}
-)";
+  jsonFile << "{\n";
+  jsonFile << "  \"mem_topology\": {\n";
+  jsonFile << "    \"m_count\": \"2\",\n";
+  jsonFile << "    \"m_mem_data\": [\n";
+  jsonFile << "      {\n";
+  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
+  jsonFile << "        \"m_used\": \"1\",\n";
+  jsonFile << "        \"m_sizeKB\": \"0x10000\",\n";
+  jsonFile << "        \"m_tag\": \"HOST\",\n";
+  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
+  jsonFile << "      },\n";
+  jsonFile << "      {\n";
+  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
+  jsonFile << "        \"m_used\": \"1\",\n";
+  jsonFile << "        \"m_sizeKB\": \"0xc000\",\n";
+  jsonFile << "        \"m_tag\": \"SRAM\",\n";
+  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
+  jsonFile << "      }\n";
+  jsonFile << "    ]\n";
+  jsonFile << "  }\n";
+  jsonFile << "}\n";
   jsonFile.close();
   return success();
 }
 
 static LogicalResult generateKernelsJson(StringRef jsonPath,
                                          StringRef devName) {
-  std::error_code ec;
-  llvm::raw_fd_ostream jsonFile(jsonPath, ec);
-  if (ec) {
+  std::ofstream jsonFile(jsonPath.str());
+  if (!jsonFile.is_open()) {
     llvm::errs() << "Error: Could not open file for writing: " << jsonPath
-                 << ": " << ec.message() << "\n";
+                 << "\n";
     return failure();
   }
-
-  // Build JSON using LLVM JSON API for proper escaping of user-provided values
-  llvm::json::Object extendedData;
-  extendedData["subtype"] = "DPU";
-  extendedData["functional"] = "0";
-  extendedData["dpu_kernel_id"] = xclbinKernelId.getValue();
-
-  // Build arguments array
-  llvm::json::Array arguments;
-
-  llvm::json::Object arg0;
-  arg0["name"] = "opcode";
-  arg0["address-qualifier"] = "SCALAR";
-  arg0["type"] = "uint64_t";
-  arg0["offset"] = "0x00";
-  arguments.push_back(std::move(arg0));
-
-  llvm::json::Object arg1;
-  arg1["name"] = "instr";
-  arg1["memory-connection"] = "SRAM";
-  arg1["address-qualifier"] = "GLOBAL";
-  arg1["type"] = "char *";
-  arg1["offset"] = "0x08";
-  arguments.push_back(std::move(arg1));
-
-  llvm::json::Object arg2;
-  arg2["name"] = "ninstr";
-  arg2["address-qualifier"] = "SCALAR";
-  arg2["type"] = "uint32_t";
-  arg2["offset"] = "0x10";
-  arguments.push_back(std::move(arg2));
-
-  // Add buffer object arguments bo0-bo4
+  jsonFile << "{\n";
+  jsonFile << "  \"ps-kernels\": {\n";
+  jsonFile << "    \"kernels\": [\n";
+  jsonFile << "      {\n";
+  jsonFile << "        \"name\": \"" << xclbinKernelName.getValue() << "\",\n";
+  jsonFile << "        \"type\": \"dpu\",\n";
+  jsonFile << "        \"extended-data\": {\n";
+  jsonFile << "          \"subtype\": \"DPU\",\n";
+  jsonFile << "          \"functional\": \"0\",\n";
+  jsonFile << "          \"dpu_kernel_id\": \"" << xclbinKernelId.getValue()
+           << "\"\n";
+  jsonFile << "        },\n";
+  jsonFile << "        \"arguments\": [\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"opcode\",\n";
+  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
+  jsonFile << "            \"type\": \"uint64_t\",\n";
+  jsonFile << "            \"offset\": \"0x00\"\n";
+  jsonFile << "          },\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"instr\",\n";
+  jsonFile << "            \"memory-connection\": \"SRAM\",\n";
+  jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
+  jsonFile << "            \"type\": \"char *\",\n";
+  jsonFile << "            \"offset\": \"0x08\"\n";
+  jsonFile << "          },\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"ninstr\",\n";
+  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
+  jsonFile << "            \"type\": \"uint32_t\",\n";
+  jsonFile << "            \"offset\": \"0x10\"\n";
+  jsonFile << "          },\n";
   for (int i = 0; i < 5; i++) {
-    llvm::json::Object boArg;
-    boArg["name"] = "bo" + std::to_string(i);
-    boArg["memory-connection"] = "HOST";
-    boArg["address-qualifier"] = "GLOBAL";
-    boArg["type"] = "void*";
-    std::ostringstream offsetStr;
-    offsetStr << "0x" << std::hex << (0x14 + i * 8);
-    boArg["offset"] = offsetStr.str();
-    arguments.push_back(std::move(boArg));
+    jsonFile << "          {\n";
+    jsonFile << "            \"name\": \"bo" << i << "\",\n";
+    jsonFile << "            \"memory-connection\": \"HOST\",\n";
+    jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
+    jsonFile << "            \"type\": \"void*\",\n";
+    jsonFile << "            \"offset\": \"" << std::hex << "0x"
+             << (0x14 + i * 8) << std::dec << "\"\n";
+    jsonFile << "          }" << (i < 4 ? "," : "") << "\n";
   }
-
-  // Build instance
-  llvm::json::Object instance;
-  instance["name"] = xclbinInstanceName.getValue();
-
-  llvm::json::Array instances;
-  instances.push_back(std::move(instance));
-
-  // Build kernel
-  llvm::json::Object kernel;
-  kernel["name"] = xclbinKernelName.getValue();
-  kernel["type"] = "dpu";
-  kernel["extended-data"] = std::move(extendedData);
-  kernel["arguments"] = std::move(arguments);
-  kernel["instances"] = std::move(instances);
-
-  llvm::json::Array kernels;
-  kernels.push_back(std::move(kernel));
-
-  llvm::json::Object psKernels;
-  psKernels["kernels"] = std::move(kernels);
-
-  llvm::json::Object root;
-  root["ps-kernels"] = std::move(psKernels);
-
-  jsonFile << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)))
-           << "\n";
+  jsonFile << "        ],\n";
+  jsonFile << "        \"instances\": [\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"" << xclbinInstanceName.getValue()
+           << "\"\n";
+  jsonFile << "          }\n";
+  jsonFile << "        ]\n";
+  jsonFile << "      }\n";
+  jsonFile << "    ]\n";
+  jsonFile << "  }\n";
+  jsonFile << "}\n";
+  jsonFile.close();
   return success();
 }
 
 static LogicalResult generatePartitionJson(StringRef jsonPath,
                                            StringRef devName,
                                            StringRef pdiPath) {
-  std::error_code ec;
-  llvm::raw_fd_ostream jsonFile(jsonPath, ec);
-  if (ec) {
+  std::ofstream jsonFile(jsonPath.str());
+  if (!jsonFile.is_open()) {
     llvm::errs() << "Error: Could not open file for writing: " << jsonPath
-                 << ": " << ec.message() << "\n";
+                 << "\n";
     return failure();
   }
-
-  // Build JSON using LLVM JSON API for proper escaping of paths and IDs
-  llvm::json::Object partition;
-  partition["column_width"] = 1;
-  llvm::json::Array startColumns;
-  startColumns.push_back(0);
-  partition["start_columns"] = std::move(startColumns);
-
-  // Build cdo_group
-  llvm::json::Object cdoGroup;
-  cdoGroup["name"] = "DPU";
-  cdoGroup["type"] = "PRIMARY";
-  cdoGroup["pdi_id"] = "0x01";
-  llvm::json::Array dpuKernelIds;
-  dpuKernelIds.push_back(xclbinKernelId.getValue());
-  cdoGroup["dpu_kernel_ids"] = std::move(dpuKernelIds);
-  llvm::json::Array preCdoGroups;
-  preCdoGroups.push_back("0xC1");
-  cdoGroup["pre_cdo_groups"] = std::move(preCdoGroups);
-
-  llvm::json::Array cdoGroups;
-  cdoGroups.push_back(std::move(cdoGroup));
-
-  // Build PDI entry
-  llvm::json::Object pdi;
-  pdi["uuid"] = "00000000-0000-0000-0000-000000000000";
-  pdi["file_name"] = pdiPath.str();
-  pdi["cdo_groups"] = std::move(cdoGroups);
-
-  llvm::json::Array pdis;
-  pdis.push_back(std::move(pdi));
-
-  // Build aie_partition
-  llvm::json::Object aiePartition;
-  aiePartition["name"] = "QoS";
-  aiePartition["operations_per_cycle"] = "2048";
-  aiePartition["inference_fingerprint"] = "23423";
-  aiePartition["pre_post_fingerprint"] = "12345";
-  aiePartition["partition"] = std::move(partition);
-  aiePartition["PDIs"] = std::move(pdis);
-
-  llvm::json::Object root;
-  root["aie_partition"] = std::move(aiePartition);
-
-  jsonFile << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)))
-           << "\n";
+  jsonFile << "{\n";
+  jsonFile << "  \"aie_partition\": {\n";
+  jsonFile << "    \"name\": \"QoS\",\n";
+  jsonFile << "    \"operations_per_cycle\": \"2048\",\n";
+  jsonFile << "    \"inference_fingerprint\": \"23423\",\n";
+  jsonFile << "    \"pre_post_fingerprint\": \"12345\",\n";
+  jsonFile << "    \"partition\": {\n";
+  jsonFile << "      \"column_width\": 1,\n";
+  jsonFile << "      \"start_columns\": [0]\n";
+  jsonFile << "    },\n";
+  jsonFile << "    \"PDIs\": [\n";
+  jsonFile << "      {\n";
+  jsonFile << "        \"uuid\": \"00000000-0000-0000-0000-000000000000\",\n";
+  jsonFile << "        \"file_name\": \"" << pdiPath.str() << "\",\n";
+  jsonFile << "        \"cdo_groups\": [\n";
+  jsonFile << "          {\n";
+  jsonFile << "            \"name\": \"DPU\",\n";
+  jsonFile << "            \"type\": \"PRIMARY\",\n";
+  jsonFile << "            \"pdi_id\": \"0x01\",\n";
+  jsonFile << "            \"dpu_kernel_ids\": [\"" << xclbinKernelId.getValue()
+           << "\"],\n";
+  jsonFile << "            \"pre_cdo_groups\": [\"0xC1\"]\n";
+  jsonFile << "          }\n";
+  jsonFile << "        ]\n";
+  jsonFile << "      }\n";
+  jsonFile << "    ]\n";
+  jsonFile << "  }\n";
+  jsonFile << "}\n";
+  jsonFile.close();
   return success();
 }
 
@@ -2069,14 +2856,14 @@ static LogicalResult extractAndMergePartition(StringRef inputXclbin,
   SmallString<128> inputPartitionPath(tmpDirName);
   sys::path::append(inputPartitionPath, "input_aie_partition.json");
 
-  SmallVector<std::string, 10> extractCmd = {
-      *xclbinutilPath,
-      "--dump-section",
-      "AIE_PARTITION:JSON:" + std::string(inputPartitionPath),
-      "--force",
-      "--quiet",
-      "--input",
-      inputXclbin.str()};
+  SmallVector<std::string, 10> extractCmd = {*xclbinutilPath,
+                                             "--dump-section",
+                                             "AIE_PARTITION:JSON:" +
+                                                 inputPartitionPath.str().str(),
+                                             "--force",
+                                             "--quiet",
+                                             "--input",
+                                             inputXclbin.str()};
 
   if (!executeCommand(extractCmd)) {
     llvm::errs() << "Error extracting AIE_PARTITION from input xclbin\n";
@@ -2520,7 +3307,16 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
                  << " DMA sequence instructions to: " << dmaSeqBinPath << "\n";
   }
 
-  // Step 3: Generate combined ELF using aiebu library or aiebu-asm subprocess
+  // Step 3: Generate combined ELF using aiebu-asm (if available)
+  std::string aiebuAsmPath = findAiebuAsm();
+  if (aiebuAsmPath.empty()) {
+    if (verbose) {
+      llvm::outs() << "aiebu-asm not found, skipping control packet ELF "
+                      "generation\n";
+    }
+    return success();
+  }
+
   std::string elfFileName = formatString(ctrlPktElfName, devName);
   SmallString<128> elfPath;
   if (sys::path::is_absolute(elfFileName)) {
@@ -2546,80 +3342,18 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     break;
   }
 
-  // Build external_buffers JSON string
-  uint64_t ctrlPktSize = ctrlPktInstructions.size() * sizeof(uint32_t);
-  std::string extBufJsonStr;
-  {
-    llvm::json::Object bufferCtrl;
-    bufferCtrl["xrt_id"] = ctrlIdx;
-    bufferCtrl["logical_id"] = -1;
-    bufferCtrl["size_in_bytes"] = static_cast<int64_t>(ctrlPktSize);
-    bufferCtrl["ctrl_pkt_buffer"] = 1;
-    bufferCtrl["name"] = "runtime_control_packet";
-
-    llvm::json::Object externalBuffers;
-    externalBuffers["buffer_ctrl"] = std::move(bufferCtrl);
-
-    llvm::json::Object root;
-    root["external_buffers"] = std::move(externalBuffers);
-
-    llvm::raw_string_ostream os(extBufJsonStr);
-    os << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)));
-  }
-
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-  // Try using aiebu library directly
-  {
-    // Convert instructions to char buffers
-    std::vector<char> instrBuffer(
-        reinterpret_cast<const char *>(dmaSeqInstructions.data()),
-        reinterpret_cast<const char *>(dmaSeqInstructions.data()) +
-            dmaSeqInstructions.size() * sizeof(uint32_t));
-
-    std::vector<char> ctrlPktBuffer(
-        reinterpret_cast<const char *>(ctrlPktInstructions.data()),
-        reinterpret_cast<const char *>(ctrlPktInstructions.data()) +
-            ctrlPktInstructions.size() * sizeof(uint32_t));
-
-    std::vector<char> patchJson(extBufJsonStr.begin(), extBufJsonStr.end());
-
-    if (verbose) {
-      llvm::outs() << "Using aiebu library for control packet ELF generation\n";
-    }
-
-    auto elfData = generateElfViaAiebuLibrary(
-        aiebu_assembler_buffer_type_blob_instr_transaction, instrBuffer,
-        ctrlPktBuffer, patchJson);
-    if (elfData && !elfData->empty()) {
-      if (succeeded(writeElfFile(elfPath, *elfData))) {
-        if (verbose) {
-          llvm::outs() << "Generated control packet ELF via library: "
-                       << elfPath << "\n";
-        }
-        return success();
-      }
-    }
-    // Fall through to subprocess on library failure
-    if (verbose) {
-      llvm::outs()
-          << "aiebu library failed for control packet ELF, falling back\n";
-    }
-  }
-#endif // AIECC_HAS_AIEBU_LIBRARY
-
-  // Subprocess fallback: find aiebu-asm
-  std::string aiebuAsmPath = findAiebuAsm();
-  if (aiebuAsmPath.empty()) {
-    if (verbose) {
-      llvm::outs() << "aiebu-asm not found, skipping control packet ELF "
-                      "generation\n";
-    }
-    return success();
-  }
-
-  // Generate external_buffers.json for aiebu-asm subprocess
+  // Generate external_buffers.json for aiebu-asm
   SmallString<128> extBufJsonPath(tmpDirName);
   sys::path::append(extBufJsonPath, "external_buffers.json");
+
+  // Get control packet file size
+  uint64_t ctrlPktSize = 0;
+  if (auto status = sys::fs::file_size(ctrlPktBinPath, ctrlPktSize)) {
+    llvm::errs() << "Error getting control packet file size: "
+                 << status.message() << "\n";
+    return failure();
+  }
+
   {
     std::error_code ec;
     raw_fd_ostream jsonFile(extBufJsonPath, ec, sys::fs::OpenFlags::OF_None);
@@ -2628,7 +3362,17 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
                    << "\n";
       return failure();
     }
-    jsonFile << extBufJsonStr;
+    jsonFile << "{\n";
+    jsonFile << "  \"external_buffers\": {\n";
+    jsonFile << "    \"buffer_ctrl\": {\n";
+    jsonFile << "      \"xrt_id\": " << ctrlIdx << ",\n";
+    jsonFile << "      \"logical_id\": -1,\n";
+    jsonFile << "      \"size_in_bytes\": " << ctrlPktSize << ",\n";
+    jsonFile << "      \"ctrl_pkt_buffer\": 1,\n";
+    jsonFile << "      \"name\": \"runtime_control_packet\"\n";
+    jsonFile << "    }\n";
+    jsonFile << "  }\n";
+    jsonFile << "}\n";
   }
 
   // Run aiebu-asm to generate combined ELF
@@ -2674,37 +3418,10 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
 // ELF Generation (via aiebu-asm)
 //===----------------------------------------------------------------------===//
 
-/// Find aiebu-asm binary in PATH or at default locations.
-static std::string findAiebuAsm() {
-  // First try PATH
-  auto aiebuAsmPath = sys::findProgramByName("aiebu-asm");
-  if (aiebuAsmPath) {
-    return *aiebuAsmPath;
-  }
-
-  // Try XRT installation location (common case)
-  std::string xrtPath = "/opt/xilinx/xrt/bin/aiebu-asm";
-  if (sys::fs::can_execute(xrtPath)) {
-    return xrtPath;
-  }
-
-  // Try standalone aiebu installation
-  std::string defaultPath = "/opt/xilinx/aiebu/bin/aiebu-asm";
-  if (sys::fs::can_execute(defaultPath)) {
-    return defaultPath;
-  }
-
-  return "";
-}
-
-//===----------------------------------------------------------------------===//
-// AIEBU Library Integration (optional, compile-time enabled)
-// Uses the C API to avoid exception handling issues with LLVM's -fno-exceptions
-//===----------------------------------------------------------------------===//
-
 #ifdef AIECC_HAS_AIEBU_LIBRARY
 /// Helper to read a binary file into a vector of chars.
-static std::optional<std::vector<char>> readBinaryFile(StringRef path) {
+[[maybe_unused]] static std::optional<std::vector<char>>
+readBinaryFile(StringRef path) {
   auto bufferOrErr = llvm::MemoryBuffer::getFile(path);
   if (!bufferOrErr) {
     return std::nullopt;
@@ -2751,7 +3468,7 @@ generateElfViaAiebuLibrary(aiebu_assembler_buffer_type type,
 
 /// Generate ELF using aiebu C API with config JSON (for aie2_config type).
 /// Returns the ELF data or nullopt on failure.
-static std::optional<std::vector<char>>
+[[maybe_unused]] static std::optional<std::vector<char>>
 generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson) {
   void *elfBuf = nullptr;
   int result = aiebu_assembler_get_elf(aiebu_assembler_buffer_type_aie2_config,
@@ -2791,9 +3508,33 @@ static LogicalResult writeElfFile(StringRef path,
     return failure();
   }
   elfFile.write(elfData.data(), elfData.size());
+  elfFile.close();
   return success();
 }
 #endif // AIECC_HAS_AIEBU_LIBRARY
+
+/// Find aiebu-asm binary in PATH or at default locations.
+static std::string findAiebuAsm() {
+  // First try PATH
+  auto aiebuAsmPath = sys::findProgramByName("aiebu-asm");
+  if (aiebuAsmPath) {
+    return *aiebuAsmPath;
+  }
+
+  // Try XRT installation location (common case)
+  std::string xrtPath = "/opt/xilinx/xrt/bin/aiebu-asm";
+  if (sys::fs::can_execute(xrtPath)) {
+    return xrtPath;
+  }
+
+  // Try standalone aiebu installation
+  std::string defaultPath = "/opt/xilinx/aiebu/bin/aiebu-asm";
+  if (sys::fs::can_execute(defaultPath)) {
+    return defaultPath;
+  }
+
+  return "";
+}
 
 /// Generate ELF file from NPU instruction binary using aiebu-asm.
 /// This generates an ELF that can be loaded using xrt::elf API.
@@ -2813,6 +3554,18 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
       llvm::outs() << "Would generate ELF for device: " << devName << "\n";
     }
     return success();
+  }
+
+  // Find aiebu-asm
+  std::string aiebuAsmBin = findAiebuAsm();
+  if (aiebuAsmBin.empty()) {
+    llvm::errs() << "Error: aiebu-asm not found in PATH or at "
+                    "/opt/xilinx/aiebu/bin/aiebu-asm\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Found aiebu-asm: " << aiebuAsmBin << "\n";
   }
 
   // Clone and run NPU lowering (same as generateNpuInstructions)
@@ -2869,7 +3622,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   std::string outputElfPath = formatString(elfName, devName.str(), "");
 
 #ifdef AIECC_HAS_AIEBU_LIBRARY
-  // Try using aiebu library directly (avoids subprocess overhead)
+  // Try using aiebu library directly for ELF generation
   {
     // Convert instructions to char buffer
     std::vector<char> instrBuffer(
@@ -2882,12 +3635,12 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     }
 
     auto elfData = generateElfViaAiebuLibrary(
-        aiebu_assembler_buffer_type_blob_instr_transaction, instrBuffer);
+        aiebu_assembler_buffer_type_blob_instr_transaction, instrBuffer, {},
+        {});
     if (elfData && !elfData->empty()) {
       if (succeeded(writeElfFile(outputElfPath, *elfData))) {
         if (verbose) {
-          llvm::outs() << "Generated ELF via library: " << outputElfPath
-                       << "\n";
+          llvm::outs() << "Generated ELF: " << outputElfPath << "\n";
         }
         return success();
       }
@@ -2899,7 +3652,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   }
 #endif // AIECC_HAS_AIEBU_LIBRARY
 
-  // Write combined instructions to temporary binary file for subprocess
+  // Subprocess fallback: write instructions to temp file and run aiebu-asm
   SmallString<128> tempBinPath(tmpDirName);
   sys::path::append(tempBinPath, devName.str() + "_elf_insts.bin");
 
@@ -2913,6 +3666,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
     }
     binFile.write(reinterpret_cast<const char *>(allInstructions.data()),
                   allInstructions.size() * sizeof(uint32_t));
+    binFile.close();
   }
 
   if (verbose) {
@@ -2920,18 +3674,10 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
                  << " instructions to temp file: " << tempBinPath << "\n";
   }
 
-  // Find aiebu-asm binary for subprocess fallback
-  std::string aiebuAsmBin = findAiebuAsm();
-  if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found in PATH or at "
-                    "/opt/xilinx/aiebu/bin/aiebu-asm\n";
-    return failure();
-  }
-
   // Run aiebu-asm to convert binary to ELF
   // aiebu-asm -t aie2txn -c <input.bin> -o <output.elf>
   SmallVector<std::string, 10> aiebuCmd = {
-      aiebuAsmBin, "-t",         "aie2txn", "-c", std::string(tempBinPath),
+      aiebuAsmBin, "-t",         "aie2txn", "-c", tempBinPath.str().str(),
       "-o",        outputElfPath};
 
   if (!executeCommand(aiebuCmd)) {
@@ -2984,61 +3730,57 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
     return success();
   }
 
-  // Build config.json structure using LLVM JSON API for proper escaping
+  // Find aiebu-asm
+  std::string aiebuAsmBin = findAiebuAsm();
+  if (aiebuAsmBin.empty()) {
+    llvm::errs() << "Error: aiebu-asm not found for full ELF generation\n";
+    return failure();
+  }
+
+  // Build config.json structure
   // Format: { "xrt-kernels": [ { "name": ..., "PDIs": [...], "instance": [...]
   // } ] }
-  llvm::json::Array xrtKernels;
+  std::string configJson = "{\n  \"xrt-kernels\": [\n";
 
-  for (const auto &info : deviceInfos) {
-    llvm::json::Object kernel;
-    kernel["name"] = info.deviceName;
+  for (size_t i = 0; i < deviceInfos.size(); ++i) {
+    const auto &info = deviceInfos[i];
+
+    if (i > 0)
+      configJson += ",\n";
+    configJson += "    {\n";
+    configJson += "      \"name\": \"" + info.deviceName + "\",\n";
 
     // Arguments - determine max arg count from sequences
     // For now, use a default set of arguments
-    llvm::json::Array arguments;
-    llvm::json::Object arg0;
-    arg0["name"] = "arg_0";
-    arg0["type"] = "char *";
-    arg0["offset"] = "0x0";
-    arguments.push_back(std::move(arg0));
-
-    llvm::json::Object arg1;
-    arg1["name"] = "arg_1";
-    arg1["type"] = "char *";
-    arg1["offset"] = "0x8";
-    arguments.push_back(std::move(arg1));
-
-    llvm::json::Object arg2;
-    arg2["name"] = "arg_2";
-    arg2["type"] = "char *";
-    arg2["offset"] = "0x10";
-    arguments.push_back(std::move(arg2));
-
-    kernel["arguments"] = std::move(arguments);
+    configJson += "      \"arguments\": [\n";
+    configJson += "        {\"name\": \"arg_0\", \"type\": \"char *\", "
+                  "\"offset\": \"0x0\"},\n";
+    configJson += "        {\"name\": \"arg_1\", \"type\": \"char *\", "
+                  "\"offset\": \"0x8\"},\n";
+    configJson += "        {\"name\": \"arg_2\", \"type\": \"char *\", "
+                  "\"offset\": \"0x10\"}\n";
+    configJson += "      ],\n";
 
     // PDIs
-    llvm::json::Array pdis;
-    llvm::json::Object pdi;
-    pdi["id"] = info.pdiId;
-    pdi["PDI_file"] = info.pdiPath;
-    pdis.push_back(std::move(pdi));
-    kernel["PDIs"] = std::move(pdis);
+    configJson += "      \"PDIs\": [\n";
+    configJson += "        {\"id\": " + std::to_string(info.pdiId) +
+                  ", \"PDI_file\": \"" + info.pdiPath + "\"}\n";
+    configJson += "      ],\n";
 
     // Instances (runtime sequences)
-    llvm::json::Array instances;
-    for (const auto &seq : info.sequences) {
-      llvm::json::Object instance;
-      instance["id"] = seq.first;
-      instance["TXN_ctrl_code_file"] = seq.second;
-      instances.push_back(std::move(instance));
+    configJson += "      \"instance\": [\n";
+    for (size_t j = 0; j < info.sequences.size(); ++j) {
+      if (j > 0)
+        configJson += ",\n";
+      configJson += "        {\"id\": \"" + info.sequences[j].first +
+                    "\", \"TXN_ctrl_code_file\": \"" +
+                    info.sequences[j].second + "\"}";
     }
-    kernel["instance"] = std::move(instances);
-
-    xrtKernels.push_back(std::move(kernel));
+    configJson += "\n      ]\n";
+    configJson += "    }";
   }
 
-  llvm::json::Object root;
-  root["xrt-kernels"] = std::move(xrtKernels);
+  configJson += "\n  ]\n}\n";
 
   // Write config.json
   SmallString<128> configPath(tmpDirName);
@@ -3051,7 +3793,7 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
       llvm::errs() << "Error writing config.json: " << ec.message() << "\n";
       return failure();
     }
-    configFile << llvm::formatv("{0:2}", llvm::json::Value(std::move(root)));
+    configFile << configJson;
   }
 
   if (verbose) {
@@ -3059,48 +3801,12 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
     llvm::outs().flush();
   }
 
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-  // Try using aiebu library directly
-  {
-    // Read the config JSON file we just wrote
-    auto configData = readBinaryFile(configPath);
-    if (configData && !configData->empty()) {
-      if (verbose) {
-        llvm::outs() << "Using aiebu library for full ELF generation\n";
-      }
-
-      auto elfData = generateElfViaAiebuLibraryConfig(*configData);
-      if (elfData && !elfData->empty()) {
-        if (succeeded(writeElfFile(fullElfName.getValue(), *elfData))) {
-          if (verbose) {
-            llvm::outs() << "Generated full ELF via library: " << fullElfName
-                         << "\n";
-            llvm::outs().flush();
-          }
-          return success();
-        }
-      }
-      // Fall through to subprocess on library failure
-      if (verbose) {
-        llvm::outs() << "aiebu library failed for full ELF, falling back\n";
-      }
-    }
-  }
-#endif // AIECC_HAS_AIEBU_LIBRARY
-
-  // Subprocess fallback: find aiebu-asm
-  std::string aiebuAsmBin = findAiebuAsm();
-  if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found for full ELF generation\n";
-    return failure();
-  }
-
   // Run aiebu-asm -t aie2_config -j config.json -o output.elf
   SmallVector<std::string, 10> aiebuCmd = {aiebuAsmBin,
                                            "-t",
                                            "aie2_config",
                                            "-j",
-                                           std::string(configPath),
+                                           configPath.str().str(),
                                            "-o",
                                            fullElfName.getValue()};
 
@@ -3153,16 +3859,21 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     SmallString<128> partitionPath(tmpDirName);
     sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
     std::string pdiFileName = formatString(pdiName, devName);
-    SmallString<128> pdiPath(tmpDirName);
-    sys::path::append(pdiPath, pdiFileName);
-    // Make pdiPath absolute for partition JSON
-    SmallString<128> absPdiPath;
-    if (sys::path::is_absolute(pdiPath)) {
-      absPdiPath = pdiPath;
+    // When user explicitly requests PDI, it goes to CWD; otherwise tmpDir.
+    SmallString<128> pdiPathForJson;
+    if (generatePdi) {
+      pdiPathForJson = pdiFileName;
     } else {
-      // In dry-run mode, just construct the path manually
+      pdiPathForJson = tmpDirName;
+      sys::path::append(pdiPathForJson, pdiFileName);
+    }
+    // Make absolute for partition JSON
+    SmallString<128> absPdiPath;
+    if (sys::path::is_absolute(pdiPathForJson)) {
+      absPdiPath = pdiPathForJson;
+    } else {
       sys::fs::current_path(absPdiPath);
-      sys::path::append(absPdiPath, pdiPath);
+      sys::path::append(absPdiPath, pdiPathForJson);
     }
     if (failed(generatePartitionJson(partitionPath, devName, absPdiPath)))
       return failure();
@@ -3173,99 +3884,121 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     }
   }
 
-  // In dry-run mode, skip actual command execution
-  if (dryRun) {
-    if (verbose) {
-      llvm::outs() << "Dry-run: would generate CDO/PDI/xclbin artifacts for "
-                      "device: "
-                   << devName << "\n";
+  // In dry-run mode, skip CDO generation (C++ API) but still print commands
+  if (!dryRun) {
+    // Generate CDO files using direct C++ API call.
+    // This replaces the subprocess call to aie-translate --aie-generate-cdo.
+    // AIETranslateToCDODirect generates CDO files directly to the work
+    // directory: {devName}_aie_cdo_elfs.bin, {devName}_aie_cdo_init.bin,
+    // {devName}_aie_cdo_enable.bin
+    if (failed(xilinx::AIE::AIETranslateToCDODirect(moduleOp, tmpDirName,
+                                                    devName,
+                                                    /*bigEndian=*/false,
+                                                    /*emitUnified=*/false,
+                                                    /*cdoDebug=*/false,
+                                                    /*aieSim=*/aiesim,
+                                                    /*xaieDebug=*/false,
+                                                    /*enableCores=*/true))) {
+      llvm::errs() << "Error generating CDO files\n";
+      return failure();
     }
-    return success();
-  }
 
-  // Generate CDO files using direct C++ API call.
-  // This replaces the subprocess call to aie-translate --aie-generate-cdo.
-  // AIETranslateToCDODirect generates CDO files directly to the work
-  // directory: {devName}_aie_cdo_elfs.bin, {devName}_aie_cdo_init.bin,
-  // {devName}_aie_cdo_enable.bin
-  if (failed(xilinx::AIE::AIETranslateToCDODirect(moduleOp, tmpDirName, devName,
-                                                  /*bigEndian=*/false,
-                                                  /*emitUnified=*/false,
-                                                  /*cdoDebug=*/false,
-                                                  /*aieSim=*/aiesim,
-                                                  /*xaieDebug=*/false,
-                                                  /*enableCores=*/true))) {
-    llvm::errs() << "Error generating CDO files\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generated CDO files in: " << tmpDirName << "\n";
+    if (verbose) {
+      llvm::outs() << "Generated CDO files in: " << tmpDirName << "\n";
+    }
   }
 
   // Generate PDI if requested (also required for full ELF)
   if (needPdi || generateXclbin) {
-    std::string pdiFileName = formatString(pdiName, devName);
-    SmallString<128> pdiPath(tmpDirName);
-    sys::path::append(pdiPath, pdiFileName);
+    // Find bootgen (needed for subprocess fallback if library unavailable)
+    std::string bootgenPath = findAieTool("bootgen");
+#ifndef AIECC_HAS_BOOTGEN_LIBRARY
+    // Without library, we require bootgen subprocess
+    if (bootgenPath.empty()) {
+      llvm::errs()
+          << "Error: bootgen not found, cannot generate requested PDI/xclbin\n";
+      return failure();
+    }
+#endif
 
-    // Create BIF file
+    std::string pdiFileName = formatString(pdiName, devName);
+    // When user explicitly requests PDI (--aie-generate-pdi), write to CWD.
+    // Otherwise write to tmpDir for isolation (matches Python aiecc.py).
+    SmallString<128> pdiPath;
+    if (generatePdi) {
+      pdiPath = pdiFileName;
+    } else {
+      pdiPath = tmpDirName;
+      sys::path::append(pdiPath, pdiFileName);
+    }
+
+    // Create BIF file (skip in dry-run)
     SmallString<128> bifPath(tmpDirName);
     sys::path::append(bifPath, devName.str() + "_design.bif");
 
-    std::error_code ec;
-    raw_fd_ostream bifFile(bifPath, ec);
-    if (ec) {
-      llvm::errs() << "Error creating BIF file: " << ec.message() << "\n";
-      return failure();
-    }
+    if (!dryRun) {
+      std::error_code ec;
+      raw_fd_ostream bifFile(bifPath, ec);
+      if (ec) {
+        llvm::errs() << "Error creating BIF file: " << ec.message() << "\n";
+        return failure();
+      }
 
-    bifFile << "all:\n";
-    bifFile << "{\n";
-    bifFile << "  id_code = 0x14ca8093\n";
-    bifFile << "  extended_id_code = 0x01\n";
-    bifFile << "  image\n";
-    bifFile << "  {\n";
-    bifFile << "    name=aie_image, id=0x1c000000\n";
-    bifFile << "    { type=cdo ";
-    bifFile << "file=" << tmpDirName << "/" << devName << "_aie_cdo_elfs.bin ";
-    bifFile << "file=" << tmpDirName << "/" << devName << "_aie_cdo_init.bin ";
-    bifFile << "file=" << tmpDirName << "/" << devName << "_aie_cdo_enable.bin";
-    bifFile << " }\n";
-    bifFile << "  }\n";
-    bifFile << "}\n";
-    bifFile.close();
+      bifFile << "all:\n";
+      bifFile << "{\n";
+      bifFile << "  id_code = 0x14ca8093\n";
+      bifFile << "  extended_id_code = 0x01\n";
+      bifFile << "  image\n";
+      bifFile << "  {\n";
+      bifFile << "    name=aie_image, id=0x1c000000\n";
+      bifFile << "    { type=cdo ";
+      bifFile << "file=" << tmpDirName << "/" << devName
+              << "_aie_cdo_elfs.bin ";
+      bifFile << "file=" << tmpDirName << "/" << devName
+              << "_aie_cdo_init.bin ";
+      bifFile << "file=" << tmpDirName << "/" << devName
+              << "_aie_cdo_enable.bin";
+      bifFile << " }\n";
+      bifFile << "  }\n";
+      bifFile << "}\n";
+      bifFile.close();
+    }
 
     bool pdiGenerated = false;
 
 #ifdef AIECC_HAS_BOOTGEN_LIBRARY
     // Try using bootgen library directly via C API
-    if (verbose) {
-      llvm::outs() << "Using bootgen library for PDI generation\n";
-    }
-    char errorMsg[256] = {0};
-    int result = bootgen_generate_pdi(
-        std::string(bifPath).c_str(), std::string(pdiPath).c_str(),
-        BOOTGEN_ARCH_VERSAL, /*overwrite=*/1, errorMsg, sizeof(errorMsg));
-    if (result == BOOTGEN_SUCCESS) {
+    if (!dryRun) {
       if (verbose) {
-        llvm::outs() << "Generated PDI via library: " << pdiPath << "\n";
+        llvm::outs() << "Using bootgen library for PDI generation\n";
+        // Print equivalent command for verbose output compatibility
+        llvm::outs() << "bootgen -arch versal -image " << bifPath << " -o "
+                     << pdiPath << " -w\n";
+        llvm::outs().flush();
       }
-      pdiGenerated = true;
-    } else {
-      if (verbose) {
-        llvm::outs() << "bootgen library failed (" << errorMsg
-                     << "), falling back to subprocess\n";
+      char errorMsg[256] = {0};
+      int result = bootgen_generate_pdi(
+          std::string(bifPath).c_str(), std::string(pdiPath).c_str(),
+          BOOTGEN_ARCH_VERSAL, /*overwrite=*/1, errorMsg, sizeof(errorMsg));
+      if (result == BOOTGEN_SUCCESS) {
+        if (verbose) {
+          llvm::outs() << "Generated PDI via library: " << pdiPath << "\n";
+        }
+        pdiGenerated = true;
+      } else {
+        if (verbose) {
+          llvm::outs() << "bootgen library failed (" << errorMsg
+                       << "), falling back to subprocess\n";
+        }
       }
     }
 #endif // AIECC_HAS_BOOTGEN_LIBRARY
 
     // Subprocess fallback if library not available or failed
-    if (!pdiGenerated) {
-      std::string bootgenPath = findAieTool("bootgen");
+    if (!pdiGenerated && !dryRun) {
       if (bootgenPath.empty()) {
-        llvm::errs() << "Error: bootgen not found, cannot generate requested "
-                        "PDI/xclbin\n";
+        llvm::errs()
+            << "Error: bootgen not found, cannot generate requested PDI\n";
         return failure();
       }
 
@@ -3273,12 +4006,19 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                                 "-arch",
                                                 "versal",
                                                 "-image",
-                                                std::string(bifPath),
+                                                bifPath.str().str(),
                                                 "-o",
-                                                std::string(pdiPath),
+                                                pdiPath.str().str(),
                                                 "-w"};
 
-      if (!executeCommand(bootgenCmd)) {
+      if (verbose) {
+        llvm::outs() << bootgenPath << " -arch versal -image " << bifPath
+                     << " -o " << pdiPath << " -w\n";
+        llvm::outs().flush();
+      }
+
+      // Execute bootgen command
+      if (!executeCommand(bootgenCmd, /*verboseOutput=*/false)) {
         llvm::errs() << "Error generating PDI\n";
         return failure();
       }
@@ -3286,6 +4026,15 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
       if (verbose) {
         llvm::outs() << "Generated PDI: " << pdiPath << "\n";
       }
+    }
+
+    if (dryRun && verbose) {
+      if (!bootgenPath.empty()) {
+        llvm::outs() << bootgenPath << " -arch versal -image " << bifPath
+                     << " -o " << pdiPath << " -w\n";
+        llvm::outs() << "Dry run - command not executed\n";
+      }
+      llvm::outs() << "Would generate PDI: " << pdiPath << "\n";
     }
 
     // Generate xclbin if requested
@@ -3344,24 +4093,24 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                      "--input",
                      xclbinInput.getValue(),
                      "--add-kernel",
-                     std::string(kernelsPath),
+                     kernelsPath.str().str(),
                      "--add-replace-section",
-                     "AIE_PARTITION:JSON:" + std::string(mergedPartitionPath),
+                     "AIE_PARTITION:JSON:" + mergedPartitionPath.str().str(),
                      "--force",
                      "--output",
-                     std::string(xclbinPath)};
+                     xclbinPath.str().str()};
       } else {
         // Create new xclbin from scratch
         xclbinCmd = {xclbinutilPath,
                      "--add-replace-section",
-                     "MEM_TOPOLOGY:JSON:" + std::string(memTopoPath),
+                     "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
                      "--add-kernel",
-                     std::string(kernelsPath),
+                     kernelsPath.str().str(),
                      "--add-replace-section",
-                     "AIE_PARTITION:JSON:" + std::string(partitionPath),
+                     "AIE_PARTITION:JSON:" + partitionPath.str().str(),
                      "--force",
                      "--output",
-                     std::string(xclbinPath)};
+                     xclbinPath.str().str()};
       }
 
       if (!executeCommand(xclbinCmd)) {
@@ -3369,7 +4118,7 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
         return failure();
       }
 
-      if (verbose) {
+      if (verbose && !dryRun) {
         llvm::outs() << "Generated xclbin: " << xclbinPath << "\n";
       }
     }
@@ -3392,7 +4141,161 @@ static xilinx::aiecc::AiesimConfig createAiesimConfig() {
   config.hostTarget = hostTarget.getValue();
   config.aietoolsPath = getAietoolsDir();
   config.installPath = getInstallPath();
+
+  // Populate host args for aiesim ps.so compilation.
+  // Matches Python's strip_host_args_for_aiesim(): all host args except -o.
+  for (const auto &dir : hostIncludeDirs)
+    config.hostArgs.push_back("-I" + dir);
+  for (const auto &dir : hostLibDirs)
+    config.hostArgs.push_back("-L" + dir);
+  for (const auto &lib : hostLibs)
+    config.hostArgs.push_back("-l" + lib);
+  for (const auto &src : getHostSourceFiles())
+    config.hostArgs.push_back(src);
+
   return config;
+}
+
+//===----------------------------------------------------------------------===//
+// Host Compilation
+//===----------------------------------------------------------------------===//
+
+/// Compile host program using clang++.
+/// This matches the behavior of the old Python process_host_cgen() function.
+static LogicalResult compileHostProgram(StringRef tmpDirName,
+                                        StringRef aieTarget) {
+  if (!compileHost) {
+    return success();
+  }
+
+  std::vector<std::string> hostSourceFiles = getHostSourceFiles();
+  if (hostSourceFiles.empty()) {
+    if (verbose) {
+      llvm::outs() << "Host compilation enabled but no host source files "
+                      "provided, skipping\n";
+    }
+    return success();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Compiling host program\n";
+  }
+
+  // Find clang++ in PATH
+  auto clangppPath = sys::findProgramByName("clang++");
+  if (!clangppPath) {
+    llvm::errs() << "Error: Could not find clang++ in PATH for host "
+                    "compilation\n";
+    return failure();
+  }
+
+  SmallVector<std::string, 32> cmd;
+  cmd.push_back(*clangppPath);
+  cmd.push_back("-std=c++17");
+
+  // Set host target
+  if (!hostTarget.empty()) {
+    cmd.push_back("--target=" + hostTarget.getValue());
+  }
+
+  // Set sysroot
+  if (!sysroot.empty()) {
+    cmd.push_back("--sysroot=" + sysroot.getValue());
+    if (hostTarget.getValue() == "aarch64-linux-gnu") {
+      cmd.push_back("--gcc-toolchain=" + sysroot.getValue() + "/usr");
+    }
+  }
+
+  // Auto-discover runtime library paths
+  std::string installPath = getInstallPath();
+  std::string archName;
+
+  if (linkAgainstHsa) {
+    archName = StringRef(hostTarget.getValue()).split('-').first.str() + "-hsa";
+  } else {
+    archName = StringRef(hostTarget.getValue()).split('-').first.str();
+  }
+
+  // xaiengine include and library paths
+  SmallString<256> xaiengineInclude(installPath);
+  sys::path::append(xaiengineInclude, "runtime_lib", archName, "xaiengine",
+                    "include");
+
+  SmallString<256> xaiengineLib(installPath);
+  sys::path::append(xaiengineLib, "runtime_lib", archName, "xaiengine", "lib");
+
+  // Memory allocator library
+  SmallString<256> testLibPath(installPath);
+  sys::path::append(testLibPath, "runtime_lib", archName, "test_lib", "lib");
+  SmallString<256> memAllocator(testLibPath);
+  if (linkAgainstHsa) {
+    sys::path::append(memAllocator, "libmemory_allocator_hsa.a");
+  } else {
+    sys::path::append(memAllocator, "libmemory_allocator_ion.a");
+  }
+
+  // Add auto-discovered paths
+  cmd.push_back(memAllocator.str().str());
+  cmd.push_back("-I" + xaiengineInclude.str().str());
+  cmd.push_back("-L" + xaiengineLib.str().str());
+  cmd.push_back("-Wl,-R" + xaiengineLib.str().str());
+  cmd.push_back("-I" + tmpDirName.str());
+  cmd.push_back("-fuse-ld=lld");
+  cmd.push_back("-lm");
+  cmd.push_back("-lxaienginecdo");
+
+  // HSA-specific flags
+  if (linkAgainstHsa) {
+    cmd.push_back("-DHSA_RUNTIME");
+  }
+
+  // AIE target defines
+  auto targetDefines = xilinx::aiecc::getAieTargetDefines(aieTarget);
+  for (const auto &def : targetDefines) {
+    cmd.push_back(def);
+  }
+
+  // User-provided include directories
+  for (const auto &dir : hostIncludeDirs) {
+    cmd.push_back("-I" + dir);
+  }
+
+  // User-provided library directories
+  for (const auto &dir : hostLibDirs) {
+    cmd.push_back("-L" + dir);
+  }
+
+  // User-provided libraries
+  for (const auto &lib : hostLibs) {
+    cmd.push_back("-l" + lib);
+  }
+
+  // Any additional unrecognized flags (e.g. -Wl,... -lstdc++)
+  for (const auto &arg : sinkArgs) {
+    cmd.push_back(arg);
+  }
+
+  // Host source files
+  for (const auto &src : hostSourceFiles) {
+    cmd.push_back(src);
+  }
+
+  // Output filename
+  if (!outputFilename.empty()) {
+    cmd.push_back("-o");
+    cmd.push_back(outputFilename.getValue());
+  }
+
+  if (!executeCommand(cmd)) {
+    llvm::errs() << "Error: Host compilation failed\n";
+    return failure();
+  }
+
+  if (verbose) {
+    llvm::outs() << "Host compilation completed successfully\n";
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3523,9 +4426,18 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
 
     // Compile cores using in-memory LLVM lowering and translation
     std::map<std::pair<int, int>, std::string> elfPaths;
-    if (failed(compileCores(context, moduleOp, deviceOp, devName, tmpDirName,
-                            aieTarget, elfPaths))) {
-      return failure();
+    if (unified) {
+      // Unified compilation: all cores compiled together into one object
+      if (failed(compileCoresUnified(context, moduleOp, deviceOp, devName,
+                                     tmpDirName, aieTarget, elfPaths))) {
+        return failure();
+      }
+    } else {
+      // Per-core compilation (default): each core compiled separately
+      if (failed(compileCores(context, moduleOp, deviceOp, devName, tmpDirName,
+                              aieTarget, elfPaths))) {
+        return failure();
+      }
     }
 
     // Update module with ELF paths in-memory (no disk I/O)
@@ -3590,10 +4502,23 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       }
 
       // PDI path (must match generateCdoArtifacts output)
+      // When --aie-generate-pdi is set, PDI is in CWD; otherwise in tmpDir.
       std::string pdiFileName = formatString(pdiName, devName);
-      SmallString<256> pdiFullPath(absTmpDir);
-      sys::path::append(pdiFullPath, pdiFileName);
-      info.pdiPath = std::string(pdiFullPath);
+      SmallString<256> pdiFullPath;
+      if (generatePdi) {
+        // CWD-relative
+        if (sys::path::is_absolute(pdiFileName)) {
+          pdiFullPath = pdiFileName;
+        } else {
+          sys::fs::current_path(pdiFullPath);
+          sys::path::append(pdiFullPath, pdiFileName);
+        }
+      } else {
+        // Inside tmpDir
+        pdiFullPath = absTmpDir;
+        sys::path::append(pdiFullPath, pdiFileName);
+      }
+      info.pdiPath = pdiFullPath.str().str();
 
       // Collect runtime sequence instruction paths (also absolute)
       for (auto seqOp : deviceOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
@@ -3602,7 +4527,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
             formatString(instsName, devName.str(), seqName);
         SmallString<256> instsFullPath(absTmpDir);
         sys::path::append(instsFullPath, instsFileName);
-        info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
+        info.sequences.emplace_back(seqName.str(), instsFullPath.str().str());
       }
 
       deviceElfInfos.push_back(std::move(info));
@@ -3611,6 +4536,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
 
   // Generate full ELF after all devices are processed
   if (failed(generateFullElfArtifact(deviceElfInfos, tmpDirName))) {
+    return failure();
+  }
+
+  // Host compilation (after all device processing, since host code may
+  // #include "aie_inc.cpp" which is generated by generateAieIncCpp above)
+  if (failed(compileHostProgram(tmpDirName, aieTarget))) {
     return failure();
   }
 
@@ -3713,6 +4644,9 @@ int main(int argc, char **argv) {
   }
 
   // Handle conflicting options
+  if (noAiesim) {
+    aiesim = false;
+  }
   if (noXbridge) {
     xbridge = false;
   }
@@ -3725,8 +4659,8 @@ int main(int argc, char **argv) {
   if (noLink) {
     link = false;
   }
-  if (noAiesim) {
-    aiesim = false;
+  if (noUnified) {
+    unified = false;
   }
   if (noCompileHost) {
     compileHost = false;
@@ -3740,5 +4674,5 @@ int main(int argc, char **argv) {
   }
 
   // Process the input file
-  return processInputFile(inputFilename, tmpDir);
+  return processInputFile(getInputFilename(), tmpDir);
 }
