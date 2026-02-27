@@ -1016,8 +1016,27 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
   unsigned shiftParam;
 };
 
-// Convert `vector.fma` to `aievec.mac_elem`. Only `vector<16xf32>` and
-// `vector<16xbf16>` operand types are supported. In the case of vectors with
+// Lower a single 16-lane bf16 FMA half: UPS -> FMAElem -> SRS.
+static Value lowerBF16FMAHalf(Value lhs, Value rhs, Value acc,
+                              unsigned shiftParam, Location loc,
+                              ConversionPatternRewriter &rewriter) {
+  auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
+  auto upsOp =
+      aievec::UPSOp::create(rewriter, loc, f32AccType, acc, shiftParam);
+  auto fmaElemOp = aievec::FMAElemOp::create(rewriter, loc, f32AccType, lhs,
+                                             rhs, upsOp.getResult(),
+                                             /*fmsub=*/false);
+  auto shiftParamOp = arith::ConstantOp::create(
+      rewriter, loc, rewriter.getI32IntegerAttr(shiftParam));
+  auto srsOp =
+      aievec::SRSOp::create(rewriter, loc, cast<VectorType>(lhs.getType()),
+                            fmaElemOp.getResult(), shiftParamOp.getResult());
+  return srsOp.getResult();
+}
+
+// Convert `vector.fma` to `aievec.mac_elem`. Supported operand types:
+// `vector<16xf32>`, `vector<16xbf16>`, and `vector<32xbf16>` (split into two
+// 16-lane FMAs). In the case of vectors with
 // `f32` elemental type, this pattern will try to match `bf16` to `f32`
 // widening ops in the `lhs` and `rhs` operands, or fail otherwise.
 // TODO: When sign extensions are not found, a conversion from `f32` to `bf16`
@@ -1038,8 +1057,9 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
     auto resElemTy = resVecTy.getElementType();
     unsigned numElems = getVectorLaneSize(resVecTy);
 
+    // Only support f32 with 16 lanes; bf16 with 16 or 32 lanes.
     if ((!resElemTy.isF32() && !resElemTy.isBF16()) ||
-        (numElems != 16 && numElems != 32))
+        (numElems != 16 && !(resElemTy.isBF16() && numElems == 32)))
       return rewriter.notifyMatchFailure(
           fmaOp, "Unsupported operand types in vector.fma lowering.");
 
@@ -1060,24 +1080,10 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
             auto [rhsLow, rhsHigh] = halfInputs[1];
             auto [accLow, accHigh] = halfInputs[2];
 
-            auto processHalf = [&](Value lhsH, Value rhsH,
-                                   Value accH) -> Value {
-              auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
-              auto upsOp = aievec::UPSOp::create(rewriter, loc, f32AccType,
-                                                 accH, localShiftParam);
-              auto fmaElemOp = aievec::FMAElemOp::create(
-                  rewriter, loc, f32AccType, lhsH, rhsH, upsOp.getResult(),
-                  /*fmsub=*/false);
-              auto shiftParamOp = arith::ConstantOp::create(
-                  rewriter, loc, rewriter.getI32IntegerAttr(localShiftParam));
-              auto srsOp = aievec::SRSOp::create(
-                  rewriter, loc, cast<VectorType>(lhsH.getType()),
-                  fmaElemOp.getResult(), shiftParamOp.getResult());
-              return srsOp.getResult();
-            };
-
-            Value lowResult = processHalf(lhsLow, rhsLow, accLow);
-            Value highResult = processHalf(lhsHigh, rhsHigh, accHigh);
+            Value lowResult = lowerBF16FMAHalf(lhsLow, rhsLow, accLow,
+                                               localShiftParam, loc, rewriter);
+            Value highResult = lowerBF16FMAHalf(lhsHigh, rhsHigh, accHigh,
+                                                localShiftParam, loc, rewriter);
             return std::make_pair(lowResult, highResult);
           });
       return success();
@@ -1164,24 +1170,10 @@ struct ConvertMulAddFToAIEVecFMAElemOpPattern
             auto [rhsLow, rhsHigh] = halfInputs[1];
             auto [accLow, accHigh] = halfInputs[2];
 
-            auto processHalf = [&](Value lhsH, Value rhsH,
-                                   Value accH) -> Value {
-              auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
-              auto upsOp = aievec::UPSOp::create(rewriter, loc, f32AccType,
-                                                 accH, localShiftParam);
-              auto fmaElemOp = aievec::FMAElemOp::create(
-                  rewriter, loc, f32AccType, lhsH, rhsH, upsOp.getResult(),
-                  /*fmsub=*/false);
-              auto shiftParamOp = arith::ConstantOp::create(
-                  rewriter, loc, rewriter.getI32IntegerAttr(localShiftParam));
-              auto srsOp = aievec::SRSOp::create(
-                  rewriter, loc, cast<VectorType>(lhsH.getType()),
-                  fmaElemOp.getResult(), shiftParamOp.getResult());
-              return srsOp.getResult();
-            };
-
-            Value lowResult = processHalf(lhsLow, rhsLow, accLow);
-            Value highResult = processHalf(lhsHigh, rhsHigh, accHigh);
+            Value lowResult = lowerBF16FMAHalf(lhsLow, rhsLow, accLow,
+                                               localShiftParam, loc, rewriter);
+            Value highResult = lowerBF16FMAHalf(lhsHigh, rhsHigh, accHigh,
+                                                localShiftParam, loc, rewriter);
             return std::make_pair(lowResult, highResult);
           });
       return success();
