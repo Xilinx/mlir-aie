@@ -2688,6 +2688,12 @@ static std::string findAiebuAsm() {
     return xrtPath;
   }
 
+  // Try Ubuntu package location
+  std::string ubuntuPath = "/usr/bin/aiebu-asm";
+  if (sys::fs::can_execute(ubuntuPath)) {
+    return ubuntuPath;
+  }
+
   // Try standalone aiebu installation
   std::string defaultPath = "/opt/xilinx/aiebu/bin/aiebu-asm";
   if (sys::fs::can_execute(defaultPath)) {
@@ -2923,8 +2929,9 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   // Find aiebu-asm binary for subprocess fallback
   std::string aiebuAsmBin = findAiebuAsm();
   if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found in PATH or at "
-                    "/opt/xilinx/aiebu/bin/aiebu-asm\n";
+    llvm::errs() << "Error: aiebu-asm not found in PATH or at known "
+                    "locations (/opt/xilinx/xrt/bin, /usr/bin, "
+                    "/opt/xilinx/aiebu/bin)\n";
     return failure();
   }
 

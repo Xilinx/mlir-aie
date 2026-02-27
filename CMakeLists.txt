@@ -110,7 +110,7 @@ find_package(hsa-runtime64)
 # Find AIEBU library for direct ELF generation (optional, falls back to subprocess)
 find_package(aiebu QUIET
   PATHS /opt/xilinx/xrt/share/cmake/AIEBU
-  NO_DEFAULT_PATH
+        /usr/share/cmake/AIEBU
 )
 if(aiebu_FOUND)
   message(STATUS "Found AIEBU library - aiecc will use direct library calls for ELF generation")

@@ -106,9 +106,11 @@ class XRTHostRuntime(HostRuntime):
 
                     # Try running xrt-smi examine
                     # We need to find xrt-smi. It might be in PATH or /opt/xilinx/xrt/bin
-                    xrt_bin = (
-                        os.environ.get("XILINX_XRT", "/opt/xilinx/xrt") + "/bin/xrt-smi"
-                    )
+                    xrt_base = os.environ.get("XILINX_XRT", "/opt/xilinx/xrt")
+                    xrt_bin = xrt_base + "/bin/xrt-smi"
+                    if not os.path.exists(xrt_bin):
+                        # Try Ubuntu package location
+                        xrt_bin = "/usr/bin/xrt-smi"
                     if os.path.exists(xrt_bin):
                         print(f"Running {xrt_bin} examine", file=sys.stderr)
                         result = subprocess.run(

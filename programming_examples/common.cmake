@@ -33,6 +33,26 @@ if(NOT MLIR_AIE_DIR)
 endif()
 
 # -----------------------------------------------------------------------------
+# XRT auto-detection (supports both Ubuntu packages and legacy /opt/xilinx/xrt)
+# -----------------------------------------------------------------------------
+if(NOT DEFINED XRT_INC_DIR AND NOT DEFINED XRT_LIB_DIR)
+    find_package(XRT QUIET)
+    if(XRT_FOUND)
+        set(XRT_INC_DIR "${XRT_INCLUDE_DIRS}" CACHE STRING "Path to XRT headers")
+        set(XRT_LIB_DIR "${XRT_LINK_DIRS}" CACHE STRING "Path to XRT libraries")
+    else()
+        find_program(WSL NAMES powershell.exe)
+        if(NOT WSL)
+            set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
+            set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to XRT libraries")
+        else()
+            set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT headers")
+            set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to XRT libraries")
+        endif()
+    endif()
+endif()
+
+# -----------------------------------------------------------------------------
 # test_utils discovery
 # -----------------------------------------------------------------------------
 # Preferred: installed layout (from cmake --install). Fallback: build from source.
