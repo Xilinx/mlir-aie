@@ -8,14 +8,17 @@ from datetime import datetime
 from pathlib import Path
 from pprint import pprint
 from typing import Union
-
-from pip._internal.req import parse_requirements
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
 
 def check_env(build, default=0):
     return os.getenv(build, str(default)) in {"1", "true", "True", "ON", "YES"}
+
+
+# Always use forward slashes for CMake paths.
+def _cmake_path(p: object) -> str:
+    return os.fspath(p).replace("\\", "/")
 
 
 class CMakeExtension(Extension):
@@ -90,16 +93,17 @@ class CMakeBuild(build_ext):
             MLIR_INSTALL_ABS_PATH = Path("/tmp/m").absolute()
 
         cmake_args = [
-            f"-G {cmake_generator}",
-            f"-DMLIR_DIR={MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir'}",
-            f"-DAIE_DIR={MLIR_AIE_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'aie'}",
-            f"-DCMAKE_INSTALL_PREFIX={install_dir}",
+            "-G",
+            cmake_generator,
+            f"-DMLIR_DIR={_cmake_path(MLIR_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'mlir')}",
+            f"-DAIE_DIR={_cmake_path(MLIR_AIE_INSTALL_ABS_PATH / 'lib' / 'cmake' / 'aie')}",
+            f"-DCMAKE_INSTALL_PREFIX={_cmake_path(install_dir)}",
             # get rid of that annoying af git on the end of .17git of libAIEAggregateCAPI.so
             "-DLLVM_VERSION_SUFFIX=",
             # Disables generation of "version soname" (i.e. libFoo.so.<version>), which
             # causes pure duplication of various shlibs for Python wheels.
             "-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON",
-            f"-DPython3_EXECUTABLE={sys.executable}",
+            f"-DPython3_EXECUTABLE={_cmake_path(sys.executable)}",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
             # not used on MSVC, but no harm
             f"-DCMAKE_BUILD_TYPE={cfg}",
@@ -111,9 +115,9 @@ class CMakeBuild(build_ext):
 
         if os.getenv("CMAKE_MODULE_PATH"):
             cmake_module_path = f"{Path(os.getenv('CMAKE_MODULE_PATH')).absolute()}"
-            cmake_args.append(f"-DCMAKE_MODULE_PATH={cmake_module_path}")
+            cmake_args.append(f"-DCMAKE_MODULE_PATH={_cmake_path(cmake_module_path)}")
         if os.getenv("XRT_ROOT"):
-            xrt_dir = f"{Path(os.getenv('XRT_ROOT')).absolute()}"
+            xrt_dir = _cmake_path(Path(os.getenv("XRT_ROOT")).absolute())
             cmake_args.append(f"-DXRT_ROOT={xrt_dir}")
 
         if platform.system() == "Windows":
@@ -137,7 +141,6 @@ class CMakeBuild(build_ext):
 
                     ninja_executable_path = Path(ninja.BIN_DIR) / "ninja"
                     cmake_args += [
-                        "-GNinja",
                         f"-DCMAKE_MAKE_PROGRAM:FILEPATH={ninja_executable_path}",
                     ]
                 except ImportError:
@@ -180,12 +183,11 @@ class CMakeBuild(build_ext):
         print("ENV", pprint(os.environ), file=sys.stderr)
         print("cmake", " ".join(cmake_args), file=sys.stderr)
 
+        cmake_src = ext.sourcedir
         if platform.system() == "Windows":
-            cmake_args = [c.replace("\\", "\\\\") for c in cmake_args]
+            cmake_src = _cmake_path(cmake_src)
 
-        subprocess.run(
-            ["cmake", ext.sourcedir, *cmake_args], cwd=build_temp, check=True
-        )
+        subprocess.run(["cmake", cmake_src, *cmake_args], cwd=build_temp, check=True)
         subprocess.run(
             ["cmake", "--build", ".", "--target", "install", *build_args],
             cwd=build_temp,
@@ -206,6 +208,38 @@ name = "aie-python-bindings"
 if DEBUG:
     name += "-debug"
 
+
+# Read requirements.txt if present (created by the wheel build scripts).
+def _read_requirements(req_file: Path) -> list[str]:
+    try:
+        lines = req_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+
+    out: list[str] = []
+    cont = ""
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        if cont:
+            line = f"{cont} {line}"
+            cont = ""
+        if line.endswith("\\"):
+            cont = line[:-1].rstrip()
+            continue
+
+        if " #" in line:
+            line = line.split(" #", 1)[0].strip()
+        if not line or line.startswith("-"):
+            continue
+
+        out.append(line)
+
+    return out
+
+
 setup(
     version=os.getenv("MLIR_AIE_WHEEL_VERSION", version),
     author="",
@@ -221,8 +255,5 @@ setup(
             "aiecc=aie.compiler.aiecc.main:main",
         ],
     },
-    install_requires=[
-        str(ir.requirement)
-        for ir in parse_requirements("requirements.txt", session="hack")
-    ],
+    install_requires=_read_requirements(Path(__file__).parent / "requirements.txt"),
 )
