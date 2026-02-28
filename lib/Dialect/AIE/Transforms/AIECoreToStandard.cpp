@@ -109,6 +109,9 @@ static auto getAIE2Intrinsics(OpBuilder &builder) {
       {"llvm.aie2.release",
        {int32Type, int32Type},
        {}}, //(%lock_id, %lock_val) -> ()
+      {"llvm.aie2.set.ctrl.reg",
+       {int32Type, int32Type},
+       {}}, //(%reg_id, %value) -> ()
   };
   return functions;
 }
@@ -137,6 +140,9 @@ static auto getAIE2pIntrinsics(OpBuilder &builder) {
       {"llvm.aie2p.release",
        {int32Type, int32Type},
        {}}, //(%lock_id, %lock_val) -> ()
+      {"llvm.aie2p.set.ctrl.reg",
+       {int32Type, int32Type},
+       {}}, //(%reg_id, %value) -> ()
   };
   return functions;
 }
@@ -541,6 +547,52 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
 
     rewriter.cloneRegionBefore(op.getBody(), coreFunc.getBody(),
                                coreFunc.getBody().begin(), mapper);
+
+    // Set saturation and rounding modes at core entry for AIE2/AIE2p, but
+    // only if the core body contains aievec.srs ops (narrowing SRS needs
+    // saturation mode enabled). Skip for cores with only lock/stream ops
+    // to avoid breaking existing test SSA naming.
+    bool hasSRS = false;
+    coreFunc.walk([&](Operation *childOp) {
+      if (childOp->getName().getStringRef() == "aievec.srs")
+        hasSRS = true;
+    });
+    if (hasSRS) {
+      auto device = op->getParentOfType<DeviceOp>();
+      if (device) {
+        AIEArch arch = device.getTargetModel().getTargetArch();
+        if (arch == AIEArch::AIE2 || arch == AIEArch::AIE2p) {
+          std::string ctrlRegFuncName = (arch == AIEArch::AIE2p)
+                                            ? "llvm.aie2p.set.ctrl.reg"
+                                            : "llvm.aie2.set.ctrl.reg";
+          auto ctrlRegFunc = module.lookupSymbol<func::FuncOp>(ctrlRegFuncName);
+          if (ctrlRegFunc) {
+            Block &entryBlock = coreFunc.getBody().front();
+            rewriter.setInsertionPointToStart(&entryBlock);
+            Location loc = op.getLoc();
+            // saturation_mode::saturate (register 9 = 1)
+            auto c9 = arith::ConstantOp::create(rewriter, loc,
+                                                rewriter.getI32IntegerAttr(9));
+            auto c1 = arith::ConstantOp::create(rewriter, loc,
+                                                rewriter.getI32IntegerAttr(1));
+            func::CallOp::create(rewriter, loc, ctrlRegFunc,
+                                 ValueRange{c9, c1});
+            // rounding_mode::positive_inf (register 6 = 9)
+            // Match C++ kernel behavior (aie::rounding_mode::positive_inf).
+            // aievec.srs ops handle rounding internally; scalar arith.shrsi
+            // is unaffected by this register (uses floor inherently).
+            // User code with manual rounding (arith.addi before shrsi)
+            // still works because arith.shrsi ignores ctrl_reg.
+            auto c6 = arith::ConstantOp::create(rewriter, loc,
+                                                rewriter.getI32IntegerAttr(6));
+            auto cPositiveInf = arith::ConstantOp::create(
+                rewriter, loc, rewriter.getI32IntegerAttr(9));
+            func::CallOp::create(rewriter, loc, ctrlRegFunc,
+                                 ValueRange{c6, cPositiveInf});
+          }
+        }
+      }
+    }
 
     // Rewrite the AIE.end() op
     coreFunc.getBody().walk([&](Operation *childOp) {

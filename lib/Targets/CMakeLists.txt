@@ -35,6 +35,7 @@ add_mlir_library(AIETargets
   AIETargetCDODirect.cpp
   AIETargetNPU.cpp
   AIETargetLdScript.cpp
+  AIETargetUcCert.cpp
   AIETargetXAIEV2.cpp
   AIETargetHSA.cpp
   AIETargetShared.cpp

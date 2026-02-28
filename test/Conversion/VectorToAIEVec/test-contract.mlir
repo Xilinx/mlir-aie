@@ -175,3 +175,36 @@ func.func @contracti64i64i64(%A : vector<4x2xi32>,
   return %2 : vector<4x4xi64>
 }
 
+// Mixed signedness: unsigned A (extui) × signed B (extsi) for i8 matmul.
+// This pattern occurs in quantized CNNs where activations are uint8 and
+// weights are int8 (e.g., conv1x1_skip in bottleneck).
+
+// CHECK-LABEL: func.func @contract_extui_extsi_i8(
+// CHECK-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xi8>,
+// CHECK-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x8xi8>,
+// CHECK-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
+// CHECK:        %[[ACC:.*]] = aievec.cast %[[C]] {isResAcc = true} : vector<4x8xi32>, vector<4x8xi32>
+// CHECK:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[ACC]] :
+// CHECK-SAME:   vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+// CHECK:        %[[R:.*]] = aievec.cast %[[MM]] {isResAcc = false} : vector<4x8xi32>, vector<4x8xi32>
+// CHECK:        return %[[R]] : vector<4x8xi32>
+
+// CHECK-LLVM-LABEL: func.func @contract_extui_extsi_i8(
+// CHECK-LLVM-SAME: %[[A:[a-zA-Z0-9]+]]: vector<4x8xi8>,
+// CHECK-LLVM-SAME: %[[B:[a-zA-Z0-9]+]]: vector<8x8xi8>,
+// CHECK-LLVM-SAME: %[[C:[a-zA-Z0-9]+]]: vector<4x8xi32>) -> vector<4x8xi32> {
+// CHECK-LLVM:        %[[MM:.*]] = aievec.matmul %[[A]], %[[B]], %[[C]] :
+// CHECK-LLVM-SAME:   vector<4x8xi8>, vector<8x8xi8> into vector<4x8xi32>
+// CHECK-LLVM:        return %[[MM]] : vector<4x8xi32>
+func.func @contract_extui_extsi_i8(%A : vector<4x8xi8>,
+                                    %B : vector<8x8xi8>,
+                                    %C : vector<4x8xi32>) -> vector<4x8xi32> {
+  %0 = arith.extui %A : vector<4x8xi8> to vector<4x8xi32>
+  %1 = arith.extsi %B : vector<8x8xi8> to vector<8x8xi32>
+  %2 = vector.contract {indexing_maps = [#map1, #map2, #map3],
+                        iterator_types = ["parallel", "parallel", "reduction"],
+                        kind = #vector.kind<add>} %0, %1, %C :
+                        vector<4x8xi32>, vector<8x8xi32> into vector<4x8xi32>
+  return %2 : vector<4x8xi32>
+}
+

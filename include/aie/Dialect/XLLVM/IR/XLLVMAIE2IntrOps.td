@@ -619,6 +619,13 @@ def Exp2AIE2pIntrOp :
         [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
     Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
 
+// ----- TANH -----
+
+def TanhAIE2pIntrOp :
+    AIEVec2p_IntrOp<"tanh",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [BF16]>>]>,
+    Arguments<(ins VectorOfLengthAndType<[16], [F32]>:$src)>;
+
 // ----- INVSQRT (Reciprocal Square Root) -----
 
 def InvsqrtAIE2pIntrOp :
@@ -837,5 +844,37 @@ def VectorMinGeBf16AIE2pIntrOp :
                 I32]>
         >], /*numResults=*/2>,
     AIE2BF16MinMaxElem;
+
+// ----- VECTOR SELECT -----
+
+class AIE2I16SelElem :
+    Arguments<(ins VectorOfLengthAndType<[32], [I16]>:$lhs,
+                   VectorOfLengthAndType<[32], [I16]>:$rhs,
+                   I32:$sel)> ;
+
+class AIE2I32SelElem :
+    Arguments<(ins VectorOfLengthAndType<[16], [I32]>:$lhs,
+                   VectorOfLengthAndType<[16], [I32]>:$rhs,
+                   I32:$sel)> ;
+
+def VectorSel16IntrOp :
+    AIEVec2_IntrOp<"vsel16",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+    AIE2I16SelElem;
+
+def VectorSel32IntrOp :
+    AIEVec2_IntrOp<"vsel32",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    AIE2I32SelElem;
+
+def VectorSel16AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vsel16",
+        [TypeIs<"res", VectorOfLengthAndType<[32], [I16]>>]>,
+    AIE2I16SelElem;
+
+def VectorSel32AIE2pIntrOp :
+    AIEVec2p_IntrOp<"vsel32",
+        [TypeIs<"res", VectorOfLengthAndType<[16], [I32]>>]>,
+    AIE2I32SelElem;
 
 #endif // AIE_DIALECT_XLLVM_IR_XLLVMAIE2INTROPS_TD

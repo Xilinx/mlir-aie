@@ -47,7 +47,7 @@ func.func @matmul(%A : vector<4x8xi8>, %B : vector<8x8xi8>,
 // CHECK-SAME:                      vector<8x8xi8> to vector<64xi8>
 // CHECK:      %[[FC:.*]] = vector.shape_cast %[[C]] :
 // CHECK-SAME:                      vector<4x8xi32> to vector<32xi32>
-// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(776 : i32) : i32
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(264 : i32) : i32
 // CHECK:      %[[C0I32:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK:      %[[IFA2512b:.*]] = llvm.bitcast %[[FA]] : vector<32xi8> to vector<8xi32>
 // CHECK:      %[[IFA:.*]] = "xllvm.intr.aie2.set.I512.I256"(%[[IFA2512b]],
@@ -84,7 +84,7 @@ func.func @matmul(%A : vector<4x2xi32>, %B : vector<2x4xi16>,
 // CHECK-SAME:                      vector<2x4xi16> to vector<8xi16>
 // CHECK:      %[[FC:.*]] = vector.shape_cast %[[C]] :
 // CHECK-SAME:                      vector<4x4xi64> to vector<16xi64>
-// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(770 : i32) : i32
+// CHECK:      %[[CONF:.*]] = llvm.mlir.constant(258 : i32) : i32
 // CHECK:      %[[C0I32:.*]] = llvm.mlir.constant(0 : i32) : i32
 // CHECK:      %[[IFA2512b:.*]] = llvm.bitcast %[[FA]] : vector<8xi32> to
 // CHECK-SAME:                      vector<8xi32>

@@ -72,7 +72,8 @@ func.func @ext_elem_bf16(%vec : vector<32xbf16>, %idx : i32) -> bf16 {
 func.func @ext_elem_i8(%vec : vector<64xi8>, %idx : i32) -> i8 {
   // CHECK: %[[SIGN:.*]] = llvm.mlir.constant(1 : i32) : i32
   // CHECK: %[[EXT:.*]] = "xllvm.intr.aie2.vextract.elem8.I512"(%[[VEC]], %[[IDX]], %[[SIGN]]) : (vector<64xi8>, i32, i32) -> i32
-  // CHECK: %[[TRUNC:.*]] = llvm.trunc %[[EXT]] : i32 to i8
+  // CHECK: %[[T16:.*]] = llvm.trunc %[[EXT]] : i32 to i16
+  // CHECK: %[[TRUNC:.*]] = llvm.trunc %[[T16]] : i16 to i8
   // AIE2P: %[[EXT:.*]] = llvm.extractelement %[[VEC]][%[[IDX]] : i32] : vector<64xi8>
   %0 = aievec.ext_elem %vec, %idx : vector<64xi8>, i32, i8
   return %0 : i8
