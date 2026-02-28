@@ -910,9 +910,12 @@ class FlowRunner:
                 file_llvmir_opt = self.prepend_tmp(f"{device_name}_input.opt.ll")
                 opt_level = opts.opt_level
                 # Disable loop idiom memset for O3 and above.
-                # Rationale: memset is executed as scalar operation, while zeroinitializer will be executed as vector
-                # Cap opt at O1 to prevent SLP vectorizer from creating sub-512-bit
-                # vector types that crash the AIE2 llc backend.
+                # Rationale: memset is executed as scalar operation, while
+                # zeroinitializer will be executed as vector.
+                # Cap opt at O1 to prevent LLVM's SLP vectorizer from
+                # creating sub-512-bit vector types (e.g., <4 x i8>) that
+                # crash the AIE2 GlobalISel legalizer. This is still needed
+                # for any scalar ops in the core (e.g., memref.copy loops).
                 safe_opt = min(int(opt_level), 1)
                 opt_flags = [f"--passes=default<O{safe_opt}>"]
                 if int(opt_level) >= 3:
@@ -1038,7 +1041,11 @@ class FlowRunner:
                     file_core_llvmir_stripped = corefile(self.tmpdirname, device_name, core, "stripped.ll")
                     opt_level = opts.opt_level
                     # Disable loop idiom memset for O3 and above.
-                    # Rationale: memset is executed as scalar operation, while zeroinitializer will be executed as vector
+                    # Rationale: memset is executed as scalar operation, while
+                    # zeroinitializer will be executed as vector.
+                    # Cap opt at O1 to prevent LLVM's SLP vectorizer from
+                    # creating sub-512-bit vector types (e.g., <4 x i8>) that
+                    # crash the AIE2 GlobalISel legalizer.
                     safe_opt = min(int(opt_level), 1)
                     opt_flags = [f"--passes=default<O{safe_opt}>,strip"]
                     if int(opt_level) >= 3:
