@@ -1238,6 +1238,40 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `aievec.tanh` (::xilinx::aievec::TanhOp)
+
+_AIE vector hyperbolic tangent_
+
+Syntax:
+
+```
+operation ::= `aievec.tanh` $source attr-dict `:` type($result)
+```
+
+AMD-specific intrinsic that computes the hyperbolic tangent of the input
+vector. For AIE2P, this is lowered to the hardware tanh intrinsic.
+`$result = tanh(`$source`).
+
+Traits: `AlwaysSpeculatableImplTrait`
+
+Interfaces: `ConditionallySpeculatable`, `InferTypeOpInterface`, `NoMemoryEffect (MemoryEffectOpInterface)`
+
+Effects: `MemoryEffects::Effect{}`
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `source` | vector of any type values |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `result` | vector of any type values |
+
+
+
 ### `aievec.unpack` (::xilinx::aievec::UnpackOp)
 
 _AIE unpack_

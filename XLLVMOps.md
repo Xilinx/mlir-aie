@@ -1629,6 +1629,22 @@ Effects: `MemoryEffects::Effect{}`
 
 
 
+### `xllvm.intr.aie2p.tanh` (::xilinx::xllvm::TanhAIE2pIntrOp)
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `src` | vector of 32-bit float values of length 16 |
+
+#### Results:
+
+| Result | Description |
+| :----: | ----------- |
+| `res` | LLVM dialect-compatible type |
+
+
+
 ### `xllvm.intr.aie2p.v16accfloat.to.v16bf16` (::xilinx::xllvm::Vector16AccFloatToV16BF16AIE2pIntrOp)
 
 Traits: `AlwaysSpeculatableImplTrait`
