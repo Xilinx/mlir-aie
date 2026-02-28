@@ -519,6 +519,23 @@ def AIEVec_ExpOp:
   let hasVerifier = 0;
 }
 
+def AIEVec_TanhOp:
+  AIEVec_Op<"tanh", [
+    Pure,
+    AllTypesMatch<["source", "result"]>
+  ]>,
+  Arguments<(ins AnyVectorOfNonZeroRank:$source)>,
+  Results<(outs AnyVectorOfNonZeroRank:$result)> {
+  let summary = "AIE vector hyperbolic tangent";
+  let description = [{
+    AMD-specific intrinsic that computes the hyperbolic tangent of the input
+    vector. For AIE2P, this is lowered to the hardware tanh intrinsic.
+    `$result = tanh(`$source`).
+  }];
+  let assemblyFormat = "$source attr-dict `:` type($result)";
+  let hasVerifier = 0;
+}
+
 def AIEVec_InvOp:
   AIEVec_Op<"inv", [
     Pure,
