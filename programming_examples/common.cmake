@@ -33,6 +33,41 @@ if(NOT MLIR_AIE_DIR)
 endif()
 
 # -----------------------------------------------------------------------------
+# XRT auto-detection (supports both Ubuntu packages and legacy /opt/xilinx/xrt)
+# -----------------------------------------------------------------------------
+if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
+    find_package(XRT QUIET)
+    if(XRT_FOUND)
+        if(NOT DEFINED XRT_INC_DIR)
+            set(XRT_INC_DIR "${XRT_INCLUDE_DIR}" CACHE STRING "Path to XRT headers")
+        endif()
+        if(NOT DEFINED XRT_LIB_DIR)
+            set(XRT_LIB_DIR "${XRT_LIB_DIR}" CACHE STRING "Path to XRT libraries")
+        endif()
+    endif()
+
+    # Fall back to legacy/default paths if still unset
+    if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
+        find_program(WSL NAMES powershell.exe)
+        if(NOT WSL)
+            if(NOT DEFINED XRT_INC_DIR)
+                set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT headers")
+            endif()
+            if(NOT DEFINED XRT_LIB_DIR)
+                set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to XRT libraries")
+            endif()
+        else()
+            if(NOT DEFINED XRT_INC_DIR)
+                set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT headers")
+            endif()
+            if(NOT DEFINED XRT_LIB_DIR)
+                set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to XRT libraries")
+            endif()
+        endif()
+    endif()
+endif()
+
+# -----------------------------------------------------------------------------
 # test_utils discovery
 # -----------------------------------------------------------------------------
 # Preferred: installed layout (from cmake --install). Fallback: build from source.

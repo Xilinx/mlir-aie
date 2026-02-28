@@ -18,14 +18,6 @@ include(../../common.cmake)
 
 find_program(WSL NAMES powershell.exe)
 
-if (NOT WSL)
-    set(XRT_INC_DIR /opt/xilinx/xrt/include CACHE STRING "Path to XRT cloned repo")
-    set(XRT_LIB_DIR /opt/xilinx/xrt/lib CACHE STRING "Path to xrt_coreutil.lib")
-else()
-    set(XRT_INC_DIR C:/Technical/XRT/src/runtime_src/core/include CACHE STRING "Path to XRT cloned repo")
-    set(XRT_LIB_DIR C:/Technical/xrtNPUfromDLL CACHE STRING "Path to xrt_coreutil.lib")
-endif ()
-
 set(IN1_SIZE 4096 CACHE STRING "in1 buffer size")
 set(OUT_SIZE 4096 CACHE STRING "out buffer size")
 set(TARGET_NAME test CACHE STRING "Target to be built")
@@ -39,7 +31,6 @@ if ( WSL )
 endif ()
 
 project(${ProjectName})
-
 
 add_executable(${currentTarget} test.cpp)
 
