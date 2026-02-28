@@ -553,9 +553,21 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
     // saturation mode enabled). Skip for cores with only lock/stream ops
     // to avoid breaking existing test SSA naming.
     bool hasSRS = false;
+    bool hasIntegerSRS = false;
     coreFunc.walk([&](Operation *childOp) {
-      if (childOp->getName().getStringRef() == "aievec.srs")
+      if (childOp->getName().getStringRef() == "aievec.srs") {
         hasSRS = true;
+        // Check if this is an integer SRS (e.g., i32→i8) vs float SRS
+        // (e.g., f32→bf16). Integer SRS needs positive_inf rounding to
+        // match C++ kernel behavior; float SRS works better with floor.
+        if (childOp->getNumResults() > 0) {
+          auto resultType = childOp->getResult(0).getType();
+          if (auto vecType = dyn_cast<VectorType>(resultType)) {
+            if (vecType.getElementType().isInteger())
+              hasIntegerSRS = true;
+          }
+        }
+      }
     });
     if (hasSRS) {
       auto device = op->getParentOfType<DeviceOp>();
@@ -577,18 +589,19 @@ struct AIECoreToStandardFunc : OpConversionPattern<CoreOp> {
                                                 rewriter.getI32IntegerAttr(1));
             func::CallOp::create(rewriter, loc, ctrlRegFunc,
                                  ValueRange{c9, c1});
-            // rounding_mode::positive_inf (register 6 = 9)
-            // Match C++ kernel behavior (aie::rounding_mode::positive_inf).
-            // aievec.srs ops handle rounding internally; scalar arith.shrsi
-            // is unaffected by this register (uses floor inherently).
-            // User code with manual rounding (arith.addi before shrsi)
-            // still works because arith.shrsi ignores ctrl_reg.
+            // Rounding mode (register 6): use positive_inf (9) for cores with
+            // integer SRS (matches C++ kernel aie::rounding_mode::positive_inf
+            // for shift-round-saturate on integer data). Use floor (0) for
+            // cores with only float SRS (f32→bf16 truncation), where
+            // positive_inf causes accumulated rounding bias in bf16
+            // reductions (e.g., softmax sum of 256 exp values).
             auto c6 = arith::ConstantOp::create(rewriter, loc,
                                                 rewriter.getI32IntegerAttr(6));
-            auto cPositiveInf = arith::ConstantOp::create(
-                rewriter, loc, rewriter.getI32IntegerAttr(9));
+            int roundingMode = hasIntegerSRS ? 9 : 0;
+            auto cRoundingMode = arith::ConstantOp::create(
+                rewriter, loc, rewriter.getI32IntegerAttr(roundingMode));
             func::CallOp::create(rewriter, loc, ctrlRegFunc,
-                                 ValueRange{c6, cPositiveInf});
+                                 ValueRange{c6, cRoundingMode});
           }
         }
       }
