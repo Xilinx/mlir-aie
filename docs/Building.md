@@ -23,7 +23,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ### Install the XDNA™ Driver and XRT
 
-#### Install from upstream packages (Ubuntu 24.04)
+#### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
 
 Install the XDNA driver and XRT runtime from the AMD PPA:
 
