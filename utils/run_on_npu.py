@@ -6,6 +6,7 @@
 import os
 import subprocess
 import sys
+import tempfile
 
 
 def main() -> int:
@@ -22,22 +23,30 @@ def main() -> int:
         completed = subprocess.run(command)
         return completed.returncode
 
-    xrt_dir = os.environ.get("XRT_DIR") or os.environ.get("XRT_ROOT") or "/opt/xilinx/xrt"
+    xrt_dir = (
+        os.environ.get("XRT_DIR") or os.environ.get("XRT_ROOT") or "/opt/xilinx/xrt"
+    )
     setup_script = os.path.join(xrt_dir, "setup.sh")
     if not os.path.isfile(setup_script):
         completed = subprocess.run(command)
         return completed.returncode
 
+    # Serialize Ryzen AI executions on POSIX runners to avoid contention.
+    import fcntl
+
+    lock_path = os.path.join(tempfile.gettempdir(), "mlir_aie_run_on_npu.lock")
     bash_command = [
         "bash",
-        "-lc",
-        'source "$1" >/dev/null 2>&1; shift; exec "$@"',
+        "-c",
+        'XRT_DIR="$1"; source "$XRT_DIR/setup.sh" >/dev/null 2>&1; shift; exec "$@"',
         "run_on_npu",
-        setup_script,
+        xrt_dir,
         *command,
     ]
-    completed = subprocess.run(bash_command)
-    return completed.returncode
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        completed = subprocess.run(bash_command)
+        return completed.returncode
 
 
 if __name__ == "__main__":

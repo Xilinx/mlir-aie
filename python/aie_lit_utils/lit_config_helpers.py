@@ -88,7 +88,7 @@ class LitConfigHelper:
     @staticmethod
     def _quote_lit_arg(value: str) -> str:
         """Quote arguments for lit's shell parser."""
-        return "\"" + value.replace("\\", "/").replace("\"", "\\\"") + "\""
+        return '"' + value.replace("\\", "/").replace('"', '\\"') + '"'
 
     @staticmethod
     def _run_on_npu_wrap(aie_src_root: str, npu_kind: str) -> str:
@@ -123,7 +123,9 @@ class LitConfigHelper:
 
         if os.name == "nt":
             system_root = os.environ.get("SystemRoot", r"C:\Windows")
-            candidates.append(os.path.join(system_root, "System32", "AMD", "xrt-smi.exe"))
+            candidates.append(
+                os.path.join(system_root, "System32", "AMD", "xrt-smi.exe")
+            )
 
         for candidate in candidates:
             if os.path.isfile(candidate):

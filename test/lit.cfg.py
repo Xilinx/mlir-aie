@@ -155,13 +155,17 @@ if os.name == "nt":
     config.substitutions.append(
         (
             "aiecc.py",
-            LitConfigHelper._quote_lit_arg(os.path.join(config.aie_tools_dir, "aiecc.py")),
+            LitConfigHelper._quote_lit_arg(
+                os.path.join(config.aie_tools_dir, "aiecc.py")
+            ),
         )
     )
     config.substitutions.append(
         (
             "txn2mlir.py",
-            LitConfigHelper._quote_lit_arg(os.path.join(config.aie_tools_dir, "txn2mlir.py")),
+            LitConfigHelper._quote_lit_arg(
+                os.path.join(config.aie_tools_dir, "txn2mlir.py")
+            ),
         )
     )
 
