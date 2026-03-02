@@ -2896,6 +2896,33 @@ struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
   }
 };
 
+// Convert math.tanh to aievec.tanh for AIE2P (will be further lowered to tanh
+// intrinsic)
+struct ConvertMathTanhToAIEVecTanhOpPattern
+    : OpConversionPattern<math::TanhOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    if (!srcType)
+      return failure();
+
+    Type scalarType = srcType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(srcType);
+    // AIE2P tanh: supports v16bf16 and v32bf16
+    if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
+        elWidth != 16)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<aievec::TanhOp>(tanhOp, srcType,
+                                                adaptor.getOperand());
+    return success();
+  }
+};
+
 struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -4788,6 +4815,10 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
   if (backend == TargetBackend::LLVMIR) {
     patterns.add<ConvertMathExpToAIEVecExpOpPattern,
                  ConvertDivFToAIEVecInvOpPattern>(patterns.getContext());
+    // Higher benefit to take priority over the AIE2 LUT-based tanh pattern
+    // registered in the common patterns.
+    patterns.add<ConvertMathTanhToAIEVecTanhOpPattern>(patterns.getContext(),
+                                                       /*benefit=*/2);
   }
 }
 
@@ -5244,6 +5275,24 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
           elWidth != 16)
         return true;
       if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp))
+        return true;
+
+      return false;
+    });
+
+    // AIE2P-specific legalization for tanh with LLVMIR backend
+    // v16bf16 and v32bf16 tanh are illegal (uses hardware intrinsic)
+    target.addDynamicallyLegalOp<math::TanhOp>([](math::TanhOp tanhOp) {
+      auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
+      if (!srcType)
+        return true;
+
+      Type scalarType = srcType.getElementType();
+      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+      unsigned laneSize = getVectorLaneSize(srcType);
+      // AIE2P LLVMIR: v16bf16 and v32bf16 are illegal (uses aievec.tanh)
+      if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
+          elWidth != 16)
         return true;
 
       return false;
