@@ -80,7 +80,6 @@ def AIE_DeviceOp: AIE_Op<"device", [
 }
 
 def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
-    Pure,
     SkipAccessibilityCheckTrait,
     DeclareOpInterfaceMethods<TileLike>,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,

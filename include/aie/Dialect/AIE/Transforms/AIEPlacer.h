@@ -7,9 +7,6 @@
 // (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-// This file contains the interface for tile placement algorithms.
-// Placers assign physical tile coordinates to logical tiles.
-//===----------------------------------------------------------------------===//
 
 #ifndef AIE_PLACER_H
 #define AIE_PLACER_H
@@ -42,10 +39,8 @@ public:
   virtual void initialize(DeviceOp device,
                           const AIETargetModel &targetModel) = 0;
 
-  virtual mlir::LogicalResult
-  place(llvm::ArrayRef<mlir::Operation *> logicalTiles,
-        llvm::ArrayRef<mlir::Operation *> objectFifos,
-        llvm::ArrayRef<mlir::Operation *> cores, PlacementResult &result) = 0;
+  virtual mlir::LogicalResult place(DeviceOp device,
+                                    PlacementResult &result) = 0;
 
   virtual llvm::StringRef getName() const = 0;
 };
@@ -68,10 +63,7 @@ public:
 
   void initialize(DeviceOp device, const AIETargetModel &targetModel) override;
 
-  mlir::LogicalResult place(llvm::ArrayRef<mlir::Operation *> logicalTiles,
-                            llvm::ArrayRef<mlir::Operation *> objectFifos,
-                            llvm::ArrayRef<mlir::Operation *> cores,
-                            PlacementResult &result) override;
+  mlir::LogicalResult place(DeviceOp device, PlacementResult &result) override;
 
   llvm::StringRef getName() const override { return "sequential_placer"; }
 
@@ -81,7 +73,12 @@ private:
   const AIETargetModel *targetModel;
   DeviceOp device;
 
-  int getCommonColumn(const PlacementResult &result);
+  void buildObjectFifoGroups(
+      llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
+      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
+      llvm::DenseMap<int, llvm::SmallVector<ObjectFifoCreateOp>> &groupToFifos,
+      llvm::DenseMap<int, llvm::SmallVector<LogicalTileOp>>
+          &groupToLogicalTiles);
 
   std::optional<TileID> findTileWithCapacity(int targetCol,
                                              std::vector<TileID> &tiles,
@@ -100,7 +97,7 @@ private:
       bool isConstrained);
 };
 
-// PlacementAnalysis integrates the Pathfinder class into the MLIR
+// PlacementAnalysis integrates the Placer class into the MLIR
 // environment.
 class PlacementAnalysis {
 public:
