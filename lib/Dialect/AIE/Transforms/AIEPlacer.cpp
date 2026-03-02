@@ -64,16 +64,51 @@ void SequentialPlacer::initialize(DeviceOp dev, const AIETargetModel &tm) {
             rowMajorCmp);
 }
 
-LogicalResult SequentialPlacer::place(ArrayRef<Operation *> logicalTiles,
-                                      ArrayRef<Operation *> objectFifos,
-                                      ArrayRef<Operation *> cores,
+LogicalResult SequentialPlacer::place(DeviceOp device,
                                       PlacementResult &result) {
+  // Collect operations needed for placement
+  SmallVector<LogicalTileOp> logicalTiles;
+  SmallVector<ObjectFifoCreateOp> objectFifos;
+  SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+
+  device.walk([&](Operation *op) {
+    if (auto lt = dyn_cast<LogicalTileOp>(op))
+      logicalTiles.push_back(lt);
+    if (auto of = dyn_cast<ObjectFifoCreateOp>(op))
+      objectFifos.push_back(of);
+    if (auto link = dyn_cast<ObjectFifoLinkOp>(op))
+      objectFifoLinks.push_back(link);
+  });
+
   // Build channel requirements map by analyzing ObjectFifo connectivity
   llvm::DenseMap<Operation *, std::pair<int, int>> channelRequirements;
 
-  for (auto *op : objectFifos) {
-    auto ofOp = dyn_cast<ObjectFifoCreateOp>(op);
-    if (!ofOp)
+  // Build map of ObjectFifo name -> CreateOp for link processing
+  llvm::StringMap<ObjectFifoCreateOp> fifoNameToOp;
+  for (auto ofOp : objectFifos) {
+    fifoNameToOp[ofOp.getSymName()] = ofOp;
+  }
+
+  // Build set of ObjectFifos that are involved in links
+  // These will be handled specially for channel counting
+  llvm::DenseSet<llvm::StringRef> linkedFifoNames;
+
+  for (auto linkOp : objectFifoLinks) {
+    for (auto srcFifoAttr : linkOp.getFifoIns()) {
+      auto srcFifoName = cast<FlatSymbolRefAttr>(srcFifoAttr).getValue();
+      linkedFifoNames.insert(srcFifoName);
+    }
+
+    for (auto dstFifoAttr : linkOp.getFifoOuts()) {
+      auto dstFifoName = cast<FlatSymbolRefAttr>(dstFifoAttr).getValue();
+      linkedFifoNames.insert(dstFifoName);
+    }
+  }
+
+  // Count channels for non-linked ObjectFifos normally
+  for (auto ofOp : objectFifos) {
+    // Skip linked fifos - they'll be handled separately
+    if (linkedFifoNames.count(ofOp.getSymName()))
       continue;
 
     Value producerTile = ofOp.getProducerTile();
@@ -106,103 +141,162 @@ LogicalResult SequentialPlacer::place(ArrayRef<Operation *> logicalTiles,
       channelRequirements[producerOp].second++; // output++
   }
 
-  SmallVector<LogicalTileOp> computeLogicalTiles;
-  SmallVector<LogicalTileOp> memLogicalTiles;
-  SmallVector<LogicalTileOp> shimLogicalTiles;
+  // For linked ObjectFifos, count channels based on the link structure
+  // Link tiles need channels for all sources and destinations
+  for (auto linkOp : objectFifoLinks) {
 
-  for (auto *op : logicalTiles) {
-    auto logicalTile = dyn_cast<LogicalTileOp>(op);
-    if (!logicalTile)
+    // Find the tile that fifos are linked on
+    Operation *linkTileOp = nullptr;
+
+    // Get link tile from first source fifo's consumer
+    for (auto srcFifoAttr : linkOp.getFifoIns()) {
+      auto srcFifoName = cast<FlatSymbolRefAttr>(srcFifoAttr).getValue();
+      auto it = fifoNameToOp.find(srcFifoName);
+      if (it == fifoNameToOp.end())
+        continue;
+
+      auto srcFifo = it->second;
+      for (Value consumerTile : srcFifo.getConsumerTiles()) {
+        if (auto *consumerOp = consumerTile.getDefiningOp()) {
+          linkTileOp = consumerOp;
+          break;
+        }
+      }
+      if (linkTileOp)
+        break;
+    }
+
+    if (!linkTileOp)
       continue;
 
-    switch (logicalTile.getTileType()) {
-    case AIETileType::CoreTile:
-      computeLogicalTiles.push_back(logicalTile);
-      break;
-    case AIETileType::MemTile:
-      memLogicalTiles.push_back(logicalTile);
-      break;
-    case AIETileType::ShimNOCTile:
-      shimLogicalTiles.push_back(logicalTile);
-      break;
-    default:
-      return logicalTile.emitError(
-          "unsupported tile type for SequentialPlacer");
-    }
+    // Link tile needs:
+    // - Input channels = number of source ObjectFifos
+    // - Output channels = number of dest ObjectFifos
+    int numInputChannels = linkOp.getFifoIns().size();
+    int numOutputChannels = linkOp.getFifoOuts().size();
+
+    channelRequirements[linkTileOp].first += numInputChannels;
+    channelRequirements[linkTileOp].second += numOutputChannels;
   }
 
-  // Place ALL constrained tiles at requested tile
-  for (auto *op : logicalTiles) {
-    auto logicalTile = dyn_cast<LogicalTileOp>(op);
-    if (!logicalTile)
-      continue;
-
+  // Place constrained tiles then compute tiles
+  size_t nextCompIdx = 0;
+  for (auto logicalTile : logicalTiles) {
+    // Place fully constrained tiles at their specified coordinates
     auto col = logicalTile.tryGetCol();
     auto row = logicalTile.tryGetRow();
-    if (!col || !row)
-      continue; // Not fully constrained
+    if (col && row) {
+      TileID tile{*col, *row};
+      if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
+                                               channelRequirements, true)))
+        return failure();
 
-    TileID tile{*col, *row};
-    if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
-                                             channelRequirements, true)))
-      return failure();
-
-    result[logicalTile] = tile;
-    availability.removeTile(tile, logicalTile.getTileType());
-  }
-
-  // Place unconstrained compute tiles sequentially
-  size_t nextCompIdx = 0;
-  for (auto logicalTile : computeLogicalTiles) {
-    if (result.count(logicalTile.getOperation()))
-      continue; // Already placed by constraint
-
-    // Unconstrained: sequential placement
-    // NOTE: Partial constraints (col-only or row-only) are currently ignored
-    if (nextCompIdx >= availability.compTiles.size())
-      return logicalTile.emitError("no available compute tiles for placement");
-
-    TileID tile = availability.compTiles[nextCompIdx++];
-    if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
-                                             channelRequirements, false)))
-      return failure();
-
-    result[logicalTile] = tile;
-  }
-
-  // Place mem/shim tiles considering channel capacity
-  SmallVector<LogicalTileOp> nonComputeTiles;
-  nonComputeTiles.append(memLogicalTiles.begin(), memLogicalTiles.end());
-  nonComputeTiles.append(shimLogicalTiles.begin(), shimLogicalTiles.end());
-
-  int commonCol = getCommonColumn(result);
-  for (auto logicalTile : nonComputeTiles) {
-    if (result.count(logicalTile.getOperation()))
-      continue; // Already placed by constraint
-
-    // Get channel requirements
-    auto it = channelRequirements.find(logicalTile.getOperation());
-    int numInputChannels = 0, numOutputChannels = 0;
-    if (it != channelRequirements.end()) {
-      numInputChannels = it->second.first;
-      numOutputChannels = it->second.second;
+      result[logicalTile] = tile;
+      availability.removeTile(tile, logicalTile.getTileType());
+      continue;
     }
 
-    // Find tile with capacity near common column
-    // Pass tile type to ensure we only search for matching tile types
-    auto maybeTile = findTileWithCapacity(commonCol, availability.nonCompTiles,
-                                          numInputChannels, numOutputChannels,
-                                          logicalTile.getTileType());
-    if (!maybeTile)
-      return logicalTile.emitError("no tile with sufficient DMA capacity");
+    // Place unconstrained compute tiles sequentially
+    // NOTE: Partial constraints (col-only or row-only) are currently ignored
+    if (logicalTile.getTileType() == AIETileType::CoreTile) {
+      if (nextCompIdx >= availability.compTiles.size())
+        return logicalTile.emitError(
+            "no available compute tiles for placement");
 
-    result[logicalTile] = *maybeTile;
+      TileID tile = availability.compTiles[nextCompIdx++];
+      if (failed(validateAndUpdateChannelUsage(logicalTile, tile,
+                                               channelRequirements, false)))
+        return failure();
 
-    // Update channel usage
-    if (numInputChannels > 0)
-      updateChannelUsage(*maybeTile, false, numInputChannels);
-    if (numOutputChannels > 0)
-      updateChannelUsage(*maybeTile, true, numOutputChannels);
+      result[logicalTile] = tile;
+    }
+  }
+
+  // Place mem/shim tiles by ObjectFifo groups to enable efficient merging
+  llvm::DenseMap<int, SmallVector<ObjectFifoCreateOp>> groupToFifos;
+  llvm::DenseMap<int, SmallVector<LogicalTileOp>> groupToLogicalTiles;
+  buildObjectFifoGroups(objectFifos, objectFifoLinks, groupToFifos,
+                        groupToLogicalTiles);
+
+  // Process each group's logical tiles together
+  llvm::DenseSet<int> processedGroups;
+
+  // Process each group
+  for (auto &[groupId, logicalTiles] : groupToLogicalTiles) {
+    if (processedGroups.count(groupId))
+      continue;
+    processedGroups.insert(groupId);
+
+    // Compute common column from ALL fifos in this group
+    int groupCommonCol = 0;
+    int totalCoreEndpoints = 0;
+    int sumCols = 0;
+
+    auto fifosIt = groupToFifos.find(groupId);
+    if (fifosIt != groupToFifos.end()) {
+      for (auto ofOp : fifosIt->second) {
+        // Get core tile endpoints for this fifo
+        Value producerTile = ofOp.getProducerTile();
+        if (auto *producerOp = producerTile.getDefiningOp()) {
+          if (auto prodLogical = dyn_cast<LogicalTileOp>(producerOp)) {
+            if (prodLogical.getTileType() == AIETileType::CoreTile) {
+              if (result.count(prodLogical.getOperation())) {
+                sumCols += result[prodLogical.getOperation()].col;
+                totalCoreEndpoints++;
+              }
+            }
+          }
+        }
+
+        for (Value consumerTile : ofOp.getConsumerTiles()) {
+          if (auto *consumerOp = consumerTile.getDefiningOp()) {
+            if (auto consLogical = dyn_cast<LogicalTileOp>(consumerOp)) {
+              if (consLogical.getTileType() == AIETileType::CoreTile) {
+                if (result.count(consLogical.getOperation())) {
+                  sumCols += result[consLogical.getOperation()].col;
+                  totalCoreEndpoints++;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (totalCoreEndpoints > 0) {
+      groupCommonCol = (sumCols + totalCoreEndpoints / 2) / totalCoreEndpoints;
+    }
+
+    // Place each logical tile from this group
+    for (auto logicalTile : logicalTiles) {
+      // Skip if already placed (e.g., constrained)
+      if (result.count(logicalTile.getOperation()))
+        continue;
+
+      // Get channel requirements for this tile
+      auto it = channelRequirements.find(logicalTile.getOperation());
+      int numInputChannels = 0, numOutputChannels = 0;
+      if (it != channelRequirements.end()) {
+        numInputChannels = it->second.first;
+        numOutputChannels = it->second.second;
+      }
+
+      // Find tile with capacity near this group's common column
+      auto maybeTile = findTileWithCapacity(
+          groupCommonCol, availability.nonCompTiles, numInputChannels,
+          numOutputChannels, logicalTile.getTileType());
+
+      if (!maybeTile)
+        return logicalTile.emitError("no tile with sufficient DMA capacity");
+
+      result[logicalTile] = *maybeTile;
+
+      // Update channel usage
+      if (numInputChannels > 0)
+        updateChannelUsage(*maybeTile, false, numInputChannels);
+      if (numOutputChannels > 0)
+        updateChannelUsage(*maybeTile, true, numOutputChannels);
+    }
   }
 
   return success();
@@ -249,46 +343,79 @@ LogicalResult SequentialPlacer::validateAndUpdateChannelUsage(
   return success();
 }
 
-int SequentialPlacer::getCommonColumn(const PlacementResult &result) {
-  SmallVector<int> computeCols;
+void SequentialPlacer::buildObjectFifoGroups(
+    SmallVector<ObjectFifoCreateOp> &objectFifos,
+    SmallVector<ObjectFifoLinkOp> &objectFifoLinks,
+    llvm::DenseMap<int, SmallVector<ObjectFifoCreateOp>> &groupToFifos,
+    llvm::DenseMap<int, SmallVector<LogicalTileOp>> &groupToLogicalTiles) {
 
-  for (const auto &[op, tile] : result) {
-    if (auto logicalTile = dyn_cast<LogicalTileOp>(op)) {
-      if (logicalTile.getTileType() == AIETileType::CoreTile) {
-        computeCols.push_back(tile.col);
-      }
+  // Build map: ObjectFifo name -> group ID (for linked fifos)
+  llvm::StringMap<int> fifoToGroup;
+  int nextGroupId = 0;
+
+  // Group ObjectFifos that are linked together
+  for (auto linkOp : objectFifoLinks) {
+    int groupId = nextGroupId++;
+
+    // All source fifos belong to same group
+    for (auto srcFifoAttr : linkOp.getFifoIns()) {
+      auto srcFifoName = cast<FlatSymbolRefAttr>(srcFifoAttr).getValue();
+      fifoToGroup[srcFifoName] = groupId;
+    }
+
+    // All dest fifos belong to same group
+    for (auto dstFifoAttr : linkOp.getFifoOuts()) {
+      auto dstFifoName = cast<FlatSymbolRefAttr>(dstFifoAttr).getValue();
+      fifoToGroup[dstFifoName] = groupId;
     }
   }
 
-  if (computeCols.empty())
-    return 0;
+  // Build maps: group ID -> logical tiles and fifos
+  // Linked fifos share a group, unlinked fifos get individual entries
+  int unlinkedGroupId = nextGroupId;
 
-  int sum = std::accumulate(computeCols.begin(), computeCols.end(), 0);
-  return static_cast<int>(
-      std::round(static_cast<double>(sum) / computeCols.size()));
+  for (auto ofOp : objectFifos) {
+    // Determine which group this fifo belongs to
+    int groupId;
+    auto groupIt = fifoToGroup.find(ofOp.getSymName());
+    if (groupIt != fifoToGroup.end()) {
+      // This fifo is part of a link
+      groupId = groupIt->second;
+    } else {
+      // Unlinked fifo gets its own group
+      groupId = unlinkedGroupId++;
+    }
+
+    // Add to groupToFifos
+    groupToFifos[groupId].push_back(ofOp);
+
+    // Collect non-core tiles from this fifo
+    // Check producer tile
+    Value producerTile = ofOp.getProducerTile();
+    if (auto *producerOp = producerTile.getDefiningOp()) {
+      if (auto prodLogical = dyn_cast<LogicalTileOp>(producerOp)) {
+        if (prodLogical.getTileType() != AIETileType::CoreTile) {
+          groupToLogicalTiles[groupId].push_back(prodLogical);
+        }
+      }
+    }
+
+    // Check consumer tiles
+    for (Value consumerTile : ofOp.getConsumerTiles()) {
+      if (auto *consumerOp = consumerTile.getDefiningOp()) {
+        if (auto consLogical = dyn_cast<LogicalTileOp>(consumerOp)) {
+          if (consLogical.getTileType() != AIETileType::CoreTile) {
+            groupToLogicalTiles[groupId].push_back(consLogical);
+          }
+        }
+      }
+    }
+  }
 }
 
 LogicalResult PlacementAnalysis::runAnalysis(DeviceOp &device) {
-  SmallVector<Operation *> logicalTiles;
-  SmallVector<Operation *> objectFifos;
-  SmallVector<Operation *> cores;
-
-  // Collect operations
-  device.walk([&](Operation *op) {
-    if (isa<LogicalTileOp>(op))
-      logicalTiles.push_back(op);
-    if (isa<ObjectFifoCreateOp>(op))
-      objectFifos.push_back(op);
-    if (isa<CoreOp>(op))
-      cores.push_back(op);
-  });
-
-  // Initialize placer
-  const auto &targetModel = device.getTargetModel();
-  placer->initialize(device, targetModel);
-
-  // Run placement
-  return placer->place(logicalTiles, objectFifos, cores, result);
+  placer->initialize(device, device.getTargetModel());
+  return placer->place(device, result);
 }
 
 std::optional<TileID>
@@ -302,10 +429,9 @@ PlacementAnalysis::getPlacement(Operation *logicalTile) const {
 // Find tile with available DMA capacity near target column
 // This function checks capacity for BOTH input and output channels
 // simultaneously. For unidirectional tiles, pass 0 for the unused direction:
-//   - Input-only:  findTileWithCapacity(..., numInputChannels, 0, type)
-//   - Output-only: findTileWithCapacity(..., 0, numOutputChannels, type)
-//   - Both: findTileWithCapacity(..., numInputChannels, numOutputChannels,
-//   type)
+//   - Input-only:  findTileWithCapacity(..., numInCh, 0, type)
+//   - Output-only: findTileWithCapacity(..., 0, numOutCh, type)
+//   - Both: findTileWithCapacity(..., numInCh, numOutCh, type)
 // The requestedType parameter filters tiles to only consider matching types
 // (e.g., only MemTiles for MemTile logical tiles, only ShimNOCTiles for shims).
 std::optional<TileID> SequentialPlacer::findTileWithCapacity(
