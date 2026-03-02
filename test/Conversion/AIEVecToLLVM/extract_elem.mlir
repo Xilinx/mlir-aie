@@ -12,7 +12,8 @@ func.func @i8_extract_elem(%arg0 : vector<64xi8>, %index : i32) -> i8 {
 // CHECK-NEXT: %[[VEXTELEM:.*]] = "xllvm.intr.aie2.vextract.elem8.I512"(
 // CHECK-SAME: %[[ARG0]], %[[INDEX]], %[[CST]]) : 
 // CHECK-SAME: (vector<64xi8>, i32, i32) -> i32
-// CHECK-NEXT: %[[RES:.*]] = llvm.trunc %[[VEXTELEM]] : i32 to i8
+// CHECK-NEXT: %[[T16:.*]] = llvm.trunc %[[VEXTELEM]] : i32 to i16
+// CHECK-NEXT: %[[RES:.*]] = llvm.trunc %[[T16]] : i16 to i8
 // CHECK-NEXT: return %[[RES]] : i8
 
 // -----
