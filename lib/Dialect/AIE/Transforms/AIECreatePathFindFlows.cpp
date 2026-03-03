@@ -310,9 +310,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       }
     }
     if (!srcTile)
-      return pktFlowOp.emitOpError("has no packet_source; verify() should "
-                                   "have caught this");
-
+      return pktFlowOp.emitOpError("packet_flow has no packet_source");
     // Pass 2: process each destination using the source extracted above
     for (Operation &Op : b.getOperations()) {
       if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
