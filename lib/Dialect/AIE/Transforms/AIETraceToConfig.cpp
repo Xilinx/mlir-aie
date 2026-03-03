@@ -438,7 +438,7 @@ struct AIETraceRegPackWritesPass
         // Look up register and field information
         TileID tileID = {tile.getCol(), tile.getRow()};
         const RegisterInfo *regInfo =
-            targetModel.lookupRegister(regOp.getRegName(), tileID);
+            targetModel.lookupRegister(regOp.getRegName(), tileID, isMem);
 
         if (!regInfo) {
           regOp.emitError("Register not found in database: ")
