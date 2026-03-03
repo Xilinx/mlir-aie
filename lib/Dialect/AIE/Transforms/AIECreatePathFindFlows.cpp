@@ -163,8 +163,7 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         }
       }
 
-      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | "
-                              << "\n");
+      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | " << "\n");
     }
 
     LLVM_DEBUG(llvm::dbgs()
@@ -301,12 +300,21 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     TileOp srcTile, destTile;
     TileID srcCoords, destCoords;
 
+    // Pass 1: extract source (order-independent: dest may appear before source)
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
         srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
         srcPort = pktSource.port();
         srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
-      } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
+      }
+    }
+    if (!srcTile)
+      return pktFlowOp.emitOpError("has no packet_source; verify() should "
+                                   "have caught this");
+
+    // Pass 2: process each destination using the source extracted above
+    for (Operation &Op : b.getOperations()) {
+      if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
         destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
         destPort = pktDest.port();
         destCoords = {destTile.colIndex(), destTile.rowIndex()};
@@ -793,14 +801,14 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     LLVM_DEBUG(llvm::dbgs()
                << "Port " << tile << " " << stringifyWireBundle(bundle) << " "
                << channel << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "Mask "
-                            << "0x" << llvm::Twine::utohexstr(mask) << '\n');
-    LLVM_DEBUG(llvm::dbgs() << "ID "
-                            << "0x" << llvm::Twine::utohexstr(ID) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "Mask " << "0x" << llvm::Twine::utohexstr(mask) << '\n');
+    LLVM_DEBUG(llvm::dbgs()
+               << "ID " << "0x" << llvm::Twine::utohexstr(ID) << '\n');
     for (int i = 0; i < 31; i++) {
       if ((i & mask) == (ID & mask))
-        LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
-                                << "0x" << llvm::Twine::utohexstr(i) << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "matches flow ID " << "0x"
+                                << llvm::Twine::utohexstr(i) << '\n');
     }
   }
 #endif
