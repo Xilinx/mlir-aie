@@ -163,7 +163,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
         }
       }
 
-      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | " << "\n");
+      LLVM_DEBUG(llvm::dbgs() << tileId << ": " << setting << " | "
+                              << "\n");
     }
 
     LLVM_DEBUG(llvm::dbgs()
