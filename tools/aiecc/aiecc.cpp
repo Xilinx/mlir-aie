@@ -1320,7 +1320,7 @@ static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
   devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  // TODO: Add aie-transform-bfp-types if needed
+  devicePm.addPass(xilinx::AIEX::createAIETransformBfpTypesPass());
 
   // Step 2: aie-standard-lowering with specific core coordinates
   // This extracts the specified core and removes the aie.device wrapper
@@ -1395,6 +1395,7 @@ static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
   devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
+  devicePm.addPass(xilinx::AIEX::createAIETransformBfpTypesPass());
 
   // Step 2: aie-standard-lowering WITHOUT specific core coordinates
   // This exports ALL cores by using default values (-1, -1)
@@ -1776,15 +1777,22 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         if (sys::fs::exists(cwdPath)) {
           srcPath = cwdPath;
         } else {
-          // Fall back to input file directory
-          SmallString<256> inputDir =
-              sys::path::parent_path(getInputFilename());
-          if (inputDir.empty()) {
-            sys::fs::current_path(inputDir);
+          // Try tmpDirName (used in JIT where .o is pre-compiled there)
+          SmallString<256> tmpPath(tmpDirName);
+          sys::path::append(tmpPath, linkWithFile);
+          if (sys::fs::exists(tmpPath)) {
+            srcPath = tmpPath;
+          } else {
+            // Fall back to input file directory
+            SmallString<256> inputDir =
+                sys::path::parent_path(getInputFilename());
+            if (inputDir.empty()) {
+              sys::fs::current_path(inputDir);
+            }
+            srcPath = inputDir;
+            sys::path::append(srcPath, linkWithFile);
+            sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
           }
-          srcPath = inputDir;
-          sys::path::append(srcPath, linkWithFile);
-          sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
         }
       }
 
@@ -1912,15 +1920,22 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         if (sys::fs::exists(cwdPath)) {
           srcLinkWith = cwdPath;
         } else {
-          // Fall back to input file directory
-          SmallString<256> inputDir =
-              sys::path::parent_path(getInputFilename());
-          if (inputDir.empty()) {
-            sys::fs::current_path(inputDir);
+          // Try tmpDirName (used in JIT where .o is pre-compiled there)
+          SmallString<256> tmpPath(tmpDirName);
+          sys::path::append(tmpPath, core.linkWith);
+          if (sys::fs::exists(tmpPath)) {
+            srcLinkWith = tmpPath;
+          } else {
+            // Fall back to input file directory
+            SmallString<256> inputDir =
+                sys::path::parent_path(getInputFilename());
+            if (inputDir.empty()) {
+              sys::fs::current_path(inputDir);
+            }
+            srcLinkWith = inputDir;
+            sys::path::append(srcLinkWith, core.linkWith);
+            sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
           }
-          srcLinkWith = inputDir;
-          sys::path::append(srcLinkWith, core.linkWith);
-          sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
         }
       }
 
