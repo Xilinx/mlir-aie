@@ -55,7 +55,10 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 #### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
 
-Install the XDNA driver and XRT runtime from the AMD PPA:
+> NOTE: You may need to run updates to install the latest Linux kernel version
+>       The packaged XRT only supports Python 3.12 pyxrt
+
+Install the XDNA driver and XRT from the AMD PPA:
 
 ```bash
 sudo add-apt-repository ppa:amd-team/xrt
@@ -93,7 +96,7 @@ xrt-smi examine
 1. Install the following packages needed for MLIR-AIE:
 
     ```bash
-    # Python versions 3.10, 3.12 and 3.13 are currently supported by our wheels
+    # Python versions 3.10, 3.11, 3.12, 3.13 and 3.14 are currently supported by our wheels
     sudo apt install \
     build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
     ```
