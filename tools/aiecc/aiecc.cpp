@@ -1074,6 +1074,15 @@ struct CoreInfo {
   std::string elfFile;  // Generated ELF path (if already specified)
 };
 
+/// Check if a CoreOp has a non-empty body (more than just aie.end).
+static bool coreHasNonemptyBody(xilinx::AIE::CoreOp coreOp) {
+  for (auto &block : coreOp.getBody()) {
+    if (block.getOperations().size() > 1)
+      return true;
+  }
+  return false;
+}
+
 // Helper to extract core info from a CoreOp
 static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
   CoreInfo info;
@@ -1997,7 +2006,12 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
 
   SmallVector<CoreInfo> cores;
   deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    cores.push_back(getCoreInfo(coreOp));
+    // Skip cores with no elf_file, no link_with, and empty body
+    // (e.g., @empty device ops created by --expand-load-pdis)
+    if (coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
+        coreHasNonemptyBody(coreOp)) {
+      cores.push_back(getCoreInfo(coreOp));
+    }
   });
 
   if (cores.empty()) {
@@ -2158,7 +2172,12 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
   SmallVector<CoreInfo> cores;
   deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    cores.push_back(getCoreInfo(coreOp));
+    // Skip cores with no elf_file, no link_with, and empty body
+    // (e.g., @empty device ops created by --expand-load-pdis)
+    if (coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
+        coreHasNonemptyBody(coreOp)) {
+      cores.push_back(getCoreInfo(coreOp));
+    }
   });
 
   if (cores.empty()) {
@@ -3527,6 +3546,12 @@ static std::string findAiebuAsm() {
     return xrtPath;
   }
 
+  // Try Ubuntu package location
+  std::string ubuntuPath = "/usr/bin/aiebu-asm";
+  if (sys::fs::can_execute(ubuntuPath)) {
+    return ubuntuPath;
+  }
+
   // Try standalone aiebu installation
   std::string defaultPath = "/opt/xilinx/aiebu/bin/aiebu-asm";
   if (sys::fs::can_execute(defaultPath)) {
@@ -3559,8 +3584,9 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   // Find aiebu-asm
   std::string aiebuAsmBin = findAiebuAsm();
   if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found in PATH or at "
-                    "/opt/xilinx/aiebu/bin/aiebu-asm\n";
+    llvm::errs() << "Error: aiebu-asm not found in PATH or at known "
+                    "locations (/opt/xilinx/xrt/bin, /usr/bin, "
+                    "/opt/xilinx/aiebu/bin)\n";
     return failure();
   }
 

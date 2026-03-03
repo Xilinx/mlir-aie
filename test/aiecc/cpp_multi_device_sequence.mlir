@@ -20,13 +20,13 @@
 
 // DEV1: Removing non-matching device: device2
 // DEV1: Processing device: device1
-// DEV1: Compiling 1 core(s)
+// DEV1: No cores to compile in device device1
 // DEV1-NOT: Processing device: device2
 // DEV1: Compilation completed successfully
 
 // DEV2: Removing non-matching device: device1
 // DEV2: Processing device: device2
-// DEV2: Compiling 1 core(s)
+// DEV2: No cores to compile in device device2
 // DEV2-NOT: Processing device: device1
 // DEV2: Compilation completed successfully
 
