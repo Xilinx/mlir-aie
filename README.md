@@ -55,7 +55,13 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 #### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
 
-> You may need to run updates to install the latest Linux kernel version
+> Ensure your system is running Linux kernel **6.17 or newer** before installing these packages. On Ubuntu 24.04 you can verify this with:
+>
+> ```bash
+> uname -r
+> ```
+>
+> If your kernel is older than 6.17, upgrade it using your distribution's kernel update mechanism or the kernel upgrade steps described in the [Initial Setup](#initial-setup) section above.
 
 Install the XDNA driver and XRT from the AMD PPA:
 
