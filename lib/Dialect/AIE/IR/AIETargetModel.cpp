@@ -35,9 +35,10 @@ std::string getModuleForTile(const AIETargetModel &model, TileID tile,
 std::string getModuleForTileEvents(const AIETargetModel &model, TileID tile,
                                    bool isMem) {
   if (model.isShimNOCorPLTile(tile.col, tile.row))
-    return "pl";  // Events database uses "pl" for shim tiles
+    return "pl"; // Events database uses "pl" for shim tiles
   if (model.isMemTile(tile.col, tile.row))
-    return "mem_tile";  // Events database uses "mem_tile" instead of "memory_tile"
+    return "mem_tile"; // Events database uses "mem_tile" instead of
+                       // "memory_tile"
   return isMem ? std::string("memory") : std::string("core");
 }
 
@@ -83,8 +84,8 @@ uint32_t AIETargetModel::encodeFieldValue(const BitFieldInfo &field,
   return db->encodeFieldValue(field, value);
 }
 
-std::optional<uint32_t> AIETargetModel::getFieldMask(
-    const BitFieldInfo &field) const {
+std::optional<uint32_t>
+AIETargetModel::getFieldMask(const BitFieldInfo &field) const {
   uint32_t width = field.getWidth();
   if (width == 0 || width > 32 || field.bit_end >= 32)
     return std::nullopt;
