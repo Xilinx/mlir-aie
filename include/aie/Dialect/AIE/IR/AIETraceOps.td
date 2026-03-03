@@ -35,17 +35,17 @@ def AIE_TraceOp : AIE_Op<"trace", [
     sequence. The trace operation is a symbol that defines what events to
     monitor and how to configure the trace hardware, but does not actually
     apply the configuration. Configuration is applied via `aie.trace.start_config`
-    within a `aiex.runtime_sequence` block.
+    within a `aie.runtime_sequence` block.
 
     Example:
     ```mlir
     %tile02 = aie.tile(0, 2)
 
     aie.trace @trace_tile02(%tile02) {
-      aie.trace.mode Event-Time
+      aie.trace.mode "Event-Time"
       aie.trace.packet id=1 type=core
-      aie.trace.event<INSTR_EVENT_0>
-      aie.trace.event<INSTR_VECTOR>
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.event<"INSTR_VECTOR">
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
     }
@@ -78,11 +78,11 @@ def AIE_TraceModeOp : AIE_Op<"trace.mode", [
   let summary = "Set trace mode (Event-Time, Event-PC, or Execution)";
 
   let description = [{
-    Specifies the trace mode. Default: Event-Time
+    Specifies the trace mode. Default: "Event-Time"
 
     Example:
     ```mlir
-    aie.trace.mode Event-Time
+    aie.trace.mode "Event-Time"
     ```
   }];
 
@@ -113,7 +113,7 @@ def AIE_TraceEventOp : AIE_Op<"trace.event", [
     Example:
     ```mlir
     aie.trace.event<"INSTR_EVENT_0">  // String
-    aie.trace.event<COMBO_EVENT_0>    // Enum value
+    aie.trace.event<CoreEventAIE::COMBO_EVENT_0>    // Enum value
     ```
   }];
 
@@ -188,8 +188,8 @@ def AIE_TracePortOp : AIE_Op<"trace.port", [
     ```mlir
     aie.trace.port<0> port = North channel = 1 direction = S2MM
     aie.trace.port<1> port = DMA channel = 0 direction = MM2S
-    aie.trace.event<"PORT_RUNNING_0">  // Monitor NORTH:1 (S2MM/master)
-    aie.trace.event<"PORT_IDLE_1">     // Monitor DMA:0 (MM2S/slave)
+    aie.trace.event<"PORT_RUNNING_0">  // Monitor NORTH:1 (S2MM)
+    aie.trace.event<"PORT_IDLE_1">     // Monitor DMA:0 (MM2S)
     ```
   }];
 
@@ -224,7 +224,7 @@ def AIE_TraceStartEventOp : AIE_Op<"trace.start", [
     Example:
     ```mlir
     aie.trace.start broadcast=15
-    aie.trace.start event=<TRUE>
+    aie.trace.start event=<"TRUE">
     ```
   }];
 
@@ -253,7 +253,7 @@ def AIE_TraceStopEventOp : AIE_Op<"trace.stop", [
     Example:
     ```mlir
     aie.trace.stop broadcast=14
-    aie.trace.stop event=<USER_EVENT_0>
+    aie.trace.stop event=<"USER_EVENT_0">
     ```
   }];
 
@@ -352,7 +352,7 @@ def AIE_TraceRegOp : AIE_Op<"trace.reg", [
 }
 
 //===----------------------------------------------------------------------===//
-// AIE_TraceComboEventOp - Combo Event Configuration (within trace)
+// AIE_TraceComboEventOp - Combo Event Configuration
 //===----------------------------------------------------------------------===//
 
 def AIE_TraceComboEventOp : AIE_Op<"trace.combo_event", [
@@ -381,13 +381,13 @@ def AIE_TraceComboEventOp : AIE_Op<"trace.combo_event", [
     Example:
     ```mlir
     aie.trace @my_trace(%tile02) {
-      // Combo 0: lock stalled AND NOT DMA active
+      // Configure Combo 0: lock stalled AND NOT DMA active
       aie.trace.combo_event<0> <"LOCK_STALL"> AND_NOT <"DMA_S2MM_0_STALLED">
 
-      // Combo 1: instruction event OR vector operation
+      // Configure Combo 1: instruction event OR vector operation
       aie.trace.combo_event<1> <CoreEventAIE2::INSTR_EVENT_0> OR <CoreEventAIE2::INSTR_VECTOR>
 
-      // Combo 2: (combo0) AND (combo1)
+      // Configure Combo 2: (combo0) AND (combo1)
       aie.trace.combo_event<2> <"COMBO_EVENT_0"> AND <"COMBO_EVENT_1">
 
       // Trace the combo results
@@ -415,7 +415,7 @@ def AIE_TraceComboEventOp : AIE_Op<"trace.combo_event", [
 }
 
 //===----------------------------------------------------------------------===//
-// AIE_TraceEdgeEventOp - Edge Detection Event Configuration (within trace)
+// AIE_TraceEdgeEventOp - Edge Detection Event Configuration
 //===----------------------------------------------------------------------===//
 
 def AIE_TraceEdgeEventOp : AIE_Op<"trace.edge_event", [
@@ -439,10 +439,10 @@ def AIE_TraceEdgeEventOp : AIE_Op<"trace.edge_event", [
     Example:
     ```mlir
     aie.trace @my_trace(%tile02) {
-      // Edge detector 0: count lock stalls (rising edges)
+      // Configure Edge detector 0: count lock stalls (rising edges)
       aie.trace.edge_event<0> event=<"LOCK_STALL"> trigger=RISING
 
-      // Edge detector 1: count DMA transitions (both edges)
+      // Configure Edge detector 1: count DMA transitions (both edges)
       aie.trace.edge_event<1> event=<MemEventAIE2::DMA_MM2S_0_FINISHED_BD> trigger=BOTH
 
       // Trace the edge-detected events
@@ -478,7 +478,7 @@ def AIE_TraceStartConfigOp : AIE_Op<"trace.start_config", []> {
 
     Example:
     ```mlir
-    aiex.runtime_sequence @seq {
+    aie.runtime_sequence @seq {
       aie.trace.start_config @my_trace
     }
     ```

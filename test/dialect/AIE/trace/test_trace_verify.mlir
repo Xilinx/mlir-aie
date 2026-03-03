@@ -92,7 +92,7 @@ module {
 module {
   aie.device(npu1_1col) {
     %tile = aie.tile(0, 2)
-    
+
     aie.trace @test_valid(%tile) {
       aie.trace.mode "Event-Time"
       aie.trace.packet id=1 type="core"
@@ -101,6 +101,20 @@ module {
       aie.trace.event<"LOCK_STALL">
       aie.trace.start broadcast=15
       aie.trace.stop broadcast=14
+    }
+  }
+}
+
+// -----
+
+// Test: Typed event enum must match target architecture
+module {
+  aie.device(npu1_1col) {
+    %tile = aie.tile(0, 2)
+
+    aie.trace @test_enum_arch_mismatch(%tile) {
+      // expected-error@+1 {{event 'CoreEventAIE2P::INSTR_EVENT_0' is not valid for core tile (AIE2) at (0, 2)}}
+      aie.trace.event<CoreEventAIE2P::INSTR_EVENT_0>
     }
   }
 }

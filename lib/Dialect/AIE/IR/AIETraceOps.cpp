@@ -72,12 +72,15 @@ std::optional<int64_t> TraceEventAttr::getEnumValue() const {
 //===----------------------------------------------------------------------===//
 
 static bool isValidEventForTile(TileOp tile, Attribute eventAttr) {
+  int col = tile.getCol();
   int row = tile.getRow();
+  const auto &targetModel = getTargetModel(tile);
 
   // Determine tile type
-  bool isShimTile = (row == 0);
-  bool isMemTile = (row == 1);  // Mem tiles are at row 1
-  bool isCoreTile = (row >= 2); // Core tiles are at row 2 and above
+  bool isShimTile = targetModel.isShimNOCorPLTile(col, row);
+  bool isMemTile = targetModel.isMemTile(col, row);
+  bool isCoreTile = targetModel.isCoreTile(col, row);
+  AIEArch arch = targetModel.getTargetArch();
 
   // If eventAttr is a TraceEventAttr, extract the inner attribute
   Attribute innerAttr = eventAttr;
@@ -85,39 +88,58 @@ static bool isValidEventForTile(TileOp tile, Attribute eventAttr) {
     innerAttr = traceEvent.getValue();
   }
 
-  // If it's a string, we'll validate later during lowering
-  // (requires event database lookup)
-  if (llvm::isa<StringAttr>(innerAttr)) {
-    return true;
-  }
+  // Enum-qualified strings (e.g. "CoreEventAIE2P::INSTR_EVENT_0") encode both
+  // architecture and tile type in the prefix.  We validate the prefix against
+  // the device arch and tile kind here.  Plain strings (no "::") are deferred
+  // to lowering where the event database is available.
+  //
+  // NOTE: The parser stores enum events as strings rather than typed
+  // I32EnumAttrs because AIE2 and AIE2P enums share identical integer values,
+  // making isa<> checks ambiguous across architectures.
+  if (auto strAttr = llvm::dyn_cast<StringAttr>(innerAttr)) {
+    StringRef val = strAttr.getValue();
+    size_t sep = val.find("::");
+    if (sep == StringRef::npos)
+      return true; // plain string — validated during lowering
 
-  // For typed enums, check the attribute type directly
-  if (isCoreTile) {
-    // Core tiles can use CoreEventAIE, CoreEventAIE2, CoreEventAIE2P
-    if (llvm::isa<CoreEventAIEAttr>(innerAttr) ||
-        llvm::isa<CoreEventAIE2Attr>(innerAttr) ||
-        llvm::isa<CoreEventAIE2PAttr>(innerAttr)) {
-      return true;
+    StringRef prefix = val.substr(0, sep);
+
+    // Map (arch, tileKind) → set of allowed prefixes.
+    if (isCoreTile) {
+      switch (arch) {
+      case AIEArch::AIE1:
+        return prefix == "CoreEventAIE" || prefix == "MemEventAIE";
+      case AIEArch::AIE2:
+        return prefix == "CoreEventAIE2" || prefix == "MemEventAIE2";
+      case AIEArch::AIE2p:
+        return prefix == "CoreEventAIE2P" || prefix == "MemEventAIE2P";
+      default:
+        return false;
+      }
     }
-    // Also allow MemEvent for memory module of core tile
-    if (llvm::isa<MemEventAIEAttr>(innerAttr) ||
-        llvm::isa<MemEventAIE2Attr>(innerAttr) ||
-        llvm::isa<MemEventAIE2PAttr>(innerAttr)) {
-      return true;
+    if (isMemTile) {
+      switch (arch) {
+      case AIEArch::AIE2:
+        return prefix == "MemTileEventAIE2";
+      case AIEArch::AIE2p:
+        return prefix == "MemTileEventAIE2P";
+      default:
+        return false;
+      }
     }
-  } else if (isMemTile) {
-    // Mem tiles use MemTileEventAIE2, MemTileEventAIE2P
-    if (llvm::isa<MemTileEventAIE2Attr>(innerAttr) ||
-        llvm::isa<MemTileEventAIE2PAttr>(innerAttr)) {
-      return true;
+    if (isShimTile) {
+      switch (arch) {
+      case AIEArch::AIE1:
+        return prefix == "ShimTileEventAIE";
+      case AIEArch::AIE2:
+        return prefix == "ShimTileEventAIE2";
+      case AIEArch::AIE2p:
+        return prefix == "ShimTileEventAIE2P";
+      default:
+        return false;
+      }
     }
-  } else if (isShimTile) {
-    // Shim tiles use ShimTileEventAIE, ShimTileEventAIE2, ShimTileEventAIE2P
-    if (llvm::isa<ShimTileEventAIEAttr>(innerAttr) ||
-        llvm::isa<ShimTileEventAIE2Attr>(innerAttr) ||
-        llvm::isa<ShimTileEventAIE2PAttr>(innerAttr)) {
-      return true;
-    }
+    return false;
   }
 
   return false;
@@ -207,8 +229,10 @@ ParseResult xilinx::AIE::parseTraceEvent(AsmParser &parser, Attribute &result) {
     return parser.emitError(parser.getCurrentLocation(),
                             "expected enum case name");
   }
-  // Validate the enum and convert to string to avoid ambiguity between
-  // AIE2 and AIE2P enums which have identical integer values
+  // Store as a qualified string ("EnumType::CaseName") rather than a typed
+  // I32EnumAttr because different architecture enums share identical integer
+  // values, making isa<> checks ambiguous.  The enum prefix is validated
+  // against the device architecture in isValidEventForTile().
 
   // Define a helper struct for enum validation
   struct EnumValidator {
@@ -372,18 +396,28 @@ LogicalResult TraceEventOp::verify() {
   }
 
   if (!isValidEventForTile(tileOp, eventAttr.getValue())) {
+    int col = tileOp.getCol();
     int row = tileOp.getRow();
+    const auto &targetModel = getTargetModel(tileOp);
     std::string tileTypeStr;
-    if (row == 0)
-      tileTypeStr = "shim tile";
-    else if (row == 1)
+    if (targetModel.isCoreTile(col, row))
+      tileTypeStr = "core tile";
+    else if (targetModel.isMemTile(col, row))
       tileTypeStr = "mem tile";
     else
-      tileTypeStr = "core tile";
+      tileTypeStr = "shim tile";
+
+    // Use the full string value (including enum prefix) for clarity.
+    std::string fullEventName;
+    if (auto strAttr = llvm::dyn_cast<StringAttr>(eventAttr.getValue()))
+      fullEventName = strAttr.getValue().str();
+    else
+      fullEventName = eventName;
 
     return emitOpError("event '")
-           << eventName << "' is not valid for " << tileTypeStr << " at ("
-           << tileOp.getCol() << ", " << row << ")";
+           << fullEventName << "' is not valid for " << tileTypeStr << " ("
+           << stringifyAIEArch(targetModel.getTargetArch()) << ") at (" << col
+           << ", " << row << ")";
   }
 
   return success();
