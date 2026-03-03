@@ -33,16 +33,11 @@ build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 
-# Lower the declarative trace syntax to low-level operations
-build/aie_trace_lowered.mlir: ${srcdir}/aie_trace.mlir
-	mkdir -p ${@D}
-	aie-opt --aie-trace-to-config --aie-inline-trace-config --aiex-config-to-npu ${srcdir}/aie_trace.mlir -o build/aie_trace_lowered.mlir
-
 # Build xclbin from the mlir
 build/final.xclbin: ${srcdir}/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-    		--no-xchesscc --no-xbridge \
+			--no-xchesscc --no-xbridge \
 			--aie-generate-npu-insts --npu-insts-name=insts.bin ${srcdir}/aie_trace.mlir
 
 build/insts.bin: build/final.xclbin

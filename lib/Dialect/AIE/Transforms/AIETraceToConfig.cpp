@@ -268,8 +268,9 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
               /*mask=*/nullptr, builder.getStringAttr("stop event"));
         }
 
-        // Emit mode if present
-        if (auto modeOp = dyn_cast<TraceModeOp>(op)) {
+        // Emit mode if present.
+        // Memory trace does not expose Trace_Control0.Mode in the register DB.
+        if (auto modeOp = dyn_cast<TraceModeOp>(op); modeOp && !isMem) {
           configBuilder.create<TraceRegOp>(
               trace.getLoc(), builder.getStringAttr("Trace_Control0"),
               builder.getStringAttr("Mode"),
