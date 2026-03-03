@@ -2818,14 +2818,36 @@ static LogicalResult generateKernelsJson(StringRef jsonPath,
 }
 
 static LogicalResult generatePartitionJson(StringRef jsonPath,
-                                           StringRef devName,
-                                           StringRef pdiPath) {
+                                           StringRef devName, StringRef pdiPath,
+                                           xilinx::AIE::DeviceOp deviceOp) {
   std::ofstream jsonFile(jsonPath.str());
   if (!jsonFile.is_open()) {
     llvm::errs() << "Error: Could not open file for writing: " << jsonPath
                  << "\n";
     return failure();
   }
+
+  // Query device model for partition dimensions (matches Python emit_partition)
+  const auto &targetModel = deviceOp.getTargetModel();
+  int numCols = targetModel.columns();
+  auto device = deviceOp.getDevice();
+
+  // NPU1 and NPU2 (full devices) always start at column 0.
+  // Virtualized devices (e.g., npu1_4col) use a range of start columns.
+  std::string startColumnsStr;
+  if (device == xilinx::AIE::AIEDevice::npu1 ||
+      device == xilinx::AIE::AIEDevice::npu2) {
+    startColumnsStr = "[0]";
+  } else {
+    startColumnsStr = "[";
+    for (int i = 1; i < 6 - numCols; ++i) {
+      if (i > 1)
+        startColumnsStr += ", ";
+      startColumnsStr += std::to_string(i);
+    }
+    startColumnsStr += "]";
+  }
+
   jsonFile << "{\n";
   jsonFile << "  \"aie_partition\": {\n";
   jsonFile << "    \"name\": \"QoS\",\n";
@@ -2833,8 +2855,8 @@ static LogicalResult generatePartitionJson(StringRef jsonPath,
   jsonFile << "    \"inference_fingerprint\": \"23423\",\n";
   jsonFile << "    \"pre_post_fingerprint\": \"12345\",\n";
   jsonFile << "    \"partition\": {\n";
-  jsonFile << "      \"column_width\": 1,\n";
-  jsonFile << "      \"start_columns\": [0]\n";
+  jsonFile << "      \"column_width\": " << numCols << ",\n";
+  jsonFile << "      \"start_columns\": " << startColumnsStr << "\n";
   jsonFile << "    },\n";
   jsonFile << "    \"PDIs\": [\n";
   jsonFile << "      {\n";
@@ -3453,7 +3475,7 @@ readBinaryFile(StringRef path) {
 
 /// Generate ELF using aiebu C API with transaction instructions.
 /// Returns the ELF data or nullopt on failure.
-static std::optional<std::vector<char>>
+[[maybe_unused]] static std::optional<std::vector<char>>
 generateElfViaAiebuLibrary(aiebu_assembler_buffer_type type,
                            const std::vector<char> &buffer1,
                            const std::vector<char> &buffer2 = {},
@@ -3517,8 +3539,8 @@ generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson) {
 }
 
 /// Write ELF data to a file.
-static LogicalResult writeElfFile(StringRef path,
-                                  const std::vector<char> &elfData) {
+[[maybe_unused]] static LogicalResult
+writeElfFile(StringRef path, const std::vector<char> &elfData) {
   std::error_code ec;
   raw_fd_ostream elfFile(path, ec, sys::fs::OpenFlags::OF_None);
   if (ec) {
@@ -3647,36 +3669,11 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   // Determine output ELF path
   std::string outputElfPath = formatString(elfName, devName.str(), "");
 
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-  // Try using aiebu library directly for ELF generation
-  {
-    // Convert instructions to char buffer
-    std::vector<char> instrBuffer(
-        reinterpret_cast<const char *>(allInstructions.data()),
-        reinterpret_cast<const char *>(allInstructions.data()) +
-            allInstructions.size() * sizeof(uint32_t));
-
-    if (verbose) {
-      llvm::outs() << "Using aiebu library for ELF generation\n";
-    }
-
-    auto elfData = generateElfViaAiebuLibrary(
-        aiebu_assembler_buffer_type_blob_instr_transaction, instrBuffer, {},
-        {});
-    if (elfData && !elfData->empty()) {
-      if (succeeded(writeElfFile(outputElfPath, *elfData))) {
-        if (verbose) {
-          llvm::outs() << "Generated ELF: " << outputElfPath << "\n";
-        }
-        return success();
-      }
-    }
-    // Fall through to subprocess on library failure
-    if (verbose) {
-      llvm::outs() << "aiebu library failed, falling back to subprocess\n";
-    }
-  }
-#endif // AIECC_HAS_AIEBU_LIBRARY
+  // NOTE: aiebu library path disabled — always use subprocess for correctness.
+  // The library API (aiebu_assembler_buffer_type_blob_instr_transaction)
+  // produces ELFs that fail at runtime on some NPU variants. The subprocess
+  // path (aiebu-asm -t aie2txn) matches Python aiecc behavior and works
+  // correctly.
 
   // Subprocess fallback: write instructions to temp file and run aiebu-asm
   SmallString<128> tempBinPath(tmpDirName);
@@ -3901,7 +3898,19 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
       sys::fs::current_path(absPdiPath);
       sys::path::append(absPdiPath, pdiPathForJson);
     }
-    if (failed(generatePartitionJson(partitionPath, devName, absPdiPath)))
+    // Find the DeviceOp for partition metadata
+    xilinx::AIE::DeviceOp deviceOp = nullptr;
+    moduleOp->walk([&](xilinx::AIE::DeviceOp op) {
+      if (op.getSymName() == devName)
+        deviceOp = op;
+    });
+    if (!deviceOp) {
+      llvm::errs() << "Error: DeviceOp not found for partition JSON: "
+                   << devName << "\n";
+      return failure();
+    }
+    if (failed(generatePartitionJson(partitionPath, devName, absPdiPath,
+                                     deviceOp)))
       return failure();
 
     if (verbose) {
