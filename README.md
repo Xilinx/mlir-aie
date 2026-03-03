@@ -59,7 +59,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 Install the XDNA driver and XRT from the AMD PPA:
 
-> The packaged XRT only supports Python 3.12 for pyxrt
+> The packaged XRT only supports Python 3.12 for `pyxrt`
 
 ```bash
 sudo add-apt-repository ppa:amd-team/xrt
