@@ -2720,113 +2720,93 @@ static LogicalResult updateModuleWithElfs(
 // JSON Generation for xclbin Metadata
 //===----------------------------------------------------------------------===//
 
-static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
-  std::ofstream jsonFile(jsonPath.str());
-  if (!jsonFile.is_open()) {
+/// Helper to write a llvm::json::Value to a file with pretty-printing.
+static LogicalResult writeJsonToFile(StringRef jsonPath,
+                                     const llvm::json::Value &value) {
+  std::error_code ec;
+  raw_fd_ostream os(jsonPath, ec);
+  if (ec) {
     llvm::errs() << "Error: Could not open file for writing: " << jsonPath
-                 << "\n";
+                 << ": " << ec.message() << "\n";
     return failure();
   }
-  jsonFile << "{\n";
-  jsonFile << "  \"mem_topology\": {\n";
-  jsonFile << "    \"m_count\": \"2\",\n";
-  jsonFile << "    \"m_mem_data\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
-  jsonFile << "        \"m_used\": \"1\",\n";
-  jsonFile << "        \"m_sizeKB\": \"0x10000\",\n";
-  jsonFile << "        \"m_tag\": \"HOST\",\n";
-  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
-  jsonFile << "      },\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"m_type\": \"MEM_DRAM\",\n";
-  jsonFile << "        \"m_used\": \"1\",\n";
-  jsonFile << "        \"m_sizeKB\": \"0xc000\",\n";
-  jsonFile << "        \"m_tag\": \"SRAM\",\n";
-  jsonFile << "        \"m_base_address\": \"0x4000000\"\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
-  jsonFile.close();
+  os << llvm::formatv("{0:2}", value) << "\n";
   return success();
+}
+
+static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
+  llvm::json::Object hostMem({{"m_type", "MEM_DRAM"},
+                              {"m_used", "1"},
+                              {"m_sizeKB", "0x10000"},
+                              {"m_tag", "HOST"},
+                              {"m_base_address", "0x4000000"}});
+  llvm::json::Object sramMem({{"m_type", "MEM_DRAM"},
+                              {"m_used", "1"},
+                              {"m_sizeKB", "0xc000"},
+                              {"m_tag", "SRAM"},
+                              {"m_base_address", "0x4000000"}});
+
+  llvm::json::Object memTopology(
+      {{"m_count", "2"},
+       {"m_mem_data",
+        llvm::json::Array{std::move(hostMem), std::move(sramMem)}}});
+
+  llvm::json::Object memData({{"mem_topology", std::move(memTopology)}});
+  return writeJsonToFile(jsonPath, llvm::json::Value(std::move(memData)));
 }
 
 static LogicalResult generateKernelsJson(StringRef jsonPath,
                                          StringRef devName) {
-  std::ofstream jsonFile(jsonPath.str());
-  if (!jsonFile.is_open()) {
-    llvm::errs() << "Error: Could not open file for writing: " << jsonPath
-                 << "\n";
-    return failure();
-  }
-  jsonFile << "{\n";
-  jsonFile << "  \"ps-kernels\": {\n";
-  jsonFile << "    \"kernels\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"name\": \"" << xclbinKernelName.getValue() << "\",\n";
-  jsonFile << "        \"type\": \"dpu\",\n";
-  jsonFile << "        \"extended-data\": {\n";
-  jsonFile << "          \"subtype\": \"DPU\",\n";
-  jsonFile << "          \"functional\": \"0\",\n";
-  jsonFile << "          \"dpu_kernel_id\": \"" << xclbinKernelId.getValue()
-           << "\"\n";
-  jsonFile << "        },\n";
-  jsonFile << "        \"arguments\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"opcode\",\n";
-  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
-  jsonFile << "            \"type\": \"uint64_t\",\n";
-  jsonFile << "            \"offset\": \"0x00\"\n";
-  jsonFile << "          },\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"instr\",\n";
-  jsonFile << "            \"memory-connection\": \"SRAM\",\n";
-  jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
-  jsonFile << "            \"type\": \"char *\",\n";
-  jsonFile << "            \"offset\": \"0x08\"\n";
-  jsonFile << "          },\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"ninstr\",\n";
-  jsonFile << "            \"address-qualifier\": \"SCALAR\",\n";
-  jsonFile << "            \"type\": \"uint32_t\",\n";
-  jsonFile << "            \"offset\": \"0x10\"\n";
-  jsonFile << "          },\n";
+  llvm::json::Array arguments;
+  arguments.push_back(llvm::json::Object{{"name", "opcode"},
+                                         {"address-qualifier", "SCALAR"},
+                                         {"type", "uint64_t"},
+                                         {"offset", "0x00"}});
+  arguments.push_back(llvm::json::Object{{"name", "instr"},
+                                         {"memory-connection", "SRAM"},
+                                         {"address-qualifier", "GLOBAL"},
+                                         {"type", "char *"},
+                                         {"offset", "0x08"}});
+  arguments.push_back(llvm::json::Object{{"name", "ninstr"},
+                                         {"address-qualifier", "SCALAR"},
+                                         {"type", "uint32_t"},
+                                         {"offset", "0x10"}});
+
+  int offset = 0x14;
   for (int i = 0; i < 5; i++) {
-    jsonFile << "          {\n";
-    jsonFile << "            \"name\": \"bo" << i << "\",\n";
-    jsonFile << "            \"memory-connection\": \"HOST\",\n";
-    jsonFile << "            \"address-qualifier\": \"GLOBAL\",\n";
-    jsonFile << "            \"type\": \"void*\",\n";
-    jsonFile << "            \"offset\": \"" << std::hex << "0x"
-             << (0x14 + i * 8) << std::dec << "\"\n";
-    jsonFile << "          }" << (i < 4 ? "," : "") << "\n";
+    std::string offsetHex = llvm::formatv("0x{0}", llvm::utohexstr(offset));
+    arguments.push_back(llvm::json::Object{{"name", ("bo" + Twine(i)).str()},
+                                           {"memory-connection", "HOST"},
+                                           {"address-qualifier", "GLOBAL"},
+                                           {"type", "void*"},
+                                           {"offset", offsetHex}});
+    offset += 8;
   }
-  jsonFile << "        ],\n";
-  jsonFile << "        \"instances\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"" << xclbinInstanceName.getValue()
-           << "\"\n";
-  jsonFile << "          }\n";
-  jsonFile << "        ]\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
-  jsonFile.close();
-  return success();
+
+  // Build kernel JSON bottom-up to avoid deeply nested brace initialization
+  llvm::json::Object extendedData(
+      {{"subtype", "DPU"},
+       {"functional", "0"},
+       {"dpu_kernel_id", xclbinKernelId.getValue()}});
+
+  llvm::json::Object kernel(
+      {{"name", xclbinKernelName.getValue()},
+       {"type", "dpu"},
+       {"extended-data", std::move(extendedData)},
+       {"arguments", std::move(arguments)},
+       {"instances", llvm::json::Array{llvm::json::Object(
+                         {{"name", xclbinInstanceName.getValue()}})}}});
+
+  llvm::json::Object psKernels(
+      {{"kernels", llvm::json::Array{std::move(kernel)}}});
+
+  llvm::json::Object kernelsData({{"ps-kernels", std::move(psKernels)}});
+  return writeJsonToFile(jsonPath, llvm::json::Value(std::move(kernelsData)));
 }
 
 static LogicalResult generatePartitionJson(StringRef jsonPath,
                                            StringRef devName, StringRef pdiPath,
                                            xilinx::AIE::DeviceOp deviceOp) {
-  std::ofstream jsonFile(jsonPath.str());
-  if (!jsonFile.is_open()) {
-    llvm::errs() << "Error: Could not open file for writing: " << jsonPath
-                 << "\n";
-    return failure();
-  }
-
   // Query device model for partition dimensions (matches Python emit_partition)
   const auto &targetModel = deviceOp.getTargetModel();
   int numCols = targetModel.columns();
@@ -2834,50 +2814,42 @@ static LogicalResult generatePartitionJson(StringRef jsonPath,
 
   // NPU1 and NPU2 (full devices) always start at column 0.
   // Virtualized devices (e.g., npu1_4col) use a range of start columns.
-  std::string startColumnsStr;
+  llvm::json::Array startColumns;
   if (device == xilinx::AIE::AIEDevice::npu1 ||
       device == xilinx::AIE::AIEDevice::npu2) {
-    startColumnsStr = "[0]";
+    startColumns.push_back(0);
   } else {
-    startColumnsStr = "[";
-    for (int i = 1; i < 6 - numCols; ++i) {
-      if (i > 1)
-        startColumnsStr += ", ";
-      startColumnsStr += std::to_string(i);
-    }
-    startColumnsStr += "]";
+    for (int i = 1; i < 6 - numCols; ++i)
+      startColumns.push_back(i);
   }
 
-  jsonFile << "{\n";
-  jsonFile << "  \"aie_partition\": {\n";
-  jsonFile << "    \"name\": \"QoS\",\n";
-  jsonFile << "    \"operations_per_cycle\": \"2048\",\n";
-  jsonFile << "    \"inference_fingerprint\": \"23423\",\n";
-  jsonFile << "    \"pre_post_fingerprint\": \"12345\",\n";
-  jsonFile << "    \"partition\": {\n";
-  jsonFile << "      \"column_width\": " << numCols << ",\n";
-  jsonFile << "      \"start_columns\": " << startColumnsStr << "\n";
-  jsonFile << "    },\n";
-  jsonFile << "    \"PDIs\": [\n";
-  jsonFile << "      {\n";
-  jsonFile << "        \"uuid\": \"00000000-0000-0000-0000-000000000000\",\n";
-  jsonFile << "        \"file_name\": \"" << pdiPath.str() << "\",\n";
-  jsonFile << "        \"cdo_groups\": [\n";
-  jsonFile << "          {\n";
-  jsonFile << "            \"name\": \"DPU\",\n";
-  jsonFile << "            \"type\": \"PRIMARY\",\n";
-  jsonFile << "            \"pdi_id\": \"0x01\",\n";
-  jsonFile << "            \"dpu_kernel_ids\": [\"" << xclbinKernelId.getValue()
-           << "\"],\n";
-  jsonFile << "            \"pre_cdo_groups\": [\"0xC1\"]\n";
-  jsonFile << "          }\n";
-  jsonFile << "        ]\n";
-  jsonFile << "      }\n";
-  jsonFile << "    ]\n";
-  jsonFile << "  }\n";
-  jsonFile << "}\n";
-  jsonFile.close();
-  return success();
+  // Build partition JSON using llvm::json (bottom-up to avoid brace nesting)
+  llvm::json::Object cdoGroup(
+      {{"name", "DPU"},
+       {"type", "PRIMARY"},
+       {"pdi_id", "0x01"},
+       {"dpu_kernel_ids", llvm::json::Array{xclbinKernelId.getValue()}},
+       {"pre_cdo_groups", llvm::json::Array{std::string("0xC1")}}});
+
+  llvm::json::Object pdiEntry(
+      {{"uuid", "00000000-0000-0000-0000-000000000000"},
+       {"file_name", pdiPath.str()},
+       {"cdo_groups", llvm::json::Array{std::move(cdoGroup)}}});
+
+  llvm::json::Object partition(
+      {{"column_width", numCols}, {"start_columns", std::move(startColumns)}});
+
+  llvm::json::Object aiePartition(
+      {{"name", "QoS"},
+       {"operations_per_cycle", "2048"},
+       {"inference_fingerprint", "23423"},
+       {"pre_post_fingerprint", "12345"},
+       {"partition", std::move(partition)},
+       {"PDIs", llvm::json::Array{std::move(pdiEntry)}}});
+
+  llvm::json::Object partitionData(
+      {{"aie_partition", std::move(aiePartition)}});
+  return writeJsonToFile(jsonPath, llvm::json::Value(std::move(partitionData)));
 }
 
 /// Extract AIE_PARTITION section from existing xclbin and merge new PDI.

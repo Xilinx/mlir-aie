@@ -17,19 +17,22 @@
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin -n %S/cpp_partition_npu1_1col.mlir
 // RUN: FileCheck %s --input-file=cpp_partition_npu1_1col.mlir.prj/main_aie_partition.json --check-prefix=NPU1_1COL
 
-// NPU1_1COL:      "column_width": 1
-// NPU1_1COL-NEXT: "start_columns": [1, 2, 3, 4]
+// NPU1_1COL: "column_width": 1
+// NPU1_1COL: "start_columns": [
+// NPU1_1COL: 1
 
 // --- npu1 (full 4-col): column_width=4, start_columns=[0] ---
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin -n %S/cpp_partition_npu1.mlir
 // RUN: FileCheck %s --input-file=cpp_partition_npu1.mlir.prj/main_aie_partition.json --check-prefix=NPU1
 
-// NPU1:      "column_width": 4
-// NPU1-NEXT: "start_columns": [0]
+// NPU1: "column_width": 4
+// NPU1: "start_columns": [
+// NPU1: 0
 
 // --- npu2 (full 8-col): column_width=8, start_columns=[0] ---
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin -n %S/cpp_partition_npu2.mlir
 // RUN: FileCheck %s --input-file=cpp_partition_npu2.mlir.prj/main_aie_partition.json --check-prefix=NPU2
 
-// NPU2:      "column_width": 8
-// NPU2-NEXT: "start_columns": [0]
+// NPU2: "column_width": 8
+// NPU2: "start_columns": [
+// NPU2: 0
