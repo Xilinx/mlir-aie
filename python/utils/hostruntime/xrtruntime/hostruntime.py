@@ -9,6 +9,7 @@ import atexit
 import logging
 from collections import OrderedDict
 import os
+import shutil
 import time
 import weakref
 import gc
@@ -105,10 +106,10 @@ class XRTHostRuntime(HostRuntime):
                         print("/dev/accel/accel0 does not exist", file=sys.stderr)
 
                     # Try running xrt-smi examine
-                    # We need to find xrt-smi. It might be in PATH or /opt/xilinx/xrt/bin
-                    xrt_bin = (
-                        os.environ.get("XILINX_XRT", "/opt/xilinx/xrt") + "/bin/xrt-smi"
-                    )
+                    xrt_bin = shutil.which("xrt-smi")
+                    if xrt_bin is None:
+                        xrt_base = os.environ.get("XILINX_XRT", "/opt/xilinx/xrt")
+                        xrt_bin = xrt_base + "/bin/xrt-smi"
                     if os.path.exists(xrt_bin):
                         print(f"Running {xrt_bin} examine", file=sys.stderr)
                         result = subprocess.run(
