@@ -58,7 +58,11 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
   let options = [
     Option<"clPlacerName", "placer", "std::string",
            /*default=*/"\"sequential_placer\"",
-           "Placement algorithm to use (currently only 'sequential_placer')">
+           "Placement algorithm to use (currently only 'sequential_placer')">,
+    Option<"clCoresPerCol", "cores-per-col", "int",
+           /*default=*/"-1",
+           "Limit number of cores per column (-1 = no limit). "
+           "Spreads cores across columns for better trace packet routing.">
   ];
 }
 
