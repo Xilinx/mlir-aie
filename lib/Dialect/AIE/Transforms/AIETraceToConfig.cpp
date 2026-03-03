@@ -408,7 +408,7 @@ struct AIETraceRegPackWritesPass
     device.walk([&](TraceConfigOp configOp) {
       // Determine module based on tile type and packet type
       auto tile = cast<TileOp>(configOp.getTile().getDefiningOp());
-      
+
       // Get packet type to determine if this is memory or core trace
       bool isMem = false;
       if (auto packetType = configOp.getPacketType()) {
