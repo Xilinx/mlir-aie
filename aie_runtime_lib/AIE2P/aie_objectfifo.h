@@ -10,7 +10,8 @@
 //
 // C API for ObjectFIFO operations in AIE2P kernels.
 // Provides a self-contained struct that bundles locks, buffers, and depth,
-// hiding the dual-lock (producer + consumer) semantics of AIE2P semaphore locks.
+// hiding the dual-lock (producer + consumer) semantics of AIE2P semaphore
+// locks.
 //
 // On AIE2P, each ObjectFIFO element has two locks:
 //   - Producer lock (acq_lock for producer, rel_lock for consumer)

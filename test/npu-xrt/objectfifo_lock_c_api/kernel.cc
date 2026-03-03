@@ -22,12 +22,10 @@ extern "C" {
 void scale_kernel(int32_t *in_buf0, int32_t *in_buf1, int32_t *out_buf0,
                   int32_t *out_buf1, int64_t in_acq_lock, int64_t in_rel_lock,
                   int64_t out_acq_lock, int64_t out_rel_lock) {
-  objectfifo_t of_in = {(int32_t)in_acq_lock, (int32_t)in_rel_lock,
-                        -1,          1,
-                        2,           {in_buf0, in_buf1}};
-  objectfifo_t of_out = {(int32_t)out_acq_lock, (int32_t)out_rel_lock,
-                         -1,           1,
-                         2,            {out_buf0, out_buf1}};
+  objectfifo_t of_in = {(int32_t)in_acq_lock, (int32_t)in_rel_lock, -1, 1, 2,
+                        {in_buf0, in_buf1}};
+  objectfifo_t of_out = {(int32_t)out_acq_lock, (int32_t)out_rel_lock, -1, 1, 2,
+                         {out_buf0, out_buf1}};
 
   for (int iter = 0; iter < 8; iter++) {
     objectfifo_acquire(&of_in);
