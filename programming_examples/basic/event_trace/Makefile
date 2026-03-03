@@ -24,7 +24,7 @@ in2_size = 4 # in bytes, should always be 4 (1x int32)
 out_size = 16384 # in bytes, should always be equal to in1_size
 trace_size = 8192
 
-all: build/final.xclbin
+all: run_trace_py
 
 build/insts.bin: build/final.xclbin
 
@@ -34,16 +34,16 @@ build/scale.o: ${srcdir}/vector_scalar_mul.cc
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
 
 # Lower the new declarative trace syntax to low-level operations
-build/aie_new_trace_lowered.mlir: ${srcdir}/aie_new_trace.mlir
+build/aie_trace_lowered.mlir: ${srcdir}/aie_trace.mlir
 	mkdir -p ${@D}
-	cd /work/acdc/aie && aie-opt --aie-trace-to-config --aie-inline-trace-config --aiex-config-to-npu ${srcdir}/aie_new_trace.mlir -o /work/acdc/aie/mlir_trace_example/build/aie_new_trace_lowered.mlir
+	cd /work/acdc/aie && aie-opt --aie-trace-to-config --aie-inline-trace-config --aiex-config-to-npu ${srcdir}/aie_trace.mlir -o /work/acdc/aie/mlir_trace_example/build/aie_trace_lowered.mlir
 
 # Build xclbin from the mlir
-build/final.xclbin: ${srcdir}/aie_new_trace.mlir build/scale.o
+build/final.xclbin: ${srcdir}/aie_trace.mlir build/scale.o
 	mkdir -p ${@D}
 	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
     		--no-xchesscc --no-xbridge \
-			--aie-generate-npu-insts --npu-insts-name=insts.bin ${srcdir}/aie_new_trace.mlir
+			--aie-generate-npu-insts --npu-insts-name=insts.bin ${srcdir}/aie_trace.mlir
 
 build/insts.bin: build/final.xclbin
 
@@ -60,32 +60,32 @@ else
 endif
 
 # Build and run with the new trace syntax
-run_new_trace: ${targetname}.exe build/final.xclbin build/insts.bin
+run_trace: ${targetname}.exe build/final.xclbin build/insts.bin
 	@echo "Running with NEW declarative trace syntax..."
 	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}
-	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_new_trace.mlir.prj/input_physical_with_elfs.mlir --output trace_new.json
-	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_new.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir.prj/input_physical_with_elfs.mlir --output trace.json
+	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace.json
 
 	@echo ""
 	@echo "Generating trace visualization..."
-	python3 ${srcdir}/visualize_trace.py -i trace_new.json -o trace_new_timeline.png -t "New Declarative Trace"
-	@echo "Trace visualization saved to trace_new_timeline.png"
+	python3 ${srcdir}/visualize_trace.py -i trace.json -o trace_timeline.png -t "Declarative Trace"
+	@echo "Trace visualization saved to trace_timeline.png"
 
 # Run Python version with new trace syntax
-run_new_trace_py: build/final.xclbin build/insts.bin
+run_trace_py: build/final.xclbin build/insts.bin
 	@echo "Running Python test with declarative trace syntax..."
 	python3 ${srcdir}/test.py --xclbin build/final.xclbin --instr build/insts.bin --kernel MLIR_AIE --verbosity 1 --trace-sz ${trace_size} --trace-file trace.txt
-	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_new_trace.mlir.prj/input_physical_with_elfs.mlir --output trace_new.json
-	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace_new.json
+	${srcdir}/../../../python/utils/trace/parse.py --input trace.txt --mlir build/aie_trace.mlir.prj/input_physical_with_elfs.mlir --output trace.json
+	${srcdir}/../../../python/utils/trace/get_trace_summary.py --input trace.json
 	@echo ""
 	@echo "Generating trace visualization..."
-	python3 ${srcdir}/visualize_trace.py -i trace_new.json -o trace_new_timeline.png -t "New Declarative Trace (Python)"
-	@echo "Trace visualization saved to trace_new_timeline.png"
+	python3 ${srcdir}/visualize_trace.py -i trace.json -o trace_timeline.png -t "Declarative Trace (Python)"
+	@echo "Trace visualization saved to trace_timeline.png"
 
 clean_trace:
-	rm -rf tmpTrace trace.txt parse*json trace*json trace_timeline.png trace_new*.png trace_new.json
+	rm -rf tmpTrace trace.txt trace_timeline.png trace.json
 
 clean: clean_trace
 	rm -rf build _build ${targetname}*.exe
 
-.PHONY: all test_new_trace run_new_trace run_new_trace_py clean clean_trace
+.PHONY: all run_trace run_trace_py clean clean_trace
