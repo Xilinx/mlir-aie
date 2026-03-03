@@ -20,6 +20,13 @@
 #include <type_traits>
 #include <vector>
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIENPUTOCERT
+#define GEN_PASS_DEF_AIECERTPAGES
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+
 using namespace mlir;
 using namespace xilinx;
 
@@ -406,7 +413,7 @@ struct SplitNpuBlockWriteOpPattern : OpRewritePattern<AIEX::NpuBlockWriteOp> {
   }
 };
 
-struct AIENpuToCertPass : AIEX::AIENpuToCertBase<AIENpuToCertPass> {
+struct AIENpuToCertPass : xilinx::AIEX::impl::AIENpuToCertBase<AIENpuToCertPass> {
   void runOnOperation() override {
     ConversionTarget target(getContext());
     target.addIllegalOp<AIE::RuntimeSequenceOp>();
@@ -573,7 +580,7 @@ struct SplitCertJobOpPattern : OpRewritePattern<AIEX::CertJobOp> {
   }
 };
 
-struct AIECertPagesPass : AIEX::AIECertPagesBase<AIECertPagesPass> {
+struct AIECertPagesPass : xilinx::AIEX::impl::AIECertPagesBase<AIECertPagesPass> {
   void runOnOperation() override {
     // First apply the blockwrite splitting pattern
     RewritePatternSet p0(&getContext());

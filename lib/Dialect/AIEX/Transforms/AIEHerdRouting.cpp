@@ -17,6 +17,12 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEHERDROUTING
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+
 #define DEBUG_TYPE "aie-herd-routing"
 
 using namespace mlir;
@@ -184,7 +190,7 @@ void buildRoute(int xSrc, int ySrc, int xDest, int yDest,
       {lastPort, Port{destBundle, destChannel}});
 }
 
-struct AIEHerdRoutingPass : AIEHerdRoutingBase<AIEHerdRoutingPass> {
+struct AIEHerdRoutingPass : xilinx::AIEX::impl::AIEHerdRoutingBase<AIEHerdRoutingPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();

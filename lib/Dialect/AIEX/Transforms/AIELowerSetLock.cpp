@@ -16,6 +16,12 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIELOWERSETLOCK
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+
 #define DEBUG_TYPE "aie-lower-set-lock"
 
 using namespace mlir;
@@ -58,7 +64,7 @@ public:
   };
 };
 
-struct AIELowerSetLockPass : public AIELowerSetLockBase<AIELowerSetLockPass> {
+struct AIELowerSetLockPass : public xilinx::AIEX::impl::AIELowerSetLockBase<AIELowerSetLockPass> {
   void runOnOperation() override {
 
     DeviceOp device = getOperation();

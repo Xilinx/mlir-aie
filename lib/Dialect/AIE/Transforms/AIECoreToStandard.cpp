@@ -30,6 +30,12 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIECORETOSTANDARD
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+
 using namespace mlir;
 using namespace mlir::vector;
 using namespace xilinx;
@@ -678,7 +684,7 @@ struct AIEEventOpToStdLowering : OpConversionPattern<EventOp> {
   }
 };
 
-struct AIECoreToStandardPass : AIECoreToStandardBase<AIECoreToStandardPass> {
+struct AIECoreToStandardPass : xilinx::AIE::impl::AIECoreToStandardBase<AIECoreToStandardPass> {
   AIECoreToStandardPass() = default;
   AIECoreToStandardPass(const AIECoreToStandardOptions &options) {
     deviceName = options.deviceName;

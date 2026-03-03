@@ -15,6 +15,12 @@
 #include "mlir/IR/Location.h"
 #include "mlir/Pass/Pass.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIECANONICALIZEDEVICE
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+
 #define DEBUG_TYPE "aie-canonicalize-device"
 
 using namespace mlir;
@@ -22,7 +28,7 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 struct AIECanonicalizeDevicePass
-    : AIECanonicalizeDeviceBase<AIECanonicalizeDevicePass> {
+    : xilinx::AIE::impl::AIECanonicalizeDeviceBase<AIECanonicalizeDevicePass> {
   void runOnOperation() override {
 
     ModuleOp moduleOp = getOperation();

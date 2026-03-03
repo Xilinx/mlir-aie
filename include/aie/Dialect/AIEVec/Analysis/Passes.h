@@ -31,7 +31,6 @@ namespace xilinx {
 namespace aievec {
 
 #define GEN_PASS_DECL
-#define GEN_PASS_CLASSES
 #include "aie/Dialect/AIEVec/Analysis/Passes.h.inc"
 
 std::unique_ptr<mlir::Pass> createAIEVecConvolutionAnalysisPass();

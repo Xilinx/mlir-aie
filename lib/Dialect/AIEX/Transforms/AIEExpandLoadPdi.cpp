@@ -25,6 +25,12 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEEXPANDLOADPDI
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+
 #define DEBUG_TYPE "aie-expand-load-pdi"
 
 using namespace mlir;
@@ -100,7 +106,7 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
 }
 
 struct AIEExpandLoadPdiPass
-    : public AIEExpandLoadPdiBase<AIEExpandLoadPdiPass> {
+    : public xilinx::AIEX::impl::AIEExpandLoadPdiBase<AIEExpandLoadPdiPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<memref::MemRefDialect, AIE::AIEDialect, AIEX::AIEXDialect>();

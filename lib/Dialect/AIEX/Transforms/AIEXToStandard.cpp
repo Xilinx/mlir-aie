@@ -18,6 +18,12 @@
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEXTOSTANDARD
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -41,7 +47,7 @@ struct AIEXOpRemoval : OpConversionPattern<MyAIEXOp> {
   }
 };
 
-struct AIEXToStandardPass : AIEXToStandardBase<AIEXToStandardPass> {
+struct AIEXToStandardPass : xilinx::AIEX::impl::AIEXToStandardBase<AIEXToStandardPass> {
   void runOnOperation() override {
 
     ModuleOp m = getOperation();

@@ -21,6 +21,12 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIESUBSTITUTESHIMDMAALLOCATIONS
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
@@ -62,7 +68,7 @@ struct DMAConfigureTaskForOpPattern
 };
 
 struct AIESubstituteShimDMAAllocationsPass
-    : AIESubstituteShimDMAAllocationsBase<AIESubstituteShimDMAAllocationsPass> {
+    : xilinx::AIEX::impl::AIESubstituteShimDMAAllocationsBase<AIESubstituteShimDMAAllocationsPass> {
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();

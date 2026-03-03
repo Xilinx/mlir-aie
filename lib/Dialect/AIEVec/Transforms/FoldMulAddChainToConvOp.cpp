@@ -526,7 +526,7 @@ void populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
                                                shiftParam);
 }
 
-struct AIEVecConvAnalysis : public AIEVecConvAnalysisBase<AIEVecConvAnalysis> {
+struct AIEVecConvAnalysis : public xilinx::aievec::impl::AIEVecConvAnalysisBase<AIEVecConvAnalysis> {
   AIEVecConvAnalysis() = default;
   using ConvMacChain = LongestConvMACChainAnalysis::ConvMacChain;
   using ConvMacChainGroupList =

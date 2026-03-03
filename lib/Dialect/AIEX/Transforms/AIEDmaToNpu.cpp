@@ -20,6 +20,12 @@
 #include <algorithm>
 #include <cstdint>
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEDMATONPU
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
@@ -697,7 +703,7 @@ public:
   }
 };
 
-struct AIEDmaToNpuPass : AIEDmaToNpuBase<AIEDmaToNpuPass> {
+struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<memref::MemRefDialect>();

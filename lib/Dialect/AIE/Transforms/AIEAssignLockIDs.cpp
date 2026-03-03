@@ -21,13 +21,19 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEASSIGNLOCKIDS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+
 #define DEBUG_TYPE "aie-assign-lock-ids"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct AIEAssignLockIDsPass : AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
+struct AIEAssignLockIDsPass : xilinx::AIE::impl::AIEAssignLockIDsBase<AIEAssignLockIDsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect>();
     registry.insert<AIEDialect>();

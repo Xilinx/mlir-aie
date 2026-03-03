@@ -16,12 +16,18 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+namespace xilinx::AIEX {
+#define GEN_PASS_DEF_AIEASSIGNRUNTIMESEQUENCEBDIDS
+#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
+} // namespace xilinx::AIEX
+
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIEX;
 
 struct AIEAssignRuntimeSequenceBDIDsPass
-    : AIEAssignRuntimeSequenceBDIDsBase<AIEAssignRuntimeSequenceBDIDsPass> {
+    : xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<AIEAssignRuntimeSequenceBDIDsPass> {
 
   BdIdGenerator &
   getGeneratorForTile(AIE::TileOp tile,

@@ -15,13 +15,19 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Pass/Pass.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIELOCALIZELOCKS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+
 #define DEBUG_TYPE "aie-localize-locks"
 
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
-struct AIELocalizeLocksPass : AIELocalizeLocksBase<AIELocalizeLocksPass> {
+struct AIELocalizeLocksPass : xilinx::AIE::impl::AIELocalizeLocksBase<AIELocalizeLocksPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<arith::ArithDialect>();
   }

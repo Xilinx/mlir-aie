@@ -17,6 +17,13 @@
 
 #include "llvm/ADT/SmallSet.h"
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEGENERATECOLUMNCONTROLOVERLAY
+#define GEN_PASS_DEF_AIEASSIGNTILECTRLIDS
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+
 #define DEBUG_TYPE "aie-generate-column-control-overlay"
 
 using namespace mlir;
@@ -135,7 +142,7 @@ DenseMap<int, int> getRowToShimChanMap(const AIETargetModel &targetModel,
 }
 
 struct AIEAssignTileCtrlIDsPass
-    : AIEAssignTileCtrlIDsBase<AIEAssignTileCtrlIDsPass> {
+    : xilinx::AIE::impl::AIEAssignTileCtrlIDsBase<AIEAssignTileCtrlIDsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
   }
@@ -179,7 +186,7 @@ struct AIEAssignTileCtrlIDsPass
 };
 
 struct AIEGenerateColumnControlOverlayPass
-    : AIEGenerateColumnControlOverlayBase<AIEGenerateColumnControlOverlayPass> {
+    : xilinx::AIE::impl::AIEGenerateColumnControlOverlayBase<AIEGenerateColumnControlOverlayPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<AIEDialect>();
     registry.insert<memref::MemRefDialect>();

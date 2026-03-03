@@ -30,6 +30,12 @@
 
 #include <iostream>
 
+namespace xilinx::AIE {
+#define GEN_PASS_DEF_AIEOBJECTFIFOSTATEFULTRANSFORM
+#include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
+} // namespace xilinx::AIE
+
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -165,7 +171,7 @@ public:
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
 struct AIEObjectFifoStatefulTransformPass
-    : AIEObjectFifoStatefulTransformBase<AIEObjectFifoStatefulTransformPass> {
+    : xilinx::AIE::impl::AIEObjectFifoStatefulTransformBase<AIEObjectFifoStatefulTransformPass> {
   DenseMap<ObjectFifoCreateOp, std::vector<BufferOp>>
       buffersPerFifo; // maps each objFifo to its corresponding buffer
   DenseMap<ObjectFifoCreateOp, std::vector<ExternalBufferOp>>
