@@ -20,6 +20,8 @@ using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
 
+namespace {
+
 struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
@@ -389,6 +391,8 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
   }
 };
 
+} // namespace
+
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIETraceToConfigPass() {
   return std::make_unique<AIETraceToConfigPass>();
@@ -397,6 +401,8 @@ xilinx::AIE::createAIETraceToConfigPass() {
 //===----------------------------------------------------------------------===//
 // AIETraceRegPackWritesPass - Pack multiple register field writes
 //===----------------------------------------------------------------------===//
+
+namespace {
 
 struct AIETraceRegPackWritesPass
     : AIETraceRegPackWritesBase<AIETraceRegPackWritesPass> {
@@ -619,6 +625,8 @@ struct AIETraceRegPackWritesPass
     });
   }
 };
+
+} // namespace
 
 std::unique_ptr<OperationPass<DeviceOp>>
 xilinx::AIE::createAIETraceRegPackWritesPass() {

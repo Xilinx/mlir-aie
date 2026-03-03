@@ -22,6 +22,8 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
+namespace {
+
 struct AIEInlineTraceConfigPass
     : AIEXInlineTraceConfigBase<AIEInlineTraceConfigPass> {
   void runOnOperation() override {
@@ -114,6 +116,8 @@ struct AIEInlineTraceConfigPass
     }
   }
 };
+
+} // namespace
 
 std::unique_ptr<OperationPass<AIE::DeviceOp>>
 xilinx::AIEX::createAIEXInlineTraceConfigPass() {
