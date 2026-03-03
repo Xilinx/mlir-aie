@@ -68,9 +68,18 @@ def _create_input_with_addresses_pipeline(
         )
 
     # Build nested device pipeline with conditional passes
+    # Build aie-place-tiles pass with options if provided
+    place_tiles_pass_args = {}
+    if opts.aie_place_tiles_options:
+        # Parse options like "cores-per-col=2"
+        for option in opts.aie_place_tiles_options.split(','):
+            if '=' in option:
+                key, value = option.split('=', 1)
+                place_tiles_pass_args[key] = value
+
     device_pipeline = (
         Pipeline()
-        .add_pass("aie-place-tiles")
+        .add_pass("aie-place-tiles", **place_tiles_pass_args)
         .add_pass("aie-assign-lock-ids")
         .add_pass("aie-register-objectFifos")
         .add_pass(

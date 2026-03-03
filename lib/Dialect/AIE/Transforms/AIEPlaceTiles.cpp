@@ -64,7 +64,11 @@ struct AIEPlaceTilesPass : AIEPlaceTilesBase<AIEPlaceTilesPass> {
     // Create placer
     std::shared_ptr<Placer> placer;
     if (clPlacerName == "sequential_placer") {
-      placer = std::make_shared<SequentialPlacer>();
+      std::optional<int> coresPerCol = std::nullopt;
+      if (clCoresPerCol >= 0)
+        coresPerCol = clCoresPerCol;
+
+      placer = std::make_shared<SequentialPlacer>(coresPerCol);
     } else {
       device.emitError() << "Unknown placer: " << clPlacerName;
       return signalPassFailure();

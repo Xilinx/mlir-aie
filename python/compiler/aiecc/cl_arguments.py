@@ -421,6 +421,13 @@ def parse_args(args=None):
         action="store_false",
         help="Do not 'materialize' the runtime sequence (lower aiex.configure and aiex.run operations)",
     )
+    parser.add_argument(
+        "--aie-place-tiles-options",
+        type=str,
+        default="",
+        dest="aie_place_tiles_options",
+        help="Options to pass to aie-place-tiles pass (e.g., cores-per-col=2)",
+    )
 
     opts = parser.parse_args(args)
 

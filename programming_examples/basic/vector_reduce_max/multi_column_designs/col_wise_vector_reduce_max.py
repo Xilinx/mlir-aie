@@ -25,10 +25,13 @@ from aie.iron.controlflow import range_
 from aie.helpers.taplib.tap import TensorAccessPattern
 
 
-def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
+def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size,
+                  cores_per_col=2):
     assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
     enable_trace = 1 if trace_size > 0 else None
-    cores_per_col = 2
+    # cores_per_col serves dual purpose:
+    # 1. ObjectFifo connection topology (used in Python below)
+    # 2. Physical placement (passed via Makefile to C++ placer)
 
     dtype = str_to_dtype(dtype_str)
     in_num_elements = in1_size // dtype(0).nbytes
@@ -207,9 +210,19 @@ p.add_argument(
     default=0,
     help="Trace buffer size",
 )
+p.add_argument(
+    "-cpc",
+    "--cores_per_col",
+    type=int,
+    required=False,
+    dest="cores_per_col",
+    default=2,
+    help="Cores per column (for ObjectFifo topology and placement)",
+)
 opts = p.parse_args(sys.argv[1:])
 
 num_cores = int(opts.num_cores)
+cores_per_col = int(opts.cores_per_col)
 if opts.device == "npu":
     dev = NPU1()
     if num_cores > 8:
@@ -234,4 +247,5 @@ out_size = int(opts.out_size)
 dtype = str(opts.dtype)
 trace_size = int(opts.trace_size)
 
-print(my_reduce_max(dev, in1_size, out_size, num_cores, dtype, trace_size))
+print(my_reduce_max(dev, in1_size, out_size, num_cores, dtype, trace_size,
+                    cores_per_col))

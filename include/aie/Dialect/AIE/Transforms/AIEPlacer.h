@@ -73,6 +73,8 @@ private:
   const AIETargetModel *targetModel;
   DeviceOp device;
 
+  void limitCoresPerColumn(int maxCoresPerCol, int numColumns);
+
   void buildObjectFifoGroups(
       llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
       llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks,

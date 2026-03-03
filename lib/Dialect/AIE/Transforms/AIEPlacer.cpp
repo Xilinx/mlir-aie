@@ -62,6 +62,51 @@ void SequentialPlacer::initialize(DeviceOp dev, const AIETargetModel &tm) {
             compTileCmp);
   std::sort(availability.nonCompTiles.begin(), availability.nonCompTiles.end(),
             rowMajorCmp);
+
+  // Limit cores per column if specified
+  if (coresPerCol.has_value()) {
+    limitCoresPerColumn(*coresPerCol, tm.columns());
+  }
+}
+
+void SequentialPlacer::limitCoresPerColumn(int maxCoresPerCol, int numColumns) {
+  // Group compute tiles by column
+  std::map<int, std::vector<TileID>> tilesByColumn;
+
+  for (const auto &tile : availability.compTiles) {
+    tilesByColumn[tile.col].push_back(tile);
+  }
+
+  // Build new limited list, taking only first maxCoresPerCol from each column
+  std::vector<TileID> limitedTiles;
+
+  for (int col = 0; col < numColumns; col++) {
+    auto it = tilesByColumn.find(col);
+    if (it == tilesByColumn.end())
+      continue; // No tiles in this column
+
+    const auto &tilesInCol = it->second;
+    size_t numToTake =
+        std::min(tilesInCol.size(), static_cast<size_t>(maxCoresPerCol));
+
+    // Take first N tiles from this column (already sorted within column)
+    limitedTiles.insert(limitedTiles.end(), tilesInCol.begin(),
+                        tilesInCol.begin() + numToTake);
+
+    LLVM_DEBUG({
+      if (tilesInCol.size() < static_cast<size_t>(maxCoresPerCol)) {
+        llvm::dbgs() << "Column " << col << " has only " << tilesInCol.size()
+                     << " cores (requested " << maxCoresPerCol << ")\n";
+      }
+    });
+  }
+
+  // Replace availability.compTiles with limited list
+  availability.compTiles = limitedTiles;
+
+  LLVM_DEBUG(llvm::dbgs() << "Limited to " << maxCoresPerCol
+                          << " cores per column, total available: "
+                          << limitedTiles.size() << "\n");
 }
 
 LogicalResult SequentialPlacer::place(DeviceOp device,
