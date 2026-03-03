@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -aie-trace-to-config -aie-trace-pack-reg-writes -aiex-inline-trace-config | FileCheck %s
+// RUN: aie-opt %s -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config | FileCheck %s
 
 module {
   aie.device(npu1_1col) {

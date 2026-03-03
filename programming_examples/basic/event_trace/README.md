@@ -81,7 +81,7 @@ aie.runtime_sequence(...) {
 Compiler lowering pipeline for declarative trace:
 1. `-aie-trace-to-config`
 2. `-aie-trace-pack-reg-writes`
-3. `-aiex-inline-trace-config`
+3. `-aie-inline-trace-config`
 4. `-aiex-config-to-npu` (when generating final NPU operations)
 
 Inspect intermediate IR:
@@ -89,7 +89,7 @@ Inspect intermediate IR:
 ```bash
 aie-opt -aie-trace-to-config aie_new_trace.mlir
 aie-opt -aie-trace-to-config -aie-trace-pack-reg-writes aie_new_trace.mlir
-aie-opt -aie-trace-to-config -aie-trace-pack-reg-writes -aiex-inline-trace-config aie_new_trace.mlir
+aie-opt -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config aie_new_trace.mlir
 ```
 
 ### 2) Low-level/manual syntax

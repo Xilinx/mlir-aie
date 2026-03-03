@@ -72,7 +72,7 @@ def _create_input_with_addresses_pipeline(
         Pipeline()
         .add_pass("aie-trace-to-config")
         .add_pass("aie-trace-pack-reg-writes")
-        .add_pass("aiex-inline-trace-config")
+        .add_pass("aie-inline-trace-config")
         .add_pass("aie-assign-lock-ids")
         .add_pass("aie-register-objectFifos")
         .add_pass(

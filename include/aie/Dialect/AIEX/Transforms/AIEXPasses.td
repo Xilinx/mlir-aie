@@ -324,7 +324,7 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
   ];
 }
 
-def AIEXInlineTraceConfig : Pass<"aiex-inline-trace-config", "AIE::DeviceOp"> {
+def AIEXInlineTraceConfig : Pass<"aie-inline-trace-config", "AIE::DeviceOp"> {
   let summary = "Inline trace configuration and generate NPU writes";
   let description = [{
     Replaces aie.trace.start_config operations by:
@@ -333,9 +333,6 @@ def AIEXInlineTraceConfig : Pass<"aiex-inline-trace-config", "AIE::DeviceOp"> {
     3. Encoding bitfield values
     4. Merging multiple field writes to same register
     5. Generating aiex.npu.write32 operations with col/row preserved
-    
-    This pass integrates RegisterDatabase and generates NPU writes directly,
-    preserving col/row information from the tile operation.
   }];
 
   let constructor = "xilinx::AIEX::createAIEXInlineTraceConfigPass()";

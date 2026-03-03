@@ -17,7 +17,7 @@
 // - aie.trace.event for specifying events to capture
 // - aie.trace.start_config in runtime sequence
 //
-// The passes aie-trace-to-config and aiex-inline-trace-config will lower this
+// The passes aie-trace-to-config and aie-inline-trace-config will lower this
 // to the same aiex.npu.write32 operations as aie_trace.mlir.
 //
 //===----------------------------------------------------------------------===//

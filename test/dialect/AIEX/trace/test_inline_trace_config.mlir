@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-trace-to-config -aie-trace-pack-reg-writes -aiex-inline-trace-config | FileCheck %s
+// RUN: aie-opt %s -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config | FileCheck %s
 
 // CHECK-LABEL: module {
 module {
@@ -30,7 +30,7 @@ module {
       // CHECK: aie.runtime_sequence
       aie.trace.start_config @test_trace
 
-      // After inlining with aiex-inline-trace-config, npu.write32 is generated
+      // After inlining with aie-inline-trace-config, npu.write32 is generated
       // CHECK-NOT: aie.trace.start_config
       // CHECK: aiex.npu.write32
       // CHECK-SAME: column = 0 : i32

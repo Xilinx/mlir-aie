@@ -43,7 +43,7 @@ build/final.xclbin: ${srcdir}/aie_trace.mlir build/scale.o
 # Lower the new declarative trace syntax to low-level operations
 build/aie_new_trace_lowered.mlir: ${srcdir}/aie_new_trace.mlir
 	mkdir -p ${@D}
-	cd /work/acdc/aie && aie-opt --aie-trace-to-config --aiex-inline-trace-config --aiex-config-to-npu ${srcdir}/aie_new_trace.mlir -o /work/acdc/aie/mlir_trace_example/build/aie_new_trace_lowered.mlir
+	cd /work/acdc/aie && aie-opt --aie-trace-to-config --aie-inline-trace-config --aiex-config-to-npu ${srcdir}/aie_new_trace.mlir -o /work/acdc/aie/mlir_trace_example/build/aie_new_trace_lowered.mlir
 
 # Build xclbin from the new trace syntax (lowered)
 build/final_new.xclbin: ${srcdir}/aie_new_trace.mlir build/scale.o

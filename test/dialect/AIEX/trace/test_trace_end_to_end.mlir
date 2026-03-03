@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -aie-trace-to-config -aie-trace-pack-reg-writes -aiex-inline-trace-config | FileCheck %s
+// RUN: aie-opt %s -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config | FileCheck %s
 
 // This test demonstrates the complete trace configuration pipeline
 // from high-level aie.trace operations through to inlined register specifications
