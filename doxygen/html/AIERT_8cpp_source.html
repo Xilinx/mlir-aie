@@ -1109,53 +1109,52 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00990" name="l00990"></a><span class="lineno">  990</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> fileAttr = coreOp.getElfFile()) {</div>
 <div class="line"><a id="l00991" name="l00991"></a><span class="lineno">  991</span>          fileName = fileAttr-&gt;str();</div>
 <div class="line"><a id="l00992" name="l00992"></a><span class="lineno">  992</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00993" name="l00993"></a><span class="lineno">  993</span>          coreOp.emitOpError()</div>
-<div class="line"><a id="l00994" name="l00994"></a><span class="lineno">  994</span>              &lt;&lt; <span class="stringliteral">&quot;Expected lowered ELF file to be given as attribute &quot;</span></div>
-<div class="line"><a id="l00995" name="l00995"></a><span class="lineno">  995</span>                 <span class="stringliteral">&quot;`elf_file` for this core. Compile cores first.&quot;</span>;</div>
-<div class="line"><a id="l00996" name="l00996"></a><span class="lineno">  996</span>          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00997" name="l00997"></a><span class="lineno">  997</span>        }</div>
-<div class="line"><a id="l00998" name="l00998"></a><span class="lineno">  998</span>        <span class="comment">// Check if fileName is already an absolute path.</span></div>
-<div class="line"><a id="l00999" name="l00999"></a><span class="lineno">  999</span>        <span class="comment">// If so, use it directly. Otherwise, concatenate with elfPath.</span></div>
-<div class="line"><a id="l01000" name="l01000"></a><span class="lineno"> 1000</span>        std::string fullPath;</div>
-<div class="line"><a id="l01001" name="l01001"></a><span class="lineno"> 1001</span>        <span class="keywordflow">if</span> (std::filesystem::path(fileName).is_absolute()) {</div>
-<div class="line"><a id="l01002" name="l01002"></a><span class="lineno"> 1002</span>          fullPath = fileName;</div>
-<div class="line"><a id="l01003" name="l01003"></a><span class="lineno"> 1003</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l01004" name="l01004"></a><span class="lineno"> 1004</span>          <span class="keyword">auto</span> ps = std::filesystem::path::preferred_separator;</div>
-<div class="line"><a id="l01005" name="l01005"></a><span class="lineno"> 1005</span>          fullPath =</div>
-<div class="line"><a id="l01006" name="l01006"></a><span class="lineno"> 1006</span>              (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();</div>
-<div class="line"><a id="l01007" name="l01007"></a><span class="lineno"> 1007</span>        }</div>
-<div class="line"><a id="l01008" name="l01008"></a><span class="lineno"> 1008</span>        <span class="keywordflow">if</span> (failed(addAieElf(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, fullPath, aieSim)))</div>
-<div class="line"><a id="l01009" name="l01009"></a><span class="lineno"> 1009</span>          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l01010" name="l01010"></a><span class="lineno"> 1010</span>      }</div>
-<div class="line"><a id="l01011" name="l01011"></a><span class="lineno"> 1011</span>    }</div>
-<div class="line"><a id="l01012" name="l01012"></a><span class="lineno"> 1012</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l01013" name="l01013"></a><span class="lineno"> 1013</span>}</div>
+<div class="line"><a id="l00993" name="l00993"></a><span class="lineno">  993</span>          <span class="comment">// Skip cores without elf_file (e.g., lightweight reset</span></div>
+<div class="line"><a id="l00994" name="l00994"></a><span class="lineno">  994</span>          <span class="comment">// devices that only need DMA/lock reconfiguration).</span></div>
+<div class="line"><a id="l00995" name="l00995"></a><span class="lineno">  995</span>          <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00996" name="l00996"></a><span class="lineno">  996</span>        }</div>
+<div class="line"><a id="l00997" name="l00997"></a><span class="lineno">  997</span>        <span class="comment">// Check if fileName is already an absolute path.</span></div>
+<div class="line"><a id="l00998" name="l00998"></a><span class="lineno">  998</span>        <span class="comment">// If so, use it directly. Otherwise, concatenate with elfPath.</span></div>
+<div class="line"><a id="l00999" name="l00999"></a><span class="lineno">  999</span>        std::string fullPath;</div>
+<div class="line"><a id="l01000" name="l01000"></a><span class="lineno"> 1000</span>        <span class="keywordflow">if</span> (std::filesystem::path(fileName).is_absolute()) {</div>
+<div class="line"><a id="l01001" name="l01001"></a><span class="lineno"> 1001</span>          fullPath = fileName;</div>
+<div class="line"><a id="l01002" name="l01002"></a><span class="lineno"> 1002</span>        } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l01003" name="l01003"></a><span class="lineno"> 1003</span>          <span class="keyword">auto</span> ps = std::filesystem::path::preferred_separator;</div>
+<div class="line"><a id="l01004" name="l01004"></a><span class="lineno"> 1004</span>          fullPath =</div>
+<div class="line"><a id="l01005" name="l01005"></a><span class="lineno"> 1005</span>              (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();</div>
+<div class="line"><a id="l01006" name="l01006"></a><span class="lineno"> 1006</span>        }</div>
+<div class="line"><a id="l01007" name="l01007"></a><span class="lineno"> 1007</span>        <span class="keywordflow">if</span> (failed(addAieElf(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, fullPath, aieSim)))</div>
+<div class="line"><a id="l01008" name="l01008"></a><span class="lineno"> 1008</span>          <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l01009" name="l01009"></a><span class="lineno"> 1009</span>      }</div>
+<div class="line"><a id="l01010" name="l01010"></a><span class="lineno"> 1010</span>    }</div>
+<div class="line"><a id="l01011" name="l01011"></a><span class="lineno"> 1011</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l01012" name="l01012"></a><span class="lineno"> 1012</span>}</div>
 </div>
-<div class="line"><a id="l01014" name="l01014"></a><span class="lineno"> 1014</span> </div>
-<div class="foldopen" id="foldopen01015" data-start="{" data-end="}">
-<div class="line"><a id="l01015" name="l01015"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab"> 1015</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <span class="keywordtype">size_t</span> addr,</div>
-<div class="line"><a id="l01016" name="l01016"></a><span class="lineno"> 1016</span>                                                <span class="keywordtype">size_t</span> bdId) {</div>
-<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>  <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_DmaUpdateBdAddr, &amp;aiert-&gt;devInst, tileLoc, addr,</div>
-<div class="line"><a id="l01019" name="l01019"></a><span class="lineno"> 1019</span>                           bdId);</div>
-<div class="line"><a id="l01020" name="l01020"></a><span class="lineno"> 1020</span>}</div>
+<div class="line"><a id="l01013" name="l01013"></a><span class="lineno"> 1013</span> </div>
+<div class="foldopen" id="foldopen01014" data-start="{" data-end="}">
+<div class="line"><a id="l01014" name="l01014"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab"> 1014</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <span class="keywordtype">size_t</span> addr,</div>
+<div class="line"><a id="l01015" name="l01015"></a><span class="lineno"> 1015</span>                                                <span class="keywordtype">size_t</span> bdId) {</div>
+<div class="line"><a id="l01016" name="l01016"></a><span class="lineno"> 1016</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span>  <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_DmaUpdateBdAddr, &amp;aiert-&gt;devInst, tileLoc, addr,</div>
+<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>                           bdId);</div>
+<div class="line"><a id="l01019" name="l01019"></a><span class="lineno"> 1019</span>}</div>
 </div>
-<div class="line"><a id="l01021" name="l01021"></a><span class="lineno"> 1021</span> </div>
-<div class="foldopen" id="foldopen01022" data-start="{" data-end="}">
-<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63"> 1022</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a>() {</div>
-<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>  <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_StartTransaction, &amp;aiert-&gt;devInst,</div>
-<div class="line"><a id="l01024" name="l01024"></a><span class="lineno"> 1024</span>                           XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);</div>
-<div class="line"><a id="l01025" name="l01025"></a><span class="lineno"> 1025</span>}</div>
+<div class="line"><a id="l01020" name="l01020"></a><span class="lineno"> 1020</span> </div>
+<div class="foldopen" id="foldopen01021" data-start="{" data-end="}">
+<div class="line"><a id="l01021" name="l01021"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63"> 1021</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a>() {</div>
+<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"> 1022</span>  <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_StartTransaction, &amp;aiert-&gt;devInst,</div>
+<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>                           XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);</div>
+<div class="line"><a id="l01024" name="l01024"></a><span class="lineno"> 1024</span>}</div>
 </div>
-<div class="line"><a id="l01026" name="l01026"></a><span class="lineno"> 1026</span> </div>
-<div class="foldopen" id="foldopen01027" data-start="{" data-end="}">
-<div class="line"><a id="l01027" name="l01027"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee"> 1027</a></span>std::vector&lt;uint8_t&gt; <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">xilinx::AIE::AIERTControl::exportSerializedTransaction</a>() {</div>
-<div class="line"><a id="l01028" name="l01028"></a><span class="lineno"> 1028</span>  <span class="comment">// Export the transactions to a binary buffer</span></div>
-<div class="line"><a id="l01029" name="l01029"></a><span class="lineno"> 1029</span>  uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&amp;aiert-&gt;devInst, 0, 0);</div>
-<div class="line"><a id="l01030" name="l01030"></a><span class="lineno"> 1030</span>  XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;</div>
-<div class="line"><a id="l01031" name="l01031"></a><span class="lineno"> 1031</span>  std::vector&lt;uint8_t&gt; txn_data(txn_ptr, txn_ptr + hdr-&gt;TxnSize);</div>
-<div class="line"><a id="l01032" name="l01032"></a><span class="lineno"> 1032</span>  <span class="keywordflow">return</span> txn_data;</div>
-<div class="line"><a id="l01033" name="l01033"></a><span class="lineno"> 1033</span>}</div>
+<div class="line"><a id="l01025" name="l01025"></a><span class="lineno"> 1025</span> </div>
+<div class="foldopen" id="foldopen01026" data-start="{" data-end="}">
+<div class="line"><a id="l01026" name="l01026"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee"> 1026</a></span>std::vector&lt;uint8_t&gt; <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">xilinx::AIE::AIERTControl::exportSerializedTransaction</a>() {</div>
+<div class="line"><a id="l01027" name="l01027"></a><span class="lineno"> 1027</span>  <span class="comment">// Export the transactions to a binary buffer</span></div>
+<div class="line"><a id="l01028" name="l01028"></a><span class="lineno"> 1028</span>  uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&amp;aiert-&gt;devInst, 0, 0);</div>
+<div class="line"><a id="l01029" name="l01029"></a><span class="lineno"> 1029</span>  XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;</div>
+<div class="line"><a id="l01030" name="l01030"></a><span class="lineno"> 1030</span>  std::vector&lt;uint8_t&gt; txn_data(txn_ptr, txn_ptr + hdr-&gt;TxnSize);</div>
+<div class="line"><a id="l01031" name="l01031"></a><span class="lineno"> 1031</span>  <span class="keywordflow">return</span> txn_data;</div>
+<div class="line"><a id="l01032" name="l01032"></a><span class="lineno"> 1032</span>}</div>
 </div>
 <div class="ttc" id="aAIERT_8cpp_html_a1df0c39011ffefdf1fc8778e92804358"><div class="ttname"><a href="AIERT_8cpp.html#a1df0c39011ffefdf1fc8778e92804358">XAIE_SHIM_ROW</a></div><div class="ttdeci">#define XAIE_SHIM_ROW</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00190">AIERT.cpp:190</a></div></div>
 <div class="ttc" id="aAIERT_8cpp_html_a4d13af53ed8983ed7656c51970271aff"><div class="ttname"><a href="AIERT_8cpp.html#a4d13af53ed8983ed7656c51970271aff">showAIEXRTArgs</a></div><div class="ttdeci">llvm::raw_ostream &amp; showAIEXRTArgs(llvm::raw_ostream &amp;out, const char *label, H1 &amp;&amp;value)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00084">AIERT.cpp:84</a></div></div>
@@ -1200,13 +1199,13 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a0584434e37276fa5225ae8e950a9f40d"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a0584434e37276fa5225ae8e950a9f40d">xilinx::AIE::AIERTControl::resetPerfCounters</a></div><div class="ttdeci">mlir::LogicalResult resetPerfCounters(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00957">AIERT.cpp:957</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a1107b280178bc6922b82520de009cab1"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a1107b280178bc6922b82520de009cab1">xilinx::AIE::AIERTControl::resetCore</a></div><div class="ttdeci">mlir::LogicalResult resetCore(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00865">AIERT.cpp:865</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a1b44dc952beccfe8021c11ab6ec0f7b9"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a1b44dc952beccfe8021c11ab6ec0f7b9">xilinx::AIE::AIERTControl::pushToBdQueueAndEnable</a></div><div class="ttdeci">mlir::LogicalResult pushToBdQueueAndEnable(mlir::Operation &amp;op, int col, int row, int chNum, const DMAChannelDir &amp;channelDir, int bdId, int repeatCount)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00494">AIERT.cpp:494</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a28aa7b5b96dcb15f9a349eb0a5b677ab"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a></div><div class="ttdeci">void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01015">AIERT.cpp:1015</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a28aa7b5b96dcb15f9a349eb0a5b677ab"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a></div><div class="ttdeci">void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01014">AIERT.cpp:1014</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a3603ca98d6e48a9f5a3ba6084c9a75f0"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a3603ca98d6e48a9f5a3ba6084c9a75f0">xilinx::AIE::AIERTControl::resetPartition</a></div><div class="ttdeci">mlir::LogicalResult resetPartition()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00848">AIERT.cpp:848</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a369018049bee63ea0b08c1635f427829"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a369018049bee63ea0b08c1635f427829">xilinx::AIE::AIERTControl::addAieElfs</a></div><div class="ttdeci">mlir::LogicalResult addAieElfs(DeviceOp &amp;targetOp, const mlir::StringRef workDirPath, bool aieSim)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00979">AIERT.cpp:979</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a411541c395822c564b20efea0044fff6"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a411541c395822c564b20efea0044fff6">xilinx::AIE::AIERTControl::resetCoreUnreset</a></div><div class="ttdeci">mlir::LogicalResult resetCoreUnreset(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00899">AIERT.cpp:899</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a56cb4928f857fa784d32a5083bac8137"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a56cb4928f857fa784d32a5083bac8137">xilinx::AIE::AIERTControl::setIOBackend</a></div><div class="ttdeci">mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00257">AIERT.cpp:257</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a581d9d8ce56f1ac2e336a65f1aeddc63"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a></div><div class="ttdeci">void startTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01022">AIERT.cpp:1022</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a62b08315999e529536a4a099783baeee"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">xilinx::AIE::AIERTControl::exportSerializedTransaction</a></div><div class="ttdeci">std::vector&lt; uint8_t &gt; exportSerializedTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01027">AIERT.cpp:1027</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a581d9d8ce56f1ac2e336a65f1aeddc63"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a></div><div class="ttdeci">void startTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01021">AIERT.cpp:1021</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a62b08315999e529536a4a099783baeee"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">xilinx::AIE::AIERTControl::exportSerializedTransaction</a></div><div class="ttdeci">std::vector&lt; uint8_t &gt; exportSerializedTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01026">AIERT.cpp:1026</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a654d3cfc17cb49814d12737498099558"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a654d3cfc17cb49814d12737498099558">xilinx::AIE::AIERTControl::AIERTControl</a></div><div class="ttdeci">AIERTControl(const xilinx::AIE::AIETargetModel &amp;tm)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00206">AIERT.cpp:206</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a689a0e4c75523bb7e287a39226925de0"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a689a0e4c75523bb7e287a39226925de0">xilinx::AIE::AIERTControl::initLocks</a></div><div class="ttdeci">mlir::LogicalResult initLocks(DeviceOp &amp;targetOp)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00533">AIERT.cpp:533</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a6f94d408ec9da78b3db58addac4c4a9f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a6f94d408ec9da78b3db58addac4c4a9f">xilinx::AIE::AIERTControl::resetDMA</a></div><div class="ttdeci">mlir::LogicalResult resetDMA(int col, int row, bool on)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00853">AIERT.cpp:853</a></div></div>
@@ -1223,7 +1222,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Mar 3 2026 01:40:52 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Mar 3 2026 04:18:54 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
