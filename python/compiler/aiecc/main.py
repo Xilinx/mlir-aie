@@ -336,6 +336,14 @@ def generate_devices_list(module):
     ]
 
 
+def _core_has_nonempty_body(core_op):
+    """Check if a CoreOp has a non-empty body (more than just aie.end)."""
+    for block in core_op.body:
+        if len(list(block)) > 1:
+            return True
+    return False
+
+
 def generate_cores_list(device_op):
     return [
         (
@@ -347,6 +355,9 @@ def generate_cores_list(device_op):
             device_op.operation,
             lambda o: isinstance(o.operation.opview, aiedialect.CoreOp),
         )
+        if c.elf_file is not None
+        or c.link_with is not None
+        or _core_has_nonempty_body(c)
     ]
 
 
