@@ -807,8 +807,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
                             << "0x" << llvm::Twine::utohexstr(ID) << '\n');
     for (int i = 0; i < 31; i++) {
       if ((i & mask) == (ID & mask))
-        LLVM_DEBUG(llvm::dbgs() << "matches flow ID " << "0x"
-                                << llvm::Twine::utohexstr(i) << '\n');
+        LLVM_DEBUG(llvm::dbgs() << "matches flow ID "
+                                << "0x" << llvm::Twine::utohexstr(i) << '\n');
     }
   }
 #endif
