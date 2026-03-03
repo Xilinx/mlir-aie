@@ -16,8 +16,8 @@ aie.device(npu1_1col) {
     aie.trace.event<"COMBO_EVENT_0">
   }
   
-  // CHECK: aie.trace.reg register = "Combo_event_inputs" field = "eventA"
-  // CHECK: aie.trace.reg register = "Combo_event_inputs" field = "eventB"
+  // CHECK: aie.trace.reg register = "Combo_event_inputs" field = "eventA" value = "INSTR_EVENT_0"
+  // CHECK: aie.trace.reg register = "Combo_event_inputs" field = "eventB" value = "INSTR_VECTOR"
   // CHECK: aie.trace.reg register = "Combo_event_control" field = "combo0" value = 0
-  // CHECK: aie.trace.reg register = "Trace_Event0" field = "Trace_Event0"
+  // CHECK: aie.trace.reg register = "Trace_Event0" field = "Trace_Event0" value = "COMBO_EVENT_0" comment = "COMBO_EVENT_0"
 }
