@@ -491,19 +491,40 @@ struct AIETraceRegPackWritesPass
             // field
             bool master = false; // Default to slave
 
-            // Search for companion Master_Slave field in same register
+            // Derive the port slot prefix from the current field name, e.g.:
+            //   "Port_1_ID" -> "Port_1"
+            StringRef fieldName(fieldInfo->name);
+            StringRef portSlotPrefix;
+            if (fieldName.starts_with("Port_")) {
+              size_t idSuffixPos = fieldName.find("_ID");
+              if (idSuffixPos != std::string::npos)
+                portSlotPrefix = fieldName.take_front(idSuffixPos);
+            }
+            // Search for companion Master_Slave field in same register and,
+            // when possible, for the same port slot.
             for (auto &siblingOp : configOp.getBody().front()) {
               if (auto siblingReg = dyn_cast<TraceRegOp>(siblingOp)) {
-                if (siblingReg.getRegName() == regOp.getRegName() &&
-                    siblingReg.getField() &&
-                    siblingReg.getField()->contains("Master_Slave")) {
-                  // Found companion field - extract master flag
-                  if (auto siblingInt =
-                          dyn_cast<IntegerAttr>(siblingReg.getValue())) {
-                    master = (siblingInt.getInt() != 0);
-                  }
-                  break;
+                if (siblingReg.getRegName() != regOp.getRegName() ||
+                    !siblingReg.getField())
+                  continue;
+                StringRef siblingFieldName = *siblingReg.getField();
+                // If we could determine a slot prefix (e.g. "Port_1"), require
+                // the sibling to match that slot and contain "Master_Slave".
+                if (!portSlotPrefix.empty()) {
+                  if (!siblingFieldName.starts_with(portSlotPrefix) ||
+                      !siblingFieldName.contains("Master_Slave"))
+                    continue;
+                } else {
+                  // Fallback: match any Master_Slave field in this register.
+                  if (!siblingFieldName.contains("Master_Slave"))
+                    continue;
                 }
+                // Found companion field - extract master flag
+                if (auto siblingInt =
+                        dyn_cast<IntegerAttr>(siblingReg.getValue())) {
+                  master = (siblingInt.getInt() != 0);
+                }
+                break;
               }
             }
 
