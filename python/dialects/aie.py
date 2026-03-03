@@ -517,6 +517,22 @@ class object_fifo(ObjectFifoCreateOp):
         """
         return ObjectFifoGetBufferOp(self.datatype, self.sym_name.value, index).output
 
+    def get_depth(self):
+        """Get the ObjectFIFO depth as an index constant.
+
+        Returns the depth (number of buffers) as an arith.constant index value,
+        suitable for passing to C kernels.
+
+        Returns:
+            index SSA value for the depth.
+        """
+        elem_num = self.elemNumber
+        if isinstance(elem_num, ArrayAttr):
+            depth_val = IntegerAttr(elem_num[0]).value
+        else:
+            depth_val = IntegerAttr(elem_num).value
+        return constant(depth_val, index=True)
+
 
 # Create an aie objectFifo_link between input and output objectFifos.
 class object_fifo_link(ObjectFifoLinkOp):

@@ -435,6 +435,17 @@ class ObjectFifoHandle(Resolvable):
         """
         return self._object_fifo.op.get_buffer(index)
 
+    def get_depth(self):
+        """Get the ObjectFIFO depth as an index constant.
+
+        Returns the depth (number of buffers) as an arith.constant index
+        value, suitable for passing to C kernels.
+
+        Returns:
+            index SSA value for the depth.
+        """
+        return self._object_fifo.op.get_depth()
+
     @property
     def name(self) -> str:
         """The name of the ObjectFifo"""
