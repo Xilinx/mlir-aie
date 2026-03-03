@@ -37,7 +37,7 @@
 #endif
 
 // Maximum supported ObjectFIFO depth (number of buffers).
-#define OBJECTFIFO_MAX_DEPTH 4
+#define OBJECTFIFO_MAX_DEPTH 8
 
 // ObjectFIFO handle for C kernels.
 // Encapsulates everything needed to acquire/release and access buffers
@@ -66,6 +66,20 @@ static inline void objectfifo_acquire(const objectfifo_t *of) {
 // For consumers: signals that the buffer is free.
 static inline void objectfifo_release(const objectfifo_t *of) {
   release(of->rel_lock, of->rel_value);
+}
+
+// Acquire N elements from an ObjectFIFO (for sliding window patterns).
+// Calls acquire_equal N times.
+static inline void objectfifo_acquire_n(const objectfifo_t *of, int32_t n) {
+  for (int32_t i = 0; i < n; i++)
+    acquire_equal(of->acq_lock, of->acq_value);
+}
+
+// Release N elements from an ObjectFIFO.
+// Calls release N times with rel_value.
+static inline void objectfifo_release_n(const objectfifo_t *of, int32_t n) {
+  for (int32_t i = 0; i < n; i++)
+    release(of->rel_lock, of->rel_value);
 }
 
 // Get the buffer pointer for the current iteration.

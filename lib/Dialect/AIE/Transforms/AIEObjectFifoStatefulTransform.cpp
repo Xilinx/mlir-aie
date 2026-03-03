@@ -1673,21 +1673,42 @@ struct AIEObjectFifoStatefulTransformPass
       }
 
     int maxAcquire = 0;
+    int maxBufferIndex = -1;
     for (auto coreOp : device.getOps<CoreOp>())
-      if (coreOp.getTile() == tile)
+      if (coreOp.getTile() == tile) {
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
           if (auto createOp = acqOp.getObjectFifo(); createOp == objFifo)
             if (acqOp.acqNumber() > maxAcquire)
               maxAcquire = acqOp.acqNumber();
         });
+        // Also check ObjectFifoGetBufferOps for the max buffer index
+        // referenced, to avoid over-allocating buffers when the C ObjectFIFO
+        // API is used with fewer buffers than the OF depth.
+        coreOp.walk([&](ObjectFifoGetBufferOp getBufOp) {
+          if (auto createOp = getBufOp.getObjectFifo(); createOp == objFifo)
+            if (getBufOp.getIndex() > maxBufferIndex)
+              maxBufferIndex = getBufOp.getIndex();
+        });
+      }
 
     if (maxAcquire > 0) {
       if (maxAcquire == 1 && objFifo.size() == 1)
         return 1;
-      return maxAcquire + 1;
+      // If both acquire and get_buffer are used, take the max
+      int acquireSize = maxAcquire + 1;
+      int bufferSize =
+          maxBufferIndex >= 0 ? maxBufferIndex + 2 : 0; // +2 for prefetch
+      return std::max(acquireSize, bufferSize);
       // +1 because objectFifo size is always 1 bigger than maxAcquire to allow
       // for prefetching: simplest case scenario is at least a ping-pong buffer
     }
+
+    // If only get_buffer ops are used (C ObjectFIFO API, no acquire ops),
+    // allocate the full OF depth. The DMA BD chain cycles through all
+    // allocated buffers, and objectfifo_get_buffer(of, iter) must match
+    // this rotation with iter % depth.
+    if (maxBufferIndex >= 0)
+      return objFifo.size();
 
     return objFifo.size();
   }
