@@ -1058,8 +1058,27 @@ struct ConvertMulAddToAIEVecFMAElemOpPattern
   unsigned shiftParam;
 };
 
-// Convert `vector.fma` to `aievec.mac_elem`. Only `vector<16xf32>` and
-// `vector<16xbf16>` operand types are supported. In the case of vectors with
+// Lower a single 16-lane bf16 FMA half: UPS -> FMAElem -> SRS.
+static Value lowerBF16FMAHalf(Value lhs, Value rhs, Value acc,
+                              unsigned shiftParam, Location loc,
+                              ConversionPatternRewriter &rewriter) {
+  auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
+  auto upsOp =
+      aievec::UPSOp::create(rewriter, loc, f32AccType, acc, shiftParam);
+  auto fmaElemOp = aievec::FMAElemOp::create(rewriter, loc, f32AccType, lhs,
+                                             rhs, upsOp.getResult(),
+                                             /*fmsub=*/false);
+  auto shiftParamOp = arith::ConstantOp::create(
+      rewriter, loc, rewriter.getI32IntegerAttr(shiftParam));
+  auto srsOp =
+      aievec::SRSOp::create(rewriter, loc, cast<VectorType>(lhs.getType()),
+                            fmaElemOp.getResult(), shiftParamOp.getResult());
+  return srsOp.getResult();
+}
+
+// Convert `vector.fma` to `aievec.mac_elem`. Supported operand types:
+// `vector<16xf32>`, `vector<16xbf16>`, and `vector<32xbf16>` (split into two
+// 16-lane FMAs). In the case of vectors with
 // `f32` elemental type, this pattern will try to match `bf16` to `f32`
 // widening ops in the `lhs` and `rhs` operands, or fail otherwise.
 // TODO: When sign extensions are not found, a conversion from `f32` to `bf16`
@@ -1080,13 +1099,38 @@ struct ConvertVectorFMAOpToAIEVecFMAElemOpPattern
     auto resElemTy = resVecTy.getElementType();
     unsigned numElems = getVectorLaneSize(resVecTy);
 
-    if (numElems != 16 || (!resElemTy.isF32() && !resElemTy.isBF16()))
+    // Only support f32 with 16 lanes; bf16 with 16 or 32 lanes.
+    if ((!resElemTy.isF32() && !resElemTy.isBF16()) ||
+        (numElems != 16 && !(resElemTy.isBF16() && numElems == 32)))
       return rewriter.notifyMatchFailure(
           fmaOp, "Unsupported operand types in vector.fma lowering.");
 
     Value lhs = adaptor.getLhs();
     Value rhs = adaptor.getRhs();
     Value acc = adaptor.getAcc();
+
+    // Handle vector<32xbf16> by splitting into two vector<16xbf16> FMAs
+    if (numElems == 32 && resElemTy.isBF16()) {
+      VectorType halfType = createVectorType(16, resElemTy);
+      unsigned localShiftParam = shiftParam;
+
+      splitWideVectorOp<vector::FMAOp>(
+          fmaOp, {lhs, rhs, acc}, halfType, resVecTy, rewriter,
+          [localShiftParam](ArrayRef<std::pair<Value, Value>> halfInputs,
+                            Location loc, ConversionPatternRewriter &rewriter) {
+            auto [lhsLow, lhsHigh] = halfInputs[0];
+            auto [rhsLow, rhsHigh] = halfInputs[1];
+            auto [accLow, accHigh] = halfInputs[2];
+
+            Value lowResult = lowerBF16FMAHalf(lhsLow, rhsLow, accLow,
+                                               localShiftParam, loc, rewriter);
+            Value highResult = lowerBF16FMAHalf(lhsHigh, rhsHigh, accHigh,
+                                                localShiftParam, loc, rewriter);
+            return std::make_pair(lowResult, highResult);
+          });
+      return success();
+    }
+
     if (resElemTy.isBF16())
       acc = aievec::UPSOp::create(rewriter, fmaOp.getLoc(),
                                   VectorType::get({16}, rewriter.getF32Type()),
@@ -1168,24 +1212,10 @@ struct ConvertMulAddFToAIEVecFMAElemOpPattern
             auto [rhsLow, rhsHigh] = halfInputs[1];
             auto [accLow, accHigh] = halfInputs[2];
 
-            auto processHalf = [&](Value lhsH, Value rhsH,
-                                   Value accH) -> Value {
-              auto f32AccType = VectorType::get({16}, rewriter.getF32Type());
-              auto upsOp = aievec::UPSOp::create(rewriter, loc, f32AccType,
-                                                 accH, localShiftParam);
-              auto fmaElemOp = aievec::FMAElemOp::create(
-                  rewriter, loc, f32AccType, lhsH, rhsH, upsOp.getResult(),
-                  /*fmsub=*/false);
-              auto shiftParamOp = arith::ConstantOp::create(
-                  rewriter, loc, rewriter.getI32IntegerAttr(localShiftParam));
-              auto srsOp = aievec::SRSOp::create(
-                  rewriter, loc, cast<VectorType>(lhsH.getType()),
-                  fmaElemOp.getResult(), shiftParamOp.getResult());
-              return srsOp.getResult();
-            };
-
-            Value lowResult = processHalf(lhsLow, rhsLow, accLow);
-            Value highResult = processHalf(lhsHigh, rhsHigh, accHigh);
+            Value lowResult = lowerBF16FMAHalf(lhsLow, rhsLow, accLow,
+                                               localShiftParam, loc, rewriter);
+            Value highResult = lowerBF16FMAHalf(lhsHigh, rhsHigh, accHigh,
+                                                localShiftParam, loc, rewriter);
             return std::make_pair(lowResult, highResult);
           });
       return success();
@@ -1234,8 +1264,10 @@ struct ConvertMulFToAIEVecMulElemOpPattern
     // Skip standalone mul conversion when this MulFOp feeds into an AddFOp as
     // its sole user. ConvertMulAddFToAIEVecFMAElemOpPattern will fuse the
     // multiply and add into a single aievec.mac_elem.
+    // Only defer to FMA for bf16 where the FMA pattern is registered.
     auto isAddOp = [&](Operation *op) { return isa<arith::AddFOp>(op); };
-    if (mulOp->hasOneUse() && llvm::any_of(mulOp->getUsers(), isAddOp))
+    if (resultType.getElementType().isBF16() && mulOp->hasOneUse() &&
+        llvm::any_of(mulOp->getUsers(), isAddOp))
       return failure();
 
     unsigned resultElWidth =
@@ -1715,9 +1747,11 @@ struct LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp
     bool lhsIsConst = lhsDefOp && isa<arith::ConstantOp>(lhsDefOp);
     bool rhsIsConst = rhsDefOp && isa<arith::ConstantOp>(rhsDefOp);
 
-    // Only fail if we have a multiply that could be part of FMA, and the other
-    // operand is NOT a constant
-    if ((lhsIsMul && !rhsIsConst) || (rhsIsMul && !lhsIsConst))
+    // Defer to FMA/MAC patterns when a multiply feeds into add, UNLESS the
+    // element type is f32 (where no FMA pattern exists). For bf16 and integer
+    // types, FMA/MAC patterns handle the fusion.
+    if (!resultType.getElementType().isF32() &&
+        ((lhsIsMul && !rhsIsConst) || (rhsIsMul && !lhsIsConst)))
       return failure();
 
     Type scalarType = resultType.getElementType();
@@ -2862,6 +2896,33 @@ struct ConvertMathExpToAIEVecExpOpPattern : OpConversionPattern<math::ExpOp> {
   }
 };
 
+// Convert math.tanh to aievec.tanh for AIE2P (will be further lowered to tanh
+// intrinsic)
+struct ConvertMathTanhToAIEVecTanhOpPattern
+    : OpConversionPattern<math::TanhOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(math::TanhOp tanhOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<VectorType>(adaptor.getOperand().getType());
+    if (!srcType)
+      return failure();
+
+    Type scalarType = srcType.getElementType();
+    unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+    unsigned laneSize = getVectorLaneSize(srcType);
+    // AIE2P tanh: supports v16bf16 and v32bf16
+    if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
+        elWidth != 16)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<aievec::TanhOp>(tanhOp, srcType,
+                                                adaptor.getOperand());
+    return success();
+  }
+};
+
 struct ComputeExpOpByLUTLLVMPattern : OpConversionPattern<math::ExpOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -3496,7 +3557,10 @@ getUnOpaquedOperandOfEmitCOpaqueCallOp(Operation *op, StringRef funcName) {
 // sigmoid value for v16bfloat16 and v32bfloat16 types
 template <typename DivFOpTy>
 static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
-  auto constOp = dyn_cast<arith::ConstantOp>(divfOp.getLhs().getDefiningOp());
+  auto *lhsDefOp = divfOp.getLhs().getDefiningOp();
+  if (!lhsDefOp)
+    return false;
+  auto constOp = dyn_cast<arith::ConstantOp>(lhsDefOp);
   if (!constOp)
     return false;
 
@@ -3514,9 +3578,12 @@ static bool hasSigmoidComputationChain(DivFOpTy divfOp, arith::NegFOp &negOp) {
   // %2 = aievec.ups %b;
   // %3 = aievec.add_elem %1, %2
   // %4 = aievec.srs %3;
-  auto addOp = dyn_cast<arith::AddFOp>(divfOp.getRhs().getDefiningOp());
+  auto *rhsDefOp = divfOp.getRhs().getDefiningOp();
+  if (!rhsDefOp)
+    return false;
+  auto addOp = dyn_cast<arith::AddFOp>(rhsDefOp);
   if (!addOp) {
-    auto srsOp = dyn_cast<aievec::SRSOp>(divfOp.getRhs().getDefiningOp());
+    auto srsOp = dyn_cast<aievec::SRSOp>(rhsDefOp);
     if (!srsOp)
       return false;
 
@@ -4283,7 +4350,7 @@ struct LowerScalarShiftClampTruncToSRS : OpConversionPattern<arith::TruncIOp> {
       // e.g., after skip-add with skip_scale=0.
       preShiftVal = source;
       shiftVal = arith::ConstantOp::create(rewriter, loc,
-                                            rewriter.getI32IntegerAttr(0));
+                                           rewriter.getI32IntegerAttr(0));
     }
 
     // Create 512-bit vector type: vector<16xi32>
@@ -4748,6 +4815,10 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns,
   if (backend == TargetBackend::LLVMIR) {
     patterns.add<ConvertMathExpToAIEVecExpOpPattern,
                  ConvertDivFToAIEVecInvOpPattern>(patterns.getContext());
+    // Higher benefit to take priority over the AIE2 LUT-based tanh pattern
+    // registered in the common patterns.
+    patterns.add<ConvertMathTanhToAIEVecTanhOpPattern>(patterns.getContext(),
+                                                       /*benefit=*/2);
   }
 }
 
@@ -5204,6 +5275,24 @@ static void configureAIEVecV2PLegalizations(ConversionTarget &target,
           elWidth != 16)
         return true;
       if (expOp->hasOneUse() && isInSigmoidOperationChain(expOp))
+        return true;
+
+      return false;
+    });
+
+    // AIE2P-specific legalization for tanh with LLVMIR backend
+    // v16bf16 and v32bf16 tanh are illegal (uses hardware intrinsic)
+    target.addDynamicallyLegalOp<math::TanhOp>([](math::TanhOp tanhOp) {
+      auto srcType = dyn_cast<VectorType>(tanhOp.getOperand().getType());
+      if (!srcType)
+        return true;
+
+      Type scalarType = srcType.getElementType();
+      unsigned elWidth = scalarType.getIntOrFloatBitWidth();
+      unsigned laneSize = getVectorLaneSize(srcType);
+      // AIE2P LLVMIR: v16bf16 and v32bf16 are illegal (uses aievec.tanh)
+      if (!scalarType.isBF16() || (laneSize != 16 && laneSize != 32) ||
+          elWidth != 16)
         return true;
 
       return false;

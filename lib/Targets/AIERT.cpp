@@ -990,10 +990,9 @@ LogicalResult xilinx::AIE::AIERTControl::addAieElfs(DeviceOp &targetOp,
         if (auto fileAttr = coreOp.getElfFile()) {
           fileName = fileAttr->str();
         } else {
-          coreOp.emitOpError()
-              << "Expected lowered ELF file to be given as attribute "
-                 "`elf_file` for this core. Compile cores first.";
-          return failure();
+          // Skip cores without elf_file (e.g., lightweight reset
+          // devices that only need DMA/lock reconfiguration).
+          continue;
         }
         // Check if fileName is already an absolute path.
         // If so, use it directly. Otherwise, concatenate with elfPath.

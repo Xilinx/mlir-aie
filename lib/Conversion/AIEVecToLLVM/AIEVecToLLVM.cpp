@@ -4080,13 +4080,11 @@ public:
         // backend cannot legalize after SLP vectorization.
         if (resultBitWidth < 16) {
           auto i16Ty = rewriter.getI16Type();
-          auto trunc16 =
-              LLVM::TruncOp::create(rewriter, loc, i16Ty, extElemOp);
+          auto trunc16 = LLVM::TruncOp::create(rewriter, loc, i16Ty, extElemOp);
           rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType,
                                                      trunc16.getResult());
         } else {
-          rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType,
-                                                     extElemOp);
+          rewriter.replaceOpWithNewOp<LLVM::TruncOp>(op, resultType, extElemOp);
         }
       } else {
         rewriter.replaceOp(op, extElemOp);
@@ -5294,6 +5292,77 @@ public:
   }
 };
 
+// Convert aievec.tanh to xllvm.tanh intrinsic for AIE2P
+// Supports both lane-16 and lane-32 bf16 vectors
+class TanhOpAIE2pConversion
+    : public mlir::ConvertOpToLLVMPattern<aievec::TanhOp> {
+public:
+  using ConvertOpToLLVMPattern<aievec::TanhOp>::ConvertOpToLLVMPattern;
+
+  LogicalResult
+  matchAndRewrite(aievec::TanhOp tanhOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = tanhOp.getLoc();
+    auto srcType = cast<VectorType>(adaptor.getSource().getType());
+    auto srcElemType = srcType.getElementType();
+    unsigned laneSize = getVectorLaneSize(srcType);
+
+    // Support v16bfloat16 and v32bfloat16
+    if ((laneSize != 16 && laneSize != 32) || !srcElemType.isBF16())
+      return tanhOp.emitWarning()
+             << "aievec.tanh conversion only supports v16bfloat16 and "
+                "v32bfloat16.\n";
+
+    // Step 1: Convert bf16 input to f32 using the dedicated UPS intrinsic
+    auto v16bf16Ty = VectorType::get({16}, rewriter.getBF16Type());
+    auto v16f32Ty = VectorType::get({16}, rewriter.getF32Type());
+
+    // Step 2: Call tanh intrinsic based on lane size
+    Value tanhResult;
+
+    if (laneSize == 16) {
+      // Lane-16: Convert bf16->f32 then call tanh
+      auto inputF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
+          rewriter, loc, v16f32Ty, adaptor.getSource());
+      tanhResult =
+          xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, inputF32);
+    } else {
+      // Lane-32: Split into two v16bf16, convert each, tanh each, recombine
+      SmallVector<int64_t> lowerMask, upperMask;
+      for (int i = 0; i < 16; ++i) {
+        lowerMask.push_back(i);
+        upperMask.push_back(16 + i);
+      }
+
+      auto lowerBf16 = vector::ShuffleOp::create(
+          rewriter, loc, adaptor.getSource(), adaptor.getSource(), lowerMask);
+      auto upperBf16 = vector::ShuffleOp::create(
+          rewriter, loc, adaptor.getSource(), adaptor.getSource(), upperMask);
+
+      auto lowerF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
+          rewriter, loc, v16f32Ty, lowerBf16);
+      auto upperF32 = xllvm::Vector16BF16ToV16AccFloatAIE2pIntrOp::create(
+          rewriter, loc, v16f32Ty, upperBf16);
+
+      auto tanhLower =
+          xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, lowerF32);
+      auto tanhUpper =
+          xllvm::TanhAIE2pIntrOp::create(rewriter, loc, v16bf16Ty, upperF32);
+
+      SmallVector<int64_t> combineMask;
+      for (int i = 0; i < 32; ++i)
+        combineMask.push_back(i);
+
+      tanhResult = vector::ShuffleOp::create(rewriter, loc, tanhLower,
+                                             tanhUpper, combineMask);
+    }
+
+    rewriter.replaceOp(tanhOp, tanhResult);
+
+    return success();
+  }
+};
+
 // Convert math.rsqrt (scalar f32 or vector f32) to xllvm.intr.aie2p.invsqrt
 // Scalar f32: direct conversion to xllvm.intr.aie2p.invsqrt
 // Vector f32: unroll into scalar xllvm.intr.aie2p.invsqrt operations
@@ -5375,26 +5444,42 @@ public:
     if (!rhsVecType || rhsVecType != vecType)
       return failure();
 
-    // Get or create the noinline scalar fdiv helper function using utility
+    // For AIE2P, implement a/b as a * inv(b) using the hardware reciprocal
+    // intrinsic. For AIE2, use scalar fdiv helper function.
     auto module = divOp->getParentOfType<ModuleOp>();
     auto f32Ty = rewriter.getF32Type();
 
-    auto helperFunc = getOrCreateScalarHelperFunc(
-        module, rewriter, "fdiv", deviceName,
-        /*argTypes=*/{f32Ty, f32Ty},
-        /*resultType=*/f32Ty,
-        /*bodyBuilder=*/[](OpBuilder &builder, Location loc, ValueRange args) {
-          auto divResult =
-              arith::DivFOp::create(builder, loc, args[0], args[1]);
-          LLVM::ReturnOp::create(builder, loc, ValueRange{divResult});
-        });
+    // Select device-specific body for the scalar helper function.
+    // AIE2P: use inv(b) * a (hardware reciprocal intrinsic is reliable).
+    // AIE2: use scalar fdiv directly.
+    std::function<void(OpBuilder &, Location, ValueRange)> bodyBuilder;
+    if (deviceName == "aie2p") {
+      bodyBuilder = [](OpBuilder &builder, Location loc, ValueRange args) {
+        auto invResult = xllvm::InvAIE2pIntrOp::create(
+            builder, loc, builder.getF32Type(), args[1]);
+        auto mulResult =
+            arith::MulFOp::create(builder, loc, args[0], invResult);
+        LLVM::ReturnOp::create(builder, loc, ValueRange{mulResult});
+      };
+    } else {
+      bodyBuilder = [](OpBuilder &builder, Location loc, ValueRange args) {
+        auto divResult = arith::DivFOp::create(builder, loc, args[0], args[1]);
+        LLVM::ReturnOp::create(builder, loc, ValueRange{divResult});
+      };
+    }
 
-    // Unroll vector fdiv into scalar helper function calls
+    // Get or create the noinline scalar helper (acts as barrier to prevent
+    // LLVM from re-vectorizing the scalar ops).
+    auto helperFunc =
+        getOrCreateScalarHelperFunc(module, rewriter, "fdiv", deviceName,
+                                    /*argTypes=*/{f32Ty, f32Ty},
+                                    /*resultType=*/f32Ty, bodyBuilder);
+
+    // Unroll vector fdiv into scalar helper function calls.
     int numElements = getVectorLaneSize(vecType);
     Value result = LLVM::PoisonOp::create(rewriter, loc, vecType);
 
     for (int i = 0; i < numElements; ++i) {
-      // Extract element i from both lhs and rhs
       auto indexCst = LLVM::ConstantOp::create(
           rewriter, loc, rewriter.getI64Type(), rewriter.getI64IntegerAttr(i));
       auto lhsElem = LLVM::ExtractElementOp::create(rewriter, loc,
@@ -5402,13 +5487,10 @@ public:
       auto rhsElem = LLVM::ExtractElementOp::create(rewriter, loc,
                                                     adaptor.getRhs(), indexCst);
 
-      // Call noinline helper function (acts as barrier to prevent
-      // re-vectorization)
       auto divResult = LLVM::CallOp::create(rewriter, loc, helperFunc,
                                             ValueRange{lhsElem, rhsElem})
                            ->getResult(0);
 
-      // Insert result back into vector
       result = LLVM::InsertElementOp::create(rewriter, loc, vecType, result,
                                              divResult, indexCst);
     }
@@ -5552,6 +5634,7 @@ void populateAIEVecToLLVMAIE2pConversionPatterns(
   patterns.add<ExtractElemOpAIE2pConversion>(converter);
   patterns.add<ConcatOpAIE2pConversion>(converter);
   patterns.add<ExpOpAIE2pConversion>(converter);
+  patterns.add<TanhOpAIE2pConversion>(converter);
   patterns.add<InvOpAIE2pConversion>(converter);
   patterns.add<BroadcastScalarOpAIE2pConversion>(converter);
   patterns.add<RsqrtOpAIE2pConversion>(converter);
