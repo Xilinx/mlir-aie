@@ -274,7 +274,9 @@ class LitConfigHelper:
                         print(f"Running tests on NPU1 with command line: {run_on_npu1}")
                     else:
                         print("NPU1 detected but aietools for aie2 not available")
-                elif any(known in model for known in LitConfigHelper.NPU_MODELS["npu2"]):
+                elif any(
+                    known in model for known in LitConfigHelper.NPU_MODELS["npu2"]
+                ):
                     if "AIE2P" in vitis_components:
                         run_on_npu2 = run_on_npu
                         config.features.extend(["ryzen_ai", "ryzen_ai_npu2"])
