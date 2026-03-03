@@ -1,24 +1,19 @@
-//===- aie_new_trace.mlir --------------------------------------*- MLIR -*-===//
+//===- aie_trace.mlir ------------------------------------------*- MLIR -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-//
-// This is a version using the NEW PROTOTYPE trace syntax (aie.trace operations).
-// Compare with aie_trace.mlir to see the difference between low-level manual
-// configuration and high-level declarative trace API.
 //
 // This example uses:
 // - aie.trace operation for declarative trace configuration
 // - aie.trace.event for specifying events to capture
 // - aie.trace.start_config in runtime sequence
 //
-// The passes aie-trace-to-config and aie-inline-trace-config will lower this
-// to the same aiex.npu.write32 operations as aie_trace.mlir.
+// The passes aie-trace-to-config and aie-inline-trace-config will lower this.
 //
 //===----------------------------------------------------------------------===//
 
@@ -75,7 +70,6 @@ module {
       aie.trace.packet id=1 type=core
 
       // Specify which events to capture (up to 8 events)
-      // These are the same events as in the manual version
       aie.trace.event<"INSTR_EVENT_0">        // User event 0 (start marker)
       aie.trace.event<"INSTR_EVENT_1">        // User event 1 (end marker)
       aie.trace.event<"INSTR_VECTOR">         // Vector instructions
@@ -101,7 +95,6 @@ module {
       aie.trace.packet id=3 type=mem
 
       // Specify which events to capture (up to 8 events)
-      // These are the same events as in the manual version
       aie.trace.event<"DMA_S2MM_0_START_TASK">
       aie.trace.event<"DMA_S2MM_1_START_TASK">
       aie.trace.event<"DMA_MM2S_0_START_TASK">
@@ -159,7 +152,7 @@ module {
     aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<1xi32>, %arg2: memref<4096xi32>) {
 
       // ========================================================================
-      // TRACE INITIALIZATION (NEW API)
+      // TRACE INITIALIZATION
       // ========================================================================
 
       // Start trace configuration for core tile
@@ -174,7 +167,6 @@ module {
       aiex.npu.write32 {address = 212992 : ui32, column = 0 : i32, row = 2 : i32, value = 31232 : ui32}
 
       // Configure trace buffer descriptor (still manual for now)
-      // TODO: This could be automated based on trace configuration
       aiex.npu.writebd {
         bd_id = 15 : i32,
         buffer_length = 8192 : i32,
@@ -224,7 +216,7 @@ module {
       aiex.npu.write32 {address = 213000 : ui32, column = 0 : i32, row = 0 : i32, value = 127 : ui32}
 
       // ========================================================================
-      // DATA TRANSFER CONFIGURATION (unchanged)
+      // DATA TRANSFER CONFIGURATION
       // ========================================================================
 
       %0 = aiex.dma_configure_task_for @in {
@@ -250,7 +242,7 @@ module {
       aiex.dma_await_task(%2)
 
       // ========================================================================
-      // TRACE COMPLETION (unchanged)
+      // TRACE COMPLETION
       // ========================================================================
 
       aiex.npu.write32 {address = 213064 : ui32, column = 0 : i32, row = 0 : i32, value = 126 : ui32}

@@ -69,3 +69,5 @@ Generate visualization from existing parsed output:
 ```bash
 python3 visualize_trace.py -i trace.json -o trace_timeline.png -t "Trace Timeline"
 ```
+
+Copyright 2026 Advanced Micro Devices, Inc.
