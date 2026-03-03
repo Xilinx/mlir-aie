@@ -21,36 +21,42 @@ If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+
 Turn off SecureBoot (Allows for unsigned drivers to be installed):
    ```BIOS → Security → Secure boot → Disable```
 
-### Build and install the XDNA™ Driver and XRT
+### Install the XDNA™ Driver and XRT
 
-1. Execute the scripted build process:
+#### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
 
-    > This script will install package dependencies, build the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
+Install the XDNA driver and XRT runtime from the AMD PPA:
 
-    ```bash
-    bash ./utils/build_drivers.sh
-    ```
+```bash
+sudo add-apt-repository ppa:amd-team/xrt
+sudo apt update
+sudo apt install libxrt2 libxrt-npu2 libxrt-dev libxrt-utils libxrt-utils-npu amdxdna-dkms
+sudo reboot
+```
 
-1. Reboot as directed after the script exits. 
+> Make sure you are in the `render` group to access the NPU:
+>
+> ```bash
+> sudo usermod -aG render $USER
+> ```
+>
+> You may need to logout and log back in after modifying user groups.
 
-    ```bash
-    sudo reboot
-    ```
+> If you are on a different Linux distribution or kernel not supported by the upstream packages, see [Build from source](#alternative-build-xdna-driver-and-xrt-from-source) below.
 
-1. Check that the NPU is working if the device appears with xrt-smi:
+Verify the NPU device is present:
 
-   ```bash
-   source /opt/xilinx/xrt/setup.sh
-   xrt-smi examine
-   ```
+```bash
+xrt-smi examine
+```
 
-   > At the bottom of the output you should see:
-   >  ```
-   >  Devices present
-   >  BDF             :  Name             
-   > ------------------------------------
-   >  [0000:66:00.1]  :  NPU Strix
-   >  ```
+> At the bottom of the output you should see:
+>  ```
+>  Devices present
+>  BDF             :  Name
+> ------------------------------------
+>  [0000:66:00.1]  :  NPU Strix
+>  ```
 
 ### Install AIETools
 
@@ -166,6 +172,31 @@ For your design of interest, for instance from [programming_examples](../program
 ## Contributing:
 
 Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
+
+## Alternative: Build XDNA™ Driver and XRT from source
+
+If the [upstream packages](#install-from-upstream-packages-ubuntu-2404) do not support your kernel or distribution, you can build the driver and XRT from source:
+
+1. Execute the scripted build process:
+
+    > This script will install package dependencies, build the xdna-driver and xrt packages, and install them. *These steps require `sudo` access.*
+
+    ```bash
+    bash ./utils/build_drivers.sh
+    ```
+
+1. Reboot as directed after the script exits.
+
+    ```bash
+    sudo reboot
+    ```
+
+1. Check that the NPU is working if the device appears with xrt-smi:
+
+   ```bash
+   source /opt/xilinx/xrt/setup.sh
+   xrt-smi examine
+   ```
 
 ## Troubleshooting:
 
