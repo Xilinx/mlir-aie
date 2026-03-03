@@ -156,9 +156,9 @@ LogicalResult generateAieIncCpp(ModuleOp moduleOp, StringRef tmpDirName,
                                      "--aie-generate-xaie",
                                      "--aie-device-name",
                                      devName.str(),
-                                     physicalWithElfsPath.str().str(),
+                                     std::string(physicalWithElfsPath),
                                      "-o",
-                                     aieIncPath.str().str()};
+                                     std::string(aieIncPath)};
 
   if (!executeCommand(cmd, config.verbose, config.dryRun)) {
     errs() << "Error generating aie_inc.cpp\n";
@@ -259,9 +259,9 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
                                         "--aie-mlir-to-xpe",
                                         "--aie-device-name",
                                         devName.str(),
-                                        physicalWithElfsPath.str().str(),
+                                        std::string(physicalWithElfsPath),
                                         "-o",
-                                        xpePath.str().str()};
+                                        std::string(xpePath)};
   if (!executeCommand(xpeCmd, config.verbose, config.dryRun)) {
     errs() << "Error generating graph.xpe\n";
     return failure();
@@ -274,9 +274,9 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
                                            "--aie-mlir-to-shim-solution",
                                            "--aie-device-name",
                                            devName.str(),
-                                           physicalWithElfsPath.str().str(),
+                                           std::string(physicalWithElfsPath),
                                            "-o",
-                                           aiesolPath.str().str()};
+                                           std::string(aiesolPath)};
   if (!executeCommand(aiesolCmd, config.verbose, config.dryRun)) {
     errs() << "Error generating aieshim_solution.aiesol\n";
     return failure();
@@ -289,9 +289,9 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
                                           "--aie-mlir-to-scsim-config",
                                           "--aie-device-name",
                                           devName.str(),
-                                          physicalWithElfsPath.str().str(),
+                                          std::string(physicalWithElfsPath),
                                           "-o",
-                                          scsimConfigPath.str().str()};
+                                          std::string(scsimConfigPath)};
   if (!executeCommand(scsimCmd, config.verbose, config.dryRun)) {
     errs() << "Error generating scsim_config.json\n";
     return failure();
@@ -306,7 +306,7 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
     SmallVector<std::string, 8> flowsCmd = {
         aieOptPath,
         "--pass-pipeline=builtin.module(aie.device(aie-find-flows))",
-        physicalWithElfsPath.str().str(), "-o", flowsPath.str().str()};
+        std::string(physicalWithElfsPath), "-o", std::string(flowsPath)};
     if (!executeCommand(flowsCmd, config.verbose, config.dryRun)) {
       errs() << "Warning: aie-find-flows pass failed\n";
       // Non-fatal, continue
@@ -318,10 +318,10 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
     SmallString<128> flowsJsonPath(simDir);
     sys::path::append(flowsJsonPath, "flows_physical.json");
     SmallVector<std::string, 8> flowsJsonCmd = {
-        aieTranslatePath,         "--aie-flows-to-json",
-        "--aie-device-name",      devName.str(),
-        flowsPath.str().str(),    "-o",
-        flowsJsonPath.str().str()};
+        aieTranslatePath,          "--aie-flows-to-json",
+        "--aie-device-name",       devName.str(),
+        std::string(flowsPath),    "-o",
+        std::string(flowsJsonPath)};
     if (!executeCommand(flowsJsonCmd, config.verbose, config.dryRun)) {
       errs() << "Warning: Failed to generate flows_physical.json\n";
       // Non-fatal
@@ -379,8 +379,8 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
       clangCmd.push_back("-fuse-ld=lld");
       clangCmd.push_back("-shared");
       clangCmd.push_back("-o");
-      clangCmd.push_back(psSoPath.str().str());
-      clangCmd.push_back(genwrapperPath.str().str());
+      clangCmd.push_back(std::string(psSoPath));
+      clangCmd.push_back(std::string(genwrapperPath));
 
       // Add compilation flags
       clangCmd.push_back("-fPIC");
@@ -399,21 +399,21 @@ LogicalResult generateAiesim(ModuleOp moduleOp, StringRef tmpDirName,
       // Include paths
       clangCmd.push_back("-I" + tmpDirName.str());
       clangCmd.push_back("-I" + config.aietoolsPath + "/include");
-      clangCmd.push_back("-I" + xaiengineInclude.str().str());
+      clangCmd.push_back("-I" + std::string(xaiengineInclude));
       clangCmd.push_back("-I" + config.aietoolsPath +
                          "/data/osci_systemc/include");
       clangCmd.push_back("-I" + config.aietoolsPath + "/include/xtlm/include");
       clangCmd.push_back("-I" + config.aietoolsPath +
                          "/include/common_cpp/common_cpp_v1_0/include");
-      clangCmd.push_back("-I" + testLibInclude.str().str());
+      clangCmd.push_back("-I" + std::string(testLibInclude));
 
       // Memory allocator library
       if (sys::fs::exists(memAllocator)) {
-        clangCmd.push_back(memAllocator.str().str());
+        clangCmd.push_back(std::string(memAllocator));
       }
 
       // Link libraries
-      clangCmd.push_back("-L" + xaiengineLib.str().str());
+      clangCmd.push_back("-L" + std::string(xaiengineLib));
       clangCmd.push_back("-lxaienginecdo");
       clangCmd.push_back("-L" + config.aietoolsPath + "/lib/lnx64.o");
       clangCmd.push_back("-L" + config.aietoolsPath + "/lib/lnx64.o/Ubuntu");

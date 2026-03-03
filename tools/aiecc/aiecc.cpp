@@ -978,9 +978,9 @@ static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
   }
 
   // Run chess-llvm-link
-  SmallVector<std::string, 8> cmd = {chessLlvmLinkPath.str().str(),
+  SmallVector<std::string, 8> cmd = {std::string(chessLlvmLinkPath),
                                      inputLLPath.str(),
-                                     wrapperPath.str().str(),
+                                     std::string(wrapperPath),
                                      "-S",
                                      "-o",
                                      outputPath.str()};
@@ -1631,14 +1631,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
                                               aieTargetLower,
                                               "+w",
-                                              workDir.str().str(),
+                                              std::string(workDir),
                                               "-c",
                                               "-d",
                                               "+Wclang,-xir",
                                               "-f",
-                                              chessLinkedPath.str().str(),
+                                              std::string(chessLinkedPath),
                                               "-o",
-                                              objPath.str().str()};
+                                              std::string(objPath)};
 
     if (!executeCommand(xchessCmd)) {
       llvm::errs() << "Error running xchesscc_wrapper\n";
@@ -1672,9 +1672,9 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                                                ">,strip",
                                            "-inline-threshold=10",
                                            "-S",
-                                           llvmIRPath.str().str(),
+                                           std::string(llvmIRPath),
                                            "-o",
-                                           optPath.str().str()};
+                                           std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -1687,13 +1687,13 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Run llc
     SmallVector<std::string, 10> llcCmd = {peanoLlc,
-                                           optPath.str().str(),
+                                           std::string(optPath),
                                            "-O" + optLevelStr,
                                            "--march=" + aieTarget.lower(),
                                            "--function-sections",
                                            "--filetype=obj",
                                            "-o",
-                                           objPath.str().str()};
+                                           std::string(objPath)};
 
     if (!executeCommand(llcCmd)) {
       llvm::errs() << "Error running Peano llc\n";
@@ -1703,7 +1703,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
   // Step 5: Link to ELF
   if (!link) {
-    outElfPath = objPath.str().str();
+    outElfPath = std::string(objPath);
     return success();
   }
 
@@ -1809,7 +1809,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       if (!linkWithArgs.empty()) {
         linkWithArgs += " ";
       }
-      linkWithArgs += destPath.str().str();
+      linkWithArgs += std::string(destPath);
     }
 
     // Find xchesscc_wrapper
@@ -1828,20 +1828,20 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     std::string aieTargetLower = aieTarget.lower();
     SmallVector<std::string, 20> linkCmd = {
         *xchessccWrapperPath, aieTargetLower, "+w",
-        workDir.str().str(),  "-d",           "-f",
-        objPath.str().str()};
+        std::string(workDir), "-d",           "-f",
+        std::string(objPath)};
 
     // Add link_with files if any
     for (const auto &linkWithFile : linkWithFiles) {
       SmallString<256> localPath(tmpDirName);
       sys::path::append(localPath, sys::path::filename(linkWithFile));
-      linkCmd.push_back(localPath.str().str());
+      linkCmd.push_back(std::string(localPath));
     }
 
     linkCmd.push_back("+l");
-    linkCmd.push_back(bcfPath.str().str());
+    linkCmd.push_back(std::string(bcfPath));
     linkCmd.push_back("-o");
-    linkCmd.push_back(elfPath.str().str());
+    linkCmd.push_back(std::string(elfPath));
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking with xbridge\n";
@@ -1883,14 +1883,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     // Explicitly specify Peano's lld linker to avoid using system ld
     if (sys::fs::can_execute(peanoLld)) {
-      linkCmd.push_back("-fuse-ld=" + peanoLld.str().str());
+      linkCmd.push_back("-fuse-ld=" + std::string(peanoLld));
     } else {
       // Fallback: try to use lld from Peano bin via -B
-      linkCmd.push_back("-B" + peanoBinDir.str().str());
+      linkCmd.push_back("-B" + std::string(peanoBinDir));
       linkCmd.push_back("-fuse-ld=lld");
     }
 
-    linkCmd.push_back(objPath.str().str());
+    linkCmd.push_back(std::string(objPath));
 
     // Handle external object file if link_with attribute is specified
     // The linker script generated by aie-translate will include an INPUT()
@@ -1964,14 +1964,14 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 
     linkCmd.push_back("-Wl,--gc-sections");
     linkCmd.push_back("-Wl,--orphan-handling=error");
-    linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+    linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
 
     // Add HSA runtime linking if requested
     if (linkAgainstHsa) {
       if (!sysroot.empty()) {
         SmallString<256> rocmLibPath(sysroot);
         sys::path::append(rocmLibPath, "opt", "rocm", "lib");
-        linkCmd.push_back("-L" + rocmLibPath.str().str());
+        linkCmd.push_back("-L" + std::string(rocmLibPath));
       } else {
         linkCmd.push_back("-L/opt/rocm/lib");
       }
@@ -1979,7 +1979,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
 
     linkCmd.push_back("-o");
-    linkCmd.push_back(elfPath.str().str());
+    linkCmd.push_back(std::string(elfPath));
 
     if (!executeCommand(linkCmd)) {
       llvm::errs() << "Error linking ELF file\n";
@@ -1987,7 +1987,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
   }
 
-  outElfPath = elfPath.str().str();
+  outElfPath = std::string(elfPath);
   if (verbose) {
     std::lock_guard<std::mutex> lock(outputMutex);
     llvm::outs() << "Generated ELF: " << outElfPath << "\n";
@@ -2292,14 +2292,14 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
     SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
                                               aieTargetLower,
                                               "+w",
-                                              workDir.str().str(),
+                                              std::string(workDir),
                                               "-c",
                                               "-d",
                                               "+Wclang,-xir",
                                               "-f",
-                                              chessLinkedPath.str().str(),
+                                              std::string(chessLinkedPath),
                                               "-o",
-                                              objPath.str().str()};
+                                              std::string(objPath)};
 
     if (!executeCommand(xchessCmd)) {
       llvm::errs()
@@ -2355,9 +2355,9 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
                                                ">,strip",
                                            "-inline-threshold=10",
                                            "-S",
-                                           peanohackPath.str().str(),
+                                           std::string(peanohackPath),
                                            "-o",
-                                           optPath.str().str()};
+                                           std::string(optPath)};
 
     if (optLevel >= 3) {
       optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
@@ -2370,13 +2370,13 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
     // Run llc
     SmallVector<std::string, 10> llcCmd = {peanoLlc,
-                                           optPath.str().str(),
+                                           std::string(optPath),
                                            "-O" + optLevelStr,
                                            "--march=" + aieTarget.lower(),
                                            "--function-sections",
                                            "--filetype=obj",
                                            "-o",
-                                           objPath.str().str()};
+                                           std::string(objPath)};
 
     if (!executeCommand(llcCmd)) {
       llvm::errs() << "Error running Peano llc for unified compilation\n";
@@ -2392,7 +2392,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
   if (!link) {
     // If not linking, just return the object path for all cores
     for (const auto &core : cores) {
-      elfPaths[{core.col, core.row}] = objPath.str().str();
+      elfPaths[{core.col, core.row}] = std::string(objPath);
     }
     return success();
   }
@@ -2496,19 +2496,19 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       std::string aieTargetLower = aieTarget.lower();
       SmallVector<std::string, 20> linkCmd = {
           *xchessccWrapperPath, aieTargetLower, "+w",
-          workDir.str().str(),  "-d",           "-f",
-          objPath.str().str()};
+          std::string(workDir), "-d",           "-f",
+          std::string(objPath)};
 
       for (const auto &linkWithFile : linkWithFiles) {
         SmallString<256> localPath(tmpDirName);
         sys::path::append(localPath, sys::path::filename(linkWithFile));
-        linkCmd.push_back(localPath.str().str());
+        linkCmd.push_back(std::string(localPath));
       }
 
       linkCmd.push_back("+l");
-      linkCmd.push_back(bcfPath.str().str());
+      linkCmd.push_back(std::string(bcfPath));
       linkCmd.push_back("-o");
-      linkCmd.push_back(elfPath.str().str());
+      linkCmd.push_back(std::string(elfPath));
 
       if (!executeCommand(linkCmd)) {
         llvm::errs() << "Error linking core (" << core.col << ", " << core.row
@@ -2612,23 +2612,23 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
                                               "--target=" + peanoTarget};
 
       if (sys::fs::can_execute(peanoLld)) {
-        linkCmd.push_back("-fuse-ld=" + peanoLld.str().str());
+        linkCmd.push_back("-fuse-ld=" + std::string(peanoLld));
       } else {
-        linkCmd.push_back("-B" + peanoBinDir.str().str());
+        linkCmd.push_back("-B" + std::string(peanoBinDir));
         linkCmd.push_back("-fuse-ld=lld");
       }
 
-      linkCmd.push_back(objPath.str().str());
+      linkCmd.push_back(std::string(objPath));
       linkCmd.push_back("-Wl,--gc-sections");
       linkCmd.push_back("-Wl,--orphan-handling=error");
-      linkCmd.push_back("-Wl,-T," + absLdScriptPath.str().str());
+      linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
 
       // Add HSA runtime linking if requested
       if (linkAgainstHsa) {
         if (!sysroot.empty()) {
           SmallString<256> rocmLibPath(sysroot);
           sys::path::append(rocmLibPath, "opt", "rocm", "lib");
-          linkCmd.push_back("-L" + rocmLibPath.str().str());
+          linkCmd.push_back("-L" + std::string(rocmLibPath));
         } else {
           linkCmd.push_back("-L/opt/rocm/lib");
         }
@@ -2636,7 +2636,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       }
 
       linkCmd.push_back("-o");
-      linkCmd.push_back(elfPath.str().str());
+      linkCmd.push_back(std::string(elfPath));
 
       if (!executeCommand(linkCmd)) {
         llvm::errs() << "Error linking core (" << core.col << ", " << core.row
@@ -2645,7 +2645,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       }
     }
 
-    elfPaths[{core.col, core.row}] = elfPath.str().str();
+    elfPaths[{core.col, core.row}] = std::string(elfPath);
     if (verbose) {
       llvm::outs() << "Generated ELF: " << elfPath << "\n";
     }
@@ -2875,14 +2875,14 @@ static LogicalResult extractAndMergePartition(StringRef inputXclbin,
   SmallString<128> inputPartitionPath(tmpDirName);
   sys::path::append(inputPartitionPath, "input_aie_partition.json");
 
-  SmallVector<std::string, 10> extractCmd = {*xclbinutilPath,
-                                             "--dump-section",
-                                             "AIE_PARTITION:JSON:" +
-                                                 inputPartitionPath.str().str(),
-                                             "--force",
-                                             "--quiet",
-                                             "--input",
-                                             inputXclbin.str()};
+  SmallVector<std::string, 10> extractCmd = {
+      *xclbinutilPath,
+      "--dump-section",
+      "AIE_PARTITION:JSON:" + std::string(inputPartitionPath),
+      "--force",
+      "--quiet",
+      "--input",
+      inputXclbin.str()};
 
   if (!executeCommand(extractCmd)) {
     llvm::errs() << "Error extracting AIE_PARTITION from input xclbin\n";
@@ -3703,7 +3703,7 @@ static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
   // Run aiebu-asm to convert binary to ELF
   // aiebu-asm -t aie2txn -c <input.bin> -o <output.elf>
   SmallVector<std::string, 10> aiebuCmd = {
-      aiebuAsmBin, "-t",         "aie2txn", "-c", tempBinPath.str().str(),
+      aiebuAsmBin, "-t",         "aie2txn", "-c", std::string(tempBinPath),
       "-o",        outputElfPath};
 
   if (!executeCommand(aiebuCmd)) {
@@ -3832,7 +3832,7 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
                                            "-t",
                                            "aie2_config",
                                            "-j",
-                                           configPath.str().str(),
+                                           std::string(configPath),
                                            "-o",
                                            fullElfName.getValue()};
 
@@ -4032,9 +4032,9 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                                 "-arch",
                                                 "versal",
                                                 "-image",
-                                                bifPath.str().str(),
+                                                std::string(bifPath),
                                                 "-o",
-                                                pdiPath.str().str(),
+                                                std::string(pdiPath),
                                                 "-w"};
 
       if (verbose) {
@@ -4119,24 +4119,24 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                      "--input",
                      xclbinInput.getValue(),
                      "--add-kernel",
-                     kernelsPath.str().str(),
+                     std::string(kernelsPath),
                      "--add-replace-section",
-                     "AIE_PARTITION:JSON:" + mergedPartitionPath.str().str(),
+                     "AIE_PARTITION:JSON:" + std::string(mergedPartitionPath),
                      "--force",
                      "--output",
-                     xclbinPath.str().str()};
+                     std::string(xclbinPath)};
       } else {
         // Create new xclbin from scratch
         xclbinCmd = {xclbinutilPath,
                      "--add-replace-section",
-                     "MEM_TOPOLOGY:JSON:" + memTopoPath.str().str(),
+                     "MEM_TOPOLOGY:JSON:" + std::string(memTopoPath),
                      "--add-kernel",
-                     kernelsPath.str().str(),
+                     std::string(kernelsPath),
                      "--add-replace-section",
-                     "AIE_PARTITION:JSON:" + partitionPath.str().str(),
+                     "AIE_PARTITION:JSON:" + std::string(partitionPath),
                      "--force",
                      "--output",
-                     xclbinPath.str().str()};
+                     std::string(xclbinPath)};
       }
 
       if (!executeCommand(xclbinCmd)) {
@@ -4261,10 +4261,10 @@ static LogicalResult compileHostProgram(StringRef tmpDirName,
   }
 
   // Add auto-discovered paths
-  cmd.push_back(memAllocator.str().str());
-  cmd.push_back("-I" + xaiengineInclude.str().str());
-  cmd.push_back("-L" + xaiengineLib.str().str());
-  cmd.push_back("-Wl,-R" + xaiengineLib.str().str());
+  cmd.push_back(std::string(memAllocator));
+  cmd.push_back("-I" + std::string(xaiengineInclude));
+  cmd.push_back("-L" + std::string(xaiengineLib));
+  cmd.push_back("-Wl,-R" + std::string(xaiengineLib));
   cmd.push_back("-I" + tmpDirName.str());
   cmd.push_back("-fuse-ld=lld");
   cmd.push_back("-lm");
@@ -4544,7 +4544,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
         pdiFullPath = absTmpDir;
         sys::path::append(pdiFullPath, pdiFileName);
       }
-      info.pdiPath = pdiFullPath.str().str();
+      info.pdiPath = std::string(pdiFullPath);
 
       // Collect runtime sequence instruction paths (also absolute)
       for (auto seqOp : deviceOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
@@ -4553,7 +4553,7 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
             formatString(instsName, devName.str(), seqName);
         SmallString<256> instsFullPath(absTmpDir);
         sys::path::append(instsFullPath, instsFileName);
-        info.sequences.emplace_back(seqName.str(), instsFullPath.str().str());
+        info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
       }
 
       deviceElfInfos.push_back(std::move(info));
