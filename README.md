@@ -55,10 +55,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 #### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
 
-> NOTE: You may need to run updates to install the latest Linux kernel version
->       The packaged XRT only supports Python 3.12 pyxrt
+> You may need to run updates to install the latest Linux kernel version
 
 Install the XDNA driver and XRT from the AMD PPA:
+
+> The packaged XRT only supports Python 3.12 for pyxrt
 
 ```bash
 sudo add-apt-repository ppa:amd-team/xrt
