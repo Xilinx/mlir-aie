@@ -88,11 +88,11 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           }
 
           if (!eventANum) {
-            comboOp.emitError("unknown event: ") << eventAName;
+            comboOp.emitError("unknown trace event '") << eventAName << "'";
             return signalPassFailure();
           }
           if (!eventBNum) {
-            comboOp.emitError("unknown event: ") << eventBName;
+            comboOp.emitError("unknown trace event '") << eventBName << "'";
             return signalPassFailure();
           }
 
@@ -156,7 +156,7 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
           }
 
           if (!eventNum) {
-            edgeOp.emitError("unknown event: ") << eventName;
+            edgeOp.emitError("unknown trace event '") << eventName << "'";
             return signalPassFailure();
           }
 
@@ -224,8 +224,8 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             if (eventNum) {
               startEvent = *eventNum;
             } else {
-              trace.emitWarning("Unknown event: ") << eventName;
-              startEvent = 1; // Fallback to TRUE event
+              startOp.emitError("unknown trace event '") << eventName << "'";
+              return signalPassFailure();
             }
           }
 
@@ -254,8 +254,8 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
             if (eventNum) {
               stopEvent = *eventNum;
             } else {
-              trace.emitWarning("Unknown event: ") << eventName;
-              stopEvent = 0; // Fallback to NONE event
+              stopOp.emitError("unknown trace event '") << eventName << "'";
+              return signalPassFailure();
             }
           }
 
@@ -356,8 +356,8 @@ struct AIETraceToConfigPass : AIETraceToConfigBase<AIETraceToConfigPass> {
         }
 
         if (!eventNum) {
-          trace.emitWarning("Unknown event: ") << eventName;
-          continue;
+          events[i].emitError("unknown trace event '") << eventName << "'";
+          return signalPassFailure();
         }
 
         // Determine which register and field
@@ -451,14 +451,15 @@ struct AIETraceRegPackWritesPass
         uint32_t value = 0;
         Attribute valAttr = regOp.getValue();
         if (auto traceEventAttr = dyn_cast<TraceEventAttr>(valAttr)) {
-          valAttr = traceEventAttr.getValue();
-          // if it's a string, lookup the enum value
-          if (auto strAttr = dyn_cast<StringAttr>(valAttr)) {
-            std::string eventName = strAttr.getValue().str();
+          if (auto enumVal = traceEventAttr.getEnumValue()) {
+            value = static_cast<uint32_t>(*enumVal);
+            valAttr = builder.getI32IntegerAttr(value);
+          } else {
+            std::string eventName = traceEventAttr.getEventName();
             std::optional<uint32_t> eventNum =
                 targetModel.lookupEvent(eventName, tileID, isMem);
             if (!eventNum) {
-              regOp.emitError("Unknown event: ") << eventName;
+              regOp.emitError("unknown trace event '") << eventName << "'";
               return signalPassFailure();
             }
             value = *eventNum;

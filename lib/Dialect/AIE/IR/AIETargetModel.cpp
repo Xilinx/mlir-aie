@@ -697,29 +697,6 @@ std::optional<uint32_t> AIE1TargetModel::getStreamSwitchPortIndex(
   }
 }
 
-bool AIE1TargetModel::isValidStreamSwitchPort(int col, int row,
-                                              WireBundle bundle,
-                                              uint32_t channel,
-                                              bool master) const {
-  // TODO: Add proper validation
-  // For now, accept reasonable-looking configurations
-  if (channel > 7)
-    return false;
-
-  // Accept common port types
-  switch (bundle) {
-  case WireBundle::DMA:
-  case WireBundle::FIFO:
-  case WireBundle::North:
-  case WireBundle::South:
-  case WireBundle::East:
-  case WireBundle::West:
-    return true;
-  default:
-    return false;
-  }
-}
-
 ///
 /// AIE2 TargetModel
 ///
@@ -1463,29 +1440,6 @@ std::optional<uint32_t> AIE2TargetModel::getStreamSwitchPortIndex(
     }
   }
   return std::nullopt;
-}
-
-bool AIE2TargetModel::isValidStreamSwitchPort(int col, int row,
-                                              WireBundle bundle,
-                                              uint32_t channel,
-                                              bool master) const {
-  // TODO: Add proper validation
-  // For now, accept reasonable-looking configurations
-  if (channel > 7)
-    return false;
-
-  // Accept common port types
-  switch (bundle) {
-  case WireBundle::DMA:
-  case WireBundle::FIFO:
-  case WireBundle::North:
-  case WireBundle::South:
-  case WireBundle::East:
-  case WireBundle::West:
-    return true;
-  default:
-    return false;
-  }
 }
 
 void AIETargetModel::validate() const {

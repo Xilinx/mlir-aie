@@ -12,11 +12,11 @@ aie.device(npu1_1col) {
   
   // CHECK-LABEL: @test_edge_lowering
   aie.trace @test_edge_lowering(%tile_0_2) {
-    aie.trace.edge_event<0> event=<"LOCK_STALL"> trigger=RISING
+    aie.trace.edge_event<0> event=<CoreEventAIE2::LOCK_STALL> trigger=RISING
     aie.trace.event<"EDGE_DETECTION_EVENT_0">
   }
   
-  // CHECK: aie.trace.reg register = "Edge_Detection_event_control" field = "Edge_Detection_Event_0"
+  // CHECK: aie.trace.reg register = "Edge_Detection_event_control" field = "Edge_Detection_Event_0" value = CoreEventAIE2::LOCK_STALL
   // CHECK: aie.trace.reg register = "Edge_Detection_event_control" field = "Edge_Detection_0_Trigger_Rising" value = 1
   // CHECK: aie.trace.reg register = "Edge_Detection_event_control" field = "Edge_Detection_0_Trigger_Falling" value = 0
   // CHECK: aie.trace.reg register = "Trace_Event0" field = "Trace_Event0"

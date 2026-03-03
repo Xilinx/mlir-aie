@@ -286,11 +286,6 @@ public:
   getStreamSwitchPortIndex(int col, int row, WireBundle bundle,
                            uint32_t channel, bool master) const = 0;
 
-  /// Check if a stream switch port is valid for the given tile
-  /// Return true if the port configuration is valid
-  virtual bool isValidStreamSwitchPort(int col, int row, WireBundle bundle,
-                                       uint32_t channel, bool master) const = 0;
-
   /// Return the number of buffer descriptors supported by the DMA in the given
   /// tile.
   uint32_t getNumBDs(int col, int row) const {
@@ -488,8 +483,6 @@ public:
                                                    WireBundle bundle,
                                                    uint32_t channel,
                                                    bool master) const override;
-  bool isValidStreamSwitchPort(int col, int row, WireBundle bundle,
-                               uint32_t channel, bool master) const override;
 
   uint32_t getColumnShift() const override { return 23; }
   uint32_t getRowShift() const override { return 18; }
@@ -605,8 +598,6 @@ public:
                                                    WireBundle bundle,
                                                    uint32_t channel,
                                                    bool master) const override;
-  bool isValidStreamSwitchPort(int col, int row, WireBundle bundle,
-                               uint32_t channel, bool master) const override;
 
   uint32_t getColumnShift() const override { return 25; }
   uint32_t getRowShift() const override { return 20; }

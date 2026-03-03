@@ -36,23 +36,8 @@ std::string TraceEventAttr::getEventName() const {
     return strAttr.getValue().str();
   }
 
-  // // Check for typed enum attributes and use stringify functions
-  // Attribute value = getValue();
-  // if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(value)) {
-  //   return stringifyCoreEventAIE2(coreEvt.getValue()).str();
-  // }
-  // if (auto memEvt = llvm::dyn_cast<MemEventAIE2Attr>(value)) {
-  //   return stringifyMemEventAIE2(memEvt.getValue()).str();
-  // }
-  // if (auto shimEvt = llvm::dyn_cast<ShimTileEventAIE2Attr>(value)) {
-  //   return stringifyShimTileEventAIE2(shimEvt.getValue()).str();
-  // }
-  // if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2Attr>(value)) {
-  //   return stringifyMemTileEventAIE2(memTileEvt.getValue()).str();
-  // }
-
-  // Fallback: shouldn't reach here for well-formed IR
-  return "42";
+  // Fallback: unexpected attribute kind.
+  return "";
 }
 
 bool TraceEventAttr::isStringAttr() const {
@@ -237,7 +222,7 @@ ParseResult xilinx::AIE::parseTraceEvent(AsmParser &parser, Attribute &result) {
   // Define a helper struct for enum validation
   struct EnumValidator {
     StringRef name;
-    std::function<std::optional<uint32_t>(StringRef)> symbolizer;
+    std::function<bool(StringRef)> symbolizer;
   };
 
   // Table of supported enum types and their symbolizer functions
@@ -330,44 +315,6 @@ void xilinx::AIE::printTraceEventEnum(AsmPrinter &printer, Attribute attr) {
     printer << intAttr.getInt();
     return;
   }
-  // // AIE2 event enums
-  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2Attr>(attr)) {
-  //   printer << "CoreEventAIE2::" <<
-  //   stringifyCoreEventAIE2(coreEvt.getValue());
-  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIE2Attr>(attr)) {
-  //   printer << "MemEventAIE2::" << stringifyMemEventAIE2(memEvt.getValue());
-  // } else if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2Attr>(attr)) {
-  //   printer << "MemTileEventAIE2::"
-  //           << stringifyMemTileEventAIE2(memTileEvt.getValue());
-  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIE2Attr>(attr))
-  // {
-  //   printer << "ShimTileEventAIE2::"
-  //           << stringifyShimTileEventAIE2(shimTileEvt.getValue());
-  // }
-  // // AIE event enums
-  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIEAttr>(attr)) {
-  //   printer << "CoreEventAIE::" << stringifyCoreEventAIE(coreEvt.getValue());
-  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIEAttr>(attr)) {
-  //   printer << "MemEventAIE::" << stringifyMemEventAIE(memEvt.getValue());
-  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIEAttr>(attr)) {
-  //   printer << "ShimTileEventAIE::"
-  //           << stringifyShimTileEventAIE(shimTileEvt.getValue());
-  // }
-  // // AIE2P event enums
-  // else if (auto coreEvt = llvm::dyn_cast<CoreEventAIE2PAttr>(attr)) {
-  //   printer << "CoreEventAIE2P::"
-  //           << stringifyCoreEventAIE2P(coreEvt.getValue());
-  // } else if (auto memEvt = llvm::dyn_cast<MemEventAIE2PAttr>(attr)) {
-  //   printer << "MemEventAIE2P::" <<
-  //   stringifyMemEventAIE2P(memEvt.getValue());
-  // } else if (auto memTileEvt = llvm::dyn_cast<MemTileEventAIE2PAttr>(attr)) {
-  //   printer << "MemTileEventAIE2P::"
-  //           << stringifyMemTileEventAIE2P(memTileEvt.getValue());
-  // } else if (auto shimTileEvt = llvm::dyn_cast<ShimTileEventAIE2PAttr>(attr))
-  // {
-  //   printer << "ShimTileEventAIE2P::"
-  //           << stringifyShimTileEventAIE2P(shimTileEvt.getValue());
-  // }
 }
 
 //===----------------------------------------------------------------------===//
@@ -462,8 +409,10 @@ LogicalResult TracePortOp::verify() {
   bool isMaster = (getDirection() == DMAChannelDir::S2MM);
 
   // Verify port is valid for this tile
-  if (!targetModel.isValidStreamSwitchPort(tileOp.getCol(), tileOp.getRow(),
-                                           getPort(), getChannel(), isMaster)) {
+  if (!targetModel
+           .getStreamSwitchPortIndex(tileOp.getCol(), tileOp.getRow(),
+                                     getPort(), getChannel(), isMaster)
+           .has_value()) {
     return emitOpError("invalid stream switch port configuration for tile (")
            << tileOp.getCol() << ", " << tileOp.getRow() << ")";
   }
@@ -520,48 +469,6 @@ LogicalResult TraceStopEventOp::verify() {
 
   return success();
 }
-
-// void TraceEventOp::print(OpAsmPrinter &p) {
-//   p << "<";
-//   printTraceEventEnum(p, getEvent().getValue());
-//   p << ">";
-//   if (auto label = getLabel()) {
-//     p << " label = " << label;
-//   }
-//   p.printOptionalAttrDict((*this)->getAttrs(),
-//                           /*elidedAttrs=*/{"event", "label"});
-// }
-
-// ParseResult TraceEventOp::parse(OpAsmParser &parser, OperationState &result)
-// {
-//   Attribute innerValue;
-
-//   if (parser.parseLess())
-//     return failure();
-
-//   if (failed(parseTraceEvent(parser, innerValue)))
-//     return failure();
-
-//   // Wrap in TraceEventAttr
-//   auto traceEvent = TraceEventAttr::get(parser.getContext(), innerValue);
-//   result.attributes.set("event", traceEvent);
-
-//   if (parser.parseGreater())
-//     return failure();
-
-//   // Parse optional label
-//   if (succeeded(parser.parseOptionalKeyword("label"))) {
-//     StringAttr label;
-//     if (parser.parseEqual() ||
-//         parser.parseAttribute(label, "label", result.attributes))
-//       return failure();
-//   }
-
-//   if (parser.parseOptionalAttrDict(result.attributes))
-//     return failure();
-
-//   return success();
-// }
 
 //===----------------------------------------------------------------------===//
 // TraceStartEventOp and TraceStopEventOp
@@ -724,74 +631,6 @@ LogicalResult TraceComboEventOp::verify() {
 
   return success();
 }
-
-// void TraceComboEventOp::print(OpAsmPrinter &p) {
-//   auto printEvent = [&](TraceEventAttr evt) {
-//     printTraceEventEnum(p, evt.getValue());
-//   };
-
-//   p << "<" << getSlot() << "> <";
-//   printEvent(getEventA());
-//   p << "> " << getLogic() << " <";
-//   printEvent(getEventB());
-//   p << ">";
-//   p.printOptionalAttrDict(
-//       (*this)->getAttrs(),
-//       /*elidedAttrs=*/{"slot", "eventA", "logic", "eventB"});
-// }
-
-// ParseResult TraceComboEventOp::parse(OpAsmParser &parser,
-//                                      OperationState &result) {
-//   IntegerAttr slot;
-//   Attribute eventAValue, eventBValue;
-//   ComboLogicAttr logic;
-
-//   if (parser.parseLess() ||
-//       parser.parseAttribute(slot, parser.getBuilder().getI32Type(), "slot",
-//                             result.attributes) ||
-//       parser.parseGreater() || parser.parseLess())
-//     return failure();
-
-//   if (failed(parseTraceEvent(parser, eventAValue)))
-//     return failure();
-
-//   auto eventA = TraceEventAttr::get(parser.getContext(), eventAValue);
-//   result.attributes.set("eventA", eventA);
-
-//   if (parser.parseGreater())
-//     return failure();
-
-//   // Parse logic as keyword (AND, OR, etc.)
-//   StringRef logicStr;
-//   if (failed(parser.parseKeyword(&logicStr)))
-//     return failure();
-
-//   auto logicEnum = symbolizeComboLogic(logicStr);
-//   if (!logicEnum) {
-//     return parser.emitError(parser.getCurrentLocation(),
-//                             "unknown combo logic: ")
-//            << logicStr;
-//   }
-//   logic = ComboLogicAttr::get(parser.getContext(), *logicEnum);
-//   result.attributes.set("logic", logic);
-
-//   if (parser.parseLess())
-//     return failure();
-
-//   if (failed(parseTraceEvent(parser, eventBValue)))
-//     return failure();
-
-//   auto eventB = TraceEventAttr::get(parser.getContext(), eventBValue);
-//   result.attributes.set("eventB", eventB);
-
-//   if (parser.parseGreater())
-//     return failure();
-
-//   if (parser.parseOptionalAttrDict(result.attributes))
-//     return failure();
-
-//   return success();
-// }
 
 //===----------------------------------------------------------------------===//
 // TraceEdgeEventOp

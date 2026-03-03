@@ -12,12 +12,12 @@ aie.device(npu1_1col) {
   
   // CHECK-LABEL: @test_combo_lowering
   aie.trace @test_combo_lowering(%tile_0_2) {
-    aie.trace.combo_event<0> <"INSTR_EVENT_0"> AND <"INSTR_VECTOR">
+    aie.trace.combo_event<0> <CoreEventAIE2::INSTR_EVENT_0> AND <CoreEventAIE2::INSTR_VECTOR>
     aie.trace.event<"COMBO_EVENT_0">
   }
   
-  // CHECK: aie.trace.reg register = "Combo_event_inputs" field = "eventA" value = "INSTR_EVENT_0"
-  // CHECK: aie.trace.reg register = "Combo_event_inputs" field = "eventB" value = "INSTR_VECTOR"
+  // CHECK: aie.trace.reg register = "Combo_event_inputs" field = "eventA" value = CoreEventAIE2::INSTR_EVENT_0
+  // CHECK: aie.trace.reg register = "Combo_event_inputs" field = "eventB" value = CoreEventAIE2::INSTR_VECTOR
   // CHECK: aie.trace.reg register = "Combo_event_control" field = "combo0" value = 0
   // CHECK: aie.trace.reg register = "Trace_Event0" field = "Trace_Event0" value = "COMBO_EVENT_0" comment = "COMBO_EVENT_0"
 }

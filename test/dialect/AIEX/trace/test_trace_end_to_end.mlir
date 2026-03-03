@@ -23,7 +23,7 @@ module {
     aie.trace @my_trace(%tile02) {
       aie.trace.mode "Event-Time"
       aie.trace.packet id=1 type="core"
-      aie.trace.event<"INSTR_EVENT_0"> label="kernel_start"
+      aie.trace.event<CoreEventAIE2::INSTR_EVENT_0> label="kernel_start"
       aie.trace.event<"INSTR_EVENT_1"> label="kernel_end"
       aie.trace.event<"INSTR_VECTOR"> label="vector_op"
       aie.trace.event<"LOCK_STALL"> label="lock_stall"

@@ -32,6 +32,20 @@ module {
 
 // -----
 
+// Test: Invalid typed enum case must fail parsing
+module {
+  aie.device(npu1_1col) {
+    %tile = aie.tile(0, 2)
+
+    aie.trace @test_invalid_enum_case(%tile) {
+      // expected-error@+1 {{unknown CoreEventAIE2 value}}
+      aie.trace.event<CoreEventAIE2::NOT_A_REAL_EVENT>
+    }
+  }
+}
+
+// -----
+
 // Test: Packet ID out of range (too low)
 module {
   aie.device(npu1_1col) {
