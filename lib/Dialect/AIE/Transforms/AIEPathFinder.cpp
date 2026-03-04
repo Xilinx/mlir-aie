@@ -53,7 +53,6 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
 
     // Pass 2: process each destination using the source extracted above
     for (Operation &Op : b.getOperations()) {
-    for (Operation &Op : b.getOperations()) {
       if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
         dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
         dstPort = pktDest.port();
